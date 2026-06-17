@@ -1779,6 +1779,14 @@ function repairChecklistCount(checklist: RepairChecklistValue) {
   return checklist.story_script.length + checklist.audio_asc.length + checklist.packaging.length
 }
 
+function persistedReviewComplete(story: Story) {
+  return Boolean(story.reviewed_at) && (story.review_status === 'approved' || story.review_status === 'not_approved')
+}
+
+function persistedReviewNeedsRepair(story: Story) {
+  return story.review_status === 'not_approved' && repairChecklistCount(normalizeRepairChecklist(story.repair_checklist)) > 0
+}
+
 function firstRepairIssueLabel(checklist?: RepairChecklistValue | null) {
   const normalized = normalizeRepairChecklist(checklist)
   const selected = [...normalized.audio_asc, ...normalized.story_script, ...normalized.packaging]
@@ -2386,7 +2394,7 @@ export default function AdminStoriesPage() {
   const [selectedSeriesKey, setSelectedSeriesKey] = useState<string | null>(null)
   const [seriesSearch, setSeriesSearch] = useState('')
   const [seriesFilter, setSeriesFilter] = useState<WorkflowFilter>('all')
-  const [seriesActionsOpen, setSeriesActionsOpen] = useState(false)
+  const [, setSeriesActionsOpen] = useState(false)
   const [repairEntireSeries, setRepairEntireSeries] = useState(false)
   const [seriesReadyConfirm, setSeriesReadyConfirm] = useState<{ seriesId: string; seriesName: string } | null>(null)
   const [repairQueueBannerDismissed, setRepairQueueBannerDismissed] = useState(false)
@@ -2737,6 +2745,22 @@ export default function AdminStoriesPage() {
     return episodeRepairMarks[storyId] || episodeRepairMarkDefault()
   }
 
+  function effectiveEpisodeRepairMark(story: Story): EpisodeRepairMark {
+    const local = episodeRepairMarks[story.id]
+    if (local) return local
+    if (!persistedReviewComplete(story)) return episodeRepairMarkDefault()
+    const checklist = normalizeRepairChecklist(story.repair_checklist)
+    const needed = persistedReviewNeedsRepair(story)
+    return {
+      ...episodeRepairMarkDefault(),
+      needed,
+      checklist,
+      notes: story.repair_notes || '',
+      reviewState: needed ? 'finished' : 'no_repair',
+      listenState: 'listened',
+    }
+  }
+
   function setEpisodeRepairNeeded(storyId: string, needed: boolean) {
     setEpisodeRepairMarks((prev) => ({
       ...prev,
@@ -2850,7 +2874,8 @@ export default function AdminStoriesPage() {
   function toggleEpisodeRepairIssue(storyId: string, issue: { id: string; group: RepairGroup }) {
     inlineAudioRef.current?.pause()
     pauseEpisodeAudio(storyId)
-    const current = episodeRepairMark(storyId)
+    const story = stories.find((item) => item.id === storyId)
+    const current = story ? effectiveEpisodeRepairMark(story) : episodeRepairMark(storyId)
     const selected = current.checklist[issue.group].includes(issue.id)
     const nextChecklist = {
       ...current.checklist,
@@ -2949,11 +2974,27 @@ export default function AdminStoriesPage() {
     const currentMark = episodeRepairMarks[story.id] || episodeRepairMarkDefault()
     const hasRepair = AUDIO_REPAIR_OPTIONS.some((option) => currentMark.checklist[option.group].includes(option.id))
     finishEpisodeReview(story.id)
-    if (hasRealSeriesRelationship(story) || !hasRepair) return
-    await setWorkflowState(story, 'repair_queue', {
-      repairChecklist: currentMark.checklist,
-      repairNotes: buildStandaloneRepairNotes(currentMark),
-    })
+    const repairNotes = hasRepair ? buildStandaloneRepairNotes(currentMark) : ''
+    try {
+      const res = await fetch('/api/admin/content-approval?action=record_review_outcome', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          storyId: story.id,
+          hasIssues: hasRepair,
+          repairChecklist: hasRepair ? currentMark.checklist : null,
+          repairNotes,
+        }),
+      })
+      const result = await res.json().catch(() => ({}))
+      if (!res.ok || !result.success) {
+        alert(`Review save failed: ${result.error || `HTTP ${res.status}`}`)
+        return
+      }
+      setStories((prev) => prev.map((item) => item.id === story.id ? { ...item, ...result.story } : item))
+    } catch (err) {
+      alert('Review save failed: ' + String(err))
+    }
   }
 
   function buildSeriesRepairFromEpisodeMarks(storiesToRepair: Story[], seriesTitle = selectedTitle) {
@@ -2964,7 +3005,7 @@ export default function AdminStoriesPage() {
       '',
     ]
     storiesToRepair.forEach((story) => {
-      const mark = episodeRepairMark(story.id)
+      const mark = effectiveEpisodeRepairMark(story)
       if (mark.needed !== true) return
       AUDIO_REPAIR_OPTIONS.forEach((option) => {
         if (mark.checklist[option.group].includes(option.id) && !checklist[option.group].includes(option.id)) {
@@ -2991,7 +3032,7 @@ export default function AdminStoriesPage() {
   }
 
   function moveSeriesToRepairShop(group: Extract<StoryGroup, { type: 'series' }>) {
-    const markedStories = group.stories.filter((story) => episodeRepairMark(story.id).needed === true)
+    const markedStories = group.stories.filter((story) => effectiveEpisodeRepairMark(story).needed === true)
     if (markedStories.length === 0) {
       alert('Check at least one repair item before sending the series for repair.')
       return
@@ -3255,7 +3296,7 @@ export default function AdminStoriesPage() {
   }
 
   function renderEpisodeRepairDetails(story: Story) {
-    const mark = episodeRepairMark(story.id)
+    const mark = effectiveEpisodeRepairMark(story)
 
     const activeOption = AUDIO_REPAIR_OPTIONS.find((option) => option.id === mark.activeCategoryId)
     const activeCategoryChecked = Boolean(activeOption && mark.checklist[activeOption.group].includes(activeOption.id))
@@ -3457,17 +3498,21 @@ export default function AdminStoriesPage() {
   const selectedSeriesDescription = selectedIsSeries ? seriesDescriptionForReview(selectedGroup, selectedAllStories) : null
   const selectedShortDescription = selectedIsSeries ? selectedSeriesDescription?.text || '' : selectedFirst?.description || ''
   const selectedNarrator = selectedIsSeries ? firstNarratorLabel(selectedAllStories) : selectedFirst ? narratorLabel(selectedFirst) : 'Narrator pending'
-  const selectedSeriesAllReviewed = selectedIsSeries && selectedAllStories.every(
-    (story) => ['no_repair', 'finished'].includes(episodeRepairMark(story.id).reviewState)
-  )
-  const selectedSeriesHasRepair = selectedIsSeries && selectedAllStories.some(
-    (story) => {
-      const mark = episodeRepairMark(story.id)
-      return mark.needed === true && ['needs_repair', 'finished'].includes(mark.reviewState)
-    }
-  )
-  const selectedSeriesCanApprove = selectedSeriesAllReviewed && !selectedSeriesHasRepair
-  const selectedSeriesRepairMarked = selectedSeriesHasRepair
+  const selectedReviewCompleteCount = selectedAllStories.filter(
+    (story) => ['no_repair', 'finished'].includes(effectiveEpisodeRepairMark(story).reviewState)
+  ).length
+  const selectedAllReviewed = selectedAllStories.length > 0 && selectedReviewCompleteCount === selectedAllStories.length
+  const selectedHasRepair = selectedAllStories.some((story) => {
+    const mark = effectiveEpisodeRepairMark(story)
+    return mark.needed === true && ['needs_repair', 'finished'].includes(mark.reviewState)
+  })
+  const selectedCanApprove = selectedAllReviewed && !selectedHasRepair
+  const selectedCanRepair = selectedAllReviewed && selectedHasRepair
+  const selectedReviewGateMessage = !selectedAllReviewed
+    ? `Review all ${selectedAllStories.length || 1} episode${(selectedAllStories.length || 1) === 1 ? '' : 's'} to enable`
+    : selectedHasRepair
+      ? 'Issues found: send to repair or move to cold storage.'
+      : 'Reviewed clean: ready to publish or move to cold storage.'
   const thisEpisodeIsActive = (story: Story) => !focusedReviewStoryId || focusedReviewStoryId === story.id
   const focusedStoryVisible = focusedReviewStoryId ? selectedStories.some((story) => story.id === focusedReviewStoryId) : false
   const visibleSelectedStories = focusedReviewStoryId && focusedStoryVisible
@@ -4026,50 +4071,42 @@ export default function AdminStoriesPage() {
                     ) : (
                     <>
                     {selectedCanShowRemasterCopy && <RemasterCopyUnavailable compact />}
-                    {selectedIsSeries && selectedGroup.type === 'series' ? (
-                      <>
-                        <button
-                          type="button"
-                          disabled={!selectedSeriesCanApprove}
-                          title={!selectedSeriesCanApprove ? (!selectedSeriesAllReviewed ? 'Review all episodes before approving.' : 'Cannot approve while one or more episodes are marked for repair.') : undefined}
-                          onClick={() => approveAllReady(selectedGroup)}
-                          style={{ ...actionButtonStyle(selectedSeriesCanApprove ? 'success' : 'muted'), opacity: selectedSeriesCanApprove ? 1 : 0.6, cursor: selectedSeriesCanApprove ? 'pointer' : 'not-allowed' }}
-                        >
-                          Approve Series for Publishing
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => moveSeriesToRepairShop(selectedGroup)}
-                          style={selectedSeriesRepairMarked
-                            ? { ...actionButtonStyle('muted'), border: '1.5px solid #F97316', backgroundColor: '#FFF7ED', color: '#C2410C', fontWeight: 900 }
-                            : actionButtonStyle('muted')}
-                        >
-                          Send Series for Repair
-                        </button>
-                        <button type="button" onClick={() => moveSeriesToColdStorage(selectedGroup)} style={actionButtonStyle('danger')}>Move Series to Cold Storage</button>
-                        {selectedSeriesRepairMarked && (
-                          <div style={{ flexBasis: '100%', color: '#B45309', fontSize: '10px', fontWeight: 800, lineHeight: 1.3, textAlign: 'right' }}>
-                            Cannot approve while one or more episodes are marked for repair.
-                          </div>
-                        )}
-                        {!selectedSeriesRepairMarked && !selectedSeriesAllReviewed && (
-                          <div style={{ flexBasis: '100%', color: '#6B7280', fontSize: '10px', fontWeight: 800, lineHeight: 1.3, textAlign: 'right' }}>
-                            Review all episodes before approving.
-                          </div>
-                        )}
-                      </>
-                    ) : (
-                      <button type="button" onClick={() => setSeriesActionsOpen((value) => !value)} style={{ height: '30px', padding: '0 10px', border: '1px solid #FED7AA', borderRadius: '6px', backgroundColor: '#ffffff', color: '#E8722A', fontSize: '11px', fontWeight: 800, cursor: 'pointer' }}>Story Actions ▾</button>
-                    )}
-                    {!selectedIsSeries && seriesActionsOpen && (
-                      <div style={{ position: 'absolute', right: 0, top: '36px', zIndex: 18, minWidth: '190px', padding: '6px', borderRadius: '8px', backgroundColor: '#ffffff', border: '1px solid #E5E7EB', boxShadow: '0 10px 24px rgba(15,23,42,0.16)' }}>
-                        <button type="button" onClick={() => { if (selectedGroup.type === 'series') approveAllReady(selectedGroup); setSeriesActionsOpen(false) }} style={{ width: '100%', border: 'none', background: 'transparent', padding: '8px 10px', textAlign: 'left', color: '#374151', fontSize: '11px', fontWeight: 700, cursor: 'pointer' }}>Approve All for Later</button>
-                        {selectedGroup.type === 'series' && selectedGroup.stories.some(isPublishedToApp) && (
-                          <button type="button" onClick={() => requestMoveSeriesToReadyForReview(selectedGroup)} style={{ width: '100%', border: 'none', background: 'transparent', padding: '8px 10px', textAlign: 'left', color: '#B45309', fontSize: '11px', fontWeight: 800, cursor: 'pointer' }}>Unpublish Series to Review</button>
-                        )}
-                        <button type="button" onClick={() => { if (selectedGroup.type === 'series') openSeriesRepair(selectedGroup); else openStoryRepair(selectedFirst); setSeriesActionsOpen(false) }} style={{ width: '100%', border: 'none', background: 'transparent', padding: '8px 10px', textAlign: 'left', color: '#374151', fontSize: '11px', fontWeight: 700, cursor: 'pointer' }}>Open Repair Shop Intake</button>
-                        <button type="button" onClick={() => { console.log('view series overview', selectedGroup.key); setSeriesActionsOpen(false) }} style={{ width: '100%', border: 'none', background: 'transparent', padding: '8px 10px', textAlign: 'left', color: '#374151', fontSize: '11px', fontWeight: 700, cursor: 'pointer' }}>📋 View Series Overview</button>
-                        <button type="button" onClick={() => { if (selectedGroup.type === 'series') moveSeriesToColdStorage(selectedGroup); else if (window.confirm(`Move "${selectedFirst.title}" to Cold Storage?`)) setWorkflowState(selectedFirst, 'cold_storage'); setSeriesActionsOpen(false) }} style={{ width: '100%', border: 'none', background: 'transparent', padding: '8px 10px', textAlign: 'left', color: '#B91C1C', fontSize: '11px', fontWeight: 700, cursor: 'pointer' }}>Move to Cold Storage</button>
+                    <button
+                      type="button"
+                      disabled={!selectedCanApprove}
+                      title={!selectedCanApprove ? selectedReviewGateMessage : undefined}
+                      onClick={() => {
+                        if (!selectedCanApprove) return
+                        if (selectedIsSeries && selectedGroup.type === 'series') approveAllReady(selectedGroup)
+                        else setWorkflowState(selectedFirst, 'approved_ready')
+                      }}
+                      style={{ ...actionButtonStyle(selectedCanApprove ? 'success' : 'muted'), minHeight: '38px', padding: '9px 13px', fontSize: '13px', opacity: selectedCanApprove ? 1 : 0.55, cursor: selectedCanApprove ? 'pointer' : 'not-allowed' }}
+                    >
+                      Ready to Publish
+                    </button>
+                    <button
+                      type="button"
+                      disabled={!selectedCanRepair}
+                      title={!selectedCanRepair ? selectedReviewGateMessage : undefined}
+                      onClick={() => {
+                        if (!selectedCanRepair) return
+                        if (selectedIsSeries && selectedGroup.type === 'series') moveSeriesToRepairShop(selectedGroup)
+                        else {
+                          const mark = effectiveEpisodeRepairMark(selectedFirst)
+                          const repairNotes = mark.notes || selectedFirst.repair_notes || buildStandaloneRepairNotes(mark)
+                          setWorkflowState(selectedFirst, 'repair_queue', { repairChecklist: mark.checklist, repairNotes })
+                        }
+                      }}
+                      style={selectedCanRepair
+                        ? { ...actionButtonStyle('muted'), minHeight: '38px', padding: '9px 13px', fontSize: '13px', border: '1.5px solid #F97316', backgroundColor: '#FFF7ED', color: '#C2410C', fontWeight: 900 }
+                        : { ...actionButtonStyle('muted'), minHeight: '38px', padding: '9px 13px', fontSize: '13px', opacity: 0.55, cursor: 'not-allowed' }}
+                    >
+                      Send to Repair
+                    </button>
+                    <button type="button" onClick={moveSelectedToColdStorage} style={{ ...actionButtonStyle('danger'), minHeight: '38px', padding: '9px 13px', fontSize: '13px' }}>Move to Cold Storage</button>
+                    {(!selectedCanApprove || !selectedCanRepair) && (
+                      <div style={{ flexBasis: '100%', color: '#6B7280', fontSize: '10px', fontWeight: 800, lineHeight: 1.3, textAlign: 'right' }}>
+                        {selectedReviewGateMessage}
                       </div>
                     )}
                     </>
@@ -4083,7 +4120,7 @@ export default function AdminStoriesPage() {
                     <span style={{ color: '#6B7280', fontSize: '10px', borderRadius: '999px', padding: '4px 8px', backgroundColor: '#F3F4F6' }}>≡ Total: {selectedStories.length}</span>
                     <span style={{ color: '#6B7280', fontSize: '10px', borderRadius: '999px', padding: '4px 8px', backgroundColor: '#F3F4F6' }}>⏱ {selectedIsSeries ? `${selectedTotalMinutes}m Total Audio` : `${selectedFirst.duration_mins || 0}m Audio`}</span>
                     {selectedIsSeries && <span style={{ color: '#6B7280', fontSize: '10px', borderRadius: '999px', padding: '4px 8px', backgroundColor: '#F3F4F6' }}>✓ {selectedPresent} Present</span>}
-                    {selectedIsSeries && <span style={{ color: selectedSeriesAllReviewed ? '#047857' : '#6B7280', fontSize: '10px', borderRadius: '999px', padding: '4px 8px', backgroundColor: selectedSeriesAllReviewed ? '#ECFDF5' : '#F3F4F6' }}>Finished: {selectedAllStories.filter((story) => ['no_repair', 'finished'].includes(episodeRepairMark(story.id).reviewState)).length}/{selectedAllStories.length}</span>}
+                    {selectedIsSeries && <span style={{ color: selectedAllReviewed ? '#047857' : '#6B7280', fontSize: '10px', borderRadius: '999px', padding: '4px 8px', backgroundColor: selectedAllReviewed ? '#ECFDF5' : '#F3F4F6' }}>Finished: {selectedReviewCompleteCount}/{selectedAllStories.length}</span>}
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
                     {focusedReviewStoryId && focusedStoryVisible && (
@@ -4118,7 +4155,7 @@ export default function AdminStoriesPage() {
                         const lastRepairIssue = firstRepairIssueLabel(story.repair_checklist)
                         const markedForDeletion = markedForDeletionIds[story.id]
                         const coverUrl = episodeCoverUrl(story)
-                        const reviewMark = episodeRepairMark(story.id)
+                        const reviewMark = effectiveEpisodeRepairMark(story)
                         const reviewed = reviewMark.reviewState === 'no_repair' || reviewMark.reviewState === 'finished'
                         const needsRepair = reviewMark.needed === true && reviewMark.reviewState === 'finished'
                         const episodeActive = thisEpisodeIsActive(story)
@@ -4203,7 +4240,7 @@ export default function AdminStoriesPage() {
                         const lastRepairIssue = firstRepairIssueLabel(story.repair_checklist)
                         const markedForDeletion = markedForDeletionIds[story.id]
                         const coverUrl = episodeCoverUrl(story)
-                        const reviewMark = episodeRepairMark(story.id)
+                        const reviewMark = effectiveEpisodeRepairMark(story)
                         const reviewed = reviewMark.reviewState === 'no_repair' || reviewMark.reviewState === 'finished'
                         const needsRepair = reviewMark.needed === true && reviewMark.reviewState === 'finished'
                         const episodeActive = thisEpisodeIsActive(story)

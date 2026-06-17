@@ -219,7 +219,7 @@ function episodeBlockingReasons(story: StoryRow) {
   if (story.status !== 'audio_ready') reasons.push(`status is ${story.status || 'empty'}, expected audio_ready`)
   if (story.is_hidden !== true) reasons.push(`is_hidden is ${String(story.is_hidden)}, expected true`)
   if (story.published_on !== null) reasons.push('published_on is set, expected null')
-  if (displayReviewStatus(story) !== 'pending') reasons.push(`review_status is ${displayReviewStatus(story)}, expected pending`)
+  if (displayReviewStatus(story) !== 'pending' && story.workflow_state !== 'ready_for_review') reasons.push(`review_status is ${displayReviewStatus(story)}, expected pending`)
   if (!bool(story.audio_url)) reasons.push('missing audio_url')
   else if (!String(story.audio_url).includes('/final_mix.mp3') && story.workflow_state !== 'ready_for_review') reasons.push('audio_url does not contain /final_mix.mp3')
   if (!bool(story.story_audio_url)) reasons.push('missing story_audio_url')
@@ -271,7 +271,7 @@ function isApprovedReady(story: StoryRow) {
 function isReviewReady(story: StoryRow) {
   return story.status === 'audio_ready'
     && story.is_hidden === true
-    && displayReviewStatus(story) === 'pending'
+    && (displayReviewStatus(story) === 'pending' || story.workflow_state === 'ready_for_review')
     && bool(story.audio_url)
     && String(story.audio_url || '').includes('/final_mix.mp3')
     && bool(story.story_audio_url)
@@ -886,7 +886,7 @@ export async function POST(req: NextRequest) {
     if (unauthorized) return unauthorized
 
     const action = clean(req.nextUrl.searchParams.get('action'))
-    if (!["set_workflow_state","set_series_ready_for_review","set_production_standard","recover_from_cold_storage","set_incubator_tag"].includes(action)) {
+    if (!["set_workflow_state","set_series_ready_for_review","set_production_standard","recover_from_cold_storage","set_incubator_tag","record_review_outcome"].includes(action)) {
       return json({ success: false, error: 'Unsupported action' }, 400)
     }
 
@@ -911,6 +911,31 @@ export async function POST(req: NextRequest) {
         .update(update)
         .eq('id', storyId)
         .select('id,production_standard,production_standard_updated_at,production_standard_updated_by')
+        .maybeSingle()
+
+      if (error) return json({ success: false, error: error.message }, 500)
+      if (!data) return json({ success: false, error: 'Story not found' }, 404)
+      return json({ success: true, story: data })
+    }
+
+    if (action === 'record_review_outcome') {
+      if (!storyId) return json({ success: false, error: 'Missing storyId' }, 400)
+      const repairChecklist = body.repairChecklist || null
+      const repairNotes = clean(body.repairNotes)
+      const hasIssues = body.hasIssues === true
+      const update = {
+        review_status: hasIssues ? 'not_approved' : 'approved',
+        reviewed_at: new Date().toISOString(),
+        repair_checklist: hasIssues ? repairChecklist : null,
+        repair_notes: hasIssues ? repairNotes || null : null,
+        review_notes: hasIssues ? 'Review completed: issues identified' : 'Review completed: clean',
+      }
+
+      const { data, error } = await supabase
+        .from('stories')
+        .update(update)
+        .eq('id', storyId)
+        .select('id,review_status,reviewed_at,review_notes,repair_checklist,repair_notes')
         .maybeSingle()
 
       if (error) return json({ success: false, error: error.message }, 500)
