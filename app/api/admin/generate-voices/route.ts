@@ -2840,11 +2840,11 @@ export async function POST(req: NextRequest) {
               primaryUrl = await generateVoiceLine(beforeText, CANONICAL_BELLE_B_VOICE_ID, storyId, introLine.index, 'intro')
             }
             result.introUrl = primaryUrl
-            await supabase.from('stories').update({ intro_audio_url: primaryUrl, intro_before_url: beforeUrl, intro_after_url: afterUrl }).eq('id', storyId)
+            await supabase.from('stories').update({ intro_audio_url: primaryUrl, intro_before_url: beforeUrl, intro_after_url: afterUrl, intro_text: introText }).eq('id', storyId)
           } else {
             const introUrl = await generateVoiceLine(introText, CANONICAL_BELLE_B_VOICE_ID, storyId, introLine.index, 'intro')
             result.introUrl = introUrl
-            await supabase.from('stories').update({ intro_audio_url: introUrl, intro_before_url: introUrl, intro_after_url: null }).eq('id', storyId)
+            await supabase.from('stories').update({ intro_audio_url: introUrl, intro_before_url: introUrl, intro_after_url: null, intro_text: introText }).eq('id', storyId)
           }
           result.introStatus = 'generated'
           console.log('  ✅ Belle-only intro generated')
@@ -2859,7 +2859,7 @@ export async function POST(req: NextRequest) {
         try {
           const outroUrl = await generateVoiceLine(outroLine.text, CANONICAL_BELLE_B_VOICE_ID, storyId, outroLine.index, 'outro')
           result.outroUrl = outroUrl
-          await supabase.from('stories').update({ outro_audio_url: outroUrl }).eq('id', storyId)
+          await supabase.from('stories').update({ outro_audio_url: outroUrl, outro_text: outroLine.text }).eq('id', storyId)
           result.outroStatus = 'generated'
           console.log('  ✅ Belle-only outro generated')
         } catch (e) {
@@ -3332,11 +3332,11 @@ export async function POST(req: NextRequest) {
             introPrimaryUrl = await generateVoiceLine(beforeText, CANONICAL_BELLE_B_VOICE_ID, storyId, introLine.index, 'intro')
           }
           results.intro = introPrimaryUrl
-          await supabase.from('stories').update({ intro_before_url: beforeUrl, intro_after_url: afterUrl }).eq('id', storyId)
+          await supabase.from('stories').update({ intro_before_url: beforeUrl, intro_after_url: afterUrl, intro_text: introText }).eq('id', storyId)
           console.log('  ✅ Belle B intro split (before/after name)')
         } else {
           results.intro = await generateVoiceLine(introText, CANONICAL_BELLE_B_VOICE_ID, storyId, introLine.index, 'intro')
-          await supabase.from('stories').update({ intro_before_url: results.intro, intro_after_url: null }).eq('id', storyId)
+          await supabase.from('stories').update({ intro_before_url: results.intro, intro_after_url: null, intro_text: introText }).eq('id', storyId)
           console.log('  ✅ Belle B intro (no name split)')
         }
       } catch (e) { console.error('  ❌ Intro failed:', e) }
@@ -3403,6 +3403,8 @@ export async function POST(req: NextRequest) {
     const updates: Record<string, string> = {}
     if (results.intro) updates.intro_audio_url = results.intro
     if (results.outro) updates.outro_audio_url = results.outro
+    if (results.intro && introLine) updates.intro_text = introLine.text
+    if (results.outro && outroLine && outroLine.index !== introLine?.index) updates.outro_text = outroLine.text
     if (Object.keys(updates).length > 0) await supabase.from('stories').update(updates).eq('id', storyId)
     // Note: intro_before_url and intro_after_url set above during intro generation
     const voiceTotal = storyLines.filter(l =>
