@@ -558,7 +558,28 @@ export default function StoryQueuePage() {
   }
 
   function parseBibleJson(rawText: string): any[] {
-    const parsed = JSON.parse(rawText)
+    let clean = rawText
+      .trim()
+      .replace(/^\s*```(?:json)?\s*/i, '')
+      .replace(/\s*```\s*$/i, '')
+      .replace(/^\s*```(?:json)?\s*$/gim, '')
+      .trim()
+    const firstBrace = clean.indexOf('{')
+    const firstBracket = clean.indexOf('[')
+    const jsonStart =
+      firstBrace === -1 ? firstBracket : firstBracket === -1 ? firstBrace : Math.min(firstBrace, firstBracket)
+
+    if (jsonStart === -1) {
+      throw new Error('No JSON object or array found.')
+    }
+
+    const jsonEnd = clean[jsonStart] === '{' ? clean.lastIndexOf('}') : clean.lastIndexOf(']')
+    if (jsonEnd < jsonStart) {
+      throw new Error('JSON appears incomplete.')
+    }
+
+    clean = clean.slice(jsonStart, jsonEnd + 1)
+    const parsed = JSON.parse(clean)
     const bibles = Array.isArray(parsed) ? parsed : parsed?.bibles
     if (!Array.isArray(bibles)) {
       throw new Error('JSON must contain a bibles array or be a bare array.')
