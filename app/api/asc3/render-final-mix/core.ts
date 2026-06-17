@@ -569,6 +569,8 @@ export async function runRenderFinalMix(storyId: string): Promise<{
     // Legacy:  sting+intro → 0.75s silence → story_body → 0.25s silence → dry outro
     const finalConcatFile = path.join(tmpDir, 'final.txt')
     let finalParts: string[]
+    let outroWithMusicPath: string | null = null
+    let outroWithMusicStorageUrl: string | null = null
 
     if (V2_MUSIC_SWELL) {
       // ── Outro Standard v2 (ATL-PIPE-007: 2026-06-10) ───────────────────────
@@ -598,7 +600,7 @@ export async function runRenderFinalMix(storyId: string): Promise<{
 
       const outroMusicClipPath = path.join(tmpDir, 'outro_music_clip.mp3')
       const outroBelleDelPath  = path.join(tmpDir, 'outro_belle_del.mp3')
-      const outroWithMusicPath = path.join(tmpDir, 'outro_with_music.mp3')
+      outroWithMusicPath = path.join(tmpDir, 'outro_with_music.mp3')
 
       // Extract outro music with Variant B + tail volume shape
       await execFileAsync(FFMPEG_PATH, [
@@ -739,6 +741,14 @@ export async function runRenderFinalMix(storyId: string): Promise<{
     if (bodyUploadErr) throw new Error(`Body upload error: ${bodyUploadErr.message}`)
     const storyBodyUrl = `${BASE_STORAGE}/${bodyStoragePath}`
 
+    if (outroWithMusicPath) {
+      const outroWithMusicBuffer = await fs.readFile(outroWithMusicPath)
+      const outroWithMusicStoragePath = `asc3/${storyId}/outro_with_music.mp3`
+      const { error: outroWithMusicUploadErr } = await supabase.storage.from('audio').upload(outroWithMusicStoragePath, outroWithMusicBuffer, { contentType: 'audio/mpeg', cacheControl: 'no-cache', upsert: true })
+      if (outroWithMusicUploadErr) throw new Error(`Treated outro upload error: ${outroWithMusicUploadErr.message}`)
+      outroWithMusicStorageUrl = `${BASE_STORAGE}/${outroWithMusicStoragePath}`
+    }
+
     // Upload final_mix.mp3 (full mix for backward compat)
     const mixBuffer = await fs.readFile(outputPath)
     const mixPath = `asc3/${storyId}/final_mix.mp3`
@@ -768,6 +778,7 @@ export async function runRenderFinalMix(storyId: string): Promise<{
     const { error: storyUpdateErr } = await supabase.from('stories').update({
       story_audio_url: storyBodyUrl,
       audio_url: finalAudioUrl,  // store plain URL (no ?v= cache-buster — versioning in response only)
+      ...(outroWithMusicStorageUrl ? { outro_with_music_url: outroWithMusicStorageUrl } : {}),
       duration_mins: Math.ceil(durationSecs / 60)
     }).eq('id', storyId)
     if (storyUpdateErr) throw new Error(`Failed to update story audio_url: ${storyUpdateErr.message}`)

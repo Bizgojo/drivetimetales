@@ -471,7 +471,7 @@ export async function GET(req: NextRequest) {
 
   const { data: story, error } = await supabase
     .from('stories')
-    .select('id, title, author, audio_url, intro_audio_url, intro_before_url, intro_after_url, story_audio_url, outro_audio_url, background_music_url, script, series_id, series_name, episode_number, series_number, series_total, series_total_episodes')
+    .select('id, title, author, audio_url, intro_audio_url, intro_before_url, intro_after_url, story_audio_url, outro_audio_url, outro_with_music_url, background_music_url, script, series_id, series_name, episode_number, series_number, series_total, series_total_episodes')
     .eq('id', storyId)
     .single()
 
@@ -541,8 +541,10 @@ export async function GET(req: NextRequest) {
       queue.push({ url: story.intro_after_url!, type: 'intro', label: 'Intro' })
     }
     queue.push({ url: (story as any).story_audio_url, type: 'story', label: 'Story' })
-    if (belleOutro?.audioUrl || story.outro_audio_url) {
-      queue.push({ url: belleOutro?.audioUrl || story.outro_audio_url, type: 'outro', label: belleOutro ? 'Belle' : 'Outro' })
+    const treatedOutroUrl = String((story as any).outro_with_music_url || '').trim()
+    const outroUrl = treatedOutroUrl || belleOutro?.audioUrl || story.outro_audio_url
+    if (outroUrl) {
+      queue.push({ url: outroUrl, type: 'outro', label: treatedOutroUrl ? 'Outro' : belleOutro ? 'Belle' : 'Outro' })
     }
 
     return jsonWithBelleSession({
