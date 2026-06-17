@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { type ChangeEvent, type DragEvent, useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 
 type QueueStatus =
@@ -15,6 +15,11 @@ type QueueStatus =
   | 'archived'
 type MessageType = '' | 'success' | 'error'
 type QueueTab = 'active' | 'production' | 'failed' | 'completed' | 'archived'
+type BibleImportSummary = {
+  imported: number
+  total: number
+  skipped: Array<{ index: number; reason: string }>
+}
 
 type QueueItem = {
   id: string
@@ -147,6 +152,9 @@ export default function StoryQueuePage() {
   const [isLoading, setIsLoading] = useState(true)
   const [adminGenres, setAdminGenres] = useState<string[]>(GENRES)
   const [activeTab, setActiveTab] = useState<QueueTab>('active')
+  const [biblePasteText, setBiblePasteText] = useState('')
+  const [isImportingBibles, setIsImportingBibles] = useState(false)
+  const [isBibleDragActive, setIsBibleDragActive] = useState(false)
 
   const [form, setForm] = useState({
     storyType: 'standalone' as 'standalone' | 'series',
@@ -282,6 +290,92 @@ export default function StoryQueuePage() {
   function showMessage(text: string, type: MessageType = 'success') {
     setMessage(text)
     setMessageType(type)
+  }
+
+  function parseBibleJson(rawText: string): any[] {
+    const parsed = JSON.parse(rawText)
+    const bibles = Array.isArray(parsed) ? parsed : parsed?.bibles
+    if (!Array.isArray(bibles)) {
+      throw new Error('JSON must contain a bibles array or be a bare array.')
+    }
+    return bibles
+  }
+
+  function bibleImportMessage(result: BibleImportSummary) {
+    const skippedCount = result.skipped?.length || 0
+    const skippedText = skippedCount
+      ? ` (${skippedCount} skipped: ${result.skipped.map((entry) => `#${entry.index} ${entry.reason}`).join('; ')})`
+      : ''
+    return `Imported ${result.imported} of ${result.total}${skippedText}.`
+  }
+
+  async function importBiblesFromText(rawText: string) {
+    const clean = rawText.trim()
+    if (!clean) {
+      showMessage('Paste or drop a JSON bible file first.', 'error')
+      return
+    }
+
+    let bibles: any[]
+    try {
+      bibles = parseBibleJson(clean)
+    } catch (err: any) {
+      showMessage(`Invalid JSON: ${err?.message || err}`, 'error')
+      return
+    }
+
+    setIsImportingBibles(true)
+    try {
+      const res = await fetch('/api/admin/story-queue', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'importBibles', bibles }),
+      })
+
+      const data = await res.json()
+      if (!res.ok) {
+        throw new Error(data?.error || `Import failed (${res.status})`)
+      }
+
+      await loadItems()
+      setBiblePasteText('')
+      const result = data?.result as BibleImportSummary | undefined
+      showMessage(result ? bibleImportMessage(result) : 'Bible import complete.', result?.imported ? 'success' : 'error')
+    } catch (err: any) {
+      showMessage(`Bible import failed: ${err?.message || err}`, 'error')
+    } finally {
+      setIsImportingBibles(false)
+    }
+  }
+
+  async function importBibleFile(file: File) {
+    if (!file.name.toLowerCase().endsWith('.json')) {
+      showMessage('Drop one .json file from the bible-request prompt.', 'error')
+      return
+    }
+
+    try {
+      await importBiblesFromText(await file.text())
+    } catch (err: any) {
+      showMessage(`Could not read file: ${err?.message || err}`, 'error')
+    }
+  }
+
+  function handleBibleDrop(e: DragEvent<HTMLDivElement>) {
+    e.preventDefault()
+    setIsBibleDragActive(false)
+    const file = e.dataTransfer.files?.[0]
+    if (!file) {
+      showMessage('Drop one .json file from the bible-request prompt.', 'error')
+      return
+    }
+    importBibleFile(file)
+  }
+
+  function handleBibleBrowse(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (file) importBibleFile(file)
   }
 
   function notesWithEpisodePlan() {
@@ -702,6 +796,87 @@ export default function StoryQueuePage() {
         <section className="bg-white border border-black rounded-lg p-4 space-y-4">
           <div>
             <div className="font-semibold text-lg">Story Queue</div>
+            <div
+              onDragOver={(e) => {
+                e.preventDefault()
+                setIsBibleDragActive(true)
+              }}
+              onDragLeave={() => setIsBibleDragActive(false)}
+              onDrop={handleBibleDrop}
+              style={{
+                background: isBibleDragActive ? '#eff6ff' : '#f9fafb',
+                border: `2px dashed ${isBibleDragActive ? '#2563eb' : '#9ca3af'}`,
+                borderRadius: 8,
+                color: '#111827',
+                marginTop: 12,
+                padding: 16,
+              }}
+            >
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, justifyContent: 'space-between' }}>
+                <div>
+                  <div style={{ fontSize: 18, fontWeight: 900 }}>Drag a bible file here (.json)</div>
+                  <div style={{ color: '#4b5563', fontSize: 14, fontWeight: 700, marginTop: 4 }}>
+                    Imports each bible as a queue row. Imported rows start unauthorized.
+                  </div>
+                </div>
+                <label
+                  style={{
+                    alignItems: 'center',
+                    background: '#111827',
+                    borderRadius: 8,
+                    color: '#ffffff',
+                    cursor: 'pointer',
+                    display: 'inline-flex',
+                    fontSize: 15,
+                    fontWeight: 900,
+                    minHeight: 44,
+                    padding: '10px 14px',
+                  }}
+                >
+                  Browse JSON
+                  <input
+                    type="file"
+                    accept="application/json,.json"
+                    onChange={handleBibleBrowse}
+                    style={{ display: 'none' }}
+                  />
+                </label>
+              </div>
+              <textarea
+                value={biblePasteText}
+                onChange={(e) => setBiblePasteText(e.target.value)}
+                placeholder="Paste bible JSON here as a fallback"
+                style={{
+                  background: '#ffffff',
+                  border: '1px solid #d1d5db',
+                  borderRadius: 8,
+                  color: '#111827',
+                  fontSize: 14,
+                  marginTop: 12,
+                  minHeight: 96,
+                  padding: 10,
+                  width: '100%',
+                }}
+              />
+              <button
+                type="button"
+                onClick={() => importBiblesFromText(biblePasteText)}
+                disabled={isImportingBibles || !biblePasteText.trim()}
+                style={{
+                  background: biblePasteText.trim() && !isImportingBibles ? '#ffffff' : '#e5e7eb',
+                  border: '2px solid #111827',
+                  borderRadius: 8,
+                  color: biblePasteText.trim() && !isImportingBibles ? '#111827' : '#6b7280',
+                  cursor: biblePasteText.trim() && !isImportingBibles ? 'pointer' : 'not-allowed',
+                  fontSize: 15,
+                  fontWeight: 900,
+                  marginTop: 10,
+                  padding: '8px 14px',
+                }}
+              >
+                {isImportingBibles ? 'Importing...' : 'Import Pasted JSON'}
+              </button>
+            </div>
             <div className="mt-3 flex flex-wrap gap-2">
               {QUEUE_TABS.map((tab) => (
                 <button

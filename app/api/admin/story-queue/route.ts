@@ -52,6 +52,12 @@ type QueueRow = {
   total_episodes?: number | null
 }
 
+type BibleImportResult = {
+  imported: number
+  total: number
+  skipped: Array<{ index: number; reason: string }>
+}
+
 function toItem(row: QueueRow): QueueItem {
   return {
     id: row.id,
@@ -76,9 +82,91 @@ function toItem(row: QueueRow): QueueItem {
   }
 }
 
+function cleanString(value: unknown): string {
+  return String(value || '').trim()
+}
+
 function storyIdValue(value: unknown): string | null {
-  const clean = String(value || '').trim()
+  const clean = cleanString(value)
   return clean || null
+}
+
+function totalEpisodesForBible(bible: any): number {
+  if (cleanString(bible?.type).toLowerCase() === 'standalone') return 1
+  const count = Number(bible?.total_episodes)
+  return Number.isFinite(count) && count > 0 ? Math.floor(count) : 1
+}
+
+function notesForBibleImport(bible: any, totalEpisodes: number): string {
+  const type = totalEpisodes > 1 ? 'series' : 'standalone'
+  const title = cleanString(bible?.title)
+
+  return [
+    'Bible Import:',
+    `Type: ${type}`,
+    'Let Claude create titles: false',
+    `Story title: ${type === 'standalone' ? title : ''}`,
+    `Series title: ${type === 'series' ? title : ''}`,
+    `Total episodes: ${totalEpisodes}`,
+  ].join('\n')
+}
+
+function createBibleRow(bible: any, index: number): QueueRow {
+  const now = new Date().toISOString()
+  const totalEpisodes = totalEpisodesForBible(bible)
+  const targetLength = cleanString(bible?.target_length_min)
+
+  return {
+    id: `queue_${Date.now()}_${index}_${Math.random().toString(36).slice(2, 8)}`,
+    story_id: null,
+    title: cleanString(bible?.title),
+    premise: cleanString(bible?.premise) || cleanString(bible?.logline),
+    setting: cleanString(bible?.setting_rules),
+    primary_genre: cleanString(bible?.genre),
+    secondary_genre: '',
+    tertiary_genre: '',
+    duration: targetLength ? `${targetLength} min` : '15 min',
+    author_target: '',
+    notes: notesForBibleImport(bible, totalEpisodes),
+    authorized: false,
+    bible: JSON.stringify(bible),
+    released_to_hal: false,
+    released_to_hal_at: null,
+    status: 'queued',
+    created_at: now,
+    updated_at: now,
+    total_episodes: totalEpisodes,
+  }
+}
+
+function normalizeBibleImport(source: any[]): { rows: QueueRow[]; result: BibleImportResult } {
+  const skipped: BibleImportResult['skipped'] = []
+  const rows: QueueRow[] = []
+
+  source.forEach((bible: any, index: number) => {
+    const title = cleanString(bible?.title)
+    const genre = cleanString(bible?.genre)
+
+    if (!title || !genre) {
+      const missing = [
+        !title ? 'title' : '',
+        !genre ? 'genre' : '',
+      ].filter(Boolean).join(' and ')
+      skipped.push({ index: index + 1, reason: `Missing ${missing}` })
+      return
+    }
+
+    rows.push(createBibleRow(bible, index))
+  })
+
+  return {
+    rows,
+    result: {
+      imported: rows.length,
+      total: source.length,
+      skipped,
+    },
+  }
 }
 
 function createRow(body: any): QueueRow {
@@ -171,7 +259,38 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
-    const body = await req.json()
+    let body: any
+    try {
+      body = await req.json()
+    } catch {
+      return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
+    }
+
+    if (body?.action === 'importBibles' || Array.isArray(body) || Array.isArray(body?.bibles)) {
+      const bibles = Array.isArray(body) ? body : Array.isArray(body.bibles) ? body.bibles : []
+      const { rows, result } = normalizeBibleImport(bibles)
+
+      if (!result.total) {
+        return NextResponse.json({ error: 'No bibles found to import' }, { status: 400 })
+      }
+
+      if (!rows.length) {
+        return NextResponse.json({ success: true, items: [], result })
+      }
+
+      const { data, error } = await supabase
+        .from('story_queue_items')
+        .insert(rows)
+        .select('*')
+
+      if (error) throw error
+      return NextResponse.json({
+        success: true,
+        items: (data || []).map((row) => toItem(row as QueueRow)),
+        result,
+      })
+    }
+
     const row = createRow(body)
 
     const { data, error } = await supabase
