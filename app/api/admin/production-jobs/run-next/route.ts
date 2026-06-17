@@ -172,6 +172,11 @@ type AuthorRow = {
   narrative_voice?: string | null
   style_reference?: string | null
   style_description?: string | null
+  tone?: string | null
+  pacing?: string | null
+  signature?: string | null
+  example_line?: string | null
+  style_signature_trait?: string | null
   narrator_id?: string | null
   narrator_voice_id?: string | null
   sort_order?: number | null
@@ -1514,6 +1519,116 @@ async function pickAuthor(genre: string, requestedAuthor: string) {
   return byGenre || authors[0] || null
 }
 
+function cleanAuthorStyleValue(value: unknown): string {
+  return String(value || '').trim()
+}
+
+function buildAuthorStyleProfile(author: Partial<AuthorRow> | Record<string, any> | null | undefined) {
+  if (!author) return null
+
+  const signatureValues = [
+    cleanAuthorStyleValue((author as any).signature),
+    cleanAuthorStyleValue((author as any).style_signature_trait),
+  ].filter(Boolean)
+
+  return {
+    name: cleanAuthorStyleValue((author as any).name || (author as any).author),
+    style_reference: cleanAuthorStyleValue((author as any).style_reference),
+    narrative_voice: cleanAuthorStyleValue((author as any).narrative_voice),
+    tone: cleanAuthorStyleValue((author as any).tone),
+    pacing: cleanAuthorStyleValue((author as any).pacing),
+    signature: Array.from(new Set(signatureValues)).join(' '),
+    style_description: cleanAuthorStyleValue((author as any).style_description),
+    example_line: cleanAuthorStyleValue((author as any).example_line),
+  }
+}
+
+function buildAuthorVoicePromptBlock(profile: any): string {
+  if (!profile) return ''
+
+  const lines = [
+    'AUTHOR VOICE — write the ENTIRE story in this author\'s distinct voice. Do not fall back on a generic or default narrator style.',
+  ]
+
+  const authorName = cleanAuthorStyleValue(profile.name)
+  const styleReference = cleanAuthorStyleValue(profile.style_reference)
+  if (authorName && styleReference) {
+    lines.push(`Author: ${authorName}, in the tradition of ${styleReference}`)
+  } else if (authorName) {
+    lines.push(`Author: ${authorName}`)
+  } else if (styleReference) {
+    lines.push(`In the tradition of ${styleReference}`)
+  }
+
+  const fieldLines: Array<[string, string]> = [
+    ['Narrative voice', cleanAuthorStyleValue(profile.narrative_voice)],
+    ['Tone', cleanAuthorStyleValue(profile.tone)],
+    ['Pacing', cleanAuthorStyleValue(profile.pacing)],
+    ['Signature traits', cleanAuthorStyleValue(profile.signature)],
+    ['Style notes', cleanAuthorStyleValue(profile.style_description)],
+  ]
+  for (const [label, value] of fieldLines) {
+    if (value) lines.push(`${label}: ${value}`)
+  }
+
+  const exampleLine = cleanAuthorStyleValue(profile.example_line)
+  if (exampleLine) {
+    lines.push('A line that exemplifies this author\'s voice — match its rhythm and texture:')
+    lines.push(`"${exampleLine}"`)
+  }
+
+  lines.push('Commit fully to this voice. Two stories by different authors must read as if written by two different people.')
+
+  return lines.join('\n')
+}
+
+function authorStyleProfileFromContext(story: any, brief: any) {
+  const stored = brief?.author_voice_profile || brief?.authorVoiceProfile || {}
+  const fallbackSignature = [
+    cleanAuthorStyleValue(brief?.signature),
+    cleanAuthorStyleValue(brief?.style_signature_trait),
+  ].filter(Boolean).join(' ')
+
+  return buildAuthorStyleProfile({
+    name: stored.name || brief?.author || story?.author,
+    style_reference: stored.style_reference || brief?.style_reference || '',
+    narrative_voice: stored.narrative_voice || brief?.narrative_voice || story?.narrative_voice || '',
+    tone: stored.tone || brief?.tone || '',
+    pacing: stored.pacing || brief?.pacing || '',
+    signature: stored.signature || fallbackSignature,
+    style_description: stored.style_description || brief?.style_description || '',
+    example_line: stored.example_line || brief?.example_line || '',
+  })
+}
+
+async function resolveAuthorStyleProfileForStory(story: any, brief: any) {
+  const authorId = cleanAuthorStyleValue(story?.author_id)
+  if (authorId) {
+    const { data, error } = await supabase
+      .from('authors')
+      .select('*')
+      .eq('id', authorId)
+      .maybeSingle()
+
+    if (error) throw new Error(`Failed to load author style profile: ${error.message}`)
+    if (data) return buildAuthorStyleProfile(data as AuthorRow)
+  }
+
+  const authorName = cleanAuthorStyleValue(story?.author || brief?.author)
+  if (authorName) {
+    const { data, error } = await supabase
+      .from('authors')
+      .select('*')
+      .ilike('name', authorName)
+      .maybeSingle()
+
+    if (error) throw new Error(`Failed to load author style profile: ${error.message}`)
+    if (data) return buildAuthorStyleProfile(data as AuthorRow)
+  }
+
+  return authorStyleProfileFromContext(story, brief)
+}
+
 async function saveSeriesParent(payload: Record<string, any>, seriesId?: string) {
   const sanitizedTitle = sanitizeSeriesTitle(payload.title)
   const sanitizedPayload: Record<string, any> = { ...payload, title: sanitizedTitle }
@@ -1824,6 +1939,7 @@ async function createStoryRow(job: ProductionJob) {
 
   const author = await pickAuthor(genre, authorTarget)
   if (!author) throw new Error(`No approved author found for genre ${genre}`)
+  const authorVoiceProfile = buildAuthorStyleProfile(author)
 
   const title = titleFromQueue(queueItem)
   const requirements = [
@@ -1844,6 +1960,7 @@ async function createStoryRow(job: ProductionJob) {
     series_arc_plan: null,
     author: author.name,
     author_style: author.style_reference || author.style_description || author.name,
+    author_voice_profile: authorVoiceProfile,
     genre,
     narrative_voice: author.narrative_voice || null,
     premise,
@@ -1957,7 +2074,8 @@ function buildStandaloneScriptPrompt(
   story: any,
   brief: any,
   namePaletteBlock: string,
-  narratorContext: StandaloneNarratorPromptContext
+  narratorContext: StandaloneNarratorPromptContext,
+  authorVoiceBlock: string
 ) {
   const target = runtimeTarget(brief.runtime || '')
   const narratorPromptBlock = buildStandaloneNarratorPromptBlock(narratorContext)
@@ -1978,6 +2096,8 @@ If a story contains a lesson, theme, or insight — it must emerge naturally thr
 
 Story first. Theme second. Lesson last.
 The story is the meal. The lesson is seasoning.
+
+${authorVoiceBlock}
 
 ⭐ MANDATORY FIRST STEP: STORY RESOLUTION MAP ⭐
 
@@ -2194,6 +2314,8 @@ async function generateStandaloneScript(job: ProductionJob, model: string) {
   }
 
   const narratorContext = await resolveStandaloneNarratorForPrompt(story, brief)
+  const authorVoiceProfile = await resolveAuthorStyleProfileForStory(story, brief)
+  const authorVoiceBlock = buildAuthorVoicePromptBlock(authorVoiceProfile)
   const promptBrief = narratorContext.mode === 'assigned'
     ? { ...brief, narrator: narratorContext.narratorName }
     : brief
@@ -2205,7 +2327,7 @@ async function generateStandaloneScript(job: ProductionJob, model: string) {
     era: brief.era || brief.period || '',
     recentStoryTexts,
   })
-  const prompt = buildStandaloneScriptPrompt(story, promptBrief, namePaletteBlock, narratorContext)
+  const prompt = buildStandaloneScriptPrompt(story, promptBrief, namePaletteBlock, narratorContext, authorVoiceBlock)
 
   const response = await anthropic.messages.create({
     model,
@@ -3929,7 +4051,7 @@ async function verifyStandaloneReadyForReview(job: ProductionJob) {
   }
 }
 
-function buildSeriesEpisodePrompt(series: any, episode: any, allEpisodes: any[], continuityBundle: any[], namePaletteBlock: string) {
+function buildSeriesEpisodePrompt(series: any, episode: any, allEpisodes: any[], continuityBundle: any[], namePaletteBlock: string, authorVoiceBlock: string) {
   const brief = episode.brief_json || {}
   const target = runtimeTarget(brief.runtime || '')
   const currentEpisodeNumber = episodeNumber(episode, 1)
@@ -3962,6 +4084,8 @@ If a story contains a lesson, theme, or insight — it must emerge naturally thr
 
 Story first. Theme second. Lesson last.
 The story is the meal. The lesson is seasoning.
+
+${authorVoiceBlock}
 
 ⭐ MANDATORY FIRST STEP: STORY RESOLUTION MAP ⭐
 
@@ -4128,6 +4252,7 @@ async function createSeriesPackage(job: ProductionJob) {
 
   const author = await pickAuthor(genre, authorTarget)
   if (!author) throw new Error(`No approved author found for genre ${genre}`)
+  const authorVoiceProfile = buildAuthorStyleProfile(author)
 
   const title = sanitizeSeriesTitle(titleFromQueue(queueItem) || queuePlanValue(queueItem, 'Series title') || 'Untitled Series Package') || 'Untitled Series Package'
   const requirements = [
@@ -4190,6 +4315,7 @@ async function createSeriesPackage(job: ProductionJob) {
       series_is_finale: isFinale,
       author: author.name,
       author_style: author.style_reference || author.style_description || author.name,
+      author_voice_profile: authorVoiceProfile,
       genre,
       narrative_voice: author.narrative_voice || null,
       premise,
@@ -4304,6 +4430,8 @@ async function generateOneSeriesEpisodeScript(job: ProductionJob, model: string)
     .filter((episode: any) => episodeNumber(episode, 0) < targetEpisodeNumber && episode.script)
   const continuityBundle = buildContinuityBundle(priorEpisodes)
   const brief = targetEpisode.brief_json || {}
+  const authorVoiceProfile = await resolveAuthorStyleProfileForStory(targetEpisode, brief)
+  const authorVoiceBlock = buildAuthorVoicePromptBlock(authorVoiceProfile)
   const recentStoryTexts = await loadRecentStoryTexts(String(seriesId))
   const namePaletteBlock = buildNamePalettePromptBlock({
     genre: targetEpisode.genre || brief.genre || '',
@@ -4312,7 +4440,7 @@ async function generateOneSeriesEpisodeScript(job: ProductionJob, model: string)
     seriesContinuityText: continuityBundle.map((item: any) => JSON.stringify(item)).join('\n'),
     recentStoryTexts,
   })
-  const prompt = buildSeriesEpisodePrompt(series, targetEpisode, episodes, continuityBundle, namePaletteBlock)
+  const prompt = buildSeriesEpisodePrompt(series, targetEpisode, episodes, continuityBundle, namePaletteBlock, authorVoiceBlock)
 
   const response = await anthropic.messages.create({
     model,
