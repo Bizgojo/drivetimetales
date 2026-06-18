@@ -180,8 +180,14 @@ type AuthorRow = {
   style_signature_trait?: string | null
   narrator_id?: string | null
   narrator_voice_id?: string | null
+  last_used_at?: string | null
   sort_order?: number | null
   is_active?: boolean | null
+}
+
+type ResolvedNarratorVoice = {
+  id: string
+  name: string
 }
 
 type VoicePreflightResult = {
@@ -1495,29 +1501,60 @@ function runtimeTarget(runtime: string) {
 }
 
 async function pickAuthor(genre: string, requestedAuthor: string) {
+  const targetGenre = genre.trim()
+  if (!targetGenre) throw new Error('Author selection requires a genre')
+
   const { data, error } = await supabase
     .from('authors')
     .select('*')
+    .eq('is_active', true)
+    .ilike('primary_genre', targetGenre)
+    .order('last_used_at', { ascending: true, nullsFirst: true })
     .order('sort_order', { ascending: true })
     .order('name', { ascending: true })
 
   if (error) throw new Error(`Failed to load authors: ${error.message}`)
 
-  const authors = ((data || []) as AuthorRow[]).filter((author) => author.is_active !== false)
+  const authors = (data || []) as AuthorRow[]
+  if (authors.length === 0) throw new Error(`No active author for genre "${genre}"`)
+
   const requested = requestedAuthor.trim().toLowerCase()
-  if (requested) {
-    const match = authors.find((author) => author.name.toLowerCase() === requested)
-    if (match) return match
+  const selected = requested
+    ? authors.find((author) => author.name.toLowerCase() === requested)
+    : authors[0]
+
+  if (requested && !selected) {
+    throw new Error(`Requested author "${requestedAuthor}" is not active for genre "${genre}"`)
+  }
+  if (!selected) throw new Error(`No active author for genre "${genre}"`)
+
+  const { error: rotationError } = await supabase
+    .from('authors')
+    .update({ last_used_at: nowIso() })
+    .eq('id', selected.id)
+
+  if (rotationError) throw new Error(`Failed to update author rotation: ${rotationError.message}`)
+  return selected
+}
+
+async function resolveAuthorNarratorVoice(author: AuthorRow): Promise<ResolvedNarratorVoice> {
+  const narratorId = cleanNarratorName(author.narrator_id)
+  if (!narratorId) throw new Error(`Author "${author.name}" is missing narrator_id`)
+
+  const { data, error } = await supabase
+    .from('narrator_voices')
+    .select('id,name')
+    .eq('id', narratorId)
+    .maybeSingle()
+
+  if (error) throw new Error(`Failed to resolve narrator for author "${author.name}": ${error.message}`)
+
+  const narratorName = cleanNarratorName((data as any)?.name)
+  if (!(data as any)?.id || !narratorName) {
+    throw new Error(`Author "${author.name}" narrator_id ${narratorId} did not resolve to narrator_voices.name`)
   }
 
-  const targetGenre = genre.trim().toLowerCase()
-  const byGenre = authors.find((author) =>
-    [author.primary_genre, author.secondary_genre, author.genre]
-      .filter(Boolean)
-      .some((value) => String(value).toLowerCase() === targetGenre)
-  )
-
-  return byGenre || authors[0] || null
+  return { id: String((data as any).id), name: narratorName }
 }
 
 function cleanAuthorStyleValue(value: unknown): string {
@@ -1940,6 +1977,7 @@ async function createStoryRow(job: ProductionJob) {
 
   const author = await pickAuthor(genre, authorTarget)
   if (!author) throw new Error(`No approved author found for genre ${genre}`)
+  const narrator = await resolveAuthorNarratorVoice(author)
   const authorVoiceProfile = buildAuthorStyleProfile(author)
 
   const title = titleFromQueue(queueItem)
@@ -1962,6 +2000,7 @@ async function createStoryRow(job: ProductionJob) {
     author: author.name,
     author_style: author.style_reference || author.style_description || author.name,
     author_voice_profile: authorVoiceProfile,
+    narrator: narrator.name,
     genre,
     narrative_voice: author.narrative_voice || null,
     premise,
@@ -1984,6 +2023,8 @@ async function createStoryRow(job: ProductionJob) {
       title: title || 'Untitled Draft',
       author: author.name,
       author_id: author.id || null,
+      narrator_voice_id: narrator.id,
+      narrator_voice_name: narrator.name,
       author_style: briefJson.author_style,
       genre,
       narrative_voice: briefJson.narrative_voice,
@@ -2315,6 +2356,26 @@ async function generateStandaloneScript(job: ProductionJob, model: string) {
   }
 
   const narratorContext = await resolveStandaloneNarratorForPrompt(story, brief)
+  if (narratorContext.mode === 'assigned') {
+    const { data: narratorRow, error: narratorLookupError } = await supabase
+      .from('narrator_voices')
+      .select('id,name')
+      .ilike('name', narratorContext.narratorName)
+      .maybeSingle()
+
+    if (narratorLookupError) throw new Error(`Failed to stamp standalone narrator: ${narratorLookupError.message}`)
+    if (!narratorRow?.id) throw new Error(`Assigned narrator "${narratorContext.narratorName}" did not resolve to narrator_voices.id`)
+
+    const { error: narratorStampError } = await supabase
+      .from('stories')
+      .update({
+        narrator_voice_id: narratorRow.id,
+        narrator_voice_name: narratorRow.name || narratorContext.narratorName,
+      })
+      .eq('id', story.id)
+
+    if (narratorStampError) throw new Error(`Failed to stamp standalone narrator on story: ${narratorStampError.message}`)
+  }
   const authorVoiceProfile = await resolveAuthorStyleProfileForStory(story, brief)
   const authorVoiceBlock = buildAuthorVoicePromptBlock(authorVoiceProfile)
   const promptBrief = narratorContext.mode === 'assigned'
@@ -4052,7 +4113,7 @@ async function verifyStandaloneReadyForReview(job: ProductionJob) {
   }
 }
 
-function buildSeriesEpisodePrompt(series: any, episode: any, allEpisodes: any[], continuityBundle: any[], namePaletteBlock: string, authorVoiceBlock: string) {
+function buildSeriesEpisodePrompt(series: any, episode: any, allEpisodes: any[], continuityBundle: any[], namePaletteBlock: string, authorVoiceBlock: string, assignedNarratorName: string) {
   const brief = episode.brief_json || {}
   const target = runtimeTarget(brief.runtime || '')
   const currentEpisodeNumber = episodeNumber(episode, 1)
@@ -4087,6 +4148,10 @@ Story first. Theme second. Lesson last.
 The story is the meal. The lesson is seasoning.
 
 ${authorVoiceBlock}
+
+ASSIGNED NARRATOR
+NARRATOR: ${assignedNarratorName}
+Use this exact assigned narrator name. Do NOT invent or change it. Do NOT use a story character as narrator unless NARRATOR_IS_CHARACTER is true.
 
 ⭐ MANDATORY FIRST STEP: STORY RESOLUTION MAP ⭐
 
@@ -4137,7 +4202,7 @@ SERIES_IS_FINALE: ${isFinale ? 'true' : 'false'}
 AUTHOR: ${episode.author || brief.author || ''}
 GENRE: ${episode.genre || brief.genre || ''}
 DESCRIPTION: [70 characters or fewer, present tense only, tease a question without revealing the episode climax, twist, final discovery, or resolution payoff]
-NARRATOR: [assigned narrator name, not a story character unless NARRATOR_IS_CHARACTER is true]
+NARRATOR: ${assignedNarratorName}
 ANNOUNCER: Belle B
 NARRATIVE_VOICE: ${episode.narrative_voice || brief.narrative_voice || ''}
 NARRATOR_IS_CHARACTER: [true/false, must match NARRATOR]
@@ -4253,6 +4318,7 @@ async function createSeriesPackage(job: ProductionJob) {
 
   const author = await pickAuthor(genre, authorTarget)
   if (!author) throw new Error(`No approved author found for genre ${genre}`)
+  const narrator = await resolveAuthorNarratorVoice(author)
   const authorVoiceProfile = buildAuthorStyleProfile(author)
 
   const title = sanitizeSeriesTitle(titleFromQueue(queueItem) || queuePlanValue(queueItem, 'Series title') || 'Untitled Series Package') || 'Untitled Series Package'
@@ -4317,6 +4383,7 @@ async function createSeriesPackage(job: ProductionJob) {
       author: author.name,
       author_style: author.style_reference || author.style_description || author.name,
       author_voice_profile: authorVoiceProfile,
+      narrator: narrator.name,
       genre,
       narrative_voice: author.narrative_voice || null,
       premise,
@@ -4333,6 +4400,9 @@ async function createSeriesPackage(job: ProductionJob) {
       .insert({
         title: episodeTitle,
         author: author.name,
+        author_id: author.id || null,
+        narrator_voice_id: narrator.id,
+        narrator_voice_name: narrator.name,
         author_style: briefJson.author_style,
         genre,
         narrative_voice: briefJson.narrative_voice,
@@ -4441,7 +4511,9 @@ async function generateOneSeriesEpisodeScript(job: ProductionJob, model: string)
     seriesContinuityText: continuityBundle.map((item: any) => JSON.stringify(item)).join('\n'),
     recentStoryTexts,
   })
-  const prompt = buildSeriesEpisodePrompt(series, targetEpisode, episodes, continuityBundle, namePaletteBlock, authorVoiceBlock)
+  const assignedNarratorName = cleanNarratorName(targetEpisode.narrator_voice_name || brief.narrator)
+  if (!assignedNarratorName) throw new Error(`Series episode ${targetEpisodeNumber} is missing assigned narrator`)
+  const prompt = buildSeriesEpisodePrompt(series, targetEpisode, episodes, continuityBundle, namePaletteBlock, authorVoiceBlock, assignedNarratorName)
 
   const response = await anthropic.messages.create({
     model,
