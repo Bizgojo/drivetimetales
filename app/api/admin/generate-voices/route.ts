@@ -1683,6 +1683,22 @@ function parseCharacterMeta(description: string): { gender: string; age: string;
   return { gender, age, accent, tones }
 }
 
+function inferFallbackCharacterMeta(speakerName: string): { gender: string; age: string; accent: string; tones: string[] } {
+  const meta = parseCharacterMeta(speakerName)
+  const cleaned = speakerName
+    .toLowerCase()
+    .replace(/[^a-z.\s'-]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+
+  if (!meta.gender) {
+    if (/^(mr|mister|sir|father|dad|uncle)\b/.test(cleaned)) meta.gender = 'male'
+    else if (/^(mrs|ms|miss|madam|madame|mother|mom|aunt)\b/.test(cleaned)) meta.gender = 'female'
+  }
+
+  return meta
+}
+
 // Score a voice candidate against character requirements
 function scoreVoice(voice: any, meta: { gender: string; age: string; accent: string; tones: string[] }): number {
   const labels = voice.labels || {}
@@ -3315,21 +3331,47 @@ export async function POST(req: NextRequest) {
     const characterSpeakers = Array.from(new Set(storyLines
       .filter(l => l.type === 'character' && !nonDialogueSpeakers.has(l.speaker.toUpperCase()))
       .map(l => l.speaker.toUpperCase())))
-    if (characterSpeakers.length > 0 && characterGuide.length === 0) {
-      console.error(`  ❌ Missing character voice assignments: ${characterSpeakers.join(', ')}; no CHARACTER GUIDE entries parsed`)
-      return NextResponse.json({
-        success: false,
-        error: 'Missing character voice assignments',
-        missingCharacters: characterSpeakers,
-      }, { status: 422 })
-    } else {
-      const missingVoiceMap = characterSpeakers.filter(speaker => !voiceMap[speaker])
-      if (missingVoiceMap.length > 0) {
-        console.error(`  ❌ Missing character voice assignments: ${missingVoiceMap.join(', ')}`)
+    const autoCastMissingSpeakers = (speakers: string[]) => {
+      const unresolved: string[] = []
+
+      for (const speaker of speakers) {
+        if (voiceMap[speaker]) continue
+
+        try {
+          const meta = inferFallbackCharacterMeta(speaker)
+          const selection = findVoiceForCharacter(speaker, meta, myVoices, usedVoiceIds, resolvedNarratorVoiceId)
+          assignCharacterVoice(voiceMap, speaker, selection.voiceId)
+          if (!selection.reusedVoice) usedVoiceIds.add(selection.voiceId)
+          const warning = `Auto-assigned fallback voice for unmapped speaker ${speaker}`
+          warnings.push(warning)
+          console.warn(`  ⚠️ ${warning}: ${selection.voiceName || selection.voiceId}`)
+          if (selection.reusedVoice) {
+            reusedVoices.push({
+              character: speaker,
+              voiceId: selection.voiceId,
+              voiceName: selection.voiceName,
+              score: selection.score,
+            })
+          }
+        } catch (e) {
+          console.warn(`  ⚠️ Auto-cast failed for unmapped speaker ${speaker}:`, e)
+          unresolved.push(speaker)
+        }
+      }
+
+      return unresolved
+    }
+
+    const missingVoiceMap = characterSpeakers.filter(speaker => !voiceMap[speaker])
+    if (missingVoiceMap.length > 0) {
+      console.warn(`  ⚠️ Missing character voice assignments; attempting fallback auto-cast: ${missingVoiceMap.join(', ')}`)
+      const stillMissingVoiceMap = autoCastMissingSpeakers(missingVoiceMap)
+      if (stillMissingVoiceMap.length > 0) {
+        console.error(`  ❌ Missing character voice assignments: ${stillMissingVoiceMap.join(', ')}`)
         return NextResponse.json({
           success: false,
           error: 'Missing character voice assignments',
-          missingCharacters: missingVoiceMap,
+          missingCharacters: stillMissingVoiceMap,
         }, { status: 422 })
       }
     }
