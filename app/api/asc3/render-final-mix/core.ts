@@ -552,12 +552,14 @@ export async function runRenderFinalMix(storyId: string): Promise<{
     const crossfadeStart = STING_TO_BELLE_SEC
     const stingIntroPath = path.join(tmpDir, 'sting_intro.mp3')
     const introGapSec = 0.4
+    const introGapPath = path.join(tmpDir, 'intro_gap.mp3')
+    await generateSilence(introGapPath, introGapSec)
     await execFileAsync(FFMPEG_PATH, [
-      '-i', stingPath, '-i', normalizedIntroPath,
+      '-i', stingPath, '-i', introGapPath, '-i', normalizedIntroPath,
       '-filter_complex',
       `[0:a]afade=t=out:st=${crossfadeStart}:d=${Math.max(0.5, stingDur - crossfadeStart)},aformat=sample_rates=44100:channel_layouts=stereo[sting_fade];` +
-      `anullsrc=r=44100:cl=stereo:d=${introGapSec}[gap];` +
-      `[1:a]aformat=sample_rates=44100:channel_layouts=stereo[intro];` +
+      `[1:a]aformat=sample_rates=44100:channel_layouts=stereo[gap];` +
+      `[2:a]aformat=sample_rates=44100:channel_layouts=stereo[intro];` +
       `[sting_fade][gap][intro]concat=n=3:v=0:a=1[out]`,
       '-map', '[out]',
       '-ar', '44100', '-ac', '2', '-b:a', '192k', '-y', stingIntroPath

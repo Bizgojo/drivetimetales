@@ -5669,8 +5669,8 @@ async function runSeriesRenderFinalMix(job: ProductionJob, origin: string) {
     const ok = report?.success === true
     doneByEp[key] = ok
     processedEp = num
-    finalMixUrl = String(report?.finalMixUrl || report?.audioUrl || '') || null
-    duration = Number(report?.durationMins || 0) || null
+    finalMixUrl = String(report?.finalAudioUrl || '') || null
+    duration = Number(report?.durationSecs || 0) || null
     if (!ok) lastError = String(report?.error || 'render failed')
     break // one episode per call
   }
