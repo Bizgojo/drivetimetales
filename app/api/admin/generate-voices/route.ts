@@ -56,6 +56,9 @@ const SHORT_SEGMENT_MAX_CANDIDATES = 3
 const SEGMENT_TRANSCRIPT_MODEL = 'whisper-1'
 const SEGMENT_TRANSCRIPT_MIN_COVERAGE = 0.62
 const SEGMENT_TRANSCRIPT_TAIL_WORDS = 4
+const SEGMENT_SPLIT_RESCUE_MAX_CHUNKS = 6
+const SEGMENT_SPLIT_RESCUE_MAX_CHUNK_CANDIDATES = 3
+const SEGMENT_SPLIT_RESCUE_GAP_SECONDS = 0.35
 const BELLE_GENERIC_PATTERNS = [
   /\bfor your listening pleasure\b/i,
   /\bi am pleased to present\b/i,
@@ -1209,6 +1212,117 @@ async function validateSegmentTranscript(buf: Buffer, expectedText: string, file
   }
 }
 
+type SegmentTranscriptCheck = Awaited<ReturnType<typeof validateSegmentTranscript>>
+
+type SegmentSplitRescueDiagnostics = {
+  splitRescueAttempted: boolean
+  splitChunkCount: number
+  splitRescueError: string | null
+}
+
+function emptySplitRescueDiagnostics(): SegmentSplitRescueDiagnostics {
+  return {
+    splitRescueAttempted: false,
+    splitChunkCount: 0,
+    splitRescueError: null,
+  }
+}
+
+function splitDiagnosticsFromError(error: unknown): SegmentSplitRescueDiagnostics {
+  const e = error as any
+  return {
+    splitRescueAttempted: e?.splitRescueAttempted === true,
+    splitChunkCount: Number(e?.splitChunkCount || 0),
+    splitRescueError: e?.splitRescueError ? String(e.splitRescueError) : null,
+  }
+}
+
+function attachSplitDiagnostics(error: Error, diagnostics: SegmentSplitRescueDiagnostics): Error {
+  Object.assign(error, diagnostics)
+  return error
+}
+
+function normalizeForSplitPrefixCheck(value: string): string {
+  return normalizeCompoundNumbers(value)
+    .replace(/'/g, '')
+    .toLowerCase()
+    .replace(/[^\w\s]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+function isAmbiguousTranscriptFailure(failure: SegmentTranscriptCheck): boolean {
+  const detected = String(failure.detectedText || '').trim()
+  return detected === '' || detected === '?' || detected === '??'
+}
+
+function hasMultipleSentenceOrClauseBoundaries(value: string): boolean {
+  const matches = String(value || '').match(/[.!?;:]|[,—–]\s+|\s+(?:and|but|so|then|because|while|when|after|before)\s+/gi)
+  return (matches || []).length >= 2
+}
+
+function isCleanDetectedPrefix(expectedText: string, detectedText: string): boolean {
+  const expected = normalizeForSplitPrefixCheck(expectedText)
+  const detected = normalizeForSplitPrefixCheck(detectedText)
+  return detected.length >= 2 && expected.startsWith(detected)
+}
+
+function isLowCoverageMissingTail(failure: SegmentTranscriptCheck): boolean {
+  const expected = transcriptTokens(failure.expectedText)
+  const detected = transcriptTokens(failure.detectedText)
+  return (failure.coverage ?? 1) < 0.55 && expected.length - detected.length >= 3
+}
+
+function splitTextForSegmentRescue(value: string): string[] {
+  const source = String(value || '').replace(/\s+/g, ' ').trim()
+  if (!source) return []
+
+  const sentenceChunks = source
+    .match(/[^.!?]+[.!?]+["'”’]?|[^.!?]+$/g)
+    ?.map(chunk => chunk.trim())
+    .filter(Boolean) || []
+  const chunks = sentenceChunks.length >= 2
+    ? sentenceChunks
+    : source
+      .split(/(?<=[,;:—–])\s+|\s+(?=(?:and|but|so|then|because|while|when|after|before)\b)/i)
+      .map(chunk => chunk.trim())
+      .filter(Boolean)
+
+  if (chunks.length < 2 || chunks.length > SEGMENT_SPLIT_RESCUE_MAX_CHUNKS) return []
+  if (chunks.some(chunk => chunk.length >= source.length * 0.85)) return []
+  return chunks
+}
+
+async function concatenateSegmentBuffers(buffers: Buffer[], gapSeconds: number): Promise<Buffer> {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'et_split_rescue_'))
+  try {
+    const gap = gapSeconds > 0 ? await generateSilenceBuffer(gapSeconds) : null
+    const listLines: string[] = []
+    for (let i = 0; i < buffers.length; i++) {
+      const chunkPath = path.join(dir, `chunk_${i}.mp3`)
+      await fs.writeFile(chunkPath, buffers[i])
+      listLines.push(`file '${chunkPath}'`)
+      if (gap && i < buffers.length - 1) {
+        const gapPath = path.join(dir, `gap_${i}.mp3`)
+        await fs.writeFile(gapPath, gap)
+        listLines.push(`file '${gapPath}'`)
+      }
+    }
+
+    const listPath = path.join(dir, 'concat.txt')
+    const outputPath = path.join(dir, 'out.mp3')
+    await fs.writeFile(listPath, listLines.join('\n'))
+    await _execFileAsync(FFMPEG_PATH, [
+      '-f', 'concat', '-safe', '0', '-i', listPath,
+      '-ar', '44100', '-ac', '2', '-b:a', '192k',
+      '-y', outputPath,
+    ])
+    return await fs.readFile(outputPath)
+  } finally {
+    await fs.rm(dir, { recursive: true, force: true }).catch(() => {})
+  }
+}
+
 function getUploadErrorDetails(error: any): { name: string; message: string; status?: number | string; statusCode?: number | string } {
   const original = error?.originalError
   return {
@@ -2114,17 +2228,17 @@ async function generateVoiceLine(rawText: string, voiceId: string, storyId: stri
   const cacheUrl = `${BASE_STORAGE}/${cachePath}`
   // Skip cache for announcer lines (intro/outro) OR when force=true - these must always be fresh
   const isAnnouncer = prefix === 'intro' || prefix === 'intro_before' || prefix === 'intro_after' || prefix === 'outro'
-  const generateAttempt = async (): Promise<Buffer> => {
+  const generateAttemptForText = async (inputText: string): Promise<Buffer> => {
     const res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
       method: 'POST',
       headers: { 'xi-api-key': EL_API_KEY, 'Content-Type': 'application/json', 'Accept': 'audio/mpeg' },
-      body: JSON.stringify({ text, model_id: 'eleven_multilingual_v2', voice_settings: EL_SETTINGS })
+      body: JSON.stringify({ text: inputText, model_id: 'eleven_multilingual_v2', voice_settings: EL_SETTINGS })
     })
     if (!res.ok) throw new Error(`ElevenLabs error ${res.status}: ${(await res.text()).slice(0, 200)}`)
     const rawBuf = Buffer.from(await res.arrayBuffer())
     // ATL-PIPE-001: Reject silence placeholder buffers before any processing
     // Text-length-aware threshold: short segments (< 10 words) use 5KB floor; standard uses 20KB
-    const segmentWordCount = rawText.trim().split(/\s+/).length
+    const segmentWordCount = inputText.trim().split(/\s+/).length
     const isShortSegment = segmentWordCount < 10
     const effectiveThreshold = isShortSegment ? 5 * 1024 : SILENCE_BUFFER_SIZE_THRESHOLD
     if (rawBuf.length <= effectiveThreshold) {
@@ -2137,8 +2251,9 @@ async function generateVoiceLine(rawText: string, voiceId: string, storyId: stri
     if (rawBufMd5 === SILENCE_BUFFER_KNOWN_ETAG) {
       throw new Error(`SILENCE_BUFFER: ${fileName} rejected — matches known silence eTag ${SILENCE_BUFFER_KNOWN_ETAG}`)
     }
-    return normalizeSpokenBuffer(rawBuf, rawText, prefix)
+    return normalizeSpokenBuffer(rawBuf, inputText, prefix)
   }
+  const generateAttempt = async (): Promise<Buffer> => generateAttemptForText(text)
 
   if (prefix === 'segment') {
     const wordCount = text.split(/\s+/).filter(Boolean).length
@@ -2185,6 +2300,7 @@ async function generateVoiceLine(rawText: string, voiceId: string, storyId: stri
     // a long inter-sentence pause and retrying won't help.  The segment should
     // be split into shorter sub-segments instead.
     const transcriptDetectedTexts: string[] = []
+    const splitRescueDiagnostics = emptySplitRescueDiagnostics()
 
     const actionForMetrics = (metrics: LoudnessMetrics): string => {
       if (!hasUsableLoudness(metrics)) return 'fail_invalid_loudness'
@@ -2204,6 +2320,94 @@ async function generateVoiceLine(rawText: string, voiceId: string, storyId: stri
     // ATL-PIPE-007: track the last loudness-passing buffer so we can accept it
     // if the transcript QC fires REPEATED_IDENTICAL_TRUNCATION on a clean prefix.
     let lastLoudnessPassedBuf: Buffer | null = null
+
+    const generateSplitRescueChunk = async (chunkText: string, chunkIndex: number): Promise<Buffer> => {
+      const chunkFileName = `${fileName.replace('.mp3', '')}_chunk_${chunkIndex + 1}.mp3`
+      let lastChunkFailure: string | null = null
+
+      for (let attempt = 1; attempt <= SEGMENT_SPLIT_RESCUE_MAX_CHUNK_CANDIDATES; attempt++) {
+        try {
+          let chunkBuf = await generateAttemptForText(chunkText)
+          let metrics = await analyzeLoudnessBuffer(chunkBuf)
+          if (metrics.input_i < segmentQcRetry) {
+            const gainDb = Math.max(0, Math.min(18, segmentQcTarget - metrics.input_i))
+            chunkBuf = await applySegmentGainLimit(chunkBuf, gainDb)
+            metrics = await analyzeLoudnessBuffer(chunkBuf)
+          }
+
+          const action = actionForMetrics(metrics)
+          logSegmentQc(chunkFileName, speaker, chunkText, metrics, `split_rescue_${action}`)
+          if (!isPassingAction(action)) {
+            lastChunkFailure = `loudness failed action=${action} lufs=${metrics.input_i.toFixed(2)} tp=${metrics.input_tp.toFixed(2)}`
+            continue
+          }
+
+          const transcriptCheck = await validateSegmentTranscript(chunkBuf, chunkText, chunkFileName)
+          console.log(`  Split-rescue transcript QC ${chunkFileName} speaker="${speaker}" attempt=${attempt} coverage=${transcriptCheck.coverage.toFixed(2)} tail=${transcriptCheck.tailMatches ? 'pass' : 'fail'} result=${transcriptCheck.passed ? 'accept' : 'retry'} expected="${chunkText.slice(0, 120)}" detected="${transcriptCheck.detectedText.slice(0, 120)}"`)
+          if (!transcriptCheck.passed) {
+            lastChunkFailure = `transcript failed expected "${transcriptCheck.expectedText}", detected "${transcriptCheck.detectedText}" (similarity: ${((transcriptCheck.similarity ?? 0) * 100).toFixed(1)}%)`
+            continue
+          }
+
+          return chunkBuf
+        } catch (e) {
+          lastChunkFailure = String(e)
+        }
+      }
+
+      throw new Error(`split chunk ${chunkIndex + 1}/${splitRescueDiagnostics.splitChunkCount} failed after ${SEGMENT_SPLIT_RESCUE_MAX_CHUNK_CANDIDATES} candidate(s): ${lastChunkFailure || 'unknown error'}`)
+    }
+
+    const trySplitTruncationRescue = async (): Promise<string | null> => {
+      if (!transcriptFailure) return null
+      const shouldTrySplitRescue = prefix === 'segment'
+        && hasMultipleSentenceOrClauseBoundaries(transcriptFailure.expectedText)
+        && !isAmbiguousTranscriptFailure(transcriptFailure)
+        && (
+          isCleanDetectedPrefix(transcriptFailure.expectedText, transcriptFailure.detectedText)
+          || isLowCoverageMissingTail(transcriptFailure)
+        )
+
+      if (!shouldTrySplitRescue) return null
+
+      splitRescueDiagnostics.splitRescueAttempted = true
+      const chunks = splitTextForSegmentRescue(text)
+      splitRescueDiagnostics.splitChunkCount = chunks.length
+      if (chunks.length < 2) {
+        splitRescueDiagnostics.splitRescueError = 'No safe sentence/clause split found'
+        return null
+      }
+
+      try {
+        console.warn(`  ⚠️ SPLIT_TRUNCATION_RESCUE_START ${fileName} speaker="${speaker}" chunks=${chunks.length} detected="${transcriptFailure.detectedText.slice(0, 100)}"`)
+        const chunkBuffers: Buffer[] = []
+        for (let i = 0; i < chunks.length; i++) {
+          chunkBuffers.push(await generateSplitRescueChunk(chunks[i], i))
+        }
+
+        let combined = await concatenateSegmentBuffers(chunkBuffers, SEGMENT_SPLIT_RESCUE_GAP_SECONDS)
+        let combinedMetrics = await analyzeLoudnessBuffer(combined)
+        if (combinedMetrics.input_i < segmentQcRetry) {
+          const gainDb = Math.max(0, Math.min(18, segmentQcTarget - combinedMetrics.input_i))
+          combined = await applySegmentGainLimit(combined, gainDb)
+          combinedMetrics = await analyzeLoudnessBuffer(combined)
+        }
+
+        const combinedAction = actionForMetrics(combinedMetrics)
+        logSegmentQc(fileName, speaker, text, combinedMetrics, `split_rescue_combined_${combinedAction}`)
+        if (!isPassingAction(combinedAction)) {
+          throw new Error(`combined split segment loudness failed action=${combinedAction} lufs=${combinedMetrics.input_i.toFixed(2)} tp=${combinedMetrics.input_tp.toFixed(2)}`)
+        }
+
+        await uploadAudioBufferWithRetry(cachePath, combined, `${speaker || 'UNKNOWN'} ${fileName} split-rescue`)
+        console.warn(`  ✅ SPLIT_TRUNCATION_RESCUE_COMPLETE ${fileName} speaker="${speaker}" chunks=${chunks.length}`)
+        return cacheUrl
+      } catch (e) {
+        splitRescueDiagnostics.splitRescueError = String(e)
+        console.warn(`  ❌ SPLIT_TRUNCATION_RESCUE_FAILED ${fileName} speaker="${speaker}" chunks=${chunks.length}: ${splitRescueDiagnostics.splitRescueError}`)
+        return null
+      }
+    }
 
     for (let candidate = 1; candidate <= candidateCount; candidate++) {
       if (candidate > 1) buf = await generateAttempt()
@@ -2630,12 +2834,14 @@ async function generateVoiceLine(rawText: string, voiceId: string, storyId: stri
             `— Whisper VAD is stopping at a natural pause on every retry. ` +
             `Split this segment into shorter sub-segments and re-run.`
           )
-          throw new Error(
+          const splitRescueUrl = await trySplitTruncationRescue()
+          if (splitRescueUrl) return splitRescueUrl
+          throw attachSplitDiagnostics(new Error(
             `Segment transcript QC failed for ${fileName} [REPEATED_IDENTICAL_TRUNCATION]: ` +
             `Whisper returned the same partial output "${truncatedAt}" across all ${transcriptDetectedTexts.length} retry candidates. ` +
             `Retrying will not help. Split this segment into shorter sub-segments. ` +
             `expected "${transcriptFailure.expectedText}"`
-          )
+          ), splitRescueDiagnostics)
         }
         // INC-005: if Whisper returned exactly "?" (or empty), this is not a normalizable
         // mismatch — Whisper was confused by the audio. Classify immediately as
@@ -2650,7 +2856,12 @@ async function generateVoiceLine(rawText: string, voiceId: string, storyId: stri
             `If the artifact is valid, regenerate once. If the problem persists, this segment requires Marc review.`
           )
         }
-        throw new Error(`Segment transcript QC failed for ${fileName}: expected "${transcriptFailure.expectedText}", detected "${transcriptFailure.detectedText}" (similarity: ${((transcriptFailure.similarity ?? 0) * 100).toFixed(1)}%)`)
+        const splitRescueUrl = await trySplitTruncationRescue()
+        if (splitRescueUrl) return splitRescueUrl
+        throw attachSplitDiagnostics(
+          new Error(`Segment transcript QC failed for ${fileName}: expected "${transcriptFailure.expectedText}", detected "${transcriptFailure.detectedText}" (similarity: ${((transcriptFailure.similarity ?? 0) * 100).toFixed(1)}%)`),
+          splitRescueDiagnostics
+        )
       }
       if (best?.metrics.input_tp && best.metrics.input_tp > SPOKEN_TRUE_PEAK) {
         throw new Error(`Segment loudness QC failed for ${fileName}: best candidate ${best.candidate} true peak ${best.metrics.input_tp.toFixed(2)} dBTP exceeds ${SPOKEN_TRUE_PEAK} dBTP`)
@@ -3232,12 +3443,14 @@ export async function POST(req: NextRequest) {
           throw new Error(`Targeted retry does not support ${targetLine.type} lines`)
         }
       } catch (e) {
+        const splitDiagnostics = splitDiagnosticsFromError(e)
         failures.push({
           segment: targetFileName,
           index: targetLine.index,
           speaker: targetLine.speaker,
           type: targetLine.type,
           error: String(e),
+          ...splitDiagnostics,
         })
       }
 
@@ -3365,6 +3578,7 @@ export async function POST(req: NextRequest) {
       {
         const segment = `segment_${line.index.toString().padStart(4, '0')}.mp3`
         let lastError = ''
+        let lastSplitDiagnostics = emptySplitRescueDiagnostics()
         let segSucceeded = false
         for (let attempt = 1; attempt <= MAX_SEGMENT_ATTEMPTS; attempt++) {
           // Attempt 4+: bump candidate count for mechanical_qc; brief delay for voice_generation
@@ -3384,6 +3598,7 @@ export async function POST(req: NextRequest) {
             break
           } catch (e) {
             lastError = String(e)
+            lastSplitDiagnostics = splitDiagnosticsFromError(e)
             console.error(`  ❌ Line ${line.index} (${line.speaker}) attempt ${attempt}:`, lastError.slice(0, 200))
           }
         }
@@ -3394,8 +3609,8 @@ export async function POST(req: NextRequest) {
           )
           logEscalation(report)
           escalations.push(report)
-          results.segments.push({ index: line.index, speaker: line.speaker, type: line.type, error: lastError, escalated: true })
-          failures.push({ segment, index: line.index, speaker: line.speaker, type: line.type, error: lastError })
+          results.segments.push({ index: line.index, speaker: line.speaker, type: line.type, error: lastError, escalated: true, ...lastSplitDiagnostics })
+          failures.push({ segment, index: line.index, speaker: line.speaker, type: line.type, error: lastError, ...lastSplitDiagnostics })
           failed++
         }
       }
