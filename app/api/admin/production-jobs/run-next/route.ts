@@ -187,6 +187,7 @@ type AuthorRow = {
 
 type ResolvedNarratorVoice = {
   id: string
+  elevenlabsVoiceId: string
   name: string
 }
 
@@ -1543,18 +1544,19 @@ async function resolveAuthorNarratorVoice(author: AuthorRow): Promise<ResolvedNa
 
   const { data, error } = await supabase
     .from('narrator_voices')
-    .select('id,name')
+    .select('id,name,elevenlabs_voice_id')
     .eq('id', narratorId)
     .maybeSingle()
 
   if (error) throw new Error(`Failed to resolve narrator for author "${author.name}": ${error.message}`)
 
   const narratorName = cleanNarratorName((data as any)?.name)
-  if (!(data as any)?.id || !narratorName) {
-    throw new Error(`Author "${author.name}" narrator_id ${narratorId} did not resolve to narrator_voices.name`)
+  const elevenlabsVoiceId = String((data as any)?.elevenlabs_voice_id || '').trim()
+  if (!(data as any)?.id || !narratorName || !elevenlabsVoiceId) {
+    throw new Error(`Author "${author.name}" narrator_id ${narratorId} did not resolve to narrator_voices.name and elevenlabs_voice_id`)
   }
 
-  return { id: String((data as any).id), name: narratorName }
+  return { id: String((data as any).id), elevenlabsVoiceId, name: narratorName }
 }
 
 function cleanAuthorStyleValue(value: unknown): string {
@@ -2023,7 +2025,7 @@ async function createStoryRow(job: ProductionJob) {
       title: title || 'Untitled Draft',
       author: author.name,
       author_id: author.id || null,
-      narrator_voice_id: narrator.id,
+      narrator_voice_id: narrator.elevenlabsVoiceId,
       narrator_voice_name: narrator.name,
       author_style: briefJson.author_style,
       genre,
@@ -2359,17 +2361,17 @@ async function generateStandaloneScript(job: ProductionJob, model: string) {
   if (narratorContext.mode === 'assigned') {
     const { data: narratorRow, error: narratorLookupError } = await supabase
       .from('narrator_voices')
-      .select('id,name')
+      .select('id,name,elevenlabs_voice_id')
       .ilike('name', narratorContext.narratorName)
       .maybeSingle()
 
     if (narratorLookupError) throw new Error(`Failed to stamp standalone narrator: ${narratorLookupError.message}`)
-    if (!narratorRow?.id) throw new Error(`Assigned narrator "${narratorContext.narratorName}" did not resolve to narrator_voices.id`)
+    if (!narratorRow?.elevenlabs_voice_id) throw new Error(`Assigned narrator "${narratorContext.narratorName}" did not resolve to narrator_voices.elevenlabs_voice_id`)
 
     const { error: narratorStampError } = await supabase
       .from('stories')
       .update({
-        narrator_voice_id: narratorRow.id,
+        narrator_voice_id: narratorRow.elevenlabs_voice_id,
         narrator_voice_name: narratorRow.name || narratorContext.narratorName,
       })
       .eq('id', story.id)
@@ -4401,7 +4403,7 @@ async function createSeriesPackage(job: ProductionJob) {
         title: episodeTitle,
         author: author.name,
         author_id: author.id || null,
-        narrator_voice_id: narrator.id,
+        narrator_voice_id: narrator.elevenlabsVoiceId,
         narrator_voice_name: narrator.name,
         author_style: briefJson.author_style,
         genre,
