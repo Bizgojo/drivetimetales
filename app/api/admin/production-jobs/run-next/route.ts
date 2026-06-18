@@ -46,6 +46,7 @@ const NEXT_STEP_AFTER_SERIES_VOICES = 'series_generate_belle_assets'
 const NEXT_STEP_AFTER_SERIES_BELLE  = 'series_generate_music'
 const NEXT_STEP_AFTER_SERIES_MUSIC  = 'series_render_final_mix'
 const NEXT_STEP_AFTER_SERIES_RENDER = 'complete_story_package'
+const MAX_SERIES_DESCRIPTION_RETRIES = 3
 const TITLE_MAX_CHARS = 28
 const DESCRIPTION_MAX_CHARS = 70
 const DESCRIPTION_PAST_TENSE_RE = /\b(vanished|was|were|had|found|discovered|left|moved|sealed|signed|forged|buried|hidden|lost)\b/i
@@ -4800,6 +4801,112 @@ ${JSON.stringify(packageBrief, null, 2)}`,
   return report
 }
 
+function extractValidatorFailureLines(report: string): string[] {
+  const lines = String(report || '')
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean)
+  const fixIndex = lines.findIndex((line) => /fix the following before resubmitting/i.test(line))
+  const fixLines = fixIndex >= 0
+    ? lines
+        .slice(fixIndex + 1)
+        .filter((line) => !/✅/.test(line))
+        .filter((line) => /^[-*]\s+|^❌/.test(line))
+    : []
+  const explicitFailLines = lines.filter((line) => /^❌/.test(line) && !/✅/.test(line))
+  const combined = [...fixLines, ...explicitFailLines]
+    .map((line) => line.replace(/^[-*]\s+/, '').trim())
+    .filter((line) => line && !/VALIDATOR RESULT:\s*FAIL/i.test(line))
+
+  return Array.from(new Set(combined))
+}
+
+function isDescriptionOnlyValidatorFailure(report: string): boolean {
+  const failureLines = extractValidatorFailureLines(report)
+  if (!failureLines.length) return false
+
+  const descriptionFailure = /\bdescription\b|story-card|teaser|spoiler|reveals?|climax|twist|final discovery|resolution payoff|outcome|present tense|70 characters|protagonist/i
+  return failureLines.every((line) => descriptionFailure.test(line))
+}
+
+function seriesDescriptionFailureFromEpisodeResult(result: any) {
+  const episodeReport = String(result?.episodeResult?.report || '')
+  if (episodeReport && isDescriptionOnlyValidatorFailure(episodeReport)) {
+    return {
+      episodeNumber: result.episodeResult?.episodeNumber,
+      storyId: result.episodeResult?.storyId,
+      report: episodeReport,
+    }
+  }
+
+  const failedEpisodes = Array.isArray(result?.state?.seriesValidation?.failedEpisodes)
+    ? result.state.seriesValidation.failedEpisodes
+    : []
+  const failed = failedEpisodes.find((episode: any) =>
+    isDescriptionOnlyValidatorFailure(String(episode?.report || ''))
+  )
+  if (!failed) return null
+
+  return {
+    episodeNumber: failed.episodeNumber,
+    storyId: failed.storyId,
+    report: String(failed.report || ''),
+  }
+}
+
+async function regenerateSeriesDescriptionFromEpisodeFeedback(episode: any, feedbackReport: string, model: string, job: ProductionJob) {
+  const response = await anthropic.messages.create({
+    model,
+    max_tokens: 900,
+    temperature: 0,
+    messages: [{
+      role: 'user',
+      content: `Rewrite only the DESCRIPTION header for this already-validated episode.
+
+Do NOT rewrite the script body, title, Belle copy, narrator, author, or story events.
+Use the validator feedback exactly.
+
+Rules:
+- Return JSON only: {"description": "text"}
+- DESCRIPTION must be 70 characters or fewer.
+- DESCRIPTION must be present tense.
+- DESCRIPTION must tease a question, not reveal the climax, twist, final discovery, culprit/survivor/status, or resolution payoff.
+- Prefer the validator's suggested wording when it gives one.
+
+VALIDATOR FEEDBACK:
+${feedbackReport}
+
+EPISODE:
+${JSON.stringify({
+  episodeNumber: episodeNumber(episode, 0),
+  title: episode.title,
+  currentDescription: extractHeader(episode.script || '', 'DESCRIPTION') || episode.description || '',
+}, null, 2)}`,
+    }],
+  })
+
+  const raw = response.content
+    .map((c: any) => ('text' in c ? c.text : ''))
+    .join('')
+    .trim()
+  const parsed = parseJsonObject(raw)
+  const description = sanitizeDescription(String(parsed.description || ''))
+  if (!description) throw new Error('Description repair did not return description')
+
+  logAnthropicCall({
+    route: '/api/admin/production-jobs/run-next',
+    purpose: 'series-description-repair',
+    model,
+    inputTokens: response.usage?.input_tokens ?? 0,
+    outputTokens: response.usage?.output_tokens ?? 0,
+    storyId: episode.id || undefined,
+    storyTitle: episode.title || 'Series description repair',
+    metadata: { is_v2: true, production_job_id: job.id, series_id: episode.series_id, episode_number: episodeNumber(episode, 0) },
+  }).catch(() => {})
+
+  return description
+}
+
 async function scoreValidateSeriesPackage(job: ProductionJob, model: string) {
   const state = job.state_json && typeof job.state_json === 'object' ? job.state_json : {}
   const seriesId = job.series_id || state.seriesId
@@ -5604,6 +5711,136 @@ export async function POST(req: NextRequest) {
       })
 
       if (result.failed) {
+        const persistedSeriesValidation = lockedJob.state_json?.seriesValidation && typeof lockedJob.state_json.seriesValidation === 'object'
+          ? lockedJob.state_json.seriesValidation
+          : {}
+        const descriptionRetry = persistedSeriesValidation.descriptionRetry || {}
+        const descriptionRetryCount = Number(descriptionRetry.count || 0)
+        const descriptionFailure = seriesDescriptionFailureFromEpisodeResult(result)
+
+        if (descriptionFailure && descriptionRetryCount < MAX_SERIES_DESCRIPTION_RETRIES) {
+          const targetEpisode = result.episodes.find((episode: any) =>
+            String(episode.id) === String(descriptionFailure.storyId)
+              || episodeNumber(episode, 0) === Number(descriptionFailure.episodeNumber)
+          )
+          if (!targetEpisode?.id || !targetEpisode?.script) {
+            throw new Error(`Description repair target episode ${descriptionFailure.episodeNumber} was not found or has no script`)
+          }
+
+          const repairedDescription = await regenerateSeriesDescriptionFromEpisodeFeedback(
+            targetEpisode,
+            descriptionFailure.report,
+            model,
+            lockedJob
+          )
+          const retryCount = descriptionRetryCount + 1
+          const nextScript = replaceOrInsertHeader(String(targetEpisode.script), 'DESCRIPTION', repairedDescription)
+          const nextBrief = { ...(targetEpisode.brief_json || {}), description: repairedDescription }
+          const existingScriptJson = targetEpisode.script_json && typeof targetEpisode.script_json === 'object' ? targetEpisode.script_json : {}
+          const existingSeriesGeneration = existingScriptJson.series_generation || {}
+          const { error: storyUpdateError } = await supabase
+            .from('stories')
+            .update({
+              description: repairedDescription,
+              script: nextScript,
+              brief_json: nextBrief,
+              script_json: {
+                ...existingScriptJson,
+                series_generation: {
+                  ...existingSeriesGeneration,
+                  summary: {
+                    ...(existingSeriesGeneration.summary || {}),
+                    description: repairedDescription,
+                  },
+                  description_repair: {
+                    repaired_at: nowIso(),
+                    retry_count: retryCount,
+                    validator_report: descriptionFailure.report,
+                  },
+                },
+              },
+              validator_result: null,
+              validator_report: null,
+              validator_passed_at: null,
+              status: 'script_drafted',
+            })
+            .eq('id', targetEpisode.id)
+
+          if (storyUpdateError) {
+            throw new Error(`Failed to save repaired series DESCRIPTION: ${storyUpdateError.message}`)
+          }
+
+          const retryLogs = appendLog({ ...lockedJob, logs }, `Auto-retry ${retryCount}/${MAX_SERIES_DESCRIPTION_RETRIES}: repaired episode ${episodeNumber(targetEpisode, 0)} DESCRIPTION from validator feedback`, {
+            seriesId: result.seriesId,
+            storyId: targetEpisode.id,
+            episodeNumber: episodeNumber(targetEpisode, 0),
+            repairedDescription,
+          })
+          const retryState = {
+            ...result.state,
+            seriesValidation: {
+              ...result.state.seriesValidation,
+              failedEpisodes: (result.state.seriesValidation?.failedEpisodes || [])
+                .filter((episode: any) => String(episode.storyId) !== String(targetEpisode.id)),
+              packageReport: null,
+              descriptionRetry: {
+                count: retryCount,
+                max: MAX_SERIES_DESCRIPTION_RETRIES,
+                storyId: targetEpisode.id,
+                episodeNumber: episodeNumber(targetEpisode, 0),
+                lastDescription: repairedDescription,
+                lastReport: descriptionFailure.report,
+                lastRetriedAt: nowIso(),
+              },
+            },
+          }
+
+          const { data: retryJob, error: retryUpdateError } = await supabase
+            .from('production_jobs')
+            .update({
+              status: 'queued',
+              current_step: NEXT_STEP_AFTER_SERIES_SCRIPTS,
+              state_json: retryState,
+              error_json: {
+                step,
+                seriesId: result.seriesId,
+                action: 'description_retry',
+                retryCount,
+                maxRetries: MAX_SERIES_DESCRIPTION_RETRIES,
+                repairedStoryId: targetEpisode.id,
+                repairedEpisodeNumber: episodeNumber(targetEpisode, 0),
+                repairedDescription,
+                validatorReport: descriptionFailure.report,
+                at: nowIso(),
+              },
+              logs: retryLogs,
+              locked_at: null,
+              locked_by: null,
+            })
+            .eq('id', lockedJob.id)
+            .select('*')
+            .single()
+
+          if (retryUpdateError) {
+            throw new Error(`Failed to queue series DESCRIPTION retry: ${retryUpdateError.message}`)
+          }
+
+          return NextResponse.json({
+            success: true,
+            action: 'series_description_retry',
+            jobId: retryJob.id,
+            currentStep: step,
+            nextStep: NEXT_STEP_AFTER_SERIES_SCRIPTS,
+            retryCount,
+            maxRetries: MAX_SERIES_DESCRIPTION_RETRIES,
+            seriesId: result.seriesId,
+            repairedStoryId: targetEpisode.id,
+            repairedEpisodeNumber: episodeNumber(targetEpisode, 0),
+            repairedDescription,
+            logs: retryLogs,
+          })
+        }
+
         const { data: failedJob, error: updateError } = await supabase
           .from('production_jobs')
           .update({
@@ -5617,6 +5854,8 @@ export async function POST(req: NextRequest) {
               failedEpisodes: result.state.seriesValidation?.failedEpisodes || [],
               metadataIssues: result.state.seriesValidation?.metadataIssues || [],
               packageReport: result.packageReport || null,
+              descriptionRetryExhausted: Boolean(descriptionFailure && descriptionRetryCount >= MAX_SERIES_DESCRIPTION_RETRIES),
+              descriptionRetryCount,
               at: nowIso(),
             },
             logs,
