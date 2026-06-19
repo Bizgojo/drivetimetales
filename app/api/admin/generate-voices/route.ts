@@ -1616,28 +1616,61 @@ const NARRATOR_VOICE_NAMES = ['Cole Hargrove','Elliott Crane','Finn Calloway','J
 // BELLE B - EXCLUSIVE ANNOUNCER VOICE. NEVER use as character, narrator, or fallback.
 const BELLE_B_ID = CANONICAL_BELLE_B_VOICE_ID
 
-// Load all My Voices from ElevenLabs - used as the character voice pool
-async function loadMyVoices(): Promise<any[]> {
-  try {
-    const res = await fetch('https://api.elevenlabs.io/v1/voices', { headers: { 'xi-api-key': EL_API_KEY } })
-    if (!res.ok) return []
-    const data = await res.json()
-    // Filter to only usable character voices - exclude narrators, Belle B, ET voices, generated voices
-    return (data.voices || []).filter((v: any) => {
-      if (isBelleBVoiceId(v.voice_id)) return false
-      if (v.labels?.language && v.labels.language !== 'en') return false
-      if (v.category === 'generated') return false
-      if (NARRATOR_VOICE_NAMES.includes(v.name)) return false
-      return true
-    })
-  } catch(e) {
-    console.warn('Failed to load My Voices:', e)
-    return []
+type CharacterVoiceRow = {
+  voice_id: string
+  name: string | null
+  category: string | null
+  gender: string | null
+  age: string | null
+  accent: string | null
+  regional_tags: string[] | null
+  use_case: string | null
+  descriptive: string | null
+  last_used_at: string | null
+  rotation_count: number | null
+}
+
+function normalizeCharacterAssignmentName(name: string) {
+  return String(name || '').trim().replace(/\s+/g, ' ').toUpperCase()
+}
+
+function characterVoiceLabels(voice: CharacterVoiceRow) {
+  return {
+    gender: voice.gender || '',
+    age: voice.age || '',
+    accent: voice.accent || '',
+    use_case: voice.use_case || '',
+    descriptive: voice.descriptive || '',
   }
 }
 
+async function loadCharacterVoicePool(): Promise<CharacterVoiceRow[]> {
+  const { data, error } = await supabase
+    .from('character_voices')
+    .select('voice_id,name,category,gender,age,accent,regional_tags,use_case,descriptive,last_used_at,rotation_count')
+    .eq('is_active', true)
+    .eq('is_character_eligible', true)
+    .eq('needs_labeling', false)
+
+  if (error) throw new Error(`Failed to load character_voices: ${error.message}`)
+  return data || []
+}
+
+function detectRegionalTags(text: string) {
+  const d = text.toLowerCase()
+  const tags: string[] = []
+  if (/\b(southern|us southern)\b/.test(d)) tags.push('southern')
+  if (/\b(midwest|midwestern|us midwest)\b/.test(d)) tags.push('midwest')
+  if (/\bnew england\b/.test(d)) tags.push('new_england')
+  if (/\b(new york|brooklyn|bronx|queens)\b/.test(d)) tags.push('new_york')
+  if (/\bboston\b/.test(d)) tags.push('boston')
+  if (/\b(western|cowboy|cowgirl)\b/.test(d)) tags.push('western')
+  if (/\b(texas|texan)\b/.test(d)) tags.push('texas')
+  return Array.from(new Set(tags))
+}
+
 // Extract EL-compatible attributes from character description
-function parseCharacterMeta(description: string): { gender: string; age: string; accent: string; tones: string[] } {
+function parseCharacterMeta(description: string): { gender: string; age: string; accent: string; tones: string[]; regionalTags: string[] } {
   const d = description.toLowerCase()
   // Gender
   const gender = d.includes('female') || d.includes('woman') || d.includes('girl') ? 'female'
@@ -1680,10 +1713,10 @@ function parseCharacterMeta(description: string): { gender: string; age: string;
   for (const [trait, label] of Object.entries(toneMap)) {
     if (d.includes(trait) && !tones.includes(label)) tones.push(label)
   }
-  return { gender, age, accent, tones }
+  return { gender, age, accent, tones, regionalTags: detectRegionalTags(description) }
 }
 
-function inferFallbackCharacterMeta(speakerName: string): { gender: string; age: string; accent: string; tones: string[] } {
+function inferFallbackCharacterMeta(speakerName: string): { gender: string; age: string; accent: string; tones: string[]; regionalTags: string[] } {
   const meta = parseCharacterMeta(speakerName)
   const cleaned = speakerName
     .toLowerCase()
@@ -1700,8 +1733,8 @@ function inferFallbackCharacterMeta(speakerName: string): { gender: string; age:
 }
 
 // Score a voice candidate against character requirements
-function scoreVoice(voice: any, meta: { gender: string; age: string; accent: string; tones: string[] }): number {
-  const labels = voice.labels || {}
+function scoreVoice(voice: CharacterVoiceRow, meta: { gender: string; age: string; accent: string; tones: string[]; regionalTags: string[] }): number {
+  const labels = characterVoiceLabels(voice)
   let score = 0
   // Gender - hard requirement, massive penalty for mismatch
   if (meta.gender && labels.gender) {
@@ -1730,10 +1763,15 @@ function scoreVoice(voice: any, meta: { gender: string; age: string; accent: str
   for (const tone of meta.tones) {
     if (desc.includes(tone.toLowerCase())) score += 10
   }
-  // Prefer narrative_story use case
+  const regionalTags = voice.regional_tags || []
+  for (const tag of meta.regionalTags || []) {
+    if (regionalTags.includes(tag)) score += 25
+  }
+  // Prefer character/conversational use cases over narrator-style voices
   const useCase = (labels.use_case || '').toLowerCase()
-  if (useCase.includes('narrative') || useCase.includes('story')) score += 8
-  else if (useCase.includes('character')) score += 5
+  if (useCase.includes('character')) score += 8
+  else if (useCase.includes('conversational')) score += 5
+  else if (useCase.includes('entertainment')) score += 4
   return score
 }
 
@@ -1760,52 +1798,166 @@ type ReusedVoiceInventory = {
 }
 
 function scoreCharacterVoiceCandidates(
-  meta: { gender: string; age: string; accent: string; tones: string[] },
-  myVoices: any[],
+  meta: { gender: string; age: string; accent: string; tones: string[]; regionalTags: string[] },
+  characterVoices: CharacterVoiceRow[],
   blockedVoiceIds: Set<string>
 ) {
-  return myVoices
+  return characterVoices
     .filter(v => !blockedVoiceIds.has(v.voice_id) && !isBelleBVoiceId(v.voice_id))
     .map(v => ({ voice: v, score: scoreVoice(v, meta) }))
     .filter(x => x.score > -999)
     .sort((a, b) => b.score - a.score)
 }
 
-// Find best matching voice from My Voices pool
-function findVoiceForCharacter(
+function voiceMatchesRegionalTags(voice: CharacterVoiceRow, regionalTags: string[]) {
+  if (regionalTags.length === 0) return false
+  const voiceTags = voice.regional_tags || []
+  return regionalTags.some(tag => voiceTags.includes(tag))
+}
+
+function pickRotatedCandidate(
+  scored: Array<{ voice: CharacterVoiceRow; score: number }>,
+  meta: { regionalTags: string[] }
+) {
+  const topScore = scored[0]?.score ?? -999
+  const baseBand = scored.filter(item => item.score >= topScore - 25)
+  const regionalMatches = meta.regionalTags.length > 0
+    ? baseBand.filter(item => voiceMatchesRegionalTags(item.voice, meta.regionalTags))
+    : []
+  const band = regionalMatches.length > 0 ? regionalMatches : baseBand
+
+  band.sort((a, b) => {
+    if (!a.voice.last_used_at && b.voice.last_used_at) return -1
+    if (a.voice.last_used_at && !b.voice.last_used_at) return 1
+    if (a.voice.last_used_at && b.voice.last_used_at) {
+      const diff = new Date(a.voice.last_used_at).getTime() - new Date(b.voice.last_used_at).getTime()
+      if (diff !== 0) return diff
+    }
+    return Math.random() - 0.5
+  })
+
+  return band[0]
+}
+
+async function markCharacterVoiceUsed(voiceId: string) {
+  const now = new Date().toISOString()
+  const { data, error: fetchError } = await supabase
+    .from('character_voices')
+    .select('rotation_count')
+    .eq('voice_id', voiceId)
+    .maybeSingle()
+
+  if (fetchError) {
+    console.warn(`Failed to read character voice rotation_count for ${voiceId}: ${fetchError.message}`)
+    return
+  }
+  if (!data) return
+
+  const rotationCount = Number(data.rotation_count || 0)
+  const { error: updateError } = await supabase
+    .from('character_voices')
+    .update({ last_used_at: now, rotation_count: rotationCount + 1, updated_at: now })
+    .eq('voice_id', voiceId)
+
+  if (updateError) console.warn(`Failed to mark character voice used for ${voiceId}: ${updateError.message}`)
+}
+
+async function persistCharacterVoiceAssignment(params: {
+  storyId: string
+  seriesId: string | null
+  characterName: string
+  voiceId: string
+  voiceName?: string | null
+}) {
+  const { error } = await supabase.from('character_voice_assignments').insert({
+    story_id: params.storyId,
+    series_id: params.seriesId,
+    character_name: params.characterName,
+    character_name_normalized: normalizeCharacterAssignmentName(params.characterName),
+    voice_id: params.voiceId,
+    voice_name: params.voiceName || null,
+    assigned_at: new Date().toISOString(),
+  })
+  if (error) console.warn(`Failed to persist character voice assignment for ${params.characterName}: ${error.message}`)
+}
+
+async function findSeriesCharacterAssignment(seriesId: string | null, characterName: string) {
+  if (!seriesId) return null
+  const { data, error } = await supabase
+    .from('character_voice_assignments')
+    .select('voice_id,voice_name')
+    .eq('series_id', seriesId)
+    .eq('character_name_normalized', normalizeCharacterAssignmentName(characterName))
+    .order('assigned_at', { ascending: true })
+    .limit(1)
+    .maybeSingle()
+
+  if (error) throw new Error(`Failed to load character continuity assignment: ${error.message}`)
+  return data
+}
+
+async function findVoiceForCharacter(
   characterName: string,
-  meta: { gender: string; age: string; accent: string; tones: string[] },
-  myVoices: any[],
+  meta: { gender: string; age: string; accent: string; tones: string[]; regionalTags: string[] },
+  characterVoices: CharacterVoiceRow[],
   usedVoiceIds: Set<string>,
-  narratorVoiceId: string
-): CharacterVoiceSelection {
+  narratorVoiceId: string,
+  context: { storyId: string; seriesId: string | null }
+): Promise<CharacterVoiceSelection> {
+  const priorAssignment = await findSeriesCharacterAssignment(context.seriesId, characterName)
+  if (priorAssignment?.voice_id) {
+    await markCharacterVoiceUsed(priorAssignment.voice_id)
+    await persistCharacterVoiceAssignment({
+      storyId: context.storyId,
+      seriesId: context.seriesId,
+      characterName,
+      voiceId: priorAssignment.voice_id,
+      voiceName: priorAssignment.voice_name,
+    })
+    console.log(`  ${characterName}: reused series voice → ${priorAssignment.voice_name || priorAssignment.voice_id}`)
+    return { voiceId: priorAssignment.voice_id, reusedVoice: true, voiceName: priorAssignment.voice_name || undefined }
+  }
+
   const blockedVoiceIds = new Set<string>([...usedVoiceIds, narratorVoiceId, ...RESERVED_BELLE_B_VOICE_IDS])
-  // Score all candidates
-  const scored = scoreCharacterVoiceCandidates(meta, myVoices, blockedVoiceIds)
+  const scored = scoreCharacterVoiceCandidates(meta, characterVoices, blockedVoiceIds)
 
   if (scored.length === 0) {
-    // Gender mismatch fallback - try any voice of right gender
-    const genderFallback = myVoices.find(v =>
+    const genderFallback = characterVoices.find(v =>
       !usedVoiceIds.has(v.voice_id) &&
       v.voice_id !== narratorVoiceId &&
       !isBelleBVoiceId(v.voice_id) &&
-      (v.labels?.gender?.toLowerCase() === meta.gender.toLowerCase())
+      (!meta.gender || characterVoiceLabels(v).gender.toLowerCase() === meta.gender.toLowerCase())
     )
     if (genderFallback) {
       console.log(`  ${characterName}: gender fallback → ${genderFallback.name}`)
-      return { voiceId: genderFallback.voice_id, reusedVoice: false, voiceName: genderFallback.name }
+      await markCharacterVoiceUsed(genderFallback.voice_id)
+      await persistCharacterVoiceAssignment({
+        storyId: context.storyId,
+        seriesId: context.seriesId,
+        characterName,
+        voiceId: genderFallback.voice_id,
+        voiceName: genderFallback.name,
+      })
+      return { voiceId: genderFallback.voice_id, reusedVoice: false, voiceName: genderFallback.name || undefined }
     }
 
-    // Controlled reuse fallback: reuse a safe existing character voice, never narrator or Belle.
     const reuseBlockedVoiceIds = new Set<string>([narratorVoiceId, ...RESERVED_BELLE_B_VOICE_IDS])
-    const reusableScored = scoreCharacterVoiceCandidates(meta, myVoices, reuseBlockedVoiceIds)
+    const reusableScored = scoreCharacterVoiceCandidates(meta, characterVoices, reuseBlockedVoiceIds)
     if (reusableScored.length > 0) {
-      const reusePick = reusableScored[0]
+      const reusePick = pickRotatedCandidate(reusableScored, meta)
+      await markCharacterVoiceUsed(reusePick.voice.voice_id)
+      await persistCharacterVoiceAssignment({
+        storyId: context.storyId,
+        seriesId: context.seriesId,
+        characterName,
+        voiceId: reusePick.voice.voice_id,
+        voiceName: reusePick.voice.name,
+      })
       console.log(`  ${characterName}: ${reusePick.voice.name} (score:${reusePick.score}, reusedVoice:true)`)
       return {
         voiceId: reusePick.voice.voice_id,
         reusedVoice: true,
-        voiceName: reusePick.voice.name,
+        voiceName: reusePick.voice.name || undefined,
         score: reusePick.score,
       }
     }
@@ -1814,13 +1966,22 @@ function findVoiceForCharacter(
     throw new Error(`No safe character voice available for ${characterName}; narrator and Belle voices cannot be reused.`)
   }
 
-  const pick = scored[0].voice
-  console.log(`  ${characterName}: ${pick.name} (score:${scored[0].score}, ${pick.labels?.gender}, ${pick.labels?.age}, ${pick.labels?.accent}, ${pick.labels?.descriptive})`)
+  const rotatedPick = pickRotatedCandidate(scored, meta)
+  const pick = rotatedPick.voice
+  await markCharacterVoiceUsed(pick.voice_id)
+  await persistCharacterVoiceAssignment({
+    storyId: context.storyId,
+    seriesId: context.seriesId,
+    characterName,
+    voiceId: pick.voice_id,
+    voiceName: pick.name,
+  })
+  console.log(`  ${characterName}: ${pick.name} (score:${rotatedPick.score}, ${pick.gender}, ${pick.age}, ${pick.accent}, ${pick.descriptive})`)
   return {
     voiceId: pick.voice_id,
     reusedVoice: false,
-    voiceName: pick.name,
-    score: scored[0].score,
+    voiceName: pick.name || undefined,
+    score: rotatedPick.score,
   }
 }
 
@@ -3260,11 +3421,11 @@ export async function POST(req: NextRequest) {
         }, { status: 422 })
       }
     }
-    // Load My Voices pool once - used for all character assignments
-    const myVoices = await loadMyVoices()
-    console.log(`  My Voices pool: ${myVoices.length} voices`)
+    const characterVoicePool = await loadCharacterVoicePool()
+    console.log(`  Character voice pool: ${characterVoicePool.length} voices`)
+    const characterVoiceContext = { storyId, seriesId: (storyRow as any)?.series_id || null }
     const usedVoiceIds = new Set<string>([resolvedNarratorVoiceId, ...RESERVED_BELLE_B_VOICE_IDS])
-    // Build voice map using local My Voices scoring
+    // Build voice map using character_voices scoring + rotation
     const voiceMap: Record<string, string> = {}
     const warnings: string[] = []
     const reusedVoices: ReusedVoiceInventory[] = []
@@ -3282,6 +3443,14 @@ export async function POST(req: NextRequest) {
         voiceMap[key] = manualVoiceId
         assignCharacterVoice(voiceMap, char.name, voiceMap[key])
         usedVoiceIds.add(voiceMap[key])
+        await markCharacterVoiceUsed(manualVoiceId)
+        await persistCharacterVoiceAssignment({
+          storyId,
+          seriesId: characterVoiceContext.seriesId,
+          characterName: char.name,
+          voiceId: manualVoiceId,
+          voiceName: null,
+        })
         continue
       }
       // Parse character description into EL-compatible attributes
@@ -3298,7 +3467,14 @@ export async function POST(req: NextRequest) {
         assignCharacterVoice(voiceMap, char.name, voiceMap[key])
       } else {
         // Find best matching voice from pool
-        const selection = findVoiceForCharacter(char.name, meta, myVoices, usedVoiceIds, resolvedNarratorVoiceId)
+        const selection = await findVoiceForCharacter(
+          char.name,
+          meta,
+          characterVoicePool,
+          usedVoiceIds,
+          resolvedNarratorVoiceId,
+          characterVoiceContext
+        )
         voiceMap[key] = selection.voiceId
         if (selection.reusedVoice) {
           warnings.push(`Reused character voice for ${char.name}: ${selection.voiceName || selection.voiceId}`)
@@ -3311,7 +3487,7 @@ export async function POST(req: NextRequest) {
           console.warn(`  ⚠️ ${char.name}: reusedVoice: true voice=${selection.voiceName || selection.voiceId}`)
         }
         assignCharacterVoice(voiceMap, char.name, voiceMap[key])
-        if (!selection.reusedVoice) usedVoiceIds.add(voiceMap[key])
+        usedVoiceIds.add(voiceMap[key])
       }
     }
     // Apply any remaining manual overrides
@@ -3324,6 +3500,14 @@ export async function POST(req: NextRequest) {
           }, { status: 422 })
         }
         assignCharacterVoice(voiceMap, name, id as string)
+        await markCharacterVoiceUsed(id as string)
+        await persistCharacterVoiceAssignment({
+          storyId,
+          seriesId: characterVoiceContext.seriesId,
+          characterName: name,
+          voiceId: id as string,
+          voiceName: null,
+        })
       }
     }
     console.log(`  Parsed character guide names:`, characterGuide.map(c => c.name).join(', ') || 'none')
@@ -3331,7 +3515,7 @@ export async function POST(req: NextRequest) {
     const characterSpeakers = Array.from(new Set(storyLines
       .filter(l => l.type === 'character' && !nonDialogueSpeakers.has(l.speaker.toUpperCase()))
       .map(l => l.speaker.toUpperCase())))
-    const autoCastMissingSpeakers = (speakers: string[]) => {
+    const autoCastMissingSpeakers = async (speakers: string[]) => {
       const unresolved: string[] = []
 
       for (const speaker of speakers) {
@@ -3339,9 +3523,16 @@ export async function POST(req: NextRequest) {
 
         try {
           const meta = inferFallbackCharacterMeta(speaker)
-          const selection = findVoiceForCharacter(speaker, meta, myVoices, usedVoiceIds, resolvedNarratorVoiceId)
+          const selection = await findVoiceForCharacter(
+            speaker,
+            meta,
+            characterVoicePool,
+            usedVoiceIds,
+            resolvedNarratorVoiceId,
+            characterVoiceContext
+          )
           assignCharacterVoice(voiceMap, speaker, selection.voiceId)
-          if (!selection.reusedVoice) usedVoiceIds.add(selection.voiceId)
+          usedVoiceIds.add(selection.voiceId)
           const warning = `Auto-assigned fallback voice for unmapped speaker ${speaker}`
           warnings.push(warning)
           console.warn(`  ⚠️ ${warning}: ${selection.voiceName || selection.voiceId}`)
@@ -3365,7 +3556,7 @@ export async function POST(req: NextRequest) {
     const missingVoiceMap = characterSpeakers.filter(speaker => !voiceMap[speaker])
     if (missingVoiceMap.length > 0) {
       console.warn(`  ⚠️ Missing character voice assignments; attempting fallback auto-cast: ${missingVoiceMap.join(', ')}`)
-      const stillMissingVoiceMap = autoCastMissingSpeakers(missingVoiceMap)
+      const stillMissingVoiceMap = await autoCastMissingSpeakers(missingVoiceMap)
       if (stillMissingVoiceMap.length > 0) {
         console.error(`  ❌ Missing character voice assignments: ${stillMissingVoiceMap.join(', ')}`)
         return NextResponse.json({
