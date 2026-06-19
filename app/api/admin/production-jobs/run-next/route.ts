@@ -48,6 +48,8 @@ const NEXT_STEP_AFTER_SERIES_MUSIC  = 'series_render_final_mix'
 const NEXT_STEP_AFTER_SERIES_RENDER = 'complete_story_package'
 const MAX_SERIES_DESCRIPTION_RETRIES = 3
 const MAX_SERIES_BELLE_RETRIES = 3
+const NARRATIVE_HOOK_FALLBACK_MODEL = 'claude-haiku-4-5'
+const NARRATIVE_HOOK_FALLBACK_TIMEOUT_MS = 8000
 const TITLE_MAX_CHARS = 28
 const DESCRIPTION_MAX_CHARS = 70
 const DESCRIPTION_PAST_TENSE_RE = /\b(vanished|was|were|had|found|discovered|left|moved|sealed|signed|forged|buried|hidden|lost)\b/i
@@ -797,10 +799,62 @@ function detectNarrativeHookCategory(text: string): NarrativeHookCategory | null
   return null
 }
 
-function hasConcreteNarrativeHook(text: string): boolean {
-  // ATL-PIPE-020: delegate to category-based detection.
-  // If any category matches, the hook is present regardless of specific word choice.
-  return detectNarrativeHookCategory(text) !== null
+async function hasConcreteNarrativeHook(text: string): Promise<boolean> {
+  // ATL-PIPE-020: category-based detection remains the cheap fast path.
+  const normalizedText = normalizeNarrativeHookText(text)
+  const regexCategory = detectNarrativeHookCategory(normalizedText)
+  if (regexCategory) return true
+  if (!normalizedText) return false
+
+  let timeoutHandle: ReturnType<typeof setTimeout> | null = null
+  try {
+    const response: any = await Promise.race([
+      anthropic.messages.create({
+        model: NARRATIVE_HOOK_FALLBACK_MODEL,
+        max_tokens: 4,
+        temperature: 0,
+        messages: [{
+          role: 'user',
+          content: `Given this intro line, does it contain a concrete narrative hook — a specific event, danger, secret, conflict, mystery, threat, or story mechanism that creates a reason to keep listening?
+
+Answer strictly "YES" or "NO" and nothing else.
+
+INTRO:
+${normalizedText}`,
+        }],
+      }),
+      new Promise((_, reject) => {
+        timeoutHandle = setTimeout(() => reject(new Error(`Narrative hook LLM fallback timed out after ${NARRATIVE_HOOK_FALLBACK_TIMEOUT_MS}ms`)), NARRATIVE_HOOK_FALLBACK_TIMEOUT_MS)
+      }),
+    ])
+    if (timeoutHandle) clearTimeout(timeoutHandle)
+    const raw = response.content
+      .map((c: any) => ('text' in c ? c.text : ''))
+      .join('')
+      .trim()
+    const llmSaysYes = /^yes\b/i.test(raw)
+
+    logAnthropicCall({
+      route: '/api/admin/production-jobs/run-next',
+      purpose: 'narrative-hook-llm-fallback',
+      model: NARRATIVE_HOOK_FALLBACK_MODEL,
+      inputTokens: response.usage?.input_tokens ?? 0,
+      outputTokens: response.usage?.output_tokens ?? 0,
+      metadata: {
+        regexCategory,
+        verdict: raw,
+        normalizedText,
+      },
+    }).catch(() => {})
+
+    return llmSaysYes
+  } catch (error) {
+    if (timeoutHandle) clearTimeout(timeoutHandle)
+    console.warn('[run-next] narrative hook LLM fallback failed; using regex result', {
+      error: error instanceof Error ? error.message : String(error),
+    })
+    return Boolean(regexCategory)
+  }
 }
 
 // ATL-PIPE-010: classify Belle issues into canonical StructuredErrorJsonKind.
@@ -909,7 +963,7 @@ function introNamesEpisodeNumber(text: string, n: number): boolean {
  * @param introText  Text extracted from BELLE B INTRO block
  * @param outroText  Text extracted from BELLE B OUTRO block
  */
-function validateIntroOutroPositionRules(
+async function validateIntroOutroPositionRules(
   story: {
     title?: string | null
     author?: string | null
@@ -950,7 +1004,7 @@ function validateIntroOutroPositionRules(
       issues.push('intro must include [LISTENER_NAME] placeholder')
     }
     // Concrete narrative hook (event, danger, secret, conflict, mystery, mechanism)
-    if (!hasConcreteNarrativeHook(intro)) {
+    if (!(await hasConcreteNarrativeHook(intro))) {
       issues.push('intro must include a concrete narrative hook (event, danger, secret, conflict, mystery, or story mechanism)')
       // TODO(llm): deeper "hook is genuinely personalized" judgment beyond [LISTENER_NAME]
       requireLlmJudgment = true
@@ -1429,7 +1483,7 @@ function validateGeneratedStandaloneNarrator(script: string, context: Standalone
   }
 }
 
-function validateBelleText(kind: 'intro' | 'outro', text: string, options: { standalone: boolean; title?: string | null; author?: string | null; narrator?: string | null }) {
+async function validateBelleText(kind: 'intro' | 'outro', text: string, options: { standalone: boolean; title?: string | null; author?: string | null; narrator?: string | null }) {
   const issues: string[] = []
   const lower = text.toLowerCase()
   const wordCount = countWords(text)
@@ -1448,7 +1502,7 @@ function validateBelleText(kind: 'intro' | 'outro', text: string, options: { sta
   if (options.standalone && title && !belleTextIncludes(text, title)) {
     issues.push(`standalone ${kind} must include the story title.`)
   }
-  if (options.standalone && kind === 'intro' && text && !hasConcreteNarrativeHook(text)) {
+  if (options.standalone && kind === 'intro' && text && !(await hasConcreteNarrativeHook(text))) {
     issues.push('standalone intro must include a concrete narrative hook such as an event, secret, danger, conflict, or mystery mechanism.')
   }
   if (options.standalone && kind === 'intro' && text && hasWeakAtmosphericHook(text) && !hasConcreteStoryMechanism(text)) {
@@ -3199,8 +3253,8 @@ async function validateStandaloneBelleAssets(job: ProductionJob) {
   const issues = [
     ...(introAssets.length > 0 ? [] : ['intro asset is missing.']),
     ...(outroAssets.length > 0 ? [] : ['outro asset is missing.']),
-    ...validateBelleText('intro', introText, { standalone, title: story.title, author: story.author, narrator: narratorFromScript }),
-    ...validateBelleText('outro', outroText, { standalone, title: story.title, author: story.author, narrator: narratorFromScript }),
+    ...(await validateBelleText('intro', introText, { standalone, title: story.title, author: story.author, narrator: narratorFromScript })),
+    ...(await validateBelleText('outro', outroText, { standalone, title: story.title, author: story.author, narrator: narratorFromScript })),
   ]
   const success = issues.length === 0
   const report = {
@@ -3313,8 +3367,8 @@ ${scriptTail(story.script, 2200)}`,
   // ATL-PIPE-012: narrator credit check included in validateBelleText
   const narratorForQuality = extractHeader(String(story.script || ''), 'NARRATOR').trim() || null
   const deterministicIssues = [
-    ...validateBelleText('intro', introText, { standalone, title: story.title, author: story.author, narrator: narratorForQuality }),
-    ...validateBelleText('outro', outroText, { standalone, title: story.title, author: story.author, narrator: narratorForQuality }),
+    ...(await validateBelleText('intro', introText, { standalone, title: story.title, author: story.author, narrator: narratorForQuality })),
+    ...(await validateBelleText('outro', outroText, { standalone, title: story.title, author: story.author, narrator: narratorForQuality })),
   ]
   const issues = Array.from(new Set([...deterministicIssues, ...modelIssues]))
   const suggestedFixes = Array.isArray(parsed.suggestedFixes) ? parsed.suggestedFixes.map(String).filter(Boolean) : []
@@ -3497,8 +3551,8 @@ ${scriptTail(story.script, 2200)}`,
 
   // ATL-PIPE-012: pass narratorForRepair so the post-repair check also validates narrator credit
   const deterministicIssues = [
-    ...(shouldRepairIntro ? validateBelleText('intro', repairedIntro, { standalone: true, title: story.title, author: story.author, narrator: narratorForRepair }) : []),
-    ...(shouldRepairOutro ? validateBelleText('outro', repairedOutro, { standalone: true, title: story.title, author: story.author, narrator: narratorForRepair }) : []),
+    ...(shouldRepairIntro ? await validateBelleText('intro', repairedIntro, { standalone: true, title: story.title, author: story.author, narrator: narratorForRepair }) : []),
+    ...(shouldRepairOutro ? await validateBelleText('outro', repairedOutro, { standalone: true, title: story.title, author: story.author, narrator: narratorForRepair }) : []),
   ]
   if (deterministicIssues.length > 0) {
     throw new Error(`Repaired Belle text failed deterministic checks: ${deterministicIssues.join('; ')}`)
@@ -4129,7 +4183,7 @@ async function runSeriesPackageCompletion(job: ProductionJob, origin: string) {
     if (epStory?.script) {
       const introText = extractBelleSection(epStory.script, 'intro')
       const outroText = extractBelleSection(epStory.script, 'outro')
-      const positionResult = validateIntroOutroPositionRules(epStory, introText, outroText)
+      const positionResult = await validateIntroOutroPositionRules(epStory, introText, outroText)
       if (!positionResult.passed) {
         const epLabel = `EP${episode.episodeNumber ?? episode.storyId}`
         const prefixedIssues = positionResult.issues.map(i => `${epLabel}: ${i}`)
@@ -4260,7 +4314,7 @@ async function verifyStandaloneReadyForReview(job: ProductionJob) {
   if (structuralOk && audioGateIssues.length === 0 && story.script) {
     const introText = extractBelleSection(story.script, 'intro')
     const outroText = extractBelleSection(story.script, 'outro')
-    const positionResult = validateIntroOutroPositionRules(story, introText, outroText)
+    const positionResult = await validateIntroOutroPositionRules(story, introText, outroText)
     if (!positionResult.passed) contentIssues.push(...positionResult.issues)
   }
 
@@ -8221,7 +8275,7 @@ export async function POST(req: NextRequest) {
               if (belleRetryTarget.repairIntro) repairedScript = replaceBelleSection(repairedScript, 'intro', repaired.introText)
               if (belleRetryTarget.repairOutro) repairedScript = replaceBelleSection(repairedScript, 'outro', repaired.outroText)
 
-              const validation = validateIntroOutroPositionRules(
+              const validation = await validateIntroOutroPositionRules(
                 { ...targetStory, script: repairedScript },
                 extractBelleSection(repairedScript, 'intro'),
                 extractBelleSection(repairedScript, 'outro')
