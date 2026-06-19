@@ -698,8 +698,19 @@ export type NarrativeHookCategory =
   | 'impossible_fact'
   | 'missing_person'
 
+function normalizeNarrativeHookText(text: string) {
+  return String(text || '')
+    .normalize('NFKC')
+    .replace(/[\u2018\u2019\u201A\u201B\u2032\u02BC]/g, "'")
+    .replace(/[\u201C\u201D\u201E\u201F\u2033]/g, '"')
+    .replace(/[\u2010-\u2015\u2212]/g, ' ')
+    .replace(/[\u200B-\u200D\uFEFF]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
 function detectNarrativeHookCategory(text: string): NarrativeHookCategory | null {
-  const raw = text.toLowerCase()
+  const raw = normalizeNarrativeHookText(text).toLowerCase()
   const normalized = raw
     .replace(/\bshouldn.?t\b/g, 'should not')
     .replace(/\bcan.?t\b/g, 'cannot')
