@@ -1630,6 +1630,14 @@ type CharacterVoiceRow = {
   rotation_count: number | null
 }
 
+type SeriesCharacterRosterRow = {
+  canonical_name: string
+  canonical_name_normalized: string
+  aliases: string[] | null
+  voice_id: string | null
+  voice_name: string | null
+}
+
 function normalizeCharacterAssignmentName(name: string) {
   return String(name || '').trim().replace(/\s+/g, ' ').toUpperCase()
 }
@@ -1911,25 +1919,121 @@ async function persistCharacterVoiceAssignmentOnce(params: {
     return { inserted: false, assignment: null }
   }
 
+  await updateSeriesRosterVoiceFromAssignment(params.seriesId, params.characterName, params.voiceId, params.voiceName)
+
   return {
     inserted: true,
     assignment: { voice_id: params.voiceId, voice_name: params.voiceName || null },
   }
 }
 
+async function findSeriesRosterCharacter(seriesId: string | null, characterName: string): Promise<SeriesCharacterRosterRow | null> {
+  if (!seriesId) return null
+  const normalized = normalizeCharacterAssignmentName(characterName)
+  const { data, error } = await supabase
+    .from('series_character_roster')
+    .select('canonical_name,canonical_name_normalized,aliases,voice_id,voice_name')
+    .eq('series_id', seriesId)
+    .eq('is_locked', true)
+
+  if (error) throw new Error(`Failed to load series character roster: ${error.message}`)
+  const roster = (data || []) as SeriesCharacterRosterRow[]
+  return roster.find(row => {
+    const canonical = normalizeCharacterAssignmentName(row.canonical_name_normalized || row.canonical_name)
+    const aliases = Array.isArray(row.aliases) ? row.aliases.map(alias => normalizeCharacterAssignmentName(alias)) : []
+    return canonical === normalized || aliases.includes(normalized)
+  }) || null
+}
+
+async function appendSeriesCharacterAlias(seriesId: string | null, canonicalNameNormalized: string, aliasName: string) {
+  if (!seriesId) return
+  const normalizedAlias = normalizeCharacterAssignmentName(aliasName)
+  if (!normalizedAlias || normalizedAlias === normalizeCharacterAssignmentName(canonicalNameNormalized)) return
+
+  const { data, error } = await supabase
+    .from('series_character_roster')
+    .select('aliases')
+    .eq('series_id', seriesId)
+    .eq('canonical_name_normalized', canonicalNameNormalized)
+    .maybeSingle()
+
+  if (error || !data) {
+    if (error) console.warn(`Failed to load roster aliases for ${aliasName}: ${error.message}`)
+    return
+  }
+
+  const aliases = Array.isArray(data.aliases) ? data.aliases.map(alias => normalizeCharacterAssignmentName(alias)) : []
+  if (aliases.includes(normalizedAlias)) return
+
+  const { error: updateError } = await supabase
+    .from('series_character_roster')
+    .update({ aliases: [...aliases, normalizedAlias], updated_at: new Date().toISOString() })
+    .eq('series_id', seriesId)
+    .eq('canonical_name_normalized', canonicalNameNormalized)
+
+  if (updateError) console.warn(`Failed to append roster alias ${normalizedAlias}: ${updateError.message}`)
+}
+
+async function updateSeriesRosterVoiceFromAssignment(seriesId: string | null, characterName: string, voiceId: string, voiceName?: string | null) {
+  const rosterMatch = await findSeriesRosterCharacter(seriesId, characterName)
+  if (!rosterMatch) return
+  await appendSeriesCharacterAlias(seriesId, rosterMatch.canonical_name_normalized, characterName)
+
+  const update: Record<string, any> = { updated_at: new Date().toISOString() }
+  if (!rosterMatch.voice_id) update.voice_id = voiceId
+  if (!rosterMatch.voice_name && voiceName) update.voice_name = voiceName
+  if (Object.keys(update).length === 1) return
+
+  const { error } = await supabase
+    .from('series_character_roster')
+    .update(update)
+    .eq('series_id', seriesId)
+    .eq('canonical_name_normalized', rosterMatch.canonical_name_normalized)
+
+  if (error) console.warn(`Failed to update roster voice for ${characterName}: ${error.message}`)
+}
+
 async function findSeriesCharacterAssignment(seriesId: string | null, characterName: string) {
   if (!seriesId) return null
+  const normalized = normalizeCharacterAssignmentName(characterName)
+  const rosterMatch = await findSeriesRosterCharacter(seriesId, characterName)
+  if (rosterMatch?.voice_id) {
+    await appendSeriesCharacterAlias(seriesId, rosterMatch.canonical_name_normalized, characterName)
+    return { voice_id: rosterMatch.voice_id, voice_name: rosterMatch.voice_name }
+  }
+
+  const canonicalName = rosterMatch?.canonical_name_normalized || normalized
   const { data, error } = await supabase
     .from('character_voice_assignments')
     .select('voice_id,voice_name')
     .eq('series_id', seriesId)
-    .eq('character_name_normalized', normalizeCharacterAssignmentName(characterName))
+    .eq('character_name_normalized', canonicalName)
     .order('assigned_at', { ascending: true })
     .limit(1)
     .maybeSingle()
 
   if (error) throw new Error(`Failed to load character continuity assignment: ${error.message}`)
-  return data
+  if (data?.voice_id) {
+    if (rosterMatch) {
+      await appendSeriesCharacterAlias(seriesId, rosterMatch.canonical_name_normalized, characterName)
+      await updateSeriesRosterVoiceFromAssignment(seriesId, rosterMatch.canonical_name, data.voice_id, data.voice_name)
+    }
+    return data
+  }
+
+  if (rosterMatch) return null
+
+  const { data: exactData, error: exactError } = await supabase
+    .from('character_voice_assignments')
+    .select('voice_id,voice_name')
+    .eq('series_id', seriesId)
+    .eq('character_name_normalized', normalized)
+    .order('assigned_at', { ascending: true })
+    .limit(1)
+    .maybeSingle()
+
+  if (exactError) throw new Error(`Failed to load character continuity assignment: ${exactError.message}`)
+  return exactData
 }
 
 async function findVoiceForCharacter(
@@ -1942,6 +2046,7 @@ async function findVoiceForCharacter(
 ): Promise<CharacterVoiceSelection> {
   const storyAssignment = await findStoryCharacterAssignment(context.storyId, characterName)
   if (storyAssignment?.voice_id) {
+    await updateSeriesRosterVoiceFromAssignment(context.seriesId, characterName, storyAssignment.voice_id, storyAssignment.voice_name)
     console.log(`  ${characterName}: reused story voice → ${storyAssignment.voice_name || storyAssignment.voice_id}`)
     return { voiceId: storyAssignment.voice_id, reusedVoice: true, voiceName: storyAssignment.voice_name || undefined }
   }

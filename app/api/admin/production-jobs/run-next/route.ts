@@ -2319,6 +2319,129 @@ function buildContinuityBundle(prior: any[]) {
   })
 }
 
+
+function normalizeSeriesCharacterName(name: string) {
+  return String(name || '').trim().replace(/\s+/g, ' ').toUpperCase()
+}
+
+function detectSeriesCharacterRegionalTags(text: string) {
+  const d = String(text || '').toLowerCase()
+  const tags: string[] = []
+  if (/\b(southern|us southern)\b/.test(d)) tags.push('southern')
+  if (/\b(midwest|midwestern|us midwest)\b/.test(d)) tags.push('midwest')
+  if (/\bnew england\b/.test(d)) tags.push('new_england')
+  if (/\b(new york|brooklyn|bronx|queens)\b/.test(d)) tags.push('new_york')
+  if (/\bboston\b/.test(d)) tags.push('boston')
+  if (/\b(western|cowboy|cowgirl)\b/.test(d)) tags.push('western')
+  if (/\b(texas|texan)\b/.test(d)) tags.push('texas')
+  return Array.from(new Set(tags))
+}
+
+function parseSeriesCharacterGuide(script: string) {
+  const chars: Array<{ name: string; description: string; gender: string; age: string; accent: string; regional_tags: string[] }> = []
+  const guideMatch = String(script || '').match(/CHARACTER GUIDE\s*\n---\s*\n([\s\S]*?)(?:\n---|\[START AUDIO DRAMA SCRIPT\])/i)
+  if (!guideMatch) return chars
+  const guideLines = guideMatch[1].split('\n').map(line => line.trim()).filter(Boolean)
+  for (const line of guideLines) {
+    const nameMatch = line.match(/^([A-Za-zÀ-ÖØ-öø-ÿ][A-Za-zÀ-ÖØ-öø-ÿ\s'.()/]+?)\s*(?:[—–-]|:)/)
+    if (!nameMatch) continue
+    const name = nameMatch[1].trim()
+    const detail = line.slice(nameMatch[0].length).trim()
+    const parts = detail.split(',').map(part => part.trim()).filter(Boolean)
+    const lower = line.toLowerCase()
+    const gender = lower.includes('female') || lower.includes('woman') || lower.includes('girl')
+      ? 'female'
+      : lower.includes('male') || lower.includes('man') || lower.includes('boy')
+        ? 'male'
+        : ''
+    const genderIndex = parts.findIndex(part => /\b(female|woman|girl|male|man|boy)\b/i.test(part))
+    const age = parts.find((part, index) => index !== genderIndex && /\b(young|old|elderly|teen|child|kid|\d{1,2}s?|early|mid|late)\b/i.test(part)) || ''
+    const accent = parts.find(part => /\b(american|southern|british|english|irish|scottish|australian|canadian|boston|midwest|new england|new york|western|texas|texan)\b/i.test(part)) || ''
+    chars.push({
+      name,
+      description: line,
+      gender,
+      age,
+      accent,
+      regional_tags: detectSeriesCharacterRegionalTags(line),
+    })
+  }
+  return chars
+}
+
+async function loadSeriesCharacterRoster(seriesId: string) {
+  const { data, error } = await supabase
+    .from('series_character_roster')
+    .select('canonical_name,canonical_name_normalized,aliases,description,gender,age,accent,regional_tags,voice_id,voice_name,first_appeared_episode,is_locked')
+    .eq('series_id', seriesId)
+    .eq('is_locked', true)
+    .order('first_appeared_episode', { ascending: true })
+    .order('canonical_name', { ascending: true })
+
+  if (error) throw new Error(`Failed to load series character roster: ${error.message}`)
+  return data || []
+}
+
+function buildSeriesCharacterRosterPromptBlock(roster: any[]) {
+  if (!Array.isArray(roster) || roster.length === 0) {
+    return `LOCKED SERIES CHARACTER ROSTER — NONE YET
+This is the first episode or no recurring characters have been established yet. Any speaking character you introduce in this episode may become locked for later episodes.`
+  }
+
+  return `LOCKED SERIES CHARACTER ROSTER — NON-NEGOTIABLE
+These characters are already established in this series. This roster overrides the bible, episode brief, and any tempting reinvention.
+
+HARD CHARACTER CONTINUITY RULES:
+- If any roster character appears again, the CHARACTER GUIDE entry MUST use canonical_name EXACTLY.
+- If any roster character speaks, the script speaker label MUST use canonical_name EXACTLY.
+- Do NOT rename, re-age, re-accent, merge, split, or reinterpret roster characters.
+- Do NOT replace a roster character with a new name that serves the same story role.
+- Keep gender, age, accent, and description consistent with the locked roster.
+- New characters are allowed only when they are genuinely new people, not renamed versions of roster characters.
+
+LOCKED ROSTER:
+${JSON.stringify(roster.map((character: any) => ({
+    canonical_name: character.canonical_name,
+    aliases: Array.isArray(character.aliases) ? character.aliases : [],
+    gender: character.gender || '',
+    age: character.age || '',
+    accent: character.accent || '',
+    regional_tags: character.regional_tags || [],
+    description: character.description || '',
+  })), null, 2)}`
+}
+
+async function upsertSeriesCharacterRosterFromEpisode(episode: any) {
+  const seriesId = episode?.series_id
+  const script = episode?.script
+  if (!seriesId || !script) return
+  const characters = parseSeriesCharacterGuide(String(script))
+  if (characters.length === 0) return
+  const number = episodeNumber(episode, 1)
+  const now = nowIso()
+  const rows = characters.map(character => ({
+    series_id: String(seriesId),
+    canonical_name: character.name,
+    canonical_name_normalized: normalizeSeriesCharacterName(character.name),
+    aliases: [],
+    description: character.description,
+    gender: character.gender || null,
+    age: character.age || null,
+    accent: character.accent || null,
+    regional_tags: character.regional_tags,
+    first_appeared_episode: number,
+    established_from_story_id: episode.id,
+    is_locked: true,
+    updated_at: now,
+  }))
+
+  const { error } = await supabase
+    .from('series_character_roster')
+    .upsert(rows, { onConflict: 'series_id,canonical_name_normalized', ignoreDuplicates: true })
+
+  if (error) throw new Error(`Failed to establish series character roster: ${error.message}`)
+}
+
 async function loadRecentStoryTexts(seriesId?: string) {
   let query = supabase
     .from('stories')
@@ -4339,7 +4462,7 @@ async function verifyStandaloneReadyForReview(job: ProductionJob) {
   }
 }
 
-function buildSeriesEpisodePrompt(series: any, episode: any, allEpisodes: any[], continuityBundle: any[], namePaletteBlock: string, authorVoiceBlock: string, assignedNarratorName: string) {
+function buildSeriesEpisodePrompt(series: any, episode: any, allEpisodes: any[], continuityBundle: any[], namePaletteBlock: string, authorVoiceBlock: string, assignedNarratorName: string, seriesCharacterRosterBlock: string) {
   const brief = episode.brief_json || {}
   const target = runtimeTarget(brief.runtime || '')
   const currentEpisodeNumber = episodeNumber(episode, 1)
@@ -4378,6 +4501,8 @@ ${authorVoiceBlock}
 ASSIGNED NARRATOR
 NARRATOR: ${assignedNarratorName}
 Use this exact assigned narrator name. Do NOT invent or change it. Do NOT use a story character as narrator unless NARRATOR_IS_CHARACTER is true.
+
+${seriesCharacterRosterBlock}
 
 ⭐ MANDATORY FIRST STEP: STORY RESOLUTION MAP ⭐
 
@@ -4739,7 +4864,9 @@ async function generateOneSeriesEpisodeScript(job: ProductionJob, model: string)
   })
   const assignedNarratorName = cleanNarratorName(targetEpisode.narrator_voice_name || brief.narrator)
   if (!assignedNarratorName) throw new Error(`Series episode ${targetEpisodeNumber} is missing assigned narrator`)
-  const prompt = buildSeriesEpisodePrompt(series, targetEpisode, episodes, continuityBundle, namePaletteBlock, authorVoiceBlock, assignedNarratorName)
+  const seriesCharacterRoster = await loadSeriesCharacterRoster(String(seriesId))
+  const seriesCharacterRosterBlock = buildSeriesCharacterRosterPromptBlock(seriesCharacterRoster)
+  const prompt = buildSeriesEpisodePrompt(series, targetEpisode, episodes, continuityBundle, namePaletteBlock, authorVoiceBlock, assignedNarratorName, seriesCharacterRosterBlock)
 
   const response = await anthropic.messages.create({
     model,
@@ -4906,6 +5033,7 @@ Do not send to production. Fix the following before resubmitting:
   }
 
   if (episode.status === 'validator_passed' || episode.validator_result === 'PASS') {
+    await upsertSeriesCharacterRosterFromEpisode(episode)
     return {
       passed: true,
       skipped: true,
@@ -4991,6 +5119,10 @@ ${script}`,
 
   if (updateError || !updated) {
     throw new Error(updateError?.message || `Failed to save episode ${number} validator result`)
+  }
+
+  if (passed) {
+    await upsertSeriesCharacterRosterFromEpisode({ ...episode, ...updated, script })
   }
 
   logAnthropicCall({
