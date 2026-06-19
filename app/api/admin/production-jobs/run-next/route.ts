@@ -2084,6 +2084,9 @@ async function readJsonOrDiagnostic(response: Response, endpoint: string) {
 async function failJob(job: ProductionJob, error: unknown) {
   const message = error instanceof Error ? error.message : String(error)
   const logs = appendLog(job, 'Step failed', { error: message })
+  const structuredErrorDetail = error && typeof error === 'object' && 'structuredErrorDetail' in error
+    ? (error as { structuredErrorDetail?: unknown }).structuredErrorDetail
+    : undefined
   
   // Build structured error_json to ensure classification is always possible
   const errorJson = buildStructuredError(
@@ -2094,6 +2097,7 @@ async function failJob(job: ProductionJob, error: unknown) {
       storyId: job.story_id,
       seriesId: job.series_id,
       marc_required: true,  // Unknown failures always require Marc
+      ...(structuredErrorDetail !== undefined ? { detail: structuredErrorDetail } : {}),
     }
   )
   
@@ -8223,7 +8227,23 @@ export async function POST(req: NextRequest) {
                 extractBelleSection(repairedScript, 'outro')
               )
               if (!validation.passed) {
-                throw new Error(`Belle retry produced invalid copy: ${validation.issues.join('; ')}`)
+                const validationIntroText = extractBelleSection(repairedScript, 'intro')
+                const validationOutroText = extractBelleSection(repairedScript, 'outro')
+                const retryValidationError = new Error(`Belle retry produced invalid copy: ${validation.issues.join('; ')}`)
+                ;(retryValidationError as Error & { structuredErrorDetail?: unknown }).structuredErrorDetail = {
+                  kind: 'series_belle_retry_validation_failed',
+                  seriesId: result.seriesId || lockedJob.series_id,
+                  storyId: belleRetryTarget.storyId,
+                  episodeNumber: belleRetryTarget.episodeNumber,
+                  issues: validation.issues,
+                  repairedIntroText: belleRetryTarget.repairIntro ? repaired.introText : null,
+                  repairedOutroText: belleRetryTarget.repairOutro ? repaired.outroText : null,
+                  validationIntroText,
+                  validationOutroText,
+                  normalizedNarrativeHookIntro: normalizeNarrativeHookText(validationIntroText),
+                  detectedNarrativeHookCategory: detectNarrativeHookCategory(validationIntroText),
+                }
+                throw retryValidationError
               }
 
               const deletedBelleFiles = await deleteBelleAudioFiles(
