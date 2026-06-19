@@ -1642,6 +1642,38 @@ function normalizeCharacterAssignmentName(name: string) {
   return String(name || '').trim().replace(/\s+/g, ' ').toUpperCase()
 }
 
+function characterAssignmentNameTokens(name: string) {
+  return normalizeCharacterAssignmentName(name)
+    .split(' ')
+    .map(token => token.replace(/[^A-Z0-9'-]/g, '').trim())
+    .filter(Boolean)
+}
+
+function isCharacterAssignmentSubsetName(a: string, b: string) {
+  const aTokens = characterAssignmentNameTokens(a)
+  const bTokens = characterAssignmentNameTokens(b)
+  if (aTokens.length === 0 || bTokens.length === 0) return false
+  if (aTokens[0] !== bTokens[0]) return false
+  const shorter = aTokens.length <= bTokens.length ? aTokens : bTokens
+  const longer = aTokens.length <= bTokens.length ? bTokens : aTokens
+  return shorter.every(token => longer.includes(token))
+}
+
+function findRosterCharacterNameMatch(roster: SeriesCharacterRosterRow[], incomingName: string) {
+  const normalized = normalizeCharacterAssignmentName(incomingName)
+  const exact = roster.find(row => {
+    const canonical = normalizeCharacterAssignmentName(row.canonical_name_normalized || row.canonical_name)
+    const aliases = Array.isArray(row.aliases) ? row.aliases.map(alias => normalizeCharacterAssignmentName(alias)) : []
+    return canonical === normalized || aliases.includes(normalized)
+  })
+  if (exact) return { match: exact, kind: 'exact' as const, ambiguous: false }
+
+  const fuzzyMatches = roster.filter(row => isCharacterAssignmentSubsetName(incomingName, row.canonical_name || row.canonical_name_normalized || ''))
+  if (fuzzyMatches.length === 1) return { match: fuzzyMatches[0], kind: 'fuzzy' as const, ambiguous: false }
+  if (fuzzyMatches.length > 1) return { match: null, kind: 'fuzzy' as const, ambiguous: true }
+  return { match: null, kind: 'none' as const, ambiguous: false }
+}
+
 function characterVoiceLabels(voice: CharacterVoiceRow) {
   return {
     gender: voice.gender || '',
@@ -1938,11 +1970,11 @@ async function findSeriesRosterCharacter(seriesId: string | null, characterName:
 
   if (error) throw new Error(`Failed to load series character roster: ${error.message}`)
   const roster = (data || []) as SeriesCharacterRosterRow[]
-  return roster.find(row => {
-    const canonical = normalizeCharacterAssignmentName(row.canonical_name_normalized || row.canonical_name)
-    const aliases = Array.isArray(row.aliases) ? row.aliases.map(alias => normalizeCharacterAssignmentName(alias)) : []
-    return canonical === normalized || aliases.includes(normalized)
-  }) || null
+  const rosterMatch = findRosterCharacterNameMatch(roster, characterName)
+  if (rosterMatch.ambiguous) {
+    console.warn(`Ambiguous series roster match for ${characterName}; exact/alias match required`)
+  }
+  return rosterMatch.match || null
 }
 
 async function appendSeriesCharacterAlias(seriesId: string | null, canonicalNameNormalized: string, aliasName: string) {

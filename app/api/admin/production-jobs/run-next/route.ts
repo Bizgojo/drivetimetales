@@ -2324,6 +2324,66 @@ function normalizeSeriesCharacterName(name: string) {
   return String(name || '').trim().replace(/\s+/g, ' ').toUpperCase()
 }
 
+function seriesCharacterNameTokens(name: string) {
+  return normalizeSeriesCharacterName(name)
+    .split(' ')
+    .map(token => token.replace(/[^A-Z0-9'-]/g, '').trim())
+    .filter(Boolean)
+}
+
+function isSeriesCharacterSubsetName(a: string, b: string) {
+  const aTokens = seriesCharacterNameTokens(a)
+  const bTokens = seriesCharacterNameTokens(b)
+  if (aTokens.length === 0 || bTokens.length === 0) return false
+  if (aTokens[0] !== bTokens[0]) return false
+  const shorter = aTokens.length <= bTokens.length ? aTokens : bTokens
+  const longer = aTokens.length <= bTokens.length ? bTokens : aTokens
+  return shorter.every(token => longer.includes(token))
+}
+
+function findSeriesRosterNameMatch(roster: any[], incomingName: string) {
+  const normalized = normalizeSeriesCharacterName(incomingName)
+  const exact = roster.find((row: any) => {
+    const canonical = normalizeSeriesCharacterName(row.canonical_name_normalized || row.canonical_name)
+    const aliases = Array.isArray(row.aliases) ? row.aliases.map((alias: string) => normalizeSeriesCharacterName(alias)) : []
+    return canonical === normalized || aliases.includes(normalized)
+  })
+  if (exact) return { match: exact, kind: 'exact' as const, ambiguous: false }
+
+  const fuzzyMatches = roster.filter((row: any) => isSeriesCharacterSubsetName(incomingName, row.canonical_name || row.canonical_name_normalized || ''))
+  if (fuzzyMatches.length === 1) return { match: fuzzyMatches[0], kind: 'fuzzy' as const, ambiguous: false }
+  if (fuzzyMatches.length > 1) return { match: null, kind: 'fuzzy' as const, ambiguous: true }
+  return { match: null, kind: 'none' as const, ambiguous: false }
+}
+
+async function appendSeriesRosterAlias(seriesId: string, canonicalNameNormalized: string, aliasName: string) {
+  const normalizedAlias = normalizeSeriesCharacterName(aliasName)
+  if (!normalizedAlias || normalizedAlias === normalizeSeriesCharacterName(canonicalNameNormalized)) return
+
+  const { data, error } = await supabase
+    .from('series_character_roster')
+    .select('aliases')
+    .eq('series_id', seriesId)
+    .eq('canonical_name_normalized', canonicalNameNormalized)
+    .maybeSingle()
+
+  if (error || !data) {
+    if (error) console.warn(`Failed to load roster aliases for ${aliasName}: ${error.message}`)
+    return
+  }
+
+  const aliases = Array.isArray(data.aliases) ? data.aliases.map((alias: string) => normalizeSeriesCharacterName(alias)) : []
+  if (aliases.includes(normalizedAlias)) return
+
+  const { error: updateError } = await supabase
+    .from('series_character_roster')
+    .update({ aliases: [...aliases, normalizedAlias], updated_at: nowIso() })
+    .eq('series_id', seriesId)
+    .eq('canonical_name_normalized', canonicalNameNormalized)
+
+  if (updateError) console.warn(`Failed to append roster alias ${normalizedAlias}: ${updateError.message}`)
+}
+
 function detectSeriesCharacterRegionalTags(text: string) {
   const d = String(text || '').toLowerCase()
   const tags: string[] = []
@@ -2392,8 +2452,11 @@ This is the first episode or no recurring characters have been established yet. 
 These characters are already established in this series. This roster overrides the bible, episode brief, and any tempting reinvention.
 
 HARD CHARACTER CONTINUITY RULES:
+- Always use each character's FULL canonical_name exactly as shown below in BOTH the CHARACTER GUIDE and every speaker label.
+- NEVER shorten to first name only. Example: use "Cecily Morrow" exactly, not "Cecily".
 - If any roster character appears again, the CHARACTER GUIDE entry MUST use canonical_name EXACTLY.
 - If any roster character speaks, the script speaker label MUST use canonical_name EXACTLY.
+- The canonical_name shown below is the exact required form; do not invent abbreviations or alternate labels.
 - Do NOT rename, re-age, re-accent, merge, split, or reinterpret roster characters.
 - Do NOT replace a roster character with a new name that serves the same story role.
 - Keep gender, age, accent, and description consistent with the locked roster.
@@ -2419,21 +2482,42 @@ async function upsertSeriesCharacterRosterFromEpisode(episode: any) {
   if (characters.length === 0) return
   const number = episodeNumber(episode, 1)
   const now = nowIso()
-  const rows = characters.map(character => ({
-    series_id: String(seriesId),
-    canonical_name: character.name,
-    canonical_name_normalized: normalizeSeriesCharacterName(character.name),
-    aliases: [],
-    description: character.description,
-    gender: character.gender || null,
-    age: character.age || null,
-    accent: character.accent || null,
-    regional_tags: character.regional_tags,
-    first_appeared_episode: number,
-    established_from_story_id: episode.id,
-    is_locked: true,
-    updated_at: now,
-  }))
+  const roster = await loadSeriesCharacterRoster(String(seriesId))
+  const rows: any[] = []
+
+  for (const character of characters) {
+    const rosterMatch = findSeriesRosterNameMatch(roster, character.name)
+    if (rosterMatch.match) {
+      await appendSeriesRosterAlias(
+        String(seriesId),
+        rosterMatch.match.canonical_name_normalized || normalizeSeriesCharacterName(rosterMatch.match.canonical_name),
+        character.name
+      )
+      continue
+    }
+
+    if (rosterMatch.ambiguous) {
+      console.warn(`Ambiguous series roster match for ${character.name}; leaving as distinct roster character`)
+    }
+
+    rows.push({
+      series_id: String(seriesId),
+      canonical_name: character.name,
+      canonical_name_normalized: normalizeSeriesCharacterName(character.name),
+      aliases: [],
+      description: character.description,
+      gender: character.gender || null,
+      age: character.age || null,
+      accent: character.accent || null,
+      regional_tags: character.regional_tags,
+      first_appeared_episode: number,
+      established_from_story_id: episode.id,
+      is_locked: true,
+      updated_at: now,
+    })
+  }
+
+  if (rows.length === 0) return
 
   const { error } = await supabase
     .from('series_character_roster')
