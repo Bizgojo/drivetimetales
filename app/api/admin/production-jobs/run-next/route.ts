@@ -47,6 +47,7 @@ const NEXT_STEP_AFTER_SERIES_BELLE  = 'series_generate_music'
 const NEXT_STEP_AFTER_SERIES_MUSIC  = 'series_render_final_mix'
 const NEXT_STEP_AFTER_SERIES_RENDER = 'complete_story_package'
 const MAX_SERIES_DESCRIPTION_RETRIES = 3
+const MAX_SERIES_BELLE_RETRIES = 3
 const TITLE_MAX_CHARS = 28
 const DESCRIPTION_MAX_CHARS = 70
 const DESCRIPTION_PAST_TENSE_RE = /\b(vanished|was|were|had|found|discovered|left|moved|sealed|signed|forged|buried|hidden|lost)\b/i
@@ -1023,6 +1024,145 @@ function validateIntroOutroPositionRules(
     requireLlmJudgment,
     episodeType,
   }
+}
+
+function stripEpisodeIssuePrefix(issue: string) {
+  return String(issue || '').replace(/^EP\d+:\s*/i, '').trim()
+}
+
+function isBellePositionIssue(issue: string) {
+  const text = stripEpisodeIssuePrefix(issue).toLowerCase()
+  return (
+    /^intro text is missing/.test(text) ||
+    /^outro text is missing/.test(text) ||
+    /^intro must /.test(text) ||
+    /^standalone intro /.test(text) ||
+    /^series intro /.test(text) ||
+    /^standalone outro /.test(text) ||
+    /^non-finale outro /.test(text) ||
+    /^finale outro /.test(text)
+  )
+}
+
+function belleIssuesNeedIntroRepair(issues: string[]) {
+  return issues.some(issue => /\bintro\b/i.test(stripEpisodeIssuePrefix(issue)))
+}
+
+function belleIssuesNeedOutroRepair(issues: string[]) {
+  return issues.some(issue => /\boutro\b/i.test(stripEpisodeIssuePrefix(issue)))
+}
+
+function seriesBelleRetryTarget(result: any) {
+  const issues = Array.isArray(result?.contentIssues) ? result.contentIssues.map(String) : []
+  const storyId = String(result?.episode?.storyId || '').trim()
+  if (!storyId || issues.length === 0) return null
+  if (!issues.every(isBellePositionIssue)) return null
+  return {
+    storyId,
+    episodeNumber: result.episode?.episodeNumber ?? null,
+    title: String(result.episode?.title || '').trim(),
+    issues,
+    repairIntro: belleIssuesNeedIntroRepair(issues),
+    repairOutro: belleIssuesNeedOutroRepair(issues),
+  }
+}
+
+async function regenerateSeriesBelleFromFeedback(
+  story: any,
+  target: { issues: string[]; repairIntro: boolean; repairOutro: boolean },
+  nextEpisode: any | null,
+  model: string
+) {
+  const currentIntro = extractBelleSection(String(story.script || ''), 'intro')
+  const currentOutro = extractBelleSection(String(story.script || ''), 'outro')
+  const response = await anthropic.messages.create({
+    model,
+    max_tokens: 1000,
+    temperature: 0,
+    messages: [{
+      role: 'user',
+      content: `Repair only the Belle intro/outro copy for this already-produced series episode.
+
+Return JSON only:
+{
+  "introText": "replacement intro if requested",
+  "outroText": "replacement outro if requested"
+}
+
+Only repair requested fields. If a field is not requested, omit it.
+
+Hard rules:
+- Belle is warm, direct, and specific. No host/DJ/trailer voice.
+- No time-of-day reference.
+- No speaker labels.
+- Intro must include [LISTENER_NAME] exactly once at a natural pause.
+- Intro must name the exact series title, episode number, and episode title.
+- Intro must include a concrete narrative hook: event, danger, secret, conflict, mystery, or story mechanism.
+- Outro must never include [LISTENER_NAME].
+- Non-finale outro must tease or point toward the next episode.
+- Non-finale outro must not include author/narrator credits or "Endless Tales original".
+- Finale outro may close the series and include credits.
+- Keep each line one or two short sentences.
+
+VALIDATION ISSUES TO FIX:
+${target.issues.map(issue => `- ${stripEpisodeIssuePrefix(issue)}`).join('\n')}
+
+EPISODE CONTEXT:
+${JSON.stringify({
+  title: story.title,
+  seriesName: story.series_name,
+  episodeNumber: story.episode_number,
+  seriesTotalEpisodes: story.series_total_episodes,
+  isFinale: story.series_is_finale,
+  description: story.description,
+  currentIntro,
+  currentOutro,
+  nextEpisodeTitle: nextEpisode?.title || null,
+}, null, 2)}`,
+    }],
+  })
+
+  const raw = response.content
+    .map((c: any) => ('text' in c ? c.text : ''))
+    .join('')
+    .trim()
+  const parsed = parseJsonObject(raw)
+  const introText = target.repairIntro ? normalizeHeaderValue(String(parsed.introText || '')) : currentIntro
+  const outroText = target.repairOutro ? normalizeHeaderValue(String(parsed.outroText || '')) : currentOutro
+  if (target.repairIntro && !introText) throw new Error('Belle repair did not return introText')
+  if (target.repairOutro && !outroText) throw new Error('Belle repair did not return outroText')
+
+  logAnthropicCall({
+    route: '/api/admin/production-jobs/run-next',
+    purpose: 'series-belle-position-repair',
+    model,
+    inputTokens: response.usage?.input_tokens ?? 0,
+    outputTokens: response.usage?.output_tokens ?? 0,
+    storyId: story.id,
+    seriesId: story.series_id,
+  })
+
+  return { introText, outroText }
+}
+
+async function deleteBelleAudioFiles(storyId: string, repairIntro: boolean, repairOutro: boolean) {
+  const { data: files, error } = await supabase.storage.from('audio').list(`asc3/${storyId}`, { limit: 500 })
+  if (error) throw new Error(`Failed to list Belle audio files for invalidation: ${error.message}`)
+
+  const stalePaths = (files || [])
+    .map((file: any) => String(file.name || ''))
+    .filter(name =>
+      (repairIntro && (name === 'intro.mp3' || name.startsWith('intro_') || name.startsWith('intro_before_') || name.startsWith('intro_after_'))) ||
+      (repairOutro && (name === 'outro.mp3' || name.startsWith('outro_')))
+    )
+    .map(name => `asc3/${storyId}/${name}`)
+
+  if (stalePaths.length > 0) {
+    const { error: removeError } = await supabase.storage.from('audio').remove(stalePaths)
+    if (removeError) throw new Error(`Failed to delete stale Belle audio files: ${removeError.message}`)
+  }
+
+  return stalePaths
 }
 
 // ── Narrator assignment validator ─────────────────────────────────────────────
@@ -8015,6 +8155,190 @@ export async function POST(req: NextRequest) {
         })
 
         if (!result.success) {
+          const belleRetryTarget = seriesBelleRetryTarget(result)
+          if (belleRetryTarget) {
+            const persistedPackage = lockedJob.state_json?.seriesCompleteStoryPackage &&
+              typeof lockedJob.state_json.seriesCompleteStoryPackage === 'object'
+                ? lockedJob.state_json.seriesCompleteStoryPackage
+                : {}
+            const persistedBelleRetry = persistedPackage.belleRetry &&
+              typeof persistedPackage.belleRetry === 'object'
+                ? persistedPackage.belleRetry
+                : {}
+            const byEpisode = persistedBelleRetry.byEpisode &&
+              typeof persistedBelleRetry.byEpisode === 'object'
+                ? persistedBelleRetry.byEpisode
+                : {}
+            const currentRetry = Number(byEpisode[belleRetryTarget.storyId]?.count || 0)
+
+            if (currentRetry < MAX_SERIES_BELLE_RETRIES) {
+              const { data: targetStory, error: targetStoryError } = await supabase
+                .from('stories')
+                .select('id,title,description,script,series_id,series_name,episode_number,series_total_episodes,series_is_finale')
+                .eq('id', belleRetryTarget.storyId)
+                .single()
+              if (targetStoryError || !targetStory?.script) {
+                throw new Error(targetStoryError?.message || `Belle retry target story missing script: ${belleRetryTarget.storyId}`)
+              }
+
+              const seriesEpisodes = result.seriesId ? await loadSeriesEpisodes(String(result.seriesId)) : []
+              const nextEpisode = seriesEpisodes.find((episode: any) =>
+                episodeNumber(episode, 0) === Number(targetStory.episode_number || 0) + 1
+              ) || null
+
+              const repaired = await regenerateSeriesBelleFromFeedback(targetStory, belleRetryTarget, nextEpisode, model)
+              let repairedScript = String(targetStory.script || '')
+              if (belleRetryTarget.repairIntro) repairedScript = replaceBelleSection(repairedScript, 'intro', repaired.introText)
+              if (belleRetryTarget.repairOutro) repairedScript = replaceBelleSection(repairedScript, 'outro', repaired.outroText)
+
+              const validation = validateIntroOutroPositionRules(
+                { ...targetStory, script: repairedScript },
+                extractBelleSection(repairedScript, 'intro'),
+                extractBelleSection(repairedScript, 'outro')
+              )
+              if (!validation.passed) {
+                throw new Error(`Belle retry produced invalid copy: ${validation.issues.join('; ')}`)
+              }
+
+              const deletedBelleFiles = await deleteBelleAudioFiles(
+                belleRetryTarget.storyId,
+                belleRetryTarget.repairIntro,
+                belleRetryTarget.repairOutro
+              )
+
+              const storyUpdates: Record<string, unknown> = {
+                script: repairedScript,
+                audio_url: null,
+                story_audio_url: null,
+                outro_with_music_url: null,
+                ...(belleRetryTarget.repairIntro ? {
+                  intro_text: repaired.introText,
+                  intro_audio_url: null,
+                  intro_before_url: null,
+                  intro_after_url: null,
+                } : {}),
+                ...(belleRetryTarget.repairOutro ? {
+                  outro_text: repaired.outroText,
+                  outro_audio_url: null,
+                } : {}),
+              }
+
+              const { error: repairUpdateError } = await supabase
+                .from('stories')
+                .update(storyUpdates)
+                .eq('id', belleRetryTarget.storyId)
+              if (repairUpdateError) {
+                throw new Error(`Failed to save repaired Belle copy: ${repairUpdateError.message}`)
+              }
+
+              const retryCount = currentRetry + 1
+              const epKey = String(belleRetryTarget.episodeNumber || belleRetryTarget.storyId)
+              const nextBelleDoneByEp = {
+                ...(result.state.seriesBelleGeneration?.doneByEp || {}),
+                [epKey]: false,
+              }
+              const nextRenderDoneByEp = {
+                ...(result.state.seriesRenderFinalMix?.doneByEp || {}),
+                [epKey]: false,
+              }
+              const nextPackageDoneByEp = {
+                ...(result.state.seriesCompleteStoryPackage?.doneByEp || {}),
+                [epKey]: false,
+              }
+
+              const retryState = {
+                ...result.state,
+                seriesBelleGeneration: {
+                  ...(result.state.seriesBelleGeneration || {}),
+                  doneByEp: nextBelleDoneByEp,
+                  allDone: false,
+                  lastUpdatedAt: nowIso(),
+                },
+                seriesRenderFinalMix: {
+                  ...(result.state.seriesRenderFinalMix || {}),
+                  doneByEp: nextRenderDoneByEp,
+                  allDone: false,
+                  lastUpdatedAt: nowIso(),
+                },
+                seriesCompleteStoryPackage: {
+                  ...(result.state.seriesCompleteStoryPackage || {}),
+                  doneByEp: nextPackageDoneByEp,
+                  failedEpisode: null,
+                  failureReason: null,
+                  contentIssues: null,
+                  allDone: false,
+                  belleRetry: {
+                    ...persistedBelleRetry,
+                    byEpisode: {
+                      ...byEpisode,
+                      [belleRetryTarget.storyId]: {
+                        count: retryCount,
+                        max: MAX_SERIES_BELLE_RETRIES,
+                        episodeNumber: belleRetryTarget.episodeNumber,
+                        issues: belleRetryTarget.issues,
+                        repairedIntro: belleRetryTarget.repairIntro ? repaired.introText : null,
+                        repairedOutro: belleRetryTarget.repairOutro ? repaired.outroText : null,
+                        deletedBelleFiles,
+                        lastRetriedAt: nowIso(),
+                      },
+                    },
+                  },
+                  lastUpdatedAt: nowIso(),
+                },
+              }
+
+              const retryLogs = appendLog({ ...lockedJob, logs }, `Auto-retry ${retryCount}/${MAX_SERIES_BELLE_RETRIES}: repaired Belle copy for EP${belleRetryTarget.episodeNumber}`, {
+                seriesId: result.seriesId || lockedJob.series_id,
+                storyId: belleRetryTarget.storyId,
+                episodeNumber: belleRetryTarget.episodeNumber,
+                issues: belleRetryTarget.issues,
+                deletedBelleFiles,
+              })
+
+              const { data: retryJob, error: retryUpdateError } = await supabase
+                .from('production_jobs')
+                .update({
+                  status: 'queued',
+                  current_step: NEXT_STEP_AFTER_SERIES_VOICES,
+                  state_json: retryState,
+                  error_json: {
+                    step,
+                    action: 'series_belle_retry',
+                    retryCount,
+                    maxRetries: MAX_SERIES_BELLE_RETRIES,
+                    seriesId: result.seriesId || lockedJob.series_id,
+                    repairedStoryId: belleRetryTarget.storyId,
+                    repairedEpisodeNumber: belleRetryTarget.episodeNumber,
+                    issues: belleRetryTarget.issues,
+                    deletedBelleFiles,
+                    at: nowIso(),
+                  },
+                  logs: retryLogs,
+                  locked_at: null,
+                  locked_by: null,
+                })
+                .eq('id', lockedJob.id)
+                .select('*')
+                .single()
+              if (retryUpdateError) throw new Error(`Failed to queue series Belle retry: ${retryUpdateError.message}`)
+
+              return NextResponse.json({
+                success: true,
+                action: 'series_belle_retry',
+                jobId: retryJob.id,
+                currentStep: step,
+                nextStep: NEXT_STEP_AFTER_SERIES_VOICES,
+                retryCount,
+                maxRetries: MAX_SERIES_BELLE_RETRIES,
+                seriesId: result.seriesId || lockedJob.series_id,
+                repairedStoryId: belleRetryTarget.storyId,
+                repairedEpisodeNumber: belleRetryTarget.episodeNumber,
+                deletedBelleFiles,
+                logs: retryLogs,
+              })
+            }
+          }
+
           const { data: failedJob, error: updateError } = await supabase
             .from('production_jobs')
             .update({
