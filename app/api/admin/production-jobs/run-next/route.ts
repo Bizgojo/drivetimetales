@@ -1067,6 +1067,10 @@ function seriesBelleRetryTarget(result: any) {
   }
 }
 
+function normalizeBellePhysicalLine(text: string) {
+  return normalizeHeaderValue(String(text || '').replace(/[\r\n]+/g, ' '))
+}
+
 async function regenerateSeriesBelleFromFeedback(
   story: any,
   target: { issues: string[]; repairIntro: boolean; repairOutro: boolean },
@@ -1127,8 +1131,8 @@ ${JSON.stringify({
     .join('')
     .trim()
   const parsed = parseJsonObject(raw)
-  const introText = target.repairIntro ? normalizeHeaderValue(String(parsed.introText || '')) : currentIntro
-  const outroText = target.repairOutro ? normalizeHeaderValue(String(parsed.outroText || '')) : currentOutro
+  const introText = target.repairIntro ? normalizeBellePhysicalLine(String(parsed.introText || '')) : currentIntro
+  const outroText = target.repairOutro ? normalizeBellePhysicalLine(String(parsed.outroText || '')) : currentOutro
   if (target.repairIntro && !introText) throw new Error('Belle repair did not return introText')
   if (target.repairOutro && !outroText) throw new Error('Belle repair did not return outroText')
 
