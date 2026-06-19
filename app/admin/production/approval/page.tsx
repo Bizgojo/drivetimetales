@@ -2589,6 +2589,35 @@ export default function AdminStoriesPage() {
     }
   }
 
+  async function setSeriesWorkflowState(group: Extract<StoryGroup, { type: 'series' }>, state: WorkflowTab) {
+    const seriesId = String(group.stories[0]?.series_id || '').trim()
+    if (!seriesId) return
+    const label = WORKFLOW_LABELS[state] || state
+    if (!window.confirm(`Move all ${group.stories.length} episode(s) in "${group.title}" to ${label}?`)) return
+    try {
+      const res = await fetch('/api/admin/content-approval?action=set_series_workflow_state', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          seriesId,
+          state,
+          reason: `Series moved to ${label} from approval page`,
+        }),
+      })
+      const result = await res.json().catch(() => ({}))
+      if (!res.ok || !result.success) {
+        const details = Array.isArray(result.blocked)
+          ? '\n\n' + result.blocked.map((item: any) => `${item.title || item.storyId}: ${item.reason || (item.reasons || []).join(', ')}`).join('\n')
+          : ''
+        alert(`Series workflow update failed: ${result.error || `HTTP ${res.status}`}${details}`)
+        return
+      }
+      await fetchStories()
+    } catch (err) {
+      alert('Series workflow update failed: ' + String(err))
+    }
+  }
+
   const publishStory = async (story: Story) => {
     if (!window.confirm(`Publish "${story.title}" to the app?`)) return
     try {
@@ -2603,6 +2632,33 @@ export default function AdminStoriesPage() {
       const result = await res.json()
       if (!res.ok || !result.success) {
         alert('Publish failed: ' + (result.error || `HTTP ${res.status}`))
+        return
+      }
+      await fetchStories()
+    } catch (err) {
+      alert('Publish failed: ' + String(err))
+    }
+  }
+
+  const publishSeries = async (group: Extract<StoryGroup, { type: 'series' }>) => {
+    const seriesId = String(group.stories[0]?.series_id || '').trim()
+    if (!seriesId) return
+    if (!window.confirm(`Publish all ${group.stories.length} episode(s) in "${group.title}" to the app?`)) return
+    try {
+      const res = await fetch('/api/admin/publish-story', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          seriesId,
+          reason: 'Published series to app from approval page',
+        }),
+      })
+      const result = await res.json().catch(() => ({}))
+      if (!res.ok || !result.success) {
+        const details = Array.isArray(result.blocked)
+          ? '\n\n' + result.blocked.map((item: any) => `${item.title || item.storyId}: ${(item.reasons || []).join(', ')}`).join('\n')
+          : ''
+        alert(`Publish failed: ${result.error || `HTTP ${res.status}`}${details}`)
         return
       }
       await fetchStories()
@@ -2719,13 +2775,7 @@ export default function AdminStoriesPage() {
   }
 
   async function approveAllReady(group: Extract<StoryGroup, { type: 'series' }>) {
-    const ready = group.stories.filter((story) => effectiveWorkflowState(story) === 'ready_for_review')
-    if (ready.length === 0) return
-    if (!window.confirm(`Approve ${ready.length} ready episode(s) in "${group.title}" for later publishing?`)) return
-    for (const story of ready) {
-      await setWorkflowState(story, 'approved_ready')
-    }
-    await fetchStories()
+    await setSeriesWorkflowState(group, 'approved_ready')
   }
 
   function openStoryRepair(story: Story, prefill?: RepairChecklistValue) {
@@ -4059,7 +4109,16 @@ export default function AdminStoriesPage() {
                     ) : selectedPanelIsSimplified ? (
                       <>
                         {activePipelineTab === 'approved_ready' && (
-                          <button type="button" onClick={() => publishStory(selectedFirst)} style={actionButtonStyle('primary')}>Publish to App</button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (selectedIsSeries && selectedGroup.type === 'series') publishSeries(selectedGroup)
+                              else publishStory(selectedFirst)
+                            }}
+                            style={actionButtonStyle('primary')}
+                          >
+                            Publish to App
+                          </button>
                         )}
                         {activePipelineTab === 'published' && selectedIsSeries && selectedGroup.type === 'series' && (
                           <button type="button" onClick={() => requestMoveSeriesToReadyForReview(selectedGroup)} style={actionButtonStyle('danger')}>Unpublish Series</button>
@@ -4077,7 +4136,7 @@ export default function AdminStoriesPage() {
                       title={!selectedCanApprove ? selectedReviewGateMessage : undefined}
                       onClick={() => {
                         if (!selectedCanApprove) return
-                        if (selectedIsSeries && selectedGroup.type === 'series') approveAllReady(selectedGroup)
+                        if (selectedIsSeries && selectedGroup.type === 'series') setSeriesWorkflowState(selectedGroup, 'approved_ready')
                         else setWorkflowState(selectedFirst, 'approved_ready')
                       }}
                       style={{ ...actionButtonStyle(selectedCanApprove ? 'success' : 'muted'), minHeight: '38px', padding: '9px 13px', fontSize: '13px', opacity: selectedCanApprove ? 1 : 0.55, cursor: selectedCanApprove ? 'pointer' : 'not-allowed' }}

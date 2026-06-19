@@ -889,7 +889,7 @@ export async function POST(req: NextRequest) {
     if (unauthorized) return unauthorized
 
     const action = clean(req.nextUrl.searchParams.get('action'))
-    if (!["set_workflow_state","set_series_ready_for_review","set_production_standard","recover_from_cold_storage","set_incubator_tag","record_review_outcome"].includes(action)) {
+    if (!["set_workflow_state","set_series_workflow_state","set_series_ready_for_review","set_production_standard","recover_from_cold_storage","set_incubator_tag","record_review_outcome"].includes(action)) {
       return json({ success: false, error: 'Unsupported action' }, 400)
     }
 
@@ -987,6 +987,72 @@ export async function POST(req: NextRequest) {
         stories: data || [],
         fieldsUpdated: Object.keys(update),
       })
+    }
+
+    if (action === 'set_series_workflow_state') {
+      const seriesId = clean(body.seriesId || body.series_id)
+      const state = normalizeWorkflowState(body.state || body.targetState || body.target_state)
+      if (!seriesId) return json({ success: false, error: 'Missing seriesId' }, 400)
+      if (!state) return json({ success: false, error: 'Invalid workflow state' }, 400)
+
+      const { data: seriesRows, error: seriesError } = await supabase
+        .from('stories')
+        .select('id,title,episode_number,series_number,status,is_hidden,review_status,workflow_state')
+        .eq('series_id', seriesId)
+
+      if (seriesError) return json({ success: false, error: seriesError.message }, 500)
+      if (!seriesRows || seriesRows.length === 0) return json({ success: false, error: 'Series not found' }, 404)
+
+      const blocked = (seriesRows as StoryRow[]).map((story) => {
+        const from = effectiveWorkflowState({
+          ...story,
+          repair_checklist: null,
+          repair_notes: null,
+        })
+        const allowed = transitionAllowed(from, state, body.retire === true)
+        return allowed ? null : {
+          storyId: story.id,
+          title: story.title || `Episode ${storyEpisodeNumber(story) || '?'}`,
+          episodeNumber: storyEpisodeNumber(story),
+          from,
+          to: state,
+          reason: `Transition ${from} → ${state} is not allowed`,
+        }
+      }).filter(Boolean)
+
+      if (blocked.length > 0) {
+        return json({
+          success: false,
+          error: 'Series workflow update aborted; one or more episodes cannot transition.',
+          seriesId,
+          blocked,
+        }, 400)
+      }
+
+      const update = workflowUpdateForState(state, body)
+      update.workflow_state_changed_by = changedBy
+      update.workflow_state_changed_at = new Date().toISOString()
+      update.workflow_state_change_reason = changeReason
+
+      const { data, error } = await supabase
+        .from('stories')
+        .update(update)
+        .eq('series_id', seriesId)
+        .select('id,status,is_hidden,review_status,workflow_state')
+
+      if (error) return json({ success: false, error: error.message }, 500)
+      const updatedCount = data?.length || 0
+      if (updatedCount !== seriesRows.length) {
+        return json({
+          success: false,
+          error: `Series workflow update count mismatch: updated ${updatedCount} of ${seriesRows.length} episodes`,
+          seriesId,
+          updatedCount,
+          expectedCount: seriesRows.length,
+        }, 500)
+      }
+
+      return json({ success: true, seriesId, updatedCount, stories: data || [] })
     }
 
     if (action === "recover_from_cold_storage") {

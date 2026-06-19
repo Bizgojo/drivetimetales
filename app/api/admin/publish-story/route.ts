@@ -8,11 +8,44 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
 
+function clean(value: unknown) {
+  return String(value || '').trim()
+}
+
+function numberOrNull(value: unknown): number | null {
+  const number = Number(value)
+  return Number.isFinite(number) && number > 0 ? number : null
+}
+
+function effectiveWorkflowState(story: any): string {
+  const workflowState = clean(story.workflow_state)
+  if (workflowState === 'approved_ready' || workflowState === 'cold_storage' || workflowState === 'unpublished_library' || workflowState === 'repair_queue' || workflowState === 'being_repaired') return workflowState
+  if (story.status === 'published' && story.is_hidden === false) return 'published'
+  if (story.status === 'published' && story.is_hidden === true) return 'unpublished_library'
+  if (workflowState) return workflowState
+  if (story.review_status === 'approved') return 'approved_ready'
+  if (story.review_status === 'not_approved') return 'cold_storage'
+  return 'ready_for_review'
+}
+
+function publishMissingFields(story: any) {
+  const missing: string[] = []
+  if (!clean(story.title)) missing.push('title')
+  if (!clean(story.author)) missing.push('author')
+  if (!clean(story.genre)) missing.push('genre')
+  if (!clean(story.audio_url)) missing.push('audio_url')
+  if (!clean(story.cover_url)) missing.push('cover_url')
+  if (!clean(story.description)) missing.push('description')
+  if (!numberOrNull(story.duration_mins)) missing.push('duration_mins')
+  return missing
+}
+
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
 
     const storyId = String(body.storyId || '').trim()
+    const seriesId = String(body.seriesId || body.series_id || '').trim()
     const queueId = String(body.queueId || '').trim()
     const title = String(body.title || '').trim()
     const author = String(body.author || '').trim()
@@ -22,6 +55,86 @@ export async function POST(req: NextRequest) {
     const description = String(body.description || '').trim()
     const duration_mins = Number(body.duration_mins || 0)
     const is_free = Boolean(body.is_free)
+
+    if (seriesId) {
+      const publishedOn = new Date().toISOString()
+      const changedBy = clean(body.changedBy || body.changed_by) || 'admin'
+
+      const { data: episodes, error: fetchError } = await supabase
+        .from('stories')
+        .select('id,title,author,genre,audio_url,cover_url,description,duration_mins,status,is_hidden,review_status,workflow_state,episode_number,series_number')
+        .eq('series_id', seriesId)
+
+      if (fetchError) {
+        return NextResponse.json({ success: false, error: fetchError.message }, { status: 500 })
+      }
+      if (!episodes || episodes.length === 0) {
+        return NextResponse.json({ success: false, error: 'Series not found' }, { status: 404 })
+      }
+
+      const blocked = episodes.map((episode: any) => {
+        const missing = publishMissingFields(episode)
+        const workflowState = effectiveWorkflowState(episode)
+        const reasons = [
+          ...missing.map((field) => `missing ${field}`),
+          ...(workflowState === 'approved_ready' ? [] : [`workflow_state is ${workflowState}, expected approved_ready`]),
+        ]
+        return reasons.length === 0 ? null : {
+          storyId: episode.id,
+          title: episode.title || `Episode ${episode.episode_number || episode.series_number || '?'}`,
+          episodeNumber: episode.episode_number || episode.series_number || null,
+          reasons,
+        }
+      }).filter(Boolean)
+
+      if (blocked.length > 0) {
+        return NextResponse.json({
+          success: false,
+          error: 'Series publish aborted; one or more episodes are not publishable.',
+          seriesId,
+          blocked,
+        }, { status: 400 })
+      }
+
+      const payload = {
+        status: 'published',
+        workflow_state: 'published',
+        is_hidden: false,
+        published_on: publishedOn,
+        workflow_state_changed_by: changedBy,
+        workflow_state_changed_at: publishedOn,
+        workflow_state_change_reason: clean(body.reason || body.change_reason) || 'Published series to app',
+      }
+
+      const { data, error } = await supabase
+        .from('stories')
+        .update(payload)
+        .eq('series_id', seriesId)
+        .select('id,title,status,is_hidden,published_on,workflow_state')
+
+      if (error) {
+        return NextResponse.json({ success: false, error: error.message }, { status: 500 })
+      }
+
+      const updatedCount = data?.length || 0
+      if (updatedCount !== episodes.length) {
+        return NextResponse.json({
+          success: false,
+          error: `Series publish count mismatch: updated ${updatedCount} of ${episodes.length} episodes`,
+          seriesId,
+          updatedCount,
+          expectedCount: episodes.length,
+        }, { status: 500 })
+      }
+
+      return NextResponse.json({
+        success: true,
+        seriesId,
+        updatedCount,
+        publishedOn,
+        stories: data || [],
+      })
+    }
 
     if (!storyId) {
       return NextResponse.json({ success: false, error: 'storyId required' }, { status: 400 })
@@ -74,8 +187,12 @@ export async function POST(req: NextRequest) {
       duration_mins: effectiveDurationMins,
       is_free,
       status: 'published',
+      workflow_state: 'published',
       is_hidden: false,
       published_on: new Date().toISOString(),
+      workflow_state_changed_by: clean(body.changedBy || body.changed_by) || 'admin',
+      workflow_state_changed_at: new Date().toISOString(),
+      workflow_state_change_reason: clean(body.reason || body.change_reason) || 'Published story to app',
     }
 
     const { data, error } = await supabase
