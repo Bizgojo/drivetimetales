@@ -1862,13 +1862,32 @@ async function markCharacterVoiceUsed(voiceId: string) {
   if (updateError) console.warn(`Failed to mark character voice used for ${voiceId}: ${updateError.message}`)
 }
 
-async function persistCharacterVoiceAssignment(params: {
+async function findStoryCharacterAssignment(storyId: string, characterName: string) {
+  const { data, error } = await supabase
+    .from('character_voice_assignments')
+    .select('voice_id,voice_name')
+    .eq('story_id', storyId)
+    .eq('character_name_normalized', normalizeCharacterAssignmentName(characterName))
+    .order('assigned_at', { ascending: true })
+    .limit(1)
+    .maybeSingle()
+
+  if (error) throw new Error(`Failed to load story character assignment: ${error.message}`)
+  return data
+}
+
+async function persistCharacterVoiceAssignmentOnce(params: {
   storyId: string
   seriesId: string | null
   characterName: string
   voiceId: string
   voiceName?: string | null
-}) {
+}): Promise<{ inserted: boolean; assignment: { voice_id: string; voice_name: string | null } | null }> {
+  const existing = await findStoryCharacterAssignment(params.storyId, params.characterName)
+  if (existing?.voice_id) {
+    return { inserted: false, assignment: existing }
+  }
+
   const { error } = await supabase.from('character_voice_assignments').insert({
     story_id: params.storyId,
     series_id: params.seriesId,
@@ -1878,7 +1897,24 @@ async function persistCharacterVoiceAssignment(params: {
     voice_name: params.voiceName || null,
     assigned_at: new Date().toISOString(),
   })
-  if (error) console.warn(`Failed to persist character voice assignment for ${params.characterName}: ${error.message}`)
+
+  if (error) {
+    const isUniqueViolation = error.code === '23505' || /duplicate key|unique constraint/i.test(error.message || '')
+    if (isUniqueViolation) {
+      const racedAssignment = await findStoryCharacterAssignment(params.storyId, params.characterName)
+      if (racedAssignment?.voice_id) {
+        console.warn(`Character voice assignment already exists for ${params.characterName}; reusing ${racedAssignment.voice_name || racedAssignment.voice_id}`)
+        return { inserted: false, assignment: racedAssignment }
+      }
+    }
+    console.warn(`Failed to persist character voice assignment for ${params.characterName}: ${error.message}`)
+    return { inserted: false, assignment: null }
+  }
+
+  return {
+    inserted: true,
+    assignment: { voice_id: params.voiceId, voice_name: params.voiceName || null },
+  }
 }
 
 async function findSeriesCharacterAssignment(seriesId: string | null, characterName: string) {
@@ -1904,18 +1940,26 @@ async function findVoiceForCharacter(
   narratorVoiceId: string,
   context: { storyId: string; seriesId: string | null }
 ): Promise<CharacterVoiceSelection> {
+  const storyAssignment = await findStoryCharacterAssignment(context.storyId, characterName)
+  if (storyAssignment?.voice_id) {
+    console.log(`  ${characterName}: reused story voice → ${storyAssignment.voice_name || storyAssignment.voice_id}`)
+    return { voiceId: storyAssignment.voice_id, reusedVoice: true, voiceName: storyAssignment.voice_name || undefined }
+  }
+
   const priorAssignment = await findSeriesCharacterAssignment(context.seriesId, characterName)
   if (priorAssignment?.voice_id) {
-    await markCharacterVoiceUsed(priorAssignment.voice_id)
-    await persistCharacterVoiceAssignment({
+    const saved = await persistCharacterVoiceAssignmentOnce({
       storyId: context.storyId,
       seriesId: context.seriesId,
       characterName,
       voiceId: priorAssignment.voice_id,
       voiceName: priorAssignment.voice_name,
     })
+    if (saved.inserted) await markCharacterVoiceUsed(priorAssignment.voice_id)
+    const voiceId = saved.assignment?.voice_id || priorAssignment.voice_id
+    const voiceName = saved.assignment?.voice_name || priorAssignment.voice_name
     console.log(`  ${characterName}: reused series voice → ${priorAssignment.voice_name || priorAssignment.voice_id}`)
-    return { voiceId: priorAssignment.voice_id, reusedVoice: true, voiceName: priorAssignment.voice_name || undefined }
+    return { voiceId, reusedVoice: true, voiceName: voiceName || undefined }
   }
 
   const blockedVoiceIds = new Set<string>([...usedVoiceIds, narratorVoiceId, ...RESERVED_BELLE_B_VOICE_IDS])
@@ -1930,14 +1974,17 @@ async function findVoiceForCharacter(
     )
     if (genderFallback) {
       console.log(`  ${characterName}: gender fallback → ${genderFallback.name}`)
-      await markCharacterVoiceUsed(genderFallback.voice_id)
-      await persistCharacterVoiceAssignment({
+      const saved = await persistCharacterVoiceAssignmentOnce({
         storyId: context.storyId,
         seriesId: context.seriesId,
         characterName,
         voiceId: genderFallback.voice_id,
         voiceName: genderFallback.name,
       })
+      if (saved.inserted) await markCharacterVoiceUsed(genderFallback.voice_id)
+      if (!saved.inserted && saved.assignment?.voice_id) {
+        return { voiceId: saved.assignment.voice_id, reusedVoice: true, voiceName: saved.assignment.voice_name || undefined }
+      }
       return { voiceId: genderFallback.voice_id, reusedVoice: false, voiceName: genderFallback.name || undefined }
     }
 
@@ -1945,14 +1992,22 @@ async function findVoiceForCharacter(
     const reusableScored = scoreCharacterVoiceCandidates(meta, characterVoices, reuseBlockedVoiceIds)
     if (reusableScored.length > 0) {
       const reusePick = pickRotatedCandidate(reusableScored, meta)
-      await markCharacterVoiceUsed(reusePick.voice.voice_id)
-      await persistCharacterVoiceAssignment({
+      const saved = await persistCharacterVoiceAssignmentOnce({
         storyId: context.storyId,
         seriesId: context.seriesId,
         characterName,
         voiceId: reusePick.voice.voice_id,
         voiceName: reusePick.voice.name,
       })
+      if (saved.inserted) await markCharacterVoiceUsed(reusePick.voice.voice_id)
+      if (!saved.inserted && saved.assignment?.voice_id) {
+        return {
+          voiceId: saved.assignment.voice_id,
+          reusedVoice: true,
+          voiceName: saved.assignment.voice_name || undefined,
+          score: reusePick.score,
+        }
+      }
       console.log(`  ${characterName}: ${reusePick.voice.name} (score:${reusePick.score}, reusedVoice:true)`)
       return {
         voiceId: reusePick.voice.voice_id,
@@ -1968,14 +2023,22 @@ async function findVoiceForCharacter(
 
   const rotatedPick = pickRotatedCandidate(scored, meta)
   const pick = rotatedPick.voice
-  await markCharacterVoiceUsed(pick.voice_id)
-  await persistCharacterVoiceAssignment({
+  const saved = await persistCharacterVoiceAssignmentOnce({
     storyId: context.storyId,
     seriesId: context.seriesId,
     characterName,
     voiceId: pick.voice_id,
     voiceName: pick.name,
   })
+  if (saved.inserted) await markCharacterVoiceUsed(pick.voice_id)
+  if (!saved.inserted && saved.assignment?.voice_id) {
+    return {
+      voiceId: saved.assignment.voice_id,
+      reusedVoice: true,
+      voiceName: saved.assignment.voice_name || undefined,
+      score: rotatedPick.score,
+    }
+  }
   console.log(`  ${characterName}: ${pick.name} (score:${rotatedPick.score}, ${pick.gender}, ${pick.age}, ${pick.accent}, ${pick.descriptive})`)
   return {
     voiceId: pick.voice_id,
@@ -3443,14 +3506,14 @@ export async function POST(req: NextRequest) {
         voiceMap[key] = manualVoiceId
         assignCharacterVoice(voiceMap, char.name, voiceMap[key])
         usedVoiceIds.add(voiceMap[key])
-        await markCharacterVoiceUsed(manualVoiceId)
-        await persistCharacterVoiceAssignment({
+        const saved = await persistCharacterVoiceAssignmentOnce({
           storyId,
           seriesId: characterVoiceContext.seriesId,
           characterName: char.name,
           voiceId: manualVoiceId,
           voiceName: null,
         })
+        if (saved.inserted) await markCharacterVoiceUsed(manualVoiceId)
         continue
       }
       // Parse character description into EL-compatible attributes
@@ -3500,14 +3563,14 @@ export async function POST(req: NextRequest) {
           }, { status: 422 })
         }
         assignCharacterVoice(voiceMap, name, id as string)
-        await markCharacterVoiceUsed(id as string)
-        await persistCharacterVoiceAssignment({
+        const saved = await persistCharacterVoiceAssignmentOnce({
           storyId,
           seriesId: characterVoiceContext.seriesId,
           characterName: name,
           voiceId: id as string,
           voiceName: null,
         })
+        if (saved.inserted) await markCharacterVoiceUsed(id as string)
       }
     }
     console.log(`  Parsed character guide names:`, characterGuide.map(c => c.name).join(', ') || 'none')
