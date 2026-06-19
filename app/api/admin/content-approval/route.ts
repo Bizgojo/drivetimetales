@@ -363,7 +363,7 @@ function jobLooksLikePackageCompletion(job: ProductionJobRow | null) {
   if (!job) return false
   const status = clean(job.status).toLowerCase()
   const step = clean(job.current_step).toLowerCase()
-  return Boolean(job.completed_at) && (
+  return Boolean(job.completed_at || status === 'complete') && (
     status === 'complete' ||
     step === 'ready_for_review' ||
     step === 'complete_story_package' ||
@@ -380,7 +380,10 @@ function completionProofForStory(story: StoryRow, job: ProductionJobRow | null) 
     return { date: null, source: 'missing_final_mix' }
   }
   if (jobLooksLikePackageCompletion(job)) {
-    return { date: job?.completed_at || null, source: `production_jobs.completed_at:${job?.current_step || 'complete'}` }
+    return {
+      date: job?.completed_at || job?.updated_at || story.updated_at || story.created_at,
+      source: `production_jobs.completed_at:${job?.current_step || 'complete'}`,
+    }
   }
   return { date: null, source: 'unproven_final_mix_completion_time' }
 }

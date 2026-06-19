@@ -8488,15 +8488,57 @@ export async function POST(req: NextRequest) {
           }, { status: 422 })
         }
 
+        const finalizationAt = nowIso()
+        const episodeStoryIds = (result.episodes || [])
+          .map((episode: any) => String(episode.storyId || '').trim())
+          .filter(Boolean)
+        const { data: episodeWorkflowRows, error: episodeWorkflowError } = episodeStoryIds.length
+          ? await supabase
+              .from('stories')
+              .select('id,workflow_state')
+              .in('id', episodeStoryIds)
+          : { data: [], error: null }
+
+        if (episodeWorkflowError) {
+          throw new Error(`Failed to load series episode workflow states: ${episodeWorkflowError.message}`)
+        }
+
+        const episodeIdsToPromote = ((episodeWorkflowRows || []) as any[])
+          .filter((story) => !String(story.workflow_state || '').trim())
+          .map((story) => story.id)
+
+        if (episodeIdsToPromote.length > 0) {
+          const { error: episodeWorkflowUpdateError } = await supabase
+            .from('stories')
+            .update({
+              workflow_state: 'ready_for_review',
+              workflow_state_changed_by: 'autonomous-runner',
+              workflow_state_changed_at: finalizationAt,
+              workflow_state_change_reason: `Series package ${lockedJob.id} completed and auto-finalized to ready_for_review.`,
+            })
+            .in('id', episodeIdsToPromote)
+          if (episodeWorkflowUpdateError) {
+            throw new Error(`Failed to mark series episodes ready_for_review: ${episodeWorkflowUpdateError.message}`)
+          }
+        }
+
+        const completedLogs = appendLog(lockedJob, 'Series package complete — auto-finalized to Ready for Review', {
+          seriesId: result.seriesId || lockedJob.series_id,
+          episodeCount: episodeStoryIds.length,
+          promotedEpisodeCount: episodeIdsToPromote.length,
+          promotedEpisodeIds: episodeIdsToPromote,
+        })
+
         const { data: updatedJob, error: updateError } = await supabase
           .from('production_jobs')
           .update({
-            status: 'running',
+            status: 'complete',
             current_step: NEXT_STEP_AFTER_STANDALONE_PACKAGE,
             step_index: Math.max(Number(lockedJob.step_index || 0), 0) + 1,
             state_json: result.state,
             error_json: null,
-            logs,
+            logs: completedLogs,
+            completed_at: finalizationAt,
             locked_at: null,
             locked_by: null,
           })
@@ -8508,13 +8550,16 @@ export async function POST(req: NextRequest) {
 
         return NextResponse.json({
           success: true,
+          action: 'series_ready_for_review_complete',
           jobId: updatedJob.id,
           currentStep: step,
           nextStep: updatedJob.current_step,
+          status: updatedJob.status,
           seriesId: result.seriesId || lockedJob.series_id,
           processedEpisodes: result.processedEpisodes,
+          promotedEpisodeIds: episodeIdsToPromote,
           seriesCompleteStoryPackage: result.state.seriesCompleteStoryPackage,
-          logs,
+          logs: completedLogs,
         })
       }
 
