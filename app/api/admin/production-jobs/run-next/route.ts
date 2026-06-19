@@ -678,6 +678,7 @@ function belleTextIncludes(text: string, required: string) {
 //   7. conspiracy             — organised deception or plot
 //   8. impossible_fact        — something that should not be possible
 //   9. missing_person         — someone absent, disappeared, or unaccounted for
+//   10. concrete_threat       — a specific danger, warning, or lurking presence
 //
 // Ledger intro: "numbers tell a story they were never meant to tell"
 //   → matches suspicious_discrepancy (pattern: numbers.{0,50}story.{0,30}meant)
@@ -697,6 +698,7 @@ export type NarrativeHookCategory =
   | 'conspiracy'
   | 'impossible_fact'
   | 'missing_person'
+  | 'concrete_threat'
 
 function normalizeNarrativeHookText(text: string) {
   return String(text || '')
@@ -782,6 +784,15 @@ function detectNarrativeHookCategory(text: string): NarrativeHookCategory | null
   if (
     /\b(missing|disappeared|vanished|gone without|unaccounted|never came back|never returned|last seen|never found|no trace)\b/i.test(t)
   ) return 'missing_person'
+
+  // 10. Concrete threat / danger / menace — a specific danger, warning, or
+  //     lurking presence tied to a subject/place/action, not just mood.
+  if (
+    /\b(something|someone|somebody|a man|a woman|a figure|a shadow|a voice|footsteps?|a presence).{0,50}(moving|watching|following|waiting|hiding|lurking|standing|breathing|scratching|knocking|whispering|coming|approaching)\b/i.test(t) ||
+    /\b(moving|watching|following|waiting|hiding|lurking|standing|breathing|scratching|knocking|whispering|coming|approaching).{0,50}\b(behind|inside|under|above|outside|across|beneath|within)\b/i.test(t) ||
+    /\b(danger|threat|warning|warned|trap|ambush|menace|stalked|stalker|predator|hunted|hunter).{0,60}\b(door|hallway|room|house|road|car|truck|phone|note|wall|walls|window|basement|attic|neighbor|family|home|town|station|route)\b/i.test(t) ||
+    /\b(door|hallway|room|house|road|car|truck|phone|note|wall|walls|window|basement|attic|neighbor|family|home|town|station|route).{0,60}\b(danger|threat|warning|trap|ambush|menace|stalked|hunted|not safe|unsafe)\b/i.test(t)
+  ) return 'concrete_threat'
 
   return null
 }
