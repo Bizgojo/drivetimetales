@@ -471,11 +471,19 @@ export async function GET(req: NextRequest) {
 
   const { data: story, error } = await supabase
     .from('stories')
-    .select('id, title, author, audio_url, intro_audio_url, intro_before_url, intro_after_url, story_audio_url, outro_audio_url, outro_with_music_url, background_music_url, script, series_id, series_name, episode_number, series_number, series_total, series_total_episodes')
+    .select('id, title, author, audio_url, intro_audio_url, intro_before_url, intro_after_url, story_audio_url, outro_audio_url, outro_with_music_url, background_music_url, script, series_id, series_name, episode_number, series_number, series_total, series_total_episodes, updated_at')
     .eq('id', storyId)
     .single()
 
   if (error || !story) return NextResponse.json({ error: 'Story not found' }, { status: 404 })
+
+  const cacheBustAudioUrl = (url: string) => {
+    if (!url) return url
+    const updatedAtMs = Date.parse(String((story as any).updated_at || ''))
+    const version = Number.isFinite(updatedAtMs) ? updatedAtMs : Date.now()
+    const sep = url.includes('?') ? '&' : '?'
+    return `${url}${sep}v=${version}`
+  }
 
   const refUrl = story.audio_url || ''
   const has3Files = !!(story.intro_audio_url)
@@ -483,17 +491,17 @@ export async function GET(req: NextRequest) {
 
   // AUTHORITATIVE PLAYBACK RULE:
   // If a rendered final_mix exists (audio_url contains 'final_mix'), always use it as the single
-  // authoritative source. Queue mode (hasSplitIntro) is only for intentional live personalization.
-  // This prevents stale queue-mode DB fields from routing away from the corrected rendered file.
+  // authoritative source for every listener. Personalized queue mode is disabled until it can be
+  // server-side stitched and normalized to match the baked mix quality.
   const hasRenderedFinalMix = refUrl.includes('/asc3/') && refUrl.includes('final_mix')
   const hasSplitIntro = !!(story.intro_before_url && story.intro_after_url && (story as any).story_audio_url)
-  if (hasRenderedFinalMix && !(personalizationDebug.personalizationEligible && hasSplitIntro)) {
+  if (hasRenderedFinalMix) {
     const belleI = await resolveBelleAudio(story, 'intro', preferredName || firstName, lastBelleVariantKey, belleSessionCount, { userId: authUser?.id || null, preferredName })
     const belleO = await resolveBelleAudio(story, 'outro', firstName, null, belleSessionCount)
     return NextResponse.json({
       queue: [],
       useFinalMix: true,
-      finalMixUrl: refUrl,
+      finalMixUrl: cacheBustAudioUrl(refUrl),
       totalSegments: 1,
       belle: bellePayload(belleI, belleO, personalizationDebug),
       belleSessionCount,
@@ -580,7 +588,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({
       queue: [],
       useFinalMix: true,
-      finalMixUrl: refUrl,
+      finalMixUrl: cacheBustAudioUrl(refUrl),
       introOutroMusicUrl: null,
       backgroundMusicUrl: null,
       totalSegments: 0,
