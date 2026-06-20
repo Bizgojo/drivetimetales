@@ -2384,6 +2384,26 @@ async function appendSeriesRosterAlias(seriesId: string, canonicalNameNormalized
   if (updateError) console.warn(`Failed to append roster alias ${normalizedAlias}: ${updateError.message}`)
 }
 
+async function updateSeriesRosterEarliestAppearance(seriesId: string, rosterCharacter: any, episode: any, episodeNum: number) {
+  const currentFirst = Number(rosterCharacter?.first_appeared_episode || 0)
+  if (currentFirst > 0 && currentFirst <= episodeNum) return
+
+  const canonicalNameNormalized = rosterCharacter?.canonical_name_normalized || normalizeSeriesCharacterName(rosterCharacter?.canonical_name)
+  if (!canonicalNameNormalized) return
+
+  const { error } = await supabase
+    .from('series_character_roster')
+    .update({
+      first_appeared_episode: episodeNum,
+      established_from_story_id: episode?.id || rosterCharacter?.established_from_story_id || null,
+      updated_at: nowIso(),
+    })
+    .eq('series_id', seriesId)
+    .eq('canonical_name_normalized', canonicalNameNormalized)
+
+  if (error) console.warn(`Failed to update earliest roster appearance for ${canonicalNameNormalized}: ${error.message}`)
+}
+
 function detectSeriesCharacterRegionalTags(text: string) {
   const d = String(text || '').toLowerCase()
   const tags: string[] = []
@@ -2432,7 +2452,7 @@ function parseSeriesCharacterGuide(script: string) {
 async function loadSeriesCharacterRoster(seriesId: string) {
   const { data, error } = await supabase
     .from('series_character_roster')
-    .select('canonical_name,canonical_name_normalized,aliases,description,gender,age,accent,regional_tags,voice_id,voice_name,first_appeared_episode,is_locked')
+    .select('canonical_name,canonical_name_normalized,aliases,description,gender,age,accent,regional_tags,voice_id,voice_name,first_appeared_episode,established_from_story_id,is_locked')
     .eq('series_id', seriesId)
     .eq('is_locked', true)
     .order('first_appeared_episode', { ascending: true })
@@ -2493,6 +2513,7 @@ async function upsertSeriesCharacterRosterFromEpisode(episode: any) {
         rosterMatch.match.canonical_name_normalized || normalizeSeriesCharacterName(rosterMatch.match.canonical_name),
         character.name
       )
+      await updateSeriesRosterEarliestAppearance(String(seriesId), rosterMatch.match, episode, number)
       continue
     }
 
@@ -2524,6 +2545,21 @@ async function upsertSeriesCharacterRosterFromEpisode(episode: any) {
     .upsert(rows, { onConflict: 'series_id,canonical_name_normalized', ignoreDuplicates: true })
 
   if (error) throw new Error(`Failed to establish series character roster: ${error.message}`)
+}
+
+async function ensureSeriesCharacterRosterThroughEpisode(seriesId: string, episodes: any[], throughEpisodeNumber: number) {
+  const validatedEpisodes = [...(episodes || [])]
+    .filter((episode: any) => String(episode?.series_id || '') === String(seriesId))
+    .filter((episode: any) => episode?.script && (episode.status === 'validator_passed' || episode.validator_result === 'PASS'))
+    .filter((episode: any) => {
+      const number = episodeNumber(episode, 0)
+      return number > 0 && number <= throughEpisodeNumber
+    })
+    .sort((a: any, b: any) => episodeNumber(a, 0) - episodeNumber(b, 0))
+
+  for (const episode of validatedEpisodes) {
+    await upsertSeriesCharacterRosterFromEpisode(episode)
+  }
 }
 
 async function loadRecentStoryTexts(seriesId?: string) {
@@ -5445,6 +5481,13 @@ async function scoreValidateSeriesPackage(job: ProductionJob, model: string) {
       && !failedEpisodes.some((failed: any) => String(failed.storyId) === String(episode.id))
   )
 
+  const rosterEnsureThroughEpisode = nextEpisode
+    ? Math.max(episodeNumber(nextEpisode, 0) - 1, 0)
+    : episodes.reduce((max: number, episode: any) => Math.max(max, episodeNumber(episode, 0)), 0)
+  if (rosterEnsureThroughEpisode > 0) {
+    await ensureSeriesCharacterRosterThroughEpisode(String(seriesId), episodes, rosterEnsureThroughEpisode)
+  }
+
   if (nextEpisode) {
     const result = await validateSeriesEpisodeScript(nextEpisode, model, job)
     const episodeSummary = {
@@ -5476,6 +5519,11 @@ async function scoreValidateSeriesPackage(job: ProductionJob, model: string) {
         && !nextValidatedEpisodes.some((validated: any) => String(validated.storyId) === String(episode.id))
     )
 
+    if (result.passed) {
+      const refreshedForRoster = await loadSeriesEpisodes(String(seriesId))
+      await ensureSeriesCharacterRosterThroughEpisode(String(seriesId), refreshedForRoster, result.episodeNumber)
+    }
+
     return {
       passed: false,
       failed: !result.passed,
@@ -5500,6 +5548,10 @@ async function scoreValidateSeriesPackage(job: ProductionJob, model: string) {
   }
 
   const refreshedEpisodes = await loadSeriesEpisodes(String(seriesId))
+  const finalEpisodeNumber = refreshedEpisodes.reduce((max: number, episode: any) => Math.max(max, episodeNumber(episode, 0)), 0)
+  if (finalEpisodeNumber > 0) {
+    await ensureSeriesCharacterRosterThroughEpisode(String(seriesId), refreshedEpisodes, finalEpisodeNumber)
+  }
   const allEpisodesPassed = refreshedEpisodes.every((episode: any) =>
     episode.status === 'validator_passed' || episode.validator_result === 'PASS'
   )
@@ -5553,6 +5605,11 @@ async function runSeriesVoicePreflight(job: ProductionJob, origin: string) {
 
   const episodes = await loadSeriesEpisodes(String(seriesId))
   if (!episodes.length) throw new Error('No child episodes found for series package')
+
+  const finalEpisodeNumber = episodes.reduce((max: number, episode: any) => Math.max(max, episodeNumber(episode, 0)), 0)
+  if (finalEpisodeNumber > 0) {
+    await ensureSeriesCharacterRosterThroughEpisode(String(seriesId), episodes, finalEpisodeNumber)
+  }
 
   const previous = state.seriesVoicePreflight && typeof state.seriesVoicePreflight === 'object'
     ? state.seriesVoicePreflight
