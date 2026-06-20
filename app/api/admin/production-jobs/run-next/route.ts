@@ -2320,8 +2320,27 @@ function buildContinuityBundle(prior: any[]) {
 }
 
 
-function normalizeSeriesCharacterName(name: string) {
+const SERIES_CHARACTER_TITLE_PREFIXES = new Set([
+  'DEPUTY', 'SHERIFF', 'OFFICER', 'DETECTIVE', 'SERGEANT', 'CAPTAIN', 'LIEUTENANT', 'CHIEF', 'AGENT',
+  'DOCTOR', 'DR', 'MR', 'MRS', 'MS', 'MISS', 'PROFESSOR', 'PROF', 'FATHER', 'REVEREND', 'REV',
+  'SISTER', 'JUDGE', 'MAYOR', 'SENATOR', 'PRESIDENT', 'COLONEL', 'MAJOR', 'GENERAL', 'PRIVATE',
+  'NURSE', 'INSPECTOR',
+])
+
+function normalizeSeriesCharacterAliasName(name: string) {
   return String(name || '').trim().replace(/\s+/g, ' ').toUpperCase()
+}
+
+function stripLeadingSeriesCharacterTitle(name: string) {
+  const clean = String(name || '').trim().replace(/\s+/g, ' ')
+  const tokens = clean.split(' ').filter(Boolean)
+  if (tokens.length <= 1) return clean
+  const firstToken = tokens[0].replace(/\.$/, '').toUpperCase()
+  return SERIES_CHARACTER_TITLE_PREFIXES.has(firstToken) ? tokens.slice(1).join(' ') : clean
+}
+
+function normalizeSeriesCharacterName(name: string) {
+  return normalizeSeriesCharacterAliasName(stripLeadingSeriesCharacterTitle(name))
 }
 
 function seriesCharacterNameTokens(name: string) {
@@ -2357,8 +2376,8 @@ function findSeriesRosterNameMatch(roster: any[], incomingName: string) {
 }
 
 async function appendSeriesRosterAlias(seriesId: string, canonicalNameNormalized: string, aliasName: string) {
-  const normalizedAlias = normalizeSeriesCharacterName(aliasName)
-  if (!normalizedAlias || normalizedAlias === normalizeSeriesCharacterName(canonicalNameNormalized)) return
+  const normalizedAlias = normalizeSeriesCharacterAliasName(aliasName)
+  if (!normalizedAlias || normalizedAlias === normalizeSeriesCharacterAliasName(canonicalNameNormalized)) return
 
   const { data, error } = await supabase
     .from('series_character_roster')

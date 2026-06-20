@@ -1638,8 +1638,27 @@ type SeriesCharacterRosterRow = {
   voice_name: string | null
 }
 
-function normalizeCharacterAssignmentName(name: string) {
+const CHARACTER_ASSIGNMENT_TITLE_PREFIXES = new Set([
+  'DEPUTY', 'SHERIFF', 'OFFICER', 'DETECTIVE', 'SERGEANT', 'CAPTAIN', 'LIEUTENANT', 'CHIEF', 'AGENT',
+  'DOCTOR', 'DR', 'MR', 'MRS', 'MS', 'MISS', 'PROFESSOR', 'PROF', 'FATHER', 'REVEREND', 'REV',
+  'SISTER', 'JUDGE', 'MAYOR', 'SENATOR', 'PRESIDENT', 'COLONEL', 'MAJOR', 'GENERAL', 'PRIVATE',
+  'NURSE', 'INSPECTOR',
+])
+
+function normalizeCharacterAliasName(name: string) {
   return String(name || '').trim().replace(/\s+/g, ' ').toUpperCase()
+}
+
+function stripLeadingCharacterAssignmentTitle(name: string) {
+  const clean = String(name || '').trim().replace(/\s+/g, ' ')
+  const tokens = clean.split(' ').filter(Boolean)
+  if (tokens.length <= 1) return clean
+  const firstToken = tokens[0].replace(/\.$/, '').toUpperCase()
+  return CHARACTER_ASSIGNMENT_TITLE_PREFIXES.has(firstToken) ? tokens.slice(1).join(' ') : clean
+}
+
+function normalizeCharacterAssignmentName(name: string) {
+  return normalizeCharacterAliasName(stripLeadingCharacterAssignmentTitle(name))
 }
 
 function characterAssignmentNameTokens(name: string) {
@@ -1979,8 +1998,8 @@ async function findSeriesRosterCharacter(seriesId: string | null, characterName:
 
 async function appendSeriesCharacterAlias(seriesId: string | null, canonicalNameNormalized: string, aliasName: string) {
   if (!seriesId) return
-  const normalizedAlias = normalizeCharacterAssignmentName(aliasName)
-  if (!normalizedAlias || normalizedAlias === normalizeCharacterAssignmentName(canonicalNameNormalized)) return
+  const normalizedAlias = normalizeCharacterAliasName(aliasName)
+  if (!normalizedAlias || normalizedAlias === normalizeCharacterAliasName(canonicalNameNormalized)) return
 
   const { data, error } = await supabase
     .from('series_character_roster')
