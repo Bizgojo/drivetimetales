@@ -2418,12 +2418,16 @@ async function appendSeriesRosterAlias(seriesId: string, canonicalNameNormalized
     return
   }
 
-  const aliases = Array.isArray(data.aliases) ? data.aliases.map((alias: string) => normalizeSeriesCharacterName(alias)) : []
-  if (aliases.includes(normalizedAlias)) return
+  const aliases = Array.isArray(data.aliases)
+    ? data.aliases.map((alias: string) => normalizeSeriesCharacterAliasName(alias)).filter(Boolean)
+    : []
+  const aliasSet = new Set(aliases)
+  if (aliasSet.has(normalizedAlias)) return
+  aliasSet.add(normalizedAlias)
 
   const { error: updateError } = await supabase
     .from('series_character_roster')
-    .update({ aliases: [...aliases, normalizedAlias], updated_at: nowIso() })
+    .update({ aliases: Array.from(aliasSet), updated_at: nowIso() })
     .eq('series_id', seriesId)
     .eq('canonical_name_normalized', canonicalNameNormalized)
 
