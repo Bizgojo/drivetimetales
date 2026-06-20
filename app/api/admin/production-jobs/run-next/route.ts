@@ -46,7 +46,7 @@ const NEXT_STEP_AFTER_SERIES_VOICES = 'series_generate_belle_assets'
 const NEXT_STEP_AFTER_SERIES_BELLE  = 'series_generate_music'
 const NEXT_STEP_AFTER_SERIES_MUSIC  = 'series_render_final_mix'
 const NEXT_STEP_AFTER_SERIES_RENDER = 'complete_story_package'
-const MAX_SERIES_DESCRIPTION_RETRIES = 3
+const MAX_SERIES_DESCRIPTION_RETRIES = 2
 const MAX_SERIES_BELLE_RETRIES = 3
 const NARRATIVE_HOOK_FALLBACK_MODEL = 'claude-haiku-4-5'
 const NARRATIVE_HOOK_FALLBACK_TIMEOUT_MS = 8000
@@ -230,6 +230,27 @@ function bad(message: string, status = 400, extra: Record<string, unknown> = {})
 
 function nowIso() {
   return new Date().toISOString()
+}
+
+async function markStoryNeedsAttention(storyId: string | null | undefined, reason: string) {
+  if (!storyId) return
+  const { error } = await supabase
+    .from('stories')
+    .update({
+      needs_attention: true,
+      needs_attention_reason: String(reason || 'Production pipeline needs attention.').slice(0, 1000),
+      needs_attention_at: nowIso(),
+    })
+    .eq('id', storyId)
+
+  if (error) console.warn(`Failed to mark story needs_attention ${storyId}: ${error.message}`)
+}
+
+async function markStoriesNeedAttention(storyIds: Array<string | null | undefined>, reason: string) {
+  const uniqueStoryIds = Array.from(new Set(storyIds.filter(Boolean).map(String)))
+  for (const storyId of uniqueStoryIds) {
+    await markStoryNeedsAttention(storyId, reason)
+  }
 }
 
 function appendLog(job: ProductionJob, message: string, details: Record<string, unknown> = {}) {
@@ -521,7 +542,7 @@ function sanitizeDescription(description: string): string {
       next = candidate
     }
   }
-  next = (next || source.slice(0, maxChars)).replace(/[,\-:;.!?]+$/g, '').trim()
+  next = next.replace(/[,\-:;.!?]+$/g, '').trim()
   while (weakEnding.test(next) && next.includes(' ')) next = next.split(' ').slice(0, -1).join(' ').trim()
   if (!next) next = fallback.replace(/[.!?]+$/g, '')
   if (!/[.!?]$/.test(next)) next = `${next}.`
@@ -2166,6 +2187,12 @@ async function failJob(job: ProductionJob, error: unknown) {
     })
     .eq('id', job.id)
 
+  const state = job.state_json && typeof job.state_json === 'object' ? job.state_json : {}
+  await markStoryNeedsAttention(
+    job.story_id || (state as any).storyId,
+    `Production job failed at ${normalizeStep(job.current_step)}: ${message}`
+  )
+
   return { message, logs }
 }
 
@@ -2679,7 +2706,7 @@ SERIES_TOTAL_EPISODES:
 SERIES_IS_FINALE:
 AUTHOR:
 GENRE:
-DESCRIPTION: [70 characters or fewer, present tense only, tease a question without revealing the climax, twist, final discovery, or resolution payoff]
+DESCRIPTION: [complete sentence, 70 characters or fewer, present tense only, tease a question without revealing the climax, twist, final discovery, or resolution payoff]
 NARRATOR: ${narratorContext.mode === 'assigned' ? narratorContext.narratorName : '[pick exactly one name from the narrator selection list above]'}
 ANNOUNCER: Belle B
 NARRATIVE_VOICE:
@@ -2729,7 +2756,7 @@ Additional production-format hard rules:
 - Right: NARRATOR: Pike's jaw tightened.
 
 Additional rules:
-- DESCRIPTION must be 70 characters or fewer and present tense only so it fits two lines on story cards. If the brief-provided description is longer than 70 characters or uses past-tense constructions, rewrite it to comply. Reject past-tense story-card phrasing such as "vanished", "was", "were", "had", "found", "discovered", "left", "moved", "sealed", "signed", "forged", "buried", "hidden", or "lost". DESCRIPTION must TEASE a question, never reveal the story's climax, twist, final discovery, or resolution payoff. Raise curiosity about the setup or mystery; do NOT state the outcome. Example: tease "strange notes under a neighbor's door at 3:12 a.m."; do NOT reveal "someone is trapped inside."
+- DESCRIPTION must be a COMPLETE sentence, 70 characters or fewer, and present tense only so it fits two lines on story cards. If the brief-provided description is longer than 70 characters or uses past-tense constructions, rewrite it to comply. Before final output, self-check DESCRIPTION length; if it is over 70 characters, rewrite it internally until it is complete and 70 characters or fewer. Never cut DESCRIPTION mid-word or mid-phrase. Never output a fragment. Reject past-tense story-card phrasing such as "vanished", "was", "were", "had", "found", "discovered", "left", "moved", "sealed", "signed", "forged", "buried", "hidden", or "lost". DESCRIPTION must TEASE a question, never reveal the story's climax, twist, final discovery, or resolution payoff. Raise curiosity about the setup or mystery; do NOT state the outcome. Example: tease "strange notes under a neighbor's door at 3:12 a.m."; do NOT reveal "someone is trapped inside."
 - If NARRATOR_IS_CHARACTER is false, NARRATOR must not be a story character name and must not include "(character)".
 - If the narrator is a story character, NARRATOR_IS_CHARACTER must be true and the script must use consistent first-person narration.
 - Standalone stories must end conclusively.
@@ -4691,7 +4718,7 @@ SERIES_TOTAL_EPISODES: ${totalEpisodes}
 SERIES_IS_FINALE: ${isFinale ? 'true' : 'false'}
 AUTHOR: ${episode.author || brief.author || ''}
 GENRE: ${episode.genre || brief.genre || ''}
-DESCRIPTION: [70 characters or fewer, present tense only, tease a question without revealing the episode climax, twist, final discovery, or resolution payoff]
+DESCRIPTION: [complete sentence, 70 characters or fewer, present tense only, tease a question without revealing the episode climax, twist, final discovery, or resolution payoff]
 NARRATOR: ${assignedNarratorName}
 ANNOUNCER: Belle B
 NARRATIVE_VOICE: ${episode.narrative_voice || brief.narrative_voice || ''}
@@ -4731,7 +4758,7 @@ Series rules:
 - ${isFinale ? 'This is the finale. Resolve the season arc completely.' : 'This is not the finale. End on a specific cliffhanger with forward momentum. Do not use "to be continued" phrasing.'}
 
 Additional rules:
-- DESCRIPTION must be 70 characters or fewer and present tense only. DESCRIPTION must TEASE a question, never reveal the episode's climax, twist, final discovery, or resolution payoff. Raise curiosity about the setup or mystery; do NOT state the outcome. Example: tease "strange notes under a neighbor's door at 3:12 a.m."; do NOT reveal "someone is trapped inside."
+- DESCRIPTION must be a COMPLETE sentence, 70 characters or fewer, and present tense only. Before final output, self-check DESCRIPTION length; if it is over 70 characters, rewrite it internally until it is complete and 70 characters or fewer. Never cut DESCRIPTION mid-word or mid-phrase. Never output a fragment. DESCRIPTION must TEASE a question, never reveal the episode's climax, twist, final discovery, or resolution payoff. Raise curiosity about the setup or mystery; do NOT state the outcome. Example: tease "strange notes under a neighbor's door at 3:12 a.m."; do NOT reveal "someone is trapped inside."
 - If NARRATOR_IS_CHARACTER is false, NARRATOR must not be a story character name and must not include "(character)".
 - If the narrator is a story character, NARRATOR_IS_CHARACTER must be true and the script must use consistent first-person narration.
 - Keep narrator voice consistent.
@@ -5390,36 +5417,59 @@ function extractValidatorFailureLines(report: string): string[] {
   return Array.from(new Set(combined))
 }
 
-function isDescriptionOnlyValidatorFailure(report: string): boolean {
+function classifyDescriptionValidatorFailure(report: string): null | {
+  retryable: boolean
+  kind: 'mechanical' | 'substantive'
+  reason: string
+  failureLines: string[]
+} {
   const failureLines = extractValidatorFailureLines(report)
-  if (!failureLines.length) return false
+  if (!failureLines.length) return null
 
-  const descriptionFailure = /\bdescription\b|story-card|teaser|spoiler|reveals?|climax|twist|final discovery|resolution payoff|outcome|present tense|70 characters|protagonist/i
-  return failureLines.every((line) => descriptionFailure.test(line))
+  const descriptionLine = /\bdescription\b|story-card|teaser|present tense|70 characters|characters or fewer|blocked word|past-tense/i
+  if (!failureLines.every((line) => descriptionLine.test(line))) return null
+
+  const substantive = /spoiler|reveals?|climax|twist|final discovery|resolution payoff|outcome|culprit|survivor|protagonist.*mismatch|mismatch.*protagonist|role.*mismatch|description\s+does not match\s+(?:the\s+)?(?:protagonist|role)|weak plot|weak hook|editorial/i
+  if (failureLines.some((line) => substantive.test(line))) {
+    return { retryable: false, kind: 'substantive', reason: failureLines.join('; '), failureLines }
+  }
+
+  const mechanical = /required|missing|70 characters|characters or fewer|too long|present tense|past-tense|blocked word|format|punctuation|complete sentence|truncated|fragment|incomplete|mid-phrase|mid-word/i
+  if (failureLines.every((line) => mechanical.test(line))) {
+    return { retryable: true, kind: 'mechanical', reason: failureLines.join('; '), failureLines }
+  }
+
+  return { retryable: false, kind: 'substantive', reason: failureLines.join('; '), failureLines }
 }
 
 function seriesDescriptionFailureFromEpisodeResult(result: any) {
   const episodeReport = String(result?.episodeResult?.report || '')
-  if (episodeReport && isDescriptionOnlyValidatorFailure(episodeReport)) {
+  const episodeClassification = episodeReport ? classifyDescriptionValidatorFailure(episodeReport) : null
+  if (episodeClassification) {
     return {
       episodeNumber: result.episodeResult?.episodeNumber,
       storyId: result.episodeResult?.storyId,
       report: episodeReport,
+      classification: episodeClassification,
     }
   }
 
   const failedEpisodes = Array.isArray(result?.state?.seriesValidation?.failedEpisodes)
     ? result.state.seriesValidation.failedEpisodes
     : []
-  const failed = failedEpisodes.find((episode: any) =>
-    isDescriptionOnlyValidatorFailure(String(episode?.report || ''))
-  )
+  const failed = failedEpisodes
+    .map((episode: any) => ({
+      episode,
+      classification: classifyDescriptionValidatorFailure(String(episode?.report || '')),
+    }))
+    .find((item: any) => item.classification)
   if (!failed) return null
 
   return {
-    episodeNumber: failed.episodeNumber,
-    storyId: failed.storyId,
-    report: String(failed.report || ''),
+    episodeNumber: failed.episode.episodeNumber,
+    storyId: failed.episode.storyId,
+    report: String(failed.episode.report || ''),
+    classification: failed.classification,
   }
 }
 
@@ -5437,9 +5487,11 @@ Use the validator feedback exactly.
 
 Rules:
 - Return JSON only: {"description": "text"}
-- DESCRIPTION must be 70 characters or fewer.
+- DESCRIPTION must be a complete sentence, 70 characters or fewer.
 - DESCRIPTION must be present tense.
 - DESCRIPTION must tease a question, not reveal the climax, twist, final discovery, culprit/survivor/status, or resolution payoff.
+- Before returning, self-check the length and rewrite internally if it is over 70 characters.
+- Do not reuse the current DESCRIPTION verbatim; generate a fresh compliant sentence.
 - Prefer the validator's suggested wording when it gives one.
 
 VALIDATOR FEEDBACK:
@@ -6308,7 +6360,7 @@ export async function POST(req: NextRequest) {
         const descriptionRetryCount = Number(descriptionRetry.count || 0)
         const descriptionFailure = seriesDescriptionFailureFromEpisodeResult(result)
 
-        if (descriptionFailure && descriptionRetryCount < MAX_SERIES_DESCRIPTION_RETRIES) {
+        if (descriptionFailure?.classification?.retryable && descriptionRetryCount < MAX_SERIES_DESCRIPTION_RETRIES) {
           const targetEpisode = result.episodes.find((episode: any) =>
             String(episode.id) === String(descriptionFailure.storyId)
               || episodeNumber(episode, 0) === Number(descriptionFailure.episodeNumber)
@@ -6430,6 +6482,11 @@ export async function POST(req: NextRequest) {
             logs: retryLogs,
           })
         }
+
+        await markStoriesNeedAttention(
+          (result.state.seriesValidation?.failedEpisodes || []).map((episode: any) => episode.storyId),
+          `Series validation needs attention: ${descriptionFailure?.classification?.reason || 'Validation failed without an autonomous-safe repair.'}`
+        )
 
         const { data: failedJob, error: updateError } = await supabase
           .from('production_jobs')
@@ -6788,6 +6845,11 @@ export async function POST(req: NextRequest) {
         }
 
         // Max retries exhausted or non-retryable: fail with marc_required=true
+        await markStoryNeedsAttention(
+          result.storyId,
+          `Standalone validation needs attention: ${classification.kind}. ${classification.recommendedAction}`
+        )
+
         const failedLogs = appendLog({ ...lockedJob, logs }, `validate_script retries exhausted (${retryCount}/${MAX_RETRIES}) — failing, Marc required`, {
           source: 'autonomous-runner',
           storyId: result.storyId,
