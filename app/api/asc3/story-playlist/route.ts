@@ -4,6 +4,7 @@ import { createServerClient } from '@supabase/ssr'
 import { createHash } from 'crypto'
 import { CANONICAL_BELLE_B_VOICE_ID } from '@/lib/voiceConstants'
 import { anthropicCall } from '@/app/lib/anthropic-logger'
+import { renderPersonalizedFinalMix } from '@/lib/personalizedFinalMix'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -491,19 +492,42 @@ export async function GET(req: NextRequest) {
 
   // AUTHORITATIVE PLAYBACK RULE:
   // If a rendered final_mix exists (audio_url contains 'final_mix'), always use it as the single
-  // authoritative source for every listener. Personalized queue mode is disabled until it can be
-  // server-side stitched and normalized to match the baked mix quality.
+  // authoritative source for every listener. Named users may receive a server-rendered personalized
+  // final mix, but playback still gets one complete cacheable MP3 — never the old live queue splice.
   const hasRenderedFinalMix = refUrl.includes('/asc3/') && refUrl.includes('final_mix')
   const hasSplitIntro = !!(story.intro_before_url && story.intro_after_url && (story as any).story_audio_url)
   if (hasRenderedFinalMix) {
-    const belleI = await resolveBelleAudio(story, 'intro', preferredName || firstName, lastBelleVariantKey, belleSessionCount, { userId: authUser?.id || null, preferredName })
-    const belleO = await resolveBelleAudio(story, 'outro', firstName, null, belleSessionCount)
+    let finalMixUrl = cacheBustAudioUrl(refUrl)
+    let personalizedFinalMix: any = null
+    if (authUser?.id && preferredName) {
+      try {
+        personalizedFinalMix = await renderPersonalizedFinalMix({
+          storyId: story.id,
+          userId: authUser.id,
+          preferredName,
+        })
+        if (personalizedFinalMix?.finalMixUrl) {
+          finalMixUrl = personalizedFinalMix.finalMixUrl
+        }
+      } catch (err) {
+        console.warn('[story-playlist] personalized final mix failed; falling back to baked final_mix:', {
+          storyId: story.id,
+          userId: authUser.id,
+          error: err instanceof Error ? err.message : String(err),
+        })
+      }
+    }
     return NextResponse.json({
       queue: [],
       useFinalMix: true,
-      finalMixUrl: cacheBustAudioUrl(refUrl),
+      finalMixUrl,
       totalSegments: 1,
-      belle: bellePayload(belleI, belleO, personalizationDebug),
+      belle: {
+        intro: null,
+        outro: null,
+        personalizationDebug,
+        personalizedFinalMix,
+      },
       belleSessionCount,
     })
   }

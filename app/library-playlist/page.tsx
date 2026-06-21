@@ -74,20 +74,71 @@ function formatDuration(mins: number): string {
 
 // ── Download helpers ──────────────────────────────────────────────────────────
 
-async function resolveAudioUrls(entries: PlaylistEntry[]): Promise<PlaylistEntry[]> {
+async function resolvePersonalizedAudioUrl(storyId: string, preferredName: string): Promise<string | null> {
+  try {
+    const res = await fetch('/api/asc3/render-personalized-final-mix', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ storyId, preferredName }),
+    })
+    const json = await res.json().catch(() => ({}))
+    return res.ok && json?.finalMixUrl ? String(json.finalMixUrl) : null
+  } catch {
+    return null
+  }
+}
+
+async function resolveStoryAudioUrl(entry: PlaylistEntry, preferredName: string): Promise<PlaylistEntry> {
+  if (preferredName) {
+    const personalizedUrl = await resolvePersonalizedAudioUrl(entry.id, preferredName)
+    if (personalizedUrl) return { ...entry, audio_url: personalizedUrl }
+  }
+  if (entry.audio_url) return entry
+  try {
+    const { data } = await supabase
+      .from('stories')
+      .select('audio_url')
+      .eq('id', entry.id)
+      .single()
+    return { ...entry, audio_url: data?.audio_url || null }
+  } catch {
+    return entry
+  }
+}
+
+async function resolveAudioUrls(entries: PlaylistItem[], preferredName: string): Promise<PlaylistItem[]> {
   return Promise.all(entries.map(async entry => {
-    if (entry.audio_url) return entry
+    if (entry.type === 'series') {
+      const episodes = await Promise.all((entry.episodes || []).map(episode => resolveStoryAudioUrl(episode, preferredName)))
+      return { ...entry, episodes }
+    }
     try {
-      const { data } = await supabase
-        .from('stories')
-        .select('audio_url')
-        .eq('id', entry.id)
-        .single()
-      return { ...entry, audio_url: data?.audio_url || null }
+      const resolved = await resolveStoryAudioUrl(entry as PlaylistEntry, preferredName)
+      return { ...entry, audio_url: resolved.audio_url || null }
     } catch {
       return entry
     }
   }))
+}
+
+function playlistAudioUrls(items: PlaylistItem[]) {
+  return items.flatMap(item => (
+    item.type === 'series'
+      ? (item.episodes || []).map(episode => episode.audio_url).filter(Boolean)
+      : [item.audio_url].filter(Boolean)
+  )) as string[]
+}
+
+function playlistTitleForUrl(items: PlaylistItem[], url: string) {
+  for (const item of items) {
+    if (item.type === 'series') {
+      const episode = (item.episodes || []).find(ep => ep.audio_url === url)
+      if (episode) return episode.title
+    } else if (item.audio_url === url) {
+      return item.title || 'story'
+    }
+  }
+  return 'story'
 }
 
 async function cacheAudioFile(url: string): Promise<boolean> {
@@ -299,8 +350,9 @@ function LibraryPlaylistContent() {
     setDownloadLabel('Resolving stories...')
 
     // Step 1: resolve all audio URLs
-    const resolved = await resolveAudioUrls(playlist)
-    const audioUrls = resolved.map(e => e.audio_url).filter(Boolean) as string[]
+    const preferredName = String((user as any)?.first_name || '').trim()
+    const resolved = await resolveAudioUrls(playlist, preferredName)
+    const audioUrls = playlistAudioUrls(resolved)
     setDownloadTotal(audioUrls.length)
 
     if (audioUrls.length === 0) {
@@ -313,7 +365,7 @@ function LibraryPlaylistContent() {
     // Step 2: cache each audio file showing progress
     let cached = 0
     for (const url of audioUrls) {
-      const title = resolved.find(e => e.audio_url === url)?.title || 'story'
+      const title = playlistTitleForUrl(resolved, url)
       setDownloadLabel(`Downloading "${title}"...`)
       await cacheAudioFile(url)
       cached++
