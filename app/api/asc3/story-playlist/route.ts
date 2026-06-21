@@ -119,7 +119,7 @@ async function resolveRequestUser(req: NextRequest) {
   }
 }
 
-async function resolvePreferredName(userId: string, queryFirstName: string) {
+async function resolvePreferredName(userId: string, queryFirstName: string, authUser?: any) {
   try {
     const { data, error } = await supabase
       .from('users')
@@ -127,13 +127,15 @@ async function resolvePreferredName(userId: string, queryFirstName: string) {
       .eq('id', userId)
       .maybeSingle()
     if (error) throw error
-    return normalizeFirstName(data?.first_name || data?.display_name || queryFirstName)
+    const metadataName = authUser?.user_metadata?.first_name || authUser?.user_metadata?.display_name || authUser?.user_metadata?.name
+    return normalizeFirstName(data?.first_name || data?.display_name || queryFirstName || metadataName)
   } catch (err) {
     console.warn('[story-playlist] preferred name lookup failed:', {
       userId,
       error: err instanceof Error ? err.message : String(err),
     })
-    return normalizeFirstName(queryFirstName)
+    const metadataName = authUser?.user_metadata?.first_name || authUser?.user_metadata?.display_name || authUser?.user_metadata?.name
+    return normalizeFirstName(queryFirstName || metadataName)
   }
 }
 
@@ -460,7 +462,7 @@ export async function GET(req: NextRequest) {
   const belleSessionCount = Number(req.cookies.get('et_belle_session_count')?.value || 0)
   if (!storyId) return NextResponse.json({ error: 'storyId required' }, { status: 400 })
   const authUser = await resolveRequestUser(req)
-  const preferredName = authUser?.id ? await resolvePreferredName(authUser.id, firstName) : ''
+  const preferredName = authUser?.id ? await resolvePreferredName(authUser.id, firstName, authUser) : ''
   const personalizationDebug = {
     resolvedUserId: authUser?.id || null,
     resolvedPreferredName: preferredName || null,
@@ -501,6 +503,7 @@ export async function GET(req: NextRequest) {
     let personalizedFinalMix: any = null
     if (authUser?.id && preferredName) {
       try {
+        console.log('[story-playlist] personalize attempt', { userId: authUser.id, preferredName, storyId: story.id })
         personalizedFinalMix = await renderPersonalizedFinalMix({
           storyId: story.id,
           userId: authUser.id,
@@ -508,6 +511,14 @@ export async function GET(req: NextRequest) {
         })
         if (personalizedFinalMix?.finalMixUrl) {
           finalMixUrl = personalizedFinalMix.finalMixUrl
+          console.log('[story-playlist] personalize success', {
+            userId: authUser.id,
+            preferredName,
+            storyId: story.id,
+            finalMixUrl,
+            openerId: personalizedFinalMix.openerId || null,
+            cached: Boolean(personalizedFinalMix.cached),
+          })
         }
       } catch (err) {
         console.warn('[story-playlist] personalized final mix failed; falling back to baked final_mix:', {
