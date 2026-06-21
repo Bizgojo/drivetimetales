@@ -4,7 +4,7 @@ import { createServerClient } from '@supabase/ssr'
 import { personalizeDebugWasCaptured, recordPersonalizeDebug, renderPersonalizedFinalMix } from '@/lib/personalizedFinalMix'
 
 export const runtime = 'nodejs'
-export const maxDuration = 300
+export const maxDuration = 60
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,

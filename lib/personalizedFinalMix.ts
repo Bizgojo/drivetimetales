@@ -19,8 +19,7 @@ const PERSONALIZED_MIX_VERSION = 'v1'
 const STING_TO_BELLE_SEC = 0.5
 const INTRO_GAP_SEC = 0.4
 
-let FFMPEG_PATH = 'ffmpeg'
-try { FFMPEG_PATH = eval('require')('@ffmpeg-installer/ffmpeg').path } catch { /* system ffmpeg */ }
+const FFMPEG_PATH = eval('require')('@ffmpeg-installer/ffmpeg').path
 
 const execFileAsync = promisify(execFile)
 
