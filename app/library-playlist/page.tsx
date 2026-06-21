@@ -141,6 +141,17 @@ function playlistTitleForUrl(items: PlaylistItem[], url: string) {
   return 'story'
 }
 
+function preferredNameForUser(user: any): string {
+  const raw = user?.first_name
+    || user?.display_name
+    || user?.user_metadata?.first_name
+    || user?.user_metadata?.display_name
+    || user?.user_metadata?.name
+    || ''
+  const name = String(raw).trim()
+  return name ? name.split(/\s+/)[0] : ''
+}
+
 async function cacheAudioFile(url: string): Promise<boolean> {
   try {
     const cache = await caches.open('et-audio-v1')
@@ -185,6 +196,7 @@ function LibraryPlaylistContent() {
   const [downloadTotal, setDownloadTotal] = useState(0)
   const [downloadDone, setDownloadDone] = useState(false)
   const [downloadLabel, setDownloadLabel] = useState('')
+  const [startingPlayback, setStartingPlayback] = useState(false)
 
   useEffect(() => {
     if (authLoading) return
@@ -350,7 +362,7 @@ function LibraryPlaylistContent() {
     setDownloadLabel('Resolving stories...')
 
     // Step 1: resolve all audio URLs
-    const preferredName = String((user as any)?.first_name || '').trim()
+    const preferredName = preferredNameForUser(user)
     const resolved = await resolveAudioUrls(playlist, preferredName)
     const audioUrls = playlistAudioUrls(resolved)
     setDownloadTotal(audioUrls.length)
@@ -384,9 +396,17 @@ function LibraryPlaylistContent() {
     setTimeout(() => router.push('/home'), 1200)
   }
 
-  const playNow = () => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(persist(playlist)))
-    router.push('/player/playlist?autoplay=1&playlist=1')
+  const playNow = async () => {
+    if (startingPlayback) return
+    setStartingPlayback(true)
+    try {
+      const preferredName = preferredNameForUser(user)
+      const resolved = await resolveAudioUrls(playlist, preferredName)
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(persist(resolved)))
+      router.push('/player/playlist?autoplay=1&playlist=1')
+    } finally {
+      setStartingPlayback(false)
+    }
   }
 
   const sortedCards = [...cards].sort((a, b) => {
@@ -556,7 +576,13 @@ function LibraryPlaylistContent() {
       {playlist.length > 0 && (
         <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, backgroundColor: '#0f172a', padding: '0.5rem 1rem 0.75rem', borderTop: '1px solid #334155', zIndex: 100 }}>
           <div style={{ display: 'flex', gap: 10 }}>
-            <button onClick={playNow} style={{ flex: 1, padding: '14px', background: '#22c55e', color: '#042013', border: 'none', borderRadius: 12, fontSize: 15, fontWeight: 700, cursor: 'pointer' }}>▶ Play Now</button>
+            <button
+              onClick={playNow}
+              disabled={startingPlayback}
+              style={{ flex: 1, padding: '14px', background: '#22c55e', color: '#042013', border: 'none', borderRadius: 12, fontSize: 15, fontWeight: 700, cursor: startingPlayback ? 'not-allowed' : 'pointer', opacity: startingPlayback ? 0.8 : 1 }}
+            >
+              {startingPlayback ? 'Preparing...' : '▶ Play Now'}
+            </button>
             <button
               onClick={saveForLater}
               disabled={downloading}

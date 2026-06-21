@@ -54,16 +54,25 @@ export async function POST(req: NextRequest) {
     const preferredName = normalizeFirstName(body.preferredName) || await lookupPreferredName(user.id)
     if (!preferredName) return NextResponse.json({ error: 'preferredName required' }, { status: 400 })
 
+    console.log('[render-personalized-final-mix] personalize attempt', { userId: user.id, preferredName, storyId })
     const result = await renderPersonalizedFinalMix({
       storyId,
       userId: user.id,
       preferredName,
     })
+    console.log('[render-personalized-final-mix] personalize success', {
+      userId: user.id,
+      preferredName,
+      storyId,
+      finalMixUrl: result?.finalMixUrl || null,
+      openerId: result?.openerId || null,
+      cached: Boolean(result?.cached),
+    })
 
     return NextResponse.json(result, { headers: { 'Cache-Control': 'no-store' } })
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
-    console.warn('[render-personalized-final-mix] failed:', message)
+    console.warn('[render-personalized-final-mix] personalize failed:', message)
     return NextResponse.json({ success: false, error: message }, { status: 500 })
   }
 }
