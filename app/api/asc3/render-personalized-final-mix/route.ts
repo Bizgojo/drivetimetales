@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { createServerClient } from '@supabase/ssr'
-import { renderPersonalizedFinalMix } from '@/lib/personalizedFinalMix'
+import { personalizeDebugWasCaptured, recordPersonalizeDebug, renderPersonalizedFinalMix } from '@/lib/personalizedFinalMix'
 
 export const runtime = 'nodejs'
 export const maxDuration = 300
@@ -43,12 +43,16 @@ async function lookupPreferredName(userId: string) {
 }
 
 export async function POST(req: NextRequest) {
+  let debugUserId: string | null = null
+  let debugStoryId: string | null = null
   try {
     const user = await resolveRequestUser(req)
+    debugUserId = user?.id || null
     if (!user?.id) return NextResponse.json({ error: 'Authentication required' }, { status: 401 })
 
     const body = await req.json().catch(() => ({}))
     const storyId = String(body.storyId || '').trim()
+    debugStoryId = storyId || null
     if (!storyId) return NextResponse.json({ error: 'storyId required' }, { status: 400 })
 
     const preferredName = normalizeFirstName(body.preferredName) || await lookupPreferredName(user.id)
@@ -72,6 +76,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(result, { headers: { 'Cache-Control': 'no-store' } })
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
+    if (!personalizeDebugWasCaptured(err)) {
+      await recordPersonalizeDebug({ userId: debugUserId, storyId: debugStoryId }, 'route', err)
+    }
     console.warn('[render-personalized-final-mix] personalize failed:', message)
     return NextResponse.json({ success: false, error: message }, { status: 500 })
   }

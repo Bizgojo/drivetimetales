@@ -52,6 +52,53 @@ type UserOpenerClip = {
   rotation_count: number | null
 }
 
+type PersonalizeDebugContext = {
+  userId?: string | null
+  storyId?: string | null
+}
+
+const DEBUG_CAPTURED_FLAG = Symbol('personalizeDebugCaptured')
+
+function errorText(err: unknown) {
+  return String(err instanceof Error ? err.message : err).slice(0, 2000)
+}
+
+function markDebugCaptured(err: unknown) {
+  if (err && typeof err === 'object') {
+    try {
+      ;(err as any)[DEBUG_CAPTURED_FLAG] = true
+    } catch {}
+  }
+}
+
+export function personalizeDebugWasCaptured(err: unknown) {
+  return Boolean(err && typeof err === 'object' && (err as any)[DEBUG_CAPTURED_FLAG])
+}
+
+export async function recordPersonalizeDebug(ctx: PersonalizeDebugContext, stage: string, err: unknown) {
+  try {
+    const { error } = await supabase.from('personalize_debug').insert({
+      user_id: ctx.userId || null,
+      story_id: ctx.storyId || null,
+      stage,
+      error_text: errorText(err),
+    })
+    if (error) console.warn('[personalized-final-mix] failed to write personalize_debug:', error.message)
+    markDebugCaptured(err)
+  } catch (debugErr) {
+    console.warn('[personalized-final-mix] failed to write personalize_debug:', debugErr instanceof Error ? debugErr.message : String(debugErr))
+  }
+}
+
+async function withPersonalizeDebug<T>(ctx: PersonalizeDebugContext, stage: string, fn: () => Promise<T>): Promise<T> {
+  try {
+    return await fn()
+  } catch (err) {
+    await recordPersonalizeDebug(ctx, stage, err)
+    throw err
+  }
+}
+
 function hashPart(value: string) {
   return createHash('sha256').update(value).digest('hex').slice(0, 16)
 }
@@ -181,22 +228,25 @@ async function pickOpener(userId: string, preferredName: string, toneCluster: st
   return ranked[0]
 }
 
-async function renderOrReuseOpenerClip(userId: string, preferredName: string, opener: PersonalizedOpener, existingClip: UserOpenerClip | null) {
+async function renderOrReuseOpenerClip(userId: string, storyId: string, preferredName: string, opener: PersonalizedOpener, existingClip: UserOpenerClip | null) {
   if (existingClip?.audio_url && await publicFileExists(existingClip.audio_url)) return existingClip
 
   const spokenText = opener.template_text.replace(/\[LISTENER_NAME\]/g, preferredName)
   const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'et-opener-'))
   const openerPath = path.join(tmpDir, 'opener.mp3')
+  const debugCtx = { userId, storyId }
   try {
-    await renderOpenerAudio(spokenText, openerPath)
+    await withPersonalizeDebug(debugCtx, 'opener-tts', () => renderOpenerAudio(spokenText, openerPath))
     const buffer = await fs.readFile(openerPath)
     const storagePath = `personalized-openers/${hashPart(userId)}/${safeName(preferredName)}/${opener.id}.mp3`
-    const { error: uploadError } = await supabase.storage.from('audio').upload(storagePath, buffer, {
-      contentType: 'audio/mpeg',
-      cacheControl: '31536000',
-      upsert: true,
+    await withPersonalizeDebug(debugCtx, 'opener-upload', async () => {
+      const { error: uploadError } = await supabase.storage.from('audio').upload(storagePath, buffer, {
+        contentType: 'audio/mpeg',
+        cacheControl: '31536000',
+        upsert: true,
+      })
+      if (uploadError) throw new Error(`Failed to upload opener clip: ${uploadError.message}`)
     })
-    if (uploadError) throw new Error(`Failed to upload opener clip: ${uploadError.message}`)
     const audioUrl = `${BASE_STORAGE}/${storagePath}`
     const { data: clip, error: upsertError } = await supabase
       .from('user_intro_opener_clips')
@@ -251,38 +301,43 @@ async function renderPersonalizedAudio(story: StoryAudioRow, userId: string, pre
   const stingFade = path.join(tmpDir, 'sting_fade.mp3')
   const gap = path.join(tmpDir, 'gap.mp3')
   const finalPath = path.join(tmpDir, 'final_mix.mp3')
+  const debugCtx = { userId, storyId: story.id }
   try {
-    await Promise.all([
-      download(STING_URL, stingRaw),
-      download(openerAudioUrl, openerRaw),
-      download(bodyUrl, bodyRaw),
-      download(outroUrl, outroRaw),
-    ])
-    await Promise.all([
-      reformatAudio(openerRaw, opener44),
-      reformatAudio(bodyRaw, body44),
-      reformatAudio(outroRaw, outro44),
-      generateSilence(gap, INTRO_GAP_SEC),
-    ])
+    await withPersonalizeDebug(debugCtx, 'ffmpeg', async () => {
+      await Promise.all([
+        download(STING_URL, stingRaw),
+        download(openerAudioUrl, openerRaw),
+        download(bodyUrl, bodyRaw),
+        download(outroUrl, outroRaw),
+      ])
+      await Promise.all([
+        reformatAudio(openerRaw, opener44),
+        reformatAudio(bodyRaw, body44),
+        reformatAudio(outroRaw, outro44),
+        generateSilence(gap, INTRO_GAP_SEC),
+      ])
 
-    const stingDur = await getAudioDuration(stingRaw)
-    await execFileAsync(FFMPEG_PATH, [
-      '-i', stingRaw,
-      '-filter_complex',
-      `[0:a]afade=t=out:st=${STING_TO_BELLE_SEC}:d=${Math.max(0.5, stingDur - STING_TO_BELLE_SEC)},aformat=sample_rates=44100:channel_layouts=stereo[out]`,
-      '-map', '[out]',
-      '-ar', '44100', '-ac', '2', '-b:a', '192k',
-      '-y', stingFade,
-    ])
-    await concatAudio([stingFade, gap, opener44, body44, outro44], finalPath)
+      const stingDur = await getAudioDuration(stingRaw)
+      await execFileAsync(FFMPEG_PATH, [
+        '-i', stingRaw,
+        '-filter_complex',
+        `[0:a]afade=t=out:st=${STING_TO_BELLE_SEC}:d=${Math.max(0.5, stingDur - STING_TO_BELLE_SEC)},aformat=sample_rates=44100:channel_layouts=stereo[out]`,
+        '-map', '[out]',
+        '-ar', '44100', '-ac', '2', '-b:a', '192k',
+        '-y', stingFade,
+      ])
+      await concatAudio([stingFade, gap, opener44, body44, outro44], finalPath)
+    })
 
     const buffer = await fs.readFile(finalPath)
-    const { error: uploadError } = await supabase.storage.from('audio').upload(storagePath, buffer, {
-      contentType: 'audio/mpeg',
-      cacheControl: '31536000',
-      upsert: true,
+    await withPersonalizeDebug(debugCtx, 'upload', async () => {
+      const { error: uploadError } = await supabase.storage.from('audio').upload(storagePath, buffer, {
+        contentType: 'audio/mpeg',
+        cacheControl: '31536000',
+        upsert: true,
+      })
+      if (uploadError) throw new Error(`Failed to upload personalized final mix: ${uploadError.message}`)
     })
-    if (uploadError) throw new Error(`Failed to upload personalized final mix: ${uploadError.message}`)
     return { finalMixUrl: publicUrl, cached: false }
   } finally {
     await fs.rm(tmpDir, { recursive: true, force: true }).catch(() => {})
@@ -312,7 +367,7 @@ export async function renderPersonalizedFinalMix({
 
   const toneCluster = await resolveToneCluster(story as StoryAudioRow)
   const { opener, clip: existingClip } = await pickOpener(userId, cleanName, toneCluster)
-  const clip = await renderOrReuseOpenerClip(userId, cleanName, opener, existingClip)
+  const clip = await renderOrReuseOpenerClip(userId, storyId, cleanName, opener, existingClip)
   if (!clip.audio_url) throw new Error('Personalized opener clip has no audio_url')
   const rendered = await renderPersonalizedAudio(story as StoryAudioRow, userId, cleanName, opener, clip.audio_url)
   await markOpenerUsed(clip)
