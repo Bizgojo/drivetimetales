@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { ensureNamePoolForUser } from '@/lib/personalization/ensureNamePool';
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -100,6 +101,14 @@ export async function PATCH(request: NextRequest) {
 
     if (error) {
       throw error;
+    }
+
+    if (updates.display_name !== undefined) {
+      try {
+        await ensureNamePoolForUser(user.id, updates.display_name);
+      } catch (nameErr) {
+        console.error('[User PATCH] Name pool keying failed:', nameErr);
+      }
     }
 
     return NextResponse.json(data);

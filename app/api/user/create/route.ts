@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { Resend } from 'resend';
+import { ensureNamePoolForUser } from '@/lib/personalization/ensureNamePool';
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -47,6 +48,12 @@ export async function POST(request: NextRequest) {
     if (error) {
       console.error('[User Create] Insert error:', error);
       throw error;
+    }
+
+    try {
+      await ensureNamePoolForUser(id, firstName);
+    } catch (nameErr) {
+      console.error('[User Create] Name pool keying failed:', nameErr);
     }
 
     // Send welcome email (non-blocking)
