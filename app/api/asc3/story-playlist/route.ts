@@ -21,7 +21,7 @@ type NameOpenerClip = {
 
 type OpenerHistoryRow = {
   opener_id: string | null
-  created_at?: string | null
+  played_at?: string | null
 }
 
 function normalizeFirstName(value?: string | null) {
@@ -112,11 +112,11 @@ async function pickNameOpenerClip(userId: string, pronunciationKey: string, tone
   const openerIds = availableClips.map((clip: NameOpenerClip) => clip.opener_id)
   const { data: history, error: historyError } = await supabase
     .from('user_opener_history')
-    .select('opener_id,created_at')
+    .select('opener_id,played_at')
     .eq('user_id', userId)
     .eq('tone_cluster', toneCluster)
     .in('opener_id', openerIds)
-    .order('created_at', { ascending: false })
+    .order('played_at', { ascending: false })
     .limit(100)
 
   if (historyError) throw new Error('user_opener_history lookup failed: ' + historyError.message)
@@ -125,7 +125,7 @@ async function pickNameOpenerClip(userId: string, pronunciationKey: string, tone
   for (const row of (history || []) as OpenerHistoryRow[]) {
     const openerId = String(row.opener_id || '')
     if (!openerId || lastUsedByOpener.has(openerId)) continue
-    const usedAt = row.created_at ? Date.parse(row.created_at) : 0
+    const usedAt = row.played_at ? Date.parse(row.played_at) : 0
     lastUsedByOpener.set(openerId, Number.isFinite(usedAt) ? usedAt : 0)
   }
 
