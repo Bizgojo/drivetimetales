@@ -78,7 +78,7 @@ const BELLE_EXACT_OR_CREEPY_TIME_PATTERNS = [
 ]
 
 function getSceneLoudnessOffset(text: string, prefix: string): number {
-  if (prefix === 'intro' || prefix === 'intro_before' || prefix === 'intro_after' || prefix === 'outro') return 0
+  if (prefix === 'announcement' || prefix === 'intro' || prefix === 'intro_before' || prefix === 'intro_after' || prefix === 'outro') return 0
   const t = text.toLowerCase()
   if (/\b(whisper|whispers|whispered|murmur|murmurs|murmured|under his breath|under her breath|hushed)\b/.test(t)) return -5
   if (/\b(distant|far away|from outside|over the radio|through the radio|radio crackle|phone line|intercom)\b/.test(t)) return -3
@@ -2302,9 +2302,10 @@ function validateBelleLine(kind: 'intro' | 'outro', text: string, ctx: BelleVali
   if (BELLE_GENERIC_PATTERNS.some(pattern => pattern.test(cleaned))) errors.push(`${kind} uses generic or repetitive Belle wording`)
   if (BELLE_EXACT_OR_CREEPY_TIME_PATTERNS.some(pattern => pattern.test(cleaned))) errors.push(`${kind} uses exact or creepy listener context`)
   if (/\b(spoiler|reveals?|revealed|killer is|turns out|will die|dies in the next)\b/i.test(cleaned)) errors.push(`${kind} risks spoiler language`)
-  if (kind === 'intro' && words > 38) errors.push('intro is too long for a clean handoff')
+  if (kind === 'intro' && words > 38) errors.push('announcement is too long for a clean handoff')
   if (kind === 'outro' && words > 55) errors.push('outro is too long for Belle')
-  if (kind === 'intro' && (cleaned.match(/\[LISTENER_NAME\]/g) || []).length > 1) errors.push('intro has more than one [LISTENER_NAME] placeholder')
+  if (kind === 'intro' && (cleaned.match(/\[LISTENER_NAME\]/g) || []).length > 0) errors.push('announcement must not include [LISTENER_NAME] placeholder')
+  if (kind === 'intro' && /\b(welcome|settle in|let['’]?s begin)\b/i.test(cleaned)) errors.push('announcement must not include greeting/opener language')
 
   if (kind === 'outro' && ctx.episodeState === 'series_non_final') {
     if (!/\b(next time|next episode|in the next episode|when episode|episode \d+|continues|will have to|will need to|pulls? us)\b/i.test(cleaned)) {
@@ -2369,9 +2370,9 @@ function repairedBelleLine(kind: 'intro' | 'outro', ctx: BelleValidationContext)
 
   if (kind === 'intro') {
     if (ctx.episodeState === 'series_non_final' || ctx.episodeState === 'series_finale') {
-      return `You're back inside "${title}." The road is open, the stakes are still moving, and the next turn belongs to the story.`
+      return `Inside "${title}," the stakes are still moving, and the next turn belongs to the story.`
     }
-    return `This is "${title}," an Endless Tales Original. Settle in for a story built to carry you cleanly into its first turn.`
+    return `This is "${title}," where one specific turn pulls the story toward danger.`
   }
 
   if (ctx.episodeState === 'series_non_final') {
@@ -2494,6 +2495,7 @@ function findUnlabeledStoryBodyLines(script: string) {
   if (startIdx === -1) return []
 
   const allowedSectionMarkers = new Set([
+    'BELLE B ANNOUNCEMENT',
     'BELLE B INTRO',
     'BELLE B OUTRO',
     '[START AUDIO DRAMA SCRIPT]',
@@ -2627,7 +2629,7 @@ async function generateVoiceLine(rawText: string, voiceId: string, storyId: stri
   const cachePath = `asc3/${storyId}/${fileName}`
   const cacheUrl = `${BASE_STORAGE}/${cachePath}`
   // Skip cache for announcer lines (intro/outro) OR when force=true - these must always be fresh
-  const isAnnouncer = prefix === 'intro' || prefix === 'intro_before' || prefix === 'intro_after' || prefix === 'outro'
+  const isAnnouncer = prefix === 'announcement' || prefix === 'intro' || prefix === 'intro_before' || prefix === 'intro_after' || prefix === 'outro'
   const generateAttemptForText = async (inputText: string): Promise<Buffer> => {
     const res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
       method: 'POST',
@@ -3362,7 +3364,7 @@ export async function POST(req: NextRequest) {
       }, { status: 422 })
     }
     const belleRepairUpdates: Record<string, string> = {}
-    if (introValidation.repaired && introValidation.line) belleRepairUpdates.intro_text = introValidation.line.text
+    if (introValidation.repaired && introValidation.line) belleRepairUpdates.announcement_text = introValidation.line.text
     if (outroValidation.repaired && outroValidation.line) belleRepairUpdates.outro_text = outroValidation.line.text
     if (Object.keys(belleRepairUpdates).length > 0) {
       await supabase.from('stories').update(belleRepairUpdates).eq('id', storyId)
@@ -3388,9 +3390,9 @@ export async function POST(req: NextRequest) {
       }
 
       let existingIntroFile = [...(existingAudioFiles || [])]
-        .filter(file => file.name === 'intro.mp3' || file.name.startsWith('intro_'))
+        .filter(file => file.name === 'announcement.mp3' || file.name.startsWith('announcement_'))
         .sort((a, b) => {
-          const priority = (name: string) => name === 'intro.mp3' ? 0 : name.startsWith('intro_before') ? 1 : 2
+          const priority = (name: string) => name === 'announcement.mp3' ? 0 : 1
           return priority(a.name) - priority(b.name) || a.name.localeCompare(b.name)
         })[0]
       let existingOutroFile = [...(existingAudioFiles || [])]
@@ -3423,46 +3425,17 @@ export async function POST(req: NextRequest) {
 
       if (!existingIntroFile && introLine) {
         try {
-          const introText = introLine.text
-          const listenerNameCount = (introText.match(/\[LISTENER_NAME\]/g) || []).length
-          if (listenerNameCount > 1) throw new Error('Belle B intro must contain exactly one [LISTENER_NAME] placeholder.')
-          if (listenerNameCount === 1) {
-            const parts = introText.split('[LISTENER_NAME]')
-            const beforeText = parts[0].trim()
-            const afterText = parts[1].trim()
-            if (!beforeText && !afterText) throw new Error('Belle B intro has [LISTENER_NAME] but no surrounding text.')
-            // Only generate audio for non-empty parts — empty beforeText / afterText would cause
-            // ElevenLabs to return silence (~10KB) which fails validate_belle_assets silence rejection.
-            // When only one side is non-empty, use the 'intro' prefix so render_final_mix finds it
-            // as a standalone intro_*.mp3 instead of an orphaned intro_before_* or intro_after_*.
-            let beforeUrl: string | null = null
-            let afterUrl: string | null = null
-            let primaryUrl: string
-            if (beforeText && afterText) {
-              // [LISTENER_NAME] in the middle — generate a matched before/after pair
-              beforeUrl = await generateVoiceLine(beforeText, CANONICAL_BELLE_B_VOICE_ID, storyId, introLine.index, 'intro_before')
-              afterUrl = await generateVoiceLine(afterText, CANONICAL_BELLE_B_VOICE_ID, storyId, introLine.index + 0.1, 'intro_after')
-              primaryUrl = beforeUrl
-            } else if (afterText) {
-              // [LISTENER_NAME] at start — only afterText; generate as standalone intro
-              primaryUrl = await generateVoiceLine(afterText, CANONICAL_BELLE_B_VOICE_ID, storyId, introLine.index, 'intro')
-            } else {
-              // [LISTENER_NAME] at end — only beforeText; generate as standalone intro
-              primaryUrl = await generateVoiceLine(beforeText, CANONICAL_BELLE_B_VOICE_ID, storyId, introLine.index, 'intro')
-            }
-            result.introUrl = primaryUrl
-            await supabase.from('stories').update({ intro_audio_url: primaryUrl, intro_before_url: beforeUrl, intro_after_url: afterUrl, intro_text: introText }).eq('id', storyId)
-          } else {
-            const introUrl = await generateVoiceLine(introText, CANONICAL_BELLE_B_VOICE_ID, storyId, introLine.index, 'intro')
-            result.introUrl = introUrl
-            await supabase.from('stories').update({ intro_audio_url: introUrl, intro_before_url: introUrl, intro_after_url: null, intro_text: introText }).eq('id', storyId)
-          }
+          const announcementText = introLine.text
+          if (announcementText.includes('[LISTENER_NAME]')) throw new Error('Belle B announcement must not contain [LISTENER_NAME].')
+          const announcementUrl = await generateVoiceLine(announcementText, CANONICAL_BELLE_B_VOICE_ID, storyId, introLine.index, 'announcement')
+          result.introUrl = announcementUrl
+          await supabase.from('stories').update({ announcement_url: announcementUrl, announcement_text: announcementText }).eq('id', storyId)
           result.introStatus = 'generated'
-          console.log('  ✅ Belle-only intro generated')
+          console.log('  ✅ Belle-only announcement generated')
         } catch (e) {
           result.introStatus = 'failed'
-          result.errors.push(`Intro failed: ${String(e)}`)
-          console.error('  ❌ Belle-only intro failed:', e)
+          result.errors.push(`Announcement failed: ${String(e)}`)
+          console.error('  ❌ Belle-only announcement failed:', e)
         }
       }
 
@@ -3969,46 +3942,14 @@ export async function POST(req: NextRequest) {
     const escalations: SegmentEscalation[] = []
     if (introLine) {
       try {
-        const introText = introLine.text
-        const listenerNameCount = (introText.match(/\[LISTENER_NAME\]/g) || []).length
-        if (listenerNameCount > 1) {
-          throw new Error('Belle B intro must contain exactly one [LISTENER_NAME] placeholder.')
+        const announcementText = introLine.text
+        if (announcementText.includes('[LISTENER_NAME]')) {
+          throw new Error('Belle B announcement must not contain [LISTENER_NAME].')
         }
-        if (listenerNameCount === 1) {
-          // Split into before/after name — only generate audio for non-empty parts.
-          // If the intro starts with [LISTENER_NAME] (e.g. "[LISTENER_NAME], a dead man…"),
-          // beforeText will be empty and generating audio for it causes ElevenLabs to return
-          // ~10KB of silence, which fails validate_belle_assets silence rejection.
-          const parts = introText.split('[LISTENER_NAME]')
-          const beforeText = parts[0].trim()
-          const afterText = parts[1].trim()
-          if (!beforeText && !afterText) throw new Error('Belle B intro has [LISTENER_NAME] but no surrounding text.')
-          // When only one side is non-empty, use the 'intro' prefix so render_final_mix finds it
-          // as a standalone intro_*.mp3 instead of an orphaned intro_before_* or intro_after_*.
-          let beforeUrl: string | null = null
-          let afterUrl: string | null = null
-          let introPrimaryUrl: string
-          if (beforeText && afterText) {
-            // [LISTENER_NAME] in the middle — generate a matched before/after pair
-            beforeUrl = await generateVoiceLine(beforeText, CANONICAL_BELLE_B_VOICE_ID, storyId, introLine.index, 'intro_before')
-            afterUrl = await generateVoiceLine(afterText, CANONICAL_BELLE_B_VOICE_ID, storyId, introLine.index + 0.1, 'intro_after')
-            introPrimaryUrl = beforeUrl
-          } else if (afterText) {
-            // [LISTENER_NAME] at start — only afterText; generate as standalone intro
-            introPrimaryUrl = await generateVoiceLine(afterText, CANONICAL_BELLE_B_VOICE_ID, storyId, introLine.index, 'intro')
-          } else {
-            // [LISTENER_NAME] at end — only beforeText; generate as standalone intro
-            introPrimaryUrl = await generateVoiceLine(beforeText, CANONICAL_BELLE_B_VOICE_ID, storyId, introLine.index, 'intro')
-          }
-          results.intro = introPrimaryUrl
-          await supabase.from('stories').update({ intro_before_url: beforeUrl, intro_after_url: afterUrl, intro_text: introText }).eq('id', storyId)
-          console.log('  ✅ Belle B intro split (before/after name)')
-        } else {
-          results.intro = await generateVoiceLine(introText, CANONICAL_BELLE_B_VOICE_ID, storyId, introLine.index, 'intro')
-          await supabase.from('stories').update({ intro_before_url: results.intro, intro_after_url: null, intro_text: introText }).eq('id', storyId)
-          console.log('  ✅ Belle B intro (no name split)')
-        }
-      } catch (e) { console.error('  ❌ Intro failed:', e) }
+        results.intro = await generateVoiceLine(announcementText, CANONICAL_BELLE_B_VOICE_ID, storyId, introLine.index, 'announcement')
+        await supabase.from('stories').update({ announcement_url: results.intro, announcement_text: announcementText }).eq('id', storyId)
+        console.log('  ✅ Belle B announcement')
+      } catch (e) { console.error('  ❌ Announcement failed:', e) }
     }
     if (outroLine && outroLine.index !== introLine?.index) { try { results.outro = await generateVoiceLine(outroLine.text, CANONICAL_BELLE_B_VOICE_ID, storyId, outroLine.index, 'outro'); console.log('  ✅ Belle B outro') } catch (e) { console.error('  ❌ Outro failed:', e) } }
     for (const line of storyLines) {
@@ -4072,12 +4013,11 @@ export async function POST(req: NextRequest) {
       }
     }
     const updates: Record<string, string> = {}
-    if (results.intro) updates.intro_audio_url = results.intro
+    if (results.intro) updates.announcement_url = results.intro
     if (results.outro) updates.outro_audio_url = results.outro
-    if (results.intro && introLine) updates.intro_text = introLine.text
+    if (results.intro && introLine) updates.announcement_text = introLine.text
     if (results.outro && outroLine && outroLine.index !== introLine?.index) updates.outro_text = outroLine.text
     if (Object.keys(updates).length > 0) await supabase.from('stories').update(updates).eq('id', storyId)
-    // Note: intro_before_url and intro_after_url set above during intro generation
     const voiceTotal = storyLines.filter(l =>
       !nonDialogueSpeakers.has(l.speaker.toUpperCase()) &&
       (l.type === 'narrator' || l.type === 'character')

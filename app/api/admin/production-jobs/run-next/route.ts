@@ -655,9 +655,15 @@ function validateCardCopy(script: string) {
   return issues
 }
 
+function belleSectionMarkers(kind: 'intro' | 'outro') {
+  return kind === 'intro' ? ['BELLE B ANNOUNCEMENT', 'BELLE B INTRO'] : ['BELLE B OUTRO']
+}
+
 function extractBelleSection(script: string, kind: 'intro' | 'outro') {
-  const marker = kind === 'intro' ? 'BELLE B INTRO' : 'BELLE B OUTRO'
-  const markerIndex = script.search(new RegExp(`^${marker}\\s*$`, 'im'))
+  const markers = belleSectionMarkers(kind)
+  const markerIndex = markers
+    .map(marker => script.search(new RegExp(`^${marker}\\s*$`, 'im')))
+    .find(index => index >= 0) ?? -1
   if (markerIndex < 0) return ''
   const afterMarker = script.slice(markerIndex)
   const match = afterMarker.match(/^BELLE B:\s*(.+)$/im)
@@ -665,10 +671,11 @@ function extractBelleSection(script: string, kind: 'intro' | 'outro') {
 }
 
 function replaceBelleSection(script: string, kind: 'intro' | 'outro', text: string) {
-  const marker = kind === 'intro' ? 'BELLE B INTRO' : 'BELLE B OUTRO'
-  const pattern = new RegExp(`(^${marker}\\s*\\n(?:---\\s*\\n)?)(BELLE B:\\s*).*$`, 'im')
-  if (!pattern.test(script)) throw new Error(`${marker} block is missing or malformed`)
-  return script.replace(pattern, `$1$2${normalizeHeaderValue(text)}`)
+  for (const marker of belleSectionMarkers(kind)) {
+    const pattern = new RegExp(`(^${marker}\\s*\\n(?:---\\s*\\n)?)(BELLE B:\\s*).*$`, 'im')
+    if (pattern.test(script)) return script.replace(pattern, `$1$2${normalizeHeaderValue(text)}`)
+  }
+  throw new Error(`${belleSectionMarkers(kind)[0]} block is missing or malformed`)
 }
 
 function normalizeBelleRequiredText(text: string) {
@@ -981,7 +988,7 @@ function introNamesEpisodeNumber(text: string, n: number): boolean {
  *
  * @param story  Story row fields: title, author, script, series_id, series_name,
  *               episode_number, series_total_episodes, series_is_finale
- * @param introText  Text extracted from BELLE B INTRO block
+ * @param introText  Text extracted from BELLE B ANNOUNCEMENT / legacy BELLE B INTRO block
  * @param outroText  Text extracted from BELLE B OUTRO block
  */
 async function validateIntroOutroPositionRules(
@@ -1020,14 +1027,12 @@ async function validateIntroOutroPositionRules(
   if (!intro) {
     issues.push('intro text is missing')
   } else {
-    // Personalization: must include [LISTENER_NAME] placeholder
-    if (!intro.includes('[LISTENER_NAME]')) {
-      issues.push('intro must include [LISTENER_NAME] placeholder')
+    if (intro.includes('[LISTENER_NAME]')) {
+      issues.push('announcement must not include [LISTENER_NAME] placeholder')
     }
     // Concrete narrative hook (event, danger, secret, conflict, mystery, mechanism)
     if (!(await hasConcreteNarrativeHook(intro))) {
       issues.push('intro must include a concrete narrative hook (event, danger, secret, conflict, mystery, or story mechanism)')
-      // TODO(llm): deeper "hook is genuinely personalized" judgment beyond [LISTENER_NAME]
       requireLlmJudgment = true
     }
     // Standalone: must name the story title
@@ -1196,9 +1201,10 @@ Hard rules:
 - Belle is warm, direct, and specific. No host/DJ/trailer voice.
 - No time-of-day reference.
 - No speaker labels.
-- Intro must include [LISTENER_NAME] exactly once at a natural pause.
-- Intro must name the exact series title, episode number, and episode title.
-- Intro must include a concrete narrative hook: event, danger, secret, conflict, mystery, or story mechanism.
+- Announcement must not include [LISTENER_NAME] or any listener name; the shared name opener handles greeting/personalization.
+- Announcement must not include a greeting/opener such as "welcome" or "settle in".
+- Announcement must name the exact series title, episode number, and episode title.
+- Announcement must include a concrete narrative hook: event, danger, secret, conflict, mystery, or story mechanism.
 - Outro must never include [LISTENER_NAME].
 - Non-finale outro must tease or point toward the next episode.
 - Non-finale outro must not include author/narrator credits or "Endless Tales original".
@@ -1253,7 +1259,7 @@ async function deleteBelleAudioFiles(storyId: string, repairIntro: boolean, repa
   const stalePaths = (files || [])
     .map((file: any) => String(file.name || ''))
     .filter(name =>
-      (repairIntro && (name === 'intro.mp3' || name.startsWith('intro_') || name.startsWith('intro_before_') || name.startsWith('intro_after_'))) ||
+      (repairIntro && (name === 'announcement.mp3' || name.startsWith('announcement_') || name === 'intro.mp3' || name.startsWith('intro_') || name.startsWith('intro_before_') || name.startsWith('intro_after_'))) ||
       (repairOutro && (name === 'outro.mp3' || name.startsWith('outro_')))
     )
     .map(name => `asc3/${storyId}/${name}`)
@@ -1516,7 +1522,10 @@ async function validateBelleText(kind: 'intro' | 'outro', text: string, options:
   if (!text) issues.push(`${kind} text is required.`)
   if (text && wordCount < 4) issues.push(`${kind} text is too short.`)
   if (text && !/[.!?]["'”’)]*$/.test(text)) issues.push(`${kind} text appears incomplete; it must end with punctuation.`)
-  if (/\b(welcome|begins now|only on endless tales|sponsored by|stay tuned)\b/i.test(text)) {
+  if (kind === 'intro' && text.includes('[LISTENER_NAME]')) {
+    issues.push('announcement must not include [LISTENER_NAME].')
+  }
+  if (/\b(welcome|settle in|let['’]?s begin|begins now|only on endless tales|sponsored by|stay tuned)\b/i.test(text)) {
     issues.push(`${kind} uses forbidden host or promotional language.`)
   }
   if (/\bbelle b\b/i.test(text)) issues.push(`${kind} must say Belle, not Belle B.`)
@@ -1570,7 +1579,7 @@ Use the CURRENT rules:
 - DESCRIPTION SPOILER RULE: DESCRIPTION is a story-card teaser, not a plot summary. It must raise a question, not answer it. HARD FAIL if DESCRIPTION reveals: the survivor, the culprit, the missing person's status, a hidden person alive or dead, the final discovery, or the resolution payoff. Examples of failing DESCRIPTION phrases: "to a survivor", "to the killer", "reveals who did it", "the missing child is alive".
 - The script must include the required header fields.
 - The script must include a CHARACTER GUIDE.
-- The script must include BELLE B INTRO and BELLE B OUTRO blocks.
+- The script must include BELLE B ANNOUNCEMENT and BELLE B OUTRO blocks.
 - Standalone stories must end conclusively.
 - Series non-finales must end on a specific cliffhanger.
 - Difficult Solution Rule: the main problem must feel genuinely difficult at the beginning, the middle must reveal leverage and escalating consequences that make the solution possible, and the ending must feel emotionally and logically earned.
@@ -1647,8 +1656,8 @@ Intro requirements:
 - If you could attach this intro to many similar foggy mysteries, fail it.
 - Standalone intros must name or imply the actual mechanism that drives the story, such as who is in trouble, what strange event happens, what object/list/record drives the plot, or why the listener should care.
 - Vague phrases like "something waiting", "in the fog", "on that river", "your name written down", "secrets", "ink", or "twenty years ago" do not count unless paired with the concrete story mechanism.
-- Must not use generic host language such as "Welcome", "begins now", "only on Endless Tales", "tonight", or promotional copy.
-- Any [LISTENER_NAME] placeholder must sit naturally in a complete sentence; removing it must not break grammar.
+- Must not use generic host language such as "Welcome", "settle in", "begins now", "only on Endless Tales", "tonight", or promotional copy.
+- Must not include [LISTENER_NAME] or any listener name; this line is the story announcement only.
 
 Outro requirements:
 - Emotionally lands and feels companion-like, as if Belle is still beside the listener after the story.
@@ -1696,11 +1705,11 @@ Content rules:
 - No "Welcome", "begins now", "only on Endless Tales", "tonight", "stay tuned", "next time", or "what happens next" for standalone stories.
 
 MANDATORY FIELD REQUIREMENTS — you will be rejected if these are missing:
-1. [LISTENER_NAME]: The intro MUST include [LISTENER_NAME] exactly as written, placed naturally in a complete sentence. This is non-negotiable. The product is personalized.
-2. STORY TITLE: Standalone intro and outro MUST include the exact story title as provided in TITLE above. Do not paraphrase, shorten, or omit it.
-3. CONCRETE HOOK: Standalone intro MUST include a concrete narrative hook — a specific conflict, crime, mystery mechanism, secret, danger, cover-up, wrongdoing, or story object. "Something waiting" or "a story about trust" is NOT a hook. "Paper trail breaks, someone broke it on purpose" IS a hook. "A forged deed" IS a hook. Name the specific thing that creates danger or mystery.
-4. NO SYNOPSIS: NEVER write a third-person synopsis, story description, or plot summary (e.g., "In this story...", "follows a driver...", "a man discovers..."). The listener already chose this story — do not describe it to them.
-5. DIRECT ADDRESS: Address the listener directly using [LISTENER_NAME] and "you". Speak as a companion, not a narrator.
+1. NO LISTENER NAME: The intro/announcement MUST NOT include [LISTENER_NAME] or any listener name. The shared name opener handles greeting/personalization.
+2. NO GREETING: The intro/announcement MUST NOT use greeting/opener language such as "welcome", "settle in", or "let's begin".
+3. STORY TITLE: Standalone intro/announcement and outro MUST include the exact story title as provided in TITLE above. Do not paraphrase, shorten, or omit it.
+4. CONCRETE HOOK: Standalone intro/announcement MUST include a concrete narrative hook — a specific conflict, crime, mystery mechanism, secret, danger, cover-up, wrongdoing, or story object. "Something waiting" or "a story about trust" is NOT a hook. "Paper trail breaks, someone broke it on purpose" IS a hook. "A forged deed" IS a hook. Name the specific thing that creates danger or mystery.
+5. NO SYNOPSIS: NEVER write a third-person synopsis, story description, or plot summary (e.g., "In this story...", "follows a driver...", "a man discovers..."). The listener already chose this story — do not describe it to them.
 6. NARRATOR CREDIT (ATL-PIPE-012): Standalone outro MUST include the narrator voice talent name if provided. The narrator name is given in the NARRATOR field below. The exact phrase can vary ("Narrated by [NARRATOR]", "Voices by [NARRATOR]", or incorporated into the outro sentence), but the narrator name MUST appear verbatim in the outro.
 
 Additional content rules:
@@ -2689,9 +2698,9 @@ Ending hard rules:
 Use the CURRENT published rules:
 - Belle B is the only announcer voice.
 - Belle B is never labeled ANNOUNCER or SANDY.
-- Belle B intro must include exactly one [LISTENER_NAME] placeholder. Do not include the listener's actual name.
+- Belle B announcement must not include [LISTENER_NAME] or any listener name; the shared name opener handles greeting/personalization.
 - Belle B intro/outro must never use "Tonight" or any time-of-day reference.
-- Belle B intro must never mention the author, narrator, or "an Endless Tales original"; those credits belong only in the Belle B outro.
+- Belle B announcement must never include a greeting/opener, the author, narrator, or "an Endless Tales original"; those credits belong only in the Belle B outro.
 - No SFX in the published story body.
 - The title may be blank in the brief; if blank, choose the best title from the story.
 - Final title must be 1 to 5 words and 28 characters or fewer so it fits one line on story cards.
@@ -2721,9 +2730,9 @@ CHARACTER GUIDE
 ---
 [List each speaking character with age, gender, accent, and personality note]
 
-BELLE B INTRO
+BELLE B ANNOUNCEMENT
 ---
-BELLE B: [one or two short sentences, warm, specific, sensory, includes exactly one [LISTENER_NAME] placeholder placed naturally and not always at the start, reads gracefully if the name is omitted, includes the story title in quotes, references something specific from the story, no time-of-day reference, no author/narrator credit, no "Endless Tales original"]
+BELLE B: [one or two short sentences, warm, specific, sensory. Includes the story title in quotes and references something specific from the story. NO [LISTENER_NAME]. NO greeting/opener (e.g. no "settle in", "welcome") — the name opener handles that. NO author credit, NO narrator credit, no time-of-day, no "Endless Tales original".]
 
 [START AUDIO DRAMA SCRIPT]
 NARRATOR: ...
@@ -2952,24 +2961,23 @@ async function generateStandaloneScript(job: ProductionJob, model: string) {
   }
   const briefWarnings = briefMismatches.length > 0 ? briefMismatches : []
 
-  // ATL-PIPE-005: Extract Belle B intro line and populate intro_text field
-  let introText: string | null = null
+  // ATL-PIPE-005 / Phase 3: Extract Belle B announcement line for inspection.
+  let announcementText: string | null = null
   try {
-    const belleIntroSection = extractBelleSection(script, 'intro')
-    if (belleIntroSection) {
+    const belleAnnouncementSection = extractBelleSection(script, 'intro')
+    if (belleAnnouncementSection) {
       // Extract text after "BELLE B:" label
-      const belleMatch = belleIntroSection.match(/BELLE\s+B:\s*(.+?)(?:\n|$)/i)
+      const belleMatch = belleAnnouncementSection.match(/BELLE\s+B:\s*(.+?)(?:\n|$)/i)
       if (belleMatch) {
-        introText = belleMatch[1].trim()
-        // Validate intro_text references listener name and has specific story details (not generic)
-        const isGeneric = /^settle\s+in/i.test(introText) && introText.length < 100
+        announcementText = belleMatch[1].trim()
+        const isGeneric = /^(settle\s+in|welcome|let['’]?s\s+begin)/i.test(announcementText) && announcementText.length < 100
         if (isGeneric) {
-          briefWarnings.push(`Warning: Belle B intro appears generic; expected specific story references and [LISTENER_NAME] placeholder`)
+          briefWarnings.push(`Warning: Belle B announcement appears generic; expected specific story references without a greeting or listener name`)
         }
       }
     }
   } catch (e) {
-    console.warn(`Failed to extract Belle B intro: ${String(e).slice(0, 100)}`)
+    console.warn(`Failed to extract Belle B announcement: ${String(e).slice(0, 100)}`)
   }
 
   const scriptJson = {
@@ -2993,9 +3001,9 @@ async function generateStandaloneScript(job: ProductionJob, model: string) {
   if (narratorContext.mode === 'assigned' && cleanNarratorName(brief.narrator) !== narratorContext.narratorName) {
     updatePayload.brief_json = promptBrief
   }
-  // Only update intro_text if extracted successfully and non-generic
-  if (introText && introText.length > 20 && introText.includes('[LISTENER_NAME]')) {
-    updatePayload.intro_text = introText
+  // Only update announcement_text if extracted successfully and non-generic
+  if (announcementText && announcementText.length > 20 && !announcementText.includes('[LISTENER_NAME]')) {
+    updatePayload.announcement_text = announcementText
   }
 
   const { data: updated, error: updateError } = await supabase
@@ -3536,7 +3544,7 @@ async function validateStandaloneBelleAssets(job: ProductionJob) {
   if (listError) throw new Error(`Failed to list Belle assets: ${listError.message}`)
 
   const names = (files || []).map(file => file.name)
-  const introAssets = names.filter(name => name === 'intro.mp3' || name.startsWith('intro_'))
+  const introAssets = names.filter(name => name === 'announcement.mp3' || name.startsWith('announcement_') || name === 'intro.mp3' || name.startsWith('intro_'))
   const outroAssets = names.filter(name => name === 'outro.mp3' || name.startsWith('outro_'))
   const introText = extractBelleSection(story.script, 'intro')
   const outroText = extractBelleSection(story.script, 'outro')
@@ -3774,8 +3782,7 @@ async function repairStandaloneBelleQuality(job: ProductionJob, model: string) {
       : /\boutro\b/i.test(issueText) || !failedReport.issues || failedReport.issues.length === 0 || /\boutro/.test(String(failedReport.outroText || ''))
   const shouldRepairIntro = repairIntro || (!repairIntro && !repairOutro)
   const shouldRepairOutro = repairOutro || (!repairIntro && !repairOutro)
-  // [LISTENER_NAME] is always required in intros — do not derive from the (possibly broken) current intro
-  const usesName = true
+  // Phase 3: the front Belle line is an announcement only. Name/opening is handled by shared name-pool clips.
   const declaredStoryType = [
     story.story_type ? `story_type=${story.story_type}` : '',
     story.series_id ? `series_id=${story.series_id}` : '',
@@ -3796,7 +3803,7 @@ async function repairStandaloneBelleQuality(job: ProductionJob, model: string) {
 REPAIR REQUEST:
 Repair intro: ${shouldRepairIntro ? 'yes' : 'no'}
 Repair outro: ${shouldRepairOutro ? 'yes' : 'no'}
-Intro must include [LISTENER_NAME]: yes (always required)
+Intro/announcement must include [LISTENER_NAME]: no (never; shared name opener handles personalization)
 ${narratorForRepair ? `Outro must include narrator name: ${narratorForRepair} (required — e.g. "Narrated by ${narratorForRepair}.")` : ''}
 
 DECLARED METADATA:
@@ -3859,7 +3866,7 @@ ${scriptTail(story.script, 2200)}`,
     .from('stories')
     .update({
       script: nextScript,
-      ...(shouldRepairIntro ? { intro_audio_url: null, intro_before_url: null, intro_after_url: null } : {}),
+      ...(shouldRepairIntro ? { announcement_text: repairedIntro, announcement_url: null } : {}),
       ...(shouldRepairOutro ? { outro_audio_url: null } : {}),
     })
     .eq('id', storyId)
@@ -3871,7 +3878,7 @@ ${scriptTail(story.script, 2200)}`,
 
   const removedAssets = (files || [])
     .map(file => file.name)
-    .filter(name => (shouldRepairIntro && (name === 'intro.mp3' || name.startsWith('intro_'))) || (shouldRepairOutro && (name === 'outro.mp3' || name.startsWith('outro_'))))
+    .filter(name => (shouldRepairIntro && (name === 'announcement.mp3' || name.startsWith('announcement_') || name === 'intro.mp3' || name.startsWith('intro_'))) || (shouldRepairOutro && (name === 'outro.mp3' || name.startsWith('outro_'))))
   if (removedAssets.length > 0) {
     const { error: removeError } = await supabase.storage
       .from('audio')
@@ -4704,9 +4711,9 @@ Ending hard rules:
 CURRENT published rules:
 - Belle B is the only announcer voice.
 - Belle B is never labeled ANNOUNCER or SANDY.
-- Belle B intro must include exactly one [LISTENER_NAME] placeholder. Do not include the listener's actual name.
+- Belle B announcement must not include [LISTENER_NAME] or any listener name; the shared name opener handles greeting/personalization.
 - Belle B intro/outro must never use "Tonight" or any time-of-day reference.
-- Belle B intro must never mention the author, narrator, or "an Endless Tales original"; those credits belong only in the Belle B outro.
+- Belle B announcement must never include a greeting/opener, the author, narrator, or "an Endless Tales original"; those credits belong only in the Belle B outro.
 - ${belleOutroRule}
 - No SFX in the published story body.
 - Final title must be 1 to 5 words and 28 characters or fewer so it fits one line on story cards.
@@ -4733,9 +4740,9 @@ CHARACTER GUIDE
 ---
 [List each speaking character with age, gender, accent, and personality note]
 
-BELLE B INTRO
+BELLE B ANNOUNCEMENT
 ---
-BELLE B: [one or two short sentences, warm, specific, sensory, includes exactly one [LISTENER_NAME] placeholder placed naturally, includes the episode title in quotes, references something specific from the episode, no time-of-day reference, no author/narrator credit, no "Endless Tales original"]
+BELLE B: [one or two short sentences, warm, specific, sensory. Includes the episode title in quotes and references something specific from the episode. NO [LISTENER_NAME]. NO greeting/opener (e.g. no "settle in", "welcome") — the name opener handles that. NO author credit, NO narrator credit, no time-of-day, no "Endless Tales original".]
 
 [START AUDIO DRAMA SCRIPT]
 NARRATOR: ...
@@ -8253,7 +8260,7 @@ export async function POST(req: NextRequest) {
               ? `Autonomous retry ${repairAttempts + 1}/${MAX_BELLE_REPAIR_RETRIES}: re-queuing repair`
               : 'Repair retries exhausted; Marc review required',
             fix_type: canRetry ? 'autonomous_retry' : 'marc_review_required',
-            prevention_rule: 'BELLE_QUALITY_REPAIR_PROMPT updated: must include title, [LISTENER_NAME], concrete hook (ATL-PIPE-010)',
+            prevention_rule: 'BELLE_QUALITY_REPAIR_PROMPT updated: announcement must include title and concrete hook, with no listener name (ATL-PIPE-010)',
             reusable: true,
             confidence: 0.75,
           })
@@ -8670,10 +8677,8 @@ export async function POST(req: NextRequest) {
                 story_audio_url: null,
                 outro_with_music_url: null,
                 ...(belleRetryTarget.repairIntro ? {
-                  intro_text: repaired.introText,
-                  intro_audio_url: null,
-                  intro_before_url: null,
-                  intro_after_url: null,
+                  announcement_text: repaired.introText,
+                  announcement_url: null,
                 } : {}),
                 ...(belleRetryTarget.repairOutro ? {
                   outro_text: repaired.outroText,

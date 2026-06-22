@@ -238,14 +238,14 @@ export async function runRenderFinalMix(storyId: string): Promise<{
       .eq('id', storyId)
       .single()
 
-    // Detect split intro (intro_before_* + intro_after_*) vs single intro file.
-    // Split intros are generated when the script contains a [LISTENER_NAME] placeholder.
-    // The before/after halves must be concatenated in order; missing either half is an error.
+    // Phase 3: prefer a story announcement clip. Legacy split/single intro support remains
+    // only so older already-rendered assets can still be re-rendered.
+    const announcementFile = files.find(f => f.name === 'announcement.mp3' || f.name.startsWith('announcement_'))
     const introBeforeFile = files.find(f => f.name.startsWith('intro_before_'))
     const introAfterFile  = files.find(f => f.name.startsWith('intro_after_'))
     const introSingleFile = files.find(f => f.name === 'intro.mp3' || (f.name.startsWith('intro_') && !f.name.startsWith('intro_before_') && !f.name.startsWith('intro_after_')))
-    const isSplitIntro = !!(introBeforeFile && introAfterFile)
-    const introFile = isSplitIntro ? null : (introSingleFile ?? null)
+    const isSplitIntro = !announcementFile && !!(introBeforeFile && introAfterFile)
+    const introFile = announcementFile ?? (isSplitIntro ? null : (introSingleFile ?? null))
     const outroFile = files.find(f => f.name === 'outro.mp3' || f.name.startsWith('outro_'))
     const segmentPattern = /^segment_(\d{4})\.mp3$/
     const parsedSegments = files
@@ -279,7 +279,7 @@ export async function runRenderFinalMix(storyId: string): Promise<{
     const segmentFiles = parsedSegments.map(item => item.file)
     const musicFile = files.find(f => f.name === 'background_music.mp3')
 
-    if (!isSplitIntro && !introFile) return { success: false, error: 'No intro audio found (expected intro.mp3, intro_*.mp3, or intro_before_* + intro_after_* pair)' }
+    if (!isSplitIntro && !introFile) return { success: false, error: 'No announcement audio found (expected announcement_*.mp3; legacy intro fallback accepts intro.mp3, intro_*.mp3, or intro_before_* + intro_after_* pair)' }
     if (isSplitIntro && (!introBeforeFile || !introAfterFile)) return { success: false, error: 'Split intro incomplete: both intro_before_* and intro_after_* are required' }
     if (!outroFile) return { success: false, error: 'No outro audio found' }
     if (segmentFiles.length === 0) return { success: false, error: 'No story segments found' }
@@ -301,10 +301,13 @@ export async function runRenderFinalMix(storyId: string): Promise<{
     const outputPath = path.join(tmpDir, 'final_mix.mp3')
 
     await download(STING_URL, stingPath)
-    // Assemble intro: concatenate split halves (intro_before + intro_after) or use single file.
+    // Assemble front voice: use announcement clip, or concatenate legacy split halves.
     // No loudnorm here — ElevenLabs output is already at consistent levels; single-pass loudnorm
     // can introduce leading silence artifacts and dynamic gain pumping on short dialogue clips.
-    if (isSplitIntro) {
+    if (announcementFile) {
+      await download(`${BASE_STORAGE}/asc3/${storyId}/${announcementFile.name}`, introPath)
+      console.log(`  Selected announcement clip: ${announcementFile.name}`)
+    } else if (isSplitIntro) {
       const introBefore = path.join(tmpDir, 'intro_before.mp3')
       const introAfter  = path.join(tmpDir, 'intro_after.mp3')
       await download(`${BASE_STORAGE}/asc3/${storyId}/${introBeforeFile!.name}`, introBefore)
@@ -470,8 +473,9 @@ export async function runRenderFinalMix(storyId: string): Promise<{
       console.log('  ⚑  Production Standard v2 three-phase music swell ENABLED (default)')
     }
 
-    // Timing constants (Marc spec: sting→Belle 0.3-0.7s, music swell 2s, fade 3s)
-    const STING_TO_BELLE_SEC   = 0.5   // crossfadeStart below — Belle enters sting at 0.5s
+    // Timing constants (Marc spec: Belle enters over sting at 1.5s; music swell 2s, fade 3s)
+    const BELLE_ENTER_SEC      = 1.5
+    const STING_FADE_DUR       = 1.2
     const STORY_TAIL_SEC       = V2_MUSIC_SWELL ? 2.0 : 0.5  // v2: 2s swell (+3dB); legacy: 0.5s tail
     const SILENCE_PRE_STORY    = 0.75  // between sting+intro block and story body
     const SILENCE_PRE_OUTRO    = V2_MUSIC_SWELL ? 0.0 : 0.25  // v2: no gap — music bridges directly to outro
@@ -547,26 +551,21 @@ export async function runRenderFinalMix(storyId: string): Promise<{
     console.log(`  story_body.mp3 duration: ${storyBodyDur.toFixed(1)}s`)
     await logLoudnessDiagnostics('story_body.mp3', storyBodyPath)
 
-    // Sting→Belle: sting completes, then a short natural gap, then Belle speaks dry.
-    const stingDur = await getAudioDuration(stingPath)
-    const crossfadeStart = STING_TO_BELLE_SEC
-    const stingIntroPath = path.join(tmpDir, 'sting_intro.mp3')
-    const introGapSec = 0.4
-    const introGapPath = path.join(tmpDir, 'intro_gap.mp3')
-    await generateSilence(introGapPath, introGapSec)
+    // Sting→announcement: Belle enters at 1.5s while the sting fades underneath.
+    const stingIntroPath = path.join(tmpDir, 'sting_announcement.mp3')
+    const belleDelayMs = Math.round(BELLE_ENTER_SEC * 1000)
     await execFileAsync(FFMPEG_PATH, [
-      '-i', stingPath, '-i', introGapPath, '-i', normalizedIntroPath,
+      '-i', stingPath, '-i', normalizedIntroPath,
       '-filter_complex',
-      `[0:a]afade=t=out:st=${crossfadeStart}:d=${Math.max(0.5, stingDur - crossfadeStart)},aformat=sample_rates=44100:channel_layouts=stereo[sting_fade];` +
-      `[1:a]aformat=sample_rates=44100:channel_layouts=stereo[gap];` +
-      `[2:a]aformat=sample_rates=44100:channel_layouts=stereo[intro];` +
-      `[sting_fade][gap][intro]concat=n=3:v=0:a=1[out]`,
+      `[0:a]afade=t=out:st=${BELLE_ENTER_SEC}:d=${STING_FADE_DUR},aformat=sample_rates=44100:channel_layouts=stereo[s];` +
+      `[1:a]adelay=${belleDelayMs}|${belleDelayMs},aformat=sample_rates=44100:channel_layouts=stereo[v];` +
+      `[s][v]amix=inputs=2:duration=longest:normalize=0[out]`,
       '-map', '[out]',
       '-ar', '44100', '-ac', '2', '-b:a', '192k', '-y', stingIntroPath
     ])
 
     // ── Final assembly ────────────────────────────────────────────────────────
-    // v2 path: sting+intro → 0.75s silence → story_body (pre+bed+swell) → outro_with_music
+    // v2 path: sting+announcement → 0.75s silence → story_body (pre+bed+swell) → outro_with_music
     //          outro_with_music = Belle voice over Variant B duck + 1.5s post-Belle tail
     // Legacy:  sting+intro → 0.75s silence → story_body → 0.25s silence → dry outro
     const finalConcatFile = path.join(tmpDir, 'final.txt')

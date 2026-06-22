@@ -46,6 +46,7 @@ type StoryRow = {
   production_standard_updated_by?: string | null
   audio_url: string | null
   story_audio_url: string | null
+  announcement_url?: string | null
   intro_audio_url: string | null
   intro_before_url: string | null
   intro_after_url: string | null
@@ -236,7 +237,7 @@ function audioReadiness(story: StoryRow) {
   return {
     audioUrl: bool(story.audio_url),
     storyAudioUrl: bool(story.story_audio_url),
-    introAudio: bool(story.intro_audio_url) || bool(story.intro_before_url) || bool(story.intro_after_url),
+    introAudio: bool(story.announcement_url) || bool(story.intro_audio_url) || bool(story.intro_before_url) || bool(story.intro_after_url),
     outroAudio: bool(story.outro_audio_url),
     backgroundMusic: bool(story.background_music_url),
     finalMix: String(story.audio_url || '').includes('/final_mix.mp3'),
@@ -704,6 +705,7 @@ export async function GET(req: NextRequest) {
       'production_standard_updated_by',
       'audio_url',
       'story_audio_url',
+      'announcement_url',
       'intro_audio_url',
       'intro_before_url',
       'intro_after_url',
