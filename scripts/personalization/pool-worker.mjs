@@ -35,8 +35,8 @@ const BELLE_SETTINGS = {
   use_speaker_boost: true,
   speed: 1.0,
 }
-const STING_TO_BELLE_SEC = 0.5
-const INTRO_GAP_SEC = 0.4
+const BELLE_ENTER_SEC = 1.5
+const STING_FADE_UNDER_BELLE_SEC = 1.2
 const OPENERS_PER_TONE = Number(process.env.OPENERS_PER_TONE || 0)
 const CONCURRENCY = 3
 const WATCH_INTERVAL_MS = 15_000
@@ -89,29 +89,6 @@ async function reformatAudio(input, output) {
     '-ar', '44100', '-ac', '2', '-b:a', '192k',
     '-y', output,
   ])
-}
-
-async function generateSilence(dest, seconds) {
-  await execFileAsync(FFMPEG_PATH, [
-    '-f', 'lavfi', '-i', 'anullsrc=r=44100:cl=stereo',
-    '-t', String(seconds),
-    '-ar', '44100', '-ac', '2', '-b:a', '192k',
-    '-y', dest,
-  ])
-}
-
-async function concatAudio(files, output) {
-  const listPath = path.join(os.tmpdir(), `name_pool_concat_${Date.now()}_${Math.random().toString(16).slice(2)}.txt`)
-  try {
-    await fs.writeFile(listPath, files.map(file => `file '${file.replace(/'/g, "'\\''")}'`).join('\n'))
-    await execFileAsync(FFMPEG_PATH, [
-      '-f', 'concat', '-safe', '0', '-i', listPath,
-      '-ar', '44100', '-ac', '2', '-b:a', '192k',
-      '-y', output,
-    ])
-  } finally {
-    await fs.unlink(listPath).catch(() => {})
-  }
 }
 
 async function renderOpenerVoice(text, output) {
@@ -243,8 +220,6 @@ async function renderClipForOpener({ pronunciationKey, nameForSpeech, opener }) 
   const safeOpener = safePathPart(opener.id)
   const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'et-name-pool-'))
   const stingRaw = path.join(tmpDir, 'sting.raw.mp3')
-  const stingFade = path.join(tmpDir, 'sting_fade.mp3')
-  const gap = path.join(tmpDir, 'gap.mp3')
   const openerVoice = path.join(tmpDir, 'opener_voice.mp3')
   const introClip = path.join(tmpDir, 'intro_clip.mp3')
 
@@ -252,18 +227,16 @@ async function renderClipForOpener({ pronunciationKey, nameForSpeech, opener }) 
     const text = String(opener.template_text || '').replace(/\[LISTENER_NAME\]/g, nameForSpeech)
     await renderOpenerVoice(text, openerVoice)
     await download(STING_URL, stingRaw)
-    await generateSilence(gap, INTRO_GAP_SEC)
 
-    const stingDur = await getAudioDuration(stingRaw)
     await execFileAsync(FFMPEG_PATH, [
       '-i', stingRaw,
+      '-i', openerVoice,
       '-filter_complex',
-      `[0:a]afade=t=out:st=${STING_TO_BELLE_SEC}:d=${Math.max(0.5, stingDur - STING_TO_BELLE_SEC)},aformat=sample_rates=44100:channel_layouts=stereo[out]`,
+      `[0:a]afade=t=out:st=${BELLE_ENTER_SEC}:d=${STING_FADE_UNDER_BELLE_SEC},aformat=sample_rates=44100:channel_layouts=stereo[s];[1:a]adelay=${Math.round(BELLE_ENTER_SEC * 1000)}|${Math.round(BELLE_ENTER_SEC * 1000)},aformat=sample_rates=44100:channel_layouts=stereo[v];[s][v]amix=inputs=2:duration=longest:normalize=0[out]`,
       '-map', '[out]',
       '-ar', '44100', '-ac', '2', '-b:a', '192k',
-      '-y', stingFade,
+      '-y', introClip,
     ])
-    await concatAudio([stingFade, gap, openerVoice], introClip)
 
     const openerOnlyPath = `personalized/openers/${safeKey}/${safeOpener}_voice.mp3`
     const introPath = `personalized/openers/${safeKey}/${safeOpener}.mp3`
