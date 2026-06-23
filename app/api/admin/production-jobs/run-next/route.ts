@@ -3037,7 +3037,7 @@ async function generateStandaloneScript(job: ProductionJob, model: string) {
     storyId: String(updated.id),
     story: updated,
     briefWarnings,
-    introTextExtracted: !!introText,
+    introTextExtracted: !!extractBelleSection(script, 'intro'),
     state: {
       ...state,
       storyId: String(updated.id),

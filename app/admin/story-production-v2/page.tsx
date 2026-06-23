@@ -2656,6 +2656,19 @@ export default function StoryProductionV2Page() {
       setReport('✓ Brief saved')
       setStepMessage('Ready for Generate Script')
 
+      // Notify Hal via Telegram when a standalone brief is saved
+      try {
+        await fetch('/api/admin/send-to-orion', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            message: `📋 *New story brief saved*\n\n*Title:* ${data.story.title || form.title || 'Untitled'}\n*Genre:* ${form.genre || '—'}\n*Runtime:* ${form.runtime || '—'}\n*Author:* ${form.author || '—'}\n*Story ID:* \`${data.story.id}\`\n\nBrief is ready. Reply "create the story" to start production.`,
+          }),
+        })
+      } catch (err) {
+        console.warn('Hal notification failed (non-blocking):', err)
+      }
+
       if (queueId && data?.story?.id) {
         try {
           const persistRes = await fetch('/api/admin/story-queue', {
