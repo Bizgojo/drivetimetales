@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.endlesstales.poolworker</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/opt/homebrew/bin/node</string>
+    <string>/Users/williampostlewaite/Projects/drivetimetales/scripts/personalization/pool-worker.mjs</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>/Users/williampostlewaite/Projects/drivetimetales</string>
+
+  <key>StartInterval</key>
+  <integer>900</integer>
+
+  <key>RunAtLoad</key>
+  <true/>
+
+  <key>StandardOutPath</key>
+  <string>/Users/williampostlewaite/Projects/drivetimetales/scripts/personalization/pool-worker.log</string>
+
+  <key>StandardErrorPath</key>
+  <string>/Users/williampostlewaite/Projects/drivetimetales/scripts/personalization/pool-worker.log</string>
+</dict>
+</plist>

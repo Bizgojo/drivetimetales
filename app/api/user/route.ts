@@ -76,7 +76,7 @@ export async function PATCH(request: NextRequest) {
     }
 
     // Only allow updating certain fields
-    const allowedFields = ['display_name'];
+    const allowedFields = ['display_name', 'first_name'];
     const updates: Record<string, any> = {};
     
     for (const field of allowedFields) {
@@ -103,9 +103,9 @@ export async function PATCH(request: NextRequest) {
       throw error;
     }
 
-    if (updates.display_name !== undefined) {
+    if (updates.first_name !== undefined) {
       try {
-        await ensureNamePoolForUser(user.id, updates.display_name);
+        await ensureNamePoolForUser(user.id, updates.first_name);
       } catch (nameErr) {
         console.error('[User PATCH] Name pool keying failed:', nameErr);
       }
