@@ -43,3 +43,6 @@ reports/
 .DS_Store
 Thumbs.db
 tsconfig.tsbuildinfo
+
+# Personalization worker runtime logs
+scripts/personalization/pool-worker.log
