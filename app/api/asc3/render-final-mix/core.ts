@@ -559,7 +559,7 @@ export async function runRenderFinalMix(storyId: string): Promise<{
       '-filter_complex',
       `[0:a]afade=t=out:st=${BELLE_ENTER_SEC}:d=${STING_FADE_DUR},aformat=sample_rates=44100:channel_layouts=stereo[s];` +
       `[1:a]adelay=${belleDelayMs}|${belleDelayMs},aformat=sample_rates=44100:channel_layouts=stereo[v];` +
-      `[s][v]amix=inputs=2:duration=longest:normalize=0[out]`,
+      `[s][v]amix=inputs=2:duration=longest[out]`,
       '-map', '[out]',
       '-ar', '44100', '-ac', '2', '-b:a', '192k', '-y', stingIntroPath
     ])
