@@ -5334,6 +5334,7 @@ async function validateSeriesPackageWithAi(episodes: any[], metadataIssues: stri
     }
   }
 
+  const episodeCount = episodes.length
   const packageBrief = episodes.map((episode: any, index: number) => {
     const script = String(episode.script || '')
     return {
@@ -5353,7 +5354,7 @@ async function validateSeriesPackageWithAi(episodes: any[], metadataIssues: stri
     temperature: 0,
     messages: [{
       role: 'user',
-      content: `You are validating an Endless Tales 3-episode series package before audio production.
+      content: `You are validating an Endless Tales ${episodeCount}-episode series package before audio production.
 
 Return JSON only. Do not include markdown.
 
@@ -5367,8 +5368,8 @@ Required JSON shape:
 
 Validation rules:
 - All episodes must clearly belong to one continuous series arc.
-- Episode 1 and Episode 2 must end with intentional continuation hooks, not standalone closure.
-- Episode 3 must close the series arc and must not tease Episode 4.
+- Every non-finale episode must end with an intentional continuation hook, not standalone closure.
+- The finale episode must close the series arc and must not tease another episode.
 - No episode should be treated as a standalone story.
 - Metadata must be consistent with episode order and finale status.
 - Fail if the finale leaves the main series question unresolved.
