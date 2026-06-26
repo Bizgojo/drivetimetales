@@ -3515,6 +3515,15 @@ export async function POST(req: NextRequest) {
         script,
         characters: [],
         voiceCodeAssignments: characterVoiceCodes as VoiceCodeAssignment[],
+        seriesMetadata: {
+          seriesName: (storyRow as any)?.series_name || parseHeaderValue(script, 'SERIES') || undefined,
+          episodeTitle: (storyRow as any)?.episode_title || parseHeaderValue(script, 'EPISODE_TITLE') || undefined,
+          episodeNumber: Number((storyRow as any)?.episode_number || parseHeaderValue(script, 'EPISODE') || 0) || undefined,
+          author: (storyRow as any)?.author || parseHeaderValue(script, 'AUTHOR') || undefined,
+          narrator: resolvedNarratorVoiceName || parseHeaderValue(script, 'NARRATOR') || undefined,
+          genre: (storyRow as any)?.genre || parseHeaderValue(script, 'GENRE') || undefined,
+          durationMins: (storyRow as any)?.duration_mins || Number(parseHeaderValue(script, 'DURATION')) || undefined,
+        },
       })
       if (!vcReport.safeToGenerateVoices) {
         return NextResponse.json({
