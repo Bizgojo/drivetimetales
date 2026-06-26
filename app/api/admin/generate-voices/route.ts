@@ -12,6 +12,8 @@ import { classifySegmentInventory } from '@/lib/artifactGate'
 import { resolveNarratorVoiceId } from '@/lib/preflight/narrator-check'
 import { runPreflightChecks } from '@/lib/preflight/validator'
 import type { VoiceCodeAssignment } from '@/lib/preflight/voice-code-check'
+import { getVoiceProvider } from '@/lib/voice-providers'
+import { EL_VOICE_CODE_LABEL } from '@/lib/voice-providers/elevenlabs/constants'
 
 export const runtime = 'nodejs'
 export const maxDuration = 800
@@ -3525,6 +3527,59 @@ export async function POST(req: NextRequest) {
       }
     }
     if (!resolvedNarratorVoiceName) resolvedNarratorVoiceName = narratorVoiceById[resolvedNarratorVoiceId]?.name
+
+    // ── Character voice_code → ElevenLabs voice ID resolution ───────────────────────
+    // For each characterVoiceCode whose voice_code is not yet in the registry,
+    // call createOrFetchVoice() to design + create the voice in ElevenLabs and cache it.
+    // Returns a role→voiceId map used for character assignment below.
+    const characterVoiceCodeMap: Record<string, string> = {} // role → resolved EL voice_id
+    const voiceCodeCreationLog: Array<{role:string; voice_code:string; voice_id:string; source:string; ok:boolean; error?:string}> = []
+    if (!preflightOnly && characterVoiceCodes.length > 0 && process.env.ELEVENLABS_API_KEY) {
+      try {
+        const provider = getVoiceProvider('elevenlabs', process.env.ELEVENLABS_API_KEY)
+        const charGuideForCodes = parseCharacterGuide(script)
+        const GENDER_MAP: Record<string,string>  = { MA:'male', FE:'female', NE:'neutral' }
+        const ACCENT_MAP: Record<string,string>  = { US:'american', UK:'british' }
+        const AGE_MAP:    Record<string,string>  = { YO:'young', AD:'middle_aged', EL:'old', L5:'old', L6:'old', M3:'young', M4:'middle_aged', E4:'middle_aged' }
+        const TONE_LABELS: Record<string,string> = { WM:'warm', DK:'dark', CR:'crisp', NT:'neutral', GR:'gravelly', IT:'intimate', WD:'weathered', SD:'sardonic', WS:'wise', AU:'authoritative', RF:'refined', EN:'engaging' }
+
+        for (const assignment of characterVoiceCodes as VoiceCodeAssignment[]) {
+          const segs = (assignment.voice_code || '').split('-')
+          const [, gender, age, tone, accent] = segs
+          const charProfile = charGuideForCodes.find(
+            c => c.name.toUpperCase() === assignment.role.toUpperCase()
+          )
+          const genderLabel  = GENDER_MAP[gender]  || 'neutral'
+          const accentLabel  = ACCENT_MAP[accent]  || 'american'
+          const toneLabel    = TONE_LABELS[tone]   || 'neutral'
+          const ageLabel     = AGE_MAP[age]        || 'middle_aged'
+          const voiceDesc = charProfile
+            ? `${charProfile.description || ''}. ${genderLabel} character voice, ${ageLabel}, ${toneLabel} tone, ${accentLabel} accent.`.trim()
+            : `A ${genderLabel} character voice with ${toneLabel} tone, ${ageLabel}, ${accentLabel} accent.`
+          const spec = {
+            name: `${assignment.role} [${assignment.voice_code}]`,
+            voice_description: voiceDesc,
+          }
+          try {
+            const result = await provider.createOrFetchVoice(assignment.voice_code, spec, false)
+            // result is VoiceMeta — has voice_id, name, category, labels
+            const source = result.labels?.[EL_VOICE_CODE_LABEL]
+              ? (result.category === 'generated' ? 'found_in_el_labels' : 'created')
+              : 'created'
+            characterVoiceCodeMap[assignment.role.toUpperCase()] = result.voice_id
+            voiceCodeCreationLog.push({ role: assignment.role, voice_code: assignment.voice_code, voice_id: result.voice_id, source: result.category || source, ok: true })
+            console.log(`  ✅ voice_code ${assignment.voice_code} → ${result.category || source} → ${result.voice_id}`)
+          } catch (vcErr: unknown) {
+            const msg = vcErr instanceof Error ? vcErr.message : String(vcErr)
+            voiceCodeCreationLog.push({ role: assignment.role, voice_code: assignment.voice_code, voice_id: '', source: '', ok: false, error: msg })
+            console.warn(`  ⚠️  voice_code ${assignment.voice_code} resolution failed: ${msg}`)
+          }
+        }
+      } catch (providerErr: unknown) {
+        console.warn('voice_code provider init failed:', providerErr instanceof Error ? providerErr.message : String(providerErr))
+      }
+    }
+
     const characterGuide = parseCharacterGuide(script)
     // Extract series metadata for escalation reports
     const seriesTitle: string | null = (storyRow as any)?.series_name || script.match(/^SERIES:\s*(.+)/m)?.[1]?.trim() || null
@@ -3708,6 +3763,16 @@ export async function POST(req: NextRequest) {
         console.log(`  ${char.name}: protagonist = narrator voice (first person)`)
         voiceMap[key] = resolvedNarratorVoiceId
         assignCharacterVoice(voiceMap, char.name, voiceMap[key])
+      } else if (characterVoiceCodeMap[key]) {
+        // Use voice resolved from voice_code registry
+        const codeVoiceId = characterVoiceCodeMap[key]
+        if (isBelleBVoiceId(codeVoiceId)) {
+          return NextResponse.json({ success: false, error: `Belle B cannot be used as a character voice for ${char.name}.` }, { status: 422 })
+        }
+        voiceMap[key] = codeVoiceId
+        assignCharacterVoice(voiceMap, char.name, voiceMap[key])
+        usedVoiceIds.add(voiceMap[key])
+        console.log(`  ✅ ${char.name}: voice_code registry → ${codeVoiceId}`)
       } else {
         // Find best matching voice from pool
         const selection = await findVoiceForCharacter(
@@ -4092,6 +4157,7 @@ export async function POST(req: NextRequest) {
       inventory,
       escalations,
       transcriptQcSkippedSegments: qcSkippedSegments,
+      voiceCodeResults: voiceCodeCreationLog.length > 0 ? voiceCodeCreationLog : undefined,
     })
   } catch (err) {
     console.error('generate-voices error:', err)
