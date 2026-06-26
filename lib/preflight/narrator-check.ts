@@ -1,33 +1,39 @@
 /**
  * narrator-check.ts
  *
- * Resolves the narrator voice_code for a story via the author→narrator registry.
+ * Resolves the narrator ElevenLabs voice ID for a story via the author→narrator registry.
+ * Option B (launch path): narrators bypass the voice_code_registry entirely.
+ * Narrator voice IDs are stable and come directly from narrator_voices.elevenlabs_voice_id.
+ *
+ * Resolution chain:
+ *   story.author_id → authors.narrator_id → narrator_voices.elevenlabs_voice_id
  *
  * Rules enforced:
- * 1. Story must have author_id.
- * 2. author must have narrator_id linking to narrator_voices.
- * 3. narrator_voices row must have a voice_code.
- * 4. If any step fails → AUTHOR_NARRATOR_MISSING blocks preflight with retry_safe=false.
+ * 1. If story.narrator_voice_id is already set, return it (explicit override wins).
+ * 2. If not, resolve from author.narrator_id → narrator_voices.
+ * 3. If author has no narrator_id, or narrator has no elevenlabs_voice_id → AUTHOR_NARRATOR_MISSING.
  *
- * Claude/Hal may never assign a narrator voice_code — it must come from this lookup.
+ * Claude/Hal must never assign a narrator voice. Resolution comes only from this chain.
+ *
+ * Option A (future): add narrator_voices.voice_code and migrate narrators into the
+ * voice_code_registry for unified idempotent resolution. Not needed for launch.
  */
 
 import { SupabaseClient } from '@supabase/supabase-js'
-import type { VoiceCodeAssignment } from './voice-code-check'
 
 export interface NarratorResolution {
   ok: true
-  assignment: VoiceCodeAssignment
-  narratorName: string
-  narratorVoiceId: string  // raw EL voice ID (for generate-voices compatibility)
-  narratorVoiceCode: string
+  /** Raw ElevenLabs voice ID — goes directly to generate-voices, no registry needed. */
+  narratorVoiceId: string
+  narratorVoiceName: string
   authorName: string
-  source: 'author_narrator_registry'
+  /** 'story_row' = narrator_voice_id was already set; 'author_registry' = resolved from author */
+  source: 'story_row' | 'author_registry'
 }
 
 export interface NarratorResolutionError {
   ok: false
-  code: 'AUTHOR_NARRATOR_MISSING' | 'NARRATOR_VOICE_CODE_MISSING' | 'STORY_AUTHOR_MISSING'
+  code: 'AUTHOR_NARRATOR_MISSING' | 'NARRATOR_VOICE_ID_MISSING' | 'STORY_AUTHOR_MISSING'
   message: string
   retry_safe: false
   author?: string
@@ -37,33 +43,61 @@ export interface NarratorResolutionError {
 export type NarratorCheckResult = NarratorResolution | NarratorResolutionError
 
 /**
- * Resolve the narrator voice_code for a story from the author→narrator registry.
+ * Resolve the narrator ElevenLabs voice ID for a story.
  *
- * @param storyId  - UUID of the story
- * @param supabase - Supabase client (service role for production, anon for client-side)
+ * Callers should pass the storyRow if they already have it (avoids a DB round-trip).
+ *
+ * @param storyId   - UUID of the story
+ * @param supabase  - Supabase client (service role)
+ * @param storyRow  - Optional pre-loaded story row (must include author_id, author,
+ *                    narrator_voice_id, narrator_voice_name)
  */
-export async function resolveNarratorVoiceCode(
+export async function resolveNarratorVoiceId(
   storyId: string,
-  supabase: SupabaseClient
+  supabase: SupabaseClient,
+  storyRow?: {
+    author_id?: string | null
+    author?: string | null
+    narrator_voice_id?: string | null
+    narrator_voice_name?: string | null
+  }
 ): Promise<NarratorCheckResult> {
-  // Step 1: Load story author_id and author text (fallback label)
-  const { data: story, error: storyError } = await supabase
-    .from('stories')
-    .select('author_id, author')
-    .eq('id', storyId)
-    .maybeSingle()
+  // Step 1: Load story row if not provided
+  let row = storyRow
+  if (!row) {
+    const { data, error } = await supabase
+      .from('stories')
+      .select('author_id, author, narrator_voice_id, narrator_voice_name')
+      .eq('id', storyId)
+      .maybeSingle()
 
-  if (storyError) {
+    if (error || !data) {
+      return {
+        ok: false,
+        code: 'STORY_AUTHOR_MISSING',
+        message: `AUTHOR_NARRATOR_MISSING: Story "${storyId}" not found or failed to load: ${error?.message ?? 'not found'}.`,
+        retry_safe: false,
+      }
+    }
+    row = data as any
+  }
+
+  // Step 2: If narrator_voice_id is already set on the story row, use it directly
+  const existingVoiceId = String(row?.narrator_voice_id ?? '').trim()
+  const existingVoiceName = String(row?.narrator_voice_name ?? '').trim()
+  if (existingVoiceId) {
     return {
-      ok: false,
-      code: 'STORY_AUTHOR_MISSING',
-      message: `Failed to load story ${storyId}: ${storyError.message}`,
-      retry_safe: false,
+      ok: true,
+      narratorVoiceId: existingVoiceId,
+      narratorVoiceName: existingVoiceName,
+      authorName: String(row?.author ?? '').trim(),
+      source: 'story_row',
     }
   }
 
-  const authorId = (story as any)?.author_id
-  const authorLabel = String((story as any)?.author || '').trim() || storyId
+  // Step 3: Resolve from author → narrator registry
+  const authorId = String(row?.author_id ?? '').trim()
+  const authorLabel = String(row?.author ?? storyId).trim()
 
   if (!authorId) {
     return {
@@ -75,7 +109,6 @@ export async function resolveNarratorVoiceCode(
     }
   }
 
-  // Step 2: Load author → narrator_id
   const { data: author, error: authorError } = await supabase
     .from('authors')
     .select('name, narrator_id')
@@ -86,14 +119,14 @@ export async function resolveNarratorVoiceCode(
     return {
       ok: false,
       code: 'AUTHOR_NARRATOR_MISSING',
-      message: `AUTHOR_NARRATOR_MISSING: Author record not found for id ${authorId} (story author: "${authorLabel}").`,
+      message: `AUTHOR_NARRATOR_MISSING: Author record not found for id "${authorId}" (story author: "${authorLabel}").`,
       retry_safe: false,
       author: authorLabel,
     }
   }
 
-  const authorName = String((author as any).name || authorLabel).trim()
-  const narratorId = String((author as any).narrator_id || '').trim()
+  const authorName = String((author as any).name ?? authorLabel).trim()
+  const narratorId = String((author as any).narrator_id ?? '').trim()
 
   if (!narratorId) {
     return {
@@ -105,10 +138,10 @@ export async function resolveNarratorVoiceCode(
     }
   }
 
-  // Step 3: Load narrator_voices → voice_code + elevenlabs_voice_id
+  // Step 4: Load narrator voice
   const { data: narrator, error: narratorError } = await supabase
     .from('narrator_voices')
-    .select('name, voice_code, elevenlabs_voice_id')
+    .select('name, elevenlabs_voice_id')
     .eq('id', narratorId)
     .maybeSingle()
 
@@ -116,21 +149,20 @@ export async function resolveNarratorVoiceCode(
     return {
       ok: false,
       code: 'AUTHOR_NARRATOR_MISSING',
-      message: `AUTHOR_NARRATOR_MISSING: Narrator record ${narratorId} not found for author "${authorName}".`,
+      message: `AUTHOR_NARRATOR_MISSING: Narrator record "${narratorId}" not found for author "${authorName}".`,
       retry_safe: false,
       author: authorName,
     }
   }
 
-  const narratorName = String((narrator as any).name || '').trim()
-  const voiceCode = String((narrator as any).voice_code || '').trim()
-  const narratorVoiceId = String((narrator as any).elevenlabs_voice_id || '').trim()
+  const narratorName = String((narrator as any).name ?? '').trim()
+  const narratorVoiceId = String((narrator as any).elevenlabs_voice_id ?? '').trim()
 
-  if (!voiceCode) {
+  if (!narratorVoiceId) {
     return {
       ok: false,
-      code: 'NARRATOR_VOICE_CODE_MISSING',
-      message: `AUTHOR_NARRATOR_MISSING: Narrator "${narratorName}" (id: ${narratorId}) has no voice_code. Assign a voice_code in narrator_voices before generating voices.`,
+      code: 'NARRATOR_VOICE_ID_MISSING',
+      message: `AUTHOR_NARRATOR_MISSING: Narrator "${narratorName}" has no elevenlabs_voice_id. Fix narrator_voices record before generating voices.`,
       retry_safe: false,
       author: authorName,
       narrator: narratorName,
@@ -139,14 +171,9 @@ export async function resolveNarratorVoiceCode(
 
   return {
     ok: true,
-    assignment: {
-      role: 'NARRATOR',
-      voice_code: voiceCode,
-    },
-    narratorName,
     narratorVoiceId,
-    narratorVoiceCode: voiceCode,
+    narratorVoiceName: narratorName,
     authorName,
-    source: 'author_narrator_registry',
+    source: 'author_registry',
   }
 }

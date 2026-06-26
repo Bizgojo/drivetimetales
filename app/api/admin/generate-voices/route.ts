@@ -9,6 +9,9 @@ import { createHash } from 'crypto'
 import { CANONICAL_BELLE_B_VOICE_ID, RESERVED_BELLE_B_VOICE_IDS, isBelleBVoiceId } from '@/lib/voiceConstants'
 import { buildProductionLearningFeedback } from '@/lib/productionLearning'
 import { classifySegmentInventory } from '@/lib/artifactGate'
+import { resolveNarratorVoiceId } from '@/lib/preflight/narrator-check'
+import { runPreflightChecks } from '@/lib/preflight/validator'
+import type { VoiceCodeAssignment } from '@/lib/preflight/voice-code-check'
 
 export const runtime = 'nodejs'
 export const maxDuration = 800
@@ -3304,7 +3307,18 @@ async function generateSFX(description: string, storyId: string, lineIndex: numb
 
 export async function POST(req: NextRequest) {
   try {
-    const { storyId, script: scriptParam, narratorVoiceId, narratorVoiceName, characterVoices: characterVoicesParam, preflightOnly, retryMissingOnly, segmentNumber, generateBelleOnly } = await req.json()
+    const {
+      storyId,
+      script: scriptParam,
+      narratorVoiceId,
+      narratorVoiceName,
+      characterVoices: characterVoicesParam,
+      characterVoiceCodes = [] as VoiceCodeAssignment[],
+      preflightOnly,
+      retryMissingOnly,
+      segmentNumber,
+      generateBelleOnly,
+    } = await req.json()
     if (!storyId) return NextResponse.json({ success: false, error: 'storyId required' }, { status: 400 })
     let script = scriptParam
     const { data: storyRow, error: storyRowError } = await supabase
@@ -3463,54 +3477,52 @@ export async function POST(req: NextRequest) {
       voiceByName[v.name] = v.elevenlabs_voice_id
       narratorVoiceById[v.elevenlabs_voice_id] = v
     })
+    // ── Narrator resolution (Option B) ───────────────────────────────────────────────
+    // Chain: explicit request override → story.narrator_voice_id → author→narrator registry
+    // Cole Hargrove fallback REMOVED. No silent defaults.
     let resolvedNarratorVoiceId = narratorVoiceId
     let resolvedNarratorVoiceName = narratorVoiceName
 
-    // Resolution order (strict — no Cole fallback):
-    // 1. Explicit override from request (narratorVoiceId / narratorVoiceName)
-    // 2. Story row narrator_voice_id / narrator_voice_name
-    // 3. Author → narrator registry (author_id → authors.narrator_id → narrator_voices)
-    // If all three fail → AUTHOR_NARRATOR_MISSING hard block. No silent default.
-    if (!resolvedNarratorVoiceId && narratorVoiceName) resolvedNarratorVoiceId = voiceByName[narratorVoiceName]
-    if (!resolvedNarratorVoiceId) {
-      if (storyRow?.narrator_voice_id) {
-        resolvedNarratorVoiceId = storyRow.narrator_voice_id
-        resolvedNarratorVoiceName = storyRow.narrator_voice_name || resolvedNarratorVoiceName
-      } else if (storyRow?.narrator_voice_name) {
-        resolvedNarratorVoiceName = storyRow.narrator_voice_name
-        resolvedNarratorVoiceId = voiceByName[storyRow.narrator_voice_name]
-      }
+    // Allow explicit request override (narratorVoiceId / narratorVoiceName) to bypass
+    // the registry lookup — used for manual admin overrides only
+    if (!resolvedNarratorVoiceId && narratorVoiceName) {
+      resolvedNarratorVoiceId = voiceByName[narratorVoiceName]
     }
-    // Fallback: resolve via author → narrator registry
-    if (!resolvedNarratorVoiceId && storyRow?.author_id) {
-      const { data: authorRow } = await supabase
-        .from('authors')
-        .select('name, narrator_id')
-        .eq('id', storyRow.author_id)
-        .maybeSingle()
-      const narratorId = String((authorRow as any)?.narrator_id || '').trim()
-      if (narratorId) {
-        const { data: narratorRow } = await supabase
-          .from('narrator_voices')
-          .select('name, elevenlabs_voice_id')
-          .eq('id', narratorId)
-          .maybeSingle()
-        const elVoiceId = String((narratorRow as any)?.elevenlabs_voice_id || '').trim()
-        const elVoiceName = String((narratorRow as any)?.name || '').trim()
-        if (elVoiceId) {
-          resolvedNarratorVoiceId = elVoiceId
-          resolvedNarratorVoiceName = resolvedNarratorVoiceName || elVoiceName
-        }
-      }
-    }
-    // Hard block — no narrator resolved. Cole Hargrove fallback is REMOVED.
+
     if (!resolvedNarratorVoiceId) {
-      const authorLabel = String(storyRow?.author || storyId)
-      return NextResponse.json({
-        success: false,
-        error: `AUTHOR_NARRATOR_MISSING: No narrator assigned for author "${authorLabel}". Assign a narrator in the Author/Narrator registry before generating voices.`,
-        code: 'AUTHOR_NARRATOR_MISSING',
-      }, { status: 422 })
+      // Use resolveNarratorVoiceId: checks story row first, then author→narrator chain
+      const narratorResult = await resolveNarratorVoiceId(storyId, supabase, storyRow as any)
+      if (narratorResult.ok === false) {
+        return NextResponse.json({
+          success: false,
+          error: narratorResult.message,
+          code: narratorResult.code,
+        }, { status: 422 })
+      }
+      resolvedNarratorVoiceId = narratorResult.narratorVoiceId
+      resolvedNarratorVoiceName = resolvedNarratorVoiceName || narratorResult.narratorVoiceName
+    }
+
+    // ── Character voice_code preflight gate ──────────────────────────────────────────
+    // Validate character voice_codes (if any) before generation begins.
+    // Malformed codes block immediately; missing registry entries are noted (will create).
+    // Narrator is NOT included — it has a raw EL voice ID, no registry involvement.
+    if (!preflightOnly && characterVoiceCodes.length > 0) {
+      const vcReport = await runPreflightChecks({
+        storyId,
+        script,
+        characters: [],
+        voiceCodeAssignments: characterVoiceCodes as VoiceCodeAssignment[],
+      })
+      if (!vcReport.safeToGenerateVoices) {
+        return NextResponse.json({
+          success: false,
+          error: 'Voice code preflight failed — fix character voice_codes before generating',
+          code: 'VOICE_CODE_PREFLIGHT_FAILED',
+          blockers: vcReport.blockers,
+          voiceCodeCheck: vcReport.checks.voiceCodeCheck,
+        }, { status: 422 })
+      }
     }
     if (!resolvedNarratorVoiceName) resolvedNarratorVoiceName = narratorVoiceById[resolvedNarratorVoiceId]?.name
     const characterGuide = parseCharacterGuide(script)

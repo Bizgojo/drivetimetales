@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { runPreflightChecks, formatPreflightReport } from '@/lib/preflight/validator'
-import { resolveNarratorVoiceCode } from '@/lib/preflight/narrator-check'
+import { resolveNarratorVoiceId } from '@/lib/preflight/narrator-check'
 import type { VoiceCodeAssignment } from '@/lib/preflight/voice-code-check'
 
 const supabase = createClient(
@@ -66,32 +66,26 @@ export async function POST(req: NextRequest) {
     const body = await req.json()
     const { storyId, characterVoiceCodes = [] } = body as {
       storyId: string
+      /** Character voice_codes from Claude/Hal — validated against voice_code_registry.
+       *  Narrators are NOT included here; they bypass the registry (Option B). */
       characterVoiceCodes?: VoiceCodeAssignment[]
     }
 
     if (!storyId) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'storyId required',
-        },
-        { status: 400 }
-      )
+      return NextResponse.json({ success: false, error: 'storyId required' }, { status: 400 })
     }
 
-    // Fetch story from database (include author_id for narrator resolution)
+    // Fetch story — include author_id and narrator fields for narrator resolution
+    // Single literal string required for Supabase TS type inference
     const { data: storyRow, error: fetchError } = await supabase
       .from('stories')
-      .select('id,title,author,author_id,genre,description,duration_mins,script,series_name,episode_number,series_total_episodes,series_is_finale')
+      .select('id,title,author,author_id,genre,description,duration_mins,script,narrator_voice_id,narrator_voice_name,series_name,episode_number,series_total_episodes,series_is_finale')
       .eq('id', storyId)
       .single()
 
     if (fetchError || !storyRow) {
       return NextResponse.json(
-        {
-          success: false,
-          error: `Story not found: ${fetchError?.message || 'Unknown error'}`,
-        },
+        { success: false, error: `Story not found: ${fetchError?.message ?? 'Unknown error'}` },
         { status: 404 }
       )
     }
@@ -99,25 +93,17 @@ export async function POST(req: NextRequest) {
     const script = storyRow.script
     if (!script) {
       return NextResponse.json(
-        {
-          success: false,
-          error: 'Script not found in story record',
-        },
+        { success: false, error: 'Script not found in story record' },
         { status: 400 }
       )
     }
 
-    // Parse story components
-    const characters = parseCharacterGuide(script)
-    const { intro, outro } = extractIntroOutro(script)
-    const metadata = parseScriptMetadata(script)
-
-    // --- Narrator voice_code resolution ---
-    // Must come from author → narrator registry. Claude/Hal must not invent narrator codes.
-    const narratorResult = await resolveNarratorVoiceCode(storyId, supabase)
+    // ── Narrator resolution (Option B — bypasses voice_code_registry) ────────────────
+    // Chain: story.narrator_voice_id → author_id → authors.narrator_id →
+    //        narrator_voices.elevenlabs_voice_id
+    // Narrator is NOT included in voiceCodeAssignments. Characters only.
+    const narratorResult = await resolveNarratorVoiceId(storyId, supabase, storyRow as any)
     if (narratorResult.ok === false) {
-      // Hard block: narrator not assigned or narrator has no voice_code
-      // Use === false for reliable TS discriminated union narrowing
       return NextResponse.json(
         {
           success: false,
@@ -130,15 +116,15 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    // Build voiceCodeAssignments: narrator (from registry) + characters (from story/request)
-    // Characters receive voice_codes from Claude/Hal — passed as optional request param.
-    // If no character assignments provided, only narrator is validated (characters checked later).
-    const voiceCodeAssignments: VoiceCodeAssignment[] = [
-      narratorResult.assignment,
-      ...characterVoiceCodes,
-    ]
+    // ── Character voice_code assignments (Option B — characters only) ─────────────────
+    // voiceCodeAssignments contains ONLY characters. Narrator already validated above.
+    const voiceCodeAssignments: VoiceCodeAssignment[] = [...characterVoiceCodes]
 
-    // Run preflight checks (voice code check is now always populated with narrator)
+    // ── Preflight checks ──────────────────────────────────────────────────────────────
+    const characters = parseCharacterGuide(script)
+    const { intro, outro } = extractIntroOutro(script)
+    const metadata = parseScriptMetadata(script)
+
     const report = await runPreflightChecks({
       storyId,
       script,
@@ -158,17 +144,17 @@ export async function POST(req: NextRequest) {
       voiceCodeAssignments,
     })
 
-    // Log preflight report
     console.log(`\n📋 PREFLIGHT: ${storyId}`)
+    console.log(`   Narrator: ${narratorResult.narratorVoiceName} (${narratorResult.source})`)
     console.log(`   Status: ${report.passed ? '✅ PASSED' : '❌ FAILED'}`)
     console.log(`   Safe to generate: ${report.safeToGenerateVoices ? 'YES' : 'NO'}`)
     console.log(`   Blockers: ${report.blockers.length}`)
     console.log(`   Warnings: ${report.warnings.length}`)
 
-    // Return detailed report
     return NextResponse.json(
       {
         success: report.safeToGenerateVoices,
+        narrator: { name: narratorResult.narratorVoiceName, source: narratorResult.source },
         report,
         formattedReport: formatPreflightReport(report),
       },
@@ -177,12 +163,6 @@ export async function POST(req: NextRequest) {
   } catch (e) {
     const error = e instanceof Error ? e : new Error(String(e))
     console.error('Preflight error:', error.message)
-    return NextResponse.json(
-      {
-        success: false,
-        error: error.message,
-      },
-      { status: 500 }
-    )
+    return NextResponse.json({ success: false, error: error.message }, { status: 500 })
   }
 }
