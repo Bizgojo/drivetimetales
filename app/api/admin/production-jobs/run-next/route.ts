@@ -1585,6 +1585,20 @@ Use the CURRENT rules:
 - Difficult Solution Rule: the main problem must feel genuinely difficult at the beginning, the middle must reveal leverage and escalating consequences that make the solution possible, and the ending must feel emotionally and logically earned.
 - Fail endings where the climax happens offscreen, the protagonist does not affect the outcome, the ending resolves through exposition instead of dramatic action, the emotional arc is unresolved, or the final solution is passive, too easy, or a "villain already dead" anticlimax.
 
+SECTION 8C — EARLY INVESTMENT & ORIENTATION CHECK (v1.3):
+Read the first ~400 words of the script body (after the Belle B intro block, approximately 3 minutes at 130 wpm).
+Run the Five-Question Test. By minute 3, a first-time listener must be able to answer all five:
+1. Who am I emotionally following? (protagonist or emotional anchor clear within 60–90 seconds)
+2. What is happening right now? (immediate situation understandable within 2 minutes)
+3. What does this person want, fear, or need? (visible pressure, need, wound, danger, obligation, or desire present)
+4. Why does it matter? (personal stakes established)
+5. What question am I listening to answer? (one clear listening question is open)
+Also check: does the opening create at least one of sympathy, admiration, urgency, fear, curiosity, concern, or emotional identification? If none — FAIL.
+Failure on any question = FAIL. Quote the specific lines that failed. State which questions cannot be answered.
+The fix is not "explain more." The fix is "anchor the listener earlier."
+Series Episode 1 is held to extra strictness — marginal pass on any single question = FAIL for Episode 1.
+Do not advance to audio generation if this check fails.
+
 When the script fails, identify the SPECIFIC issue. If DESCRIPTION does not match the protagonist's role, state what the DESCRIPTION says and what the protagonist's actual role is.
 
 Return exactly one of these:
@@ -2666,6 +2680,26 @@ If a story contains a lesson, theme, or insight — it must emerge naturally thr
 
 Story first. Theme second. Lesson last.
 The story is the meal. The lesson is seasoning.
+
+🎯 EARLY INVESTMENT RULE (v2.4) — NON-NEGOTIABLE
+
+By the three-minute mark (~400 words of script body after the Belle B intro), the listener must be able to answer all five orientation questions:
+1. Who am I following? — protagonist or emotional anchor clearly established within 60–90 seconds.
+2. What is happening? — immediate situation understandable within 2 minutes.
+3. What do they want, fear, or need? — visible pressure present before minute 3.
+4. Why does it matter? — personal stakes established at a human level.
+5. What am I listening to find out? — one clear listening question is open.
+
+The opening must also create at least one of: sympathy, admiration, urgency, fear, curiosity, concern, or emotional identification.
+
+Core principle: CLARITY OF SITUATION. MYSTERY OF CAUSE.
+The listener must know what is happening before being asked to wonder why it is happening.
+Mystery of cause is allowed and encouraged. Mystery of situation is never acceptable.
+
+Do not send a script forward if the opening relies mainly on "it makes sense later."
+The fix for a weak opening is not "explain more." It is "anchor the listener to a person and a pressure earlier."
+
+Write or revise the opening AFTER the rest of the episode is drafted when possible — it is easier to write a perfect entry point when you know what you are entering.
 
 ${authorVoiceBlock}
 
@@ -4672,6 +4706,26 @@ If a story contains a lesson, theme, or insight — it must emerge naturally thr
 
 Story first. Theme second. Lesson last.
 The story is the meal. The lesson is seasoning.
+
+🎯 EARLY INVESTMENT RULE (v2.4) — NON-NEGOTIABLE
+
+By the three-minute mark (~400 words of script body after the Belle B intro), the listener must be able to answer all five orientation questions:
+1. Who am I following? — protagonist or emotional anchor clearly established within 60–90 seconds.
+2. What is happening? — immediate situation understandable within 2 minutes.
+3. What do they want, fear, or need? — visible pressure present before minute 3.
+4. Why does it matter? — personal stakes established at a human level.
+5. What am I listening to find out? — one clear listening question is open.
+
+The opening must also create at least one of: sympathy, admiration, urgency, fear, curiosity, concern, or emotional identification.
+
+Core principle: CLARITY OF SITUATION. MYSTERY OF CAUSE.
+The listener must know what is happening before being asked to wonder why it is happening.
+Mystery of cause is allowed and encouraged. Mystery of situation is never acceptable.
+
+Do not send a script forward if the opening relies mainly on "it makes sense later."
+The fix for a weak opening is not "explain more." It is "anchor the listener to a person and a pressure earlier."
+
+For non-finale series episodes: re-orient the listener to who they are following and what is at stake within the first 2 minutes, before deepening the episode's conflict. Do not assume the listener remembers exactly where you left off.
 
 ${authorVoiceBlock}
 
