@@ -3309,7 +3309,7 @@ export async function POST(req: NextRequest) {
     let script = scriptParam
     const { data: storyRow, error: storyRowError } = await supabase
       .from('stories')
-      .select('id,title,author,genre,description,duration_mins,created_at,script,narrator_voice_id,narrator_voice_name,series_name,series_id,episode_number,series_episode_number,series_total,series_total_episodes,series_is_finale,options')
+      .select('id,title,author,author_id,genre,description,duration_mins,created_at,script,narrator_voice_id,narrator_voice_name,series_name,series_id,episode_number,series_episode_number,series_total,series_total_episodes,series_is_finale,options')
       .eq('id', storyId)
       .single()
     if (!script) {
@@ -3465,6 +3465,12 @@ export async function POST(req: NextRequest) {
     })
     let resolvedNarratorVoiceId = narratorVoiceId
     let resolvedNarratorVoiceName = narratorVoiceName
+
+    // Resolution order (strict — no Cole fallback):
+    // 1. Explicit override from request (narratorVoiceId / narratorVoiceName)
+    // 2. Story row narrator_voice_id / narrator_voice_name
+    // 3. Author → narrator registry (author_id → authors.narrator_id → narrator_voices)
+    // If all three fail → AUTHOR_NARRATOR_MISSING hard block. No silent default.
     if (!resolvedNarratorVoiceId && narratorVoiceName) resolvedNarratorVoiceId = voiceByName[narratorVoiceName]
     if (!resolvedNarratorVoiceId) {
       if (storyRow?.narrator_voice_id) {
@@ -3475,8 +3481,37 @@ export async function POST(req: NextRequest) {
         resolvedNarratorVoiceId = voiceByName[storyRow.narrator_voice_name]
       }
     }
-    if (!resolvedNarratorVoiceId) resolvedNarratorVoiceId = voiceByName['Cole Hargrove']
-    if (!resolvedNarratorVoiceId && preflightOnly !== true) return NextResponse.json({ success: false, error: 'No narrator voice found' }, { status: 400 })
+    // Fallback: resolve via author → narrator registry
+    if (!resolvedNarratorVoiceId && storyRow?.author_id) {
+      const { data: authorRow } = await supabase
+        .from('authors')
+        .select('name, narrator_id')
+        .eq('id', storyRow.author_id)
+        .maybeSingle()
+      const narratorId = String((authorRow as any)?.narrator_id || '').trim()
+      if (narratorId) {
+        const { data: narratorRow } = await supabase
+          .from('narrator_voices')
+          .select('name, elevenlabs_voice_id')
+          .eq('id', narratorId)
+          .maybeSingle()
+        const elVoiceId = String((narratorRow as any)?.elevenlabs_voice_id || '').trim()
+        const elVoiceName = String((narratorRow as any)?.name || '').trim()
+        if (elVoiceId) {
+          resolvedNarratorVoiceId = elVoiceId
+          resolvedNarratorVoiceName = resolvedNarratorVoiceName || elVoiceName
+        }
+      }
+    }
+    // Hard block — no narrator resolved. Cole Hargrove fallback is REMOVED.
+    if (!resolvedNarratorVoiceId) {
+      const authorLabel = String(storyRow?.author || storyId)
+      return NextResponse.json({
+        success: false,
+        error: `AUTHOR_NARRATOR_MISSING: No narrator assigned for author "${authorLabel}". Assign a narrator in the Author/Narrator registry before generating voices.`,
+        code: 'AUTHOR_NARRATOR_MISSING',
+      }, { status: 422 })
+    }
     if (!resolvedNarratorVoiceName) resolvedNarratorVoiceName = narratorVoiceById[resolvedNarratorVoiceId]?.name
     const characterGuide = parseCharacterGuide(script)
     // Extract series metadata for escalation reports

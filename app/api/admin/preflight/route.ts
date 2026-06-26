@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { runPreflightChecks, formatPreflightReport } from '@/lib/preflight/validator'
+import { resolveNarratorVoiceCode } from '@/lib/preflight/narrator-check'
+import type { VoiceCodeAssignment } from '@/lib/preflight/voice-code-check'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -60,7 +62,12 @@ function parseScriptMetadata(script: string): Record<string, any> {
 
 export async function POST(req: NextRequest) {
   try {
-    const { storyId } = await req.json()
+    // Read all params in one pass — req.json() stream can only be consumed once
+    const body = await req.json()
+    const { storyId, characterVoiceCodes = [] } = body as {
+      storyId: string
+      characterVoiceCodes?: VoiceCodeAssignment[]
+    }
 
     if (!storyId) {
       return NextResponse.json(
@@ -72,10 +79,10 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    // Fetch story from database
+    // Fetch story from database (include author_id for narrator resolution)
     const { data: storyRow, error: fetchError } = await supabase
       .from('stories')
-      .select('id,title,author,genre,description,duration_mins,script,series_name,episode_number,series_total_episodes,series_is_finale')
+      .select('id,title,author,author_id,genre,description,duration_mins,script,series_name,episode_number,series_total_episodes,series_is_finale')
       .eq('id', storyId)
       .single()
 
@@ -105,7 +112,33 @@ export async function POST(req: NextRequest) {
     const { intro, outro } = extractIntroOutro(script)
     const metadata = parseScriptMetadata(script)
 
-    // Run preflight checks
+    // --- Narrator voice_code resolution ---
+    // Must come from author → narrator registry. Claude/Hal must not invent narrator codes.
+    const narratorResult = await resolveNarratorVoiceCode(storyId, supabase)
+    if (narratorResult.ok === false) {
+      // Hard block: narrator not assigned or narrator has no voice_code
+      // Use === false for reliable TS discriminated union narrowing
+      return NextResponse.json(
+        {
+          success: false,
+          error: narratorResult.message,
+          code: narratorResult.code,
+          blockers: [narratorResult.message],
+          safeToGenerateVoices: false,
+        },
+        { status: 422 }
+      )
+    }
+
+    // Build voiceCodeAssignments: narrator (from registry) + characters (from story/request)
+    // Characters receive voice_codes from Claude/Hal — passed as optional request param.
+    // If no character assignments provided, only narrator is validated (characters checked later).
+    const voiceCodeAssignments: VoiceCodeAssignment[] = [
+      narratorResult.assignment,
+      ...characterVoiceCodes,
+    ]
+
+    // Run preflight checks (voice code check is now always populated with narrator)
     const report = await runPreflightChecks({
       storyId,
       script,
@@ -122,6 +155,7 @@ export async function POST(req: NextRequest) {
         durationMins: storyRow.duration_mins,
       },
       isSeriesFinal: storyRow.series_is_finale ?? false,
+      voiceCodeAssignments,
     })
 
     // Log preflight report
