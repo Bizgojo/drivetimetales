@@ -123,7 +123,7 @@ function HomeSearchResults({ query }: { query: string }) {
 
         const { data, error } = await supabase
           .from('story_analytics')
-          .select('id, title, genre, author, duration_mins, cover_url, series_id, series_name, series_number, description, avg_rating, review_count')
+          .select('id, title, genre, author, duration_mins, cover_url, series_id, series_name, series_number, description, review_count')
           .not('cover_url', 'is', null)
           .eq('is_hidden', false)
           .in('id', publicIds)
