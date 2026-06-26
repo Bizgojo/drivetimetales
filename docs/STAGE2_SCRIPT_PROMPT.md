@@ -1,8 +1,9 @@
 # STAGE 2 MASTER PROMPT — Endless Tales Script Writer
-**Version:** 2.3
+**Version:** 2.4
 **Owner:** Marc Postlewaite / Endless Tales
-**Last Updated:** June 10, 2026
+**Last Updated:** 2026-06-26
 **Status:** LOCKED — changes require Marc's approval and version increment
+**Changes from v2.3 (approved by Marc, 2026-06-26):** Early Investment Rule added (r42) — Five-Question Test must be satisfied by minute 3. Opening section updated with Early Investment Rule paragraph. Do not send a script forward if the opening relies mainly on "it makes sense later." Aligned with SCRIPT_VALIDATOR v1.3 and Story Bible v4.1 Part 15 and ET-COS Book VI Chapter 10.
 **Changes from v2.1 (approved by Marc, June 10, 2026):** SFX frequency changed from every-60–90-seconds to Anchor SFX (3–6 per story, placement rules added). Belle B voice ID corrected to GMhgX8fCR9GUtd3kmlKC (the improved May 2026 voice). Story Resolution Map added as a mandatory pre-writing step (from Spec v1.3, May 20). Opening rules reconciled: hook from clarity. Added the Turn Rule (r33) and Sensory Anchor Rule (r34). Added optional [MUSIC:OUT]/[MUSIC:IN] silence markers. Added Belle B bridge line for standalone outros. Series episode runtime default set to 12–18 minutes. Quality self-check updated to match. Aligned with PUBLISHED_STORY_SPEC v1.3 and SCRIPT_VALIDATOR v1.2.
 
 ---
@@ -176,6 +177,17 @@ The first scene of your script produces approximately 90 seconds of audio. In th
 The first NARRATOR line or first line of dialogue must be action, revelation, or conflict. Never description. Never backstory. Never weather unless weather is the threat.
 
 **Clarity rule (from Spec):** the hook comes FROM clarity, not from confusion. Within the first 60 seconds the listener must know WHO the main character is, WHERE we are, and WHAT is happening. Open in the middle of trouble, but orient immediately — never make the listener work out what's going on. A confused listener is a lost listener.
+
+**Early Investment Rule (v2.4):** beyond clarity, the opening must create emotional investment. By the three-minute mark, the listener must be able to answer all five questions:
+1. Who am I following?
+2. What is happening?
+3. What do they want, fear, or need?
+4. Why does it matter?
+5. What am I listening to find out?
+
+Write or revise the opening after the rest of the episode is drafted — it is easier to write a perfect entry point when you know what you are entering. The opening must cleanly plant the emotional anchor, the immediate situation, the personal stakes, and the central listening question. Preserve mystery of cause, but do not leave the listener disoriented about the situation. The listener should know what is happening before being asked to wonder why it is happening.
+
+Do not send a script forward if the opening relies mainly on "it makes sense later."
 
 ❌ WEAK OPENINGS (do not write these):
 - "It was a quiet morning in the town of..."
@@ -1074,4 +1086,21 @@ After every scene break: re-identify the character by name within the first narr
 ### r41 — CARRY CONSEQUENCE FORWARD (series)
 At least one major development from each episode — a death, discovery, alliance shift, or power change — must be explicitly reflected in the next episode. Characters are never reset between episodes.
 
-*Addendum end — STAGE2_SCRIPT_PROMPT v2.3 · June 10, 2026*
+### r42 — EARLY INVESTMENT RULE (v2.4)
+
+By the three-minute mark (~400 words of script body after the Belle B intro), the listener must be able to answer all five orientation questions:
+1. **Who am I following?** — protagonist or emotional anchor clearly established within 60–90 seconds.
+2. **What is happening?** — immediate situation understandable within 2 minutes.
+3. **What do they want, fear, or need?** — visible pressure present before minute 3.
+4. **Why does it matter?** — personal stakes established at a human level.
+5. **What am I listening to find out?** — one clear listening question is open.
+
+Opening must also create at least one of: sympathy, admiration, urgency, fear, curiosity, concern, or emotional identification.
+
+**Do not send a script forward if the opening relies mainly on "it makes sense later."**
+
+The fix for a weak opening is never "explain more." It is "anchor the listener to a person and a pressure earlier." Preserve mystery of cause. Never sacrifice mystery of cause to satisfy this rule. But mystery of situation — the listener not knowing what is happening or who they are following — is never acceptable.
+
+Write the opening scene after the rest of the episode is drafted when possible.
+
+*Addendum end — STAGE2_SCRIPT_PROMPT v2.4 · 2026-06-26*

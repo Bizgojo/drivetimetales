@@ -1,7 +1,8 @@
 # SCRIPT VALIDATOR — Endless Tales
-**Version:** 1.2
+**Version:** 1.3
 **Owner:** Marc Postlewaite / Endless Tales
-**Last Updated:** June 10, 2026
+**Last Updated:** 2026-06-26
+**Changes from v1.2 (approved by Marc, 2026-06-26):** Section 8C added — Early Investment & Orientation Check. Implements the Five-Question Test from Story Bible v4.1 Part 15 and ET-COS Book VI Chapter 10. Validator summary block updated to include SECTION 8C result line. Aligned with STAGE2_SCRIPT_PROMPT v2.4.
 **Changes from v1.0 (approved by Marc, June 10, 2026):** Section 3 changed from four Belle B intro variations to ONE intro line (matches Stage 2 v2.3 and Spec v1.3). Section 4 SFX frequency changed to Anchor SFX count check (3–6) and [MUSIC:OUT]/[MUSIC:IN] pairing checks added. New Section 8B Turn Rule check. Section 10 bridge-line checks added. Section 6 author examples updated to current roster. Section 11 word counts corrected to 130 wpm and 12–18 min series default noted. Voice ID references: Belle B is GMhgX8fCR9GUtd3kmlKC everywhere (improved May 2026 voice; wewocdDkjSLm9ZwjO7TD and KWDD3Wyq30ZF5NEL01EJ are retired). Section 2B added: Story Resolution Map check. Section 8 clarity check added.
 
 ---
@@ -278,6 +279,56 @@ If the opening fails the hook test — FAIL. Quote the first line and explain wh
 
 ---
 
+## SECTION 8C — EARLY INVESTMENT & ORIENTATION CHECK (v1.3)
+
+Run the Five-Question Test against the first ~400 words of the script body (approximately 3 minutes at 130 wpm). Count from the first line after the Belle B intro block.
+
+**Question 1 — Who am I emotionally following?**
+Requirement: the protagonist or emotional anchor is clearly established within 60–90 seconds (~130–200 words). The listener must know whose experience they are inside.
+Failure: the protagonist is unnamed, uncharacterized, or interchangeable with any other person at this point. Quote the first line in which the protagonist appears and assess whether they are clearly the emotional center.
+
+**Question 2 — What is happening right now?**
+Requirement: the immediate situation is understandable within 2 minutes (~260 words). The listener must know what is physically or emotionally occurring in this scene — not why, but what.
+Failure: the scene is atmospheric, allusive, or deliberately withholding the basic situation. A confused listener is not a curious listener.
+
+**Question 3 — What does this person want, fear, or need?**
+Requirement: the protagonist has visible pressure — a need, wound, danger, obligation, or desire — present before the 3-minute mark. It does not need to be stated explicitly; it must be felt.
+Failure: the protagonist is reactive without agency, present without pressure, or moving through events without a discernible internal drive.
+
+**Question 4 — Why does it matter?**
+Requirement: personal stakes are established. The listener must understand why the situation matters to this specific person — not in abstract terms, but in human terms.
+Failure: the stakes are procedural (a thing is happening) rather than personal (a person stands to lose or gain something they care about).
+
+**Question 5 — What question am I listening to answer?**
+Requirement: one clear listening question is open by the 3-minute mark. The listener must feel pulled toward an answer.
+Failure: the episode has set up atmosphere, action, or character without opening a specific question the listener wants resolved.
+
+**Emotional hook check:**
+Does the opening create at least one of the following in the listener:
+- Sympathy (we feel for this person)
+- Admiration (we respect this person's competence or courage)
+- Urgency (something must happen now)
+- Fear (something bad may happen)
+- Curiosity (we need to know something)
+- Concern (we are worried for someone)
+- Emotional identification (we recognize ourselves in this person)
+
+If none of these are present — FAIL.
+
+**Failure behavior:**
+- Failure on any of the five questions = FAIL.
+- Quote the specific script lines that caused the failure.
+- State which question or questions cannot be answered.
+- Repair instruction: clarify the immediate situation and emotional anchor while preserving the deeper mystery. Do not flatten mystery into exposition. The fix is not "explain more." The fix is "anchor the listener earlier."
+
+**Special rule — Series Episode 1:**
+Episode 1 of any series is held to extra strictness on this check. It sets listener attachment for the entire series. A marginal pass on any single question is a FAIL for Episode 1.
+
+**Special rule — Non-final series episodes:**
+Non-final episodes must re-orient the listener to who they are following and what is at stake within the first 2 minutes, before deepening the episode's conflict. Check that re-orientation is present and explicit, not assumed from prior episodes.
+
+---
+
 ## SECTION 8B — THE TURN RULE (v1.2)
 
 **Check:** Read the script and identify every **turn** — a reveal, a reversal, a new threat, a consequential decision, or a question answered that opens a bigger one. List each turn with its approximate position (word count or minute estimate at 130 wpm).
@@ -392,6 +443,7 @@ SECTION 6 — AUTHOR VOICE: [PASS / WARNING / FAIL]
 SECTION 7 — NARRATOR USAGE: [PASS / WARNING / FAIL]
 SECTION 8 — OPENING HOOK: [PASS / FAIL]
 SECTION 8B — TURN RULE: [PASS / WARNING / FAIL]
+SECTION 8C — EARLY INVESTMENT & ORIENTATION: [PASS / FAIL]
 SECTION 9 — ENDING: [PASS / FAIL]
 SECTION 10 — ANNOUNCER OUTRO: [PASS / FAIL]
 SECTION 11 — SCRIPT LENGTH: [PASS / WARNING]

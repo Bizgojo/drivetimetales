@@ -307,7 +307,77 @@ NOTES:
 
 ---
 
+---
+
+# PART 15 — THE FIRST THREE MINUTES RULE
+## Early Investment & Orientation Doctrine
+
+**Added:** 2026-06-26 · Marc Postlewaite
+**Authority:** Creative doctrine. Also enforced as a production gate (see ET-COS Book VI, Chapter 10).
+
+### Core Principle
+
+> **Clarity of situation. Mystery of cause.**
+
+We do not explain everything early. But the listener must understand enough to care. The listener should know **what is happening** before being asked to wonder **why it is happening**.
+
+Mystery is welcome. Confusion is not.
+
+### The Five-Question Test
+
+At the three-minute mark of any episode, a first-time listener must be able to answer all five:
+
+1. **Who am I emotionally following?**
+2. **What is happening right now?**
+3. **What does this person want, fear, or need?**
+4. **Why does it matter?**
+5. **What question am I listening to answer?**
+
+If a listener cannot answer all five by minute three, the opening has failed.
+
+### Production Requirements
+
+- The protagonist or emotional anchor must be clear within the first **60–90 seconds**.
+- The listener must understand the immediate situation within the first **2 minutes**.
+- The protagonist must have visible pressure — need, wound, danger, obligation, or desire — early.
+- The opening must create **one clear listening question**.
+- The opening must create at least one of: sympathy, admiration, urgency, fear, curiosity, concern, or emotional identification.
+- **Episode 1 of any series** is held to extra strictness — it establishes listener attachment for the entire series.
+- **Every non-final episode** must re-orient the listener quickly before deepening the episode's conflict.
+- The story must not rely on "it makes sense later" as the main opening strategy.
+
+### What Is and Is Not Allowed
+
+**Allowed:** Mystery of cause — withheld backstory, unnamed threat, ambiguous antagonist, deferred explanation of why something is happening.
+
+**Not allowed:** Mystery of situation — the listener not knowing who they are following, what is physically happening, or why they should care.
+
+### Repair Protocol
+
+When an opening fails the Five-Question Test:
+
+| Failure | Fix |
+|---------|-----|
+| Mysterious but confusing | Clarify the situation. Preserve the mystery of cause. |
+| Plot before emotional attachment | Add personal stakes, pressure, vulnerability, competence, or desire earlier. |
+| No clear protagonist in 90 seconds | Move the protagonist's name, action, or feeling into the opening scene. |
+| Atmosphere without a person | Anchor the atmosphere to someone experiencing it. |
+| Listening question is vague | Make the question concrete and felt. |
+
+**The fix is never "explain more." The fix is "anchor the listener earlier."**
+
+### Agent Implementation Duties (Part 15 additions)
+
+**Claude (story writing):** Apply the Five-Question Test to every opening before submitting a script. Write the opening scene last, after the rest of the episode is drafted — it is easier to write a perfect entry point when you know what you are entering. The opening must create investment before it creates mystery.
+
+**Hal (production oversight):** Do not dispatch a script to audio generation if the first three minutes fail the Five-Question Test. Treat early-investment failure as a gate failure, not a preference. Add this item to every script review: *"Does the first three minutes create emotional investment and basic orientation?"*
+
+**Orion (operations):** Treat repeated early-confusion failures as a production quality issue at the catalog level. If a series has two or more episodes with early-investment failures, escalate to Marc as a creative system problem — not isolated incidents.
+
+---
+
 ## CHANGELOG
+**v4.1 — 2026-06-26:** Part 15 added — Early Investment & Orientation Doctrine (The First Three Minutes Rule). Marc-approved. Enforced as creative doctrine here and as a production gate in ET-COS Book VI Ch 10.
 **v4.0 — June 10, 2026:** Reconciliation release. Merges Story Bible v3.2 (Orion/Hal) into the repo canonical set per Marc's six decisions (Part 13). Repositioned as the philosophy/evaluation owner inside the canonical document architecture. Supersedes and archives v3.2, v3.1, v3.0, v2.x, v1.
 **v3.2 — June 10, 2026 (Orion/Hal):** Dialogue Separation Rule, Belle B Intro Standard, Standalone Completion Standard, Outro Music Behavior.
 **v3.1 — June 9, 2026:** Entertainment First Rule.
@@ -315,5 +385,5 @@ NOTES:
 
 ---
 
-*ENDLESS_TALES_STORY_BIBLE.md · v4.0 · June 10, 2026*
+*ENDLESS_TALES_STORY_BIBLE.md · v4.1 · 2026-06-26*
 *Changes require Marc's approval and a version increment. Commit to GitHub; archive superseded versions the same day.*
