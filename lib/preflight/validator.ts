@@ -6,6 +6,7 @@
  */
 
 import { PREFLIGHT_RULES, KNOWN_DIALOGUE_FRAGMENTS } from './knownFailures'
+import { checkVoiceCodes, toCheckResult, type VoiceCodeAssignment } from './voice-code-check'
 
 // ---------------------------------------------------------------------------
 // Narrator voice preflight check
@@ -105,6 +106,7 @@ export interface PreflightReport {
     repetitionCheck: CheckResult
     productionAssets: CheckResult
     narratorVoiceCheck: CheckResult
+    voiceCodeCheck: CheckResult
   }
   summary: {
     totalChecks: number
@@ -131,6 +133,8 @@ export interface CheckResult {
     risks?: string[]
     issues?: string[]
     errors?: string[]
+    // Allow check-specific extension fields (voice_code check, etc.)
+    [key: string]: unknown
   }
   details: string[]
   suggestedFixes: string[]
@@ -156,6 +160,12 @@ export async function runPreflightChecks(params: {
   knownNarratorVoices?: { name: string; voice_id: string }[]
   /** DB narrator_voice_name from the story row — used as fallback if script NARRATOR is wrong. */
   dbNarratorVoiceName?: string | null
+  /**
+   * voice_code assignments to validate before generate_voices.
+   * Malformed codes block the run with structured error_json.
+   * If omitted, the voiceCodeCheck passes as "skipped".
+   */
+  voiceCodeAssignments?: VoiceCodeAssignment[]
 }): Promise<PreflightReport> {
   const report: PreflightReport = {
     passed: true,
@@ -170,8 +180,9 @@ export async function runPreflightChecks(params: {
       repetitionCheck: { passed: true, checkName: 'Repetition Check', findings: {}, details: [], suggestedFixes: [] },
       productionAssets: { passed: true, checkName: 'Production Assets', findings: {}, details: [], suggestedFixes: [] },
       narratorVoiceCheck: { passed: true, checkName: 'Narrator Voice Check', findings: {}, details: [], suggestedFixes: [] },
+      voiceCodeCheck: { passed: true, checkName: 'Voice Code Validation', findings: {}, details: [], suggestedFixes: [] },
     },
-    summary: { totalChecks: 8, passed: 8, failed: 0 },
+    summary: { totalChecks: 9, passed: 9, failed: 0 },
     blockers: [],
     warnings: [],
     recommendations: [],
@@ -316,6 +327,42 @@ export async function runPreflightChecks(params: {
     } else {
       report.checks.narratorVoiceCheck.details = ['Narrator voice check skipped — knownNarratorVoices not provided']
       report.recommendations.push('Pass knownNarratorVoices to enable narrator voice preflight check (INC-002 prevention)')
+    }
+  }
+
+  // Check 9: Voice Code Validation
+  // Malformed voice_codes block generate_voices with structured error — never let them
+  // reach the EL API and fail vaguely with an undefined voice_id.
+  {
+    if (params.voiceCodeAssignments && params.voiceCodeAssignments.length > 0) {
+      const vcResult = await checkVoiceCodes(params.voiceCodeAssignments, {
+        useRegistry: true,
+        requireResolved: false, // format failure blocks; registry miss is a warning
+      })
+      report.checks.voiceCodeCheck = toCheckResult(vcResult)
+
+      if (!vcResult.passed) {
+        report.passed = false
+        report.summary.failed += 1
+        report.summary.passed -= 1
+        for (const blocker of vcResult.blockers) {
+          report.blockers.push(`Voice code: ${blocker}`)
+        }
+      } else if (vcResult.valid.some((v) => v.source === 'format_only')) {
+        // Registry miss is informational — voice will be created on first use
+        report.warnings.push(
+          `${vcResult.valid.filter((v) => v.source === 'format_only').length} voice_code(s) not yet in registry — will be created automatically on first generate_voices run`
+        )
+      }
+
+      if (vcResult.invalid.length === 0) {
+        report.recommendations.push(
+          `All ${vcResult.checked} voice_code(s) passed format validation`
+        )
+      }
+    } else {
+      report.checks.voiceCodeCheck.details = ['Voice code check skipped — no voiceCodeAssignments provided']
+      report.recommendations.push('Pass voiceCodeAssignments to enable voice_code format validation before generate_voices')
     }
   }
 
