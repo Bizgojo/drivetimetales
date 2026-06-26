@@ -69,7 +69,7 @@ export default function NewReleases({ excludeIds = [], onIdsLoaded }: { excludeI
     }
 
     const { data } = await supabase.from('story_analytics')
-      .select('id, title, genre, author, duration_mins, cover_url, avg_rating, review_count, series_id, series_number, episode_number, series_name, published_on')
+      .select('id, title, genre, author, duration_mins, cover_url, avg_rating, review_count, series_id, series_number, series_name, published_on')
       .not('cover_url', 'is', null).eq('is_hidden', false)
       .in('id', publicIds)
       .order('published_on', { ascending: false }).limit(60)
