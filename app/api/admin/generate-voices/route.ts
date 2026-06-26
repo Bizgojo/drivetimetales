@@ -3510,10 +3510,14 @@ export async function POST(req: NextRequest) {
     // Malformed codes block immediately; missing registry entries are noted (will create).
     // Narrator is NOT included — it has a raw EL voice ID, no registry involvement.
     if (!preflightOnly && characterVoiceCodes.length > 0) {
+      const _introMatch = script.match(/BELLE B INTRO[\s\S]*?BELLE B:\s*(.+?)(?:\n---|\n\n)/i)
+      const _outroMatch = script.match(/BELLE B OUTRO[\s\S]*?BELLE B:\s*(.+?)(?:\n[A-Z]:|$)/i)
       const vcReport = await runPreflightChecks({
         storyId,
         script,
         characters: [],
+        intro: _introMatch ? _introMatch[1].trim() : undefined,
+        outro: _outroMatch ? _outroMatch[1].trim() : undefined,
         voiceCodeAssignments: characterVoiceCodes as VoiceCodeAssignment[],
         seriesMetadata: {
           seriesName: (storyRow as any)?.series_name || parseHeaderValue(script, 'SERIES') || undefined,
