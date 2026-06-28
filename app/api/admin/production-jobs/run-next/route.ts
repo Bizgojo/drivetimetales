@@ -8921,8 +8921,9 @@ export async function POST(req: NextRequest) {
           throw new Error(`Failed to load series episode workflow states: ${episodeWorkflowError.message}`)
         }
 
+        const PROMOTABLE_STATES = new Set(['', 'stories_in_queue'])
         const episodeIdsToPromote = ((episodeWorkflowRows || []) as any[])
-          .filter((story) => !String(story.workflow_state || '').trim())
+          .filter((story) => PROMOTABLE_STATES.has(String(story.workflow_state || '').trim()))
           .map((story) => story.id)
 
         if (episodeIdsToPromote.length > 0) {
