@@ -374,6 +374,14 @@ function jobLooksLikePackageCompletion(job: ProductionJobRow | null) {
 }
 
 function completionProofForStory(story: StoryRow, job: ProductionJobRow | null) {
+  // Explicit workflow_state is authoritative proof of completion — trust it
+  if (story.workflow_state === "ready_for_review" || story.workflow_state === "approved_ready") {
+    return {
+      date: story.updated_at || story.created_at || new Date().toISOString(),
+      source: "workflow_state_explicit",
+    }
+  }
+
   if (!String(story.audio_url || '').includes('/final_mix.mp3')) {
     if (story.workflow_state === 'ready_for_review' && bool(story.audio_url)) {
       return { date: story.created_at || new Date().toISOString(), source: 'workflow_state_ready_for_review_legacy_audio' }
