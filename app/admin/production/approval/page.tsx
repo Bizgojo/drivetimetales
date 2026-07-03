@@ -3977,7 +3977,7 @@ export default function AdminStoriesPage() {
                     </div>
                     <div style={{ minWidth: 0, flex: '1 1 auto' }}>
                       <div style={{ color: '#1F2937', fontSize: '13px', fontWeight: 600, lineHeight: 1.2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{groupTitle}</div>
-                      <div style={{ color: '#9CA3AF', fontSize: '10px', marginTop: '4px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{firstStory?.genre || 'No genre'} • {firstStory?.author || 'Unknown'}</div>
+                      <div style={{ color: '#9CA3AF', fontSize: '10px', marginTop: '4px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{firstStory?.genre || 'No genre'} • {firstStory?.author || 'Unknown'}{(() => { const d = group.type === 'series' ? group.completionSortDate : (group as any).story?.completion_sort_date; return d ? ` • ${new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}` : '' })()}</div>
                       <div style={{ color: '#9CA3AF', fontSize: '10px', marginTop: '3px' }}>{trueSeries ? `Series • ${expected} episodes • ${present} present` : `Standalone • ${firstStory?.duration_mins || 0}m`}</div>
                       {activePipelineTab === 'cold_storage' && (
                         <>
