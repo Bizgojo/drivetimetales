@@ -360,7 +360,14 @@ export default function AdminPromoPage() {
             )}
             <label className="flex min-w-[130px] flex-1 flex-col gap-[5px]">
               <span className="text-[11px] font-bold uppercase tracking-[0.05em] text-[#555]">Phone (optional)</span>
-              <input className="rounded-lg border border-[#d1d5db] bg-white px-3 py-[9px] text-sm text-[#1a1a1a] placeholder:text-[#aaa]" type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+1 (555) 000-0000" />
+              <input className="rounded-lg border border-[#d1d5db] bg-white px-3 py-[9px] text-sm text-[#1a1a1a] placeholder:text-[#aaa]" type="tel" value={phone} onChange={(e) => {
+                const digits = e.target.value.replace(/\D/g, '').slice(0, 10)
+                let formatted = digits
+                if (digits.length > 6) formatted = `(${digits.slice(0,3)}) ${digits.slice(3,6)}-${digits.slice(6)}`
+                else if (digits.length > 3) formatted = `(${digits.slice(0,3)}) ${digits.slice(3)}`
+                else if (digits.length > 0) formatted = `(${digits}`
+                setPhone(formatted)
+              }} placeholder="(555) 000-0000" />
             </label>
             <label className="flex min-w-[140px] max-w-[160px] flex-1 flex-col gap-[5px]">
               <span className="text-[11px] font-bold uppercase tracking-[0.05em] text-[#555]">Free Access</span>
