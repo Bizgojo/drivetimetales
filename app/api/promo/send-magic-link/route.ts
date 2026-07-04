@@ -96,24 +96,34 @@ export async function POST(req: NextRequest) {
       ? new Date(userData.subscription_ends_at) : now
     const newEndsAt = new Date(base.getTime() + promo.subscription_days * 24 * 60 * 60 * 1000)
 
-    // Always UPDATE existing users (reliable) — upsert can silently fail on unknown columns
-    const coreUpdate: Record<string, any> = {
+    // Build profile payload
+    const plan = userData?.plan && userData.plan !== 'free' ? userData.plan : 'standard'
+    const coreProfile: Record<string, any> = {
       first_name: trimmedName,
       subscription_type: 'active',
       subscription_ends_at: newEndsAt.toISOString(),
-      plan: userData?.plan && userData.plan !== 'free' ? userData.plan : 'standard',
+      plan,
     }
-    if (trimmedLastName) coreUpdate.last_name = trimmedLastName
+    if (trimmedLastName) coreProfile.last_name = trimmedLastName
 
-    const { error: updateError } = await supabase.from('users').update(coreUpdate).eq('id', userId)
-    if (updateError) {
-      // Fallback: retry without optional fields
-      await supabase.from('users').update({
-        first_name: trimmedName,
-        subscription_type: 'active',
-        subscription_ends_at: newEndsAt.toISOString(),
-        plan: coreUpdate.plan,
-      }).eq('id', userId)
+    if (existingUser) {
+      // Existing user — UPDATE only (safe: no unknown-column risk, no insert conflicts)
+      const { error: updateError } = await supabase.from('users').update(coreProfile).eq('id', userId)
+      if (updateError) {
+        await supabase.from('users').update({
+          subscription_type: 'active',
+          subscription_ends_at: newEndsAt.toISOString(),
+          plan,
+        }).eq('id', userId)
+      }
+    } else {
+      // New user — UPSERT to create the users row (auth trigger may not have fired yet)
+      const insertPayload: Record<string, any> = {
+        id: userId,
+        email: trimmedEmail,
+        ...coreProfile,
+      }
+      await supabase.from('users').upsert(insertPayload, { onConflict: 'id' })
     }
 
     // 4. Log redemption + update code
