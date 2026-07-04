@@ -135,7 +135,8 @@ async function handleDispatchQueue(request: NextRequest) {
         story_id: story.id,
         job_type: 'standalone',
         status: 'queued',
-        current_step: 'queued',
+        // Stories in stories_in_queue already have scripts — start at voice production, not script generation
+        current_step: 'voice_preflight',
         step_index: 0,
         input_json: {
           mode: 'standalone',
@@ -260,6 +261,8 @@ async function handleDispatchQueue(request: NextRequest) {
             totalEpisodes: episodeCount,
             dispatchSource: 'cron/dispatch-queue',
             dispatchedAt: now,
+            // Series episodes also start at voice_preflight (scripts already written)
+            initialStep: 'voice_preflight',
           },
           logs: [
             {
