@@ -254,29 +254,51 @@ export default function AdminPromoPage() {
       users?.forEach((u: any) => usersByEmail.set(String(u.email || '').toLowerCase(), u))
     }
 
-    // Build InvitePerson for each code
-    const people: InvitePerson[] = (codes as any[]).map((code) => {
+    // Build one InvitePerson per unique email (most recent invite wins; track invite count)
+    const seenEmails = new Map<string, { person: InvitePerson; inviteCount: number }>()
+    ;(codes as any[]).forEach((code) => {
       const email = String(code.sent_to_email || '').trim().toLowerCase()
+      if (!email) return
       const user = usersByEmail.get(email) || {}
       const nameParts = String(code.label || code.sent_to_name || '').trim().split(' ')
       const firstName = String(code.sent_to_name || nameParts[0] || '').trim()
       const lastName = nameParts.length > 1 ? nameParts.slice(1).join(' ') : ''
-      return {
-        userId: String(user.id || ''),
-        email,
-        phone: normalizePhone(user.phone || user.mobile_phone || user.sms_phone || user.contact_phone),
-        firstName,
-        lastName,
-        displayName: String(code.label || [firstName, lastName].filter(Boolean).join(' ') || email.split('@')[0]),
-        subscriptionDays: code.subscription_days || null,
-        subscriptionEndsAt: user.subscription_ends_at || null,
-        lastUsedAt: user.last_login || user.last_active_at || user.last_seen_at || user.updated_at || null,
-        timesUsed: Number(code.uses_count || 0),
-        started: 0,
-        finished: 0,
-        stories: [],
-        invitedAt: code.sent_at || code.created_at || null,
+      // Phone stored in notes field at invite creation time
+      const phone = normalizePhone(code.notes && /[\d()+\- ]/.test(code.notes) ? code.notes : '')
+      const lastLogin = user.last_login || null
+
+      if (!seenEmails.has(email)) {
+        seenEmails.set(email, {
+          inviteCount: 1,
+          person: {
+            userId: String(user.id || ''),
+            email,
+            phone,
+            firstName,
+            lastName,
+            displayName: String(code.label || [firstName, lastName].filter(Boolean).join(' ') || email.split('@')[0]),
+            subscriptionDays: code.subscription_days || null,
+            subscriptionEndsAt: user.subscription_ends_at || null,
+            lastUsedAt: lastLogin,
+            timesUsed: lastLogin ? 1 : 0, // only count if they've actually signed in
+            started: 0,
+            finished: 0,
+            stories: [],
+            invitedAt: code.sent_at || code.created_at || null,
+          },
+        })
+      } else {
+        // Same email, additional invite — increment count, keep most recent phone if missing
+        const entry = seenEmails.get(email)!
+        entry.inviteCount += 1
+        if (!entry.person.phone && phone) entry.person.phone = phone
       }
+    })
+    const people: InvitePerson[] = Array.from(seenEmails.values()).map(({ person, inviteCount }) => {
+      if (inviteCount > 1) {
+        (person as any)._inviteCount = inviteCount
+      }
+      return person
     })
 
     // Load stories for known users
@@ -553,26 +575,33 @@ export default function AdminPromoPage() {
                 ) : sortedPeople.length === 0 ? (
                   <tr><td className="px-3 py-5 text-[#888]" colSpan={9}>No magic link invites sent yet.</td></tr>
                 ) : sortedPeople.map((person) => {
+                  const hasSignedIn = !!person.lastUsedAt
                   const active = person.subscriptionEndsAt ? new Date(person.subscriptionEndsAt) > new Date() : false
                   const displayFirst = person.firstName || person.displayName
                   const displayLast = person.lastName
+                  const inviteCount = (person as any)._inviteCount as number | undefined
                   return (
-                    <tr key={person.userId || person.email} className="border-b border-[#f0f0f0] hover:bg-[#fafafa]">
+                    <tr key={person.email} className="border-b border-[#f0f0f0] hover:bg-[#fafafa]">
                       <td className="px-3 py-[13px] align-middle text-sm font-semibold">
                         {displayFirst || '--'} {displayLast && <span className="font-normal text-[#888]">{displayLast}</span>}
+                        {inviteCount && inviteCount > 1 && <span className="ml-1.5 inline-block rounded bg-[#f1f5f9] px-1.5 py-0.5 align-middle text-[10px] font-semibold text-[#64748b]">{inviteCount}x invited</span>}
                         {isTestAccount(person.email) && <span className="ml-1.5 inline-block rounded bg-[#fef3c7] px-1.5 py-0.5 align-middle text-[10px] font-bold text-[#92400e]">TEST</span>}
                       </td>
                       <td className="px-3 py-[13px] align-middle">
                         <a className="text-xs text-[#f97316] no-underline hover:underline" href={`mailto:${person.email}`}>{person.email}</a>
-                        {person.phone ? (
-                          <a className="mt-[3px] block text-xs text-[#3b82f6] no-underline" href={smsHref(person.phone)}>Phone {person.phone}</a>
-                        ) : (
-                          <span className="mt-[3px] block text-xs text-[#ccc]">No phone on file</span>
-                        )}
+                        {person.phone
+                          ? <a className="mt-[3px] block text-xs text-[#3b82f6] no-underline hover:underline" href={smsHref(person.phone)}>{person.phone}</a>
+                          : <span className="mt-[3px] block text-xs text-[#ccc]">No phone on file</span>
+                        }
                       </td>
                       <td className="px-3 py-[13px] align-middle"><span className="inline-block rounded-md bg-[#eff6ff] px-2 py-[3px] text-xs font-semibold text-[#1d4ed8]">{accessBadge(person.subscriptionDays)}</span></td>
-                      <td className="px-3 py-[13px] align-middle"><span className={`inline-block rounded-md px-2 py-[3px] text-xs font-semibold ${active ? 'bg-[#d1fae5] text-[#065f46]' : 'bg-[#fee2e2] text-[#991b1b]'}`}>{active ? 'Active' : 'Expired'}</span></td>
-                      <td className="px-3 py-[13px] text-center align-middle text-[15px] font-bold">{person.timesUsed}</td>
+                      <td className="px-3 py-[13px] align-middle">
+                        {!hasSignedIn
+                          ? <span className="inline-block rounded-md bg-[#f1f5f9] px-2 py-[3px] text-xs font-semibold text-[#475569]">Invited</span>
+                          : <span className={`inline-block rounded-md px-2 py-[3px] text-xs font-semibold ${active ? 'bg-[#d1fae5] text-[#065f46]' : 'bg-[#fee2e2] text-[#991b1b]'}`}>{active ? 'Active' : 'Expired'}</span>
+                        }
+                      </td>
+                      <td className="px-3 py-[13px] text-center align-middle text-[15px] font-bold">{hasSignedIn ? person.timesUsed : <span className="text-[#ccc]">—</span>}</td>
                       <td className="whitespace-nowrap px-3 py-[13px] align-middle text-xs text-[#555]">
                         {person.lastUsedAt
                           ? <>{formatDate(person.lastUsedAt)}<br /><span className="text-[11px] text-[#999]">{relativeDate(person.lastUsedAt)}</span></>
@@ -585,7 +614,7 @@ export default function AdminPromoPage() {
                       <td className="px-3 py-[13px] text-center align-middle text-[15px] font-bold">{person.finished}</td>
                       <td className="min-w-[190px] px-3 py-[13px] align-middle">
                         <a className="mr-1 inline-block rounded-md border border-[#d1d5db] bg-white px-[11px] py-[5px] text-xs font-medium text-[#374151]" href={`mailto:${person.email}`}>Email</a>
-                        {person.phone && <a className="mr-1 inline-block rounded-md border border-[#3b82f6] bg-white px-[11px] py-[5px] text-xs font-medium text-[#3b82f6]" href={smsHref(person.phone)}>Text</a>}
+                        {person.phone && <a className="mr-1 inline-block rounded-md border border-[#3b82f6] bg-white px-[11px] py-[5px] text-xs font-medium text-[#3b82f6]" href={smsHref(person.phone)}>Text 💬</a>}
                         <button type="button" onClick={() => toggleAccess(person)} className={`rounded-md border bg-white px-[11px] py-[5px] text-xs font-medium ${active ? 'border-[#d1d5db] text-[#9ca3af]' : 'border-[#f97316] text-[#f97316]'}`}>{active ? 'Deactivate' : 'Reactivate'}</button>
                       </td>
                     </tr>

@@ -48,6 +48,7 @@ export async function POST(req: NextRequest) {
           is_active: true,
           is_redeemed: false,
           subscription_type: 'active',
+          notes: trimmedPhone || null,
         })
         .select('*')
         .single()
