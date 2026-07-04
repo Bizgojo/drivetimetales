@@ -328,7 +328,8 @@ export default function LibraryPage() {
       const first = sorted[0]
       const totalDuration = sorted.reduce((sum, e) => sum + (e.duration_mins || 0), 0)
       const avgDuration = sorted.length > 0 ? Math.round(totalDuration / sorted.length) : 0
-      const anyEpisodeNotForMe = sorted.some((e) => !!libraryLookup.get(e.id)?.not_for_me)
+      const allEpisodesNotForMe =
+        sorted.length > 0 && sorted.every((e) => !!libraryLookup.get(e.id)?.not_for_me)
       const playbackTarget = buildSeriesPlaybackTarget(
         sorted.map((episode) => ({ id: episode.id, episode_number: episode.series_number || 0 })),
         sorted
@@ -355,7 +356,7 @@ export default function LibraryPage() {
         seriesInProgress: playbackTarget.isInProgress,
         episodePlaylist: playbackTarget.playlist,
         durationForSort: totalDuration,
-        notForMe: anyEpisodeNotForMe,
+        notForMe: allEpisodesNotForMe,
       })
     })
 
@@ -1077,9 +1078,9 @@ function StoryCard({
                     onClick={onCoverClick}
                     style={{
                       flex: 1,
-                      background: 'transparent',
-                      color: 'white',
-                      border: '1px solid rgba(255,255,255,0.22)',
+                      background: '#eab308',
+                      color: '#000',
+                      border: '1px solid rgba(234,179,8,0.9)',
                       padding: '2px 6px',
                       borderRadius: '6px',
                       fontSize: '11px',

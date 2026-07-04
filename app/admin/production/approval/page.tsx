@@ -117,6 +117,16 @@ type RepairChecklistValue = Record<RepairGroup, string[]>
 type RepairIssueDetails = Record<string, { comment: string }>
 type RepairCommentRow = { comment: string; remainingTime: string }
 type ProductionQueueView = 'production_order' | 'by_episodes'
+type ProductionJobSummary = {
+  id: string
+  story_id: string | null
+  series_id: string | null
+  status: string | null
+  current_step: string | null
+  updated_at: string | null
+  created_at?: string | null
+  error_json?: any
+}
 type EpisodeRepairMark = {
   needed: boolean
   checklist: RepairChecklistValue
@@ -262,6 +272,8 @@ const WORKFLOW_COLORS: Record<string, { bg: string; text: string; badge: string;
   published: { bg: '#D1FAE5', text: '#065F46', badge: '#059669', dot: '#059669' },
   unpublished_library: { bg: '#FEF9C3', text: '#713F12', badge: '#EAB308', dot: '#EAB308' },
 }
+
+const ACTIVE_PRODUCTION_JOB_STATUSES = ['queued', 'running', 'waiting_for_external', 'processing']
 
 const STREAMING_PIPELINE: Array<{ id: WorkflowLane; label: string; sub: string; color: string }> = [
   { id: 'ready_for_review', label: 'Ready for Review', sub: 'Ready for review', color: '#F59E0B' },
@@ -445,6 +457,49 @@ function productionQueueStates(story: Story) {
 function storyProductionPriority(story: Story) {
   const priority = Number(story.production_priority || 0)
   return Number.isFinite(priority) && priority > 0 ? priority : 0
+}
+
+function isActiveProductionJob(job?: Pick<ProductionJobSummary, 'status'> | Story['source_job'] | null) {
+  return ACTIVE_PRODUCTION_JOB_STATUSES.includes(String(job?.status || '').trim())
+}
+
+function showsInProductionBadge(job?: Pick<ProductionJobSummary, 'status'> | Story['source_job'] | null) {
+  return ['running', 'processing', 'waiting_for_external'].includes(String(job?.status || '').trim())
+}
+
+function readablePipelineValue(value?: string | null) {
+  const raw = String(value || '').trim()
+  if (!raw) return 'Unknown'
+  return raw
+    .split(/[_\s-]+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ')
+}
+
+function workflowStateLabel(story: Story) {
+  const state = effectiveWorkflowState(story)
+  if (state === 'scripts_ready') return 'Scripts Ready'
+  if (state === 'stories_in_queue') return 'In Queue'
+  return WORKFLOW_LABELS[state] || readablePipelineValue(state)
+}
+
+function submittedDateLabel(story: Story) {
+  if (!story.created_at) return 'Submitted date unknown'
+  return `Submitted ${new Date(story.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`
+}
+
+function shortStoryId(story?: Pick<Story, 'id'> | null) {
+  return String(story?.id || '').slice(-8)
+}
+
+function normalizedDuplicateTitle(title?: string | null) {
+  return String(title || '').trim().replace(/\s+/g, ' ').toLowerCase()
+}
+
+function queuePositionLabel(position: number) {
+  if (position <= 2) return 'Next in production queue'
+  return `Queue position #${position} — est. ${position - 1} stories ahead`
 }
 
 function repairQueueStates(story: Story) {
@@ -644,7 +699,7 @@ function mergeReadiness(story: Partial<Story>, episode: ApprovalEpisode, series?
     approval_blocking_reasons: episode.approvalBlockingReasons || [],
     approval_entry_reason: episode.approvalEntryReason,
     source_job_id: episode.sourceJobId || series?.sourceJobId || null,
-    source_job: episode.source_job || (episode as any).sourceJob || null,
+    source_job: story.source_job || episode.source_job || (episode as any).sourceJob || null,
     completion_sort_date: episode.completionSortDate || series?.completionSortDate || null,
     audio_ready: episode.audioReadiness.audioUrl,
     story_audio_ready: episode.audioReadiness.storyAudioUrl,
@@ -2576,6 +2631,9 @@ export default function AdminStoriesPage() {
         ? item.episodes.map((episode) => episode.storyId)
         : [item.episode.storyId]
     ).filter(Boolean)))
+    const eligibleSeriesIds = Array.from(new Set(items.flatMap((item) =>
+      item.type === 'series' && item.seriesId ? [item.seriesId] : []
+    ).filter(Boolean)))
 
     if (eligibleIds.length === 0) {
       setStories([])
@@ -2644,19 +2702,57 @@ export default function AdminStoriesPage() {
       return
     }
 
-    const { data, error } = await supabase
-      .from('story_analytics')
-      .select('*')
-      .in('id', eligibleIds)
-      .order('created_at', { ascending: false })
+    const [analyticsResult, productionJobsByStoryResult, productionJobsBySeriesResult] = await Promise.all([
+      supabase
+        .from('story_analytics')
+        .select('*')
+        .in('id', eligibleIds)
+        .order('created_at', { ascending: false }),
+      supabase
+        .from('production_jobs')
+        .select('id,story_id,series_id,status,current_step,updated_at,created_at,error_json')
+        .in('story_id', eligibleIds)
+        .in('status', ACTIVE_PRODUCTION_JOB_STATUSES)
+        .order('updated_at', { ascending: false }),
+      eligibleSeriesIds.length > 0
+        ? supabase
+          .from('production_jobs')
+          .select('id,story_id,series_id,status,current_step,updated_at,created_at,error_json')
+          .in('series_id', eligibleSeriesIds)
+          .in('status', ACTIVE_PRODUCTION_JOB_STATUSES)
+          .order('updated_at', { ascending: false })
+        : Promise.resolve({ data: [], error: null }),
+    ])
+
+    const { data, error } = analyticsResult
+    const activeJobByStoryId = new Map<string, ProductionJobSummary>()
+    const activeJobBySeriesId = new Map<string, ProductionJobSummary>()
+    ;((productionJobsByStoryResult.data || []) as ProductionJobSummary[]).forEach((job) => {
+      if (!job.story_id || activeJobByStoryId.has(job.story_id)) return
+      activeJobByStoryId.set(job.story_id, job)
+    })
+    ;((productionJobsBySeriesResult.data || []) as ProductionJobSummary[]).forEach((job) => {
+      if (!job.series_id || activeJobBySeriesId.has(job.series_id)) return
+      activeJobBySeriesId.set(job.series_id, job)
+    })
+    if (productionJobsByStoryResult.error) console.error('Error fetching active story production jobs:', productionJobsByStoryResult.error)
+    if (productionJobsBySeriesResult.error) console.error('Error fetching active series production jobs:', productionJobsBySeriesResult.error)
 
     const analyticsById = new Map((data || []).map((story: any) => [story.id, story]))
     const storyById = new Map(((storyRows || []) as Partial<Story>[]).map((story) => [story.id, story]))
     const loadedStories = items.flatMap((item) => {
       if (item.type === 'series') {
-        return item.episodes.map((episode) => mergeReadiness({ ...((analyticsById.get(episode.storyId) || {}) as Partial<Story>), ...((storyById.get(episode.storyId) || {}) as Partial<Story>) }, episode, item))
+        return item.episodes.map((episode) => mergeReadiness({
+          ...((analyticsById.get(episode.storyId) || {}) as Partial<Story>),
+          ...((storyById.get(episode.storyId) || {}) as Partial<Story>),
+          source_job: activeJobByStoryId.get(episode.storyId) || activeJobBySeriesId.get(item.seriesId) || undefined,
+        }, episode, item))
       }
-      return [mergeReadiness({ ...((analyticsById.get(item.episode.storyId) || {}) as Partial<Story>), ...((storyById.get(item.episode.storyId) || {}) as Partial<Story>) }, item.episode)]
+      return [mergeReadiness({
+        ...((analyticsById.get(item.episode.storyId) || {}) as Partial<Story>),
+        ...((storyById.get(item.episode.storyId) || {}) as Partial<Story>),
+        source_job: activeJobByStoryId.get(item.episode.storyId) || undefined,
+      }, item.episode)]
     })
     setStories(loadedStories)
     setLastUpdated(new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }))
@@ -3387,6 +3483,24 @@ export default function AdminStoriesPage() {
     return activePipelineTab === 'production_queue' && index >= 0 ? index + 1 : null
   }
 
+  function productionQueueCardStories(group: StoryGroup) {
+    const groupStories = group.type === 'series' ? group.stories : [group.story]
+    const productionStories = productionQueueStoriesForGroup(group)
+    return productionStories.length > 0 ? productionStories : groupStories
+  }
+
+  function productionQueueCardTitle(group: StoryGroup) {
+    const cardStories = productionQueueCardStories(group)
+    const firstStory = cardStories[0] || (group.type === 'series' ? group.stories[0] : group.story)
+    return isTrueSeriesGroup(group)
+      ? displaySeriesTitle(cardStories)
+      : String(firstStory?.title || firstStory?.series_name || 'Untitled Story')
+  }
+
+  function activeProductionJobForStories(stories: Story[]) {
+    return stories.map((story) => story.source_job).find(isActiveProductionJob) || null
+  }
+
   const seriesGroups = groupsFromReadiness
     .filter((group) => {
       const groupStories = group.type === 'series' ? group.stories : [group.story]
@@ -3431,6 +3545,19 @@ export default function AdminStoriesPage() {
       const bTitle = b.type === 'series' ? b.title : b.story.title
       return aTitle.localeCompare(bTitle)
     })
+
+  const productionQueueTitleCounts = seriesGroups.reduce<Record<string, number>>((counts, group) => {
+    if (activePipelineTab !== 'production_queue') return counts
+    const key = normalizedDuplicateTitle(productionQueueCardTitle(group))
+    if (!key) return counts
+    counts[key] = (counts[key] || 0) + 1
+    return counts
+  }, {})
+  const activeHalJobs = Array.from(new Map(stories
+    .filter((story) => productionQueueStates(story) && isActiveProductionJob(story.source_job))
+    .map((story) => [story.source_job?.id || story.id, story])
+  ).values())
+    .sort((a, b) => new Date(b.source_job?.updated_at || 0).getTime() - new Date(a.source_job?.updated_at || 0).getTime())
 
   const selectedGroup = seriesGroups.find((group) => group.key === selectedSeriesKey) || seriesGroups[0] || null
   useEffect(() => {
@@ -3860,6 +3987,19 @@ export default function AdminStoriesPage() {
         .approval-mobile-episodes {
           display: none;
         }
+        @keyframes approvalPulse {
+          0%, 100% { opacity: 1; transform: scale(1); }
+          50% { opacity: 0.52; transform: scale(0.78); }
+        }
+        @keyframes approvalSpin {
+          to { transform: rotate(360deg); }
+        }
+        .approval-pulse-dot {
+          animation: approvalPulse 1.15s ease-in-out infinite;
+        }
+        .approval-spin-dot {
+          animation: approvalSpin 0.9s linear infinite;
+        }
         @media (max-width: 768px) {
           .approval-page {
             padding: 14px 12px 96px !important;
@@ -4221,22 +4361,50 @@ export default function AdminStoriesPage() {
               />
             </div>
 
+            <div style={{ marginTop: '14px', padding: '11px 13px', borderRadius: '8px', border: '1px solid #BAE6FD', backgroundColor: '#F0F9FF', color: '#075985', display: 'flex', alignItems: 'flex-start', gap: '10px', fontSize: '12px', lineHeight: 1.35 }}>
+              <span
+                className={activeHalJobs.length > 0 ? 'approval-spin-dot' : undefined}
+                style={{
+                  width: '14px',
+                  height: '14px',
+                  marginTop: '1px',
+                  borderRadius: '999px',
+                  border: activeHalJobs.length > 0 ? '2px solid #38BDF8' : 'none',
+                  borderTopColor: activeHalJobs.length > 0 ? 'transparent' : undefined,
+                  backgroundColor: activeHalJobs.length > 0 ? 'transparent' : '#94A3B8',
+                  flex: '0 0 auto',
+                }}
+              />
+              <div style={{ minWidth: 0, display: 'grid', gap: '3px' }}>
+                <div style={{ fontWeight: 950 }}>Hal is currently working on</div>
+                {activeHalJobs.length > 0 ? (
+                  activeHalJobs.map((story) => (
+                    <div key={`${story.source_job?.id || story.id}:hal-active`} style={{ color: '#0F172A', fontWeight: 800, overflowWrap: 'anywhere' }}>
+                      {story.title} {' — '} {story.source_job?.current_step || 'queued'}
+                    </div>
+                  ))
+                ) : (
+                  <div style={{ color: '#475569', fontWeight: 800 }}>Hal: queue idle</div>
+                )}
+              </div>
+            </div>
+
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '14px' }}>
               {seriesGroups.map((group, index) => {
                 const groupStories = group.type === 'series' ? group.stories : [group.story]
                 const productionStories = productionQueueStoriesForGroup(group)
-                const cardStories = productionStories.length > 0 ? productionStories : groupStories
+                const cardStories = productionQueueCardStories(group)
                 const firstStory = cardStories[0] || groupStories[0]
                 const trueSeries = isTrueSeriesGroup(group)
                 const expected = trueSeries ? groupExpectedCount(group) : 1
                 const queueEpisodeCount = cardStories.length
                 const queueDuration = cardStories.reduce((sum, story) => sum + (story.duration_mins || 0), 0)
-                const groupTitle = trueSeries
-                  ? displaySeriesTitle(cardStories)
-                  : String(firstStory?.title || firstStory?.series_name || 'Untitled Story')
+                const groupTitle = productionQueueCardTitle(group)
                 const queueGenre = firstStory?.genre || groupStories.find((story) => story.genre)?.genre || 'No genre'
                 const productionPriority = groupProductionPriority(group)
                 const primaryProductionStory = productionStories[0]
+                const activeJob = activeProductionJobForStories(cardStories)
+                const duplicateTitle = (productionQueueTitleCounts[normalizedDuplicateTitle(groupTitle)] || 0) > 1
                 const metadata = `${queueEpisodeCount} episode${queueEpisodeCount === 1 ? '' : 's'}${trueSeries && expected !== queueEpisodeCount ? ` of ${expected}` : ''} · ${queueDuration || '—'}m · ${queueGenre}`
 
                 return (
@@ -4264,13 +4432,37 @@ export default function AdminStoriesPage() {
                       <div style={{ color: '#111827', fontSize: '15px', fontWeight: 900, lineHeight: 1.25, whiteSpace: 'normal', overflowWrap: 'anywhere' }}>
                         {groupTitle}
                       </div>
+                      {duplicateTitle && firstStory && (
+                        <div style={{ color: '#6B7280', fontSize: '10px', marginTop: '2px', fontWeight: 800 }}>
+                          ID: {shortStoryId(firstStory)}
+                        </div>
+                      )}
                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginTop: '5px', color: '#4B5563', fontSize: '12px', lineHeight: 1.35, fontWeight: 750 }}>
                         <span>{metadata}</span>
+                        <span>{firstStory ? submittedDateLabel(firstStory) : 'Submitted date unknown'}</span>
+                        {showsInProductionBadge(activeJob) ? (
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', minHeight: '22px', padding: '3px 8px', borderRadius: '999px', backgroundColor: '#DCFCE7', color: '#166534', border: '1px solid #BBF7D0', fontSize: '11px', fontWeight: 900 }}>
+                            <span className="approval-pulse-dot" style={{ width: '7px', height: '7px', borderRadius: '999px', backgroundColor: '#22C55E', flex: '0 0 auto' }} />
+                            In Production
+                          </span>
+                        ) : (
+                          <span style={{ display: 'inline-flex', alignItems: 'center', minHeight: '22px', padding: '3px 8px', borderRadius: '999px', backgroundColor: '#E0F2FE', color: '#075985', border: '1px solid #BAE6FD', fontSize: '11px', fontWeight: 900 }}>
+                            {firstStory ? workflowStateLabel(firstStory) : 'Queued'}
+                          </span>
+                        )}
+                        {duplicateTitle && (
+                          <span style={{ display: 'inline-flex', alignItems: 'center', minHeight: '22px', padding: '3px 8px', borderRadius: '999px', backgroundColor: '#FEF3C7', color: '#92400E', border: '1px solid #FDE68A', fontSize: '11px', fontWeight: 900 }}>
+                            ⚠ Duplicate
+                          </span>
+                        )}
                         {productionPriority > 0 && (
                           <span style={{ display: 'inline-flex', alignItems: 'center', minHeight: '22px', padding: '3px 8px', borderRadius: '999px', backgroundColor: '#FEF3C7', color: '#92400E', border: '1px solid #FDE68A', fontSize: '11px', fontWeight: 900 }}>
                             Next Up
                           </span>
                         )}
+                      </div>
+                      <div style={{ color: '#64748B', fontSize: '11px', marginTop: '4px', fontWeight: 800 }}>
+                        {queuePositionLabel(index + 1)}
                       </div>
                     </div>
                     <div style={{ flex: '1 1 28px' }} />
