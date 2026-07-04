@@ -127,6 +127,12 @@ type ProductionJobSummary = {
   created_at?: string | null
   error_json?: any
 }
+type ProductionQueueBannerMeta = {
+  lastScriptedTitle: string | null
+  lastScriptedCreatedAt: string | null
+  lastCompletedJobTitle: string | null
+  nextUpTitle: string | null
+}
 type EpisodeRepairMark = {
   needed: boolean
   checklist: RepairChecklistValue
@@ -218,6 +224,7 @@ const FLAG_OPTIONS = [
 ]
 
 const bg = '#0b1020'
+const HAL_RECENT_SCRIPT_WINDOW_HOURS = 4
 const cardBg = '#FFFFFF'
 const textPrimary = '#1a1a1a'
 const textSecondary = '#4a4a4a'
@@ -2549,6 +2556,12 @@ export default function AdminStoriesPage() {
   const [seriesReadyConfirm, setSeriesReadyConfirm] = useState<{ seriesId: string; seriesName: string } | null>(null)
   const [repairQueueBannerDismissed, setRepairQueueBannerDismissed] = useState(false)
   const [lastUpdated, setLastUpdated] = useState<string>('')
+  const [productionQueueBannerMeta, setProductionQueueBannerMeta] = useState<ProductionQueueBannerMeta>({
+    lastScriptedTitle: null,
+    lastScriptedCreatedAt: null,
+    lastCompletedJobTitle: null,
+    nextUpTitle: null,
+  })
   const [markedForDeletionIds, setMarkedForDeletionIds] = useState<Record<string, boolean>>({})
   const [playedStoryIds, setPlayedStoryIds] = useState<Record<string, boolean>>({})
   const [episodeRepairMarks, setEpisodeRepairMarks] = useState<Record<string, EpisodeRepairMark>>({})
@@ -2587,6 +2600,7 @@ export default function AdminStoriesPage() {
 
   async function fetchStories() {
     setLoading(true)
+    const bannerMetaPromise = fetchProductionQueueBannerMeta()
     const [readyRes, allRes] = await Promise.all([
       fetch('/api/admin/content-approval?tab=ready_for_review&includeBlocked=false', { cache: 'no-store' }),
       fetch('/api/admin/content-approval?tab=all&includeBlocked=true', { cache: 'no-store' }),
@@ -2609,6 +2623,8 @@ export default function AdminStoriesPage() {
       setLoading(false)
       return
     }
+
+    setProductionQueueBannerMeta(await bannerMetaPromise)
 
     const readyItems = (readyPayload.items || []) as ApprovalItem[]
     setReadyReviewKeys(Object.fromEntries(readyItems.map((item) => [approvalItemKey(item), true])))
@@ -2767,6 +2783,65 @@ export default function AdminStoriesPage() {
       .eq('active', true)
       .order('display_order', { ascending: true })
     if (data) setGenres(data)
+  }
+
+  function storyRowTitle(row: any): string | null {
+    if (!row) return null
+    return String(row.series_name || row.title || '').trim() || null
+  }
+
+  function productionJobStoryTitle(row: any): string | null {
+    const story = Array.isArray(row?.stories) ? row.stories[0] : row?.stories
+    return storyRowTitle(story)
+  }
+
+  async function fetchProductionQueueBannerMeta(): Promise<ProductionQueueBannerMeta> {
+    const emptyMeta: ProductionQueueBannerMeta = {
+      lastScriptedTitle: null,
+      lastScriptedCreatedAt: null,
+      lastCompletedJobTitle: null,
+      nextUpTitle: null,
+    }
+
+    try {
+      const [lastScriptedResult, nextUpResult, lastCompletedJobResult] = await Promise.all([
+        supabase
+          .from('stories')
+          .select('id,title,series_name,created_at')
+          .eq('workflow_state', 'stories_in_queue')
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle(),
+        supabase
+          .from('stories')
+          .select('id,title,series_name,created_at')
+          .eq('workflow_state', 'stories_in_queue')
+          .order('created_at', { ascending: true })
+          .limit(1)
+          .maybeSingle(),
+        supabase
+          .from('production_jobs')
+          .select('id,story_id,series_id,updated_at,stories(title,series_name)')
+          .eq('status', 'complete')
+          .order('updated_at', { ascending: false })
+          .limit(1)
+          .maybeSingle(),
+      ])
+
+      if (lastScriptedResult.error) console.error('Error fetching last scripted story:', lastScriptedResult.error)
+      if (nextUpResult.error) console.error('Error fetching next production story:', nextUpResult.error)
+      if (lastCompletedJobResult.error) console.error('Error fetching last completed production job:', lastCompletedJobResult.error)
+
+      return {
+        lastScriptedTitle: storyRowTitle(lastScriptedResult.data),
+        lastScriptedCreatedAt: lastScriptedResult.data?.created_at || null,
+        lastCompletedJobTitle: productionJobStoryTitle(lastCompletedJobResult.data),
+        nextUpTitle: storyRowTitle(nextUpResult.data),
+      }
+    } catch (err) {
+      console.error('Error fetching production queue banner metadata:', err)
+      return emptyMeta
+    }
   }
 
   async function setWorkflowState(story: Story, state: WorkflowTab, options: { repairChecklist?: RepairChecklistValue; repairNotes?: string; retire?: boolean } = {}) {
@@ -3553,11 +3628,25 @@ export default function AdminStoriesPage() {
     counts[key] = (counts[key] || 0) + 1
     return counts
   }, {})
-  const activeHalJobs = Array.from(new Map(stories
+  const activeRunnerJobs = Array.from(new Map(stories
     .filter((story) => productionQueueStates(story) && isActiveProductionJob(story.source_job))
     .map((story) => [story.source_job?.id || story.id, story])
   ).values())
     .sort((a, b) => new Date(b.source_job?.updated_at || 0).getTime() - new Date(a.source_job?.updated_at || 0).getTime())
+  const lastScriptedAtMs = productionQueueBannerMeta.lastScriptedCreatedAt
+    ? new Date(productionQueueBannerMeta.lastScriptedCreatedAt).getTime()
+    : 0
+  const halIsWorking = Boolean(
+    productionQueueBannerMeta.lastScriptedTitle &&
+    lastScriptedAtMs > 0 &&
+    Date.now() - lastScriptedAtMs <= HAL_RECENT_SCRIPT_WINDOW_HOURS * 60 * 60 * 1000
+  )
+  const halStatusText = halIsWorking
+    ? productionQueueBannerMeta.lastScriptedTitle
+    : `Idle — last: ${productionQueueBannerMeta.lastScriptedTitle || 'None'} · ${workflowCounts.production_queue || 0} scripts waiting`
+  const runnerStatusText = activeRunnerJobs.length > 0
+    ? null
+    : `Idle — last: ${productionQueueBannerMeta.lastCompletedJobTitle || 'None'} · next: ${productionQueueBannerMeta.nextUpTitle || 'None'}`
 
   const selectedGroup = seriesGroups.find((group) => group.key === selectedSeriesKey) || seriesGroups[0] || null
   useEffect(() => {
@@ -4361,31 +4450,54 @@ export default function AdminStoriesPage() {
               />
             </div>
 
-            <div style={{ marginTop: '14px', padding: '11px 13px', borderRadius: '8px', border: '1px solid #BAE6FD', backgroundColor: '#F0F9FF', color: '#075985', display: 'flex', alignItems: 'flex-start', gap: '10px', fontSize: '12px', lineHeight: 1.35 }}>
-              <span
-                className={activeHalJobs.length > 0 ? 'approval-spin-dot' : undefined}
-                style={{
-                  width: '14px',
-                  height: '14px',
-                  marginTop: '1px',
-                  borderRadius: '999px',
-                  border: activeHalJobs.length > 0 ? '2px solid #38BDF8' : 'none',
-                  borderTopColor: activeHalJobs.length > 0 ? 'transparent' : undefined,
-                  backgroundColor: activeHalJobs.length > 0 ? 'transparent' : '#94A3B8',
-                  flex: '0 0 auto',
-                }}
-              />
-              <div style={{ minWidth: 0, display: 'grid', gap: '3px' }}>
-                <div style={{ fontWeight: 950 }}>Hal is currently working on</div>
-                {activeHalJobs.length > 0 ? (
-                  activeHalJobs.map((story) => (
-                    <div key={`${story.source_job?.id || story.id}:hal-active`} style={{ color: '#0F172A', fontWeight: 800, overflowWrap: 'anywhere' }}>
-                      {story.title} {' — '} {story.source_job?.current_step || 'queued'}
-                    </div>
-                  ))
-                ) : (
-                  <div style={{ color: '#475569', fontWeight: 800 }}>Hal: queue idle</div>
-                )}
+            <div style={{ marginTop: '14px', padding: '11px 13px', borderRadius: '8px', border: '1px solid #BAE6FD', backgroundColor: '#F0F9FF', color: '#075985', display: 'grid', gap: '9px', fontSize: '12px', lineHeight: 1.35 }}>
+              <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', minWidth: 0 }}>
+                <span
+                  className={halIsWorking ? 'approval-spin-dot' : undefined}
+                  style={{
+                    width: '14px',
+                    height: '14px',
+                    marginTop: '1px',
+                    borderRadius: '999px',
+                    border: halIsWorking ? '2px solid #38BDF8' : 'none',
+                    borderTopColor: halIsWorking ? 'transparent' : undefined,
+                    backgroundColor: halIsWorking ? 'transparent' : '#94A3B8',
+                    flex: '0 0 auto',
+                  }}
+                />
+                <div style={{ minWidth: 0, display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                  <span style={{ fontWeight: 950 }}>Hal is working on:</span>
+                  <span style={{ color: halIsWorking ? '#0F172A' : '#475569', fontWeight: 800, overflowWrap: 'anywhere' }}>
+                    {halStatusText}
+                  </span>
+                </div>
+              </div>
+              <div style={{ borderTop: '1px solid #BAE6FD', paddingTop: '9px', display: 'flex', alignItems: 'flex-start', gap: '10px', minWidth: 0 }}>
+                <span
+                  className={activeRunnerJobs.length > 0 ? 'approval-spin-dot' : undefined}
+                  style={{
+                    width: '14px',
+                    height: '14px',
+                    marginTop: '1px',
+                    borderRadius: '999px',
+                    border: activeRunnerJobs.length > 0 ? '2px solid #38BDF8' : 'none',
+                    borderTopColor: activeRunnerJobs.length > 0 ? 'transparent' : undefined,
+                    backgroundColor: activeRunnerJobs.length > 0 ? 'transparent' : '#94A3B8',
+                    flex: '0 0 auto',
+                  }}
+                />
+                <div style={{ minWidth: 0, display: 'grid', gap: '3px' }}>
+                  <div style={{ fontWeight: 950 }}>Runner is working on:</div>
+                  {activeRunnerJobs.length > 0 ? (
+                    activeRunnerJobs.map((story) => (
+                      <div key={`${story.source_job?.id || story.id}:runner-active`} style={{ color: '#0F172A', fontWeight: 800, overflowWrap: 'anywhere' }}>
+                        {story.title} {' — '} {story.source_job?.current_step || 'queued'}
+                      </div>
+                    ))
+                  ) : (
+                    <div style={{ color: '#475569', fontWeight: 800, overflowWrap: 'anywhere' }}>{runnerStatusText}</div>
+                  )}
+                </div>
               </div>
             </div>
 

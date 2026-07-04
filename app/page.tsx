@@ -139,36 +139,6 @@ function LandingContent() {
         }
       `}</style>
 
-      {/* ===== TOP BAR ===== */}
-      <header style={{
-        padding: 'calc(1rem + env(safe-area-inset-top)) 1.5rem 1rem',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        position: 'sticky',
-        top: 0,
-        zIndex: 60,
-        background: 'rgba(10, 10, 15, 0.94)',
-        borderBottom: '1px solid rgba(240, 236, 228, 0.08)',
-        backdropFilter: 'blur(14px)',
-        WebkitBackdropFilter: 'blur(14px)',
-      }}>
-        <div style={{
-          display: 'flex', alignItems: 'center', gap: '8px',
-        }}>
-          <span style={{ fontSize: '1.4rem' }}>🚛🚗</span>
-          <span style={{
-            fontFamily: "'Playfair Display', serif",
-            fontSize: '1.3rem',
-            fontWeight: 700,
-            color: '#f0ece4',
-            letterSpacing: '0.02em',
-          }}>
-            Endless <span style={{ color: '#f0a030', fontStyle: 'italic' }}>Tales</span>
-          </span>
-        </div>
-      </header>
-
       {/* ===== HERO ===== */}
       <section style={{
         display: 'flex',

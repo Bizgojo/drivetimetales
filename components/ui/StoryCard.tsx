@@ -50,11 +50,12 @@ export const StoryCard = ({
     const fullStars = Math.floor(rating);
     const hasHalf = rating % 1 >= 0.5;
     return (
-      <span className="text-yellow-400">
+      <span style={{ color: '#f59e0b', fontSize: '13px', lineHeight: 1 }}>
         {'★'.repeat(fullStars)}{hasHalf ? '½' : ''}{'☆'.repeat(5 - fullStars - (hasHalf ? 1 : 0))}
       </span>
     );
   };
+  const reviewCount = (story as any).review_count;
 
   return (
     <div 
@@ -97,10 +98,12 @@ export const StoryCard = ({
           </p>
           
           <div className="flex items-center justify-between mt-auto">
-            <div className="flex items-center gap-1">
-              <span className="text-sm">{renderStars(story.rating)}</span>
-              <span className="text-white text-xs">{story.rating}</span>
-            </div>
+            {(story.rating || 0) > 0 && (
+              <div className="flex items-center gap-1">
+                {renderStars(story.rating || 0)}
+                {reviewCount > 0 && <span className="text-slate-400 text-xs">({reviewCount})</span>}
+              </div>
+            )}
             
             {isFree ? (
               <span className="px-3 py-1 bg-green-500 text-black text-xs font-bold rounded-full">

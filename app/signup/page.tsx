@@ -152,17 +152,6 @@ function SignUpContent() {
 
   return (
     <div style={{ minHeight: '100vh', backgroundColor: '#020617', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-      <header style={{ position: 'sticky', top: 0, zIndex: 60, width: '100%', background: 'rgba(2,6,23,0.96)', borderBottom: '1px solid rgba(148,163,184,0.16)', backdropFilter: 'blur(12px)', padding: 'calc(12px + env(safe-area-inset-top)) 16px 12px', boxSizing: 'border-box' }}>
-        <div style={{ maxWidth: '420px', margin: '0 auto', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '12px' }}>
-          <a href="/" style={{ display: 'flex', alignItems: 'center', gap: '10px', textDecoration: 'none' }}>
-            <img src="/images/et-logo.png" alt="Endless Tales" style={{ width: '40px', height: '40px', objectFit: 'contain' }} />
-            <span style={{ color:'#ffffff', fontSize:'23px', fontWeight:800, letterSpacing:'-0.3px', whiteSpace: 'nowrap' }}>
-              Endless <span style={{ color:'#f97316' }}>Tales</span>
-            </span>
-          </a>
-        </div>
-      </header>
-
       <div style={{ width: '100%', maxWidth: '400px', padding: '30px 16px 16px', boxSizing: 'border-box' }}>
 
         {/* Referral banner */}

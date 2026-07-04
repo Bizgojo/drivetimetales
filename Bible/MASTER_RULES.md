@@ -290,3 +290,31 @@ supabase
 ---
 
 *Give this file to Claude at the start of each new chat for consistent behavior.*
+
+---
+
+## 🚨 PRODUCTION PIPELINE FAILURES — LEARNED 2026-06-27
+
+### Rule: series_finale is NOT a valid story_type
+- The validation gate at `score_validate_package` requires ALL episodes to have `story_type = 'series_episode'`
+- Even the finale episode must use `story_type = 'series_episode'`
+- `series_is_finale = true` is the correct field to mark a finale
+- **Never** set `story_type = 'series_finale'`
+
+### Rule: Don't call long-running API routes from exec sessions
+- Claude Opus script generation takes 2–3 min per episode (>5 min for a 3-episode series)
+- OpenClaw exec sessions SIGTERM before that completes
+- **Fix:** Build series packages directly to the DB; don't call `/api/v2/series-package` via curl
+
+### Rule: Character speaker label normalization (code fix applied 2026-06-27)
+- **Bug:** Claude sometimes writes `DR. LILA NASH` in the Character Guide but `DR. NASH` in dialogue
+- **Root cause:** `characterVoiceKeys()` strips "DR." prefix and never registers the raw label `"DR. NASH"` in the voice map; generation lookup uses raw label → miss
+- **Fix applied:** `assignCharacterVoice()` now always registers the raw uppercase name as a direct key first; `resolveVoiceForSpeaker()` helper tries both raw and normalized keys; missing check also uses the helper
+- **File:** `app/api/admin/generate-voices/route.ts`
+- **Status:** Fix is in local codebase. Needs Marc approval to push to production.
+
+### Rule: `announcement_text` column required on stories table
+- Code in `run-next` writes `announcement_text` (Belle B intro text) to the stories table
+- Column was missing — added 2026-06-27 via Supabase Management API
+- Column is now present. No further action needed.
+

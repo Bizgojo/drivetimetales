@@ -41,18 +41,6 @@ function SubscribeContent() {
       flexDirection: 'column',
       alignItems: 'center',
     }}>
-      <header style={{ position: 'sticky', top: 0, zIndex: 60, width: '100%', background: 'rgba(2,6,23,0.96)', borderBottom: '1px solid rgba(148,163,184,0.16)', backdropFilter: 'blur(12px)', padding: 'calc(12px + env(safe-area-inset-top)) 16px 12px', boxSizing: 'border-box' }}>
-        <div style={{ maxWidth: '420px', margin: '0 auto', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
-          <button onClick={() => router.push('/')} style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}>
-            <img src="/images/et-logo.png" alt="Endless Tales" style={{ width: '32px', height: '32px', objectFit: 'contain' }} />
-            <span style={{ color: '#ffffff', fontSize: '19px', fontWeight: 800, letterSpacing: '-0.3px', whiteSpace: 'nowrap' }}>
-              Endless <span style={{ color: '#f97316' }}>Tales</span>
-            </span>
-          </button>
-          <button onClick={() => router.push('/signin')} style={{ background: 'none', border: 'none', color: '#f97316', cursor: 'pointer', fontSize: '14px', fontWeight: 700, padding: 0, whiteSpace: 'nowrap' }}>Sign in</button>
-        </div>
-      </header>
-
       <div style={{ width: '100%', maxWidth: '400px', padding: '32px 24px 24px', boxSizing: 'border-box', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
         <div style={{
           background: '#0f172a',

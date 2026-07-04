@@ -59,43 +59,6 @@ export default function CancelSubscriptionPage() {
   if (planKey === 'free') {
     return (
       <div className="min-h-screen bg-slate-950">
-        <header style={{
-          position: 'sticky',
-          top: 0,
-          zIndex: 50,
-          backgroundColor: '#030712',
-          borderBottom: '1px solid #1f2937',
-          padding: '12px 16px'
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <button 
-              onClick={() => router.back()}
-              style={{
-                width: '44px',
-                height: '44px',
-                borderRadius: '50%',
-                backgroundColor: '#1f2937',
-                border: 'none',
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center'
-              }}
-            >
-              <span style={{ color: 'white', fontSize: '20px' }}>‹</span>
-            </button>
-            
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <span style={{ fontSize: '20px' }}>🚛</span>
-              <span style={{ fontSize: '20px' }}>🚗</span>
-              <span style={{ color: 'white', fontWeight: 'bold', marginLeft: '4px' }}>Endless </span>
-              <span style={{ color: '#fb923c', fontWeight: 'bold' }}>Tales</span>
-            </div>
-            
-            <div style={{ width: '44px' }} />
-          </div>
-        </header>
-
         <div className="p-6 text-center">
           <span className="text-5xl block mb-4">ℹ️</span>
           <h1 className="text-xl font-bold text-white mb-2">No Active Subscription</h1>
@@ -114,28 +77,6 @@ export default function CancelSubscriptionPage() {
   if (cancelled) {
     return (
       <div className="min-h-screen bg-slate-950">
-        <header style={{
-          position: 'sticky',
-          top: 0,
-          zIndex: 50,
-          backgroundColor: '#030712',
-          borderBottom: '1px solid #1f2937',
-          padding: '12px 16px'
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <div style={{ width: '44px' }} />
-            
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <span style={{ fontSize: '20px' }}>🚛</span>
-              <span style={{ fontSize: '20px' }}>🚗</span>
-              <span style={{ color: 'white', fontWeight: 'bold', marginLeft: '4px' }}>Endless </span>
-              <span style={{ color: '#fb923c', fontWeight: 'bold' }}>Tales</span>
-            </div>
-            
-            <div style={{ width: '44px' }} />
-          </div>
-        </header>
-
         <div className="p-6 text-center max-w-md mx-auto">
           <span className="text-5xl block mb-4">✅</span>
           <h1 className="text-xl font-bold text-white mb-2">Subscription Cancelled</h1>

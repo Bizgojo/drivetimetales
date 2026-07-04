@@ -17,16 +17,6 @@ export default function SignUpPage() {
 
   return (
     <div className="min-h-screen bg-gray-950 text-white flex flex-col">
-      {/* Header */}
-      <header className="px-4 py-4">
-        <button 
-          onClick={() => window.history.back()}
-          className="text-white"
-        >
-          ← Back
-        </button>
-      </header>
-
       {/* Content */}
       <div className="flex-1 px-6 py-8">
         <div className="text-center mb-8">

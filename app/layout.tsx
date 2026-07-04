@@ -5,6 +5,7 @@ import { AuthProvider } from '@/contexts/AuthContext'
 import HomeHintToast from '@/components/HomeHintToast';
 import PWABackGuard from '@/components/PWABackGuard';
 import UtmCapture from '@/components/UtmCapture';
+import AppShell from '@/components/AppShell';
 
 export const metadata: Metadata = {
   title: 'Endless Tales - Audio Stories for Your Me-Time',
@@ -51,7 +52,7 @@ export default function RootLayout({
         <UtmCapture />
         <HomeHintToast />
           <PWABackGuard />
-          {children}
+          <AppShell>{children}</AppShell>
         </AuthProvider>
         <Analytics />
       </body>

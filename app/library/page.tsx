@@ -57,6 +57,7 @@ type CardItem = {
   description?: string | null
   flag?: string | null
   avgRating?: number | null
+  reviewCount?: number | null
   firstEpisodeId?: string
   playEpisodeId?: string
   resumeSeconds?: number
@@ -317,6 +318,7 @@ export default function LibraryPage() {
           description: s.description,
           flag: s.flag,
           avgRating: s.avg_rating,
+          reviewCount: s.review_count,
           durationForSort: s.duration_mins || 0,
           notForMe: !!lib?.not_for_me,
         })
@@ -350,6 +352,7 @@ export default function LibraryPage() {
         description: first.description,
         flag: first.flag,
         avgRating: first.avg_rating,
+        reviewCount: first.review_count,
         firstEpisodeId: first.id,
         playEpisodeId: playbackTarget.episodeId || first.id,
         resumeSeconds: playbackTarget.resumeSeconds,
@@ -905,7 +908,6 @@ function StoryCard({
   const inProgress = isSeries ? !!item.seriesInProgress : showProgress
   const showRate = state.completed && !state.reviewed
   const showPlayAgain = !isSeries && state.completed && state.reviewed
-  const cardOpacity = state.isNotForMe ? 0.65 : 1
 
   return (
     <div
@@ -914,7 +916,6 @@ function StoryCard({
         borderRadius: '12px',
         padding: '10px',
         marginBottom: '10px',
-        opacity: cardOpacity,
         border: '1px solid rgba(255,255,255,0.06)',
         boxShadow: '0 6px 18px rgba(0,0,0,0.24)',
       }}
@@ -951,15 +952,15 @@ function StoryCard({
           <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
             <span
               style={{
-                background: isSeries ? '#a855f7' : '#3b82f6',
-                color: 'white',
+                background: isSeries ? '#a855f7' : 'rgba(148,163,184,0.12)',
+                color: isSeries ? 'white' : '#cbd5e1',
                 fontSize: '10px',
                 padding: '2px 7px',
                 borderRadius: '8px',
                 fontWeight: 500,
               }}
             >
-              {isSeries ? `Series · ${item.episodeCount} eps` : 'Story'}
+              {isSeries ? `Series · ${item.episodeCount} eps` : 'Single Story'}
             </span>
             {item.flag && (
               <span
@@ -985,6 +986,9 @@ function StoryCard({
             style={{ color: 'white', fontSize: '14px', fontWeight: 700, lineHeight: 1.2, cursor: isSeries ? 'pointer' : 'default' }}
           >
             {isSeries ? item.seriesName : item.story?.title}
+            {state.isNotForMe && (
+              <span style={{ color: '#ef4444', marginLeft: '6px', fontSize: '15px' }}>👎</span>
+            )}
           </div>
 
           {/* Row 3: author/genre/stars */}
@@ -993,7 +997,12 @@ function StoryCard({
             {item.genre && <span style={{ color: '#4ade80' }}>· {item.genre}</span>}
             <div style={{ flex: 1 }} />
             {(item.avgRating || 0) > 0 && (
-              <span style={{ color: '#ef4444', fontSize: '10px' }}>{stars}</span>
+              <span style={{ display: 'inline-flex', alignItems: 'baseline', gap: '4px', color: '#f59e0b', fontSize: '13px' }}>
+                {stars}
+                {(item.reviewCount || 0) > 0 && (
+                  <span style={{ color: '#94a3b8', fontSize: '10px' }}>({item.reviewCount})</span>
+                )}
+              </span>
             )}
           </div>
 

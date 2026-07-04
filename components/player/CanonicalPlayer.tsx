@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { trackPlayStart, trackPlayEnd } from '@/lib/analytics'
 import { useAuth } from '@/contexts/AuthContext'
+import ReviewModal from '@/components/ReviewModal'
 import type { AutoAdvanceCandidate, AutoAdvanceDisabledReason, PlayerMode, PlayerStory } from './playerTypes'
 
 interface QueueItem { url: string; type: 'intro' | 'story' | 'outro'; label: string }
@@ -50,6 +51,7 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
   const finalMixRetryResumeRef = useRef<number | null>(null)
   const finalMixRetryAutoplayRef = useRef(false)
   const seriesContinueAutoplayAttemptedRef = useRef(false)
+  const reviewPromptHandledRef = useRef(false)
 
   const [story, setStory]       = useState<any | null>(null)
   const [loading, setLoading]   = useState(true)
@@ -91,6 +93,7 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
   const [catalogExhausted, setCatalogExhausted] = useState(false)
   const [stillListeningPrompt, setStillListeningPrompt] = useState(false)
   const [autoAdvanceDisabledReason, setAutoAdvanceDisabledReason] = useState<AutoAdvanceDisabledReason | null>(null)
+  const [showReview, setShowReview] = useState(false)
 
   // ── Pills state ────────────────────────────────────────────────────────────
   const [activeModal, setActiveModal] = useState<'author' | 'narrator' | 'prose' | null>(null)
@@ -176,6 +179,64 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
 
   const returnToSource = (fallback = '/library') => {
     router.push(safeReturnUrl || fallback)
+  }
+
+  const closeReviewAndReturn = () => {
+    setShowReview(false)
+    returnToSource('/library')
+  }
+
+  const isFinalEpisodeForReview = async () => {
+    if (!(story as any)?.series_id) return true
+
+    const currentEpisodeNumber = episodeNumberFor(story)
+    if (currentEpisodeNumber === null) {
+      const pl = playlistRef.current
+      const playlistIndex = pl.findIndex((episode) => episode.id === storyId)
+      return playlistIndex >= 0 && pl.length > 0 && playlistIndex === pl.length - 1
+    }
+
+    const { data, error } = await supabase
+      .from('stories')
+      .select(AUTO_ADVANCE_STORY_SELECT)
+      .eq('series_id', (story as any).series_id)
+      .not('episode_number', 'is', null)
+      .gt('episode_number', currentEpisodeNumber)
+      .order('episode_number', { ascending: true })
+      .limit(1)
+      .maybeSingle()
+
+    if (error) {
+      console.error('[player] review final-episode lookup failed:', { storyId, error })
+      return false
+    }
+
+    return !data || !canLoadStory(data)
+  }
+
+  const maybeShowCompletionReviewPrompt = async () => {
+    if (reviewPromptHandledRef.current || !user?.id || !story) return false
+    reviewPromptHandledRef.current = true
+
+    const finalEpisode = await isFinalEpisodeForReview()
+    if (!finalEpisode) return false
+
+    const { data, error } = await supabase
+      .from('reviews')
+      .select('id')
+      .eq('user_id', user.id)
+      .eq('story_id', storyId)
+      .limit(1)
+      .maybeSingle()
+
+    if (error) {
+      console.error('[player] review lookup failed:', { storyId, error })
+      return false
+    }
+    if (data) return false
+
+    setShowReview(true)
+    return true
   }
 
   useEffect(() => {
@@ -453,6 +514,7 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
     completedRef.current = 0
     pendingQueueSeekRef.current = null
     pendingQueueSeekPlayRef.current = false
+    reviewPromptHandledRef.current = false
     segDursRef.current = []
     setTotalDur(0)
     setCumTime(0)
@@ -462,6 +524,7 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
     setStillListeningPrompt(false)
     setAutoAdvanceDisabledReason(null)
     setAutoplayBlocked(false)
+    setShowReview(false)
     if (autoAdvanceTimerRef.current) {
       clearTimeout(autoAdvanceTimerRef.current)
       autoAdvanceTimerRef.current = null
@@ -1013,6 +1076,7 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
       not_for_me: false,      // Clear not_for_me if user plays again
       last_played: new Date().toISOString()
     })
+    if (done) void maybeShowCompletionReviewPrompt()
   }
 
   const seekToClientX = (clientX: number) => {
@@ -1301,6 +1365,19 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
         }}
       />
       <audio ref={musicRef} loop style={{ display:'none' }} />
+
+      {showReview && user?.id && story && (
+        <ReviewModal
+          storyId={storyId}
+          storyTitle={story.title}
+          userId={user.id}
+          genre={(story as any).genre || 'Story'}
+          duration_mins={(story as any).duration_mins || 0}
+          coverUrl={(story as any).cover_url || null}
+          onClose={closeReviewAndReturn}
+          onSubmitted={closeReviewAndReturn}
+        />
+      )}
 
       {/* Header */}
       <div style={{ padding:'calc(10px + env(safe-area-inset-top)) 16px 10px', flexShrink:0, display:'flex', alignItems:'center', justifyContent:'space-between', background:'#0f172a', borderBottom:'1px solid rgba(148,163,184,0.06)' }}>
