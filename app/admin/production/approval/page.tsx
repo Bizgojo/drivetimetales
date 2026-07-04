@@ -3628,11 +3628,14 @@ export default function AdminStoriesPage() {
     counts[key] = (counts[key] || 0) + 1
     return counts
   }, {})
+  // Only jobs the runner is ACTIVELY processing right now (not just waiting in queue)
+  const RUNNER_ACTIVE_STATUSES = ['running', 'processing', 'waiting_for_external']
   const activeRunnerJobs = Array.from(new Map(stories
-    .filter((story) => productionQueueStates(story) && isActiveProductionJob(story.source_job))
+    .filter((story) => productionQueueStates(story) && RUNNER_ACTIVE_STATUSES.includes(String(story.source_job?.status || '').trim()))
     .map((story) => [story.source_job?.id || story.id, story])
   ).values())
     .sort((a, b) => new Date(b.source_job?.updated_at || 0).getTime() - new Date(a.source_job?.updated_at || 0).getTime())
+  const queuedRunnerJobCount = stories.filter((story) => productionQueueStates(story) && story.source_job?.status === 'queued').length
   const lastScriptedAtMs = productionQueueBannerMeta.lastScriptedCreatedAt
     ? new Date(productionQueueBannerMeta.lastScriptedCreatedAt).getTime()
     : 0
@@ -3641,12 +3644,16 @@ export default function AdminStoriesPage() {
     lastScriptedAtMs > 0 &&
     Date.now() - lastScriptedAtMs <= HAL_RECENT_SCRIPT_WINDOW_HOURS * 60 * 60 * 1000
   )
+  const scriptQueueDepth = workflowCounts.production_queue || 0
   const halStatusText = halIsWorking
-    ? productionQueueBannerMeta.lastScriptedTitle
-    : `Idle — last: ${productionQueueBannerMeta.lastScriptedTitle || 'None'} · ${workflowCounts.production_queue || 0} scripts waiting`
+    ? `Writing: ${productionQueueBannerMeta.lastScriptedTitle}`
+    : scriptQueueDepth > 0
+      ? `Idle — ${scriptQueueDepth} scripts waiting for dispatch · last: ${productionQueueBannerMeta.lastScriptedTitle || 'None'}`
+      : `Idle — no scripts in queue · last: ${productionQueueBannerMeta.lastScriptedTitle || 'None'}`
+  const runnerQueueSuffix = queuedRunnerJobCount > 0 ? ` · ${queuedRunnerJobCount} queued` : ''
   const runnerStatusText = activeRunnerJobs.length > 0
     ? null
-    : `Idle — last: ${productionQueueBannerMeta.lastCompletedJobTitle || 'None'} · next: ${productionQueueBannerMeta.nextUpTitle || 'None'}`
+    : `Idle — last finished: ${productionQueueBannerMeta.lastCompletedJobTitle || 'None'} · next up: ${productionQueueBannerMeta.nextUpTitle || 'None'}`
 
   const selectedGroup = seriesGroups.find((group) => group.key === selectedSeriesKey) || seriesGroups[0] || null
   useEffect(() => {
@@ -4486,16 +4493,17 @@ export default function AdminStoriesPage() {
                     flex: '0 0 auto',
                   }}
                 />
-                <div style={{ minWidth: 0, display: 'grid', gap: '3px' }}>
-                  <div style={{ fontWeight: 950 }}>Runner is working on:</div>
+                <div style={{ minWidth: 0, display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                  <span style={{ fontWeight: 950 }}>Runner is working on:</span>
                   {activeRunnerJobs.length > 0 ? (
-                    activeRunnerJobs.map((story) => (
-                      <div key={`${story.source_job?.id || story.id}:runner-active`} style={{ color: '#0F172A', fontWeight: 800, overflowWrap: 'anywhere' }}>
-                        {story.title} {' — '} {story.source_job?.current_step || 'queued'}
-                      </div>
-                    ))
+                    <span style={{ color: '#0F172A', fontWeight: 800, overflowWrap: 'anywhere' }}>
+                      {activeRunnerJobs[0].title} — {activeRunnerJobs[0].source_job?.current_step || 'processing'}
+                      {runnerQueueSuffix}
+                    </span>
                   ) : (
-                    <div style={{ color: '#475569', fontWeight: 800, overflowWrap: 'anywhere' }}>{runnerStatusText}</div>
+                    <span style={{ color: '#475569', fontWeight: 800, overflowWrap: 'anywhere' }}>
+                      {runnerStatusText}{runnerQueueSuffix}
+                    </span>
                   )}
                 </div>
               </div>
