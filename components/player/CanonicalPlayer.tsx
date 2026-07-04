@@ -283,65 +283,76 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
     audio.load()
   }
 
-  const startAutoAdvanceTo = (candidate: AutoAdvanceCandidate) => {
+  const navigateToAutoAdvanceCandidate = async (candidate: AutoAdvanceCandidate) => {
     if (!mountedRef.current || !autoAdvanceEnabledRef.current) return
-    setAutoAdvanceCandidate(candidate)
-    setCatalogExhausted(false)
-    autoAdvanceTimerRef.current = setTimeout(async () => {
-      if (!mountedRef.current || !autoAdvanceEnabledRef.current) return
-      unrequestedAutoStartsRef.current += 1
-      const isSeriesContinuation = candidate.reason === 'next_series_episode'
+    unrequestedAutoStartsRef.current += 1
+    const isSeriesContinuation = candidate.reason === 'next_series_episode'
 
-      // P1 — Pre-create next episode user_library row before navigation so that
-      // Continue Listening can find it even if the user closes the app before
-      // EP2's audio play() fires (which is the only other place the row is created).
-      // Rules:
-      //  - Series continuations only (standalone auto-advance excluded)
-      //  - Only when current episode had meaningful progress (> 60s played, or
-      //    natural end where saveProgress(completed=true) already fired)
-      //  - Check-then-insert: if a row already exists, leave it completely untouched
-      //    (preserves existing progress, completed, hide_from_home, not_for_me)
-      //  - Silent on failure — pre-creation never blocks navigation
-      if (isSeriesContinuation && user?.id && candidate.story.id) {
-        const currentProgressSeconds = getProgressSeconds()
-        const worthPrecreating = currentProgressSeconds > 60 || getProgressTotalSeconds() > 0
-        if (worthPrecreating) {
-          try {
-            const { data: existingRow } = await supabase
-              .from('user_library')
-              .select('story_id, progress, completed, hide_from_home')
-              .eq('user_id', user.id)
-              .eq('story_id', candidate.story.id)
-              .maybeSingle()
+    // P1 — Pre-create next episode user_library row before navigation so that
+    // Continue Listening can find it even if the user closes the app before
+    // EP2's audio play() fires (which is the only other place the row is created).
+    // Rules:
+    //  - Series continuations only (standalone auto-advance excluded)
+    //  - Only when current episode had meaningful progress (> 60s played, or
+    //    natural end where saveProgress(completed=true) already fired)
+    //  - Check-then-insert: if a row already exists, leave it completely untouched
+    //    (preserves existing progress, completed, hide_from_home, not_for_me)
+    //  - Silent on failure — pre-creation never blocks navigation
+    if (isSeriesContinuation && user?.id && candidate.story.id) {
+      const currentProgressSeconds = getProgressSeconds()
+      const worthPrecreating = currentProgressSeconds > 60 || getProgressTotalSeconds() > 0
+      if (worthPrecreating) {
+        try {
+          const { data: existingRow } = await supabase
+            .from('user_library')
+            .select('story_id, progress, completed, hide_from_home')
+            .eq('user_id', user.id)
+            .eq('story_id', candidate.story.id)
+            .maybeSingle()
 
-            // Re-check mount state after async DB call
-            if (!mountedRef.current || !autoAdvanceEnabledRef.current) return
+          // Re-check mount state after async DB call
+          if (!mountedRef.current || !autoAdvanceEnabledRef.current) return
 
-            if (!existingRow) {
-              // No row exists — insert one so Continue Listening survives an immediate app close
-              await supabase.from('user_library').insert({
-                user_id:        user.id,
-                story_id:       candidate.story.id,
-                progress:       0,
-                completed:      false,
-                hide_from_home: false,
-                not_for_me:     false,
-                last_played:    new Date().toISOString(),
-              })
-            }
-            // Row already exists — leave every field exactly as-is
-            // (progress, completed, hide_from_home, not_for_me all preserved)
-          } catch (_) {
-            // Silent — pre-creation failure must never block navigation
+          if (!existingRow) {
+            // No row exists — insert one so Continue Listening survives an immediate app close
+            await supabase.from('user_library').insert({
+              user_id:        user.id,
+              story_id:       candidate.story.id,
+              progress:       0,
+              completed:      false,
+              hide_from_home: false,
+              not_for_me:     false,
+              last_played:    new Date().toISOString(),
+            })
           }
+          // Row already exists — leave every field exactly as-is
+          // (progress, completed, hide_from_home, not_for_me all preserved)
+        } catch (_) {
+          // Silent — pre-creation failure must never block navigation
         }
       }
+    }
 
-      if (mode === 'playlist') {
-        const nextIndex = playlistRef.current.findIndex((item) => item.id === candidate.story.id)
-        if (nextIndex >= 0) localStorage.setItem('dtt_playlist_index', String(nextIndex))
-      }
-      router.push(`/player/${candidate.story.id}?autoplay=1&playNow=1&${isSeriesContinuation ? 'seriesContinue=1' : 'autoAdvance=1'}`)
+    if (mode === 'playlist') {
+      const nextIndex = playlistRef.current.findIndex((item) => item.id === candidate.story.id)
+      if (nextIndex >= 0) localStorage.setItem('dtt_playlist_index', String(nextIndex))
+    }
+    router.push(`/player/${candidate.story.id}?autoplay=1&playNow=1&${isSeriesContinuation ? 'seriesContinue=1' : 'autoAdvance=1'}`)
+  }
+
+  const startAutoAdvanceTo = (candidate: AutoAdvanceCandidate) => {
+    if (!mountedRef.current || !autoAdvanceEnabledRef.current) return
+    setCatalogExhausted(false)
+
+    if (candidate.reason === 'next_series_episode') {
+      setAutoAdvanceCandidate(null)
+      void navigateToAutoAdvanceCandidate(candidate)
+      return
+    }
+
+    setAutoAdvanceCandidate(candidate)
+    autoAdvanceTimerRef.current = setTimeout(() => {
+      void navigateToAutoAdvanceCandidate(candidate)
     }, 2500)
   }
 
@@ -915,11 +926,7 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
     const next = pl[ci + 1]
     playlistIndexRef.current = ci + 1
     localStorage.setItem('dtt_series_index', String(ci + 1))
-    // Show "Now Playing" overlay
-    const epNum = next.episode_number ? `Episode ${next.episode_number}` : 'Next Episode'
-    setNowPlayingLabel(epNum)
-    setTimeout(() => setNowPlayingLabel(null), 3000)
-    setTimeout(() => router.push(`/player/${next.id}?autoplay=1&seriesContinue=1`), 2500)
+    router.push(`/player/${next.id}?autoplay=1&seriesContinue=1`)
   }
 
   // ── Queue advance ──────────────────────────────────────────────────────────
@@ -1354,11 +1361,7 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
           )}
           <h1 style={{ fontSize: playerSeriesTitle ? '18px' : '20px', fontWeight:800, margin:0, color:'white', textAlign:'center', lineHeight:1.2 }}>{story.title}</h1>
           <p style={{ color:'white', fontSize:'13px', margin:'3px 0 0', textAlign:'center', opacity:0.7 }}>by {story.author || 'Endless Tales'}</p>
-          {isASC3 && sectionLabel && isPlaying && (
-            <p style={{ color:'#f97316', fontSize:'11px', margin:'4px 0 0', textAlign:'center', fontWeight:600 }}>
-              🎙️ {sectionLabel} · {queueIndex+1}/{queue.length}
-            </p>
-          )}
+          {/* Segment progress indicator removed — internal pipeline detail, not user-facing */}
           {/* Now Playing overlay — shown during playlist advance */}
           {nowPlayingLabel && (
             <div style={{ position:'fixed', top:'50%', left:'50%', transform:'translate(-50%,-50%)', background:'rgba(0,0,0,0.85)', borderRadius:16, padding:'20px 32px', textAlign:'center', zIndex:999, backdropFilter:'blur(8px)', border:'1px solid rgba(249,115,22,0.3)' }}>
