@@ -406,10 +406,11 @@ export default function AdminPromoPage() {
             Creates an account, applies free access, and stores their name for Belle. One click and they&apos;re listening.
           </p>
 
+          {/* Last name toggle — desktop only */}
           <button
             type="button"
             onClick={() => setShowLastName((value) => !value)}
-            className="mb-[18px] flex cursor-pointer items-center gap-2 text-[13px] text-[#555]"
+            className="mb-[18px] hidden md:flex cursor-pointer items-center gap-2 text-[13px] text-[#555]"
           >
             <span className={`relative h-5 w-9 rounded-full ${showLastName ? 'bg-[#f97316]' : 'bg-gray-300'}`}>
               <span className={`absolute top-[3px] h-3.5 w-3.5 rounded-full bg-white transition ${showLastName ? 'right-[3px]' : 'left-[3px]'}`} />
@@ -417,7 +418,59 @@ export default function AdminPromoPage() {
             Include last name field
           </button>
 
-          <form onSubmit={(e) => submitInvite(e, 'email')} className="flex flex-wrap items-end gap-3">
+          {/* Mobile form — vertical stack */}
+          <form onSubmit={(e) => submitInvite(e, 'email')} className="flex flex-col gap-3 md:hidden">
+            <label className="flex flex-col gap-[6px]">
+              <span className="text-[11px] font-bold uppercase tracking-[0.05em] text-[#555]">First Name *</span>
+              <input className="rounded-lg border border-[#d1d5db] bg-white px-3 py-3 text-base text-[#1a1a1a] placeholder:text-[#aaa]" value={firstName} onChange={(e) => setFirstName(e.target.value)} placeholder="Sarah" autoComplete="given-name" />
+            </label>
+            <label className="flex flex-col gap-[6px]">
+              <span className="text-[11px] font-bold uppercase tracking-[0.05em] text-[#555]">Last Name</span>
+              <input className="rounded-lg border border-[#d1d5db] bg-white px-3 py-3 text-base text-[#1a1a1a] placeholder:text-[#aaa]" value={lastName} onChange={(e) => setLastName(e.target.value)} placeholder="Johnson" autoComplete="family-name" />
+            </label>
+            <label className="flex flex-col gap-[6px]">
+              <span className="text-[11px] font-bold uppercase tracking-[0.05em] text-[#555]">Email *</span>
+              <input className="rounded-lg border border-[#d1d5db] bg-white px-3 py-3 text-base text-[#1a1a1a] placeholder:text-[#aaa]" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="friend@gmail.com" autoComplete="email" inputMode="email" />
+            </label>
+            <label className="flex flex-col gap-[6px]">
+              <span className="text-[11px] font-bold uppercase tracking-[0.05em] text-[#555]">Phone <span className="font-normal normal-case text-[#aaa]">(optional)</span></span>
+              <input className="rounded-lg border border-[#d1d5db] bg-white px-3 py-3 text-base text-[#1a1a1a] placeholder:text-[#aaa]" type="tel" inputMode="tel" value={phone} onChange={(e) => {
+                const digits = e.target.value.replace(/\D/g, '').slice(0, 10)
+                let formatted = digits
+                if (digits.length > 6) formatted = `(${digits.slice(0,3)}) ${digits.slice(3,6)}-${digits.slice(6)}`
+                else if (digits.length > 3) formatted = `(${digits.slice(0,3)}) ${digits.slice(3)}`
+                else if (digits.length > 0) formatted = `(${digits}`
+                setPhone(formatted)
+              }} placeholder="(555) 000-0000" autoComplete="tel" />
+            </label>
+            <label className="flex flex-col gap-[6px]">
+              <span className="text-[11px] font-bold uppercase tracking-[0.05em] text-[#555]">Free Access</span>
+              <select className="rounded-lg border border-[#d1d5db] bg-white px-3 py-3 text-base text-[#1a1a1a]" value={duration} onChange={(e) => setDuration(e.target.value)}>
+                {ACCESS_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+              </select>
+            </label>
+            <label className="flex flex-col gap-[6px]">
+              <span className="text-[11px] font-bold uppercase tracking-[0.05em] text-[#555]">Personal Note <span className="font-normal normal-case text-[#aaa]">(optional)</span></span>
+              <textarea value={personalNote} onChange={(e) => setPersonalNote(e.target.value)} placeholder="e.g. Thought you'd love this for your commute — it's seriously good." rows={3} className="rounded-lg border border-[#d1d5db] bg-white px-3 py-3 text-base text-[#1a1a1a] placeholder:text-[#aaa] resize-none" />
+            </label>
+            <div className="flex gap-3 pt-1">
+              <button type="button" disabled={sending} onClick={(e) => submitInvite(e, 'email')} className="flex-1 rounded-xl bg-[#f97316] py-3.5 text-[15px] font-bold text-white disabled:opacity-60">
+                {sending ? 'Sending…' : 'Send Email ✉'}
+              </button>
+              {phone.trim() && (
+                <button type="button" disabled={sending} onClick={(e) => submitInvite(e, 'sms')} className="flex-1 rounded-xl border-2 border-[#f97316] bg-white py-3.5 text-[15px] font-bold text-[#f97316] disabled:opacity-60">
+                  {sending ? 'Sending…' : 'Send Text 💬'}
+                </button>
+              )}
+            </div>
+            <div className="flex gap-4 pt-1">
+              <button type="button" onClick={() => setPreviewChannel('email')} className="text-[13px] font-medium text-[#f97316] underline underline-offset-2">Preview Email</button>
+              {phone.trim() && <button type="button" onClick={() => setPreviewChannel('sms')} className="text-[13px] font-medium text-[#f97316] underline underline-offset-2">Preview Text</button>}
+            </div>
+          </form>
+
+          {/* Desktop form — horizontal wrap (existing layout) */}
+          <form onSubmit={(e) => submitInvite(e, 'email')} className="hidden md:flex flex-wrap items-end gap-3">
             <label className="flex min-w-[190px] flex-[2] flex-col gap-[5px]">
               <span className="text-[11px] font-bold uppercase tracking-[0.05em] text-[#555]">Email *</span>
               <input className="rounded-lg border border-[#d1d5db] bg-white px-3 py-[9px] text-sm text-[#1a1a1a] placeholder:text-[#aaa]" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="friend@gmail.com" />
@@ -463,8 +516,8 @@ export default function AdminPromoPage() {
               </div>
             </label>
           </form>
-          {/* Personal note */}
-          <div className="mt-4">
+          {/* Personal note — desktop only (mobile has it inline in form above) */}
+          <div className="mt-4 hidden md:block">
             <label className="flex flex-col gap-[5px]">
               <span className="text-[11px] font-bold uppercase tracking-[0.05em] text-[#555]">Personal Note <span className="font-normal normal-case text-[#aaa]">(optional — included in email &amp; text)</span></span>
               <textarea
@@ -477,8 +530,8 @@ export default function AdminPromoPage() {
             </label>
           </div>
 
-          {/* Preview */}
-          <div className="mt-4 flex gap-2">
+          {/* Preview — desktop only */}
+          <div className="mt-4 hidden md:flex gap-2">
             <button type="button" onClick={() => setPreviewChannel('email')} className="text-[12px] font-medium text-[#f97316] underline underline-offset-2">Preview Email</button>
             {phone.trim() && <button type="button" onClick={() => setPreviewChannel('sms')} className="text-[12px] font-medium text-[#f97316] underline underline-offset-2">Preview Text</button>}
           </div>
@@ -542,7 +595,7 @@ export default function AdminPromoPage() {
           )}
         </section>
 
-        <section className="rounded-xl border border-[#e5e5e5] bg-white p-6">
+        <section className="hidden md:block rounded-xl border border-[#e5e5e5] bg-white p-6">
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
             <h2 className="text-[17px] font-semibold">
               Invited People <span className="text-sm font-normal text-[#999]">({sortedPeople.length})</span>
