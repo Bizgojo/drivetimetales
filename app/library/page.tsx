@@ -875,7 +875,8 @@ function formatMinutes(mins: number) {
   if (mins < 60) return `${mins}min`
   const h = Math.floor(mins / 60)
   const m = mins % 60
-  return m === 0 ? `${h}hs` : `${h}hs-${m}min`
+  const hrLabel = h === 1 ? 'hr' : 'hrs'
+  return m === 0 ? `${h}${hrLabel}` : `${h}${hrLabel}-${m}min`
 }
 
 function StoryCard({
