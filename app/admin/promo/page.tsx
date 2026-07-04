@@ -242,10 +242,14 @@ export default function AdminPromoPage() {
     setLoading(false)
   }
 
-  async function submitInvite(e: React.FormEvent) {
+  async function submitInvite(e: React.FormEvent, channel: 'email' | 'sms' = 'email') {
     e.preventDefault()
     if (!email.includes('@') || !firstName.trim()) {
       setMessage('Email and first name are required.')
+      return
+    }
+    if (channel === 'sms' && !phone.trim()) {
+      setMessage('Phone number is required to send via text.')
       return
     }
 
@@ -261,13 +265,23 @@ export default function AdminPromoPage() {
           lastName: showLastName ? lastName.trim() : '',
           phone: phone.trim(),
           subscription_days: Number(duration),
+          channel,
         }),
       })
       const data = await res.json()
       if (!res.ok) {
         setMessage('Error: ' + (data.error || 'Failed to send invite'))
       } else {
-        setMessage(`Sent to ${firstName.trim()} - ${data.daysGranted || duration} days granted.`)
+        if (channel === 'sms' && data.magicUrl) {
+          const smsBody = encodeURIComponent(
+            `Hi ${firstName.trim()}! Marc here — I wanted to personally invite you to try Endless Tales free for ${data.daysGranted || duration} days. Tap to start listening: ${data.magicUrl}`
+          )
+          const phoneDigits = phone.trim().replace(/[^\d+]/g, '')
+          window.open(`sms:${phoneDigits}?body=${smsBody}`, '_blank')
+          setMessage(`Text ready for ${firstName.trim()} — ${data.daysGranted || duration} days granted. Your SMS app should open.`)
+        } else {
+          setMessage(`Email sent to ${firstName.trim()} — ${data.daysGranted || duration} days granted.`)
+        }
         setEmail('')
         setFirstName('')
         setLastName('')
@@ -356,9 +370,16 @@ export default function AdminPromoPage() {
             </label>
             <label className="flex min-w-fit flex-col gap-[5px]">
               <span className="text-[11px] font-bold uppercase tracking-[0.05em] text-transparent">Submit</span>
-              <button type="submit" disabled={sending} className="whitespace-nowrap rounded-lg border-0 bg-[#f97316] px-[22px] py-2.5 text-sm font-semibold text-white disabled:opacity-60">
-                {sending ? 'Sending...' : 'Send Invite ✉'}
-              </button>
+              <div className="flex gap-2">
+                <button type="button" disabled={sending} onClick={(e) => submitInvite(e, 'email')} className="whitespace-nowrap rounded-lg border-0 bg-[#f97316] px-[18px] py-2.5 text-sm font-semibold text-white disabled:opacity-60">
+                  {sending ? '…' : 'Email ✉'}
+                </button>
+                {phone.trim() && (
+                  <button type="button" disabled={sending} onClick={(e) => submitInvite(e, 'sms')} className="whitespace-nowrap rounded-lg border border-[#f97316] bg-white px-[18px] py-2.5 text-sm font-semibold text-[#f97316] disabled:opacity-60">
+                    {sending ? '…' : 'Text 💬'}
+                  </button>
+                )}
+              </div>
             </label>
           </form>
           {message && <p className={`mt-3 text-[13px] font-semibold ${message.startsWith('Error') ? 'text-red-600' : 'text-green-700'}`}>{message}</p>}

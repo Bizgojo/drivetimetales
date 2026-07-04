@@ -18,7 +18,8 @@ const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://app.endless-tales.co
 
 export async function POST(req: NextRequest) {
   try {
-    const { email, firstName, lastName, phone, promoCode, subscription_days } = await req.json()
+    const { email, firstName, lastName, phone, promoCode, subscription_days, channel } = await req.json()
+    const sendChannel: 'email' | 'sms' = channel === 'sms' ? 'sms' : 'email'
     if (!email || !firstName) {
       return NextResponse.json({ error: 'email and firstName are required' }, { status: 400 })
     }
@@ -140,7 +141,14 @@ export async function POST(req: NextRequest) {
 
     const magicUrl = APP_URL + '/auth/confirm?token_hash=' + linkData.properties.hashed_token + '&type=magiclink&next=/home'
 
-    // 6. Send branded email
+    // 6. Send via selected channel
+    if (sendChannel === 'sms') {
+      // SMS: return the magic link so the frontend can open an sms: deep link
+      console.log('[promo/send-magic-link] SMS channel — returning link for ' + trimmedEmail + ' (' + trimmedName + '), code ' + upperCode)
+      return NextResponse.json({ success: true, email: trimmedEmail, firstName: trimmedName, daysGranted: promo.subscription_days, subscriptionEndsAt: newEndsAt.toISOString(), magicUrl, channel: 'sms' })
+    }
+
+    // Email (default)
     await resend.emails.send({
       from: 'Marc at Endless Tales <hello@endless-tales.com>',
       to: trimmedEmail,
@@ -148,8 +156,8 @@ export async function POST(req: NextRequest) {
       html: '<!DOCTYPE html><html><head><meta charset="utf-8"></head><body style="margin:0;padding:0;background:#0f0f1a;font-family:-apple-system,sans-serif;"><div style="max-width:560px;margin:0 auto;padding:40px 24px;"><div style="text-align:center;margin-bottom:32px;"><img src="https://app.endless-tales.com/images/et-logo.png" alt="Endless Tales" style="height:48px;" /><div style="font-size:22px;font-weight:900;color:#fff;margin-top:8px;">Endless <span style="color:#f97316;">Tales</span></div></div><div style="background:#1a1a2e;border-radius:16px;padding:32px 28px;border:1px solid rgba(249,115,22,0.2);"><div style="color:rgba(255,255,255,0.85);font-size:16px;line-height:1.8;">Hi ' + trimmedName + ',<br><br>I wanted to personally invite you to try Endless Tales \u2014 original audio dramas made for people on the move. Mystery, thriller, sci-fi, horror, romance, and more. Perfect for your commute or road trip.<br><br>I\'m giving you <strong style="color:#f97316;">' + promo.subscription_days + ' days completely free</strong>. No credit card needed. Just click below and you\'re in.</div><div style="text-align:center;margin-top:28px;"><a href="' + magicUrl + '" style="display:inline-block;background:#f97316;color:white;text-decoration:none;padding:16px 40px;border-radius:12px;font-size:17px;font-weight:800;">Start Listening Free</a></div><div style="color:rgba(255,255,255,0.4);font-size:12px;text-align:center;margin-top:16px;">One click. No password. No credit card.</div></div><p style="color:rgba(255,255,255,0.3);font-size:12px;margin-top:28px;text-align:center;">Questions? Reply to this email.<br>\u2014 Marc</p></div></body></html>',
     })
 
-    console.log('[promo/send-magic-link] Sent to ' + trimmedEmail + ' (' + trimmedName + '), code ' + upperCode)
-    return NextResponse.json({ success: true, email: trimmedEmail, firstName: trimmedName, daysGranted: promo.subscription_days, subscriptionEndsAt: newEndsAt.toISOString() })
+    console.log('[promo/send-magic-link] Email sent to ' + trimmedEmail + ' (' + trimmedName + '), code ' + upperCode)
+    return NextResponse.json({ success: true, email: trimmedEmail, firstName: trimmedName, daysGranted: promo.subscription_days, subscriptionEndsAt: newEndsAt.toISOString(), channel: 'email' })
   } catch (err) {
     console.error('[promo/send-magic-link] Error:', err)
     return NextResponse.json({ error: String(err) }, { status: 500 })
