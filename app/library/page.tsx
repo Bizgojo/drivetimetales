@@ -119,11 +119,15 @@ export default function LibraryPage() {
   const [reviewTarget, setReviewTarget] = useState<ReviewTarget | null>(null)
   const [canonicalGenres, setCanonicalGenres] = useState<CanonicalGenre[]>([])
 
+  // User-scoped playlist key — prevents one user's queue bleeding into another on same device
+  const playlistKey = user ? `et_current_playlist_${user.id}` : LIBRARY_PLAYLIST_KEY
+
   // Hydrate playlist from localStorage
   useEffect(() => {
+    if (!user) return
     const syncPlaylist = () => {
       try {
-        const storedKeys = parsePlaylistKeys(localStorage.getItem(LIBRARY_PLAYLIST_KEY))
+        const storedKeys = parsePlaylistKeys(localStorage.getItem(playlistKey))
         if (storedKeys) {
           setPlaylist(storedKeys)
           setPlaylistHydrated(true)
@@ -159,13 +163,13 @@ export default function LibraryPage() {
       window.removeEventListener('et_playlist_cleared', syncPlaylist)
       window.removeEventListener('storage', syncPlaylist)
     }
-  }, [])
+  }, [user, playlistKey])
 
   // Persist playlist
   useEffect(() => {
-    if (!playlistHydrated) return
+    if (!playlistHydrated || !user) return
     try {
-      if (playlist.length > 0) localStorage.setItem(LIBRARY_PLAYLIST_KEY, JSON.stringify(playlist))
+      if (playlist.length > 0) localStorage.setItem(playlistKey, JSON.stringify(playlist))
       else clearActivePlaylist()
     } catch {}
   }, [playlistHydrated, playlist])
@@ -952,8 +956,8 @@ function StoryCard({
           <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
             <span
               style={{
-                background: isSeries ? '#a855f7' : 'rgba(148,163,184,0.12)',
-                color: isSeries ? 'white' : '#cbd5e1',
+                background: isSeries ? '#a855f7' : '#2563eb',
+                color: 'white',
                 fontSize: '10px',
                 padding: '2px 7px',
                 borderRadius: '8px',
