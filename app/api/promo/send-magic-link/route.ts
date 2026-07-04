@@ -96,27 +96,24 @@ export async function POST(req: NextRequest) {
       ? new Date(userData.subscription_ends_at) : now
     const newEndsAt = new Date(base.getTime() + promo.subscription_days * 24 * 60 * 60 * 1000)
 
-    const profileUpdate: Record<string, any> = {
-      id: userId, email: trimmedEmail, first_name: trimmedName,
+    // Always UPDATE existing users (reliable) — upsert can silently fail on unknown columns
+    const coreUpdate: Record<string, any> = {
+      first_name: trimmedName,
       subscription_type: 'active',
       subscription_ends_at: newEndsAt.toISOString(),
       plan: userData?.plan && userData.plan !== 'free' ? userData.plan : 'standard',
     }
-    if (trimmedLastName) profileUpdate.last_name = trimmedLastName
-    if (trimmedPhone) profileUpdate.phone = trimmedPhone
+    if (trimmedLastName) coreUpdate.last_name = trimmedLastName
 
-    const { error: profileError } = await supabase.from('users').upsert(profileUpdate, { onConflict: 'id' })
-    if (profileError && (trimmedLastName || trimmedPhone)) {
-      const fallbackProfile = { ...profileUpdate }
-      delete fallbackProfile.last_name
-      delete fallbackProfile.phone
-      await supabase.from('users').upsert(fallbackProfile, { onConflict: 'id' })
-      if (trimmedLastName) await supabase.from('users').update({ last_name: trimmedLastName }).eq('id', userId)
-      if (trimmedPhone) {
-        await supabase.from('users').update({ phone: trimmedPhone }).eq('id', userId)
-        await supabase.from('users').update({ contact_phone: trimmedPhone }).eq('id', userId)
-        await supabase.from('users').update({ mobile_phone: trimmedPhone }).eq('id', userId)
-      }
+    const { error: updateError } = await supabase.from('users').update(coreUpdate).eq('id', userId)
+    if (updateError) {
+      // Fallback: retry without optional fields
+      await supabase.from('users').update({
+        first_name: trimmedName,
+        subscription_type: 'active',
+        subscription_ends_at: newEndsAt.toISOString(),
+        plan: coreUpdate.plan,
+      }).eq('id', userId)
     }
 
     // 4. Log redemption + update code
