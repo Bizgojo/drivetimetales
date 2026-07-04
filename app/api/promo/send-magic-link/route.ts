@@ -125,9 +125,11 @@ export async function POST(req: NextRequest) {
       }
     } else {
       // New user — UPSERT to create the users row (auth trigger may not have fired yet)
+      // display_name is NOT NULL — must be included
       const insertPayload: Record<string, any> = {
         id: userId,
         email: trimmedEmail,
+        display_name: [trimmedName, trimmedLastName].filter(Boolean).join(' '),
         ...coreProfile,
       }
       await supabase.from('users').upsert(insertPayload, { onConflict: 'id' })
