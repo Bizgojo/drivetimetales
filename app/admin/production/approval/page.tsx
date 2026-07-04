@@ -4093,7 +4093,7 @@ export default function AdminStoriesPage() {
           </div>
         </div>
 
-        <div className="approval-mobile-selector">
+        {activePipelineTab !== 'production_queue' && <div className="approval-mobile-selector">
           <label style={{ display: 'block', color: '#374151', fontSize: '11px', fontWeight: 900, textTransform: 'uppercase', marginBottom: '7px' }}>
             {activeWorkflow.label} ({activeWorkflowCount})
           </label>
@@ -4122,7 +4122,7 @@ export default function AdminStoriesPage() {
               {selectedIsSeries ? `${selectedExpected} total episodes • ${selectedPresent} present` : `Standalone • ${selectedFirst.duration_mins || 0}m`} • {selectedFirst.genre || 'No genre'}
             </div>
           )}
-        </div>
+        </div>}
 
         {activePipelineTab === 'repair_shop' && (
           <div style={{ marginTop: '14px', display: 'grid', gap: '10px' }}>
@@ -4206,7 +4206,108 @@ export default function AdminStoriesPage() {
           </div>
         )}
 
-        <div className="approval-panels" style={{ marginTop: '16px', display: 'flex', gap: '16px', alignItems: 'flex-start' }}>
+        {activePipelineTab === 'production_queue' && (
+          <section style={{ marginTop: '16px', backgroundColor: '#ffffff', borderRadius: '10px', boxShadow: '0 1px 3px rgba(0,0,0,0.08)', padding: '16px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap' }}>
+              <div style={{ color: '#374151', fontSize: '12px', fontWeight: 900, textTransform: 'uppercase' }}>
+                Production Queue ({activeWorkflowCount})
+              </div>
+              <input
+                type="text"
+                value={seriesSearch}
+                onChange={(e) => setSeriesSearch(e.target.value)}
+                placeholder="Search queue..."
+                style={{ flex: '1 1 280px', maxWidth: '420px', height: '34px', border: '1px solid #E5E7EB', borderRadius: '6px', padding: '0 10px', color: '#374151', fontSize: '12px' }}
+              />
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '14px' }}>
+              {seriesGroups.map((group, index) => {
+                const groupStories = group.type === 'series' ? group.stories : [group.story]
+                const productionStories = productionQueueStoriesForGroup(group)
+                const cardStories = productionStories.length > 0 ? productionStories : groupStories
+                const firstStory = cardStories[0] || groupStories[0]
+                const trueSeries = isTrueSeriesGroup(group)
+                const expected = trueSeries ? groupExpectedCount(group) : 1
+                const queueEpisodeCount = cardStories.length
+                const queueDuration = cardStories.reduce((sum, story) => sum + (story.duration_mins || 0), 0)
+                const groupTitle = trueSeries
+                  ? displaySeriesTitle(cardStories)
+                  : String(firstStory?.title || firstStory?.series_name || 'Untitled Story')
+                const queueGenre = firstStory?.genre || groupStories.find((story) => story.genre)?.genre || 'No genre'
+                const productionPriority = groupProductionPriority(group)
+                const primaryProductionStory = productionStories[0]
+                const metadata = `${queueEpisodeCount} episode${queueEpisodeCount === 1 ? '' : 's'}${trueSeries && expected !== queueEpisodeCount ? ` of ${expected}` : ''} · ${queueDuration || '—'}m · ${queueGenre}`
+
+                return (
+                  <article
+                    key={group.key}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '12px',
+                      width: '100%',
+                      minHeight: '72px',
+                      padding: '11px 12px',
+                      borderRadius: '8px',
+                      border: '1px solid #E5E7EB',
+                      backgroundColor: productionPriority > 0 ? '#FFFBEB' : '#ffffff',
+                    }}
+                  >
+                    <span style={{ width: '38px', height: '38px', borderRadius: '999px', backgroundColor: productionPriority > 0 ? '#F59E0B' : '#E5E7EB', color: productionPriority > 0 ? '#7C2D12' : '#4B5563', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '13px', fontWeight: 950, flex: '0 0 auto' }}>
+                      #{index + 1}
+                    </span>
+                    <div style={{ width: '48px', height: '48px', borderRadius: '6px', overflow: 'hidden', backgroundColor: '#E5E7EB', flex: '0 0 auto' }}>
+                      <img src={firstStory?.cover_url || '/images/default-cover.png'} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    </div>
+                    <div style={{ minWidth: 0, flex: '1 1 auto' }}>
+                      <div style={{ color: '#111827', fontSize: '15px', fontWeight: 900, lineHeight: 1.25, whiteSpace: 'normal', overflowWrap: 'anywhere' }}>
+                        {groupTitle}
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginTop: '5px', color: '#4B5563', fontSize: '12px', lineHeight: 1.35, fontWeight: 750 }}>
+                        <span>{metadata}</span>
+                        {productionPriority > 0 && (
+                          <span style={{ display: 'inline-flex', alignItems: 'center', minHeight: '22px', padding: '3px 8px', borderRadius: '999px', backgroundColor: '#FEF3C7', color: '#92400E', border: '1px solid #FDE68A', fontSize: '11px', fontWeight: 900 }}>
+                            Next Up
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    <div style={{ flex: '1 1 28px' }} />
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '8px', flex: '0 0 auto', flexWrap: 'wrap' }}>
+                      {primaryProductionStory && (
+                        <button
+                          type="button"
+                          onClick={() => promoteStoryToNext(primaryProductionStory)}
+                          style={{ ...actionButtonStyle('primary'), minHeight: '30px', padding: '6px 10px', fontSize: '11px', whiteSpace: 'nowrap' }}
+                        >
+                          Promote
+                        </button>
+                      )}
+                      {primaryProductionStory && (
+                        <button
+                          type="button"
+                          onClick={() => removeStoryFromProductionQueue(primaryProductionStory)}
+                          style={{ ...actionButtonStyle('danger'), minHeight: '30px', padding: '6px 10px', fontSize: '11px', whiteSpace: 'nowrap' }}
+                        >
+                          Remove
+                        </button>
+                      )}
+                    </div>
+                  </article>
+                )
+              })}
+              {seriesGroups.length === 0 && (
+                <div style={{ padding: '36px 8px', textAlign: 'center', color: '#9CA3AF', fontSize: '13px' }}>{activeEmptyMessage}</div>
+              )}
+            </div>
+            <div style={{ marginTop: '12px', color: '#9CA3AF', fontSize: '10px' }}>
+              {seriesGroups.length > 0 ? `Showing 1 to ${seriesGroups.length} production queue item(s)` : activeEmptyMessage}
+            </div>
+          </section>
+        )}
+
+        {(activePipelineTab as WorkflowLane) !== 'production_queue' && <div className="approval-panels" style={{ marginTop: '16px', display: 'flex', gap: '16px', alignItems: 'flex-start' }}>
           <aside className="approval-left-panel" style={{ flex: '0 0 30%', minWidth: '280px', maxWidth: '380px', backgroundColor: '#ffffff', borderRadius: '10px', boxShadow: '0 1px 3px rgba(0,0,0,0.08)', padding: '16px' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
               <div style={{ color: '#374151', fontSize: '12px', fontWeight: 700, textTransform: 'uppercase' }}>{activeWorkflow.label} ({activeWorkflowCount})</div>
@@ -4774,7 +4875,7 @@ export default function AdminStoriesPage() {
               </>
             )}
           </main>
-        </div>
+        </div>}
       </div>
       {seriesReadyConfirm && (
         <div role="dialog" aria-modal="true" aria-label="Move series to Ready for Review" style={{ position: 'fixed', inset: 0, zIndex: 40, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px', backgroundColor: 'rgba(15,23,42,0.46)' }}>
