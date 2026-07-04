@@ -347,11 +347,17 @@ export default function AdminPromoPage() {
       if (!res.ok) {
         setMessage('Error: ' + (data.error || 'Failed to send invite'))
       } else {
-        if (channel === 'sms' && data.magicUrl) {
-          const smsBody = encodeURIComponent(data.smsText || `Hi ${firstName.trim()}! Marc here — I wanted to personally invite you to try Endless Tales free for ${data.daysGranted || duration} days. Tap to start listening: ${data.magicUrl}`)
-          const phoneDigits = phone.trim().replace(/[^\d+]/g, '')
-          window.open(`sms:${phoneDigits}?body=${smsBody}`, '_blank')
-          setMessage(`Text ready for ${firstName.trim()} — ${data.daysGranted || duration} days granted. Your SMS app should open.`)
+        if (channel === 'sms') {
+          if (data.sent) {
+            // Twilio sent it directly
+            setMessage(`Text sent to ${firstName.trim()} ✓ — ${data.daysGranted || duration} days granted.`)
+          } else if (data.magicUrl) {
+            // Fallback: open Messages app
+            const smsBody = encodeURIComponent(data.smsText || `Hi ${firstName.trim()}! Marc here — I wanted to personally invite you to try Endless Tales free for ${data.daysGranted || duration} days. Tap to start listening: ${data.magicUrl}`)
+            const phoneDigits = phone.trim().replace(/[^\d+]/g, '')
+            window.open(`sms:${phoneDigits}?body=${smsBody}`, '_blank')
+            setMessage(`Text ready for ${firstName.trim()} — ${data.daysGranted || duration} days granted. Your SMS app should open.`)
+          }
         } else {
           setMessage(`Email sent to ${firstName.trim()} — ${data.daysGranted || duration} days granted.`)
         }

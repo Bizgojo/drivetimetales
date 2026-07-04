@@ -6,6 +6,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { Resend } from 'resend'
+import twilio from 'twilio'
 
 export const runtime = 'nodejs'
 
@@ -15,6 +16,12 @@ const supabase = createClient(
 )
 const resend = new Resend(process.env.RESEND_API_KEY)
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://app.endless-tales.com'
+
+// Twilio client (only initialized if credentials are configured)
+const twilioClient = process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN
+  ? twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN)
+  : null
+const TWILIO_FROM = process.env.TWILIO_PHONE_NUMBER || ''
 
 export async function POST(req: NextRequest) {
   try {
@@ -152,10 +159,28 @@ export async function POST(req: NextRequest) {
 
     // 6. Send via selected channel
     if (sendChannel === 'sms') {
-      // SMS: return the magic link so the frontend can open an sms: deep link
-      console.log('[promo/send-magic-link] SMS channel — returning link for ' + trimmedEmail + ' (' + trimmedName + '), code ' + upperCode)
       const smsText = `Hi ${trimmedName}! Marc here — I wanted to personally invite you to try Endless Tales free for ${promo.subscription_days} days.${trimmedNote ? '\n\n' + trimmedNote : ''}\n\nTap to start listening: ${magicUrl}`
-      return NextResponse.json({ success: true, email: trimmedEmail, firstName: trimmedName, daysGranted: promo.subscription_days, subscriptionEndsAt: newEndsAt.toISOString(), magicUrl, smsText, channel: 'sms' })
+      const recipientPhone = trimmedPhone || promo.notes || ''
+
+      if (twilioClient && recipientPhone) {
+        // Send directly via Twilio — no manual step needed
+        try {
+          await twilioClient.messages.create({
+            body: smsText,
+            from: TWILIO_FROM,
+            to: recipientPhone,
+          })
+          console.log('[promo/send-magic-link] SMS sent via Twilio to ' + recipientPhone + ' (' + trimmedName + ')')
+          return NextResponse.json({ success: true, email: trimmedEmail, firstName: trimmedName, daysGranted: promo.subscription_days, subscriptionEndsAt: newEndsAt.toISOString(), channel: 'sms', sent: true })
+        } catch (smsError: any) {
+          console.error('[promo/send-magic-link] Twilio error:', smsError?.message)
+          // Fall through to return link for manual send
+        }
+      }
+
+      // Fallback: return link + text for frontend to open Messages app
+      console.log('[promo/send-magic-link] SMS fallback (no Twilio) — returning link for ' + (trimmedEmail || recipientPhone) + ' (' + trimmedName + ')')
+      return NextResponse.json({ success: true, email: trimmedEmail, firstName: trimmedName, daysGranted: promo.subscription_days, subscriptionEndsAt: newEndsAt.toISOString(), magicUrl, smsText, channel: 'sms', sent: false })
     }
 
     // Email (default)
