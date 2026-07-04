@@ -175,6 +175,7 @@ export default function AdminPromoPage() {
   const [lastName, setLastName] = useState('')
   const [phone, setPhone] = useState('')
   const [duration, setDuration] = useState('30')
+  const [personalNote, setPersonalNote] = useState('')
   const [showLastName, setShowLastName] = useState(true)
   const [sending, setSending] = useState(false)
   const [message, setMessage] = useState('')
@@ -182,6 +183,7 @@ export default function AdminPromoPage() {
   const [people, setPeople] = useState<InvitePerson[]>([])
   const [sortBy, setSortBy] = useState<SortKey>('last_used')
   const [selectedPerson, setSelectedPerson] = useState<InvitePerson | null>(null)
+  const [previewChannel, setPreviewChannel] = useState<'email' | 'sms' | null>(null)
 
   useEffect(() => {
     loadInvites()
@@ -265,6 +267,7 @@ export default function AdminPromoPage() {
           lastName: showLastName ? lastName.trim() : '',
           phone: phone.trim(),
           subscription_days: Number(duration),
+          personalNote: personalNote.trim(),
           channel,
         }),
       })
@@ -273,9 +276,7 @@ export default function AdminPromoPage() {
         setMessage('Error: ' + (data.error || 'Failed to send invite'))
       } else {
         if (channel === 'sms' && data.magicUrl) {
-          const smsBody = encodeURIComponent(
-            `Hi ${firstName.trim()}! Marc here — I wanted to personally invite you to try Endless Tales free for ${data.daysGranted || duration} days. Tap to start listening: ${data.magicUrl}`
-          )
+          const smsBody = encodeURIComponent(data.smsText || `Hi ${firstName.trim()}! Marc here — I wanted to personally invite you to try Endless Tales free for ${data.daysGranted || duration} days. Tap to start listening: ${data.magicUrl}`)
           const phoneDigits = phone.trim().replace(/[^\d+]/g, '')
           window.open(`sms:${phoneDigits}?body=${smsBody}`, '_blank')
           setMessage(`Text ready for ${firstName.trim()} — ${data.daysGranted || duration} days granted. Your SMS app should open.`)
@@ -287,6 +288,7 @@ export default function AdminPromoPage() {
         setLastName('')
         setPhone('')
         setDuration('30')
+        setPersonalNote('')
         await loadInvites()
       }
     } catch (err) {
@@ -343,7 +345,7 @@ export default function AdminPromoPage() {
             Include last name field
           </button>
 
-          <form onSubmit={submitInvite} className="flex flex-wrap items-end gap-3">
+          <form onSubmit={(e) => submitInvite(e, 'email')} className="flex flex-wrap items-end gap-3">
             <label className="flex min-w-[190px] flex-[2] flex-col gap-[5px]">
               <span className="text-[11px] font-bold uppercase tracking-[0.05em] text-[#555]">Email *</span>
               <input className="rounded-lg border border-[#d1d5db] bg-white px-3 py-[9px] text-sm text-[#1a1a1a] placeholder:text-[#aaa]" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="friend@gmail.com" />
@@ -389,7 +391,83 @@ export default function AdminPromoPage() {
               </div>
             </label>
           </form>
+          {/* Personal note */}
+          <div className="mt-4">
+            <label className="flex flex-col gap-[5px]">
+              <span className="text-[11px] font-bold uppercase tracking-[0.05em] text-[#555]">Personal Note <span className="font-normal normal-case text-[#aaa]">(optional — included in email &amp; text)</span></span>
+              <textarea
+                value={personalNote}
+                onChange={(e) => setPersonalNote(e.target.value)}
+                placeholder="e.g. Thought you'd love this for your morning commute — it's seriously good."
+                rows={2}
+                className="w-full rounded-lg border border-[#d1d5db] bg-white px-3 py-[9px] text-sm text-[#1a1a1a] placeholder:text-[#aaa] resize-none"
+              />
+            </label>
+          </div>
+
+          {/* Preview */}
+          <div className="mt-4 flex gap-2">
+            <button type="button" onClick={() => setPreviewChannel('email')} className="text-[12px] font-medium text-[#f97316] underline underline-offset-2">Preview Email</button>
+            {phone.trim() && <button type="button" onClick={() => setPreviewChannel('sms')} className="text-[12px] font-medium text-[#f97316] underline underline-offset-2">Preview Text</button>}
+          </div>
+
           {message && <p className={`mt-3 text-[13px] font-semibold ${message.startsWith('Error') ? 'text-red-600' : 'text-green-700'}`}>{message}</p>}
+
+          {/* Preview modal */}
+          {previewChannel && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={() => setPreviewChannel(null)}>
+              <div className="relative w-full max-w-[520px] max-h-[90vh] overflow-y-auto rounded-2xl bg-white shadow-2xl" onClick={(e) => e.stopPropagation()}>
+                <div className="flex items-center justify-between border-b border-[#eee] px-5 py-4">
+                  <div className="flex gap-3">
+                    <button onClick={() => setPreviewChannel('email')} className={`text-[13px] font-semibold px-3 py-1 rounded-full ${previewChannel === 'email' ? 'bg-[#f97316] text-white' : 'text-[#666]'}`}>Email</button>
+                    {phone.trim() && <button onClick={() => setPreviewChannel('sms')} className={`text-[13px] font-semibold px-3 py-1 rounded-full ${previewChannel === 'sms' ? 'bg-[#f97316] text-white' : 'text-[#666]'}`}>Text</button>}
+                  </div>
+                  <button onClick={() => setPreviewChannel(null)} className="text-[20px] text-[#999] leading-none">×</button>
+                </div>
+
+                {previewChannel === 'email' && (
+                  <div style={{ background: '#0f0f1a', padding: '32px 24px', borderRadius: '0 0 16px 16px' }}>
+                    <div style={{ textAlign: 'center', marginBottom: '28px' }}>
+                      <div style={{ fontSize: '22px', fontWeight: 900, color: '#fff' }}>Endless <span style={{ color: '#f97316' }}>Tales</span></div>
+                    </div>
+                    <div style={{ background: '#1a1a2e', borderRadius: '16px', padding: '28px 24px', border: '1px solid rgba(249,115,22,0.2)' }}>
+                      <div style={{ color: 'rgba(255,255,255,0.85)', fontSize: '15px', lineHeight: 1.75 }}>
+                        Hi {firstName || 'there'},
+                        <br /><br />
+                        I wanted to personally invite you to try Endless Tales — original audio dramas made for people on the move. Mystery, thriller, sci-fi, horror, romance, and more. Perfect for your commute or road trip.
+                        {personalNote && (
+                          <>
+                            <br /><br />
+                            <span style={{ color: '#fff', fontStyle: 'italic' }}>{personalNote}</span>
+                          </>
+                        )}
+                        <br /><br />
+                        I&apos;m giving you <strong style={{ color: '#f97316' }}>{duration} days completely free</strong>. No credit card needed. Just click below and you&apos;re in.
+                      </div>
+                      <div style={{ textAlign: 'center', marginTop: '24px' }}>
+                        <span style={{ display: 'inline-block', background: '#f97316', color: 'white', padding: '14px 36px', borderRadius: '12px', fontSize: '16px', fontWeight: 800 }}>Start Listening Free</span>
+                      </div>
+                      <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '12px', textAlign: 'center', marginTop: '14px' }}>One click. No password. No credit card.</div>
+                    </div>
+                    <p style={{ color: 'rgba(255,255,255,0.3)', fontSize: '12px', marginTop: '20px', textAlign: 'center' }}>Questions? Reply to this email.<br />— Marc</p>
+                  </div>
+                )}
+
+                {previewChannel === 'sms' && (
+                  <div className="p-6">
+                    <p className="mb-3 text-[12px] text-[#888]">This is what your SMS will look like to {firstName || 'the recipient'}:</p>
+                    <div className="rounded-2xl rounded-br-sm bg-[#f97316] p-4 text-[14px] leading-relaxed text-white max-w-[320px] ml-auto">
+                      Hi {firstName || 'there'}! Marc here — I wanted to personally invite you to try Endless Tales free for {duration} days.
+                      {personalNote && <><br /><br /><em>{personalNote}</em></>}
+                      <br /><br />
+                      Tap to start listening: <span className="underline">app.endless-tales.com/auth/confirm?…</span>
+                    </div>
+                    <p className="mt-3 text-[11px] text-[#aaa]">Tapping &quot;Text 💬&quot; will open your Messages app with this pre-filled. Just hit Send.</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
         </section>
 
         <section className="rounded-xl border border-[#e5e5e5] bg-white p-6">
