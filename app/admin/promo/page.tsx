@@ -28,6 +28,7 @@ type InvitePerson = {
   started: number
   finished: number
   stories: StoryDetail[]
+  invitedAt?: string | null
 }
 
 type StoryDetail = {
@@ -226,21 +227,70 @@ export default function AdminPromoPage() {
 
   async function loadInvites() {
     setLoading(true)
-    const { data, error } = await supabase
-      .from('promo_redemptions')
-      .select('*, users(*)')
-      .order('redeemed_at', { ascending: false })
 
-    if (error || !data) {
+    // Source of truth: promo_codes with campaign='magic-link' (all invites, sent or not yet redeemed)
+    const { data: codes, error } = await supabase
+      .from('promo_codes')
+      .select('*')
+      .eq('campaign', 'magic-link')
+      .order('created_at', { ascending: false })
+
+    if (error || !codes || codes.length === 0) {
       setPeople([])
       setLoading(false)
       return
     }
 
-    const rows = data as RedemptionRow[]
-    const userIds = Array.from(new Set(rows.map((row) => String(row.user_id || row.users?.id || '')).filter(Boolean)))
+    // Look up users by email to get live subscription + activity status
+    const emails = Array.from(new Set(
+      codes.map((c: any) => String(c.sent_to_email || '').trim().toLowerCase()).filter(Boolean)
+    ))
+    const usersByEmail = new Map<string, Record<string, any>>()
+    if (emails.length > 0) {
+      const { data: users } = await supabase
+        .from('users')
+        .select('*')
+        .in('email', emails)
+      users?.forEach((u: any) => usersByEmail.set(String(u.email || '').toLowerCase(), u))
+    }
+
+    // Build InvitePerson for each code
+    const people: InvitePerson[] = (codes as any[]).map((code) => {
+      const email = String(code.sent_to_email || '').trim().toLowerCase()
+      const user = usersByEmail.get(email) || {}
+      const nameParts = String(code.label || code.sent_to_name || '').trim().split(' ')
+      const firstName = String(code.sent_to_name || nameParts[0] || '').trim()
+      const lastName = nameParts.length > 1 ? nameParts.slice(1).join(' ') : ''
+      return {
+        userId: String(user.id || ''),
+        email,
+        phone: normalizePhone(user.phone || user.mobile_phone || user.sms_phone || user.contact_phone),
+        firstName,
+        lastName,
+        displayName: String(code.label || [firstName, lastName].filter(Boolean).join(' ') || email.split('@')[0]),
+        subscriptionDays: code.subscription_days || null,
+        subscriptionEndsAt: user.subscription_ends_at || null,
+        lastUsedAt: user.last_login || user.last_active_at || user.last_seen_at || user.updated_at || null,
+        timesUsed: Number(code.uses_count || 0),
+        started: 0,
+        finished: 0,
+        stories: [],
+        invitedAt: code.sent_at || code.created_at || null,
+      }
+    })
+
+    // Load stories for known users
+    const userIds = Array.from(new Set(people.map((p) => p.userId).filter(Boolean)))
     const storiesByUser = await loadStoriesForUsers(userIds)
-    setPeople(mergePeople(rows, storiesByUser))
+    people.forEach((p) => {
+      if (!p.userId) return
+      const stories = storiesByUser.get(p.userId) || []
+      p.stories = stories
+      p.started = stories.length
+      p.finished = stories.filter((s) => s.completed).length
+    })
+
+    setPeople(people)
     setLoading(false)
   }
 
@@ -501,7 +551,7 @@ export default function AdminPromoPage() {
                 {loading ? (
                   <tr><td className="px-3 py-5 text-[#888]" colSpan={9}>Loading...</td></tr>
                 ) : sortedPeople.length === 0 ? (
-                  <tr><td className="px-3 py-5 text-[#888]" colSpan={9}>No magic link invite redemptions found.</td></tr>
+                  <tr><td className="px-3 py-5 text-[#888]" colSpan={9}>No magic link invites sent yet.</td></tr>
                 ) : sortedPeople.map((person) => {
                   const active = person.subscriptionEndsAt ? new Date(person.subscriptionEndsAt) > new Date() : false
                   const displayFirst = person.firstName || person.displayName
@@ -524,8 +574,10 @@ export default function AdminPromoPage() {
                       <td className="px-3 py-[13px] align-middle"><span className={`inline-block rounded-md px-2 py-[3px] text-xs font-semibold ${active ? 'bg-[#d1fae5] text-[#065f46]' : 'bg-[#fee2e2] text-[#991b1b]'}`}>{active ? 'Active' : 'Expired'}</span></td>
                       <td className="px-3 py-[13px] text-center align-middle text-[15px] font-bold">{person.timesUsed}</td>
                       <td className="whitespace-nowrap px-3 py-[13px] align-middle text-xs text-[#555]">
-                        {formatDate(person.lastUsedAt) || <span className="italic text-[#ccc]">Never</span>}
-                        <br /><span className="text-[11px] text-[#999]">{relativeDate(person.lastUsedAt)}</span>
+                        {person.lastUsedAt
+                          ? <>{formatDate(person.lastUsedAt)}<br /><span className="text-[11px] text-[#999]">{relativeDate(person.lastUsedAt)}</span></>
+                          : <><span className="italic text-[#ccc]">Not yet signed in</span>{person.invitedAt && <><br /><span className="text-[11px] text-[#aaa]">Invited {formatDate(person.invitedAt)}</span></>}</>
+                        }
                       </td>
                       <td className="px-3 py-[13px] text-center align-middle">
                         <button type="button" onClick={() => setSelectedPerson(person)} className="text-[15px] font-bold text-[#f97316] underline decoration-dotted hover:text-[#ea6c0a]">{person.started}</button>
