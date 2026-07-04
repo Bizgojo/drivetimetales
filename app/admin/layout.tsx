@@ -226,7 +226,6 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         </div>
       </aside>
       <main style={{ flex: 1, marginLeft: sidebarOpen ? `${SIDEBAR_WIDTH}px` : 0, backgroundColor: '#FAF9F6', minHeight: '100vh', transition: 'margin-left 0.2s ease' }}>
-        <div style={{background:"#fde68a",color:"#111827",fontWeight:800,padding:"6px 10px",borderRadius:8,margin:"8px 12px",display:"inline-block"}}>ADMIN LAYOUT MARKER 2026-04-21 08:25 AM</div>
         {children}
       </main>
     </div>

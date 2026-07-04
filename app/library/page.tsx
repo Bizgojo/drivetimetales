@@ -50,6 +50,7 @@ type CardItem = {
   seriesName?: string
   episodeCount?: number
   avgDuration?: number
+  totalDuration?: number
   cover?: string | null
   author?: string | null
   genre?: string | null
@@ -341,6 +342,7 @@ export default function LibraryPage() {
         seriesName: first.series_name || 'Series',
         episodeCount: first.series_total || sorted.length,
         avgDuration,
+        totalDuration,
         cover: first.cover_url,
         author: first.author,
         genre: first.genre,
@@ -352,7 +354,7 @@ export default function LibraryPage() {
         resumeSeconds: playbackTarget.resumeSeconds,
         seriesInProgress: playbackTarget.isInProgress,
         episodePlaylist: playbackTarget.playlist,
-        durationForSort: avgDuration,
+        durationForSort: totalDuration,
         notForMe: anyEpisodeNotForMe,
       })
     })
@@ -360,7 +362,7 @@ export default function LibraryPage() {
     return items
   }, [stories, libraryLookup])
 
-  // Filter by genre, sort short to long, push not-for-me to bottom
+  // Filter by genre, then sort standalones before series while keeping not-for-me at the bottom
   const filteredItems = useMemo(() => {
     const filtered =
       activeGenre === 'All'
@@ -368,6 +370,10 @@ export default function LibraryPage() {
         : cardItems.filter((i) => (i.genre || '').toLowerCase() === activeGenre.toLowerCase())
     return filtered.slice().sort((a, b) => {
       if (a.notForMe !== b.notForMe) return a.notForMe ? 1 : -1
+      if (a.type !== b.type) return a.type === 'single' ? -1 : 1
+      if (a.type === 'single') return a.durationForSort - b.durationForSort
+      const epDiff = (a.episodeCount || 0) - (b.episodeCount || 0)
+      if (epDiff !== 0) return epDiff
       return a.durationForSort - b.durationForSort
     })
   }, [cardItems, activeGenre])
@@ -618,7 +624,7 @@ export default function LibraryPage() {
         <StickyHeaderFull />
         <div style={{ padding: '40px 16px', color: 'white', textAlign: 'center' }}>
           <div style={{ fontSize: '15px', fontWeight: 600, marginBottom: '8px' }}>Library failed to load</div>
-          <div style={{ color: '#94a3b8', fontSize: '12px', lineHeight: 1.5 }}>{loadError}</div>
+          <div style={{ color: 'white', fontSize: '12px', lineHeight: 1.5 }}>{loadError}</div>
         </div>
       </div>
     )
@@ -735,7 +741,7 @@ export default function LibraryPage() {
         {filteredItems.length === 0 && (
           <div
             style={{
-              color: '#94a3b8',
+              color: 'white',
               textAlign: 'center',
               padding: '40px 16px',
               fontSize: '13px',
@@ -887,7 +893,7 @@ function StoryCard({
 }) {
   const isSeries = item.type === 'series'
   const duration = isSeries
-    ? `Avg. ${formatMinutes(item.avgDuration || 0)}`
+    ? `${formatMinutes(item.totalDuration || 0)} total · Avg. ${formatMinutes(item.avgDuration || 0)}`
     : formatMinutes(item.story?.duration_mins || 0)
   const ratingValue = Math.round(item.avgRating || 0)
   const stars = '★'.repeat(ratingValue) + '☆'.repeat(5 - ratingValue)
@@ -969,11 +975,14 @@ function StoryCard({
               </span>
             )}
             <div style={{ flex: 1 }} />
-            <span style={{ color: '#cbd5e1', fontSize: '11px', fontWeight: 500 }}>{duration}</span>
+            <span style={{ color: 'white', fontSize: '11px', fontWeight: 500 }}>{duration}</span>
           </div>
 
           {/* Row 2: title */}
-          <div style={{ color: 'white', fontSize: '14px', fontWeight: 700, lineHeight: 1.2 }}>
+          <div
+            onClick={isSeries ? onCoverClick : undefined}
+            style={{ color: 'white', fontSize: '14px', fontWeight: 700, lineHeight: 1.2, cursor: isSeries ? 'pointer' : 'default' }}
+          >
             {isSeries ? item.seriesName : item.story?.title}
           </div>
 
@@ -1042,25 +1051,48 @@ function StoryCard({
                 <span style={{ fontSize: '14px' }}>☹</span>
               </button>
             ) : (
-              <button
-                type="button"
-                onClick={onTogglePlaylist}
-                style={{
-                  flex: 1,
-                  background: '#3b82f6',
-                  color: 'white',
-                  border: 'none',
-                  padding: '2px 6px',
-                  borderRadius: '6px',
-                  fontSize: '11px',
-                  lineHeight: 1,
-                  minHeight: '32px',
-                  fontWeight: 500,
-                  cursor: 'pointer',
-                }}
-              >
-                {state.inPlaylist ? '✓ Remove' : '+ Queue'}
-              </button>
+              <>
+                <button
+                  type="button"
+                  onClick={onTogglePlaylist}
+                  style={{
+                    flex: 1,
+                    background: '#3b82f6',
+                    color: 'white',
+                    border: 'none',
+                    padding: '2px 6px',
+                    borderRadius: '6px',
+                    fontSize: '11px',
+                    lineHeight: 1,
+                    minHeight: '32px',
+                    fontWeight: 500,
+                    cursor: 'pointer',
+                  }}
+                >
+                  {state.inPlaylist ? '✓ Remove' : '+ Queue'}
+                </button>
+                {isSeries && (
+                  <button
+                    type="button"
+                    onClick={onCoverClick}
+                    style={{
+                      flex: 1,
+                      background: 'transparent',
+                      color: 'white',
+                      border: '1px solid rgba(255,255,255,0.22)',
+                      padding: '2px 6px',
+                      borderRadius: '6px',
+                      fontSize: '11px',
+                      lineHeight: 1,
+                      minHeight: '32px',
+                      fontWeight: 500,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    View Episodes
+                  </button>
+                )}
+              </>
             )}
           </div>
 

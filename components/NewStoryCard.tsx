@@ -120,16 +120,16 @@ export default function NewStoryCard({
             <div style={{ color: 'white', fontSize: '14px', fontWeight: 800, lineHeight: '20px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{displayTitle}</div>
 
             {/* Row 3: author / genre / rating */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', minWidth: 0, overflow: 'hidden', whiteSpace: 'nowrap', color: 'rgba(255,255,255,0.55)', fontSize: '10px', lineHeight: '18px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', minWidth: 0, overflow: 'hidden', whiteSpace: 'nowrap', color: 'white', fontSize: '10px', lineHeight: '18px' }}>
               <span style={{ color: '#22c55e', fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>{author}</span>
-              <span style={{ color: 'rgba(255,255,255,0.25)', flexShrink: 0 }}>·</span>
+              <span style={{ color: 'white', flexShrink: 0 }}>·</span>
               <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flexShrink: 1 }}>{genre}</span>
-              <span style={{ color: 'rgba(255,255,255,0.25)', flexShrink: 0 }}>·</span>
-              <span style={{ color: avg_rating && avg_rating > 0 ? '#f97316' : 'rgba(255,255,255,0.35)', flexShrink: 0 }}>{ratingLabel}{review_count ? ` · ${review_count}` : ''}</span>
+              <span style={{ color: 'white', flexShrink: 0 }}>·</span>
+              <span style={{ color: avg_rating && avg_rating > 0 ? '#f97316' : 'white', flexShrink: 0 }}>{ratingLabel}{review_count ? ` · ${review_count}` : ''}</span>
             </div>
 
             {/* Rows 4-5: description */}
-            <div style={{ color: 'rgba(255,255,255,0.82)', fontSize: '10px', lineHeight: '18px', height: '36px', overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
+            <div style={{ color: 'white', fontSize: '10px', lineHeight: '18px', height: '36px', overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
               {description || ''}
             </div>
           </Link>
@@ -145,16 +145,16 @@ export default function NewStoryCard({
                   <span style={{ fontSize: '10px' }}>Rate Story</span>
                   <span style={{ fontSize: '11px' }}>😞</span>
                 </button>
-                <button onClick={() => setRateState('skip')} style={{ ...B, background: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.5)', border: '1px solid rgba(255,255,255,0.1)', fontWeight: 600 }}>Not Now</button>
+                <button onClick={() => setRateState('skip')} style={{ ...B, background: 'rgba(255,255,255,0.06)', color: 'white', border: '1px solid rgba(255,255,255,0.1)', fontWeight: 600 }}>Not Now</button>
               </div>
             )}
 
             {showStarTap && (
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', height: '24px' }}>
-                <span style={{ color: 'rgba(255,255,255,0.45)', fontSize: '10px' }}>Tap to rate</span>
+                <span style={{ color: 'white', fontSize: '10px' }}>Tap to rate</span>
                 <div style={{ display: 'flex', gap: '3px' }}>
                   {[1,2,3,4,5].map(i => (
-                    <span key={i} onClick={() => { onRateClick?.(); setRateState('done') }} style={{ fontSize: '17px', cursor: 'pointer', color: 'rgba(255,255,255,0.24)', lineHeight: 1 }}>★</span>
+                    <span key={i} onClick={() => { onRateClick?.(); setRateState('done') }} style={{ fontSize: '17px', cursor: 'pointer', color: 'white', lineHeight: 1 }}>★</span>
                   ))}
                 </div>
               </div>

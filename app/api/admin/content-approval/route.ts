@@ -19,7 +19,7 @@ const ADMIN_EMAILS = new Set([
   'm.postlewaite@gmail.com',
 ])
 
-type ApprovalTab = 'ready_for_review' | 'approved_ready' | 'repair_queue' | 'being_repaired' | 'unpublished_library' | 'cold_storage' | 'published' | 'all'
+type ApprovalTab = 'ready_for_review' | 'approved_ready' | 'repair_queue' | 'being_repaired' | 'unpublished_library' | 'cold_storage' | 'published' | 'stories_in_queue' | 'scripts_ready' | 'failed' | 'all'
 type WorkflowState = Exclude<ApprovalTab, 'all'>
 type ProductionStandardValue = 'current_standard' | 'remaster_candidate' | 'unknown'
 
@@ -44,6 +44,7 @@ type StoryRow = {
   production_standard?: ProductionStandardValue | null
   production_standard_updated_at?: string | null
   production_standard_updated_by?: string | null
+  production_priority?: number | null
   audio_url: string | null
   story_audio_url: string | null
   announcement_url?: string | null
@@ -65,6 +66,8 @@ type StoryRow = {
   series_total_episodes: number | null
   story_type: string | null
   script_version: number | null
+  recommended_by?: string | null
+  source?: string | null
 }
 
 type ProductionJobRow = {
@@ -144,6 +147,9 @@ function normalizeTab(value: unknown): ApprovalTab {
     tab === 'approved_ready' ||
     tab === 'repair_queue' ||
     tab === 'being_repaired' ||
+    tab === 'stories_in_queue' ||
+    tab === 'scripts_ready' ||
+    tab === 'failed' ||
     tab === 'unpublished_library' ||
     tab === 'cold_storage' ||
     tab === 'published' ||
@@ -159,6 +165,9 @@ function normalizeWorkflowState(value: unknown): WorkflowState | null {
     state === 'approved_ready' ||
     state === 'repair_queue' ||
     state === 'being_repaired' ||
+    state === 'stories_in_queue' ||
+    state === 'scripts_ready' ||
+    state === 'failed' ||
     state === 'unpublished_library' ||
     state === 'cold_storage' ||
     state === 'published'
@@ -193,7 +202,7 @@ function effectiveWorkflowState(story: StoryRow): string {
   // Check these BEFORE status-based inference so that e.g. a story with
   // workflow_state='approved_ready' but status='published' (stale status) is
   // not incorrectly reclassified as 'unpublished_library'.
-  const TERMINAL_STATES = new Set(['approved_ready', 'cold_storage', 'unpublished_library', 'repair_queue', 'being_repaired'])
+  const TERMINAL_STATES = new Set(['approved_ready', 'cold_storage', 'unpublished_library', 'repair_queue', 'being_repaired', 'stories_in_queue', 'scripts_ready', 'failed'])
   if (story.workflow_state && TERMINAL_STATES.has(story.workflow_state)) return story.workflow_state
   // Status-based inference when workflow_state is not set to a known terminal state
   if (story.status === 'published' && story.is_hidden === false) return 'published'
@@ -286,6 +295,7 @@ function isReviewReady(story: StoryRow) {
 
 function matchesTab(story: StoryRow, tab: ApprovalTab) {
   if (tab === 'all') return true
+  if (tab === 'repair_queue') return ['repair_queue', 'being_repaired', 'failed'].includes(effectiveWorkflowState(story))
   return effectiveWorkflowState(story) === tab
 }
 
@@ -435,6 +445,13 @@ function episodeObject(story: StoryRow, sourceJob: ProductionJobRow | null) {
     reviewStatus: displayReviewStatus(story),
     workflowState: resolvedWorkflowState,
     workflow_state: resolvedWorkflowState,
+    source_job: sourceJob ? {
+      id: sourceJob.id,
+      status: sourceJob.status,
+      current_step: sourceJob.current_step,
+      updated_at: sourceJob.updated_at,
+      error_json: sourceJob.error_json,
+    } : null,
     repairChecklist: story.repair_checklist || null,
     repair_checklist: story.repair_checklist || null,
     repairNotes: story.repair_notes || null,
@@ -625,7 +642,7 @@ function examples(items: any[]) {
 
 function reviewStatusForWorkflowState(state: WorkflowState) {
   if (state === 'approved_ready' || state === 'published') return 'approved'
-  if (state === 'ready_for_review') return 'pending'
+  if (state === 'ready_for_review' || state === 'stories_in_queue' || state === 'scripts_ready') return 'pending'
   return 'not_approved'
 }
 
@@ -633,8 +650,11 @@ function transitionAllowed(from: string, to: WorkflowState, retire: boolean) {
   const allowed: Record<string, WorkflowState[]> = {
     ready_for_review: ['approved_ready', 'repair_queue', 'cold_storage'],
     approved_ready: ['published', 'repair_queue', 'cold_storage'],
-    repair_queue: ['being_repaired', 'ready_for_review'],
-    being_repaired: ['ready_for_review'],
+    repair_queue: ['being_repaired', 'ready_for_review', 'cold_storage'],
+    being_repaired: ['ready_for_review', 'cold_storage'],
+    failed: ['being_repaired', 'repair_queue', 'ready_for_review', 'cold_storage'],
+    stories_in_queue: ['scripts_ready', 'ready_for_review', 'repair_queue', 'cold_storage'],
+    scripts_ready: ['ready_for_review', 'repair_queue', 'cold_storage'],
     published: ['unpublished_library', 'repair_queue'],
     unpublished_library: ['ready_for_review', 'repair_queue', 'cold_storage'],
     cold_storage: ['ready_for_review'],
@@ -711,6 +731,7 @@ export async function GET(req: NextRequest) {
       'production_standard',
       'production_standard_updated_at',
       'production_standard_updated_by',
+      'production_priority',
       'audio_url',
       'story_audio_url',
       'announcement_url',
@@ -735,7 +756,7 @@ export async function GET(req: NextRequest) {
     ]
 
     const legacyStorySelectColumns = storySelectColumns.filter((column) =>
-      !['workflow_state', 'repair_checklist', 'repair_notes', 'production_standard', 'production_standard_updated_at', 'production_standard_updated_by'].includes(column)
+      !['workflow_state', 'repair_checklist', 'repair_notes', 'production_standard', 'production_standard_updated_at', 'production_standard_updated_by', 'production_priority'].includes(column)
     )
 
     const buildStoryQuery = (columns: string[]) => {
@@ -764,6 +785,7 @@ export async function GET(req: NextRequest) {
         production_standard: 'unknown',
         production_standard_updated_at: null,
         production_standard_updated_by: null,
+        production_priority: 0,
       }))
       storiesError = legacyResult.error
     }
@@ -899,7 +921,7 @@ export async function POST(req: NextRequest) {
     if (unauthorized) return unauthorized
 
     const action = clean(req.nextUrl.searchParams.get('action'))
-    if (!["set_workflow_state","set_series_workflow_state","set_series_ready_for_review","set_production_standard","recover_from_cold_storage","set_incubator_tag","record_review_outcome"].includes(action)) {
+    if (!["set_workflow_state","set_series_workflow_state","set_series_ready_for_review","set_production_standard","set_production_priority","recover_from_cold_storage","set_incubator_tag","record_review_outcome"].includes(action)) {
       return json({ success: false, error: 'Unsupported action' }, 400)
     }
 
@@ -907,6 +929,54 @@ export async function POST(req: NextRequest) {
     const storyId = clean(body.storyId || body.story_id)
     const changedBy = clean(body.changedBy || body.changed_by) || 'admin'
     const changeReason = clean(body.reason || body.change_reason) || null
+    if (action === 'set_production_priority') {
+      const priority = Number(body.priority)
+      if (!storyId) return json({ success: false, error: 'Missing storyId' }, 400)
+      if (!Number.isInteger(priority) || priority < 0) {
+        return json({ success: false, error: 'Invalid priority' }, 400)
+      }
+
+      const { data: targetStory, error: targetError } = await supabase
+        .from('stories')
+        .select('id,production_priority')
+        .eq('id', storyId)
+        .maybeSingle()
+
+      if (targetError) return json({ success: false, error: targetError.message }, 500)
+      if (!targetStory) return json({ success: false, error: 'Story not found' }, 404)
+
+      if (priority > 0) {
+        const { data: prioritizedRows, error: priorityFetchError } = await supabase
+          .from('stories')
+          .select('id,production_priority')
+          .gte('production_priority', priority)
+          .neq('id', storyId)
+          .order('production_priority', { ascending: false })
+
+        if (priorityFetchError) return json({ success: false, error: priorityFetchError.message }, 500)
+
+        for (const row of prioritizedRows || []) {
+          const currentPriority = Number(row.production_priority || 0)
+          if (currentPriority < priority) continue
+          const { error: shiftError } = await supabase
+            .from('stories')
+            .update({ production_priority: currentPriority + 1 })
+            .eq('id', row.id)
+          if (shiftError) return json({ success: false, error: shiftError.message }, 500)
+        }
+      }
+
+      const { data, error } = await supabase
+        .from('stories')
+        .update({ production_priority: priority })
+        .eq('id', storyId)
+        .select('id,production_priority')
+        .maybeSingle()
+
+      if (error) return json({ success: false, error: error.message }, 500)
+      return json({ success: true, story: data })
+    }
+
     if (action === 'set_production_standard') {
       const productionStandard = normalizeProductionStandard(body.production_standard)
       if (!storyId) return json({ success: false, error: 'Missing story_id' }, 400)
@@ -1074,7 +1144,7 @@ export async function POST(req: NextRequest) {
       }
 
       const recoveryUpdate = {
-        workflow_state: "ready_for_review",
+        workflow_state: "stories_in_queue",
         review_status: "pending",
         is_hidden: true,
         reviewed_at: null,

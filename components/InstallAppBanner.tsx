@@ -59,7 +59,7 @@ export default function InstallAppBanner() {
               <img src="/icons/icon-192x192.png" alt="" style={{ width: 44, height: 44, borderRadius: 10 }} />
               <div>
                 <div style={{ color: 'white', fontWeight: 800, fontSize: 16 }}>Add to Home Screen</div>
-                <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: 12 }}>Get the full app experience</div>
+                <div style={{ color: 'white', fontSize: 12 }}>Get the full app experience</div>
               </div>
             </div>
             <button onClick={handleDismiss} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.4)', fontSize: 20, cursor: 'pointer' }}>✕</button>
@@ -78,7 +78,7 @@ export default function InstallAppBanner() {
           </div>
           <div style={{ marginTop: 20, background: 'rgba(249,115,22,0.1)', border: '1px solid rgba(249,115,22,0.3)', borderRadius: 10, padding: '12px 16px', display: 'flex', alignItems: 'flex-start', gap: 10 }}>
             <span style={{ fontSize: 18, flexShrink: 0 }}>💡</span>
-            <span style={{ color: 'rgba(255,255,255,0.7)', fontSize: 13, lineHeight: 1.5 }}>Make sure you&apos;re using Safari — this won&apos;t work in Chrome or Firefox on iPhone.</span>
+            <span style={{ color: 'white', fontSize: 13, lineHeight: 1.5 }}>Make sure you&apos;re using Safari — this won&apos;t work in Chrome or Firefox on iPhone.</span>
           </div>
         </div>
       </div>
@@ -90,7 +90,7 @@ export default function InstallAppBanner() {
       <img src="/icons/icon-192x192.png" alt="" style={{ width: 44, height: 44, borderRadius: 10, flexShrink: 0 }} />
       <div style={{ flex: 1 }}>
         <div style={{ color: 'white', fontWeight: 700, fontSize: 14 }}>Add Endless Tales to your home screen</div>
-        <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: 12 }}>Launch instantly like a native app</div>
+        <div style={{ color: 'white', fontSize: 12 }}>Launch instantly like a native app</div>
       </div>
       {isIOS
         ? <button onClick={() => setShowIOSGuide(true)} style={{ background: '#f97316', color: 'white', border: 'none', borderRadius: 8, padding: '8px 16px', fontWeight: 700, fontSize: 13, cursor: 'pointer', flexShrink: 0 }}>How To</button>

@@ -218,10 +218,10 @@ function HomeSearchResults({ query }: { query: string }) {
     <section style={{ padding: '1rem 1rem 0.5rem' }}>
       <h2 className="text-lg font-bold text-white" style={{ marginBottom: '1rem' }}>SEARCH RESULTS</h2>
       {loading && (
-        <div style={{ color: '#94a3b8', fontSize: '13px', padding: '0.75rem 0' }}>Searching…</div>
+        <div style={{ color: 'white', fontSize: '13px', padding: '0.75rem 0' }}>Searching…</div>
       )}
       {!loading && items.length === 0 && (
-        <div style={{ color: '#94a3b8', fontSize: '13px', padding: '0.75rem 0' }}>No stories found.</div>
+        <div style={{ color: 'white', fontSize: '13px', padding: '0.75rem 0' }}>No stories found.</div>
       )}
       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
         {items.map((item) => {
@@ -311,7 +311,7 @@ function HomeContent() {
       <HomeHeader />
       <main className="pb-20">
         <div style={{ padding: '1rem 1rem 0' }}>
-          <label htmlFor="home-story-search" style={{ display: 'block', color: '#94a3b8', fontSize: '12px', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: '0.5rem' }}>
+          <label htmlFor="home-story-search" style={{ display: 'block', color: 'white', fontSize: '12px', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: '0.5rem' }}>
             Search stories
           </label>
           <input
@@ -337,7 +337,7 @@ function HomeContent() {
               <div style={{ color: '#f97316', fontWeight: 800, fontSize: '15px', marginBottom: '2px' }}>
                 🎉 Welcome{firstName ? `, ${firstName}` : ''}!
               </div>
-              <div style={{ color: 'rgba(255,255,255,0.7)', fontSize: '13px' }}>
+              <div style={{ color: 'white', fontSize: '13px' }}>
                 Your 14-day free trial has started. Pick a story and press play.
               </div>
             </div>

@@ -74,12 +74,22 @@ interface Story {
   production_standard?: 'current_standard' | 'remaster_candidate' | 'unknown' | null
   production_standard_updated_at?: string | null
   production_standard_updated_by?: string | null
+  production_priority: number
   script_version?: number | null
   is_v2?: boolean | null
   script_json?: any
   brief_json?: any
   script?: string | null
   story_type?: string | null
+  recommended_by?: string | null
+  source?: string | null
+  source_job?: {
+    id: string
+    status: string | null
+    current_step: string | null
+    updated_at: string | null
+    error_json?: any
+  } | null
   // ATL-CONS-001 Phase C: QC checklist data
   grading_result?: Record<string, unknown> | null
   author_id?: string | null
@@ -98,14 +108,15 @@ interface Group {
   display_order: number
 }
 
-type WorkflowTab = 'ready_for_review' | 'approved_ready' | 'repair_queue' | 'being_repaired' | 'unpublished_library' | 'cold_storage' | 'published'
-type WorkflowLane = 'ready_for_review' | 'approved_ready' | 'published' | 'cold_storage'
-type InternalWorkflowLane = WorkflowLane | 'repair_shop' | 'cold_storage'
+type WorkflowTab = 'ready_for_review' | 'approved_ready' | 'repair_queue' | 'being_repaired' | 'unpublished_library' | 'cold_storage' | 'published' | 'stories_in_queue' | 'scripts_ready' | 'failed'
+type WorkflowLane = 'ready_for_review' | 'repair_shop' | 'production_queue' | 'approved_ready' | 'published' | 'cold_storage'
+type InternalWorkflowLane = WorkflowLane
 type WorkflowFilter = WorkflowLane | 'all'
 type RepairGroup = 'story_script' | 'audio_asc' | 'packaging'
 type RepairChecklistValue = Record<RepairGroup, string[]>
 type RepairIssueDetails = Record<string, { comment: string }>
 type RepairCommentRow = { comment: string; remainingTime: string }
+type ProductionQueueView = 'production_order' | 'by_episodes'
 type EpisodeRepairMark = {
   needed: boolean
   checklist: RepairChecklistValue
@@ -152,6 +163,7 @@ type ApprovalEpisode = {
   approvalBlockingReasons: string[]
   approvalEntryReason: string
   sourceJobId: string | null
+  source_job?: Story['source_job']
   completionSortDate?: string | null
   completionSortSource?: string | null
 }
@@ -214,17 +226,23 @@ const TAB_CONFIG: Array<{
   { id: 'published', label: 'Published', description: 'Live in app.', color: '#2563eb', softColor: '#dbeafe', glowColor: 'rgba(37,99,235,0.34)' },
 ]
 
-const WORKFLOW_LABELS = {
-  ...Object.fromEntries(TAB_CONFIG.map((tab) => [tab.id, tab.label])),
-  repair_queue: 'Repair Shop',
-  being_repaired: 'Repair Shop',
+const WORKFLOW_LABELS: Record<WorkflowTab, string> = {
+  ready_for_review: 'Ready for Review',
+  approved_ready: 'Ready to Publish',
+  published: 'Published',
+  repair_queue: 'Repair Queue',
+  being_repaired: 'Repair Queue',
+  failed: 'Repair Queue',
+  stories_in_queue: 'Production Queue',
+  scripts_ready: 'Production Queue',
   cold_storage: 'Cold Storage / Training Archive',
   unpublished_library: 'Cold Storage / Training Archive',
-} as Record<WorkflowTab, string>
+}
 
 const WORKFLOW_VISUALS: Record<InternalWorkflowLane, { id: InternalWorkflowLane; label: string; description: string; color: string; softColor: string; glowColor: string }> = {
   ready_for_review: { id: 'ready_for_review', label: 'Ready for Review', description: 'Ready for review.', color: '#f59e0b', softColor: '#fef3c7', glowColor: 'rgba(245,158,11,0.30)' },
-  repair_shop: { id: 'repair_shop', label: 'Repair Shop', description: 'Active repair work.', color: '#f97316', softColor: '#ffedd5', glowColor: 'rgba(249,115,22,0.30)' },
+  repair_shop: { id: 'repair_shop', label: 'Repair Queue', description: 'Pipeline failures and active repair work.', color: '#f97316', softColor: '#ffedd5', glowColor: 'rgba(249,115,22,0.30)' },
+  production_queue: { id: 'production_queue', label: 'Production Queue', description: 'Scripts ready for audio production.', color: '#0ea5e9', softColor: '#e0f2fe', glowColor: 'rgba(14,165,233,0.28)' },
   approved_ready: { id: 'approved_ready', label: 'Ready to Publish', description: 'Cleared by Marc.', color: '#22c55e', softColor: '#dcfce7', glowColor: 'rgba(34,197,94,0.28)' },
   cold_storage: { id: 'cold_storage', label: 'Cold Storage / Training Archive', description: 'Preserved artifacts.', color: '#8b5cf6', softColor: '#ede9fe', glowColor: 'rgba(139,92,246,0.28)' },
   published: { id: 'published', label: 'Published', description: 'Live in app.', color: '#2563eb', softColor: '#dbeafe', glowColor: 'rgba(37,99,235,0.34)' },
@@ -236,6 +254,10 @@ const WORKFLOW_COLORS: Record<string, { bg: string; text: string; badge: string;
   repair_shop: { bg: '#FEE2E2', text: '#991B1B', badge: '#EF4444', dot: '#EF4444' },
   repair_queue: { bg: '#FEE2E2', text: '#991B1B', badge: '#EF4444', dot: '#EF4444' },
   being_repaired: { bg: '#DBEAFE', text: '#1E40AF', badge: '#3B82F6', dot: '#3B82F6' },
+  production_queue: { bg: '#E0F2FE', text: '#075985', badge: '#0EA5E9', dot: '#0EA5E9' },
+  stories_in_queue: { bg: '#E0F2FE', text: '#075985', badge: '#0EA5E9', dot: '#0EA5E9' },
+  scripts_ready: { bg: '#E0F2FE', text: '#075985', badge: '#0EA5E9', dot: '#0EA5E9' },
+  failed: { bg: '#FEE2E2', text: '#991B1B', badge: '#EF4444', dot: '#EF4444' },
   cold_storage: { bg: '#EDE9FE', text: '#5B21B6', badge: '#8B5CF6', dot: '#8B5CF6' },
   published: { bg: '#D1FAE5', text: '#065F46', badge: '#059669', dot: '#059669' },
   unpublished_library: { bg: '#FEF9C3', text: '#713F12', badge: '#EAB308', dot: '#EAB308' },
@@ -243,17 +265,21 @@ const WORKFLOW_COLORS: Record<string, { bg: string; text: string; badge: string;
 
 const STREAMING_PIPELINE: Array<{ id: WorkflowLane; label: string; sub: string; color: string }> = [
   { id: 'ready_for_review', label: 'Ready for Review', sub: 'Ready for review', color: '#F59E0B' },
+  { id: 'repair_shop', label: 'Repair Queue', sub: 'Failures and active repairs', color: '#F97316' },
+  { id: 'production_queue', label: 'Production Queue', sub: 'Scripts ready for audio', color: '#0EA5E9' },
   { id: 'approved_ready', label: 'Ready to Publish', sub: 'Cleared by Marc', color: '#10B981' },
   { id: 'published', label: 'Published', sub: 'Live in app', color: '#059669' },
+  { id: 'cold_storage', label: 'Cold Storage', sub: 'Archived and recoverable', color: '#8B5CF6' },
 ]
 
 function effectiveWorkflowState(story: Story): WorkflowTab {
   if (story.workflow_state === 'live') return 'published'
   if (story.workflow_state === 'cold_storage' || story.workflow_state === 'unpublished_library') return story.workflow_state
+  if (story.workflow_state === 'stories_in_queue' || story.workflow_state === 'scripts_ready' || story.workflow_state === 'failed') return story.workflow_state
   if (!story.is_hidden && story.status === 'published') return 'published'
   if (story.is_hidden && story.status === 'published') return 'unpublished_library'
   if (story.workflow_state === 'repair_queue' || story.workflow_state === 'being_repaired') return story.workflow_state
-  if (story.workflow_state && ['ready_for_review', 'approved_ready', 'repair_queue', 'being_repaired', 'unpublished_library', 'cold_storage', 'published'].includes(story.workflow_state)) return story.workflow_state as WorkflowTab
+  if (story.workflow_state && ['ready_for_review', 'approved_ready', 'repair_queue', 'being_repaired', 'unpublished_library', 'cold_storage', 'published', 'stories_in_queue', 'scripts_ready', 'failed'].includes(story.workflow_state)) return story.workflow_state as WorkflowTab
   if (story.review_status === 'approved') return 'approved_ready'
   if (story.review_status === 'not_approved') return 'cold_storage'
   return 'ready_for_review'
@@ -291,7 +317,8 @@ function visualWorkflowLane(story: Story): InternalWorkflowLane {
   const state = effectiveWorkflowState(story)
   if (state === 'cold_storage' || state === 'unpublished_library') return 'cold_storage'
   if (isPublishedToApp(story)) return 'published'
-  if (state === 'repair_queue' || state === 'being_repaired') return 'repair_shop'
+  if (state === 'repair_queue' || state === 'being_repaired' || state === 'failed') return 'repair_shop'
+  if (state === 'stories_in_queue' || state === 'scripts_ready') return 'production_queue'
   if (state === 'approved_ready') return 'approved_ready'
   return 'ready_for_review'
 }
@@ -305,7 +332,7 @@ function storiesForWorkflowLane(stories: Story[], lane: InternalWorkflowLane) {
 }
 
 function isApprovalWorkflowLane(lane: InternalWorkflowLane): lane is WorkflowLane {
-  return lane === 'ready_for_review' || lane === 'approved_ready' || lane === 'published'
+  return lane === 'ready_for_review' || lane === 'repair_shop' || lane === 'production_queue' || lane === 'approved_ready' || lane === 'published' || lane === 'cold_storage'
 }
 
 function groupPrimaryWorkflowLane(group: StoryGroup, readyReviewKeys: Record<string, boolean>): InternalWorkflowLane | null {
@@ -313,6 +340,7 @@ function groupPrimaryWorkflowLane(group: StoryGroup, readyReviewKeys: Record<str
   if (groupStories.some((story) => visualWorkflowLane(story) === 'cold_storage')) return 'cold_storage'
   if (groupStories.some((story) => visualWorkflowLane(story) === 'published')) return 'published'
   if (groupStories.some((story) => visualWorkflowLane(story) === 'repair_shop')) return 'repair_shop'
+  if (groupStories.some((story) => visualWorkflowLane(story) === 'production_queue')) return 'production_queue'
   if (groupStories.some((story) => visualWorkflowLane(story) === 'approved_ready')) return 'approved_ready'
   if (groupStories.some((story) => visualWorkflowLane(story) === 'ready_for_review') && readyReviewKeys[groupApprovalKey(group)] === true) return 'ready_for_review'
   return null
@@ -406,7 +434,69 @@ function repairSubstate(story: Story) {
   const notes = `${story.repair_notes || ''} ${story.review_notes || ''}`.toLowerCase()
   if (notes.includes('awaiting verification')) return 'Awaiting Verification'
   if (effectiveWorkflowState(story) === 'being_repaired') return 'Being Repaired'
+  if (effectiveWorkflowState(story) === 'failed') return 'Failed'
   return 'Needs Repair Intake'
+}
+
+function productionQueueStates(story: Story) {
+  return ['stories_in_queue', 'scripts_ready'].includes(effectiveWorkflowState(story))
+}
+
+function storyProductionPriority(story: Story) {
+  const priority = Number(story.production_priority || 0)
+  return Number.isFinite(priority) && priority > 0 ? priority : 0
+}
+
+function repairQueueStates(story: Story) {
+  return ['repair_queue', 'being_repaired', 'failed'].includes(effectiveWorkflowState(story))
+}
+
+function recommendedByLabel(story: Story) {
+  return String(story.recommended_by || story.source || '').trim() || '—'
+}
+
+function storyDurationLabel(story: Story) {
+  if (story.duration_mins) return `${story.duration_mins} min`
+  const words = String(story.script || story.prose_text || '').split(/\s+/).filter(Boolean).length
+  return words > 0 ? `~${Math.max(1, Math.round(words / 160))} min` : '—'
+}
+
+function productionQueuePosition(stories: Story[], story: Story) {
+  const sorted = stories
+    .filter(productionQueueStates)
+    .sort((a, b) => {
+      const aPriority = storyProductionPriority(a)
+      const bPriority = storyProductionPriority(b)
+      if (aPriority > 0 || bPriority > 0) {
+        if (aPriority === 0) return 1
+        if (bPriority === 0) return -1
+        if (aPriority !== bPriority) return aPriority - bPriority
+      }
+      if ((a.duration_mins || 0) !== (b.duration_mins || 0)) return (a.duration_mins || 0) - (b.duration_mins || 0)
+      return new Date(a.created_at || 0).getTime() - new Date(b.created_at || 0).getTime()
+    })
+  const index = sorted.findIndex((item) => item.id === story.id)
+  return index >= 0 ? index + 1 : null
+}
+
+function productionJobErrorLabel(story: Story) {
+  const error = story.source_job?.error_json
+  const candidates = [
+    error?.message,
+    error?.error,
+    error?.kind,
+    error?.detail?.message,
+    error?.detail?.error,
+    error?.recommendedAction,
+    story.repair_notes,
+    story.review_notes,
+    story.source_job?.current_step,
+  ]
+  return candidates.map((value) => String(value || '').trim()).find(Boolean) || 'Repair reason not recorded'
+}
+
+function repairEnteredDate(story: Story) {
+  return story.source_job?.updated_at || story.updated_at || story.reviewed_at || story.created_at || null
 }
 
 function topLevelWorkflowLabel(story: Story) {
@@ -554,6 +644,7 @@ function mergeReadiness(story: Partial<Story>, episode: ApprovalEpisode, series?
     approval_blocking_reasons: episode.approvalBlockingReasons || [],
     approval_entry_reason: episode.approvalEntryReason,
     source_job_id: episode.sourceJobId || series?.sourceJobId || null,
+    source_job: episode.source_job || (episode as any).sourceJob || null,
     completion_sort_date: episode.completionSortDate || series?.completionSortDate || null,
     audio_ready: episode.audioReadiness.audioUrl,
     story_audio_ready: episode.audioReadiness.storyAudioUrl,
@@ -567,12 +658,15 @@ function mergeReadiness(story: Partial<Story>, episode: ApprovalEpisode, series?
     repair_notes: episode.repairNotes,
     reviewed_at: story.reviewed_at || null,
     review_notes: story.review_notes || null,
+    production_priority: story.production_priority || 0,
     script_version: story.script_version || null,
     is_v2: story.is_v2 ?? null,
     script_json: story.script_json || null,
     brief_json: story.brief_json || null,
     script: story.script || null,
     story_type: story.story_type || null,
+    recommended_by: story.recommended_by || null,
+    source: story.source || null,
   } as Story
 }
 
@@ -2391,6 +2485,7 @@ export default function AdminStoriesPage() {
   const [openRepairStoryId, setOpenRepairStoryId] = useState<string | null>(null)
   const [openRepairSeriesKey, setOpenRepairSeriesKey] = useState<string | null>(null)
   const [activePipelineTab, setActivePipelineTab] = useState<WorkflowLane>('ready_for_review')
+  const [productionQueueView, setProductionQueueView] = useState<ProductionQueueView>('production_order')
   const [selectedSeriesKey, setSelectedSeriesKey] = useState<string | null>(null)
   const [seriesSearch, setSeriesSearch] = useState('')
   const [seriesFilter, setSeriesFilter] = useState<WorkflowFilter>('all')
@@ -2488,15 +2583,27 @@ export default function AdminStoriesPage() {
       return
     }
 
-    const detailColumns = 'id,title,author,genre,primary_genre,genre_secondary,genre_third,description,duration_mins,cover_url,audio_url,story_audio_url,intro_audio_url,intro_before_url,intro_after_url,outro_audio_url,background_music_url,status,is_hidden,created_at,series_id,episode_number,series_name,series_total,episode_title,flag,is_free,group_name,review_status,reviewed_at,review_notes,narrator_voice_name,workflow_state,repair_checklist,repair_notes,production_standard,production_standard_updated_at,production_standard_updated_by,script_version,is_v2,script_json,brief_json,script,story_type,production_cost'
-    const legacyDetailColumns = 'id,title,author,genre,primary_genre,genre_secondary,genre_third,description,duration_mins,cover_url,audio_url,story_audio_url,status,is_hidden,created_at,series_id,episode_number,series_name,series_total,episode_title,flag,is_free,group_name,review_status,reviewed_at,review_notes,narrator_voice_name,production_cost'
+    const detailColumns = 'id,title,author,genre,primary_genre,genre_secondary,genre_third,description,duration_mins,cover_url,audio_url,story_audio_url,intro_audio_url,intro_before_url,intro_after_url,outro_audio_url,background_music_url,status,is_hidden,created_at,updated_at,series_id,episode_number,series_name,series_total,episode_title,flag,is_free,group_name,review_status,reviewed_at,review_notes,narrator_voice_name,workflow_state,repair_checklist,repair_notes,production_standard,production_standard_updated_at,production_standard_updated_by,production_priority,script_version,is_v2,script_json,brief_json,script,story_type,recommended_by,production_cost'
+    const detailColumnsWithoutRecommendedBy = detailColumns.replace(',recommended_by', '')
+    const legacyDetailColumns = 'id,title,author,genre,primary_genre,genre_secondary,genre_third,description,duration_mins,cover_url,audio_url,story_audio_url,status,is_hidden,created_at,updated_at,series_id,episode_number,series_name,series_total,episode_title,flag,is_free,group_name,review_status,reviewed_at,review_notes,narrator_voice_name,production_cost'
     let storyRowsResult: any = await supabase
       .from('stories')
       .select(detailColumns)
       .in('id', eligibleIds)
       .order('created_at', { ascending: false })
 
-    if (storyRowsResult.error && /workflow_state|repair_checklist|repair_notes|production_standard|script_version|is_v2|script_json|brief_json|script|story_type|intro_audio_url|intro_before_url|intro_after_url|outro_audio_url|background_music_url|schema cache|column/i.test(storyRowsResult.error.message || '')) {
+    if (storyRowsResult.error && /recommended_by|schema cache|column/i.test(storyRowsResult.error.message || '')) {
+      storyRowsResult = await supabase
+        .from('stories')
+        .select(detailColumnsWithoutRecommendedBy)
+        .in('id', eligibleIds)
+        .order('created_at', { ascending: false })
+      if (storyRowsResult.data) {
+        storyRowsResult.data = storyRowsResult.data.map((story: any) => ({ ...story, recommended_by: null }))
+      }
+    }
+
+    if (storyRowsResult.error && /workflow_state|repair_checklist|repair_notes|production_standard|production_priority|script_version|is_v2|script_json|brief_json|script|story_type|intro_audio_url|intro_before_url|intro_after_url|outro_audio_url|background_music_url|schema cache|column/i.test(storyRowsResult.error.message || '')) {
       storyRowsResult = await supabase
         .from('stories')
         .select(legacyDetailColumns)
@@ -2511,6 +2618,7 @@ export default function AdminStoriesPage() {
           production_standard: null,
           production_standard_updated_at: null,
           production_standard_updated_by: null,
+          production_priority: 0,
           script_version: null,
           is_v2: null,
           script_json: null,
@@ -2522,6 +2630,7 @@ export default function AdminStoriesPage() {
           intro_after_url: null,
           outro_audio_url: null,
           background_music_url: null,
+          recommended_by: null,
         }))
       }
     }
@@ -2689,7 +2798,7 @@ export default function AdminStoriesPage() {
   }
 
   async function recoverFromColdStorage(story: Story) {
-    if (!window.confirm(`Return "${story.title}" to Ready for Review?\n\nAudio, cover, review notes, and production history will be preserved.`)) return
+    if (!window.confirm(`Return "${story.title}" to Production Queue?\n\nAudio, cover, review notes, and production history will be preserved.`)) return
     try {
       const res = await fetch('/api/admin/content-approval?action=recover_from_cold_storage', {
         method: 'POST',
@@ -2699,7 +2808,7 @@ export default function AdminStoriesPage() {
       const result = await res.json().catch(() => ({}))
       if (!res.ok || !result.success) { alert(`Recovery failed: ${result.error || `HTTP ${res.status}`}`); return }
       await fetchStories()
-      setActivePipelineTab('ready_for_review')
+      setActivePipelineTab('production_queue')
       setSeriesFilter('all')
     } catch (err) { alert('Recovery failed: ' + String(err)) }
   }
@@ -2707,7 +2816,7 @@ export default function AdminStoriesPage() {
   async function recoverSeriesFromColdStorage(group: Extract<StoryGroup, { type: 'series' }>) {
     const seriesId = String(group.stories[0]?.series_id || '').trim()
     if (!seriesId) return
-    if (!window.confirm(`Return the entire series "${group.title}" (${group.stories.length} episodes) to Ready for Review?\n\nAudio, covers, review notes, and production history will be preserved.`)) return
+    if (!window.confirm(`Return the entire series "${group.title}" (${group.stories.length} episodes) to Production Queue?\n\nAudio, covers, review notes, and production history will be preserved.`)) return
     try {
       const res = await fetch('/api/admin/content-approval?action=recover_from_cold_storage', {
         method: 'POST',
@@ -2717,7 +2826,7 @@ export default function AdminStoriesPage() {
       const result = await res.json().catch(() => ({}))
       if (!res.ok || !result.success) { alert(`Recovery failed: ${result.error || `HTTP ${res.status}`}`); return }
       await fetchStories()
-      setActivePipelineTab('ready_for_review')
+      setActivePipelineTab('production_queue')
       setSeriesFilter('all')
     } catch (err) { alert('Recovery failed: ' + String(err)) }
   }
@@ -3149,7 +3258,7 @@ export default function AdminStoriesPage() {
       return [{
         type: 'series',
         key: `series:${item.seriesId}`,
-        title: item.title,
+        title: displaySeriesTitle(seriesStories) || item.title,
         stories: seriesStories,
         expectedEpisodeCount: item.expectedEpisodeCount,
         presentEpisodeCount: item.presentEpisodeCount,
@@ -3166,16 +3275,41 @@ export default function AdminStoriesPage() {
   })
 
   const workflowCounts = groupsFromReadiness.reduce((counts, group) => {
-    const lane = groupPrimaryWorkflowLane(group, readyReviewKeys)
-    if (lane && isApprovalWorkflowLane(lane)) {
-      counts[lane] = (counts[lane] || 0) + 1
-    }
+    const groupStories = group.type === 'series' ? group.stories : [group.story]
+    STREAMING_PIPELINE.forEach((item) => {
+      const rowCount = storiesForWorkflowLane(groupStories, item.id).length
+      if (rowCount > 0) counts[item.id] = (counts[item.id] || 0) + rowCount
+    })
     return counts
   }, {} as Record<WorkflowLane, number>)
 
   const repairQueueItemCount = groupsFromReadiness.reduce((count, group) => {
-    return groupPrimaryWorkflowLane(group, readyReviewKeys) === 'repair_shop' ? count + 1 : count
+    const groupStories = group.type === 'series' ? group.stories : [group.story]
+    return count + groupStories.filter(repairQueueStates).length
   }, 0)
+
+  const activelyRepairedStory = stories
+    .filter(repairQueueStates)
+    .sort((a, b) => {
+      const aActive = effectiveWorkflowState(a) === 'being_repaired' ? 1 : 0
+      const bActive = effectiveWorkflowState(b) === 'being_repaired' ? 1 : 0
+      if (bActive !== aActive) return bActive - aActive
+      return new Date(repairEnteredDate(b) || 0).getTime() - new Date(repairEnteredDate(a) || 0).getTime()
+    })[0] || null
+
+  const nextProductionStory = stories
+    .filter(productionQueueStates)
+    .sort((a, b) => {
+      const aPriority = storyProductionPriority(a)
+      const bPriority = storyProductionPriority(b)
+      if (aPriority > 0 || bPriority > 0) {
+        if (aPriority === 0) return 1
+        if (bPriority === 0) return -1
+        if (aPriority !== bPriority) return aPriority - bPriority
+      }
+      if ((a.duration_mins || 0) !== (b.duration_mins || 0)) return (a.duration_mins || 0) - (b.duration_mins || 0)
+      return new Date(a.created_at || 0).getTime() - new Date(b.created_at || 0).getTime()
+    })[0] || null
 
   useEffect(() => {
     if (returnSelectionAppliedRef.current || loading || (!returnTarget.storyId && !returnTarget.seriesId)) return
@@ -3208,9 +3342,49 @@ export default function AdminStoriesPage() {
     if (tab === 'all') return group.type === 'series'
       ? group.presentEpisodeCount || group.stories[0]?.present_episode_count || groupStories.length
       : groupStories.length
-    const primaryLane = groupPrimaryWorkflowLane(group, readyReviewKeys)
-    if (primaryLane !== tab) return 0
     return storiesForWorkflowLane(groupStories, tab).length
+  }
+
+  function productionQueueStoriesForGroup(group: StoryGroup) {
+    const groupStories = group.type === 'series' ? group.stories : [group.story]
+    return storiesForWorkflowLane(groupStories, 'production_queue')
+  }
+
+  function groupProductionPriority(group: StoryGroup) {
+    const priorities = productionQueueStoriesForGroup(group)
+      .map(storyProductionPriority)
+      .filter((priority) => priority > 0)
+    return priorities.length > 0 ? Math.min(...priorities) : 0
+  }
+
+  function groupProductionDuration(group: StoryGroup) {
+    return productionQueueStoriesForGroup(group).reduce((sum, story) => sum + (story.duration_mins || 0), 0)
+  }
+
+  function compareProductionQueueGroups(a: StoryGroup, b: StoryGroup) {
+    const aPriority = groupProductionPriority(a)
+    const bPriority = groupProductionPriority(b)
+    if (aPriority > 0 || bPriority > 0) {
+      if (aPriority === 0) return 1
+      if (bPriority === 0) return -1
+      if (aPriority !== bPriority) return aPriority - bPriority
+    }
+
+    const aCount = groupEpisodeCountForTab(a, 'production_queue')
+    const bCount = groupEpisodeCountForTab(b, 'production_queue')
+    if (aCount !== bCount) return aCount - bCount
+
+    const durationDelta = groupProductionDuration(a) - groupProductionDuration(b)
+    if (durationDelta !== 0) return durationDelta
+
+    const aTitle = a.type === 'series' ? a.title : a.story.title
+    const bTitle = b.type === 'series' ? b.title : b.story.title
+    return aTitle.localeCompare(bTitle)
+  }
+
+  function productionQueuePositionForGroup(group: StoryGroup) {
+    const index = seriesGroups.findIndex((item) => item.key === group.key)
+    return activePipelineTab === 'production_queue' && index >= 0 ? index + 1 : null
   }
 
   const seriesGroups = groupsFromReadiness
@@ -3219,12 +3393,22 @@ export default function AdminStoriesPage() {
       const title = group.type === 'series' ? group.title : group.story.title
       const matchesSearch = !seriesSearch.trim() || title.toLowerCase().includes(seriesSearch.trim().toLowerCase())
       const selectedWorkflow = seriesFilter === 'all' ? activePipelineTab : seriesFilter
-      const primaryLane = groupPrimaryWorkflowLane(group, readyReviewKeys)
-      const validEpisodeCount = primaryLane === selectedWorkflow ? storiesForWorkflowLane(groupStories, selectedWorkflow).length : 0
-      const matchesWorkflow = primaryLane === selectedWorkflow && validEpisodeCount > 0
+      const validEpisodeCount = storiesForWorkflowLane(groupStories, selectedWorkflow).length
+      const matchesWorkflow = validEpisodeCount > 0
       return matchesSearch && matchesWorkflow
     })
     .sort((a, b) => {
+      if (activePipelineTab === 'production_queue') {
+        if (productionQueueView === 'production_order') return compareProductionQueueGroups(a, b)
+        const aCount = groupEpisodeCountForTab(a, 'production_queue')
+        const bCount = groupEpisodeCountForTab(b, 'production_queue')
+        if (aCount !== bCount) return aCount - bCount
+        const durationDelta = groupProductionDuration(a) - groupProductionDuration(b)
+        if (durationDelta !== 0) return durationDelta
+        const aTitle = a.type === 'series' ? a.title : a.story.title
+        const bTitle = b.type === 'series' ? b.title : b.story.title
+        return aTitle.localeCompare(bTitle)
+      }
       if (activePipelineTab === 'cold_storage') {
         const aDate = a.type === 'series'
           ? Math.max(...a.stories.map((s) => new Date(s.updated_at || 0).getTime()))
@@ -3539,7 +3723,7 @@ export default function AdminStoriesPage() {
     : null
   const selectedTotalMinutes = selectedStories.reduce((sum, story) => sum + (story.duration_mins || 0), 0)
   const selectedAverageMinutes = selectedIsSeries && selectedStories.length > 0 ? Math.round(selectedTotalMinutes / selectedStories.length) : 0
-  const selectedPanelIsSimplified = activePipelineTab === 'approved_ready' || activePipelineTab === 'published'
+  const selectedPanelIsSimplified = activePipelineTab === 'approved_ready' || activePipelineTab === 'published' || activePipelineTab === 'production_queue' || activePipelineTab === 'repair_shop' || activePipelineTab === 'cold_storage'
   const selectedMarkedForDeletion = selectedStories.some((story) => markedForDeletionIds[story.id])
   const selectedCanShowRemasterCopy = selectedStories.some((story) =>
     isRemasterCandidateState(effectiveWorkflowState(story)) &&
@@ -3586,8 +3770,38 @@ export default function AdminStoriesPage() {
       moveSeriesToColdStorage(selectedGroup)
       return
     }
-    if (window.confirm(`Move "${selectedFirst.title}" to Cold Storage?`)) {
+    const message = activePipelineTab === 'repair_shop'
+      ? `Move ${selectedFirst.title} to Cold Storage? This will stop all repair attempts.`
+      : `Move "${selectedFirst.title}" to Cold Storage?`
+    if (window.confirm(message)) {
       setWorkflowState(selectedFirst, 'cold_storage', { retire: effectiveWorkflowState(selectedFirst) === 'published' })
+    }
+  }
+
+  async function removeStoryFromProductionQueue(story: Story) {
+    if (!window.confirm(`Move ${story.title} to Cold Storage? It will be removed from the production queue.`)) return
+    await setWorkflowState(story, 'cold_storage')
+    setActivePipelineTab('production_queue')
+    setSeriesFilter('all')
+  }
+
+  async function promoteStoryToNext(story: Story) {
+    try {
+      const res = await fetch('/api/admin/content-approval?action=set_production_priority', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ storyId: story.id, priority: 1 }),
+      })
+      const result = await res.json().catch(() => ({}))
+      if (!res.ok || !result.success) {
+        alert(`Promote failed: ${result.error || `HTTP ${res.status}`}`)
+        return
+      }
+      await fetchStories()
+      setActivePipelineTab('production_queue')
+      setSeriesFilter('all')
+    } catch (err) {
+      alert('Promote failed: ' + String(err))
     }
   }
 
@@ -3910,6 +4124,60 @@ export default function AdminStoriesPage() {
           )}
         </div>
 
+        {activePipelineTab === 'repair_shop' && (
+          <div style={{ marginTop: '14px', display: 'grid', gap: '10px' }}>
+            <div style={{ padding: '12px 14px', borderRadius: '10px', border: '1px solid #FED7AA', backgroundColor: '#FFF7ED', color: '#9A3412', fontSize: '12px', fontWeight: 900 }}>
+              Repair Queue is processed before new Production Queue stories begin.
+            </div>
+            {activelyRepairedStory && (
+              <div style={{ padding: '12px 14px', borderRadius: '10px', border: '1px solid #BFDBFE', backgroundColor: '#EFF6FF', color: '#1E40AF', fontSize: '13px', fontWeight: 900 }}>
+                Hal is currently repairing: {activelyRepairedStory.title}
+              </div>
+            )}
+          </div>
+        )}
+
+        {activePipelineTab === 'production_queue' && (
+          <div style={{ marginTop: '14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap' }}>
+            <div style={{ flex: '1 1 320px', padding: '12px 14px', borderRadius: '10px', border: `1px solid ${repairQueueItemCount > 0 ? '#FED7AA' : '#A7F3D0'}`, backgroundColor: repairQueueItemCount > 0 ? '#FFF7ED' : '#ECFDF5', color: repairQueueItemCount > 0 ? '#9A3412' : '#047857', fontSize: '12px', fontWeight: 900 }}>
+              {repairQueueItemCount > 0
+                ? `Production paused - ${repairQueueItemCount} stories in Repair Queue`
+                : `Production active - next up: ${nextProductionStory?.title || 'nothing queued'}`}
+            </div>
+            <div style={{ display: 'inline-flex', border: '1px solid #D1D5DB', borderRadius: '8px', overflow: 'hidden', backgroundColor: '#ffffff' }}>
+              {[
+                ['production_order', 'Production Order'],
+                ['by_episodes', 'By Episodes'],
+              ].map(([value, label]) => {
+                const active = productionQueueView === value
+                return (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => {
+                      setProductionQueueView(value as ProductionQueueView)
+                      setSelectedSeriesKey(null)
+                    }}
+                    style={{
+                      minHeight: '36px',
+                      padding: '0 12px',
+                      border: 'none',
+                      borderRight: value === 'production_order' ? '1px solid #D1D5DB' : 'none',
+                      backgroundColor: active ? '#0F172A' : '#ffffff',
+                      color: active ? '#ffffff' : '#374151',
+                      fontSize: '12px',
+                      fontWeight: 900,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    {label}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        )}
+
         {/* ATL-CONS-001 Phase C: Incomplete Series Hard Block Panel */}
         {activePipelineTab === 'ready_for_review' && blockedSeriesItems.length > 0 && (
           <div style={{ marginBottom: '16px', border: '1px solid #FCA5A5', borderRadius: '10px', backgroundColor: '#FFF5F5', padding: '14px 16px' }}>
@@ -3939,46 +4207,80 @@ export default function AdminStoriesPage() {
         )}
 
         <div className="approval-panels" style={{ marginTop: '16px', display: 'flex', gap: '16px', alignItems: 'flex-start' }}>
-          <aside className="approval-left-panel" style={{ flex: '0 0 340px', backgroundColor: '#ffffff', borderRadius: '10px', boxShadow: '0 1px 3px rgba(0,0,0,0.08)', padding: '16px' }}>
+          <aside className="approval-left-panel" style={{ flex: '0 0 30%', minWidth: '280px', maxWidth: '380px', backgroundColor: '#ffffff', borderRadius: '10px', boxShadow: '0 1px 3px rgba(0,0,0,0.08)', padding: '16px' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
               <div style={{ color: '#374151', fontSize: '12px', fontWeight: 700, textTransform: 'uppercase' }}>{activeWorkflow.label} ({activeWorkflowCount})</div>
               <button type="button" onClick={() => console.log('new series')} style={{ border: 'none', background: 'transparent', color: '#E8722A', fontSize: '11px', fontWeight: 700, cursor: 'pointer' }}>+ New Series</button>
             </div>
             <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
-              <input type="text" value={seriesSearch} onChange={(e) => setSeriesSearch(e.target.value)} placeholder="🔍 Search series..." style={{ flex: '1 1 60%', height: '32px', border: '1px solid #E5E7EB', borderRadius: '6px', padding: '0 9px', color: '#374151', fontSize: '12px' }} />
-              <select value={seriesFilter} onChange={(e) => {
-                const next = e.target.value as WorkflowFilter
-                setSeriesFilter(next)
-                if (next !== 'all') {
-                  setActivePipelineTab(next)
-                  setSelectedSeriesKey(null)
-                  setOpenRepairSeriesKey(null)
-                  setSeriesActionsOpen(false)
-                }
-              }} style={{ flex: '0 0 35%', height: '32px', border: '1px solid #E5E7EB', borderRadius: '6px', padding: '0 7px', color: '#374151', backgroundColor: '#ffffff', fontSize: '12px' }}>
-                <option value="all">This Workflow</option>
-                {STREAMING_PIPELINE.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
-              </select>
+              <input type="text" value={seriesSearch} onChange={(e) => setSeriesSearch(e.target.value)} placeholder="🔍 Search series..." style={{ flex: activePipelineTab === 'production_queue' ? '1 1 100%' : '1 1 60%', height: '32px', border: '1px solid #E5E7EB', borderRadius: '6px', padding: '0 9px', color: '#374151', fontSize: '12px' }} />
+              {activePipelineTab !== 'production_queue' && (
+                <select value={seriesFilter} onChange={(e) => {
+                  const next = e.target.value as WorkflowFilter
+                  setSeriesFilter(next)
+                  if (next !== 'all') {
+                    setActivePipelineTab(next)
+                    setSelectedSeriesKey(null)
+                    setOpenRepairSeriesKey(null)
+                    setSeriesActionsOpen(false)
+                  }
+                }} style={{ flex: '0 0 35%', height: '32px', border: '1px solid #E5E7EB', borderRadius: '6px', padding: '0 7px', color: '#374151', backgroundColor: '#ffffff', fontSize: '12px' }}>
+                  <option value="all">This Workflow</option>
+                  {STREAMING_PIPELINE.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
+                </select>
+              )}
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginTop: '12px' }}>
-              {seriesGroups.map((group) => {
+              {seriesGroups.map((group, index) => {
                 const groupStories = group.type === 'series' ? group.stories : [group.story]
-                const firstStory = groupStories[0]
-                const groupTitle = group.type === 'series' ? group.title : group.story.title
+                const productionStories = activePipelineTab === 'production_queue' ? productionQueueStoriesForGroup(group) : []
+                const cardStories = productionStories.length > 0 ? productionStories : groupStories
+                const firstStory = cardStories[0] || groupStories[0]
                 const trueSeries = isTrueSeriesGroup(group)
                 const expected = trueSeries ? groupExpectedCount(group) : 1
                 const present = trueSeries ? groupPresentCount(group) : 1
+                const queueEpisodeCount = activePipelineTab === 'production_queue' ? cardStories.length : present
+                const queueDuration = activePipelineTab === 'production_queue'
+                  ? cardStories.reduce((sum, story) => sum + (story.duration_mins || 0), 0)
+                  : firstStory?.duration_mins || 0
+                const groupTitle = activePipelineTab === 'production_queue'
+                  ? trueSeries
+                    ? displaySeriesTitle(cardStories)
+                    : String(firstStory?.title || firstStory?.series_name || 'Untitled Story')
+                  : group.type === 'series' ? group.title : group.story.title
+                const queueGenre = firstStory?.genre || groupStories.find((story) => story.genre)?.genre || 'No genre'
                 const currentCount = groupEpisodeCountForTab(group, activePipelineTab)
+                const productionPosition = activePipelineTab === 'production_queue' ? index + 1 : null
+                const productionPriority = activePipelineTab === 'production_queue' ? groupProductionPriority(group) : 0
+                const primaryProductionStory = activePipelineTab === 'production_queue' ? productionStories[0] : null
                 const selected = selectedSeriesKey === group.key
                 return (
                   <button key={group.key} type="button" onClick={() => setSelectedSeriesKey(group.key)} style={{ minHeight: activePipelineTab === 'cold_storage' ? '90px' : '64px', display: 'flex', alignItems: 'center', gap: '10px', width: '100%', padding: '9px 8px', borderRadius: '6px', border: 'none', borderLeft: selected ? '3px solid #E8722A' : '3px solid transparent', backgroundColor: selected ? '#FFF7ED' : '#ffffff', cursor: 'pointer', textAlign: 'left' }} onMouseEnter={(e) => { if (!selected) e.currentTarget.style.backgroundColor = '#F9FAFB' }} onMouseLeave={(e) => { if (!selected) e.currentTarget.style.backgroundColor = '#ffffff' }}>
+                    {productionPosition && (
+                      <span style={{ width: '34px', height: '34px', borderRadius: '999px', backgroundColor: productionPriority > 0 ? '#F59E0B' : '#E5E7EB', color: productionPriority > 0 ? '#7C2D12' : '#4B5563', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', fontWeight: 950, flex: '0 0 auto' }}>
+                        #{productionPosition}
+                      </span>
+                    )}
                     <div style={{ width: '44px', height: '44px', borderRadius: '6px', overflow: 'hidden', backgroundColor: '#E5E7EB', flex: '0 0 auto' }}>
                       <img src={firstStory?.cover_url || '/images/default-cover.png'} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                     </div>
                     <div style={{ minWidth: 0, flex: '1 1 auto' }}>
                       <div style={{ color: '#1F2937', fontSize: '13px', fontWeight: 600, lineHeight: 1.2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{groupTitle}</div>
-                      <div style={{ color: '#9CA3AF', fontSize: '10px', marginTop: '4px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{firstStory?.genre || 'No genre'} • {firstStory?.author || 'Unknown'}{(() => { const d = group.type === 'series' ? group.completionSortDate : (group as any).story?.completion_sort_date; return d ? ` • ${new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}` : '' })()}</div>
-                      <div style={{ color: '#9CA3AF', fontSize: '10px', marginTop: '3px' }}>{trueSeries ? `Series • ${expected} episodes • ${present} present` : `Standalone • ${firstStory?.duration_mins || 0}m`}</div>
+                      {activePipelineTab === 'production_queue' ? (
+                        <>
+                          <div style={{ color: '#4B5563', fontSize: '10px', marginTop: '4px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: 800 }}>
+                            Episodes: {queueEpisodeCount}{trueSeries && expected !== queueEpisodeCount ? ` of ${expected}` : ''} • Duration: {queueDuration || '—'}m • Genre: {queueGenre}
+                          </div>
+                          {productionPriority > 0 && (
+                            <div style={{ color: '#B45309', fontSize: '10px', marginTop: '3px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: 800 }}>Priority: explicit #{productionPriority}</div>
+                          )}
+                        </>
+                      ) : (
+                        <>
+                          <div style={{ color: '#9CA3AF', fontSize: '10px', marginTop: '4px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{firstStory?.genre || 'No genre'} • {firstStory?.author || 'Unknown'}{(() => { const d = group.type === 'series' ? group.completionSortDate : (group as any).story?.completion_sort_date; return d ? ` • ${new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}` : '' })()}</div>
+                          <div style={{ color: '#9CA3AF', fontSize: '10px', marginTop: '3px' }}>{trueSeries ? `Series • ${expected} episodes • ${present} present` : `Standalone • ${firstStory?.duration_mins || 0}m`}</div>
+                        </>
+                      )}
                       {activePipelineTab === 'cold_storage' && (
                         <>
                           {firstStory?.updated_at && (
@@ -3996,7 +4298,47 @@ export default function AdminStoriesPage() {
                         </>
                       )}
                     </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '7px', flex: '0 0 auto' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '7px', flex: '0 0 auto', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                      {activePipelineTab === 'production_queue' && primaryProductionStory && (
+                        <>
+                          {productionQueueView === 'production_order' && (
+                            <span
+                              role="button"
+                              tabIndex={0}
+                              onClick={(event) => {
+                                event.stopPropagation()
+                                promoteStoryToNext(primaryProductionStory)
+                              }}
+                              onKeyDown={(event) => {
+                                if (event.key !== 'Enter' && event.key !== ' ') return
+                                event.preventDefault()
+                                event.stopPropagation()
+                                promoteStoryToNext(primaryProductionStory)
+                              }}
+                              style={{ ...actionButtonStyle('primary'), minHeight: '24px', padding: '4px 7px', fontSize: '10px', lineHeight: 1.1 }}
+                            >
+                              Promote
+                            </span>
+                          )}
+                          <span
+                            role="button"
+                            tabIndex={0}
+                            onClick={(event) => {
+                              event.stopPropagation()
+                              removeStoryFromProductionQueue(primaryProductionStory)
+                            }}
+                            onKeyDown={(event) => {
+                              if (event.key !== 'Enter' && event.key !== ' ') return
+                              event.preventDefault()
+                              event.stopPropagation()
+                              removeStoryFromProductionQueue(primaryProductionStory)
+                            }}
+                            style={{ ...actionButtonStyle('danger'), minHeight: '24px', padding: '4px 7px', fontSize: '10px', lineHeight: 1.1 }}
+                          >
+                            Remove
+                          </span>
+                        </>
+                      )}
                       <span style={{ width: '24px', height: '24px', borderRadius: '999px', backgroundColor: currentCount > 0 ? '#E8722A' : '#E5E7EB', color: currentCount > 0 ? '#ffffff' : '#6B7280', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '11px', fontWeight: 700 }}>{currentCount}</span>
                       <span style={{ color: '#9CA3AF', fontSize: '14px' }}>›</span>
                     </div>
@@ -4010,7 +4352,7 @@ export default function AdminStoriesPage() {
             </div>
           </aside>
 
-          <main className="approval-detail-main" style={{ flex: '1 1 0', minWidth: 0, backgroundColor: '#ffffff', borderRadius: '10px', boxShadow: '0 1px 3px rgba(0,0,0,0.08)', padding: '16px' }}>
+          <main className="approval-detail-main" style={{ flex: '1 1 70%', minWidth: 0, backgroundColor: '#ffffff', borderRadius: '10px', boxShadow: '0 1px 3px rgba(0,0,0,0.08)', padding: '16px' }}>
             {!selectedGroup && (
               <div style={{ minHeight: '360px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#9CA3AF', fontSize: '13px', flexDirection: 'column', gap: '8px' }}>
                 <div style={{ fontSize: '30px', color: '#D1D5DB' }}>▦</div>
@@ -4027,7 +4369,7 @@ export default function AdminStoriesPage() {
                     {!selectedPanelIsSimplified && (
                       <button type="button" onClick={() => setEpisodeCoverOpen(selectedFirst.id, true)} title="Change cover" style={{ border: 'none', background: 'transparent', color: '#9CA3AF', fontSize: '13px', cursor: 'pointer', padding: 0, marginBottom: '3px' }}>✎</button>
                     )}
-                    <div className="approval-detail-title" style={{ color: '#1F2937', fontSize: '20px', fontWeight: 800, lineHeight: 1.15 }}>{selectedTitle}</div>
+                    <div className="approval-detail-title" style={{ color: '#1F2937', fontSize: activePipelineTab === 'production_queue' ? '24px' : '20px', fontWeight: 800, lineHeight: 1.15 }}>{selectedTitle}</div>
                     <div style={{ marginTop: '5px', color: '#6B7280', fontSize: '12px' }}>Author: {selectedFirst.author || 'Unknown'}</div>
                     <div style={{ marginTop: '4px', color: '#9CA3AF', fontSize: '11px' }}>
                       Narrator: {selectedNarrator}
@@ -4050,8 +4392,46 @@ export default function AdminStoriesPage() {
                       </div>
                     )}
                     {selectedShortDescription && (
-                      <div style={{ marginTop: '8px', color: '#4B5563', fontSize: '12px', lineHeight: 1.45, maxWidth: '760px' }}>
+                      <div style={{ marginTop: activePipelineTab === 'production_queue' ? '12px' : '8px', color: '#374151', fontSize: activePipelineTab === 'production_queue' ? '15px' : '12px', lineHeight: 1.5, maxWidth: activePipelineTab === 'production_queue' ? '940px' : '760px', fontWeight: activePipelineTab === 'production_queue' ? 600 : 400 }}>
                         {selectedShortDescription}
+                      </div>
+                    )}
+                    {activePipelineTab === 'production_queue' && (
+                      <div style={{ marginTop: '12px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '8px', maxWidth: '820px' }}>
+                        {[
+                          ['Queue #', selectedGroup && productionQueueView === 'production_order' && productionQueuePositionForGroup(selectedGroup) ? `#${productionQueuePositionForGroup(selectedGroup)}` : productionQueuePosition(stories, selectedFirst) ? `#${productionQueuePosition(stories, selectedFirst)}` : '—'],
+                          ['Priority', selectedGroup && groupProductionPriority(selectedGroup) > 0 ? `Explicit #${groupProductionPriority(selectedGroup)}` : 'Default order'],
+                          ['Series / Episodes', selectedIsSeries ? `${selectedTitle} • ${selectedPresent || selectedStories.length} ep` : 'Standalone • 1 ep'],
+                          ['Duration', selectedIsSeries ? `${selectedTotalMinutes || '—'} min total` : storyDurationLabel(selectedFirst)],
+                          ['Genre', selectedFirst.genre || '—'],
+                          ['Recommended by', recommendedByLabel(selectedFirst)],
+                        ].map(([label, value]) => (
+                          <div key={label} style={{ border: '1px solid #E5E7EB', borderRadius: '8px', backgroundColor: '#F9FAFB', padding: '8px 10px', minWidth: 0 }}>
+                            <div style={{ color: '#6B7280', fontSize: '10px', fontWeight: 900, textTransform: 'uppercase' }}>{label}</div>
+                            <div style={{ marginTop: '4px', color: '#111827', fontSize: '16px', fontWeight: 850, lineHeight: 1.25, overflowWrap: 'anywhere' }}>{value}</div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    {activePipelineTab === 'repair_shop' && (
+                      <div style={{ marginTop: '12px', display: 'grid', gap: '8px', maxWidth: '820px' }}>
+                        <div style={{ border: '1px solid #FED7AA', borderRadius: '8px', backgroundColor: '#FFF7ED', padding: '10px 12px' }}>
+                          <div style={{ color: '#9A3412', fontSize: '10px', fontWeight: 900, textTransform: 'uppercase' }}>Repair status</div>
+                          <div style={{ marginTop: '4px', color: '#7C2D12', fontSize: '13px', fontWeight: 900 }}>{repairSubstate(selectedFirst)}</div>
+                        </div>
+                        <div style={{ border: '1px solid #E5E7EB', borderRadius: '8px', backgroundColor: '#F9FAFB', padding: '10px 12px' }}>
+                          <div style={{ color: '#6B7280', fontSize: '10px', fontWeight: 900, textTransform: 'uppercase' }}>Failure reason / repair target</div>
+                          <div style={{ marginTop: '4px', color: '#111827', fontSize: '12px', fontWeight: 700, lineHeight: 1.4 }}>{productionJobErrorLabel(selectedFirst)}</div>
+                          <div style={{ marginTop: '6px', color: '#6B7280', fontSize: '11px' }}>
+                            Entered repair: {repairEnteredDate(selectedFirst) ? new Date(repairEnteredDate(selectedFirst)!).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—'}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                    {activePipelineTab === 'cold_storage' && (
+                      <div style={{ marginTop: '12px', border: '1px solid #E5E7EB', borderRadius: '8px', backgroundColor: '#F9FAFB', padding: '10px 12px', maxWidth: '820px' }}>
+                        <div style={{ color: '#6B7280', fontSize: '10px', fontWeight: 900, textTransform: 'uppercase' }}>Cold storage reason</div>
+                        <div style={{ marginTop: '4px', color: '#111827', fontSize: '12px', fontWeight: 700, lineHeight: 1.4 }}>{selectedFirst.review_notes || selectedFirst.repair_notes || 'Reason not recorded'}</div>
                       </div>
                     )}
                     {!selectedPanelIsSimplified && selectedApprovalBlockingReasons.length > 0 && (
@@ -4087,7 +4467,7 @@ export default function AdminStoriesPage() {
                             onClick={() => recoverSeriesFromColdStorage(selectedGroup as Extract<StoryGroup, { type: 'series' }>)}
                             style={actionButtonStyle('success')}
                           >
-                            Move to Ready for Review
+                            Move to Production Queue
                           </button>
                         ) : (
                           <button
@@ -4095,7 +4475,7 @@ export default function AdminStoriesPage() {
                             onClick={() => recoverFromColdStorage(selectedFirst)}
                             style={actionButtonStyle('success')}
                           >
-                            Move to Ready for Review
+                            Move to Production Queue
                           </button>
                         )}
                         <button
@@ -4106,8 +4486,30 @@ export default function AdminStoriesPage() {
                           Move to Incubator
                         </button>
                       </div>
+                    ) : activePipelineTab === 'repair_shop' ? (
+                      <button type="button" onClick={moveSelectedToColdStorage} style={{ ...actionButtonStyle('danger'), minHeight: '38px', padding: '9px 13px', fontSize: '13px' }}>Move to Cold Storage</button>
                     ) : selectedPanelIsSimplified ? (
                       <>
+                        {activePipelineTab === 'production_queue' && (
+                          <>
+                            {productionQueueView === 'production_order' && (
+                              <button
+                                type="button"
+                                onClick={() => promoteStoryToNext(selectedFirst)}
+                                style={{ ...actionButtonStyle('primary'), minHeight: '30px', padding: '6px 10px', fontSize: '11px' }}
+                              >
+                                Promote
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => removeStoryFromProductionQueue(selectedFirst)}
+                              style={{ ...actionButtonStyle('danger'), minHeight: '30px', padding: '6px 10px', fontSize: '11px' }}
+                            >
+                              Remove
+                            </button>
+                          </>
+                        )}
                         {activePipelineTab === 'approved_ready' && (
                           <button
                             type="button"

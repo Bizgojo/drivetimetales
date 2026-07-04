@@ -160,7 +160,7 @@ export default function SeriesCard({
             <span style={{ fontSize: '13px', background: '#111', borderRadius: '4px', padding: '1px 5px', flexShrink: 0 }}>👎</span>
           )}
           <div style={{ flex: 1 }} />
-          <span style={{ color: '#cbd5e1', fontSize: '11px', fontWeight: 500 }}>~{avgDuration}min</span>
+          <span style={{ color: 'white', fontSize: '11px', fontWeight: 500 }}>~{avgDuration}min</span>
         </div>
 
         <div

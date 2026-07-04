@@ -191,13 +191,13 @@ export default function SeriesDetailPage() {
     const remMins = mins % 60
     return remMins === 0 ? `${hours}hs` : `${hours}hs-${remMins}min`
   }
-  const durationText = `${episodes.length} parts · Avg. ${formatDuration(avgMins)} · ${formatDuration(totalMins)} total`
+  const durationText = `${episodes.length} episodes · Avg. ${formatDuration(avgMins)} · ${formatDuration(totalMins)} total`
   const avgDurationText = `Avg. ${formatDuration(avgMins)}`
   const narratorName = narratorProfile?.name || episodes[0]?.narrator_voice_name || ''
   const modalProfile = activeProfile === 'author' ? authorProfile : activeProfile === 'narrator' ? narratorProfile : null
   const proseChapters = episodes.filter(ep => ep.prose_text)
 
-  if (loading) return <div style={{ background: '#020617', minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><div style={{ color: '#64748b', fontSize: '14px' }}>Loading...</div></div>
+  if (loading) return <div style={{ background: '#020617', minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><div style={{ color: 'white', fontSize: '14px' }}>Loading...</div></div>
   if (unavailable) return <div style={{ background: '#020617', minHeight: '100vh', color: 'white', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 24, textAlign: 'center' }}><p style={{ marginBottom: 16 }}>This series isn’t available yet.</p><button onClick={() => router.push('/library')} style={{ color: '#f97316', background: 'none', border: '1px solid rgba(249,115,22,0.35)', borderRadius: 10, padding: '10px 16px', cursor: 'pointer', fontWeight: 700 }}>Back to Library</button></div>
   if (!seriesInfo) return null
 
@@ -213,7 +213,7 @@ export default function SeriesDetailPage() {
         <div style={{ flex: 1, minWidth: 0, paddingTop: 2 }}>
           <div style={{ fontSize: 10, color: '#f97316', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: 6 }}>{seriesInfo.genre || 'Series'}</div>
           <h1 style={{ fontFamily: 'var(--font-outfit, sans-serif)', fontWeight: 900, fontSize: 24, color: 'white', lineHeight: 1.05, margin: '0 0 10px' }}>{seriesInfo.name}</h1>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px 10px', alignItems: 'center', color: '#94a3b8', fontSize: 11, lineHeight: 1.35 }}>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px 10px', alignItems: 'center', color: 'white', fontSize: 11, lineHeight: 1.35 }}>
             <span>{episodes.length} episodes</span>
             <span style={{ color: '#334155' }}>•</span>
             <span style={{ color: '#f97316', fontWeight: 800 }}>{avgDurationText}</span>
@@ -239,7 +239,7 @@ export default function SeriesDetailPage() {
           >
             {authorProfile?.photo_url && <img src={authorProfile.photo_url} alt={authorProfile.name} style={{ width: 24, height: 24, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }} />}
             <span style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', minWidth: 0 }}>
-              <span style={{ fontSize: 9, color: '#94a3b8', textTransform: 'uppercase', fontWeight: 800, letterSpacing: '0.08em' }}>Author</span>
+              <span style={{ fontSize: 9, color: 'white', textTransform: 'uppercase', fontWeight: 800, letterSpacing: '0.08em' }}>Author</span>
               <span style={{ fontSize: 12, fontWeight: 800, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '100%' }}>{authorProfile?.name || seriesInfo.author}</span>
             </span>
           </button>
@@ -252,7 +252,7 @@ export default function SeriesDetailPage() {
           >
             {narratorProfile?.photo_url && <img src={narratorProfile.photo_url} alt={narratorProfile.name} style={{ width: 24, height: 24, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }} />}
             <span style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', minWidth: 0 }}>
-              <span style={{ fontSize: 9, color: '#94a3b8', textTransform: 'uppercase', fontWeight: 800, letterSpacing: '0.08em' }}>Narrator</span>
+              <span style={{ fontSize: 9, color: 'white', textTransform: 'uppercase', fontWeight: 800, letterSpacing: '0.08em' }}>Narrator</span>
               <span style={{ fontSize: 12, fontWeight: 800, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '100%' }}>{narratorProfile?.name || narratorName}</span>
             </span>
           </button>
@@ -322,14 +322,14 @@ export default function SeriesDetailPage() {
 
               {/* Body */}
               <div style={{ flex: 1, padding: '12px 70px 12px 12px', display: 'flex', flexDirection: 'column', justifyContent: 'center', minWidth: 0 }}>
-                <div style={{ fontSize: 10, color: isInProgress ? '#22c55e' : isCompleted ? '#3b82f6' : '#64748b', fontWeight: 700, marginBottom: 2 }}>
+                <div style={{ fontSize: 10, color: isInProgress ? '#22c55e' : isCompleted ? '#3b82f6' : 'white', fontWeight: 700, marginBottom: 2 }}>
                   Episode {ep.episode_number} · {ep.duration_mins} min
                   {isInProgress && <span style={{ marginLeft: 6 }}>· In progress</span>}
                   {isCompleted && <span style={{ marginLeft: 6 }}>· Completed</span>}
                 </div>
                 <div style={{ fontFamily: 'var(--font-outfit, sans-serif)', fontWeight: 700, fontSize: 13, color: 'white', lineHeight: 1.2, marginBottom: 3, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{ep.title}</div>
                 {ep.description && (
-                  <p style={{ fontSize: 10, color: '#94a3b8', lineHeight: 1.5, margin: 0, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{ep.description}</p>
+                  <p style={{ fontSize: 10, color: 'white', lineHeight: 1.5, margin: 0, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{ep.description}</p>
                 )}
                 {ep.prose_text && (
                   <button
@@ -378,24 +378,24 @@ export default function SeriesDetailPage() {
                   {modalProfile.photo_url ? (
                     <img src={modalProfile.photo_url} alt={modalProfile.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                   ) : (
-                    <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#94a3b8', fontSize: 20, fontWeight: 800 }}>{modalProfile.name.slice(0, 1)}</div>
+                    <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontSize: 20, fontWeight: 800 }}>{modalProfile.name.slice(0, 1)}</div>
                   )}
                 </div>
                 <div style={{ minWidth: 0 }}>
                   <div style={{ fontSize: 10, color: '#f97316', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 3 }}>{activeProfile}</div>
                   <div style={{ fontFamily: 'var(--font-outfit, sans-serif)', color: 'white', fontSize: 18, fontWeight: 800, lineHeight: 1.1 }}>{modalProfile.name}</div>
-                  {modalProfile.description && <div style={{ color: '#94a3b8', fontSize: 12, marginTop: 4 }}>{modalProfile.description}</div>}
+                  {modalProfile.description && <div style={{ color: 'white', fontSize: 12, marginTop: 4 }}>{modalProfile.description}</div>}
                 </div>
               </div>
               <button
                 onClick={() => setActiveProfile(null)}
                 aria-label="Close profile"
-                style={{ width: 32, height: 32, borderRadius: 999, border: '1px solid rgba(148,163,184,0.18)', background: '#1e293b', color: '#cbd5e1', cursor: 'pointer', fontSize: 18, lineHeight: '30px' }}
+                style={{ width: 32, height: 32, borderRadius: 999, border: '1px solid rgba(148,163,184,0.18)', background: '#1e293b', color: 'white', cursor: 'pointer', fontSize: 18, lineHeight: '30px' }}
               >
                 ×
               </button>
             </div>
-            {modalProfile.bio && <p style={{ color: '#cbd5e1', fontSize: 14, lineHeight: 1.6, margin: 0 }}>{modalProfile.bio}</p>}
+            {modalProfile.bio && <p style={{ color: 'white', fontSize: 14, lineHeight: 1.6, margin: 0 }}>{modalProfile.bio}</p>}
           </div>
         </div>
       )}
