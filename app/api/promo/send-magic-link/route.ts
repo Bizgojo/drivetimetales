@@ -18,14 +18,43 @@ const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://app.endless-tales.co
 
 export async function POST(req: NextRequest) {
   try {
-    const { email, firstName, promoCode } = await req.json()
-    if (!email || !firstName || !promoCode) {
-      return NextResponse.json({ error: 'email, firstName, and promoCode are required' }, { status: 400 })
+    const { email, firstName, lastName, phone, promoCode, subscription_days } = await req.json()
+    if (!email || !firstName) {
+      return NextResponse.json({ error: 'email and firstName are required' }, { status: 400 })
     }
 
     const trimmedEmail = email.trim().toLowerCase()
     const trimmedName = firstName.trim()
-    const upperCode = promoCode.trim().toUpperCase()
+    const trimmedLastName = String(lastName || '').trim()
+    const trimmedPhone = String(phone || '').trim()
+    const requestedDays = Number(subscription_days || 30)
+    const safeDays = [14, 30, 90, 180, 365].includes(requestedDays) ? requestedDays : 30
+    let upperCode = promoCode ? String(promoCode).trim().toUpperCase() : ''
+
+    if (!upperCode) {
+      const generatedCode = 'MAGIC-' + safeDays + '-' + crypto.randomUUID().slice(0, 8).toUpperCase()
+      const { data: createdPromo, error: createPromoError } = await supabase
+        .from('promo_codes')
+        .insert({
+          code: generatedCode,
+          description: 'Magic link invite for ' + trimmedEmail,
+          campaign: 'magic-link',
+          label: [trimmedName, trimmedLastName].filter(Boolean).join(' ') || trimmedEmail,
+          subscription_days: safeDays,
+          max_uses: 1,
+          uses_count: 0,
+          is_active: true,
+          is_redeemed: false,
+          subscription_type: 'active',
+        })
+        .select('*')
+        .single()
+
+      if (createPromoError || !createdPromo) {
+        return NextResponse.json({ error: 'Failed to create invite access code: ' + createPromoError?.message }, { status: 500 })
+      }
+      upperCode = createdPromo.code
+    }
 
     // 1. Validate promo code
     const { data: promo, error: promoError } = await supabase
@@ -38,7 +67,7 @@ export async function POST(req: NextRequest) {
     // 2. Create or find user
     let userId: string
     const { data: { users: allUsers } } = await supabase.auth.admin.listUsers({ perPage: 1000 })
-    const existingUser = allUsers?.find(u => u.email === trimmedEmail)
+    const existingUser = (allUsers as Array<{ id: string; email?: string }> | undefined)?.find(u => u.email === trimmedEmail)
 
     if (existingUser) {
       userId = existingUser.id
@@ -48,7 +77,7 @@ export async function POST(req: NextRequest) {
         email: trimmedEmail,
         password: randomPw,
         email_confirm: true,
-        user_metadata: { first_name: trimmedName },
+        user_metadata: { first_name: trimmedName, last_name: trimmedLastName },
       })
       if (createError || !newUser.user)
         return NextResponse.json({ error: 'Failed to create user: ' + createError?.message }, { status: 500 })
@@ -64,12 +93,28 @@ export async function POST(req: NextRequest) {
       ? new Date(userData.subscription_ends_at) : now
     const newEndsAt = new Date(base.getTime() + promo.subscription_days * 24 * 60 * 60 * 1000)
 
-    await supabase.from('users').upsert({
+    const profileUpdate: Record<string, any> = {
       id: userId, email: trimmedEmail, first_name: trimmedName,
       subscription_type: 'active',
       subscription_ends_at: newEndsAt.toISOString(),
       plan: userData?.plan && userData.plan !== 'free' ? userData.plan : 'standard',
-    }, { onConflict: 'id' })
+    }
+    if (trimmedLastName) profileUpdate.last_name = trimmedLastName
+    if (trimmedPhone) profileUpdate.phone = trimmedPhone
+
+    const { error: profileError } = await supabase.from('users').upsert(profileUpdate, { onConflict: 'id' })
+    if (profileError && (trimmedLastName || trimmedPhone)) {
+      const fallbackProfile = { ...profileUpdate }
+      delete fallbackProfile.last_name
+      delete fallbackProfile.phone
+      await supabase.from('users').upsert(fallbackProfile, { onConflict: 'id' })
+      if (trimmedLastName) await supabase.from('users').update({ last_name: trimmedLastName }).eq('id', userId)
+      if (trimmedPhone) {
+        await supabase.from('users').update({ phone: trimmedPhone }).eq('id', userId)
+        await supabase.from('users').update({ contact_phone: trimmedPhone }).eq('id', userId)
+        await supabase.from('users').update({ mobile_phone: trimmedPhone }).eq('id', userId)
+      }
+    }
 
     // 4. Log redemption + update code
     await supabase.from('promo_redemptions').insert({

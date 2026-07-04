@@ -1,446 +1,487 @@
 'use client'
-import React, { useState, useEffect } from 'react'
+
+import React, { useEffect, useMemo, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 
-const bg = '#FAF9F6'
-const card = '#fff'
-const border = '#e5e7eb'
-const text = '#111'
-const muted = '#6b7280'
-const orange = '#f97316'
+type SortKey = 'first_name' | 'last_name' | 'last_used' | 'finished'
 
-function Badge({ color, children }: { color: string; children: React.ReactNode }) {
-  return <span style={{ background: color + '22', color, border: `1px solid ${color}55`, borderRadius: 6, padding: '2px 8px', fontSize: 11, fontWeight: 700 }}>{children}</span>
+type RedemptionRow = {
+  id: string
+  user_id?: string | null
+  email?: string | null
+  days_granted?: number | null
+  redeemed_at?: string | null
+  users?: Record<string, any> | null
 }
 
-function defaultBody(code: string, days: number) {
-  return `Hi there,
+type InvitePerson = {
+  userId: string
+  email: string
+  phone: string
+  firstName: string
+  lastName: string
+  displayName: string
+  subscriptionDays: number | null
+  subscriptionEndsAt: string | null
+  lastUsedAt: string | null
+  timesUsed: number
+  started: number
+  finished: number
+  stories: StoryDetail[]
+}
 
-I wanted to personally invite you to try Endless Tales — original audio dramas made for people on the move. Mystery, western, thriller, sci-fi, and more. Perfect for your commute or road trip.
+type StoryDetail = {
+  id: string
+  title: string
+  startedAt: string | null
+  finishedAt: string | null
+  durationMins: number | null
+  progressPercent: number
+  completed: boolean
+}
 
-I'm giving you ${days} days completely free. No credit card needed to redeem.
+const ACCESS_OPTIONS = [
+  { value: '14', label: '14 days (2 weeks)', badge: '14 days' },
+  { value: '30', label: '30 days (1 month)', badge: '30 days' },
+  { value: '90', label: '90 days (3 months)', badge: '3 months' },
+  { value: '180', label: '180 days (6 months)', badge: '6 months' },
+  { value: '365', label: '365 days (1 year)', badge: '1 year' },
+]
 
-Your code: ${code}
+const TEST_EMAIL = 'm.postlewaite@gmail.com'
 
-Just go to the link below and enter your code to get started. I think you're going to love it.
+function isTestAccount(email: string) {
+  const lower = email.toLowerCase()
+  return lower === TEST_EMAIL || lower.includes('test')
+}
 
-— Marc`
+function formatDate(value?: string | null) {
+  if (!value) return null
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return null
+  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+}
+
+function relativeDate(value?: string | null) {
+  if (!value) return 'Never'
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return 'Never'
+  const now = new Date()
+  const startToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()
+  const startDate = new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime()
+  const days = Math.round((startToday - startDate) / 86400000)
+  if (days <= 0) return 'Today'
+  if (days === 1) return 'Yesterday'
+  return `${days} days ago`
+}
+
+function normalizePhone(value?: string | null) {
+  return String(value || '').trim()
+}
+
+function smsHref(phone: string) {
+  return `sms:${phone.replace(/[^\d+]/g, '')}`
+}
+
+function accessBadge(days: number | null) {
+  if (!days) return '--'
+  return ACCESS_OPTIONS.find((option) => Number(option.value) === days)?.badge || `${days} days`
+}
+
+function numberFrom(value: any) {
+  const parsed = Number(value)
+  return Number.isFinite(parsed) ? parsed : 0
+}
+
+function buildStoryDetail(row: any): StoryDetail | null {
+  const story = row.stories || row.story || {}
+  const storyId = String(row.story_id || story.id || row.id || '')
+  if (!storyId) return null
+  const durationMins = numberFrom(story.duration_mins || row.duration_mins || row.durationMinutes)
+  const progressSeconds = numberFrom(row.progress || row.progress_seconds || row.current_time_seconds)
+  const progressPercent = row.progress_percent !== undefined
+    ? numberFrom(row.progress_percent)
+    : durationMins > 0
+      ? Math.min(100, Math.round((progressSeconds / (durationMins * 60)) * 100))
+      : row.completed
+        ? 100
+        : 0
+
+  return {
+    id: storyId,
+    title: story.title || row.title || 'Untitled story',
+    startedAt: row.started_at || row.created_at || row.purchased_at || null,
+    finishedAt: row.completed ? (row.finished_at || row.completed_at || row.updated_at || row.last_played || row.last_played_at || null) : null,
+    durationMins: durationMins || null,
+    progressPercent: Math.max(0, Math.min(100, Math.round(progressPercent))),
+    completed: Boolean(row.completed || progressPercent >= 95),
+  }
+}
+
+function mergePeople(redemptions: RedemptionRow[], storiesByUser: Map<string, StoryDetail[]>) {
+  const people = new Map<string, InvitePerson>()
+
+  redemptions.forEach((row) => {
+    const user = row.users || {}
+    const email = String(user.email || row.email || '').trim().toLowerCase()
+    const key = String(row.user_id || user.id || email)
+    if (!key || !email) return
+
+    const existing = people.get(key)
+    const days = Number(row.days_granted || user.subscription_days || 0) || null
+    const lastUsedAt = user.last_login || user.last_active_at || user.updated_at || row.redeemed_at || null
+
+    if (!existing) {
+      const firstName = String(user.first_name || '').trim()
+      const lastName = String(user.last_name || '').trim()
+      people.set(key, {
+        userId: String(row.user_id || user.id || ''),
+        email,
+        phone: normalizePhone(user.phone || user.mobile_phone || user.sms_phone || user.contact_phone),
+        firstName,
+        lastName,
+        displayName: String(user.display_name || user.name || [firstName, lastName].filter(Boolean).join(' ') || email.split('@')[0]),
+        subscriptionDays: days,
+        subscriptionEndsAt: user.subscription_ends_at || null,
+        lastUsedAt,
+        timesUsed: 1,
+        started: 0,
+        finished: 0,
+        stories: [],
+      })
+      return
+    }
+
+    existing.timesUsed += 1
+    if (!existing.subscriptionDays && days) existing.subscriptionDays = days
+    if (lastUsedAt && (!existing.lastUsedAt || new Date(lastUsedAt) > new Date(existing.lastUsedAt))) {
+      existing.lastUsedAt = lastUsedAt
+    }
+  })
+
+  people.forEach((person) => {
+    const stories = storiesByUser.get(person.userId) || []
+    person.stories = stories
+    person.started = stories.length
+    person.finished = stories.filter((story) => story.completed).length
+  })
+
+  return Array.from(people.values())
 }
 
 export default function AdminPromoPage() {
-  const [codes, setCodes] = useState<any[]>([])
-  const [redemptions, setRedemptions] = useState<any[]>([])
-  const [loading, setLoading] = useState(true)
-  const [tab, setTab] = useState<'codes' | 'redemptions' | 'freeusers' | 'people'>('codes')
-  const [freeUsers, setFreeUsers] = useState<any[]>([])
-  const [sortBy, setSortBy] = useState<'name' | 'lastname' | 'date' | 'expiry'>('date')
-  const [form, setForm] = useState({ code: '', description: '', campaign: '', label: '', subscription_days: '30', max_uses: '1' })
-  const [saving, setSaving] = useState(false)
-  const [msg, setMsg] = useState('')
-
-  // Email composer state
-  const [composing, setComposing] = useState<string | null>(null) // code id being composed
-  const [emailTo, setEmailTo] = useState('')
-  const [emailSubject, setEmailSubject] = useState('')
-  const [emailBody, setEmailBody] = useState('')
+  const [email, setEmail] = useState('')
+  const [firstName, setFirstName] = useState('')
+  const [lastName, setLastName] = useState('')
+  const [phone, setPhone] = useState('')
+  const [duration, setDuration] = useState('30')
+  const [showLastName, setShowLastName] = useState(true)
   const [sending, setSending] = useState(false)
-  const [sendMsg, setSendMsg] = useState('')
+  const [message, setMessage] = useState('')
+  const [loading, setLoading] = useState(true)
+  const [people, setPeople] = useState<InvitePerson[]>([])
+  const [sortBy, setSortBy] = useState<SortKey>('last_used')
+  const [selectedPerson, setSelectedPerson] = useState<InvitePerson | null>(null)
 
-  // Magic link state
-  const [mlEmail, setMlEmail] = useState('')
-  const [mlName, setMlName] = useState('')
-  const [mlCode, setMlCode] = useState('')
-  const [mlDays, setMlDays] = useState('30')
-  const [mlSending, setMlSending] = useState(false)
-  const [mlMsg, setMlMsg] = useState('')
+  useEffect(() => {
+    loadInvites()
+  }, [])
 
-  useEffect(() => { load() }, [])
+  async function loadStoriesForUsers(userIds: string[]) {
+    const storiesByUser = new Map<string, StoryDetail[]>()
+    if (userIds.length === 0) return storiesByUser
 
-  async function load() {
+    const attempts = [
+      supabase.from('user_library').select('*, stories(id,title,duration_mins)').in('user_id', userIds),
+      supabase.from('story_plays').select('*, stories(id,title,duration_mins)').in('user_id', userIds),
+      supabase.from('listening_sessions').select('*, stories(id,title,duration_mins)').in('user_id', userIds),
+      supabase.from('user_stories').select('*, stories(id,title,duration_mins)').in('user_id', userIds),
+      supabase.from('play_history').select('*, stories(id,title,duration_mins)').in('user_id', userIds),
+    ]
+
+    for (const attempt of attempts) {
+      const { data, error } = await attempt
+      if (error || !data) continue
+      data.forEach((row: any) => {
+        const userId = String(row.user_id || '')
+        const story = buildStoryDetail(row)
+        if (!userId || !story) return
+        const existing = storiesByUser.get(userId) || []
+        existing.push(story)
+        storiesByUser.set(userId, existing)
+      })
+      if (storiesByUser.size > 0) break
+    }
+
+    storiesByUser.forEach((stories, userId) => {
+      const deduped = Array.from(new Map(stories.map((story) => [story.id, story])).values())
+        .sort((a, b) => new Date(b.startedAt || 0).getTime() - new Date(a.startedAt || 0).getTime())
+      storiesByUser.set(userId, deduped)
+    })
+
+    return storiesByUser
+  }
+
+  async function loadInvites() {
     setLoading(true)
-    const [{ data: c }, { data: r }, { data: fu }] = await Promise.all([
-      supabase.from('promo_codes').select('*').order('created_at', { ascending: false }),
-      supabase.from('promo_redemptions').select('*').order('redeemed_at', { ascending: false }),
-      supabase.from('promo_redemptions').select('*, users(first_name, display_name, email, subscription_ends_at)').order('redeemed_at', { ascending: false }),
-    ])
-    setCodes(c || [])
-    setRedemptions(r || [])
-    setFreeUsers(fu || [])
+    const { data, error } = await supabase
+      .from('promo_redemptions')
+      .select('*, users(*)')
+      .order('redeemed_at', { ascending: false })
+
+    if (error || !data) {
+      setPeople([])
+      setLoading(false)
+      return
+    }
+
+    const rows = data as RedemptionRow[]
+    const userIds = Array.from(new Set(rows.map((row) => String(row.user_id || row.users?.id || '')).filter(Boolean)))
+    const storiesByUser = await loadStoriesForUsers(userIds)
+    setPeople(mergePeople(rows, storiesByUser))
     setLoading(false)
   }
 
-  async function createCode() {
-    setSaving(true); setMsg('')
-    const { error } = await supabase.from('promo_codes').insert({
-      code: form.code.trim().toUpperCase(),
-      description: form.description,
-      campaign: form.campaign || null,
-      label: form.label || null,
-      subscription_days: parseInt(form.subscription_days),
-      max_uses: parseInt(form.max_uses),
-      uses_count: 0,
-      is_active: true,
-      is_redeemed: false,
-      subscription_type: 'active',
-    })
-    if (error) { setMsg('Error: ' + error.message) }
-    else { setMsg('Code created!'); setForm({ code: '', description: '', campaign: '', label: '', subscription_days: '30', max_uses: '1' }); load() }
-    setSaving(false)
-  }
+  async function submitInvite(e: React.FormEvent) {
+    e.preventDefault()
+    if (!email.includes('@') || !firstName.trim()) {
+      setMessage('Email and first name are required.')
+      return
+    }
 
-  async function generateUnique() {
-    const rand = Math.random().toString(36).substring(2, 6).toUpperCase()
-    const prefix = form.campaign ? form.campaign.substring(0, 4).toUpperCase() : 'ET'
-    setForm(f => ({ ...f, code: prefix + '-' + rand }))
-  }
-
-  async function toggleActive(id: string, current: boolean) {
-    await supabase.from('promo_codes').update({ is_active: !current }).eq('id', id)
-    load()
-  }
-
-  function openComposer(c: any) {
-    setComposing(c.id)
-    setEmailTo(c.label || '')
-    setEmailSubject(`Your Endless Tales access code: ${c.code}`)
-    setEmailBody(defaultBody(c.code, c.subscription_days))
-    setSendMsg('')
-  }
-
-  async function sendEmail(c: any) {
-    if (!emailTo.includes('@')) { setSendMsg('Enter a valid email address'); return }
-    setSending(true); setSendMsg('')
-    const res = await fetch('/api/promo/send-code', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ to: emailTo, subject: emailSubject, body: emailBody, code: c.code, days: c.subscription_days, codeId: c.id })
-    })
-    const data = await res.json()
-    if (data.success) { setSendMsg('Sent!'); setTimeout(() => { setComposing(null); setSendMsg('') }, 1500) }
-    else { setSendMsg('Error: ' + data.error) }
+    setSending(true)
+    setMessage('')
+    try {
+      const res = await fetch('/api/promo/send-magic-link', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: email.trim(),
+          firstName: firstName.trim(),
+          lastName: showLastName ? lastName.trim() : '',
+          phone: phone.trim(),
+          subscription_days: Number(duration),
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        setMessage('Error: ' + (data.error || 'Failed to send invite'))
+      } else {
+        setMessage(`Sent to ${firstName.trim()} - ${data.daysGranted || duration} days granted.`)
+        setEmail('')
+        setFirstName('')
+        setLastName('')
+        setPhone('')
+        setDuration('30')
+        await loadInvites()
+      }
+    } catch (err) {
+      setMessage('Error: ' + String(err))
+    }
     setSending(false)
   }
 
+  async function toggleAccess(person: InvitePerson) {
+    if (!person.userId) return
+    const isActive = person.subscriptionEndsAt && new Date(person.subscriptionEndsAt) > new Date()
+    const nextDate = isActive
+      ? new Date(Date.now() - 86400000).toISOString()
+      : new Date(Date.now() + (person.subscriptionDays || 30) * 86400000).toISOString()
 
-  function getSortedFreeUsers(list: any[]) {
-    return [...list].sort((a, b) => {
-      const aName = (a.users && (a.users.first_name || a.users.display_name)) || a.email || ''
-      const bName = (b.users && (b.users.first_name || b.users.display_name)) || b.email || ''
-      const aLast = aName.split(' ').pop() || ''
-      const bLast = bName.split(' ').pop() || ''
-      if (sortBy === 'name') return aName.localeCompare(bName)
-      if (sortBy === 'lastname') return aLast.localeCompare(bLast)
-      if (sortBy === 'expiry') {
-        const aExp = a.users && a.users.subscription_ends_at ? new Date(a.users.subscription_ends_at).getTime() : 0
-        const bExp = b.users && b.users.subscription_ends_at ? new Date(b.users.subscription_ends_at).getTime() : 0
-        return aExp - bExp
-      }
-      return new Date(b.redeemed_at).getTime() - new Date(a.redeemed_at).getTime()
-    })
+    await supabase
+      .from('users')
+      .update({ subscription_ends_at: nextDate, subscription_type: isActive ? 'free' : 'active' })
+      .eq('id', person.userId)
+    await loadInvites()
   }
 
-  const input = { width: '100%', padding: '8px 10px', border: `1px solid ${border}`, borderRadius: 6, fontSize: 13, color: text, background: '#fff', boxSizing: 'border-box' as const }
-  const label = { fontSize: 12, fontWeight: 600, color: muted, display: 'block' as const, marginBottom: 4 }
+  const sortedPeople = useMemo(() => {
+    return [...people].sort((a, b) => {
+      if (sortBy === 'first_name') return (a.firstName || a.displayName).localeCompare(b.firstName || b.displayName)
+      if (sortBy === 'last_name') return (a.lastName || a.displayName).localeCompare(b.lastName || b.displayName)
+      if (sortBy === 'finished') return b.finished - a.finished
+      return new Date(b.lastUsedAt || 0).getTime() - new Date(a.lastUsedAt || 0).getTime()
+    })
+  }, [people, sortBy])
 
   return (
-    <div style={{ background: bg, minHeight: '100vh', padding: '24px', color: text }}>
-      <div style={{ maxWidth: 960, margin: '0 auto' }}>
-        <h1 style={{ fontSize: 22, fontWeight: 900, margin: '0 0 4px' }}>Promo Codes</h1>
-        <p style={{ color: muted, fontSize: 13, margin: '0 0 24px' }}>Create, send, and track promo codes for testers, partners, and campaigns.</p>
+    <div className="min-h-screen bg-[#f5f4f0] px-4 py-8 text-[#1a1a1a] sm:px-8">
+      <div className="mx-auto max-w-[1200px]">
+        <h1 className="mb-1 text-[26px] font-bold tracking-normal">Magic Link Invites</h1>
+        <p className="mb-6 text-sm text-[#666]">
+          Send one-click invites with free access. Recipients click the link and are instantly in - no code entry needed.
+        </p>
 
-        {/* Create form */}
-        <div style={{ background: card, border: `1px solid ${border}`, borderRadius: 12, padding: 20, marginBottom: 24 }}>
-          <h2 style={{ fontSize: 15, fontWeight: 800, margin: '0 0 16px' }}>Create New Code</h2>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12, marginBottom: 12 }}>
-            <div>
-              <label style={label}>Code *</label>
-              <div style={{ display: 'flex', gap: 6 }}>
-                <input style={{ ...input, flex: 1 }} value={form.code} onChange={e => setForm(f => ({ ...f, code: e.target.value.toUpperCase().replace(/\s+/g, '-') }))} placeholder="LAUNCH2026" />
-                <button onClick={generateUnique} style={{ padding: '8px 10px', background: '#f3f4f6', border: `1px solid ${border}`, borderRadius: 6, fontSize: 11, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' }}>Auto</button>
-              </div>
-            </div>
-            <div>
-              <label style={label}>Campaign</label>
-              <input style={input} value={form.campaign} onChange={e => setForm(f => ({ ...f, campaign: e.target.value }))} placeholder="beta-testers" />
-            </div>
-            <div>
-              <label style={label}>Label (person/partner)</label>
-              <input style={input} value={form.label} onChange={e => setForm(f => ({ ...f, label: e.target.value }))} placeholder="John Smith" />
-            </div>
-          </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: 12, marginBottom: 16 }}>
-            <div>
-              <label style={label}>Description</label>
-              <input style={input} value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} placeholder="Beta tester — 30 days free" />
-            </div>
-            <div>
-              <label style={label}>Days Free</label>
-              <input style={input} type="number" value={form.subscription_days} onChange={e => setForm(f => ({ ...f, subscription_days: e.target.value }))} />
-            </div>
-            <div>
-              <label style={label}>Max Uses</label>
-              <input style={input} type="number" value={form.max_uses} onChange={e => setForm(f => ({ ...f, max_uses: e.target.value }))} />
-            </div>
-          </div>
-          {msg && <p style={{ color: msg.startsWith('Error') ? '#dc2626' : '#16a34a', fontSize: 13, margin: '0 0 12px', fontWeight: 600 }}>{msg}</p>}
-          <button onClick={createCode} disabled={saving || !form.code} style={{ padding: '10px 24px', background: orange, color: '#fff', border: 'none', borderRadius: 8, fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>
-            {saving ? 'Creating...' : 'Create Code'}
+        <section className="mb-5 rounded-xl border border-[#e5e5e5] bg-white p-6">
+          <h2 className="mb-1.5 text-[17px] font-semibold">Send a Magic Link</h2>
+          <p className="mb-5 text-[13px] text-[#666]">
+            Creates an account, applies free access, and stores their name for Belle. One click and they&apos;re listening.
+          </p>
+
+          <button
+            type="button"
+            onClick={() => setShowLastName((value) => !value)}
+            className="mb-[18px] flex cursor-pointer items-center gap-2 text-[13px] text-[#555]"
+          >
+            <span className={`relative h-5 w-9 rounded-full ${showLastName ? 'bg-[#f97316]' : 'bg-gray-300'}`}>
+              <span className={`absolute top-[3px] h-3.5 w-3.5 rounded-full bg-white transition ${showLastName ? 'right-[3px]' : 'left-[3px]'}`} />
+            </span>
+            Include last name field
           </button>
-        </div>
 
-        {/* Send Magic Link */}
-        <div style={{ background: card, border: '1px solid ' + border, borderRadius: 12, padding: 20, marginBottom: 24 }}>
-          <h2 style={{ fontSize: 15, fontWeight: 800, margin: '0 0 4px' }}>Send Magic Link Invite</h2>
-          <p style={{ color: muted, fontSize: 12, margin: '0 0 16px' }}>One-click invite: creates account, applies promo, stores name for Belle. Recipient clicks one link and they are in.</p>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 120px', gap: 12, marginBottom: 12 }}>
-            <div>
-              <label style={label}>Email *</label>
-              <input style={input} value={mlEmail} onChange={e => setMlEmail(e.target.value)} placeholder="friend@gmail.com" />
-            </div>
-            <div>
-              <label style={label}>First Name *</label>
-              <input style={input} value={mlName} onChange={e => setMlName(e.target.value)} placeholder="Sarah" />
-            </div>
-            <div>
-              <label style={label}>Promo Code *</label>
-              <div style={{ display: 'flex', gap: 6 }}>
-                <input style={{ ...input, flex: 1 }} value={mlCode} onChange={e => setMlCode(e.target.value.toUpperCase())} placeholder="FRIEND30" />
-                <select style={{ ...input, width: 'auto', padding: '8px 6px' }} value={mlCode} onChange={e => setMlCode(e.target.value)}>
-                  <option value="">Pick...</option>
-                  {codes.filter((c) => c.is_active && (c.max_uses === null || c.uses_count < c.max_uses)).map((c) => (
-                    <option key={c.id} value={c.code}>{c.code} ({c.subscription_days}d)</option>
-                  ))}
-                </select>
-              </div>
-            </div>
-            <div style={{ display: 'flex', alignItems: 'flex-end' }}>
-              <button
-                onClick={async () => {
-                  if (!mlEmail.includes('@') || !mlName.trim() || !mlCode.trim()) { setMlMsg('All fields required'); return }
-                  setMlSending(true); setMlMsg('')
-                  try {
-                    const res = await fetch('/api/promo/send-magic-link', {
-                      method: 'POST',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({ email: mlEmail.trim(), firstName: mlName.trim(), promoCode: mlCode.trim() })
-                    })
-                    const data = await res.json()
-                    if (!res.ok) { setMlMsg('Error: ' + (data.error || 'Failed')); }
-                    else { setMlMsg('Sent to ' + mlName + '! ' + data.daysGranted + ' days granted.'); setMlEmail(''); setMlName(''); load() }
-                  } catch (err) { setMlMsg('Error: ' + String(err)) }
-                  setMlSending(false)
-                }}
-                disabled={mlSending}
-                style={{ padding: '10px 16px', background: '#16a34a', color: '#fff', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: 'pointer', width: '100%', whiteSpace: 'nowrap' }}
-              >
-                {mlSending ? 'Sending...' : 'Send Invite'}
+          <form onSubmit={submitInvite} className="flex flex-wrap items-end gap-3">
+            <label className="flex min-w-[190px] flex-[2] flex-col gap-[5px]">
+              <span className="text-[11px] font-bold uppercase tracking-[0.05em] text-[#555]">Email *</span>
+              <input className="rounded-lg border border-[#d1d5db] bg-white px-3 py-[9px] text-sm text-[#1a1a1a] placeholder:text-[#aaa]" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="friend@gmail.com" />
+            </label>
+            <label className="flex min-w-[130px] flex-1 flex-col gap-[5px]">
+              <span className="text-[11px] font-bold uppercase tracking-[0.05em] text-[#555]">First Name *</span>
+              <input className="rounded-lg border border-[#d1d5db] bg-white px-3 py-[9px] text-sm text-[#1a1a1a] placeholder:text-[#aaa]" value={firstName} onChange={(e) => setFirstName(e.target.value)} placeholder="Sarah" />
+            </label>
+            {showLastName && (
+              <label className="flex min-w-[130px] flex-1 flex-col gap-[5px]">
+                <span className="text-[11px] font-bold uppercase tracking-[0.05em] text-[#555]">Last Name</span>
+                <input className="rounded-lg border border-[#d1d5db] bg-white px-3 py-[9px] text-sm text-[#1a1a1a] placeholder:text-[#aaa]" value={lastName} onChange={(e) => setLastName(e.target.value)} placeholder="Johnson" />
+              </label>
+            )}
+            <label className="flex min-w-[130px] flex-1 flex-col gap-[5px]">
+              <span className="text-[11px] font-bold uppercase tracking-[0.05em] text-[#555]">Phone (optional)</span>
+              <input className="rounded-lg border border-[#d1d5db] bg-white px-3 py-[9px] text-sm text-[#1a1a1a] placeholder:text-[#aaa]" type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+1 (555) 000-0000" />
+            </label>
+            <label className="flex min-w-[140px] max-w-[160px] flex-1 flex-col gap-[5px]">
+              <span className="text-[11px] font-bold uppercase tracking-[0.05em] text-[#555]">Free Access</span>
+              <select className="rounded-lg border border-[#d1d5db] bg-white px-3 py-[9px] text-sm text-[#1a1a1a]" value={duration} onChange={(e) => setDuration(e.target.value)}>
+                {ACCESS_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+              </select>
+            </label>
+            <label className="flex min-w-fit flex-col gap-[5px]">
+              <span className="text-[11px] font-bold uppercase tracking-[0.05em] text-transparent">Submit</span>
+              <button type="submit" disabled={sending} className="whitespace-nowrap rounded-lg border-0 bg-[#f97316] px-[22px] py-2.5 text-sm font-semibold text-white disabled:opacity-60">
+                {sending ? 'Sending...' : 'Send Invite ✉'}
               </button>
-            </div>
+            </label>
+          </form>
+          {message && <p className={`mt-3 text-[13px] font-semibold ${message.startsWith('Error') ? 'text-red-600' : 'text-green-700'}`}>{message}</p>}
+        </section>
+
+        <section className="rounded-xl border border-[#e5e5e5] bg-white p-6">
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+            <h2 className="text-[17px] font-semibold">
+              Invited People <span className="text-sm font-normal text-[#999]">({sortedPeople.length})</span>
+            </h2>
+            <label className="flex items-center gap-2 text-[13px] text-[#555]">
+              Sort by:
+              <select className="rounded-md border border-[#d1d5db] px-2.5 py-[5px] text-[13px]" value={sortBy} onChange={(e) => setSortBy(e.target.value as SortKey)}>
+                <option value="first_name">First Name</option>
+                <option value="last_name">Last Name</option>
+                <option value="last_used">Last Used ↓</option>
+                <option value="finished">Stories Finished ↓</option>
+              </select>
+            </label>
           </div>
-          {mlMsg && <p style={{ color: mlMsg.startsWith('Error') ? '#dc2626' : '#16a34a', fontSize: 13, margin: 0, fontWeight: 600 }}>{mlMsg}</p>}
-        </div>
 
-        {/* Tabs */}
-        <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
-          {([['codes', `Codes (${codes.length})`], ['redemptions', `Redemptions (${redemptions.length})`], ['freeusers', `Free Users (${freeUsers.length})`], ['people', `People (${codes.filter((c: any) => c.sent_to_email).length})`]] as Array<[string, string]>).map(([t, label]) => (
-            <button key={t} onClick={() => setTab(t as any)} style={{ padding: '8px 18px', borderRadius: 8, border: `1px solid ${border}`, background: tab === t ? text : card, color: tab === t ? '#fff' : muted, fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
-              {label}
-            </button>
-          ))}
-        </div>
-
-        {loading ? <p style={{ color: muted }}>Loading...</p> : tab === 'codes' ? (
-          <div style={{ background: card, border: `1px solid ${border}`, borderRadius: 12, overflow: 'hidden' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+          <div className="overflow-x-auto">
+            <table className="w-full border-collapse text-[13px]">
               <thead>
-                <tr style={{ background: '#f9fafb', borderBottom: `1px solid ${border}` }}>
-                  {['Code', 'Campaign', 'Label', 'Days', 'Uses', 'Status', 'Actions'].map(h => (
-                    <th key={h} style={{ padding: '10px 14px', textAlign: 'left', fontWeight: 700, color: muted, fontSize: 12 }}>{h}</th>
+                <tr>
+                  {['Name', 'Contact', 'Access', 'Status', 'Times Used', 'Last Used', 'Started', 'Finished', 'Actions'].map((heading) => (
+                    <th key={heading} className="border-b-2 border-[#e5e5e5] px-3 py-2 text-left text-[11px] font-bold uppercase tracking-[0.05em] text-[#888]">
+                      {heading === 'Times Used' || heading === 'Last Used' ? heading.replace(' ', '\n') : heading}
+                    </th>
                   ))}
                 </tr>
               </thead>
               <tbody>
-                {codes.map((c, i) => (
-                  <>
-                    <tr key={c.id} style={{ borderBottom: composing === c.id ? 'none' : i < codes.length - 1 ? `1px solid ${border}` : 'none', background: composing === c.id ? '#fafafa' : '#fff' }}>
-                      <td style={{ padding: '10px 14px', fontWeight: 800, fontFamily: 'monospace', color: orange }}>{c.code}</td>
-                      <td style={{ padding: '10px 14px', color: muted }}>{c.campaign || '—'}</td>
-                      <td style={{ padding: '10px 14px' }}>{c.label || '—'}</td>
-                      <td style={{ padding: '10px 14px', fontWeight: 700 }}>{c.subscription_days}d</td>
-                      <td style={{ padding: '10px 14px' }}>{c.uses_count || 0}/{c.max_uses ?? '∞'}</td>
-                      <td style={{ padding: '10px 14px' }}>
-                        {c.is_active ? <Badge color="#16a34a">Active</Badge> : <Badge color="#dc2626">Inactive</Badge>}
+                {loading ? (
+                  <tr><td className="px-3 py-5 text-[#888]" colSpan={9}>Loading...</td></tr>
+                ) : sortedPeople.length === 0 ? (
+                  <tr><td className="px-3 py-5 text-[#888]" colSpan={9}>No magic link invite redemptions found.</td></tr>
+                ) : sortedPeople.map((person) => {
+                  const active = person.subscriptionEndsAt ? new Date(person.subscriptionEndsAt) > new Date() : false
+                  const displayFirst = person.firstName || person.displayName
+                  const displayLast = person.lastName
+                  return (
+                    <tr key={person.userId || person.email} className="border-b border-[#f0f0f0] hover:bg-[#fafafa]">
+                      <td className="px-3 py-[13px] align-middle text-sm font-semibold">
+                        {displayFirst || '--'} {displayLast && <span className="font-normal text-[#888]">{displayLast}</span>}
+                        {isTestAccount(person.email) && <span className="ml-1.5 inline-block rounded bg-[#fef3c7] px-1.5 py-0.5 align-middle text-[10px] font-bold text-[#92400e]">TEST</span>}
                       </td>
-                      <td style={{ padding: '10px 14px', display: 'flex', gap: 6 }}>
-                        <button onClick={() => composing === c.id ? setComposing(null) : openComposer(c)} style={{ padding: '4px 10px', border: `1px solid ${orange}`, borderRadius: 6, fontSize: 11, fontWeight: 700, cursor: 'pointer', background: composing === c.id ? orange : '#fff', color: composing === c.id ? '#fff' : orange }}>
-                          {composing === c.id ? 'Cancel' : 'Send Email'}
-                        </button>
-                        <button onClick={() => toggleActive(c.id, c.is_active)} style={{ padding: '4px 10px', border: `1px solid ${border}`, borderRadius: 6, fontSize: 11, fontWeight: 600, cursor: 'pointer', background: '#f9fafb', color: text }}>
-                          {c.is_active ? 'Deactivate' : 'Activate'}
-                        </button>
+                      <td className="px-3 py-[13px] align-middle">
+                        <a className="text-xs text-[#f97316] no-underline hover:underline" href={`mailto:${person.email}`}>{person.email}</a>
+                        {person.phone ? (
+                          <a className="mt-[3px] block text-xs text-[#3b82f6] no-underline" href={smsHref(person.phone)}>Phone {person.phone}</a>
+                        ) : (
+                          <span className="mt-[3px] block text-xs text-[#ccc]">No phone on file</span>
+                        )}
+                      </td>
+                      <td className="px-3 py-[13px] align-middle"><span className="inline-block rounded-md bg-[#eff6ff] px-2 py-[3px] text-xs font-semibold text-[#1d4ed8]">{accessBadge(person.subscriptionDays)}</span></td>
+                      <td className="px-3 py-[13px] align-middle"><span className={`inline-block rounded-md px-2 py-[3px] text-xs font-semibold ${active ? 'bg-[#d1fae5] text-[#065f46]' : 'bg-[#fee2e2] text-[#991b1b]'}`}>{active ? 'Active' : 'Expired'}</span></td>
+                      <td className="px-3 py-[13px] text-center align-middle text-[15px] font-bold">{person.timesUsed}</td>
+                      <td className="whitespace-nowrap px-3 py-[13px] align-middle text-xs text-[#555]">
+                        {formatDate(person.lastUsedAt) || <span className="italic text-[#ccc]">Never</span>}
+                        <br /><span className="text-[11px] text-[#999]">{relativeDate(person.lastUsedAt)}</span>
+                      </td>
+                      <td className="px-3 py-[13px] text-center align-middle">
+                        <button type="button" onClick={() => setSelectedPerson(person)} className="text-[15px] font-bold text-[#f97316] underline decoration-dotted hover:text-[#ea6c0a]">{person.started}</button>
+                      </td>
+                      <td className="px-3 py-[13px] text-center align-middle text-[15px] font-bold">{person.finished}</td>
+                      <td className="min-w-[190px] px-3 py-[13px] align-middle">
+                        <a className="mr-1 inline-block rounded-md border border-[#d1d5db] bg-white px-[11px] py-[5px] text-xs font-medium text-[#374151]" href={`mailto:${person.email}`}>Email</a>
+                        {person.phone && <a className="mr-1 inline-block rounded-md border border-[#3b82f6] bg-white px-[11px] py-[5px] text-xs font-medium text-[#3b82f6]" href={smsHref(person.phone)}>Text</a>}
+                        <button type="button" onClick={() => toggleAccess(person)} className={`rounded-md border bg-white px-[11px] py-[5px] text-xs font-medium ${active ? 'border-[#d1d5db] text-[#9ca3af]' : 'border-[#f97316] text-[#f97316]'}`}>{active ? 'Deactivate' : 'Reactivate'}</button>
                       </td>
                     </tr>
-                    {composing === c.id && (
-                      <tr key={c.id + '-composer'} style={{ borderBottom: `1px solid ${border}` }}>
-                        <td colSpan={7} style={{ padding: '0 14px 16px' }}>
-                          <div style={{ background: '#f9fafb', border: `1px solid ${border}`, borderRadius: 10, padding: 16, marginTop: 8 }}>
-                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: 10, marginBottom: 10 }}>
-                              <div>
-                                <label style={label}>To (email address)</label>
-                                <input style={input} value={emailTo} onChange={e => setEmailTo(e.target.value)} placeholder="john@example.com" />
-                              </div>
-                              <div>
-                                <label style={label}>Subject</label>
-                                <input style={input} value={emailSubject} onChange={e => setEmailSubject(e.target.value)} />
-                              </div>
-                            </div>
-                            <div style={{ marginBottom: 12 }}>
-                              <label style={label}>Message (the code and CTA button are added automatically below this)</label>
-                              <textarea
-                                value={emailBody}
-                                onChange={e => setEmailBody(e.target.value)}
-                                rows={8}
-                                style={{ ...input, resize: 'vertical', fontFamily: 'inherit', lineHeight: 1.6 }}
-                              />
-                            </div>
-                            {sendMsg && <p style={{ color: sendMsg === 'Sent!' ? '#16a34a' : '#dc2626', fontSize: 13, fontWeight: 700, margin: '0 0 10px' }}>{sendMsg}</p>}
-                            <button onClick={() => sendEmail(c)} disabled={sending} style={{ padding: '10px 24px', background: orange, color: '#fff', border: 'none', borderRadius: 8, fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>
-                              {sending ? 'Sending...' : `Send to ${emailTo || '...'}`}
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    )}
-                  </>
-                ))}
+                  )
+                })}
               </tbody>
             </table>
           </div>
-        ) : (
-          <div style={{ background: card, border: `1px solid ${border}`, borderRadius: 12, overflow: 'hidden' }}>
-            {redemptions.length === 0 ? <p style={{ padding: 20, color: muted }}>No redemptions yet.</p> : (
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-                <thead>
-                  <tr style={{ background: '#f9fafb', borderBottom: `1px solid ${border}` }}>
-                    {['Code', 'Email', 'Campaign', 'Label', 'Days', 'Redeemed At'].map(h => (
-                      <th key={h} style={{ padding: '10px 14px', textAlign: 'left', fontWeight: 700, color: muted, fontSize: 12 }}>{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {redemptions.map((r, i) => (
-                    <tr key={r.id} style={{ borderBottom: i < redemptions.length - 1 ? `1px solid ${border}` : 'none' }}>
-                      <td style={{ padding: '10px 14px', fontWeight: 800, fontFamily: 'monospace', color: orange }}>{r.code}</td>
-                      <td style={{ padding: '10px 14px' }}>{r.email}</td>
-                      <td style={{ padding: '10px 14px', color: muted }}>{r.campaign || '—'}</td>
-                      <td style={{ padding: '10px 14px' }}>{r.label || '—'}</td>
-                      <td style={{ padding: '10px 14px', fontWeight: 700 }}>{r.days_granted}d</td>
-                      <td style={{ padding: '10px 14px', color: muted }}>{new Date(r.redeemed_at).toLocaleString()}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-          </div>
-        )}
 
-        {/* Free Users tab */}
-        {!loading && tab === 'freeusers' && (
-          <div style={{ background: card, border: `1px solid ${border}`, borderRadius: 12, overflow: 'hidden' }}>
-            <div style={{ padding: '12px 16px', borderBottom: `1px solid ${border}`, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-              <span style={{ fontSize: 12, fontWeight: 600, color: muted }}>Sort by:</span>
-              {([['name', 'First Name'], ['lastname', 'Last Name'], ['date', 'Date Redeemed'], ['expiry', 'Expiry']] as Array<[string, string]>).map(([s, lbl]) => (
-                <button key={s} onClick={() => setSortBy(s as any)} style={{ padding: '4px 12px', borderRadius: 6, border: `1px solid ${border}`, background: sortBy === s ? orange : '#f9fafb', color: sortBy === s ? '#fff' : text, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>{lbl}</button>
-              ))}
-            </div>
-            {freeUsers.length === 0
-              ? <p style={{ padding: 20, color: muted }}>No free users yet.</p>
-              : (
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-                  <thead>
-                    <tr style={{ background: '#f9fafb', borderBottom: `1px solid ${border}` }}>
-                      {['Name', 'Email', 'Code', 'Campaign', 'Days', 'Redeemed', 'Expires', 'Status'].map(h => (
-                        <th key={h} style={{ padding: '10px 14px', textAlign: 'left', fontWeight: 700, color: muted, fontSize: 12 }}>{h}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {getSortedFreeUsers(freeUsers).map((r, i) => {
-                      const u = r.users || {}
-                      const name = u.first_name || u.display_name || '--'
-                      const expiry = u.subscription_ends_at ? new Date(u.subscription_ends_at) : null
-                      const expired = expiry ? expiry < new Date() : false
-                      const daysLeft = expiry ? Math.ceil((expiry.getTime() - Date.now()) / 86400000) : null
-                      return (
-                        <tr key={r.id} style={{ borderBottom: i < freeUsers.length - 1 ? `1px solid ${border}` : 'none' }}>
-                          <td style={{ padding: '10px 14px', fontWeight: 600 }}>{name}</td>
-                          <td style={{ padding: '10px 14px', color: muted }}>{r.email}</td>
-                          <td style={{ padding: '10px 14px', fontWeight: 800, fontFamily: 'monospace', color: orange }}>{r.code}</td>
-                          <td style={{ padding: '10px 14px', color: muted }}>{r.campaign || '--'}</td>
-                          <td style={{ padding: '10px 14px', fontWeight: 700 }}>{r.days_granted}d</td>
-                          <td style={{ padding: '10px 14px', color: muted }}>{new Date(r.redeemed_at).toLocaleDateString()}</td>
-                          <td style={{ padding: '10px 14px', fontWeight: 600, color: expired ? '#dc2626' : '#16a34a' }}>
-                            {expiry ? expiry.toLocaleDateString() : '--'}
-                          </td>
-                          <td style={{ padding: '10px 14px' }}>
-                            {expired ? <Badge color="#dc2626">Expired</Badge> : daysLeft !== null ? <Badge color="#16a34a">{daysLeft}d left</Badge> : <Badge color="#6b7280">Unknown</Badge>}
-                          </td>
-                        </tr>
-                      )
-                    })}
-                  </tbody>
-                </table>
-              )}
+          <div className="mt-5 rounded-lg border border-[#fed7aa] bg-[#fff7ed] px-4 py-3 text-[13px] text-[#92400e]">
+            <strong>Started</strong> count is clickable - tap to see each story&apos;s metadata and completion status. <strong>Email</strong> opens your mail client. <strong>Text</strong> opens SMS. <strong>Test</strong> users are marked for metric review.
           </div>
-        )}
-
-        {/* People tab — everyone who was sent a code */}
-        {!loading && tab === 'people' && (
-          <div style={{ background: card, border: `1px solid ${border}`, borderRadius: 12, overflow: 'hidden' }}>
-            {codes.filter((c: any) => c.sent_to_email).length === 0
-              ? <p style={{ padding: 20, color: muted }}>No codes have been sent yet. Use Send Email on any code to record the recipient.</p>
-              : (
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-                  <thead>
-                    <tr style={{ background: '#f9fafb', borderBottom: `1px solid ${border}` }}>
-                      {['Name', 'Email', 'Code', 'Days', 'Sent', 'Last Used', 'Redeemed', 'Actions'].map(h => (
-                        <th key={h} style={{ padding: '10px 14px', textAlign: 'left', fontWeight: 700, color: muted, fontSize: 12 }}>{h}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {codes.filter((c: any) => c.sent_to_email).map((c: any, i: number, arr: any[]) => {
-                      const redemption = redemptions.find((r: any) => r.code === c.code)
-                      return (
-                        <tr key={c.id} style={{ borderBottom: i < arr.length - 1 ? `1px solid ${border}` : 'none' }}>
-                          <td style={{ padding: '10px 14px', fontWeight: 600 }}>{c.label || c.sent_to_name || '--'}</td>
-                          <td style={{ padding: '10px 14px', color: muted }}>{c.sent_to_email}</td>
-                          <td style={{ padding: '10px 14px', fontWeight: 800, fontFamily: 'monospace', color: orange }}>{c.code}</td>
-                          <td style={{ padding: '10px 14px', fontWeight: 700 }}>{c.subscription_days}d</td>
-                          <td style={{ padding: '10px 14px', color: muted }}>{c.sent_at ? new Date(c.sent_at).toLocaleDateString() : '--'}</td>
-                          <td style={{ padding: '10px 14px', color: muted }}>{redemption ? new Date(redemption.redeemed_at).toLocaleDateString() : '--'}</td>
-                          <td style={{ padding: '10px 14px' }}>
-                            {redemption ? <Badge color="#16a34a">Yes</Badge> : <Badge color="#6b7280">Not yet</Badge>}
-                          </td>
-                          <td style={{ padding: '10px 14px' }}>
-                            <button onClick={async () => {
-                              if (confirm('Deactivate this code?')) {
-                                await supabase.from('promo_codes').update({ is_active: false }).eq('id', c.id)
-                                load()
-                              }
-                            }} style={{ padding: '4px 10px', border: `1px solid #dc2626`, borderRadius: 6, fontSize: 11, fontWeight: 600, cursor: 'pointer', background: '#fff', color: '#dc2626' }}>
-                              Revoke
-                            </button>
-                          </td>
-                        </tr>
-                      )
-                    })}
-                  </tbody>
-                </table>
-              )}
-          </div>
-        )}
+        </section>
       </div>
+
+      {selectedPerson && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/45 p-4" onClick={(e) => e.target === e.currentTarget && setSelectedPerson(null)}>
+          <div className="max-h-[85vh] w-[640px] max-w-[95vw] overflow-y-auto rounded-[14px] bg-white p-7">
+            <div className="mb-5 flex items-start justify-between gap-4">
+              <div>
+                <h3 className="text-lg font-bold">{selectedPerson.displayName} - Stories</h3>
+                <p className="mt-1 text-[13px] text-[#888]">{selectedPerson.started} started · {selectedPerson.finished} completed</p>
+              </div>
+              <button type="button" onClick={() => setSelectedPerson(null)} className="border-0 bg-transparent text-[22px] leading-none text-[#aaa] hover:text-[#333]">x</button>
+            </div>
+
+            {selectedPerson.stories.length === 0 ? (
+              <p className="rounded-[10px] border border-[#e5e5e5] p-4 text-sm text-[#888]">No story activity found for this user.</p>
+            ) : selectedPerson.stories.map((story) => (
+              <div key={story.id} className="mb-3 rounded-[10px] border border-[#e5e5e5] p-4">
+                <h4 className="mb-2 text-[15px] font-semibold">
+                  {story.title}
+                  <span className={`ml-2 inline-block rounded-[10px] px-2 py-0.5 text-[11px] font-bold ${story.completed ? 'bg-[#d1fae5] text-[#065f46]' : 'bg-[#fef3c7] text-[#92400e]'}`}>{story.completed ? 'Completed' : 'In Progress'}</span>
+                </h4>
+                <div className="flex flex-wrap gap-5">
+                  <div className="flex flex-col gap-0.5"><span className="text-[11px] font-semibold uppercase text-[#999]">Started</span><span className="text-[13px] font-semibold">{formatDate(story.startedAt) || '--'}</span></div>
+                  <div className="flex flex-col gap-0.5"><span className="text-[11px] font-semibold uppercase text-[#999]">Finished</span><span className="text-[13px] font-semibold">{formatDate(story.finishedAt) || '--'}</span></div>
+                  <div className="flex flex-col gap-0.5"><span className="text-[11px] font-semibold uppercase text-[#999]">Duration</span><span className="text-[13px] font-semibold">{story.durationMins ? `${story.durationMins} min` : '--'}</span></div>
+                  <div className="flex flex-col gap-0.5"><span className="text-[11px] font-semibold uppercase text-[#999]">Listen %</span><span className="text-[13px] font-semibold">{story.progressPercent}%</span></div>
+                </div>
+                {!story.completed && (
+                  <div className="mt-2 h-1.5 rounded bg-[#f0f0f0]">
+                    <div className="h-1.5 rounded bg-[#f97316]" style={{ width: `${story.progressPercent}%` }} />
+                  </div>
+                )}
+              </div>
+            ))}
+
+            <div className="mt-4 text-right">
+              <button type="button" onClick={() => setSelectedPerson(null)} className="rounded-lg bg-[#f97316] px-[22px] py-2.5 text-sm font-semibold text-white">Close</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

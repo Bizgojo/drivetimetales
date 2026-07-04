@@ -41,7 +41,7 @@ const NAV_GROUPS = [
   { id: 'subscribers', label: 'Subscribers', icon: '👥', items: [
     { href: '/admin/users', label: 'Users' },
     { href: '/admin/subscriptions', label: 'Subscriptions' },
-    { href: '/admin/promo', label: 'Promo Codes' },
+    { href: '/admin/promo', label: 'Magic Link Invites' },
     { href: '/admin/referrals', label: 'Referrals' },
   ]},
   { id: 'marketing', label: 'Marketing', icon: '📱', items: [

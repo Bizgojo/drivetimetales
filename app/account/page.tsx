@@ -254,7 +254,10 @@ export default function AccountPage() {
         <div className="border-t border-gray-800 pt-6 flex flex-col gap-2">
           <button onClick={handleSignOut} className="w-full py-3 text-red-400 text-sm">Sign Out</button>
           {isAdmin && (
-            <a href="/admin" className="w-full py-3 text-center text-sm font-bold" style={{ color: '#f97316', border: '1px solid rgba(249,115,22,0.3)', borderRadius: '10px' }}>Admin Panel</a>
+            <>
+              <a href="/admin" className="w-full py-3 text-center text-sm font-bold" style={{ color: '#f97316', border: '1px solid rgba(249,115,22,0.3)', borderRadius: '10px' }}>Admin Panel</a>
+              <a href="/admin/promo?action=new" className="w-full py-3 text-center text-sm font-bold" style={{ color: '#f97316', border: '1px solid rgba(249,115,22,0.3)', borderRadius: '10px' }}>✉ Add Magic Link</a>
+            </>
           )}
         </div>
       </div>
