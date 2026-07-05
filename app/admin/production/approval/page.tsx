@@ -2574,6 +2574,7 @@ export default function AdminStoriesPage() {
   const [runnerWorkers, setRunnerWorkers] = useState<RunnerWorkerState[]>([])
   const [runnerRefreshTick, setRunnerRefreshTick] = useState(0)
   const [idleSeconds, setIdleSeconds] = useState<Record<string, number>>({})
+  const [lastJobDetailsByWorker, setLastJobDetailsByWorker] = useState<Record<string, { jobId: string; step: string; title: string; updatedAt: string } | null>>({})
   const [markedForDeletionIds, setMarkedForDeletionIds] = useState<Record<string, boolean>>({})
   const [playedStoryIds, setPlayedStoryIds] = useState<Record<string, boolean>>({})
   const [episodeRepairMarks, setEpisodeRepairMarks] = useState<Record<string, EpisodeRepairMark>>({})
@@ -3740,6 +3741,43 @@ export default function AdminStoriesPage() {
     return () => clearInterval(timer)
   }, [])
 
+  // Fetch last job details for each worker so we can show pipeline progress
+  // even when runner is between invocations (job not locked)
+  useEffect(() => {
+    if (runnerWorkers.length === 0) return
+    const jobIds = runnerWorkers
+      .map(w => w.last_run_summary?.jobId as string | undefined)
+      .filter((id): id is string => !!id)
+    if (jobIds.length === 0) return
+    supabase
+      .from('production_jobs')
+      .select('id,story_id,current_step,status,updated_at')
+      .in('id', jobIds)
+      .then(async ({ data: jobs }) => {
+        if (!jobs || jobs.length === 0) return
+        const storyIds = jobs.map((j: Record<string, string>) => j.story_id).filter(Boolean)
+        const { data: storyData } = await supabase
+          .from('stories')
+          .select('id,title')
+          .in('id', storyIds)
+        const storyMap = Object.fromEntries(((storyData || []) as Array<{ id: string; title: string }>).map(s => [s.id, s.title]))
+        const result: Record<string, { jobId: string; step: string; title: string; updatedAt: string } | null> = {}
+        for (const w of runnerWorkers) {
+          const jobId = w.last_run_summary?.jobId as string | undefined
+          if (!jobId) continue
+          const job = jobs.find((j: Record<string, string>) => j.id === jobId)
+          if (!job) continue
+          result[w.id] = {
+            jobId: job.id,
+            step: job.current_step || '',
+            title: storyMap[job.story_id] || 'Unknown',
+            updatedAt: job.updated_at || '',
+          }
+        }
+        setLastJobDetailsByWorker(result)
+      })
+  }, [runnerWorkers])
+
   function setPipelineTab(tab: WorkflowLane) {
     setActivePipelineTab(tab)
     setSeriesFilter('all')
@@ -4591,6 +4629,25 @@ export default function AdminStoriesPage() {
                       const s = elapsedS % 60
                       return m > 0 ? ` · ${m}m ${s}s` : ` · ${s}s`
                     }
+                    // Pipeline step definitions (order matters — determines done/active/future)
+                    const STEP_LABEL_MAP: Record<string, string> = {
+                      voice_preflight: 'Preflight', series_voice_preflight: 'Preflight',
+                      generate_voices: 'Voices', series_generate_voices: 'Voices',
+                      generate_belle_assets: 'Belle', series_generate_belle_assets: 'Belle',
+                      validate_belle_assets: 'Belle✓', series_validate_belle_assets: 'Belle✓',
+                      validate_belle_quality: 'Quality', series_validate_belle_quality: 'Quality',
+                      score_validate_package: 'Score', series_score_validate_package: 'Score',
+                      generate_music: 'Music', series_generate_music: 'Music',
+                      render_final_mix: 'Render', series_render_final_mix: 'Render',
+                      complete_story_package: 'Finish', series_complete_story_package: 'Finish',
+                    }
+                    const STEP_ORDER = ['Preflight','Voices','Belle','Belle✓','Quality','Score','Music','Render','Finish']
+                    const stepIndex = (stepKey: string | null | undefined) => {
+                      if (!stepKey) return -1
+                      const label = STEP_LABEL_MAP[stepKey]
+                      return label ? STEP_ORDER.indexOf(label) : -1
+                    }
+
                     return allWorkerKeys.map(key => {
                       const workerId = `production-runner:${key}`
                       const worker = workerById[workerId]
@@ -4600,23 +4657,69 @@ export default function AdminStoriesPage() {
                       const activeJob = isActive
                         ? activeRunnerJobs.find(s => s.source_job?.locked_by === workerId) || null
                         : null
-                      const timeStr = activeJob ? fmtElapsed(activeJob.source_job?.locked_at) : ''
-                      // Idle countdown: dispatch runs every 60s, show time until next expected job
+
+                      // Determine current step + story title
+                      // Prefer live locked job; fall back to last_run_summary job
+                      const lastJobDetail = lastJobDetailsByWorker[workerId] ?? null
+                      const currentStep = activeJob?.source_job?.current_step || lastJobDetail?.step || null
+                      const storyTitle = activeJob?.title || lastJobDetail?.title || null
+                      const lockedAt = activeJob?.source_job?.locked_at || null
+                      const isLocked = !!activeJob
+                      const hasPipelineInfo = !!currentStep && !!storyTitle
+
+                      // Idle countdown
                       const idleSecs = idleSeconds[key] ?? 0
                       const nextJobIn = Math.max(0, 60 - (idleSecs % 60))
-                      const idleLabel = !worker
-                        ? 'Not yet started'
-                        : isActive
-                          ? null
-                          : `Idle — next job in ~${nextJobIn}s`
-                      const displayLabel = activeJob
-                        ? `${activeJob.title} — ${activeJob.source_job?.current_step || 'processing'}${timeStr}`
-                        : idleLabel
-                      const isWorking = !!activeJob
+
+                      const currentStepIdx = stepIndex(currentStep)
+                      const timeStr = fmtElapsed(lockedAt)
+
                       return (
-                        <span key={key} style={{ color: isWorking ? '#0F172A' : '#94A3B8', fontWeight: 800, overflowWrap: 'anywhere' }}>
-                          {name}: {displayLabel}
-                        </span>
+                        <div key={key} style={{ display: 'grid', gap: '2px', paddingTop: '2px', paddingBottom: '2px' }}>
+                          {/* Runner name + story title row */}
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                            <span style={{ fontWeight: 900, color: hasPipelineInfo ? '#0F172A' : '#94A3B8', minWidth: '60px' }}>
+                              {name}:
+                            </span>
+                            {hasPipelineInfo ? (
+                              <>
+                                <span style={{ fontWeight: 700, color: '#0F172A', fontSize: '12px' }}>{storyTitle}</span>
+                                {isLocked
+                                  ? <span style={{ fontSize: '10px', fontWeight: 800, color: '#16A34A', background: '#DCFCE7', padding: '1px 6px', borderRadius: '999px' }}>ACTIVE{timeStr}</span>
+                                  : <span style={{ fontSize: '10px', fontWeight: 800, color: '#92400E', background: '#FEF3C7', padding: '1px 6px', borderRadius: '999px' }}>↺ resuming in ~{nextJobIn}s</span>
+                                }
+                              </>
+                            ) : (
+                              <span style={{ color: '#94A3B8', fontSize: '12px', fontWeight: 700 }}>
+                                {!worker ? 'Not yet started' : `Idle — next job in ~${nextJobIn}s`}
+                              </span>
+                            )}
+                          </div>
+                          {/* Pipeline step strip */}
+                          {hasPipelineInfo && (
+                            <div style={{ display: 'flex', gap: '3px', flexWrap: 'wrap', paddingLeft: '66px' }}>
+                              {STEP_ORDER.map((label, idx) => {
+                                const isDone = idx < currentStepIdx
+                                const isCurrent = idx === currentStepIdx
+                                const isFuture = idx > currentStepIdx
+                                return (
+                                  <span key={label} style={{
+                                    fontSize: '10px',
+                                    fontWeight: isCurrent ? 900 : 700,
+                                    padding: isCurrent ? '2px 7px' : '1px 5px',
+                                    borderRadius: '999px',
+                                    color: isDone ? '#15803D' : isCurrent ? '#ffffff' : '#94A3B8',
+                                    background: isDone ? '#DCFCE7' : isCurrent ? '#F97316' : '#F1F5F9',
+                                    border: isCurrent ? '1px solid #EA580C' : '1px solid transparent',
+                                    whiteSpace: 'nowrap',
+                                  }}>
+                                    {isDone ? `✓ ${label}` : label}
+                                  </span>
+                                )
+                              })}
+                            </div>
+                          )}
+                        </div>
                       )
                     })
                   })()}
