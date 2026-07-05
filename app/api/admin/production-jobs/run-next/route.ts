@@ -6372,6 +6372,30 @@ export async function POST(req: NextRequest) {
     lockHolderId = String(body.holderId || WORKER_ID).trim() || WORKER_ID
     const model = String(body.model || 'claude-opus-4-6')
 
+    // ── ONE JOB PER WORKER GUARD ──────────────────────────────────────────
+    // If this worker already holds a running job (fresh lock, not stale),
+    // redirect to that job instead of picking up a second one.
+    // This prevents two concurrent cron invocations of the same worker from
+    // each grabbing a different story simultaneously.
+    if (lockHolderId && !requestedJobId) {
+      const staleCutoff = new Date(Date.now() - LOCK_STALE_MS).toISOString()
+      const { data: existingJob } = await supabase
+        .from('production_jobs')
+        .select('*')
+        .eq('status', 'running')
+        .eq('locked_by', lockHolderId)
+        .gte('locked_at', staleCutoff)
+        .order('locked_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+      if (existingJob) {
+        // Worker already has a running job — use it instead of picking a new one
+        lockedJob = existingJob as ProductionJob
+        console.log(`[run-next] ONE-JOB-GUARD: ${lockHolderId} already holds job ${lockedJob.id.slice(0,8)} at step ${lockedJob.current_step} — redirecting`)
+      }
+    }
+    // ─────────────────────────────────────────────────────────────────────
+
     // Scan for zombie jobs before selecting the next candidate.
     // Zombies are jobs that are status=running, unlocked, and untouched for
     // more than ZOMBIE_STALE_MS.  We mark them failed so they surface in the
@@ -6382,14 +6406,17 @@ export async function POST(req: NextRequest) {
       console.warn('[run-next] Zombie guard: marked %d job(s) as failed/zombie_stalled: %s', markedZombies.length, markedZombies.join(', '))
     }
 
-    const candidate = await selectCandidate(requestedJobId)
-    if (!candidate) {
-      return NextResponse.json({ success: true, message: 'No queued or running production job found', job: null, markedZombies })
-    }
-
-    lockedJob = await lockJob(candidate, lockHolderId)
+    // Only select + lock a new candidate if the one-job-guard didn't already assign us a job
     if (!lockedJob) {
-      return bad('Production job is already locked', 409, { jobId: candidate.id })
+      const candidate = await selectCandidate(requestedJobId)
+      if (!candidate) {
+        return NextResponse.json({ success: true, message: 'No queued or running production job found', job: null, markedZombies })
+      }
+
+      lockedJob = await lockJob(candidate, lockHolderId)
+      if (!lockedJob) {
+        return bad('Production job is already locked', 409, { jobId: candidate.id })
+      }
     }
 
     const step = normalizeStep(lockedJob.current_step)
