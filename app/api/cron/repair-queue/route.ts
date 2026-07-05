@@ -177,6 +177,7 @@ export async function POST(req: Request) {
         story_id: storyId,
         job_type: 'standalone',
         status: 'queued',
+        production_priority: 999,
         current_step: jobStep,
         step_index: 0,
         input_json: {

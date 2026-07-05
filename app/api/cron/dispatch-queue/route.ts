@@ -162,91 +162,6 @@ async function handleDispatchQueue(request: NextRequest) {
     return json({ success: true, dispatched: [], skipped: [], message: `Queue full (${activeCount} active jobs, target ${MAX_DISPATCH_PER_RUN})` }, 200)
   }
 
-  const { data: standaloneStories, error: standaloneError } = await supabase
-    .from('stories')
-    .select('id,title,story_type,workflow_state,series_id,series_name,episode_number,series_episode_number,series_total_episodes')
-    .eq('workflow_state', 'stories_in_queue')
-    .in('story_type', ['standalone', 'single'])
-    .order('production_priority', { ascending: false, nullsFirst: false })
-    .order('workflow_state_changed_at', { ascending: true, nullsFirst: false })
-    .order('created_at', { ascending: true })
-    .limit(50)
-
-  if (standaloneError) {
-    console.error('[dispatch-queue] Failed to load standalone queue:', standaloneError)
-    return json({ success: false, error: standaloneError.message }, 500)
-  }
-
-  const standaloneIds = ((standaloneStories || []) as StoryRow[]).map((story) => story.id)
-  const { data: activeStandaloneJobs, error: activeStandaloneError } = standaloneIds.length
-    ? await supabase
-        .from('production_jobs')
-        .select('id,story_id,status')
-        .in('story_id', standaloneIds)
-        .in('status', BLOCKING_JOB_STATUSES)
-    : { data: [], error: null }
-
-  if (activeStandaloneError) {
-    console.error('[dispatch-queue] Failed to load active standalone jobs:', activeStandaloneError)
-    return json({ success: false, error: activeStandaloneError.message }, 500)
-  }
-
-  const activeStandaloneStoryIds = new Set(
-    ((activeStandaloneJobs || []) as Array<{ story_id: string | null }>).map((job) => job.story_id).filter(Boolean),
-  )
-
-  for (const story of (standaloneStories || []) as StoryRow[]) {
-    if (dispatched.length >= dispatchTarget) break
-    if (activeStandaloneStoryIds.has(story.id)) {
-      skipped.push({ storyId: story.id, reason: 'active_job_exists' })
-      continue
-    }
-
-    const { data: job, error: insertError } = await supabase
-      .from('production_jobs')
-      .insert({
-        story_id: story.id,
-        job_type: 'standalone',
-        status: 'queued',
-        // Stories in stories_in_queue already have scripts — start at voice production, not script generation
-        current_step: 'voice_preflight',
-        step_index: 0,
-        input_json: {
-          mode: 'standalone',
-          source: 'hal',
-          storyId: story.id,
-        },
-        state_json: {
-          storyId: story.id,
-          dispatchSource: 'cron/dispatch-queue',
-          dispatchedAt: now,
-        },
-        logs: [
-          {
-            at: now,
-            event: 'Queued from stories_in_queue by dispatch-queue cron',
-            storyId: story.id,
-            source: 'hal',
-          },
-        ],
-      })
-      .select('id')
-      .single()
-
-    if (insertError) {
-      console.error('[dispatch-queue] Failed to dispatch standalone story:', story.id, insertError)
-      skipped.push({ storyId: story.id, reason: 'insert_failed', error: insertError.message })
-      continue
-    }
-
-    dispatched.push({
-      jobId: job.id,
-      jobType: 'standalone',
-      storyId: story.id,
-      title: story.title,
-    })
-  }
-
   if (dispatched.length < dispatchTarget) {
     const { data: queuedSeriesEpisodes, error: queuedSeriesError } = await supabase
       .from('stories')
@@ -362,6 +277,93 @@ async function handleDispatchQueue(request: NextRequest) {
         seriesId,
         title: seriesName,
         episodeCount,
+      })
+    }
+  }
+
+  if (dispatched.length < dispatchTarget) {
+    const { data: standaloneStories, error: standaloneError } = await supabase
+      .from('stories')
+      .select('id,title,story_type,workflow_state,series_id,series_name,episode_number,series_episode_number,series_total_episodes')
+      .eq('workflow_state', 'stories_in_queue')
+      .in('story_type', ['standalone', 'single'])
+      .order('production_priority', { ascending: false, nullsFirst: false })
+      .order('workflow_state_changed_at', { ascending: true, nullsFirst: false })
+      .order('created_at', { ascending: true })
+      .limit(50)
+
+    if (standaloneError) {
+      console.error('[dispatch-queue] Failed to load standalone queue:', standaloneError)
+      return json({ success: false, error: standaloneError.message }, 500)
+    }
+
+    const standaloneIds = ((standaloneStories || []) as StoryRow[]).map((story) => story.id)
+    const { data: activeStandaloneJobs, error: activeStandaloneError } = standaloneIds.length
+      ? await supabase
+          .from('production_jobs')
+          .select('id,story_id,status')
+          .in('story_id', standaloneIds)
+          .in('status', BLOCKING_JOB_STATUSES)
+      : { data: [], error: null }
+
+    if (activeStandaloneError) {
+      console.error('[dispatch-queue] Failed to load active standalone jobs:', activeStandaloneError)
+      return json({ success: false, error: activeStandaloneError.message }, 500)
+    }
+
+    const activeStandaloneStoryIds = new Set(
+      ((activeStandaloneJobs || []) as Array<{ story_id: string | null }>).map((job) => job.story_id).filter(Boolean),
+    )
+
+    for (const story of (standaloneStories || []) as StoryRow[]) {
+      if (dispatched.length >= dispatchTarget) break
+      if (activeStandaloneStoryIds.has(story.id)) {
+        skipped.push({ storyId: story.id, reason: 'active_job_exists' })
+        continue
+      }
+
+      const { data: job, error: insertError } = await supabase
+        .from('production_jobs')
+        .insert({
+          story_id: story.id,
+          job_type: 'standalone',
+          status: 'queued',
+          // Stories in stories_in_queue already have scripts — start at voice production, not script generation
+          current_step: 'voice_preflight',
+          step_index: 0,
+          input_json: {
+            mode: 'standalone',
+            source: 'hal',
+            storyId: story.id,
+          },
+          state_json: {
+            storyId: story.id,
+            dispatchSource: 'cron/dispatch-queue',
+            dispatchedAt: now,
+          },
+          logs: [
+            {
+              at: now,
+              event: 'Queued from stories_in_queue by dispatch-queue cron',
+              storyId: story.id,
+              source: 'hal',
+            },
+          ],
+        })
+        .select('id')
+        .single()
+
+      if (insertError) {
+        console.error('[dispatch-queue] Failed to dispatch standalone story:', story.id, insertError)
+        skipped.push({ storyId: story.id, reason: 'insert_failed', error: insertError.message })
+        continue
+      }
+
+      dispatched.push({
+        jobId: job.id,
+        jobType: 'standalone',
+        storyId: story.id,
+        title: story.title,
       })
     }
   }
