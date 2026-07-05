@@ -89,6 +89,7 @@ interface Story {
     current_step: string | null
     updated_at: string | null
     locked_by?: string | null
+    locked_at?: string | null
     error_json?: any
   } | null
   // ATL-CONS-001 Phase C: QC checklist data
@@ -2735,14 +2736,14 @@ export default function AdminStoriesPage() {
         .order('created_at', { ascending: false }),
       supabase
         .from('production_jobs')
-        .select('id,story_id,series_id,status,current_step,updated_at,locked_by,created_at,error_json')
+        .select('id,story_id,series_id,status,current_step,updated_at,locked_by,locked_at,created_at,error_json')
         .in('story_id', eligibleIds)
         .in('status', ACTIVE_PRODUCTION_JOB_STATUSES)
         .order('updated_at', { ascending: false }),
       eligibleSeriesIds.length > 0
         ? supabase
           .from('production_jobs')
-          .select('id,story_id,series_id,status,current_step,updated_at,locked_by,created_at,error_json')
+          .select('id,story_id,series_id,status,current_step,updated_at,locked_by,locked_at,created_at,error_json')
           .in('series_id', eligibleSeriesIds)
           .in('status', ACTIVE_PRODUCTION_JOB_STATUSES)
           .order('updated_at', { ascending: false })
@@ -4547,8 +4548,18 @@ export default function AdminStoriesPage() {
                       'worker-4': 'Groucho',
                     }
                     // Always show all known workers, active or idle
+                    const RUNNER_BUDGET_S = 800
                     const allWorkerKeys = ['worker-1', 'worker-2', 'worker-3', 'worker-4']
                     const workerById = Object.fromEntries(runnerWorkers.map(w => [w.id, w]))
+                    const fmtRemaining = (lockedAt: string | null | undefined) => {
+                      if (!lockedAt) return ''
+                      const elapsedS = Math.floor((Date.now() - new Date(lockedAt).getTime()) / 1000)
+                      const remainS = Math.max(0, RUNNER_BUDGET_S - elapsedS)
+                      if (remainS === 0) return ' · finishing up'
+                      const m = Math.floor(remainS / 60)
+                      const s = remainS % 60
+                      return m > 0 ? ` · ${m}m ${s}s remaining` : ` · ${s}s remaining`
+                    }
                     return allWorkerKeys.map(key => {
                       const workerId = `production-runner:${key}`
                       const worker = workerById[workerId]
@@ -4558,10 +4569,13 @@ export default function AdminStoriesPage() {
                       const activeJob = isActive
                         ? activeRunnerJobs.find(s => s.source_job?.locked_by === workerId) || null
                         : null
+                      const timeStr = activeJob ? fmtRemaining(activeJob.source_job?.locked_at) : ''
                       return (
                         <span key={key} style={{ color: isActive ? '#0F172A' : '#94A3B8', fontWeight: 800, overflowWrap: 'anywhere' }}>
                           {name}: {isActive
-                            ? (activeJob ? `${activeJob.title} — ${activeJob.source_job?.current_step || 'processing'}` : 'Active — picking up next job')
+                            ? (activeJob
+                                ? `${activeJob.title} — ${activeJob.source_job?.current_step || 'processing'}${timeStr}`
+                                : 'Active — picking up next job')
                             : (worker ? 'Idle' : 'Not yet started')}
                         </span>
                       )
