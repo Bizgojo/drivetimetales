@@ -2594,7 +2594,7 @@ export default function AdminStoriesPage() {
   const [runnerWorkers, setRunnerWorkers] = useState<RunnerWorkerState[]>([])
   const [runnerRefreshTick, setRunnerRefreshTick] = useState(0)
   const [idleSeconds, setIdleSeconds] = useState<Record<string, number>>({})
-  const [lastJobDetailsByWorker, setLastJobDetailsByWorker] = useState<Record<string, { jobId: string; step: string; title: string; updatedAt: string } | null>>({})
+  const [lastJobDetailsByWorker, setLastJobDetailsByWorker] = useState<Record<string, { jobId: string; storyId: string; step: string; title: string; updatedAt: string } | null>>({})
   const [markedForDeletionIds, setMarkedForDeletionIds] = useState<Record<string, boolean>>({})
   const [playedStoryIds, setPlayedStoryIds] = useState<Record<string, boolean>>({})
   const [episodeRepairMarks, setEpisodeRepairMarks] = useState<Record<string, EpisodeRepairMark>>({})
@@ -3789,6 +3789,7 @@ export default function AdminStoriesPage() {
           if (!job) continue
           result[w.id] = {
             jobId: job.id,
+            storyId: job.story_id || '',
             step: job.current_step || '',
             title: storyMap[job.story_id] || 'Unknown',
             updatedAt: job.updated_at || '',
@@ -4748,13 +4749,11 @@ export default function AdminStoriesPage() {
                   runnerByStoryId[story.id] = { name, step, isLocked: true }
                 }
                 // Also fill from lastJobDetailsByWorker for between-invocation visibility
+                // Use storyId directly (not via activeRunnerJobs) so unlocked jobs still map
                 for (const [workerId, detail] of Object.entries(lastJobDetailsByWorker)) {
-                  if (!detail) continue
-                  // Find story_id from activeRunnerJobs matching this job or use detail
-                  const storyForJob = activeRunnerJobs.find(s => s.source_job?.id === detail.jobId)
-                  const storyId = storyForJob?.id
-                  if (storyId && !runnerByStoryId[storyId]) {
-                    runnerByStoryId[storyId] = {
+                  if (!detail?.storyId) continue
+                  if (!runnerByStoryId[detail.storyId]) {
+                    runnerByStoryId[detail.storyId] = {
                       name: WORKER_SHORT_NAMES[workerId] || workerId,
                       step: PIPELINE_STEP_LABEL_MAP[detail.step] || detail.step,
                       isLocked: false,

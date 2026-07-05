@@ -94,10 +94,28 @@ async function releaseLease(
 async function fetchOldestActiveJob(
   supabase: SupabaseClient,
   holderId?: string,
+  preferJobId?: string | null,
 ): Promise<Record<string, unknown> | null> {
-  // Only pick up jobs that are unlocked (or locked by this worker from a prior step).
-  // This allows multiple parallel workers to each claim a different job safely.
+  // Runner affinity: if this worker last worked on a specific job, try to re-claim it first.
+  // This keeps each runner sticky to one story until it reaches RFR.
   const staleLockCutoff = new Date(Date.now() - LOCK_STALE_MS).toISOString()
+
+  if (preferJobId) {
+    const { data: preferred } = await supabase
+      .from('production_jobs')
+      .select('*')
+      .eq('id', preferJobId)
+      .in('status', ACTIVE_STATUSES)
+      .single()
+    if (preferred) {
+      const lockedAt = (preferred as Record<string, unknown>).locked_at as string | null
+      const lockedBy = (preferred as Record<string, unknown>).locked_by as string | null
+      const isUnlocked = !lockedAt && !lockedBy
+      const isOwnedByMe = holderId && lockedBy === holderId
+      const isStale = lockedAt && new Date(lockedAt).getTime() < new Date(staleLockCutoff).getTime()
+      if (isUnlocked || isOwnedByMe || isStale) return preferred as Record<string, unknown>
+    }
+  }
 
   const { data: candidates, error } = await supabase
     .from('production_jobs')
@@ -111,12 +129,13 @@ async function fetchOldestActiveJob(
 
   // Find the first job not locked by another worker
   for (const job of candidates as Record<string, unknown>[]) {
-    const lockedAt = job.locked_at as string | null
-    const lockedBy = job.locked_by as string | null
+    if (preferJobId && (job as Record<string, unknown>).id === preferJobId) continue // already tried above
+    const lockedAt = (job as Record<string, unknown>).locked_at as string | null
+    const lockedBy = (job as Record<string, unknown>).locked_by as string | null
     const isUnlocked = !lockedAt && !lockedBy
     const isOwnedByMe = holderId && lockedBy === holderId
     const isStale = lockedAt && new Date(lockedAt).getTime() < new Date(staleLockCutoff).getTime()
-    if (isUnlocked || isOwnedByMe || isStale) return job
+    if (isUnlocked || isOwnedByMe || isStale) return job as Record<string, unknown>
   }
   return null
 }
@@ -229,7 +248,8 @@ export async function runPipelineLoop(
       // Find the next available job
       let job: Record<string, unknown> | null
       try {
-        job = await fetchOldestActiveJob(supabase, holderId)
+        // Pass lastJobId so runner re-claims its own story first (affinity)
+        job = await fetchOldestActiveJob(supabase, holderId, lastJobId)
       } catch (err: unknown) {
         lastExitReason = 'error'
         lastExitMessage = err instanceof Error ? err.message : String(err)
