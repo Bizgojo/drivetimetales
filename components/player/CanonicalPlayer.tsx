@@ -1037,8 +1037,10 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
       saveProgress(getProgressSeconds()); setIsPlaying(false)
     } else {
       // src is pre-loaded in useEffect — play directly to preserve user gesture
+      // Also clears autoplayBlocked so the redundant "Ready to continue" card is dismissed
       audioRef.current.play().then(() => {
         setIsPlaying(true)
+        setAutoplayBlocked(false)
         if (!user && !sessionStartRef.current) { sessionStartRef.current = Date.now() }
         if (user?.id) supabase.from('user_library').upsert({ user_id: user.id, story_id: storyId, not_for_me: false, last_played: new Date().toISOString() }, { onConflict: 'user_id,story_id' }).then(() => {})
         // Analytics: track play start (only once per session)
@@ -1511,20 +1513,7 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
             </div>
           </div>
         )}
-        {autoplayBlocked && (
-          <div style={{ border:'1px solid rgba(34,197,94,0.28)', background:'rgba(34,197,94,0.08)', borderRadius:'14px', padding:'12px', textAlign:'center' }}>
-            <p style={{ color:'white', fontSize:'13px', fontWeight:800, margin:'0 0 4px' }}>Ready to continue</p>
-            <p style={{ color:'rgba(255,255,255,0.72)', fontSize:'12px', margin:'0 0 10px' }}>Tap to start the next episode.</p>
-            <button
-              onClick={() => {
-                audioRef.current?.play()
-                  .then(() => { setIsPlaying(true); setAutoplayBlocked(false) })
-                  .catch(() => setAutoplayBlocked(true))
-              }}
-              style={{ width:'100%', padding:'10px 12px', borderRadius:'10px', border:'none', background:'#22c55e', color:'white', fontSize:'13px', fontWeight:800, cursor:'pointer' }}
-            >Tap to continue</button>
-          </div>
-        )}
+        {/* autoplayBlocked: "Ready to continue" card removed — bottom ▶ Continue button handles this */}
         <div>
           <div
             ref={progressBarRef}
