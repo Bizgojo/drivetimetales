@@ -136,6 +136,21 @@ type RunnerWorkerState = {
   last_heartbeat_at: string | null
   last_run_summary?: Record<string, unknown> | null
 }
+type AgentMessage = {
+  id: string
+  from_agent: string
+  to_agent: string
+  subject: string
+  body: string
+  status: string
+  reply_body: string | null
+  replied_at: string | null
+  read_at: string | null
+  created_at: string | null
+  updated_at: string | null
+  mission_ref: string | null
+  requires_action: boolean | null
+}
 type ProductionQueueBannerMeta = {
   lastScriptedTitle: string | null
   lastScriptedCreatedAt: string | null
@@ -616,6 +631,222 @@ function SeriesStatChip({ label, value, tone = 'neutral' }: { label: string; val
       <span>{label}</span>
       <span style={{ fontSize: '13px', fontWeight: 900 }}>{value}</span>
     </span>
+  )
+}
+
+const AGENT_COMMS_OPTIONS = ['hal', 'atlas', 'maya', 'susan', 'vega', 'bart', 'lex', 'codex', 'orion']
+
+function agentMessageDate(value: string | null) {
+  if (!value) return '-'
+  return new Date(value).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
+}
+
+function agentStatusBadge(status: string) {
+  const normalized = status || 'pending'
+  const colors = normalized === 'replied'
+    ? ['#DCFCE7', '#166534', '#BBF7D0']
+    : normalized === 'read'
+      ? ['#DBEAFE', '#1E40AF', '#BFDBFE']
+      : normalized === 'failed' || normalized === 'blocked'
+        ? ['#FEE2E2', '#991B1B', '#FECACA']
+        : ['#FEF3C7', '#92400E', '#FDE68A']
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', minHeight: '20px', padding: '2px 7px', borderRadius: '999px', backgroundColor: colors[0], color: colors[1], border: `1px solid ${colors[2]}`, fontSize: '10px', fontWeight: 900, textTransform: 'uppercase' }}>
+      {normalized}
+    </span>
+  )
+}
+
+function AgentCommsPanel() {
+  const [outbox, setOutbox] = useState<AgentMessage[]>([])
+  const [replies, setReplies] = useState<AgentMessage[]>([])
+  const [loadingMessages, setLoadingMessages] = useState(false)
+  const [messageError, setMessageError] = useState('')
+  const [composeOpen, setComposeOpen] = useState(false)
+  const [sending, setSending] = useState(false)
+  const [compose, setCompose] = useState({
+    to_agent: 'hal',
+    subject: '',
+    body: '',
+    mission_ref: 'ATL-COMMS-001',
+    requires_action: true,
+  })
+
+  async function loadMessages() {
+    setLoadingMessages(true)
+    setMessageError('')
+    try {
+      const [outboxRes, repliesRes] = await Promise.all([
+        fetch('/api/admin/agent-messages?from_agent=orion', { cache: 'no-store' }),
+        fetch('/api/admin/agent-messages?status=replied', { cache: 'no-store' }),
+      ])
+      const [outboxJson, repliesJson] = await Promise.all([
+        outboxRes.json().catch(() => ({})),
+        repliesRes.json().catch(() => ({})),
+      ])
+      if (!outboxRes.ok || !outboxJson.success) throw new Error(outboxJson.error || `Outbox HTTP ${outboxRes.status}`)
+      if (!repliesRes.ok || !repliesJson.success) throw new Error(repliesJson.error || `Replies HTTP ${repliesRes.status}`)
+      setOutbox(Array.isArray(outboxJson.messages) ? outboxJson.messages : [])
+      setReplies(Array.isArray(repliesJson.messages) ? repliesJson.messages : [])
+    } catch (err) {
+      setMessageError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setLoadingMessages(false)
+    }
+  }
+
+  useEffect(() => {
+    loadMessages()
+  }, [])
+
+  async function sendMessage(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (!compose.to_agent.trim() || !compose.subject.trim() || !compose.body.trim()) return
+    setSending(true)
+    setMessageError('')
+    try {
+      const res = await fetch('/api/admin/agent-messages', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          from_agent: 'orion',
+          to_agent: compose.to_agent.trim().toLowerCase(),
+          subject: compose.subject.trim(),
+          body: compose.body.trim(),
+          mission_ref: compose.mission_ref.trim() || null,
+          requires_action: compose.requires_action,
+        }),
+      })
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok || !json.success) throw new Error(json.error || `HTTP ${res.status}`)
+      setCompose((prev) => ({ ...prev, subject: '', body: '' }))
+      setComposeOpen(false)
+      await loadMessages()
+    } catch (err) {
+      setMessageError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setSending(false)
+    }
+  }
+
+  const latestOutbox = outbox.slice(0, 5)
+  const latestReplies = replies.slice(0, 5)
+
+  return (
+    <section style={{ marginTop: '14px', border: '1px solid #D1D5DB', borderRadius: '10px', backgroundColor: '#FFFFFF', padding: '14px', display: 'grid', gap: '12px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', flexWrap: 'wrap' }}>
+        <div>
+          <div style={{ color: '#111827', fontSize: '13px', fontWeight: 950, textTransform: 'uppercase' }}>Agent Comms</div>
+          <div style={{ color: '#6B7280', fontSize: '11px', fontWeight: 750, marginTop: '3px' }}>
+            Orion outbox: {outbox.length} messages · Replies: {replies.length}
+          </div>
+        </div>
+        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+          <button type="button" onClick={loadMessages} disabled={loadingMessages} style={{ minHeight: '30px', padding: '0 10px', borderRadius: '7px', border: '1px solid #D1D5DB', backgroundColor: '#ffffff', color: '#374151', fontSize: '11px', fontWeight: 900, cursor: loadingMessages ? 'wait' : 'pointer' }}>
+            {loadingMessages ? 'Loading' : 'Refresh'}
+          </button>
+          <button type="button" onClick={() => setComposeOpen((open) => !open)} style={{ minHeight: '30px', padding: '0 10px', borderRadius: '7px', border: '1px solid #0EA5E9', backgroundColor: '#E0F2FE', color: '#075985', fontSize: '11px', fontWeight: 950, cursor: 'pointer' }}>
+            Compose
+          </button>
+        </div>
+      </div>
+
+      {messageError && (
+        <div style={{ border: '1px solid #FECACA', borderRadius: '8px', backgroundColor: '#FEF2F2', color: '#991B1B', padding: '8px 10px', fontSize: '12px', fontWeight: 800 }}>
+          {messageError}
+        </div>
+      )}
+
+      {composeOpen && (
+        <form onSubmit={sendMessage} style={{ border: '1px solid #BAE6FD', borderRadius: '8px', backgroundColor: '#F0F9FF', padding: '12px', display: 'grid', gap: '9px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'minmax(120px, 180px) 1fr', gap: '8px' }}>
+            <select
+              value={compose.to_agent}
+              onChange={(event) => setCompose((prev) => ({ ...prev, to_agent: event.target.value }))}
+              style={{ minHeight: '34px', border: '1px solid #BAE6FD', borderRadius: '7px', backgroundColor: '#ffffff', color: '#0F172A', fontSize: '12px', fontWeight: 850, padding: '0 8px' }}
+            >
+              {AGENT_COMMS_OPTIONS.map((agent) => <option key={agent} value={agent}>{agent}</option>)}
+            </select>
+            <input
+              type="text"
+              value={compose.subject}
+              onChange={(event) => setCompose((prev) => ({ ...prev, subject: event.target.value }))}
+              placeholder="Subject"
+              style={{ minHeight: '34px', border: '1px solid #BAE6FD', borderRadius: '7px', backgroundColor: '#ffffff', color: '#0F172A', fontSize: '12px', fontWeight: 750, padding: '0 9px' }}
+            />
+          </div>
+          <textarea
+            value={compose.body}
+            onChange={(event) => setCompose((prev) => ({ ...prev, body: event.target.value }))}
+            placeholder="Message"
+            rows={3}
+            style={{ width: '100%', resize: 'vertical', border: '1px solid #BAE6FD', borderRadius: '7px', backgroundColor: '#ffffff', color: '#0F172A', fontSize: '12px', lineHeight: 1.45, padding: '8px 9px' }}
+          />
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap' }}>
+            <input
+              type="text"
+              value={compose.mission_ref}
+              onChange={(event) => setCompose((prev) => ({ ...prev, mission_ref: event.target.value }))}
+              placeholder="Mission ref"
+              style={{ flex: '1 1 180px', minHeight: '32px', border: '1px solid #BAE6FD', borderRadius: '7px', backgroundColor: '#ffffff', color: '#0F172A', fontSize: '12px', fontWeight: 750, padding: '0 9px' }}
+            />
+            <label style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', color: '#075985', fontSize: '11px', fontWeight: 900 }}>
+              <input
+                type="checkbox"
+                checked={compose.requires_action}
+                onChange={(event) => setCompose((prev) => ({ ...prev, requires_action: event.target.checked }))}
+              />
+              Requires action
+            </label>
+            <button type="submit" disabled={sending || !compose.subject.trim() || !compose.body.trim()} style={{ minHeight: '32px', padding: '0 12px', borderRadius: '7px', border: 'none', backgroundColor: sending || !compose.subject.trim() || !compose.body.trim() ? '#CBD5E1' : '#0EA5E9', color: '#ffffff', fontSize: '11px', fontWeight: 950, cursor: sending ? 'wait' : 'pointer' }}>
+              {sending ? 'Sending' : 'Send'}
+            </button>
+          </div>
+        </form>
+      )}
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '12px' }}>
+        <div style={{ display: 'grid', gap: '7px', minWidth: 0 }}>
+          <div style={{ color: '#374151', fontSize: '11px', fontWeight: 950, textTransform: 'uppercase' }}>Orion's outbox</div>
+          {latestOutbox.length === 0 ? (
+            <div style={{ color: '#94A3B8', fontSize: '12px', fontWeight: 800, border: '1px dashed #CBD5E1', borderRadius: '8px', padding: '10px' }}>No outbound messages.</div>
+          ) : latestOutbox.map((message) => (
+            <article key={message.id} style={{ border: '1px solid #E5E7EB', borderRadius: '8px', padding: '9px 10px', backgroundColor: '#F9FAFB', minWidth: 0 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: '8px', alignItems: 'flex-start' }}>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ color: '#111827', fontSize: '12px', fontWeight: 950, overflowWrap: 'anywhere' }}>{message.subject}</div>
+                  <div style={{ color: '#64748B', fontSize: '10px', fontWeight: 850, marginTop: '3px' }}>to {message.to_agent} · {agentMessageDate(message.created_at)}</div>
+                </div>
+                {agentStatusBadge(message.status)}
+              </div>
+              <div style={{ color: '#334155', fontSize: '11px', lineHeight: 1.35, marginTop: '6px', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' as React.CSSProperties['WebkitBoxOrient'], overflow: 'hidden' }}>
+                {message.body}
+              </div>
+            </article>
+          ))}
+        </div>
+
+        <div style={{ display: 'grid', gap: '7px', minWidth: 0 }}>
+          <div style={{ color: '#374151', fontSize: '11px', fontWeight: 950, textTransform: 'uppercase' }}>Replies received</div>
+          {latestReplies.length === 0 ? (
+            <div style={{ color: '#94A3B8', fontSize: '12px', fontWeight: 800, border: '1px dashed #CBD5E1', borderRadius: '8px', padding: '10px' }}>No replies yet.</div>
+          ) : latestReplies.map((message) => (
+            <article key={message.id} style={{ border: '1px solid #BBF7D0', borderRadius: '8px', padding: '9px 10px', backgroundColor: '#F0FDF4', minWidth: 0 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: '8px', alignItems: 'flex-start' }}>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ color: '#111827', fontSize: '12px', fontWeight: 950, overflowWrap: 'anywhere' }}>{message.subject}</div>
+                  <div style={{ color: '#047857', fontSize: '10px', fontWeight: 850, marginTop: '3px' }}>from {message.to_agent} · {agentMessageDate(message.replied_at || message.updated_at)}</div>
+                </div>
+                {agentStatusBadge(message.status)}
+              </div>
+              <div style={{ color: '#14532D', fontSize: '11px', lineHeight: 1.35, marginTop: '6px', display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical' as React.CSSProperties['WebkitBoxOrient'], overflow: 'hidden' }}>
+                {message.reply_body || 'Reply body empty.'}
+              </div>
+            </article>
+          ))}
+        </div>
+      </div>
+    </section>
   )
 }
 
@@ -3704,7 +3935,7 @@ export default function AdminStoriesPage() {
     if (!worker.lease_holder || !worker.last_heartbeat_at) return false
     return Date.now() - new Date(worker.last_heartbeat_at).getTime() <= 15 * 60 * 1000
   })
-  const expectedRunnerWorkerCount: number = 3
+  const expectedRunnerWorkerCount: number = 4
   const runnerJobByWorkerId = new Map(
     activeRunnerJobs
       .filter((story) => story.source_job?.locked_by)
@@ -3729,9 +3960,9 @@ export default function AdminStoriesPage() {
     setSelectedSeriesKey(seriesGroups[0]?.key || null)
   }, [selectedSeriesKey, seriesGroups.map((group) => group.key).join('|')])
 
-  // Auto-refresh runner state every 60 seconds
+  // Auto-refresh runner state every 15 seconds so active workers show live status faster
   useEffect(() => {
-    const interval = setInterval(() => setRunnerRefreshTick(t => t + 1), 60_000)
+    const interval = setInterval(() => setRunnerRefreshTick(t => t + 1), 15_000)
     return () => clearInterval(interval)
   }, [])
 
@@ -4735,6 +4966,8 @@ export default function AdminStoriesPage() {
                 </div>
               </div>
             </div>
+
+            <AgentCommsPanel />
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '14px' }}>
               {(() => {
