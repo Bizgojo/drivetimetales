@@ -21,6 +21,9 @@
     "app/api/cron/dispatch-queue/route.ts": {
       "maxDuration": 60
     },
+    "app/api/cron/repair-queue/route.ts": {
+      "maxDuration": 60
+    },
     "app/api/cron/production-runner/route.ts": {
       "maxDuration": 800
     }
@@ -61,6 +64,10 @@
     {
       "path": "/api/cron/dispatch-queue",
       "schedule": "*/1 * * * *"
+    },
+    {
+      "path": "/api/cron/repair-queue",
+      "schedule": "*/5 * * * *"
     },
     {
       "path": "/api/cron/production-runner?worker=1",
