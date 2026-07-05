@@ -4881,9 +4881,8 @@ export default function AdminStoriesPage() {
                     </div>
                   </article>
                 )
-              })}
-                )
-              })}
+                })
+              })()}
               {seriesGroups.length === 0 && (
                 <div style={{ padding: '36px 8px', textAlign: 'center', color: '#9CA3AF', fontSize: '13px' }}>{activeEmptyMessage}</div>
               )}
