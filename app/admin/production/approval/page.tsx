@@ -4609,13 +4609,13 @@ export default function AdminStoriesPage() {
                         : isActive
                           ? null
                           : `Idle — next job in ~${nextJobIn}s`
+                      const displayLabel = activeJob
+                        ? `${activeJob.title} — ${activeJob.source_job?.current_step || 'processing'}${timeStr}`
+                        : idleLabel
+                      const isWorking = !!activeJob
                       return (
-                        <span key={key} style={{ color: isActive ? '#0F172A' : '#94A3B8', fontWeight: 800, overflowWrap: 'anywhere' }}>
-                          {name}: {isActive
-                            ? (activeJob
-                                ? `${activeJob.title} — ${activeJob.source_job?.current_step || 'processing'}${timeStr}`
-                                : 'Active — picking up next job')
-                            : idleLabel}
+                        <span key={key} style={{ color: isWorking ? '#0F172A' : '#94A3B8', fontWeight: 800, overflowWrap: 'anywhere' }}>
+                          {name}: {displayLabel}
                         </span>
                       )
                     })
