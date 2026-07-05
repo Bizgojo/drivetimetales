@@ -92,6 +92,10 @@ export async function GET(request: Request) {
 
   try {
     const { user } = data.session
+    const now = new Date().toISOString()
+    // Update last_login on every sign-in — ensures Invited People table reflects activity
+    await supabase.from('users').update({ last_login: now }).eq('id', user.id)
+    // Create users row if missing (non-blocking)
     fetch(`${origin}/api/user/create`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
