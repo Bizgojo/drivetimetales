@@ -4793,13 +4793,26 @@ export default function AdminStoriesPage() {
                 // Runner info for this group
                 const runnerInfo = groupStories.map(s => runnerByStoryId[s.id]).find(Boolean) || null
 
+                                // Queue position for non-runner cards: count active runner groups at top
+                const runnerGroupCount = sortedGroups.filter(g => {
+                  const gs = g.type === 'series' ? g.stories : [g.story]
+                  return gs.some(s => runnerByStoryId[s.id])
+                }).length
+                const queuePos = runnerInfo ? null : index - runnerGroupCount + 1
+
+                // Pipeline strip for runner cards
+                const STEP_ORDER_CARD = ['Preflight','Voices','Belle','Belle✓','Quality','Score','Music','Render','Finish']
+                const currentStepLabel = runnerInfo ? runnerInfo.step : null
+                const currentStepIdx = currentStepLabel ? STEP_ORDER_CARD.indexOf(currentStepLabel) : -1
+
                 return (
                   <article
                     key={group.key}
                     style={{
                       display: 'flex',
-                      alignItems: 'center',
-                      gap: '12px',
+                      flexDirection: runnerInfo ? 'column' : 'row',
+                      alignItems: runnerInfo ? 'stretch' : 'center',
+                      gap: '0',
                       width: '100%',
                       minHeight: '72px',
                       padding: '11px 12px',
@@ -4808,77 +4821,103 @@ export default function AdminStoriesPage() {
                       backgroundColor: runnerInfo ? '#FEFCE8' : productionPriority > 0 ? '#FFFBEB' : '#ffffff',
                     }}
                   >
-                    {runnerInfo ? (
-                      <span style={{ width: '52px', height: '38px', borderRadius: '8px', backgroundColor: runnerInfo.isLocked ? '#16A34A' : '#F59E0B', color: '#ffffff', display: 'inline-flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', fontSize: '9px', fontWeight: 950, flex: '0 0 auto', lineHeight: 1.2, textAlign: 'center', padding: '2px' }}>
-                        <span style={{ fontSize: '11px', fontWeight: 950 }}>{runnerInfo.name}</span>
-                        <span style={{ opacity: 0.9 }}>{runnerInfo.step}</span>
-                      </span>
-                    ) : (
-                    <span style={{ width: '38px', height: '38px', borderRadius: '999px', backgroundColor: productionPriority > 0 ? '#F59E0B' : '#E5E7EB', color: productionPriority > 0 ? '#7C2D12' : '#4B5563', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '13px', fontWeight: 950, flex: '0 0 auto' }}>
-                      #{index + 1}
-                    </span>
-                    )}
-                    <div style={{ width: '48px', height: '48px', borderRadius: '6px', overflow: 'hidden', backgroundColor: '#E5E7EB', flex: '0 0 auto' }}>
-                      <img src={firstStory?.cover_url || '/images/default-cover.png'} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                    </div>
-                    <div style={{ minWidth: 0, flex: '1 1 auto' }}>
-                      <div style={{ color: '#111827', fontSize: '15px', fontWeight: 900, lineHeight: 1.25, whiteSpace: 'normal', overflowWrap: 'anywhere' }}>
-                        {groupTitle}
+                    {/* Main row: badge + cover + info + actions */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px', width: '100%' }}>
+                      {/* Left badge: runner name+step OR queue position */}
+                      {runnerInfo ? (
+                        <span style={{ width: '52px', minHeight: '38px', borderRadius: '8px', backgroundColor: runnerInfo.isLocked ? '#15803D' : '#D97706', color: '#ffffff', display: 'inline-flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', fontSize: '9px', fontWeight: 950, flex: '0 0 auto', lineHeight: 1.25, textAlign: 'center', padding: '3px 2px', gap: '1px' }}>
+                          <span style={{ fontSize: '11px', fontWeight: 950 }}>{runnerInfo.name}</span>
+                          <span style={{ fontSize: '8px', opacity: 0.9, fontWeight: 800 }}>{runnerInfo.isLocked ? '● active' : '↺ resuming'}</span>
+                        </span>
+                      ) : (
+                        <span style={{ width: '38px', height: '38px', borderRadius: '999px', backgroundColor: productionPriority > 0 ? '#F59E0B' : '#E5E7EB', color: productionPriority > 0 ? '#7C2D12' : '#4B5563', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '13px', fontWeight: 950, flex: '0 0 auto' }}>
+                          #{queuePos}
+                        </span>
+                      )}
+                      {/* Cover image */}
+                      <div style={{ width: '48px', height: '48px', borderRadius: '6px', overflow: 'hidden', backgroundColor: '#E5E7EB', flex: '0 0 auto' }}>
+                        <img src={firstStory?.cover_url || '/images/default-cover.png'} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                       </div>
-                      {duplicateTitle && firstStory && (
-                        <div style={{ color: '#6B7280', fontSize: '10px', marginTop: '2px', fontWeight: 800 }}>
-                          ID: {shortStoryId(firstStory)}
+                      {/* Title + metadata */}
+                      <div style={{ minWidth: 0, flex: '1 1 auto' }}>
+                        <div style={{ color: '#111827', fontSize: '15px', fontWeight: 900, lineHeight: 1.25, whiteSpace: 'normal', overflowWrap: 'anywhere' }}>
+                          {groupTitle}
                         </div>
-                      )}
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginTop: '5px', color: '#4B5563', fontSize: '12px', lineHeight: 1.35, fontWeight: 750 }}>
-                        <span>{metadata}</span>
-                        <span>{firstStory ? submittedDateLabel(firstStory) : 'Submitted date unknown'}</span>
-                        {showsInProductionBadge(activeJob) ? (
-                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', minHeight: '22px', padding: '3px 8px', borderRadius: '999px', backgroundColor: '#DCFCE7', color: '#166534', border: '1px solid #BBF7D0', fontSize: '11px', fontWeight: 900 }}>
-                            <span className="approval-pulse-dot" style={{ width: '7px', height: '7px', borderRadius: '999px', backgroundColor: '#22C55E', flex: '0 0 auto' }} />
-                            In Production
-                          </span>
-                        ) : (
-                          <span style={{ display: 'inline-flex', alignItems: 'center', minHeight: '22px', padding: '3px 8px', borderRadius: '999px', backgroundColor: '#E0F2FE', color: '#075985', border: '1px solid #BAE6FD', fontSize: '11px', fontWeight: 900 }}>
-                            {firstStory ? workflowStateLabel(firstStory) : 'Queued'}
-                          </span>
+                        {duplicateTitle && firstStory && (
+                          <div style={{ color: '#6B7280', fontSize: '10px', marginTop: '2px', fontWeight: 800 }}>
+                            ID: {shortStoryId(firstStory)}
+                          </div>
                         )}
-                        {duplicateTitle && (
-                          <span style={{ display: 'inline-flex', alignItems: 'center', minHeight: '22px', padding: '3px 8px', borderRadius: '999px', backgroundColor: '#FEF3C7', color: '#92400E', border: '1px solid #FDE68A', fontSize: '11px', fontWeight: 900 }}>
-                            ⚠ Duplicate
-                          </span>
-                        )}
-                        {productionPriority > 0 && (
-                          <span style={{ display: 'inline-flex', alignItems: 'center', minHeight: '22px', padding: '3px 8px', borderRadius: '999px', backgroundColor: '#FEF3C7', color: '#92400E', border: '1px solid #FDE68A', fontSize: '11px', fontWeight: 900 }}>
-                            Next Up
-                          </span>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginTop: '5px', color: '#4B5563', fontSize: '12px', lineHeight: 1.35, fontWeight: 750 }}>
+                          <span>{metadata}</span>
+                          <span>{firstStory ? submittedDateLabel(firstStory) : 'Submitted date unknown'}</span>
+                          {!runnerInfo && showsInProductionBadge(activeJob) && (
+                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', minHeight: '22px', padding: '3px 8px', borderRadius: '999px', backgroundColor: '#DCFCE7', color: '#166534', border: '1px solid #BBF7D0', fontSize: '11px', fontWeight: 900 }}>
+                              <span className="approval-pulse-dot" style={{ width: '7px', height: '7px', borderRadius: '999px', backgroundColor: '#22C55E', flex: '0 0 auto' }} />
+                              In Production
+                            </span>
+                          )}
+                          {!runnerInfo && !showsInProductionBadge(activeJob) && (
+                            <span style={{ display: 'inline-flex', alignItems: 'center', minHeight: '22px', padding: '3px 8px', borderRadius: '999px', backgroundColor: '#E0F2FE', color: '#075985', border: '1px solid #BAE6FD', fontSize: '11px', fontWeight: 900 }}>
+                              {firstStory ? workflowStateLabel(firstStory) : 'Queued'}
+                            </span>
+                          )}
+                          {duplicateTitle && (
+                            <span style={{ display: 'inline-flex', alignItems: 'center', minHeight: '22px', padding: '3px 8px', borderRadius: '999px', backgroundColor: '#FEF3C7', color: '#92400E', border: '1px solid #FDE68A', fontSize: '11px', fontWeight: 900 }}>
+                              ⚠ Duplicate
+                            </span>
+                          )}
+                          {productionPriority > 0 && !runnerInfo && (
+                            <span style={{ display: 'inline-flex', alignItems: 'center', minHeight: '22px', padding: '3px 8px', borderRadius: '999px', backgroundColor: '#FEF3C7', color: '#92400E', border: '1px solid #FDE68A', fontSize: '11px', fontWeight: 900 }}>
+                              Next Up
+                            </span>
+                          )}
+                        </div>
+                        {!runnerInfo && (
+                          <div style={{ color: '#64748B', fontSize: '11px', marginTop: '4px', fontWeight: 800 }}>
+                            {queuePositionLabel(queuePos ?? (index + 1))}
+                          </div>
                         )}
                       </div>
-                      <div style={{ color: '#64748B', fontSize: '11px', marginTop: '4px', fontWeight: 800 }}>
-                        {queuePositionLabel(index + 1)}
+                      <div style={{ flex: '1 1 28px' }} />
+                      {/* Actions */}
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '8px', flex: '0 0 auto', flexWrap: 'wrap' }}>
+                        {primaryProductionStory && (
+                          <button type="button" onClick={() => promoteStoryToNext(primaryProductionStory)} style={{ ...actionButtonStyle('primary'), minHeight: '30px', padding: '6px 10px', fontSize: '11px', whiteSpace: 'nowrap' }}>
+                            Promote
+                          </button>
+                        )}
+                        {primaryProductionStory && (
+                          <button type="button" onClick={() => removeStoryFromProductionQueue(primaryProductionStory)} style={{ ...actionButtonStyle('danger'), minHeight: '30px', padding: '6px 10px', fontSize: '11px', whiteSpace: 'nowrap' }}>
+                            Remove
+                          </button>
+                        )}
                       </div>
                     </div>
-                    <div style={{ flex: '1 1 28px' }} />
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '8px', flex: '0 0 auto', flexWrap: 'wrap' }}>
-                      {primaryProductionStory && (
-                        <button
-                          type="button"
-                          onClick={() => promoteStoryToNext(primaryProductionStory)}
-                          style={{ ...actionButtonStyle('primary'), minHeight: '30px', padding: '6px 10px', fontSize: '11px', whiteSpace: 'nowrap' }}
-                        >
-                          Promote
-                        </button>
-                      )}
-                      {primaryProductionStory && (
-                        <button
-                          type="button"
-                          onClick={() => removeStoryFromProductionQueue(primaryProductionStory)}
-                          style={{ ...actionButtonStyle('danger'), minHeight: '30px', padding: '6px 10px', fontSize: '11px', whiteSpace: 'nowrap' }}
-                        >
-                          Remove
-                        </button>
-                      )}
-                    </div>
+
+                    {/* Pipeline strip — only on runner cards */}
+                    {runnerInfo && (
+                      <div style={{ display: 'flex', gap: '3px', flexWrap: 'wrap', marginTop: '8px', paddingLeft: '64px' }}>
+                        {STEP_ORDER_CARD.map((label, stepIdx) => {
+                          const isDone = stepIdx < currentStepIdx
+                          const isCurrent = stepIdx === currentStepIdx
+                          return (
+                            <span key={label} style={{
+                              fontSize: '10px',
+                              fontWeight: isCurrent ? 900 : 700,
+                              padding: isCurrent ? '2px 8px' : '1px 6px',
+                              borderRadius: '999px',
+                              color: isDone ? '#15803D' : isCurrent ? '#ffffff' : '#94A3B8',
+                              background: isDone ? '#DCFCE7' : isCurrent ? (runnerInfo.isLocked ? '#15803D' : '#D97706') : '#F1F5F9',
+                              border: isCurrent ? `1px solid ${runnerInfo.isLocked ? '#14532D' : '#92400E'}` : '1px solid transparent',
+                              whiteSpace: 'nowrap',
+                            }}>
+                              {isDone ? `✓ ${label}` : label}
+                            </span>
+                          )
+                        })}
+                      </div>
+                    )}
                   </article>
                 )
                 })
