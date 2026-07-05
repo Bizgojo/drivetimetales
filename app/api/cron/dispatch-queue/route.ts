@@ -90,6 +90,60 @@ async function handleDispatchQueue(request: NextRequest) {
   const dispatched: DispatchResult[] = []
   const skipped: Array<Record<string, unknown>> = []
   const now = new Date().toISOString()
+  const deduped: Array<{ id: string; title: string }> = []
+
+  // ── Auto-deduplication ──────────────────────────────────────────────────────
+  // Find all stories_in_queue, group by title. For each title with >1 entry,
+  // keep the one with highest production_priority (then earliest created_at)
+  // and cold-storage the rest automatically.
+  const { data: allQueued } = await supabase
+    .from('stories')
+    .select('id,title,production_priority,created_at')
+    .eq('workflow_state', 'stories_in_queue')
+    .order('production_priority', { ascending: false, nullsFirst: false })
+    .order('created_at', { ascending: true })
+
+  if (allQueued && allQueued.length > 0) {
+    const seenTitles = new Map<string, string>() // title → keeper id
+    const dupesToRemove: string[] = []
+
+    for (const story of allQueued as Array<{ id: string; title: string; production_priority: number | null; created_at: string }>) {
+      const title = (story.title || '').trim().toLowerCase()
+      if (!title) continue
+      if (seenTitles.has(title)) {
+        dupesToRemove.push(story.id)
+      } else {
+        seenTitles.set(title, story.id)
+      }
+    }
+
+    if (dupesToRemove.length > 0) {
+      const { data: removed } = await supabase
+        .from('stories')
+        .update({
+          workflow_state: 'cold_storage',
+          workflow_state_changed_by: 'orion',
+          workflow_state_changed_at: now,
+          workflow_state_change_reason: 'Duplicate title auto-removed from queue by dispatch-queue cron',
+        })
+        .in('id', dupesToRemove)
+        .select('id,title')
+
+      // Also cancel any active jobs for removed stories
+      if (dupesToRemove.length > 0) {
+        await supabase
+          .from('production_jobs')
+          .update({ status: 'cancelled' })
+          .in('story_id', dupesToRemove)
+          .in('status', ACTIVE_JOB_STATUSES)
+      }
+
+      for (const r of (removed || []) as Array<{ id: string; title: string }>) {
+        deduped.push({ id: r.id, title: r.title })
+        console.log(`[dispatch-queue] Auto-deduped: "${r.title}" (${r.id})`)
+      }
+    }
+  }
 
   // Check how many active jobs already exist — only dispatch enough to fill up to MAX_DISPATCH_PER_RUN
   const { count: existingActiveCount } = await supabase
@@ -319,6 +373,8 @@ async function handleDispatchQueue(request: NextRequest) {
     dispatched,
     skippedCount: skipped.length,
     skipped: skipped.slice(0, 20),
+    dedupedCount: deduped.length,
+    deduped,
   })
 }
 
