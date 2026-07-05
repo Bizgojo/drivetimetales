@@ -5,6 +5,8 @@ export const runtime = 'nodejs'
 export const maxDuration = 60
 
 const ACTIVE_JOB_STATUSES = ['queued', 'running', 'waiting_for_external']
+// Statuses that mean "a job already exists for this story — don't create another"
+const BLOCKING_JOB_STATUSES = ['queued', 'running', 'waiting_for_external', 'failed']
 const READY_OR_FURTHER_STATES = new Set([
   'stories_in_queue',
   'scripts_ready',
@@ -178,7 +180,7 @@ async function handleDispatchQueue(request: NextRequest) {
         .from('production_jobs')
         .select('id,story_id,status')
         .in('story_id', standaloneIds)
-        .in('status', ACTIVE_JOB_STATUSES)
+        .in('status', BLOCKING_JOB_STATUSES)
     : { data: [], error: null }
 
   if (activeStandaloneError) {
@@ -267,7 +269,7 @@ async function handleDispatchQueue(request: NextRequest) {
           .from('production_jobs')
           .select('id,series_id,status')
           .in('series_id', candidateSeriesIds)
-          .in('status', ACTIVE_JOB_STATUSES)
+          .in('status', BLOCKING_JOB_STATUSES)
       : { data: [], error: null }
 
     if (activeSeriesError) {
