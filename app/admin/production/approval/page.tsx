@@ -4668,11 +4668,10 @@ export default function AdminStoriesPage() {
                         ? activeRunnerJobs.find(s => s.source_job?.locked_by === workerId) || null
                         : null
 
-                      // Determine current step + story title
-                      // Prefer live locked job; fall back to last_run_summary job
-                      const lastJobDetail = lastJobDetailsByWorker[workerId] ?? null
-                      const currentStep = activeJob?.source_job?.current_step || lastJobDetail?.step || null
-                      const storyTitle = activeJob?.title || lastJobDetail?.title || null
+                      // RULE: only show story info when runner is actively locked on a job.
+                      // When between invocations, show Idle — no stale history.
+                      const currentStep = activeJob?.source_job?.current_step || null
+                      const storyTitle = activeJob?.title || null
                       const lockedAt = activeJob?.source_job?.locked_at || null
                       const isLocked = !!activeJob
                       const hasPipelineInfo = !!currentStep && !!storyTitle
@@ -4739,25 +4738,18 @@ export default function AdminStoriesPage() {
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '14px' }}>
               {(() => {
-                // Build storyId → runner info lookup (locked jobs first, then last-known)
+                // Build storyId → runner info lookup.
+                // RULE: a card is yellow ONLY if a runner has an active lock on it RIGHT NOW.
+                // No stale history, no lastJobDetailsByWorker — only live locked jobs.
                 const runnerByStoryId: Record<string, { name: string; step: string; isLocked: boolean }> = {}
                 for (const story of activeRunnerJobs) {
                   const lockedBy = story.source_job?.locked_by as string | undefined
                   if (!lockedBy) continue
                   const name = WORKER_SHORT_NAMES[lockedBy] || lockedBy
                   const step = PIPELINE_STEP_LABEL_MAP[story.source_job?.current_step as string] || story.source_job?.current_step || ''
-                  runnerByStoryId[story.id] = { name, step, isLocked: true }
-                }
-                // Also fill from lastJobDetailsByWorker for between-invocation visibility
-                // Use storyId directly (not via activeRunnerJobs) so unlocked jobs still map
-                for (const [workerId, detail] of Object.entries(lastJobDetailsByWorker)) {
-                  if (!detail?.storyId) continue
-                  if (!runnerByStoryId[detail.storyId]) {
-                    runnerByStoryId[detail.storyId] = {
-                      name: WORKER_SHORT_NAMES[workerId] || workerId,
-                      step: PIPELINE_STEP_LABEL_MAP[detail.step] || detail.step,
-                      isLocked: false,
-                    }
+                  // Only set if not already claimed by another worker (first locked wins)
+                  if (!runnerByStoryId[story.id]) {
+                    runnerByStoryId[story.id] = { name, step, isLocked: true }
                   }
                 }
 
@@ -4817,7 +4809,7 @@ export default function AdminStoriesPage() {
                       padding: '11px 12px',
                       borderRadius: '8px',
                       border: runnerInfo ? '1px solid #FDE68A' : '1px solid #E5E7EB',
-                      backgroundColor: runnerInfo ? '#FEFCE8' : productionPriority > 0 ? '#FFFBEB' : '#ffffff',
+                      backgroundColor: runnerInfo ? '#FEFCE8' : '#ffffff',
                     }}
                   >
                     {/* Main row: badge + cover + info + actions */}
