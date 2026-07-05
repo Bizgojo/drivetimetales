@@ -60,7 +60,7 @@
     },
     {
       "path": "/api/cron/dispatch-queue",
-      "schedule": "*/5 * * * *"
+      "schedule": "*/1 * * * *"
     },
     {
       "path": "/api/cron/production-runner?worker=1",

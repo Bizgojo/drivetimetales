@@ -2572,6 +2572,8 @@ export default function AdminStoriesPage() {
     nextUpTitle: null,
   })
   const [runnerWorkers, setRunnerWorkers] = useState<RunnerWorkerState[]>([])
+  const [runnerRefreshTick, setRunnerRefreshTick] = useState(0)
+  const [idleSeconds, setIdleSeconds] = useState<Record<string, number>>({})
   const [markedForDeletionIds, setMarkedForDeletionIds] = useState<Record<string, boolean>>({})
   const [playedStoryIds, setPlayedStoryIds] = useState<Record<string, boolean>>({})
   const [episodeRepairMarks, setEpisodeRepairMarks] = useState<Record<string, EpisodeRepairMark>>({})
@@ -3706,6 +3708,38 @@ export default function AdminStoriesPage() {
     setSelectedSeriesKey(seriesGroups[0]?.key || null)
   }, [selectedSeriesKey, seriesGroups.map((group) => group.key).join('|')])
 
+  // Auto-refresh runner state every 60 seconds
+  useEffect(() => {
+    const interval = setInterval(() => setRunnerRefreshTick(t => t + 1), 60_000)
+    return () => clearInterval(interval)
+  }, [])
+
+  // Re-fetch runner workers on each tick
+  useEffect(() => {
+    if (!supabase) return
+    supabase
+      .from('pipeline_runner_state')
+      .select('id,lease_holder,last_heartbeat_at,last_run_summary')
+      .like('id', 'production-runner:worker-%')
+      .order('last_heartbeat_at', { ascending: false, nullsFirst: false })
+      .then(({ data }) => { if (data) setRunnerWorkers(data as RunnerWorkerState[]) })
+  }, [runnerRefreshTick])
+
+  // Idle countdown: tick every second for idle workers
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setIdleSeconds(prev => {
+        const next = { ...prev }
+        const WORKER_NAMES: Record<string, string> = { 'worker-1': 'Larry', 'worker-2': 'Curly', 'worker-3': 'Moe', 'worker-4': 'Groucho' }
+        for (const key of Object.keys(WORKER_NAMES)) {
+          next[key] = (next[key] ?? 0) + 1
+        }
+        return next
+      })
+    }, 1000)
+    return () => clearInterval(timer)
+  }, [])
+
   function setPipelineTab(tab: WorkflowLane) {
     setActivePipelineTab(tab)
     setSeriesFilter('all')
@@ -4567,13 +4601,21 @@ export default function AdminStoriesPage() {
                         ? activeRunnerJobs.find(s => s.source_job?.locked_by === workerId) || null
                         : null
                       const timeStr = activeJob ? fmtElapsed(activeJob.source_job?.locked_at) : ''
+                      // Idle countdown: dispatch runs every 60s, show time until next expected job
+                      const idleSecs = idleSeconds[key] ?? 0
+                      const nextJobIn = Math.max(0, 60 - (idleSecs % 60))
+                      const idleLabel = !worker
+                        ? 'Not yet started'
+                        : isActive
+                          ? null
+                          : `Idle — next job in ~${nextJobIn}s`
                       return (
                         <span key={key} style={{ color: isActive ? '#0F172A' : '#94A3B8', fontWeight: 800, overflowWrap: 'anywhere' }}>
                           {name}: {isActive
                             ? (activeJob
                                 ? `${activeJob.title} — ${activeJob.source_job?.current_step || 'processing'}${timeStr}`
                                 : 'Active — picking up next job')
-                            : (worker ? 'Idle' : 'Not yet started')}
+                            : idleLabel}
                         </span>
                       )
                     })
