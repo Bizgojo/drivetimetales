@@ -4879,19 +4879,21 @@ export default function AdminStoriesPage() {
                         )}
                       </div>
                       <div style={{ flex: '1 1 28px' }} />
-                      {/* Actions */}
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '8px', flex: '0 0 auto', flexWrap: 'wrap' }}>
-                        {primaryProductionStory && (
-                          <button type="button" onClick={() => promoteStoryToNext(primaryProductionStory)} style={{ ...actionButtonStyle('primary'), minHeight: '30px', padding: '6px 10px', fontSize: '11px', whiteSpace: 'nowrap' }}>
-                            Promote
-                          </button>
-                        )}
-                        {primaryProductionStory && (
-                          <button type="button" onClick={() => removeStoryFromProductionQueue(primaryProductionStory)} style={{ ...actionButtonStyle('danger'), minHeight: '30px', padding: '6px 10px', fontSize: '11px', whiteSpace: 'nowrap' }}>
-                            Remove
-                          </button>
-                        )}
-                      </div>
+                      {/* Actions — hidden while a runner is actively working on this story */}
+                      {!runnerInfo && (
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '8px', flex: '0 0 auto', flexWrap: 'wrap' }}>
+                          {primaryProductionStory && (
+                            <button type="button" onClick={() => promoteStoryToNext(primaryProductionStory)} style={{ ...actionButtonStyle('primary'), minHeight: '30px', padding: '6px 10px', fontSize: '11px', whiteSpace: 'nowrap' }}>
+                              Promote
+                            </button>
+                          )}
+                          {primaryProductionStory && (
+                            <button type="button" onClick={() => removeStoryFromProductionQueue(primaryProductionStory)} style={{ ...actionButtonStyle('danger'), minHeight: '30px', padding: '6px 10px', fontSize: '11px', whiteSpace: 'nowrap' }}>
+                              Remove
+                            </button>
+                          )}
+                        </div>
+                      )}
                     </div>
 
                     {/* Pipeline strip — only on runner cards */}
