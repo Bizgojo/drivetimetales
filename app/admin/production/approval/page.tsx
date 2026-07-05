@@ -4542,7 +4542,14 @@ export default function AdminStoriesPage() {
                   {activeRunnerWorkerRows.length > 0 || unmatchedRunnerJobs.length > 0 ? (
                     <>
                       {activeRunnerWorkerRows.map(({ worker, story }, index) => {
-                        const workerLabel = worker.id.replace('production-runner:', '')
+                        const WORKER_NAMES: Record<string, string> = {
+                          'worker-1': 'Larry',
+                          'worker-2': 'Curly',
+                          'worker-3': 'Moe',
+                          'worker-4': 'Groucho',
+                        }
+                        const workerKey = worker.id.replace('production-runner:', '')
+                        const workerLabel = WORKER_NAMES[workerKey] || workerKey
                         return (
                           <span key={worker.id} style={{ color: '#0F172A', fontWeight: 800, overflowWrap: 'anywhere' }}>
                             {workerLabel}: {story ? `${story.title} — ${story.source_job?.current_step || 'processing'}` : 'Active — current job: None'}
