@@ -22,7 +22,8 @@ function ConfirmContent() {
       .then(({ data, error }) => {
         if (error || !data.session) {
           console.error('[Confirm] verifyOtp failed:', error?.message)
-          router.replace(`/signin?error=auth_failed&reason=${encodeURIComponent(error?.message || 'no_session')}`)
+          // Show a clear expired-link page rather than the generic sign-in
+          router.replace(`/auth/link-expired?reason=${encodeURIComponent(error?.message || 'no_session')}`)
         } else {
           console.log('[Confirm] Session established, redirecting to', next)
           router.replace(next)
