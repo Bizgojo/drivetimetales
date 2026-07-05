@@ -69,6 +69,7 @@ async function acquireLease(
 
 async function releaseLease(
   supabase: SupabaseClient,
+  holderId: string,
   summary: Record<string, unknown>,
 ): Promise<void> {
   try {
@@ -403,7 +404,7 @@ export async function runPipelineLoop(
     }
   } finally {
     // 4. Release lease
-    await releaseLease(supabase, {
+    await releaseLease(supabase, holderId, {
       jobId,
       stepsCalled,
       exitReason,

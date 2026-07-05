@@ -88,6 +88,7 @@ interface Story {
     status: string | null
     current_step: string | null
     updated_at: string | null
+    locked_by?: string | null
     error_json?: any
   } | null
   // ATL-CONS-001 Phase C: QC checklist data
@@ -124,8 +125,15 @@ type ProductionJobSummary = {
   status: string | null
   current_step: string | null
   updated_at: string | null
+  locked_by?: string | null
   created_at?: string | null
   error_json?: any
+}
+type RunnerWorkerState = {
+  id: string
+  lease_holder: string | null
+  last_heartbeat_at: string | null
+  last_run_summary?: Record<string, unknown> | null
 }
 type ProductionQueueBannerMeta = {
   lastScriptedTitle: string | null
@@ -2562,6 +2570,7 @@ export default function AdminStoriesPage() {
     lastCompletedJobTitle: null,
     nextUpTitle: null,
   })
+  const [runnerWorkers, setRunnerWorkers] = useState<RunnerWorkerState[]>([])
   const [markedForDeletionIds, setMarkedForDeletionIds] = useState<Record<string, boolean>>({})
   const [playedStoryIds, setPlayedStoryIds] = useState<Record<string, boolean>>({})
   const [episodeRepairMarks, setEpisodeRepairMarks] = useState<Record<string, EpisodeRepairMark>>({})
@@ -2718,7 +2727,7 @@ export default function AdminStoriesPage() {
       return
     }
 
-    const [analyticsResult, productionJobsByStoryResult, productionJobsBySeriesResult] = await Promise.all([
+    const [analyticsResult, productionJobsByStoryResult, productionJobsBySeriesResult, runnerWorkersResult] = await Promise.all([
       supabase
         .from('story_analytics')
         .select('*')
@@ -2726,18 +2735,23 @@ export default function AdminStoriesPage() {
         .order('created_at', { ascending: false }),
       supabase
         .from('production_jobs')
-        .select('id,story_id,series_id,status,current_step,updated_at,created_at,error_json')
+        .select('id,story_id,series_id,status,current_step,updated_at,locked_by,created_at,error_json')
         .in('story_id', eligibleIds)
         .in('status', ACTIVE_PRODUCTION_JOB_STATUSES)
         .order('updated_at', { ascending: false }),
       eligibleSeriesIds.length > 0
         ? supabase
           .from('production_jobs')
-          .select('id,story_id,series_id,status,current_step,updated_at,created_at,error_json')
+          .select('id,story_id,series_id,status,current_step,updated_at,locked_by,created_at,error_json')
           .in('series_id', eligibleSeriesIds)
           .in('status', ACTIVE_PRODUCTION_JOB_STATUSES)
           .order('updated_at', { ascending: false })
         : Promise.resolve({ data: [], error: null }),
+      supabase
+        .from('pipeline_runner_state')
+        .select('id,lease_holder,last_heartbeat_at,last_run_summary')
+        .like('id', 'production-runner:worker-%')
+        .order('last_heartbeat_at', { ascending: false, nullsFirst: false }),
     ])
 
     const { data, error } = analyticsResult
@@ -2753,6 +2767,12 @@ export default function AdminStoriesPage() {
     })
     if (productionJobsByStoryResult.error) console.error('Error fetching active story production jobs:', productionJobsByStoryResult.error)
     if (productionJobsBySeriesResult.error) console.error('Error fetching active series production jobs:', productionJobsBySeriesResult.error)
+    if (runnerWorkersResult.error) {
+      console.error('Error fetching runner worker state:', runnerWorkersResult.error)
+      setRunnerWorkers([])
+    } else {
+      setRunnerWorkers((runnerWorkersResult.data || []) as RunnerWorkerState[])
+    }
 
     const analyticsById = new Map((data || []).map((story: any) => [story.id, story]))
     const storyById = new Map(((storyRows || []) as Partial<Story>[]).map((story) => [story.id, story]))
@@ -3656,9 +3676,28 @@ export default function AdminStoriesPage() {
       ? `Idle — ${scriptQueueDepth} scripts waiting for dispatch · last: ${productionQueueBannerMeta.lastScriptedTitle || 'None'}`
       : `Idle — no scripts in queue · last: ${productionQueueBannerMeta.lastScriptedTitle || 'None'}`
   const runnerQueueSuffix = queuedRunnerJobCount > 0 ? ` · ${queuedRunnerJobCount} queued` : ''
-  const runnerStatusText = activeRunnerJobs.length > 0
+  const activeRunnerWorkers = runnerWorkers.filter((worker) => {
+    if (!worker.lease_holder || !worker.last_heartbeat_at) return false
+    return Date.now() - new Date(worker.last_heartbeat_at).getTime() <= 15 * 60 * 1000
+  })
+  const expectedRunnerWorkerCount: number = 3
+  const runnerJobByWorkerId = new Map(
+    activeRunnerJobs
+      .filter((story) => story.source_job?.locked_by)
+      .map((story) => [story.source_job!.locked_by!, story])
+  )
+  const activeRunnerWorkerRows = activeRunnerWorkers.map((worker) => ({
+    worker,
+    story: runnerJobByWorkerId.get(worker.id) || null,
+  }))
+  const unmatchedRunnerJobs = activeRunnerJobs.filter((story) => (
+    !story.source_job?.locked_by || !activeRunnerWorkers.some((worker) => worker.id === story.source_job?.locked_by)
+  ))
+  const runnerIsActive = activeRunnerWorkers.length > 0 || activeRunnerJobs.length > 0
+  const runnerStatusText = activeRunnerWorkerRows.length > 0 || unmatchedRunnerJobs.length > 0
     ? null
-    : `Idle — last finished: ${productionQueueBannerMeta.lastCompletedJobTitle || 'None'} · next up: ${productionQueueBannerMeta.nextUpTitle || 'None'}`
+    : `${activeRunnerWorkers.length > 0 ? 'Active' : 'Idle'} — ${activeRunnerWorkers.length} of ${expectedRunnerWorkerCount} workers active · current job: None · last finished: ${productionQueueBannerMeta.lastCompletedJobTitle || 'None'} · next up: ${productionQueueBannerMeta.nextUpTitle || 'None'}`
+  const runnerWorkerLabel = `${activeRunnerWorkers.length} of ${expectedRunnerWorkerCount} worker${expectedRunnerWorkerCount === 1 ? '' : 's'} active`
 
   const selectedGroup = seriesGroups.find((group) => group.key === selectedSeriesKey) || seriesGroups[0] || null
   useEffect(() => {
@@ -4486,27 +4525,38 @@ export default function AdminStoriesPage() {
               </div>
               <div style={{ borderTop: '1px solid #BAE6FD', paddingTop: '9px', display: 'flex', alignItems: 'flex-start', gap: '10px', minWidth: 0 }}>
                 <span
-                  className={activeRunnerJobs.length > 0 ? 'approval-spin-dot' : undefined}
+                  className={runnerIsActive ? 'approval-spin-dot' : undefined}
                   style={{
                     width: '14px',
                     height: '14px',
                     marginTop: '1px',
                     borderRadius: '999px',
-                    border: activeRunnerJobs.length > 0 ? '2px solid #38BDF8' : 'none',
-                    borderTopColor: activeRunnerJobs.length > 0 ? 'transparent' : undefined,
-                    backgroundColor: activeRunnerJobs.length > 0 ? 'transparent' : '#94A3B8',
+                    border: runnerIsActive ? '2px solid #38BDF8' : 'none',
+                    borderTopColor: runnerIsActive ? 'transparent' : undefined,
+                    backgroundColor: runnerIsActive ? 'transparent' : '#94A3B8',
                     flex: '0 0 auto',
                   }}
                 />
                 <div style={{ minWidth: 0, display: 'grid', gap: '2px' }}>
-                  <span style={{ fontWeight: 950 }}>Runner is working on:{activeRunnerJobs.length > 1 ? ` (${activeRunnerJobs.length} parallel)` : ''}</span>
-                  {activeRunnerJobs.length > 0 ? (
-                    activeRunnerJobs.map((story, i) => (
-                      <span key={story.source_job?.id || story.id} style={{ color: '#0F172A', fontWeight: 800, overflowWrap: 'anywhere' }}>
-                        {activeRunnerJobs.length > 1 ? `${i + 1}. ` : ''}{story.title} — {story.source_job?.current_step || 'processing'}
-                        {i === activeRunnerJobs.length - 1 ? runnerQueueSuffix : ''}
-                      </span>
-                    ))
+                  <span style={{ fontWeight: 950 }}>Runner is working on: ({runnerWorkerLabel})</span>
+                  {activeRunnerWorkerRows.length > 0 || unmatchedRunnerJobs.length > 0 ? (
+                    <>
+                      {activeRunnerWorkerRows.map(({ worker, story }, index) => {
+                        const workerLabel = worker.id.replace('production-runner:', '')
+                        return (
+                          <span key={worker.id} style={{ color: '#0F172A', fontWeight: 800, overflowWrap: 'anywhere' }}>
+                            {workerLabel}: {story ? `${story.title} — ${story.source_job?.current_step || 'processing'}` : 'Active — current job: None'}
+                            {index === activeRunnerWorkerRows.length - 1 && unmatchedRunnerJobs.length === 0 ? runnerQueueSuffix : ''}
+                          </span>
+                        )
+                      })}
+                      {unmatchedRunnerJobs.map((story, index) => (
+                        <span key={story.source_job?.id || story.id} style={{ color: '#0F172A', fontWeight: 800, overflowWrap: 'anywhere' }}>
+                          Job: {story.title} — {story.source_job?.current_step || 'processing'}
+                          {index === unmatchedRunnerJobs.length - 1 ? runnerQueueSuffix : ''}
+                        </span>
+                      ))}
+                    </>
                   ) : (
                     <span style={{ color: '#475569', fontWeight: 800, overflowWrap: 'anywhere' }}>
                       {runnerStatusText}{runnerQueueSuffix}

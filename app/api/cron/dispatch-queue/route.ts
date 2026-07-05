@@ -249,7 +249,7 @@ async function handleDispatchQueue(request: NextRequest) {
           series_id: seriesId,
           job_type: 'series',
           status: 'queued',
-          current_step: 'queued',
+          current_step: 'voice_preflight',
           step_index: 0,
           input_json: {
             mode: 'series',
