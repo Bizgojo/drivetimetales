@@ -6,7 +6,10 @@ export const maxDuration = 60
 
 const ACTIVE_JOB_STATUSES = ['queued', 'running', 'waiting_for_external']
 // Statuses that mean "a job already exists for this story — don't create another"
-const BLOCKING_JOB_STATUSES = ['queued', 'running', 'waiting_for_external', 'failed']
+// Note: 'failed' is intentionally excluded — a failed job does not block re-dispatch.
+// Failed stories stay in stories_in_queue and get re-dispatched normally.
+// Duplicate creation is prevented at the runner level (skip stories locked by another runner).
+const BLOCKING_JOB_STATUSES = ['queued', 'running', 'waiting_for_external']
 const READY_OR_FURTHER_STATES = new Set([
   'stories_in_queue',
   'scripts_ready',
