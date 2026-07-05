@@ -4538,37 +4538,35 @@ export default function AdminStoriesPage() {
                   }}
                 />
                 <div style={{ minWidth: 0, display: 'grid', gap: '2px' }}>
-                  <span style={{ fontWeight: 950 }}>Runner is working on: ({runnerWorkerLabel})</span>
-                  {activeRunnerWorkerRows.length > 0 || unmatchedRunnerJobs.length > 0 ? (
-                    <>
-                      {activeRunnerWorkerRows.map(({ worker, story }, index) => {
-                        const WORKER_NAMES: Record<string, string> = {
-                          'worker-1': 'Larry',
-                          'worker-2': 'Curly',
-                          'worker-3': 'Moe',
-                          'worker-4': 'Groucho',
-                        }
-                        const workerKey = worker.id.replace('production-runner:', '')
-                        const workerLabel = WORKER_NAMES[workerKey] || workerKey
-                        return (
-                          <span key={worker.id} style={{ color: '#0F172A', fontWeight: 800, overflowWrap: 'anywhere' }}>
-                            {workerLabel}: {story ? `${story.title} — ${story.source_job?.current_step || 'processing'}` : 'Active — current job: None'}
-                            {index === activeRunnerWorkerRows.length - 1 && unmatchedRunnerJobs.length === 0 ? runnerQueueSuffix : ''}
-                          </span>
-                        )
-                      })}
-                      {unmatchedRunnerJobs.map((story, index) => (
-                        <span key={story.source_job?.id || story.id} style={{ color: '#0F172A', fontWeight: 800, overflowWrap: 'anywhere' }}>
-                          Job: {story.title} — {story.source_job?.current_step || 'processing'}
-                          {index === unmatchedRunnerJobs.length - 1 ? runnerQueueSuffix : ''}
+                  <span style={{ fontWeight: 950 }}>Runners: ({runnerWorkerLabel}) · {queuedRunnerJobCount} queued</span>
+                  {(() => {
+                    const WORKER_NAMES: Record<string, string> = {
+                      'worker-1': 'Larry',
+                      'worker-2': 'Curly',
+                      'worker-3': 'Moe',
+                      'worker-4': 'Groucho',
+                    }
+                    // Always show all known workers, active or idle
+                    const allWorkerKeys = ['worker-1', 'worker-2', 'worker-3', 'worker-4']
+                    const workerById = Object.fromEntries(runnerWorkers.map(w => [w.id, w]))
+                    return allWorkerKeys.map(key => {
+                      const workerId = `production-runner:${key}`
+                      const worker = workerById[workerId]
+                      const name = WORKER_NAMES[key] || key
+                      const isActive = worker && worker.lease_holder && worker.last_heartbeat_at &&
+                        Date.now() - new Date(worker.last_heartbeat_at).getTime() <= 15 * 60 * 1000
+                      const activeJob = isActive
+                        ? activeRunnerJobs.find(s => s.source_job?.locked_by === workerId) || null
+                        : null
+                      return (
+                        <span key={key} style={{ color: isActive ? '#0F172A' : '#94A3B8', fontWeight: 800, overflowWrap: 'anywhere' }}>
+                          {name}: {isActive
+                            ? (activeJob ? `${activeJob.title} — ${activeJob.source_job?.current_step || 'processing'}` : 'Active — picking up next job')
+                            : (worker ? 'Idle' : 'Not yet started')}
                         </span>
-                      ))}
-                    </>
-                  ) : (
-                    <span style={{ color: '#475569', fontWeight: 800, overflowWrap: 'anywhere' }}>
-                      {runnerStatusText}{runnerQueueSuffix}
-                    </span>
-                  )}
+                      )
+                    })
+                  })()}
                 </div>
               </div>
             </div>
