@@ -3635,7 +3635,12 @@ export default function AdminStoriesPage() {
     .map((story) => [story.source_job?.id || story.id, story])
   ).values())
     .sort((a, b) => new Date(b.source_job?.updated_at || 0).getTime() - new Date(a.source_job?.updated_at || 0).getTime())
-  const queuedRunnerJobCount = stories.filter((story) => productionQueueStates(story) && story.source_job?.status === 'queued').length
+  // Count distinct queued production_jobs (not stories) — avoids over-counting stories without jobs
+  const queuedRunnerJobCount = Array.from(new Set(
+    stories
+      .filter((story) => productionQueueStates(story) && story.source_job?.status === 'queued' && story.source_job?.id)
+      .map((story) => story.source_job!.id)
+  )).length
   const lastScriptedAtMs = productionQueueBannerMeta.lastScriptedCreatedAt
     ? new Date(productionQueueBannerMeta.lastScriptedCreatedAt).getTime()
     : 0
@@ -4493,13 +4498,15 @@ export default function AdminStoriesPage() {
                     flex: '0 0 auto',
                   }}
                 />
-                <div style={{ minWidth: 0, display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-                  <span style={{ fontWeight: 950 }}>Runner is working on:</span>
+                <div style={{ minWidth: 0, display: 'grid', gap: '2px' }}>
+                  <span style={{ fontWeight: 950 }}>Runner is working on:{activeRunnerJobs.length > 1 ? ` (${activeRunnerJobs.length} parallel)` : ''}</span>
                   {activeRunnerJobs.length > 0 ? (
-                    <span style={{ color: '#0F172A', fontWeight: 800, overflowWrap: 'anywhere' }}>
-                      {activeRunnerJobs[0].title} — {activeRunnerJobs[0].source_job?.current_step || 'processing'}
-                      {runnerQueueSuffix}
-                    </span>
+                    activeRunnerJobs.map((story, i) => (
+                      <span key={story.source_job?.id || story.id} style={{ color: '#0F172A', fontWeight: 800, overflowWrap: 'anywhere' }}>
+                        {activeRunnerJobs.length > 1 ? `${i + 1}. ` : ''}{story.title} — {story.source_job?.current_step || 'processing'}
+                        {i === activeRunnerJobs.length - 1 ? runnerQueueSuffix : ''}
+                      </span>
+                    ))
                   ) : (
                     <span style={{ color: '#475569', fontWeight: 800, overflowWrap: 'anywhere' }}>
                       {runnerStatusText}{runnerQueueSuffix}
