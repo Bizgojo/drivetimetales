@@ -96,10 +96,25 @@ async function fetchOldestActiveJob(
   holderId?: string,
   preferJobId?: string | null,
 ): Promise<Record<string, unknown> | null> {
-  // Runner affinity: if this worker last worked on a specific job, try to re-claim it first.
-  // This keeps each runner sticky to one story until it reaches RFR.
   const staleLockCutoff = new Date(Date.now() - LOCK_STALE_MS).toISOString()
 
+  // Step 0: Am I ALREADY running a job? If so, re-claim it immediately.
+  // This prevents two concurrent invocations of the same worker from each picking up a separate job.
+  if (holderId) {
+    const { data: myRunningJob } = await supabase
+      .from('production_jobs')
+      .select('*')
+      .eq('status', 'running')
+      .eq('locked_by', holderId)
+      .gte('locked_at', staleLockCutoff)
+      .order('locked_at', { ascending: false })
+      .limit(1)
+      .single()
+    if (myRunningJob) return myRunningJob as Record<string, unknown>
+  }
+
+  // Runner affinity: if this worker last worked on a specific job, try to re-claim it first.
+  // This keeps each runner sticky to one story until it reaches RFR.
   if (preferJobId) {
     const { data: preferred } = await supabase
       .from('production_jobs')
@@ -117,31 +132,34 @@ async function fetchOldestActiveJob(
     }
   }
 
+  // Step 1: Find all story/series IDs currently running by OTHER workers (not stale).
+  // This prevents two runners from ever working on the same story simultaneously.
+  const { data: runningByOthers } = await supabase
+    .from('production_jobs')
+    .select('story_id, series_id')
+    .eq('status', 'running')
+    .not('locked_by', 'is', null)
+    .neq('locked_by', holderId || '')
+    .gte('locked_at', staleLockCutoff)
+
+  const busyStoryIds = new Set<string>()
+  for (const job of (runningByOthers || []) as Array<{ story_id: string | null; series_id: string | null }>) {
+    const sid = job.story_id || job.series_id
+    if (sid) busyStoryIds.add(sid)
+  }
+
+  // Step 2: Get only QUEUED jobs as candidates (running jobs belong to their holders).
   const { data: candidates, error } = await supabase
     .from('production_jobs')
     .select('*')
-    .in('status', ACTIVE_STATUSES)
+    .eq('status', 'queued')
     .order('created_at', { ascending: true })
     .limit(20)
 
   if (error) throw new Error(`Failed to query active production jobs: ${error.message}`)
   if (!candidates?.length) return null
 
-  // Build a set of story/series IDs already being worked by other runners
-  // so we never put two runners on the same story simultaneously
-  const runningStoryIds = new Set<string>()
-  for (const job of candidates as Record<string, unknown>[]) {
-    const lockedBy = (job as Record<string, unknown>).locked_by as string | null
-    const lockedAt = (job as Record<string, unknown>).locked_at as string | null
-    const isLockedByOther = lockedBy && lockedBy !== holderId
-    const isNotStale = lockedAt && new Date(lockedAt).getTime() >= new Date(staleLockCutoff).getTime()
-    if (isLockedByOther && isNotStale) {
-      const sid = ((job as Record<string, unknown>).story_id || (job as Record<string, unknown>).series_id) as string | null
-      if (sid) runningStoryIds.add(sid)
-    }
-  }
-
-  // Find the first job not locked by another worker and not for an already-running story
+  // Step 3: Pick the first queued job whose story isn't already being run by another worker.
   for (const job of candidates as Record<string, unknown>[]) {
     if (preferJobId && (job as Record<string, unknown>).id === preferJobId) continue // already tried above
     const lockedAt = (job as Record<string, unknown>).locked_at as string | null
@@ -150,8 +168,8 @@ async function fetchOldestActiveJob(
     const isUnlocked = !lockedAt && !lockedBy
     const isOwnedByMe = holderId && lockedBy === holderId
     const isStale = lockedAt && new Date(lockedAt).getTime() < new Date(staleLockCutoff).getTime()
-    // Skip if another runner is already working on this story
-    if (storyId && runningStoryIds.has(storyId) && !isOwnedByMe) continue
+    // Skip if another runner is already running this story
+    if (storyId && busyStoryIds.has(storyId) && !isOwnedByMe) continue
     if (isUnlocked || isOwnedByMe || isStale) return job as Record<string, unknown>
   }
   return null
