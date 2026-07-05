@@ -2309,7 +2309,7 @@ function validateBelleLine(kind: 'intro' | 'outro', text: string, ctx: BelleVali
   if (/\b(spoiler|reveals?|revealed|killer is|turns out|will die|dies in the next)\b/i.test(cleaned)) errors.push(`${kind} risks spoiler language`)
   if (kind === 'intro' && words > 38) errors.push('announcement is too long for a clean handoff')
   if (kind === 'outro' && words > 55) errors.push('outro is too long for Belle')
-  if (kind === 'intro' && (cleaned.match(/\[LISTENER_NAME\]/g) || []).length > 0) errors.push('announcement must not include [LISTENER_NAME] placeholder')
+  // [LISTENER_NAME] is a valid personalization placeholder in the script — do not reject it
   if (kind === 'intro' && /\b(welcome|settle in|let['’]?s begin)\b/i.test(cleaned)) errors.push('announcement must not include greeting/opener language')
 
   if (kind === 'outro' && ctx.episodeState === 'series_non_final') {

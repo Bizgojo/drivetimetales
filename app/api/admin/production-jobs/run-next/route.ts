@@ -1029,27 +1029,27 @@ async function validateIntroOutroPositionRules(
   if (!intro) {
     issues.push('intro text is missing')
   } else {
-    if (intro.includes('[LISTENER_NAME]')) {
-      issues.push('announcement must not include [LISTENER_NAME] placeholder')
-    }
+    // [LISTENER_NAME] is a valid split-point placeholder in the script — do NOT reject it.
+    // generate_belle_assets splits around it; we strip it here for quality checks only.
+    const introForChecks = intro.replace(/\[LISTENER_NAME\]/g, '').replace(/\s{2,}/g, ' ').trim()
     // Concrete narrative hook (event, danger, secret, conflict, mystery, mechanism)
-    if (!(await hasConcreteNarrativeHook(intro))) {
+    if (!(await hasConcreteNarrativeHook(introForChecks))) {
       issues.push('intro must include a concrete narrative hook (event, danger, secret, conflict, mystery, or story mechanism)')
       requireLlmJudgment = true
     }
     // Standalone: must name the story title
-    if (episodeType === 'standalone' && title && !belleTextIncludes(intro, title)) {
+    if (episodeType === 'standalone' && title && !belleTextIncludes(introForChecks, title)) {
       issues.push(`standalone intro must name the story title "${title}"`)
     }
     // Series: must name series title, episode number, and episode title
     if (isSeries) {
-      if (seriesName && !belleTextIncludes(intro, seriesName)) {
+      if (seriesName && !belleTextIncludes(introForChecks, seriesName)) {
         issues.push(`series intro must name the series title "${seriesName}"`)
       }
-      if (episodeNum !== null && !introNamesEpisodeNumber(intro, episodeNum)) {
+      if (episodeNum !== null && !introNamesEpisodeNumber(introForChecks, episodeNum)) {
         issues.push(`series intro must name the episode number (episode ${episodeNum})`)
       }
-      if (title && !belleTextIncludes(intro, title)) {
+      if (title && !belleTextIncludes(introForChecks, title)) {
         issues.push(`series intro must name the episode title "${title}"`)
       }
     }
@@ -1524,9 +1524,7 @@ async function validateBelleText(kind: 'intro' | 'outro', text: string, options:
   if (!text) issues.push(`${kind} text is required.`)
   if (text && wordCount < 4) issues.push(`${kind} text is too short.`)
   if (text && !/[.!?]["'”’)]*$/.test(text)) issues.push(`${kind} text appears incomplete; it must end with punctuation.`)
-  if (kind === 'intro' && text.includes('[LISTENER_NAME]')) {
-    issues.push('announcement must not include [LISTENER_NAME].')
-  }
+  // [LISTENER_NAME] is a valid personalization placeholder — do not reject it
   if (/\b(welcome|settle in|let['’]?s begin|begins now|only on endless tales|sponsored by|stay tuned)\b/i.test(text)) {
     issues.push(`${kind} uses forbidden host or promotional language.`)
   }
