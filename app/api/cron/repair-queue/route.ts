@@ -118,6 +118,7 @@ export async function POST(req: Request) {
       .single()
 
     const errorKind = (failedJob?.error_json as any)?.kind as string | undefined
+    const recommendedAction = (failedJob?.error_json as any)?.recommendedAction as string | undefined
     const failureStep = failedJob?.current_step as string | undefined
     const nextAttempt = repairAttempts + 1
 
@@ -160,9 +161,11 @@ export async function POST(req: Request) {
     }
 
     if (clearScript) {
+      // CRITICAL (per Hal): generateStandaloneScript() checks if (story.script) and
+      // silently skips generation if script is non-null. Must clear both script AND
+      // reset status to 'brief_complete' so the generate_script step actually runs.
       storyUpdate.script = null
-      // script_json already set above (with repair metadata); clear story script content
-      // but preserve the repair tracking fields
+      storyUpdate.status = 'brief_complete'
     }
 
     await supabase.from('stories').update(storyUpdate).eq('id', storyId)
@@ -182,6 +185,8 @@ export async function POST(req: Request) {
           storyId,
           repairAttempt: nextAttempt,
           repairReason: errorKind || 'unknown',
+          // Pass Hal's recommendedAction so generate_script prompt can incorporate it
+          recommendedAction: recommendedAction || null,
           failedStep: failureStep || 'unknown',
           originalFailure: failedJob?.error_json || null,
         },
