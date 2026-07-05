@@ -22,12 +22,10 @@ async function handleRunner(request: NextRequest): Promise<NextResponse> {
     { auth: { persistSession: false, autoRefreshToken: false } },
   )
 
-  // Use the Vercel request ID (or a timestamp) as the unique holder identity
-  // so concurrent invocations can detect each other via the lease table.
-  const holderId =
-    request.headers.get('x-vercel-id') ??
-    request.headers.get('x-request-id') ??
-    `production-runner:${Date.now()}`
+  // Each worker gets a stable, unique holderId so per-worker leases don't collide.
+  // worker=1/2/3 ensures three parallel runners each claim their own lease row.
+  const workerNum = request.nextUrl.searchParams.get('worker') ?? '1'
+  const holderId = `production-runner:worker-${workerNum}`
 
   const config: RunnerConfig = { holderId }
 

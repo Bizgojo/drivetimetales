@@ -65,6 +65,14 @@
     {
       "path": "/api/cron/production-runner",
       "schedule": "*/1 * * * *"
+    },
+    {
+      "path": "/api/cron/production-runner?worker=2",
+      "schedule": "*/1 * * * *"
+    },
+    {
+      "path": "/api/cron/production-runner?worker=3",
+      "schedule": "*/1 * * * *"
     }
   ]
 }

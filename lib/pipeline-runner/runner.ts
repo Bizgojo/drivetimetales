@@ -11,6 +11,7 @@ import { classifyFailure, retryKey, MAX_LOUDNESS_RETRIES_PER_SEGMENT, MAX_TRANSI
 import { writeRunnerEvent, sendWebhookAlert } from './notify'
 
 const ACTIVE_STATUSES = ['queued', 'running', 'waiting_for_external']
+const LOCK_STALE_MS = 10 * 60 * 1000     // 10 min — matches run-next
 const LEASE_DURATION_MS = 850_000         // 850s
 const RUNNER_DEADLINE_MS = 740_000        // 740s = 800s maxDuration − 60s grace
 const STEP_ADVANCE_SLEEP_MS = 500
@@ -45,28 +46,13 @@ async function acquireLease(
   const now = new Date()
   const expiresAt = new Date(now.getTime() + LEASE_DURATION_MS)
 
-  // Read current state
-  const { data: existing } = await supabase
-    .from('pipeline_runner_state')
-    .select('lease_holder, lease_expires_at')
-    .eq('id', 'singleton')
-    .maybeSingle()
-
-  if (existing) {
-    const leaseExpired = !existing.lease_expires_at ||
-      new Date(existing.lease_expires_at).getTime() < now.getTime()
-    const sameHolder = existing.lease_holder === holderId
-
-    if (!leaseExpired && !sameHolder && existing.lease_holder) {
-      return { acquired: false, currentHolder: existing.lease_holder as string }
-    }
-  }
-
-  // Upsert the lease
+  // Per-worker lease — each holderId gets its own row, enabling parallel workers.
+  // Job-level locking (locked_at / locked_by on production_jobs) prevents two
+  // workers from processing the same job simultaneously.
   const { error } = await supabase
     .from('pipeline_runner_state')
     .upsert({
-      id: 'singleton',
+      id: holderId,
       lease_holder: holderId,
       lease_acquired_at: now.toISOString(),
       lease_expires_at: expiresAt.toISOString(),
@@ -94,7 +80,7 @@ async function releaseLease(
         last_run_summary: summary,
         updated_at: nowIso(),
       })
-      .eq('id', 'singleton')
+      .eq('id', holderId)
   } catch {
     // Best-effort release
   }
@@ -106,17 +92,32 @@ async function releaseLease(
 
 async function fetchOldestActiveJob(
   supabase: SupabaseClient,
+  holderId?: string,
 ): Promise<Record<string, unknown> | null> {
-  const { data, error } = await supabase
+  // Only pick up jobs that are unlocked (or locked by this worker from a prior step).
+  // This allows multiple parallel workers to each claim a different job safely.
+  const staleLockCutoff = new Date(Date.now() - LOCK_STALE_MS).toISOString()
+
+  const { data: candidates, error } = await supabase
     .from('production_jobs')
     .select('*')
     .in('status', ACTIVE_STATUSES)
     .order('created_at', { ascending: true })
-    .limit(1)
-    .maybeSingle()
+    .limit(20)
 
   if (error) throw new Error(`Failed to query active production jobs: ${error.message}`)
-  return (data as Record<string, unknown> | null)
+  if (!candidates?.length) return null
+
+  // Find the first job not locked by another worker
+  for (const job of candidates as Record<string, unknown>[]) {
+    const lockedAt = job.locked_at as string | null
+    const lockedBy = job.locked_by as string | null
+    const isUnlocked = !lockedAt || !lockedBy
+    const isOwnedByMe = holderId && lockedBy === holderId
+    const isStale = lockedAt && new Date(lockedAt).getTime() < new Date(staleLockCutoff).getTime()
+    if (isUnlocked || isOwnedByMe || isStale) return job
+  }
+  return null
 }
 
 async function fetchJob(
@@ -198,7 +199,7 @@ export async function runPipelineLoop(
   // 1. Find the oldest active job
   let job: Record<string, unknown> | null
   try {
-    job = await fetchOldestActiveJob(supabase)
+    job = await fetchOldestActiveJob(supabase, holderId)
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err)
     return { jobId: null, stepsCalled: 0, exitReason: 'error', message: msg }
