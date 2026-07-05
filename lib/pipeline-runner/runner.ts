@@ -125,10 +125,14 @@ async function fetchOldestActiveJob(
     if (preferred) {
       const lockedAt = (preferred as Record<string, unknown>).locked_at as string | null
       const lockedBy = (preferred as Record<string, unknown>).locked_by as string | null
+      const status = (preferred as Record<string, unknown>).status as string
       const isUnlocked = !lockedAt && !lockedBy
       const isOwnedByMe = holderId && lockedBy === holderId
       const isStale = lockedAt && new Date(lockedAt).getTime() < new Date(staleLockCutoff).getTime()
-      if (isUnlocked || isOwnedByMe || isStale) return preferred as Record<string, unknown>
+      // Don't re-claim a running job via affinity unless we own the lock.
+      // A running+unlocked job is a zombie — let the queued candidates pick it up normally.
+      const isZombie = status === 'running' && !lockedBy
+      if (!isZombie && (isUnlocked || isOwnedByMe || isStale)) return preferred as Record<string, unknown>
     }
   }
 
