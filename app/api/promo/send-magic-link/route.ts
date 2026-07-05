@@ -149,15 +149,19 @@ export async function POST(req: NextRequest) {
     }).eq('id', promo.id)
 
     // 5. Generate one-click magic link
+    // Use /auth/callback (server-side SSR) not /auth/confirm (client-side).
+    // The SSR callback sets session cookies in the HTTP response before redirecting,
+    // so middleware always sees the session. Client-side confirm has a race condition
+    // where the cookie isn't set yet when middleware checks, causing redirect to /signin.
     const { data: linkData, error: linkError } = await supabase.auth.admin.generateLink({
       type: 'magiclink',
       email: trimmedEmail,
-      options: { redirectTo: APP_URL + '/auth/confirm?next=/home' },
+      options: { redirectTo: APP_URL + '/auth/callback' },
     })
     if (linkError || !linkData?.properties?.hashed_token)
       return NextResponse.json({ error: 'Failed to generate link: ' + linkError?.message }, { status: 500 })
 
-    const magicUrl = APP_URL + '/auth/confirm?token_hash=' + linkData.properties.hashed_token + '&type=magiclink&next=/home'
+    const magicUrl = APP_URL + '/auth/callback?token_hash=' + linkData.properties.hashed_token + '&type=magiclink'
 
     // 6. Send via selected channel
     if (sendChannel === 'sms') {

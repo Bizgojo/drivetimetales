@@ -80,6 +80,11 @@ export async function GET(request: Request) {
 
   if (error || !data?.session) {
     console.error('[AuthCallback] Auth failed:', error?.message)
+    // Show clear expired-link page for magic link failures; generic error for others
+    const isTokenError = /expired|invalid|already used|otp/i.test(error?.message || '')
+    if (tokenHash && isTokenError) {
+      return NextResponse.redirect(`${origin}/auth/link-expired`)
+    }
     return NextResponse.redirect(
       `${origin}/signin?error=auth_failed&reason=${encodeURIComponent(error?.message || 'no_session')}`
     )
