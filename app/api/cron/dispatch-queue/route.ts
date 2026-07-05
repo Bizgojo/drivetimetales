@@ -249,7 +249,7 @@ async function handleDispatchQueue(request: NextRequest) {
           series_id: seriesId,
           job_type: 'series',
           status: 'queued',
-          current_step: 'voice_preflight',
+          current_step: 'series_voice_preflight',
           step_index: 0,
           input_json: {
             mode: 'series',
@@ -261,8 +261,8 @@ async function handleDispatchQueue(request: NextRequest) {
             totalEpisodes: episodeCount,
             dispatchSource: 'cron/dispatch-queue',
             dispatchedAt: now,
-            // Series episodes also start at voice_preflight (scripts already written)
-            initialStep: 'voice_preflight',
+            // Series episodes already have scripts; start at the series voice preflight.
+            initialStep: 'series_voice_preflight',
           },
           logs: [
             {

@@ -154,6 +154,7 @@ async function callRunNext(jobId: string, holderId: string): Promise<RunNextResu
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ jobId, holderId }),
+      signal: AbortSignal.timeout(90_000),
     })
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err)
