@@ -108,6 +108,7 @@ async function handleDispatchQueue(request: NextRequest) {
     .select('id,title,story_type,workflow_state,series_id,series_name,episode_number,series_episode_number,series_total_episodes')
     .eq('workflow_state', 'stories_in_queue')
     .in('story_type', ['standalone', 'single'])
+    .order('production_priority', { ascending: false, nullsFirst: false })
     .order('workflow_state_changed_at', { ascending: true, nullsFirst: false })
     .order('created_at', { ascending: true })
     .limit(50)
