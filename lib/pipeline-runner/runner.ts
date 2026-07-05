@@ -198,221 +198,226 @@ export async function runPipelineLoop(
 ): Promise<RunnerResult> {
   const { holderId } = config
 
-  // 1. Find the oldest active job
-  let job: Record<string, unknown> | null
-  try {
-    job = await fetchOldestActiveJob(supabase, holderId)
-  } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : String(err)
-    return { jobId: null, stepsCalled: 0, exitReason: 'error', message: msg }
-  }
-
-  if (!job) {
-    return {
-      jobId: null,
-      stepsCalled: 0,
-      exitReason: 'no_active_job',
-      message: 'No active production jobs found.',
-    }
-  }
-
-  const jobId = job.id as string
-
-  // 2. Acquire lease
-  let leaseAcquired = false
+  // Acquire per-worker lease once for the full invocation
   try {
     const leaseResult = await acquireLease(supabase, holderId)
     if (!leaseResult.acquired) {
-      const leaseSkipEvent: RunnerEvent = {
-        at: nowIso(),
-        source: 'autonomous-runner',
-        event: 'lease_skip',
-        jobId,
-        step: (job.current_step as string | null) ?? null,
-        needs_marc: false,
-        message: `Lease held by ${leaseResult.currentHolder ?? 'unknown'}. Skipping this invocation.`,
-      }
-      await writeRunnerEvent(supabase, jobId, leaseSkipEvent)
       return {
-        jobId,
+        jobId: null,
         stepsCalled: 0,
         exitReason: 'lease_skip',
-        message: leaseSkipEvent.message,
+        message: `Lease held by ${leaseResult.currentHolder ?? 'unknown'}. Skipping this invocation.`,
       }
     }
-    leaseAcquired = true
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err)
-    return { jobId, stepsCalled: 0, exitReason: 'error', message: `Lease acquisition error: ${msg}` }
+    return { jobId: null, stepsCalled: 0, exitReason: 'error', message: `Lease acquisition error: ${msg}` }
   }
 
-  // 3. Inner runner loop
+  // One deadline for the entire invocation.
+  // Runner chains through multiple jobs until budget runs out or queue is empty.
   const deadline = Date.now() + RUNNER_DEADLINE_MS
-  let stepsCalled = 0
-  let exitReason: RunnerResult['exitReason'] = 'budget_exit'
-  let exitMessage = 'Budget deadline reached without completing the job.'
-
-  const retryState = new Map<string, number>()
-  const stallTracker = new Map<string, StallRecord>()
+  let totalStepsCalled = 0
+  let lastJobId: string | null = null
+  let lastExitReason: RunnerResult['exitReason'] = 'no_active_job'
+  let lastExitMessage = 'No active production jobs found.'
+  let jobsCompleted = 0
 
   try {
+    // ── Outer job loop ────────────────────────────────────────────────────────
     while (Date.now() < deadline) {
-      // Re-fetch job state each iteration
-      let latestJob: Record<string, unknown>
+      // Find the next available job
+      let job: Record<string, unknown> | null
       try {
-        latestJob = await fetchJob(supabase, jobId)
+        job = await fetchOldestActiveJob(supabase, holderId)
       } catch (err: unknown) {
-        exitReason = 'error'
-        exitMessage = err instanceof Error ? err.message : String(err)
+        lastExitReason = 'error'
+        lastExitMessage = err instanceof Error ? err.message : String(err)
         break
       }
 
-      const currentStep = (latestJob.current_step as string | null) ?? null
-      const jobStatus = (latestJob.status as string) ?? ''
-
-      // Check for completion (but NOT ready_for_review — that step must execute first to update story state)
-      if (
-        jobStatus === 'complete' ||
-        !ACTIVE_STATUSES.includes(jobStatus)
-      ) {
-        const completeEvent: RunnerEvent = {
-          at: nowIso(),
-          source: 'autonomous-runner',
-          event: 'complete',
-          jobId,
-          step: currentStep,
-          needs_marc: false,
-          message: `Job reached terminal state: step=${currentStep}, status=${jobStatus}`,
-        }
-        await writeRunnerEvent(supabase, jobId, completeEvent)
-        exitReason = 'complete'
-        exitMessage = completeEvent.message
+      if (!job) {
+        lastExitReason = jobsCompleted > 0 ? 'complete' : 'no_active_job'
+        lastExitMessage = jobsCompleted > 0
+          ? `Completed ${jobsCompleted} job(s). Queue empty.`
+          : 'No active production jobs found.'
         break
       }
 
-      // Stall detection
-      const stepKey = currentStep ?? '__null__'
-      const now = Date.now()
-      if (!stallTracker.has(stepKey)) {
-        stallTracker.set(stepKey, { step: currentStep, firstSeenAt: now })
-      } else {
-        const record = stallTracker.get(stepKey)!
-        if (now - record.firstSeenAt > STALL_THRESHOLD_MS) {
-          const stallEvent: RunnerEvent = {
-            at: nowIso(),
-            source: 'autonomous-runner',
-            event: 'stall',
-            jobId,
-            step: currentStep,
-            needs_marc: true,
-            message: `Job stalled on step "${currentStep}" for >${Math.round(STALL_THRESHOLD_MS / 60_000)}min.`,
-          }
-          await writeRunnerEvent(supabase, jobId, stallEvent)
-          await sendWebhookAlert(stallEvent)
-          exitReason = 'stall'
-          exitMessage = stallEvent.message
+      const jobId = job.id as string
+      lastJobId = jobId
+
+      // Per-job state — reset for each new job
+      let stepsCalled = 0
+      let exitReason: RunnerResult['exitReason'] = 'budget_exit'
+      let exitMessage = 'Budget deadline reached without completing the job.'
+      const retryState = new Map<string, number>()
+      const stallTracker = new Map<string, StallRecord>()
+
+      // ── Inner step loop ──────────────────────────────────────────────────────
+      while (Date.now() < deadline) {
+        let latestJob: Record<string, unknown>
+        try {
+          latestJob = await fetchJob(supabase, jobId)
+        } catch (err: unknown) {
+          exitReason = 'error'
+          exitMessage = err instanceof Error ? err.message : String(err)
           break
         }
-      }
 
-      // Call run-next
-      let result: RunNextResult
-      try {
-        result = await callRunNext(jobId, holderId)
-      } catch (err: unknown) {
-        exitReason = 'error'
-        exitMessage = err instanceof Error ? err.message : String(err)
-        break
-      }
+        const currentStep = (latestJob.current_step as string | null) ?? null
+        const jobStatus = (latestJob.status as string) ?? ''
 
-      stepsCalled += 1
+        // Check for completion
+        if (jobStatus === 'complete' || !ACTIVE_STATUSES.includes(jobStatus)) {
+          const completeEvent: RunnerEvent = {
+            at: nowIso(),
+            source: 'autonomous-runner',
+            event: 'complete',
+            jobId,
+            step: currentStep,
+            needs_marc: false,
+            message: `Job reached terminal state: step=${currentStep}, status=${jobStatus}`,
+          }
+          await writeRunnerEvent(supabase, jobId, completeEvent)
+          exitReason = 'complete'
+          exitMessage = completeEvent.message
+          break
+        }
 
-      // 409 lock contention — back off, don't count as failure
-      if (result.httpStatus === 409) {
-        await sleep(LOCK_CONTENTION_SLEEP_MS)
-        continue
-      }
+        // Stall detection
+        const stepKey = currentStep ?? '__null__'
+        const now = Date.now()
+        if (!stallTracker.has(stepKey)) {
+          stallTracker.set(stepKey, { step: currentStep, firstSeenAt: now })
+        } else {
+          const record = stallTracker.get(stepKey)!
+          if (now - record.firstSeenAt > STALL_THRESHOLD_MS) {
+            const stallEvent: RunnerEvent = {
+              at: nowIso(),
+              source: 'autonomous-runner',
+              event: 'stall',
+              jobId,
+              step: currentStep,
+              needs_marc: true,
+              message: `Job stalled on step "${currentStep}" for >${Math.round(STALL_THRESHOLD_MS / 60_000)}min.`,
+            }
+            await writeRunnerEvent(supabase, jobId, stallEvent)
+            await sendWebhookAlert(stallEvent)
+            exitReason = 'stall'
+            exitMessage = stallEvent.message
+            break
+          }
+        }
 
-      // Success
-      if (result.ok) {
-        const newStep =
-          (result.payload?.currentStep as string | null) ??
-          (result.payload?.nextStep as string | null) ??
-          currentStep
+        // Call run-next
+        let result: RunNextResult
+        try {
+          result = await callRunNext(jobId, holderId)
+        } catch (err: unknown) {
+          exitReason = 'error'
+          exitMessage = err instanceof Error ? err.message : String(err)
+          break
+        }
 
-        const advanceEvent: RunnerEvent = {
+        stepsCalled += 1
+
+        // 409 lock contention — back off
+        if (result.httpStatus === 409) {
+          await sleep(LOCK_CONTENTION_SLEEP_MS)
+          continue
+        }
+
+        // Success
+        if (result.ok) {
+          const newStep =
+            (result.payload?.currentStep as string | null) ??
+            (result.payload?.nextStep as string | null) ??
+            currentStep
+
+          const advanceEvent: RunnerEvent = {
+            at: nowIso(),
+            source: 'autonomous-runner',
+            event: 'step_advance',
+            jobId,
+            step: newStep,
+            needs_marc: false,
+            message: `Step advanced: ${currentStep} → ${newStep}`,
+          }
+          await writeRunnerEvent(supabase, jobId, advanceEvent)
+
+          if (newStep !== currentStep) stallTracker.clear()
+          await sleep(STEP_ADVANCE_SLEEP_MS)
+          continue
+        }
+
+        // Failure path — classify
+        const classification = classifyFailure(result.payload, latestJob)
+        const key = retryKey(classification.kind, classification.context, jobId)
+        const rawSnippet = (result.payload?.bodySnippet as string | undefined) ??
+          (result.payload?.message as string | undefined) ??
+          JSON.stringify(result.payload).slice(0, 500)
+
+        if (classification.kind === 'loudness') {
+          const attempts = retryState.get(key) ?? 0
+          if (attempts < MAX_LOUDNESS_RETRIES_PER_SEGMENT) {
+            retryState.set(key, attempts + 1)
+            await sleep(LOUDNESS_RETRY_SLEEP_MS)
+            continue
+          }
+        }
+
+        if (classification.kind === 'transient') {
+          const attempts = retryState.get(key) ?? 0
+          if (attempts < MAX_TRANSIENT_RETRIES_PER_KEY) {
+            retryState.set(key, attempts + 1)
+            await sleep(TRANSIENT_RETRY_SLEEP_MS)
+            continue
+          }
+        }
+
+        // Non-retryable failure
+        const failureEvent: RunnerEvent = {
           at: nowIso(),
           source: 'autonomous-runner',
-          event: 'step_advance',
+          event: 'failure',
           jobId,
-          step: newStep,
-          needs_marc: false,
-          message: `Step advanced: ${currentStep} → ${newStep}`,
+          step: classification.context.step ?? currentStep,
+          classification,
+          needs_marc: classification.needsMarc,
+          message: classification.reason,
+          raw_snippet: rawSnippet,
         }
-        await writeRunnerEvent(supabase, jobId, advanceEvent)
+        await writeRunnerEvent(supabase, jobId, failureEvent)
+        await sendWebhookAlert(failureEvent)
+        exitReason = 'failure'
+        exitMessage = classification.reason
+        break
+      } // end inner step loop
 
-        // Reset stall tracker if step changed
-        if (newStep !== currentStep) {
-          stallTracker.clear()
-        }
+      // Accumulate and decide whether to chain to next job
+      totalStepsCalled += stepsCalled
+      lastExitReason = exitReason
+      lastExitMessage = exitMessage
 
-        await sleep(STEP_ADVANCE_SLEEP_MS)
-        continue
+      if (exitReason === 'complete') {
+        jobsCompleted++
+        // Chain to next job if enough budget remains (30s grace for overhead)
+        if (Date.now() + 30_000 < deadline) continue
       }
-
-      // Failure path — classify
-      const classification = classifyFailure(result.payload, latestJob)
-      const key = retryKey(classification.kind, classification.context, jobId)
-      const rawSnippet = (result.payload?.bodySnippet as string | undefined) ??
-        (result.payload?.message as string | undefined) ??
-        JSON.stringify(result.payload).slice(0, 500)
-
-      if (classification.kind === 'loudness') {
-        const attempts = retryState.get(key) ?? 0
-        if (attempts < MAX_LOUDNESS_RETRIES_PER_SEGMENT) {
-          retryState.set(key, attempts + 1)
-          await sleep(LOUDNESS_RETRY_SLEEP_MS)
-          continue
-        }
-      }
-
-      if (classification.kind === 'transient') {
-        const attempts = retryState.get(key) ?? 0
-        if (attempts < MAX_TRANSIENT_RETRIES_PER_KEY) {
-          retryState.set(key, attempts + 1)
-          await sleep(TRANSIENT_RETRY_SLEEP_MS)
-          continue
-        }
-      }
-
-      // Cap exceeded or non-retryable
-      const failureEvent: RunnerEvent = {
-        at: nowIso(),
-        source: 'autonomous-runner',
-        event: 'failure',
-        jobId,
-        step: classification.context.step ?? currentStep,
-        classification,
-        needs_marc: classification.needsMarc,
-        message: classification.reason,
-        raw_snippet: rawSnippet,
-      }
-      await writeRunnerEvent(supabase, jobId, failureEvent)
-      await sendWebhookAlert(failureEvent)
-      exitReason = 'failure'
-      exitMessage = classification.reason
       break
-    }
+    } // end outer job loop
+
   } finally {
-    // 4. Release lease
     await releaseLease(supabase, holderId, {
-      jobId,
-      stepsCalled,
-      exitReason,
-      exitMessage,
+      jobId: lastJobId,
+      stepsCalled: totalStepsCalled,
+      jobsCompleted,
+      exitReason: lastExitReason,
+      exitMessage: lastExitMessage,
       at: nowIso(),
     })
   }
 
-  return { jobId, stepsCalled, exitReason, message: exitMessage }
+  return { jobId: lastJobId, stepsCalled: totalStepsCalled, exitReason: lastExitReason, message: lastExitMessage }
 }

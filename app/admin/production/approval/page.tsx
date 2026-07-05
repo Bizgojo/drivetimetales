@@ -4548,17 +4548,14 @@ export default function AdminStoriesPage() {
                       'worker-4': 'Groucho',
                     }
                     // Always show all known workers, active or idle
-                    const RUNNER_BUDGET_S = 800
                     const allWorkerKeys = ['worker-1', 'worker-2', 'worker-3', 'worker-4']
                     const workerById = Object.fromEntries(runnerWorkers.map(w => [w.id, w]))
-                    const fmtRemaining = (lockedAt: string | null | undefined) => {
+                    const fmtElapsed = (lockedAt: string | null | undefined) => {
                       if (!lockedAt) return ''
                       const elapsedS = Math.floor((Date.now() - new Date(lockedAt).getTime()) / 1000)
-                      const remainS = Math.max(0, RUNNER_BUDGET_S - elapsedS)
-                      if (remainS === 0) return ' · finishing up'
-                      const m = Math.floor(remainS / 60)
-                      const s = remainS % 60
-                      return m > 0 ? ` · ${m}m ${s}s remaining` : ` · ${s}s remaining`
+                      const m = Math.floor(elapsedS / 60)
+                      const s = elapsedS % 60
+                      return m > 0 ? ` · ${m}m ${s}s` : ` · ${s}s`
                     }
                     return allWorkerKeys.map(key => {
                       const workerId = `production-runner:${key}`
@@ -4569,7 +4566,7 @@ export default function AdminStoriesPage() {
                       const activeJob = isActive
                         ? activeRunnerJobs.find(s => s.source_job?.locked_by === workerId) || null
                         : null
-                      const timeStr = activeJob ? fmtRemaining(activeJob.source_job?.locked_at) : ''
+                      const timeStr = activeJob ? fmtElapsed(activeJob.source_job?.locked_at) : ''
                       return (
                         <span key={key} style={{ color: isActive ? '#0F172A' : '#94A3B8', fontWeight: 800, overflowWrap: 'anywhere' }}>
                           {name}: {isActive
