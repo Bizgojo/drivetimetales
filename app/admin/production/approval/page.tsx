@@ -518,6 +518,26 @@ function queuePositionLabel(position: number) {
   return `Queue position #${position} — est. ${position - 1} stories ahead`
 }
 
+// Pipeline step labels — shared between runner banner and queue cards
+const PIPELINE_STEP_LABEL_MAP: Record<string, string> = {
+  voice_preflight: 'Preflight', series_voice_preflight: 'Preflight',
+  generate_voices: 'Voices', series_generate_voices: 'Voices',
+  generate_belle_assets: 'Belle', series_generate_belle_assets: 'Belle',
+  validate_belle_assets: 'Belle✓', series_validate_belle_assets: 'Belle✓',
+  validate_belle_quality: 'Quality', series_validate_belle_quality: 'Quality',
+  score_validate_package: 'Score', series_score_validate_package: 'Score',
+  generate_music: 'Music', series_generate_music: 'Music',
+  render_final_mix: 'Render', series_render_final_mix: 'Render',
+  complete_story_package: 'Finish', series_complete_story_package: 'Finish',
+  ready_for_review: 'RFR',
+}
+const WORKER_SHORT_NAMES: Record<string, string> = {
+  'production-runner:worker-1': 'Larry',
+  'production-runner:worker-2': 'Curly',
+  'production-runner:worker-3': 'Moe',
+  'production-runner:worker-4': 'Groucho',
+}
+
 function repairQueueStates(story: Story) {
   return ['repair_queue', 'being_repaired', 'failed'].includes(effectiveWorkflowState(story))
 }
@@ -4630,21 +4650,10 @@ export default function AdminStoriesPage() {
                       return m > 0 ? ` · ${m}m ${s}s` : ` · ${s}s`
                     }
                     // Pipeline step definitions (order matters — determines done/active/future)
-                    const STEP_LABEL_MAP: Record<string, string> = {
-                      voice_preflight: 'Preflight', series_voice_preflight: 'Preflight',
-                      generate_voices: 'Voices', series_generate_voices: 'Voices',
-                      generate_belle_assets: 'Belle', series_generate_belle_assets: 'Belle',
-                      validate_belle_assets: 'Belle✓', series_validate_belle_assets: 'Belle✓',
-                      validate_belle_quality: 'Quality', series_validate_belle_quality: 'Quality',
-                      score_validate_package: 'Score', series_score_validate_package: 'Score',
-                      generate_music: 'Music', series_generate_music: 'Music',
-                      render_final_mix: 'Render', series_render_final_mix: 'Render',
-                      complete_story_package: 'Finish', series_complete_story_package: 'Finish',
-                    }
                     const STEP_ORDER = ['Preflight','Voices','Belle','Belle✓','Quality','Score','Music','Render','Finish']
                     const stepIndex = (stepKey: string | null | undefined) => {
                       if (!stepKey) return -1
-                      const label = STEP_LABEL_MAP[stepKey]
+                      const label = PIPELINE_STEP_LABEL_MAP[stepKey]
                       return label ? STEP_ORDER.indexOf(label) : -1
                     }
 
@@ -4728,7 +4737,43 @@ export default function AdminStoriesPage() {
             </div>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '14px' }}>
-              {seriesGroups.map((group, index) => {
+              {(() => {
+                // Build storyId → runner info lookup (locked jobs first, then last-known)
+                const runnerByStoryId: Record<string, { name: string; step: string; isLocked: boolean }> = {}
+                for (const story of activeRunnerJobs) {
+                  const lockedBy = story.source_job?.locked_by as string | undefined
+                  if (!lockedBy) continue
+                  const name = WORKER_SHORT_NAMES[lockedBy] || lockedBy
+                  const step = PIPELINE_STEP_LABEL_MAP[story.source_job?.current_step as string] || story.source_job?.current_step || ''
+                  runnerByStoryId[story.id] = { name, step, isLocked: true }
+                }
+                // Also fill from lastJobDetailsByWorker for between-invocation visibility
+                for (const [workerId, detail] of Object.entries(lastJobDetailsByWorker)) {
+                  if (!detail) continue
+                  // Find story_id from activeRunnerJobs matching this job or use detail
+                  const storyForJob = activeRunnerJobs.find(s => s.source_job?.id === detail.jobId)
+                  const storyId = storyForJob?.id
+                  if (storyId && !runnerByStoryId[storyId]) {
+                    runnerByStoryId[storyId] = {
+                      name: WORKER_SHORT_NAMES[workerId] || workerId,
+                      step: PIPELINE_STEP_LABEL_MAP[detail.step] || detail.step,
+                      isLocked: false,
+                    }
+                  }
+                }
+
+                // Sort: active-runner groups first, then by original order
+                const sortedGroups = [...seriesGroups].sort((a, b) => {
+                  const aStories = a.type === 'series' ? a.stories : [a.story]
+                  const bStories = b.type === 'series' ? b.stories : [b.story]
+                  const aActive = aStories.some(s => runnerByStoryId[s.id])
+                  const bActive = bStories.some(s => runnerByStoryId[s.id])
+                  if (aActive && !bActive) return -1
+                  if (!aActive && bActive) return 1
+                  return 0
+                })
+
+                return sortedGroups.map((group, index) => {
                 const groupStories = group.type === 'series' ? group.stories : [group.story]
                 const productionStories = productionQueueStoriesForGroup(group)
                 const cardStories = productionQueueCardStories(group)
@@ -4745,6 +4790,9 @@ export default function AdminStoriesPage() {
                 const duplicateTitle = (productionQueueTitleCounts[normalizedDuplicateTitle(groupTitle)] || 0) > 1
                 const metadata = `${queueEpisodeCount} episode${queueEpisodeCount === 1 ? '' : 's'}${trueSeries && expected !== queueEpisodeCount ? ` of ${expected}` : ''} · ${queueDuration || '—'}m · ${queueGenre}`
 
+                // Runner info for this group
+                const runnerInfo = groupStories.map(s => runnerByStoryId[s.id]).find(Boolean) || null
+
                 return (
                   <article
                     key={group.key}
@@ -4756,13 +4804,20 @@ export default function AdminStoriesPage() {
                       minHeight: '72px',
                       padding: '11px 12px',
                       borderRadius: '8px',
-                      border: '1px solid #E5E7EB',
-                      backgroundColor: productionPriority > 0 ? '#FFFBEB' : '#ffffff',
+                      border: runnerInfo ? '1px solid #FDE68A' : '1px solid #E5E7EB',
+                      backgroundColor: runnerInfo ? '#FEFCE8' : productionPriority > 0 ? '#FFFBEB' : '#ffffff',
                     }}
                   >
+                    {runnerInfo ? (
+                      <span style={{ width: '52px', height: '38px', borderRadius: '8px', backgroundColor: runnerInfo.isLocked ? '#16A34A' : '#F59E0B', color: '#ffffff', display: 'inline-flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', fontSize: '9px', fontWeight: 950, flex: '0 0 auto', lineHeight: 1.2, textAlign: 'center', padding: '2px' }}>
+                        <span style={{ fontSize: '11px', fontWeight: 950 }}>{runnerInfo.name}</span>
+                        <span style={{ opacity: 0.9 }}>{runnerInfo.step}</span>
+                      </span>
+                    ) : (
                     <span style={{ width: '38px', height: '38px', borderRadius: '999px', backgroundColor: productionPriority > 0 ? '#F59E0B' : '#E5E7EB', color: productionPriority > 0 ? '#7C2D12' : '#4B5563', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '13px', fontWeight: 950, flex: '0 0 auto' }}>
                       #{index + 1}
                     </span>
+                    )}
                     <div style={{ width: '48px', height: '48px', borderRadius: '6px', overflow: 'hidden', backgroundColor: '#E5E7EB', flex: '0 0 auto' }}>
                       <img src={firstStory?.cover_url || '/images/default-cover.png'} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                     </div>
@@ -4825,6 +4880,8 @@ export default function AdminStoriesPage() {
                       )}
                     </div>
                   </article>
+                )
+              })}
                 )
               })}
               {seriesGroups.length === 0 && (
