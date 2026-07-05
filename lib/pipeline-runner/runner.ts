@@ -113,7 +113,7 @@ async function fetchOldestActiveJob(
   for (const job of candidates as Record<string, unknown>[]) {
     const lockedAt = job.locked_at as string | null
     const lockedBy = job.locked_by as string | null
-    const isUnlocked = !lockedAt || !lockedBy
+    const isUnlocked = !lockedAt && !lockedBy
     const isOwnedByMe = holderId && lockedBy === holderId
     const isStale = lockedAt && new Date(lockedAt).getTime() < new Date(staleLockCutoff).getTime()
     if (isUnlocked || isOwnedByMe || isStale) return job
@@ -145,7 +145,7 @@ type RunNextResult = {
   payload: Record<string, unknown>
 }
 
-async function callRunNext(jobId: string): Promise<RunNextResult> {
+async function callRunNext(jobId: string, holderId: string): Promise<RunNextResult> {
   const url = `${baseUrl()}/api/admin/production-jobs/run-next`
 
   let response: Response
@@ -153,7 +153,7 @@ async function callRunNext(jobId: string): Promise<RunNextResult> {
     response = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ jobId }),
+      body: JSON.stringify({ jobId, holderId }),
     })
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err)
@@ -317,7 +317,7 @@ export async function runPipelineLoop(
       // Call run-next
       let result: RunNextResult
       try {
-        result = await callRunNext(jobId)
+        result = await callRunNext(jobId, holderId)
       } catch (err: unknown) {
         exitReason = 'error'
         exitMessage = err instanceof Error ? err.message : String(err)

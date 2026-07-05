@@ -50,6 +50,7 @@ const MAX_SERIES_DESCRIPTION_RETRIES = 2
 const MAX_SERIES_BELLE_RETRIES = 3
 const NARRATIVE_HOOK_FALLBACK_MODEL = 'claude-haiku-4-5'
 const NARRATIVE_HOOK_FALLBACK_TIMEOUT_MS = 8000
+const VOICE_PREFLIGHT_TIMEOUT_MS = 120_000
 const TITLE_MAX_CHARS = 28
 const DESCRIPTION_MAX_CHARS = 70
 const DESCRIPTION_PAST_TENSE_RE = /\b(vanished|was|were|had|found|discovered|left|moved|sealed|signed|forged|buried|hidden|lost)\b/i
@@ -165,6 +166,7 @@ type ProductionJob = {
   error_json?: any
   logs: any[]
   locked_at: string | null
+  locked_by: string | null
 }
 
 type AuthorRow = {
@@ -2104,13 +2106,15 @@ async function selectCandidate(jobId: string) {
   return data as ProductionJob | null
 }
 
-async function lockJob(job: ProductionJob) {
+async function lockJob(job: ProductionJob, lockHolderId: string) {
   const staleBefore = new Date(Date.now() - LOCK_STALE_MS).toISOString()
   const baseUpdate = {
     status: 'running',
     locked_at: nowIso(),
-    locked_by: WORKER_ID,
+    locked_by: lockHolderId,
   }
+  const lockedAt = job.locked_at
+  const lockedBy = job.locked_by
 
   let query = supabase
     .from('production_jobs')
@@ -2118,9 +2122,13 @@ async function lockJob(job: ProductionJob) {
     .eq('id', job.id)
     .in('status', ['queued', 'running'])
 
-  query = job.locked_at
-    ? query.lt('locked_at', staleBefore)
-    : query.is('locked_at', null)
+  if (lockedBy === lockHolderId) {
+    query = query.eq('locked_by', lockHolderId)
+  } else if (lockedAt) {
+    query = query.lt('locked_at', staleBefore)
+  } else {
+    query = query.is('locked_at', null).is('locked_by', null)
+  }
 
   const { data, error } = await query
     .select('*')
@@ -2130,12 +2138,12 @@ async function lockJob(job: ProductionJob) {
   return data as ProductionJob | null
 }
 
-async function clearLock(jobId: string) {
+async function clearLock(jobId: string, lockHolderId: string) {
   await supabase
     .from('production_jobs')
     .update({ locked_at: null, locked_by: null })
     .eq('id', jobId)
-    .eq('locked_by', WORKER_ID)
+    .eq('locked_by', lockHolderId)
 }
 
 async function readJsonOrDiagnostic(response: Response, endpoint: string) {
@@ -2176,6 +2184,47 @@ async function readJsonOrDiagnostic(response: Response, endpoint: string) {
       contentType,
       responsePreview: trimmed.slice(0, 500),
     }
+  }
+}
+
+async function runGenerateVoicesPreflightRequest(origin: string, storyId: string): Promise<{
+  responseOk: boolean
+  status: number
+  report: VoicePreflightResult
+}> {
+  const endpoint = `${origin}/api/admin/generate-voices`
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), VOICE_PREFLIGHT_TIMEOUT_MS)
+
+  try {
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ storyId, preflightOnly: true }),
+      signal: controller.signal,
+    })
+    const report = await readJsonOrDiagnostic(response, '/api/admin/generate-voices') as VoicePreflightResult
+    return { responseOk: response.ok, status: response.status, report }
+  } catch (error) {
+    const aborted = error instanceof Error && error.name === 'AbortError'
+    return {
+      responseOk: false,
+      status: aborted ? 408 : 0,
+      report: {
+        success: false,
+        preflightOnly: true,
+        error: aborted
+          ? `generate-voices preflight timed out after ${Math.round(VOICE_PREFLIGHT_TIMEOUT_MS / 1000)}s`
+          : error instanceof Error ? error.message : String(error),
+        blockingReasons: [
+          aborted
+            ? `generate-voices preflight timed out after ${Math.round(VOICE_PREFLIGHT_TIMEOUT_MS / 1000)}s`
+            : `generate-voices preflight request failed: ${error instanceof Error ? error.message : String(error)}`,
+        ],
+      },
+    }
+  } finally {
+    clearTimeout(timeout)
   }
 }
 
@@ -3409,14 +3458,8 @@ async function runStandaloneVoicePreflight(job: ProductionJob, origin: string) {
   }
 
   // ── Generate-voices preflight (ElevenLabs metadata check) ────────────────────
-  const endpoint = `${origin}/api/admin/generate-voices`
-  const response = await fetch(endpoint, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ storyId, preflightOnly: true }),
-  })
-  const report = await readJsonOrDiagnostic(response, '/api/admin/generate-voices') as VoicePreflightResult
-  const passed = response.ok && report.success === true
+  const { responseOk, report } = await runGenerateVoicesPreflightRequest(origin, String(storyId))
+  const passed = responseOk && report.success === true
 
   return {
     passed,
@@ -5877,14 +5920,8 @@ async function runSeriesVoicePreflight(job: ProductionJob, origin: string) {
   }
 
   // ── Generate-voices preflight ──────────────────────────────────────────────
-  const endpoint = `${origin}/api/admin/generate-voices`
-  const response = await fetch(endpoint, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ storyId, preflightOnly: true }),
-  })
-  const report = await readJsonOrDiagnostic(response, '/api/admin/generate-voices') as VoicePreflightResult
-  const passed = response.ok && report.success === true
+  const { responseOk, report } = await runGenerateVoicesPreflightRequest(origin, storyId)
+  const passed = responseOk && report.success === true
 
   const episodeSummary: any = {
     storyId,
@@ -6323,6 +6360,7 @@ async function runSeriesRenderFinalMix(job: ProductionJob, origin: string) {
 export async function POST(req: NextRequest) {
   let lockedJob: ProductionJob | null = null
   let activeStage: string | null = null
+  let lockHolderId = WORKER_ID
 
   try {
     // Load shared mission context for this session (INC-011 prevention)
@@ -6333,6 +6371,7 @@ export async function POST(req: NextRequest) {
 
     const body = await req.json().catch(() => ({}))
     const requestedJobId = String(body.jobId || '').trim()
+    lockHolderId = String(body.holderId || WORKER_ID).trim() || WORKER_ID
     const model = String(body.model || 'claude-opus-4-6')
 
     // Scan for zombie jobs before selecting the next candidate.
@@ -6350,7 +6389,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: true, message: 'No queued or running production job found', job: null, markedZombies })
     }
 
-    lockedJob = await lockJob(candidate)
+    lockedJob = await lockJob(candidate, lockHolderId)
     if (!lockedJob) {
       return bad('Production job is already locked', 409, { jobId: candidate.id })
     }
@@ -9477,7 +9516,7 @@ export async function POST(req: NextRequest) {
         }
       }
 
-      await clearLock(lockedJob.id)
+      await clearLock(lockedJob.id, lockHolderId)
     }
   }
 }
