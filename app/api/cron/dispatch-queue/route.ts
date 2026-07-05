@@ -13,7 +13,8 @@ const READY_OR_FURTHER_STATES = new Set([
   'unpublished_library',
   'published',
 ])
-const MAX_DISPATCH_PER_RUN = 3
+const NUM_RUNNERS = 4              // Larry, Curly, Moe, Groucho
+const MAX_DISPATCH_PER_RUN = NUM_RUNNERS * 4  // Keep 4 jobs queued per runner (16 total)
 
 type StoryRow = {
   id: string
@@ -90,6 +91,18 @@ async function handleDispatchQueue(request: NextRequest) {
   const skipped: Array<Record<string, unknown>> = []
   const now = new Date().toISOString()
 
+  // Check how many active jobs already exist — only dispatch enough to fill up to MAX_DISPATCH_PER_RUN
+  const { count: existingActiveCount } = await supabase
+    .from('production_jobs')
+    .select('id', { count: 'exact', head: true })
+    .in('status', ACTIVE_JOB_STATUSES)
+  const activeCount = existingActiveCount ?? 0
+  const dispatchTarget = Math.max(0, MAX_DISPATCH_PER_RUN - activeCount)
+  console.log(`[dispatch-queue] Active jobs: ${activeCount}, target: ${MAX_DISPATCH_PER_RUN}, will dispatch up to: ${dispatchTarget}`)
+  if (dispatchTarget === 0) {
+    return json({ success: true, dispatched: [], skipped: [], message: `Queue full (${activeCount} active jobs, target ${MAX_DISPATCH_PER_RUN})` }, 200)
+  }
+
   const { data: standaloneStories, error: standaloneError } = await supabase
     .from('stories')
     .select('id,title,story_type,workflow_state,series_id,series_name,episode_number,series_episode_number,series_total_episodes')
@@ -123,7 +136,7 @@ async function handleDispatchQueue(request: NextRequest) {
   )
 
   for (const story of (standaloneStories || []) as StoryRow[]) {
-    if (dispatched.length >= MAX_DISPATCH_PER_RUN) break
+    if (dispatched.length >= dispatchTarget) break
     if (activeStandaloneStoryIds.has(story.id)) {
       skipped.push({ storyId: story.id, reason: 'active_job_exists' })
       continue
@@ -174,7 +187,7 @@ async function handleDispatchQueue(request: NextRequest) {
     })
   }
 
-  if (dispatched.length < MAX_DISPATCH_PER_RUN) {
+  if (dispatched.length < dispatchTarget) {
     const { data: queuedSeriesEpisodes, error: queuedSeriesError } = await supabase
       .from('stories')
       .select('series_id')
@@ -212,7 +225,7 @@ async function handleDispatchQueue(request: NextRequest) {
     )
 
     for (const seriesId of candidateSeriesIds) {
-      if (dispatched.length >= MAX_DISPATCH_PER_RUN) break
+      if (dispatched.length >= dispatchTarget) break
       if (activeSeriesIds.has(seriesId)) {
         skipped.push({ seriesId, reason: 'active_job_exists' })
         continue
