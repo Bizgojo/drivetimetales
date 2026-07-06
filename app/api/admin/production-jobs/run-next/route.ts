@@ -13,7 +13,7 @@ import { getPlaybookByKind } from '@/lib/repairPlaybooks'
 import { loadActiveMission } from '@/lib/missionContext'
 
 export const runtime = 'nodejs'
-export const maxDuration = 300
+// maxDuration governed by vercel.json (800s) — do not override here
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -9447,11 +9447,42 @@ export async function POST(req: NextRequest) {
       const origin = new URL(req.url).origin
       const result = await runSeriesRenderFinalMix(lockedJob, origin)
       const nextStep = result.allDone ? NEXT_STEP_AFTER_SERIES_RENDER : NEXT_STEP_AFTER_SERIES_MUSIC
+
+      // Bounded retry cap for series render failures — prevent infinite zombie loops
+      const MAX_SERIES_RENDER_ATTEMPTS = 5
+      const renderState = (lockedJob.state_json && typeof lockedJob.state_json === 'object'
+        ? lockedJob.state_json as Record<string, unknown> : {})
+      const seriesRenderAttempts = (typeof (renderState.seriesRenderAttempts) === 'number'
+        ? renderState.seriesRenderAttempts : 0) + (result.lastError ? 1 : 0)
+      const retryExhausted = result.lastError && seriesRenderAttempts >= MAX_SERIES_RENDER_ATTEMPTS
+
       const logs = appendLog(lockedJob,
-        result.allDone ? 'Series final render complete for all episodes' : `Final render done for Ep${result.processedEp}`,
-        { processedEp: result.processedEp, finalMixUrl: result.finalMixUrl, durationMins: result.duration, allDone: result.allDone, error: result.lastError || undefined })
+        result.allDone ? 'Series final render complete for all episodes'
+          : result.lastError ? `Series render failed Ep${result.processedEp ?? '?'} (attempt ${seriesRenderAttempts}/${MAX_SERIES_RENDER_ATTEMPTS}): ${result.lastError}`
+          : `Final render done for Ep${result.processedEp}`,
+        { processedEp: result.processedEp, finalMixUrl: result.finalMixUrl, durationMins: result.duration, allDone: result.allDone, error: result.lastError || undefined, seriesRenderAttempts })
+
+      if (retryExhausted) {
+        // Mark job needs_attention so it surfaces in Command Center and stops cycling
+        const { data: updatedJob, error: updateError } = await supabase.from('production_jobs')
+          .update({
+            status: 'failed',
+            needs_attention: true,
+            needs_attention_reason: `series_render_final_mix exhausted ${MAX_SERIES_RENDER_ATTEMPTS} attempts. Last error: ${String(result.lastError).slice(0, 400)}`,
+            error_json: { kind: 'series_render_retry_exhausted', attempts: seriesRenderAttempts, lastError: result.lastError, step: 'series_render_final_mix' },
+            state_json: { ...result.state, seriesRenderAttempts },
+            logs,
+            locked_at: null,
+            locked_by: null,
+          })
+          .eq('id', lockedJob.id).select('*').single()
+        if (updateError) throw new Error(`Failed to save series render exhaustion state: ${updateError.message}`)
+        console.error(`[series_render_final_mix] RETRY EXHAUSTED after ${MAX_SERIES_RENDER_ATTEMPTS} attempts — job ${lockedJob.id} marked needs_attention`)
+        return NextResponse.json({ success: false, jobId: updatedJob?.id, currentStep: step, retryExhausted: true, error: result.lastError, logs })
+      }
+
       const { data: updatedJob, error: updateError } = await supabase.from('production_jobs')
-        .update({ status: result.allDone ? 'running' : 'running', current_step: nextStep, state_json: result.state, error_json: null, logs, locked_at: null, locked_by: null })
+        .update({ status: 'running', current_step: nextStep, state_json: { ...result.state, seriesRenderAttempts }, error_json: null, logs, locked_at: null, locked_by: null })
         .eq('id', lockedJob.id).select('*').single()
       if (updateError) throw new Error(`Failed to save series render state: ${updateError.message}`)
       return NextResponse.json({ success: !result.lastError, jobId: updatedJob.id, currentStep: step, nextStep: updatedJob.current_step, processedEp: result.processedEp, allDone: result.allDone, finalMixUrl: result.finalMixUrl, durationMins: result.duration, error: result.lastError || undefined, logs })

@@ -287,6 +287,18 @@ export async function runRenderFinalMix(storyId: string): Promise<{
   error?: string
   [key: string]: unknown
 }> {
+  // Clean up any leftover et-mix-* dirs from previous invocations on this
+  // warm container — Vercel reuses /tmp across calls; accumulated dirs cause ENOSPC.
+  try {
+    const tmpBase = os.tmpdir()
+    const entries = await fs.readdir(tmpBase)
+    await Promise.all(
+      entries
+        .filter(e => e.startsWith('et-mix-'))
+        .map(e => fs.rm(path.join(tmpBase, e), { recursive: true, force: true }).catch(() => {}))
+    )
+  } catch { /* never block on cleanup */ }
+
   const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'et-mix-'))
   try {
     console.log(`\n🎛 render-final-mix: ${storyId}`)
