@@ -24,8 +24,8 @@ const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! })
 const WORKER_ID = `run-next:${process.pid}`
 const LOCK_STALE_MS = 10 * 60 * 1000
 // A job is a zombie when it is status=running, has no lock, and has not been
-// touched in this long.  30 minutes is well past any legitimate inter-call gap.
-const ZOMBIE_STALE_MS = 30 * 60 * 1000
+// touched in this long, or when its lock is older than this threshold.
+const ZOMBIE_STALE_MS = 15 * 60 * 1000
 const NEXT_STEP_AFTER_CREATE = 'generate_script'
 const NEXT_STEP_AFTER_STANDALONE_SCRIPT = 'validate_script'
 const NEXT_STEP_AFTER_STANDALONE_VALIDATION = 'validate_story_resolution'
@@ -168,6 +168,7 @@ type ProductionJob = {
   logs: any[]
   locked_at: string | null
   locked_by: string | null
+  updated_at?: string | null
 }
 
 type AuthorRow = {
@@ -2091,14 +2092,24 @@ async function detectAndMarkZombieJobs(excludeJobId?: string): Promise<string[]>
 }
 
 async function selectCandidate(jobId: string) {
+  const zombieCutoff = new Date(Date.now() - ZOMBIE_STALE_MS).toISOString()
   let query = supabase
     .from('production_jobs')
     .select('*')
-    .in('status', ['queued', 'running'])
     .order('created_at', { ascending: true })
     .limit(1)
 
-  if (jobId) query = query.eq('id', jobId)
+  if (jobId) {
+    query = query.eq('id', jobId).in('status', ['queued', 'running'])
+  } else {
+    query = query.or(
+      [
+        'status.eq.queued',
+        `and(status.eq.running,locked_by.is.null,updated_at.lt.${zombieCutoff})`,
+        `and(status.eq.running,locked_at.not.is.null,locked_at.lt.${zombieCutoff})`,
+      ].join(','),
+    )
+  }
 
   const { data, error } = await query.maybeSingle()
   if (error) throw new Error(`Failed to select production job: ${error.message}`)
@@ -2106,14 +2117,39 @@ async function selectCandidate(jobId: string) {
 }
 
 async function lockJob(job: ProductionJob, lockHolderId: string) {
-  const staleBefore = new Date(Date.now() - LOCK_STALE_MS).toISOString()
-  const baseUpdate = {
-    status: 'running',
-    locked_at: nowIso(),
-    locked_by: lockHolderId,
-  }
+  const staleBefore = new Date(Date.now() - ZOMBIE_STALE_MS).toISOString()
+  const lockNow = nowIso()
   const lockedAt = job.locked_at
   const lockedBy = job.locked_by
+  const isZombie =
+    job.status === 'running' &&
+    (
+      (!lockedBy && !lockedAt && Boolean(job.updated_at) && String(job.updated_at) < staleBefore) ||
+      (Boolean(lockedAt) && String(lockedAt) < staleBefore)
+    )
+  const zombieAge = isZombie
+    ? Math.max(0, Math.floor((Date.now() - new Date(String(lockedAt || job.updated_at)).getTime()) / 60000))
+    : null
+  const baseUpdate = {
+    status: 'running',
+    locked_at: lockNow,
+    locked_by: lockHolderId,
+    ...(isZombie
+      ? {
+          logs: [
+            ...(Array.isArray(job.logs) ? job.logs : []),
+            {
+              at: lockNow,
+              event: 'zombie_reclaim',
+              jobId: job.id,
+              step: normalizeStep(job.current_step),
+              reclaimedBy: lockHolderId,
+              zombieAge,
+            },
+          ],
+        }
+      : {}),
+  }
 
   let query = supabase
     .from('production_jobs')
@@ -2123,8 +2159,10 @@ async function lockJob(job: ProductionJob, lockHolderId: string) {
 
   if (lockedBy === lockHolderId) {
     query = query.eq('locked_by', lockHolderId)
-  } else if (lockedAt) {
+  } else if (job.status === 'running' && lockedAt) {
     query = query.lt('locked_at', staleBefore)
+  } else if (job.status === 'running') {
+    query = query.is('locked_at', null).is('locked_by', null).lt('updated_at', staleBefore)
   } else {
     query = query.is('locked_at', null).is('locked_by', null)
   }
@@ -6385,6 +6423,46 @@ async function runSeriesRenderFinalMix(job: ProductionJob, origin: string) {
     finalMixUrlByEp[key] = finalMixUrl
     duration = Number(report?.durationSecs || 0) || null
     if (!ok) lastError = String(report?.error || 'render failed or final_mix.mp3 was not persisted')
+
+    if (ok) {
+      const allDoneNow = episodes.every(ep => doneByEp[String(episodeNumber(ep, 0))])
+      const checkpointState = {
+        ...state,
+        seriesId: String(seriesId),
+        seriesRenderFinalMix: { doneByEp, finalMixUrlByEp, allDone: allDoneNow, lastUpdatedAt: nowIso() },
+      }
+
+      const { error: stateError } = await supabase
+        .from('production_jobs')
+        .update({ state_json: checkpointState })
+        .eq('id', job.id)
+      if (stateError) throw new Error(`Failed to checkpoint series render state: ${stateError.message}`)
+
+      if (!allDoneNow) {
+        const { error: queueError } = await supabase
+          .from('production_jobs')
+          .update({
+            status: 'queued',
+            current_step: NEXT_STEP_AFTER_SERIES_MUSIC,
+            state_json: checkpointState,
+            error_json: null,
+            locked_at: null,
+            locked_by: null,
+          })
+          .eq('id', job.id)
+        if (queueError) throw new Error(`Failed to release series render checkpoint: ${queueError.message}`)
+
+        return {
+          allDone: false,
+          processedEp,
+          finalMixUrl,
+          duration,
+          lastError,
+          checkpointQueued: true,
+          state: checkpointState,
+        }
+      }
+    }
     break // one episode per call
   }
 
@@ -6440,15 +6518,10 @@ export async function POST(req: NextRequest) {
     }
     // ─────────────────────────────────────────────────────────────────────
 
-    // Scan for zombie jobs before selecting the next candidate.
-    // Zombies are jobs that are status=running, unlocked, and untouched for
-    // more than ZOMBIE_STALE_MS.  We mark them failed so they surface in the
-    // admin UI and autopilot reports instead of silently blocking the queue.
-    // Marked jobs are still resumable via reactivateJob() + run-next.
-    const markedZombies = await detectAndMarkZombieJobs(requestedJobId || undefined).catch(() => [])
-    if (markedZombies.length > 0) {
-      console.warn('[run-next] Zombie guard: marked %d job(s) as failed/zombie_stalled: %s', markedZombies.length, markedZombies.join(', '))
-    }
+    // Zombie jobs are reclaimed in selectCandidate() + lockJob(). Do not mark
+    // them failed here; a stale running job should be resumable by the next
+    // holder without operator intervention.
+    const markedZombies: string[] = []
 
     // Only select + lock a new candidate if the one-job-guard didn't already assign us a job
     if (!lockedJob) {
@@ -9461,6 +9534,22 @@ export async function POST(req: NextRequest) {
           : result.lastError ? `Series render failed Ep${result.processedEp ?? '?'} (attempt ${seriesRenderAttempts}/${MAX_SERIES_RENDER_ATTEMPTS}): ${result.lastError}`
           : `Final render done for Ep${result.processedEp}`,
         { processedEp: result.processedEp, finalMixUrl: result.finalMixUrl, durationMins: result.duration, allDone: result.allDone, error: result.lastError || undefined, seriesRenderAttempts })
+
+      if ((result as any).checkpointQueued) {
+        const { data: updatedJob, error: updateError } = await supabase.from('production_jobs')
+          .update({
+            status: 'queued',
+            current_step: NEXT_STEP_AFTER_SERIES_MUSIC,
+            state_json: { ...result.state, seriesRenderAttempts },
+            error_json: null,
+            logs,
+            locked_at: null,
+            locked_by: null,
+          })
+          .eq('id', lockedJob.id).select('*').single()
+        if (updateError) throw new Error(`Failed to save series render checkpoint logs: ${updateError.message}`)
+        return NextResponse.json({ success: true, jobId: updatedJob.id, currentStep: step, nextStep: updatedJob.current_step, status: updatedJob.status, processedEp: result.processedEp, allDone: result.allDone, finalMixUrl: result.finalMixUrl, durationMins: result.duration, checkpointQueued: true, logs })
+      }
 
       if (retryExhausted) {
         // Mark job needs_attention so it surfaces in Command Center and stops cycling

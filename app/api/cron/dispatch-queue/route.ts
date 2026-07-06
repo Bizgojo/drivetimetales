@@ -25,6 +25,7 @@ const RETRY_CAP = 5
 type StoryRow = {
   id: string
   title: string | null
+  author?: string | null
   story_type: string | null
   workflow_state: string | null
   series_id: string | null
@@ -71,6 +72,54 @@ function expectedEpisodeCount(stories: StoryRow[]) {
     .map((story) => Number(story.series_total_episodes || 0))
     .filter((value) => Number.isFinite(value) && value > 0)
   return Math.max(stories.length, ...fromRows)
+}
+
+function exactName(value: string | null | undefined) {
+  return String(value || '').trim().toLowerCase()
+}
+
+async function validateActiveAuthor(
+  supabase: any,
+  story: Pick<StoryRow, 'id' | 'title' | 'author'>,
+  now: string,
+) {
+  const authorName = String(story.author || '').trim()
+  const reason = authorName
+    ? `Dispatch blocked: story.author "${authorName}" does not resolve to an active authors row`
+    : 'Dispatch blocked: story.author is missing'
+
+  if (authorName) {
+    const { data, error } = await supabase
+      .from('authors')
+      .select('id,name')
+      .eq('active', true)
+      .ilike('name', authorName)
+
+    if (error) {
+      return { ok: false, reason: `Dispatch author validation failed: ${error.message}` }
+    }
+
+    const exactMatches = (data || []).filter((author: { name: string | null }) => exactName(author.name) === exactName(authorName))
+    if (exactMatches.length === 1) return { ok: true, reason: null }
+  }
+
+  const { error: updateError } = await supabase
+    .from('stories')
+    .update({
+      needs_attention: true,
+      needs_attention_reason: reason,
+      workflow_state_changed_by: 'atlas',
+      workflow_state_changed_at: now,
+      workflow_state_change_reason: reason,
+    })
+    .eq('id', story.id)
+
+  if (updateError) {
+    return { ok: false, reason: `Author validation failed and needs_attention update failed: ${updateError.message}` }
+  }
+
+  console.warn('[dispatch-queue] Skipped (author validation):', story.id, story.title, reason)
+  return { ok: false, reason }
 }
 
 function seriesIsReady(stories: StoryRow[]) {
@@ -211,7 +260,7 @@ async function handleDispatchQueue(request: NextRequest) {
 
       const { data: seriesStories, error: seriesStoriesError } = await supabase
         .from('stories')
-        .select('id,title,story_type,workflow_state,series_id,series_name,episode_number,series_episode_number,series_total_episodes,needs_attention')
+        .select('id,title,author,story_type,workflow_state,series_id,series_name,episode_number,series_episode_number,series_total_episodes,needs_attention')
         .eq('series_id', seriesId)
         .eq('story_type', 'series_episode')
 
@@ -229,6 +278,18 @@ async function handleDispatchQueue(request: NextRequest) {
         skipped.push({ seriesId, storyId: attentionEpisode.id, reason: 'episode_needs_attention' })
         continue
       }
+
+      let authorValidationFailed = false
+      for (const episode of episodes) {
+        const validation = await validateActiveAuthor(supabase, episode, now)
+        if (!validation.ok) {
+          needsAttentionSkipped += 1
+          skipped.push({ seriesId, storyId: episode.id, reason: 'author_validation_failed', details: validation.reason })
+          authorValidationFailed = true
+          break
+        }
+      }
+      if (authorValidationFailed) continue
 
       if (!seriesIsReady(episodes)) {
         skipped.push({

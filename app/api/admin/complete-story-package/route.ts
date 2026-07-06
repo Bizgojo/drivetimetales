@@ -185,6 +185,7 @@ export async function POST(req: NextRequest) {
         const { data: authors, error } = await supabase
           .from('authors')
           .select('id,name,narrator_id')
+          .eq('active', true)
           .ilike('name', authorName)
 
         if (error) {
