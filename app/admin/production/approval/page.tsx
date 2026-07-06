@@ -82,6 +82,8 @@ interface Story {
   script?: string | null
   story_type?: string | null
   recommended_by?: string | null
+  needs_attention?: boolean | null
+  needs_attention_reason?: string | null
   source?: string | null
   source_job?: {
     id: string
@@ -2808,6 +2810,7 @@ export default function AdminStoriesPage() {
   const [openRepairSeriesKey, setOpenRepairSeriesKey] = useState<string | null>(null)
   const [activePipelineTab, setActivePipelineTab] = useState<WorkflowLane>('ready_for_review')
   const [productionQueueView, setProductionQueueView] = useState<ProductionQueueView>('production_order')
+  const [productionQueueBlockedOnly, setProductionQueueBlockedOnly] = useState(false)
   const [selectedSeriesKey, setSelectedSeriesKey] = useState<string | null>(null)
   const [seriesSearch, setSeriesSearch] = useState('')
   const [seriesFilter, setSeriesFilter] = useState<WorkflowFilter>('all')
@@ -2921,7 +2924,7 @@ export default function AdminStoriesPage() {
       return
     }
 
-    const detailColumns = 'id,title,author,genre,primary_genre,genre_secondary,genre_third,description,duration_mins,cover_url,audio_url,story_audio_url,intro_audio_url,intro_before_url,intro_after_url,outro_audio_url,background_music_url,status,is_hidden,created_at,updated_at,series_id,episode_number,series_name,series_total,episode_title,flag,is_free,group_name,review_status,reviewed_at,review_notes,narrator_voice_name,workflow_state,repair_checklist,repair_notes,production_standard,production_standard_updated_at,production_standard_updated_by,production_priority,script_version,is_v2,script_json,brief_json,script,story_type,recommended_by,production_cost'
+    const detailColumns = 'id,title,author,genre,primary_genre,genre_secondary,genre_third,description,duration_mins,cover_url,audio_url,story_audio_url,intro_audio_url,intro_before_url,intro_after_url,outro_audio_url,background_music_url,status,is_hidden,created_at,updated_at,series_id,episode_number,series_name,series_total,episode_title,flag,is_free,group_name,review_status,reviewed_at,review_notes,narrator_voice_name,workflow_state,repair_checklist,repair_notes,production_standard,production_standard_updated_at,production_standard_updated_by,production_priority,script_version,is_v2,script_json,brief_json,script,story_type,recommended_by,needs_attention,needs_attention_reason,production_cost'
     const detailColumnsWithoutRecommendedBy = detailColumns.replace(',recommended_by', '')
     const legacyDetailColumns = 'id,title,author,genre,primary_genre,genre_secondary,genre_third,description,duration_mins,cover_url,audio_url,story_audio_url,status,is_hidden,created_at,updated_at,series_id,episode_number,series_name,series_total,episode_title,flag,is_free,group_name,review_status,reviewed_at,review_notes,narrator_voice_name,production_cost'
     let storyRowsResult: any = await supabase
@@ -2941,7 +2944,7 @@ export default function AdminStoriesPage() {
       }
     }
 
-    if (storyRowsResult.error && /workflow_state|repair_checklist|repair_notes|production_standard|production_priority|script_version|is_v2|script_json|brief_json|script|story_type|intro_audio_url|intro_before_url|intro_after_url|outro_audio_url|background_music_url|schema cache|column/i.test(storyRowsResult.error.message || '')) {
+    if (storyRowsResult.error && /workflow_state|repair_checklist|repair_notes|production_standard|production_priority|script_version|is_v2|script_json|brief_json|script|story_type|intro_audio_url|intro_before_url|intro_after_url|outro_audio_url|background_music_url|needs_attention|schema cache|column/i.test(storyRowsResult.error.message || '')) {
       storyRowsResult = await supabase
         .from('stories')
         .select(legacyDetailColumns)
@@ -2963,6 +2966,8 @@ export default function AdminStoriesPage() {
           brief_json: null,
           script: null,
           story_type: null,
+          needs_attention: false,
+          needs_attention_reason: null,
           intro_audio_url: null,
           intro_before_url: null,
           intro_after_url: null,
@@ -3728,6 +3733,9 @@ export default function AdminStoriesPage() {
     })
     return counts
   }, {} as Record<WorkflowLane, number>)
+  const blockedProductionQueueStoryCount = stories.filter((story) =>
+    effectiveWorkflowState(story) === 'stories_in_queue' && story.needs_attention === true
+  ).length
 
   const repairQueueItemCount = groupsFromReadiness.reduce((count, group) => {
     const groupStories = group.type === 'series' ? group.stories : [group.story]
@@ -3839,6 +3847,11 @@ export default function AdminStoriesPage() {
     return productionStories.length > 0 ? productionStories : groupStories
   }
 
+  function groupHasBlockedProductionQueueStory(group: StoryGroup) {
+    const groupStories = group.type === 'series' ? group.stories : [group.story]
+    return groupStories.some((story) => effectiveWorkflowState(story) === 'stories_in_queue' && story.needs_attention === true)
+  }
+
   function productionQueueCardTitle(group: StoryGroup) {
     const cardStories = productionQueueCardStories(group)
     const firstStory = cardStories[0] || (group.type === 'series' ? group.stories[0] : group.story)
@@ -3859,7 +3872,8 @@ export default function AdminStoriesPage() {
       const selectedWorkflow = seriesFilter === 'all' ? activePipelineTab : seriesFilter
       const validEpisodeCount = storiesForWorkflowLane(groupStories, selectedWorkflow).length
       const matchesWorkflow = validEpisodeCount > 0
-      return matchesSearch && matchesWorkflow
+      const matchesBlockedOnly = activePipelineTab !== 'production_queue' || !productionQueueBlockedOnly || groupHasBlockedProductionQueueStory(group)
+      return matchesSearch && matchesWorkflow && matchesBlockedOnly
     })
     .sort((a, b) => {
       if (activePipelineTab === 'production_queue') {
@@ -4814,8 +4828,31 @@ export default function AdminStoriesPage() {
         {activePipelineTab === 'production_queue' && (
           <section style={{ marginTop: '16px', backgroundColor: '#ffffff', borderRadius: '10px', boxShadow: '0 1px 3px rgba(0,0,0,0.08)', padding: '16px' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap' }}>
-              <div style={{ color: '#374151', fontSize: '12px', fontWeight: 900, textTransform: 'uppercase' }}>
-                Production Queue ({activeWorkflowCount})
+              <div style={{ color: '#374151', fontSize: '12px', fontWeight: 900, textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                <span>Production Queue ({activeWorkflowCount})</span>
+                {blockedProductionQueueStoryCount > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setProductionQueueBlockedOnly((prev) => !prev)
+                      setSelectedSeriesKey(null)
+                    }}
+                    title={productionQueueBlockedOnly ? 'Show all production queue stories' : 'Show blocked production queue stories'}
+                    style={{
+                      border: '1px solid #FCD34D',
+                      borderRadius: '999px',
+                      backgroundColor: productionQueueBlockedOnly ? '#FDE68A' : '#FEF3C7',
+                      color: '#B45309',
+                      padding: '3px 8px',
+                      fontSize: '11px',
+                      fontWeight: 950,
+                      cursor: 'pointer',
+                      textTransform: 'none',
+                    }}
+                  >
+                    · {blockedProductionQueueStoryCount} blocked
+                  </button>
+                )}
               </div>
               <input
                 type="text"

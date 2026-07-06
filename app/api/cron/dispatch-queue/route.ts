@@ -20,6 +20,7 @@ const READY_OR_FURTHER_STATES = new Set([
 ])
 const NUM_RUNNERS = 4              // Larry, Curly, Moe, Groucho
 const MAX_DISPATCH_PER_RUN = NUM_RUNNERS * 4  // Keep 4 jobs queued per runner (16 total)
+const RETRY_CAP = 5
 
 type StoryRow = {
   id: string
@@ -31,6 +32,7 @@ type StoryRow = {
   episode_number: number | null
   series_episode_number: number | null
   series_total_episodes: number | null
+  needs_attention?: boolean | null
 }
 
 type DispatchResult = {
@@ -96,6 +98,7 @@ async function handleDispatchQueue(request: NextRequest) {
   const skipped: Array<Record<string, unknown>> = []
   const now = new Date().toISOString()
   const deduped: Array<{ id: string; title: string }> = []
+  let needsAttentionSkipped = 0
 
   // ── Auto-deduplication ──────────────────────────────────────────────────────
   // Find all stories_in_queue, group by title. For each title with >1 entry,
@@ -159,7 +162,7 @@ async function handleDispatchQueue(request: NextRequest) {
   const dispatchTarget = Math.max(0, MAX_DISPATCH_PER_RUN - activeCount)
   console.log(`[dispatch-queue] Active jobs: ${activeCount}, target: ${MAX_DISPATCH_PER_RUN}, will dispatch up to: ${dispatchTarget}`)
   if (dispatchTarget === 0) {
-    return json({ success: true, dispatched: [], skipped: [], message: `Queue full (${activeCount} active jobs, target ${MAX_DISPATCH_PER_RUN})` }, 200)
+    return json({ success: true, dispatched: [], skipped: [], needsAttentionSkipped, message: `Queue full (${activeCount} active jobs, target ${MAX_DISPATCH_PER_RUN})` }, 200)
   }
 
   if (dispatched.length < dispatchTarget) {
@@ -208,7 +211,7 @@ async function handleDispatchQueue(request: NextRequest) {
 
       const { data: seriesStories, error: seriesStoriesError } = await supabase
         .from('stories')
-        .select('id,title,story_type,workflow_state,series_id,series_name,episode_number,series_episode_number,series_total_episodes')
+        .select('id,title,story_type,workflow_state,series_id,series_name,episode_number,series_episode_number,series_total_episodes,needs_attention')
         .eq('series_id', seriesId)
         .eq('story_type', 'series_episode')
 
@@ -219,6 +222,14 @@ async function handleDispatchQueue(request: NextRequest) {
       }
 
       const episodes = (seriesStories || []) as StoryRow[]
+      const attentionEpisode = episodes.find((episode) => episode.needs_attention === true)
+      if (attentionEpisode) {
+        needsAttentionSkipped += 1
+        console.log('[dispatch-queue] Skipped (needs_attention):', attentionEpisode.id, attentionEpisode.title)
+        skipped.push({ seriesId, storyId: attentionEpisode.id, reason: 'episode_needs_attention' })
+        continue
+      }
+
       if (!seriesIsReady(episodes)) {
         skipped.push({
           seriesId,
@@ -283,11 +294,24 @@ async function handleDispatchQueue(request: NextRequest) {
   }
 
   if (dispatched.length < dispatchTarget) {
-    const { data: standaloneStories, error: standaloneError } = await supabase
+    const { data: preexistingStandaloneNeedsAttention, count: preexistingStandaloneNeedsAttentionCount } = await supabase
       .from('stories')
-      .select('id,title,story_type,workflow_state,series_id,series_name,episode_number,series_episode_number,series_total_episodes')
+      .select('id,title', { count: 'exact' })
       .eq('workflow_state', 'stories_in_queue')
       .in('story_type', ['standalone', 'single'])
+      .eq('needs_attention', true)
+
+    needsAttentionSkipped += preexistingStandaloneNeedsAttentionCount ?? 0
+    ;((preexistingStandaloneNeedsAttention || []) as Array<{ id: string; title: string | null }>).forEach((story) => {
+      console.log('[dispatch-queue] Skipped (needs_attention):', story.id, story.title)
+    })
+
+    const { data: standaloneStories, error: standaloneError } = await supabase
+      .from('stories')
+      .select('id,title,story_type,workflow_state,series_id,series_name,episode_number,series_episode_number,series_total_episodes,needs_attention')
+      .eq('workflow_state', 'stories_in_queue')
+      .in('story_type', ['standalone', 'single'])
+      .not('needs_attention', 'eq', true)
       .order('production_priority', { ascending: false, nullsFirst: false })
       .order('workflow_state_changed_at', { ascending: true, nullsFirst: false })
       .order('created_at', { ascending: true })
@@ -320,6 +344,35 @@ async function handleDispatchQueue(request: NextRequest) {
       if (dispatched.length >= dispatchTarget) break
       if (activeStandaloneStoryIds.has(story.id)) {
         skipped.push({ storyId: story.id, reason: 'active_job_exists' })
+        continue
+      }
+
+      const { count: failCount } = await supabase
+        .from('production_jobs')
+        .select('id', { count: 'exact', head: true })
+        .eq('story_id', story.id)
+        .eq('status', 'failed')
+        .gte('updated_at', new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString())
+
+      if ((failCount ?? 0) >= RETRY_CAP) {
+        const reason = `Retry cap reached: ${RETRY_CAP} failed jobs in 7 days. Manual review required.`
+        const { error: attentionError } = await supabase
+          .from('stories')
+          .update({
+            needs_attention: true,
+            needs_attention_reason: reason,
+          })
+          .eq('id', story.id)
+
+        if (attentionError) {
+          console.error('[dispatch-queue] Failed to flag retry-capped story:', story.id, attentionError)
+          skipped.push({ storyId: story.id, reason: 'needs_attention_update_failed', error: attentionError.message })
+          continue
+        }
+
+        needsAttentionSkipped += 1
+        console.log('[dispatch-queue] Skipped (needs_attention):', story.id, story.title)
+        skipped.push({ storyId: story.id, reason: 'retry_cap_reached', failedJobsInSevenDays: failCount ?? 0 })
         continue
       }
 
@@ -373,6 +426,7 @@ async function handleDispatchQueue(request: NextRequest) {
     dispatchedCount: dispatched.length,
     dispatched,
     skippedCount: skipped.length,
+    needsAttentionSkipped,
   })
 
   return json({
@@ -381,6 +435,7 @@ async function handleDispatchQueue(request: NextRequest) {
     dispatched,
     skippedCount: skipped.length,
     skipped: skipped.slice(0, 20),
+    needsAttentionSkipped,
     dedupedCount: deduped.length,
     deduped,
   })
