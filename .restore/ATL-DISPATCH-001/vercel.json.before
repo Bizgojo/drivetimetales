@@ -1,0 +1,63 @@
+{
+  "buildCommand": "npm run build",
+  "outputDirectory": ".next",
+  "framework": "nextjs",
+  "functions": {
+    "app/api/asc3/generate-story-complete/route.ts": {
+      "maxDuration": 800
+    },
+    "app/api/asc3/render-final-mix/route.ts": {
+      "maxDuration": 800
+    },
+    "app/api/asc3/generate-music/route.ts": {
+      "maxDuration": 800
+    },
+    "app/api/admin/generate-voices/route.ts": {
+      "maxDuration": 800
+    },
+    "app/api/admin/production-jobs/run-next/route.ts": {
+      "maxDuration": 800
+    },
+    "app/api/cron/production-runner/route.ts": {
+      "maxDuration": 800
+    }
+  },
+  "crons": [
+    {
+      "path": "/api/cron/social-post",
+      "schedule": "0 13 * * *"
+    },
+    {
+      "path": "/api/cron/social-post",
+      "schedule": "0 22 * * *"
+    },
+    {
+      "path": "/api/cron/trial-emails",
+      "schedule": "0 14 * * *"
+    },
+    {
+      "path": "/api/cron/mercury-snapshot",
+      "schedule": "0 10 * * *"
+    },
+    {
+      "path": "/api/cron/snapshot-calculate",
+      "schedule": "10 10 * * *"
+    },
+    {
+      "path": "/api/cron/stress-test-poller",
+      "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/cron/task-template-applier",
+      "schedule": "1-56/5 * * * *"
+    },
+    {
+      "path": "/api/cron/attribute-subscribers",
+      "schedule": "0 11 * * *"
+    },
+    {
+      "path": "/api/cron/production-runner",
+      "schedule": "*/1 * * * *"
+    }
+  ]
+}

@@ -110,8 +110,15 @@ export async function GET(request: Request) {
     }).catch((e) => console.error('[AuthCallback] User create error (non-fatal):', e))
   } catch (e) {}
 
-  const returnTo = cookieStore.get('auth_return_to')?.value || '/home'
-  const response = NextResponse.redirect(`${origin}${returnTo}`)
+  const requestedReturnTo = cookieStore.get('auth_return_to')?.value || '/home'
+  const returnTo = requestedReturnTo.startsWith('/') && !requestedReturnTo.startsWith('//') && !requestedReturnTo.includes('://')
+    ? requestedReturnTo
+    : '/home'
+  const redirectUrl = new URL(returnTo, origin)
+  if (type === 'magiclink' && redirectUrl.pathname === '/home') {
+    redirectUrl.searchParams.set('welcome', 'true')
+  }
+  const response = NextResponse.redirect(redirectUrl)
 
   // Production/PWA cookies stay none/secure; localhost uses lax/insecure.
   cookiesToSet.forEach(({ name, value, options }) => {

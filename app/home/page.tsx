@@ -15,6 +15,12 @@ import HorizontalStoryCard from '@/components/HorizontalStoryCard'
 import SeriesCard from '@/components/SeriesCard'
 import { buildSeriesPlaybackTarget } from '@/lib/seriesPlayback'
 
+declare global {
+  interface Window {
+    fbq?: (...args: any[]) => void
+  }
+}
+
 type SearchStory = {
   id: string
   title: string
@@ -283,10 +289,21 @@ function HomeContent() {
   useEffect(() => {
     if (searchParams.get('welcome') === 'true') {
       setShowWelcome(true)
+      if (user?.id) {
+        const eventKey = `et_meta_start_trial_${user.id}`
+        if (!localStorage.getItem(eventKey)) {
+          window.fbq?.('track', 'StartTrial', {
+            content_name: 'Endless Tales Trial',
+            value: 0,
+            currency: 'USD',
+          })
+          localStorage.setItem(eventKey, String(Date.now()))
+        }
+      }
       const t = setTimeout(() => setShowWelcome(false), 6000)
       return () => clearTimeout(t)
     }
-  }, [searchParams])
+  }, [searchParams, user?.id])
 
   useEffect(() => {
     if (!loading) {

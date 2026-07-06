@@ -6,7 +6,7 @@
  * caused ElevenLabs to return ~10KB of silence, which validate_belle_assets
  * correctly rejects.
  *
- * The fix conditionally skips generation for empty beforeText / afterText.
+ * The fix conditionally skips generation for empty/too-short beforeText / empty afterText.
  * This file tests all four acceptance-criteria cases.
  */
 
@@ -28,9 +28,10 @@ async function generateBelleIntroWithName(introText, generateVoiceLine, voiceId,
   const parts = introText.split('[LISTENER_NAME]')
   const beforeText = parts[0].trim()
   const afterText = parts[1].trim()
+  const usableBeforeText = beforeText.length >= 10 ? beforeText : ''
 
-  if (!beforeText && !afterText) {
-    throw new Error('Belle B intro has [LISTENER_NAME] but no surrounding text.')
+  if (!usableBeforeText && !afterText) {
+    throw new Error('Belle B intro has [LISTENER_NAME] but no usable surrounding text.')
   }
 
   let beforeUrl = null
@@ -39,9 +40,9 @@ async function generateBelleIntroWithName(introText, generateVoiceLine, voiceId,
 
   // When only one side is non-empty, use the 'intro' prefix so render_final_mix finds it
   // as a standalone intro_*.mp3 instead of an orphaned intro_before_* or intro_after_*.
-  if (beforeText && afterText) {
+  if (usableBeforeText && afterText) {
     // [LISTENER_NAME] in the middle — generate a matched before/after pair
-    beforeUrl = await generateVoiceLine(beforeText, voiceId, storyId, lineIndex, 'intro_before')
+    beforeUrl = await generateVoiceLine(usableBeforeText, voiceId, storyId, lineIndex, 'intro_before')
     afterUrl  = await generateVoiceLine(afterText,  voiceId, storyId, lineIndex + 0.1, 'intro_after')
     primaryUrl = beforeUrl
   } else if (afterText) {
@@ -49,7 +50,7 @@ async function generateBelleIntroWithName(introText, generateVoiceLine, voiceId,
     primaryUrl = await generateVoiceLine(afterText, voiceId, storyId, lineIndex, 'intro')
   } else {
     // [LISTENER_NAME] at end — only beforeText; generate as standalone intro
-    primaryUrl = await generateVoiceLine(beforeText, voiceId, storyId, lineIndex, 'intro')
+    primaryUrl = await generateVoiceLine(usableBeforeText, voiceId, storyId, lineIndex, 'intro')
   }
 
   return { beforeUrl, afterUrl, primaryUrl }
@@ -105,16 +106,16 @@ describe('Belle intro [LISTENER_NAME] split — regression suite (f02b4a87)', ()
   test(
     'case 2: [LISTENER_NAME] in the MIDDLE — both intro_before and intro_after generated; both URLs non-null',
     async () => {
-      const introText = 'Tonight, [LISTENER_NAME], a mystery begins.'
+      const introText = 'Tonight in Briarwood, [LISTENER_NAME], a mystery begins.'
 
       const { beforeUrl, afterUrl } = await generateBelleIntroWithName(
         introText, generateVoiceLine, VOICE_ID, STORY_ID, LINE_INDEX
       )
 
-      // beforeText = "Tonight," → intro_before IS generated with that text
+      // beforeText is long enough → intro_before IS generated with that text
       const beforeCalls = generateVoiceLine.mock.calls.filter(c => c[4] === 'intro_before')
       expect(beforeCalls).toHaveLength(1)
-      expect(beforeCalls[0][0]).toBe('Tonight,')
+      expect(beforeCalls[0][0]).toBe('Tonight in Briarwood,')
 
       // afterText = ", a mystery begins." (the comma after [LISTENER_NAME] is preserved)
       // → intro_after IS generated with that text
@@ -165,16 +166,37 @@ describe('Belle intro [LISTENER_NAME] split — regression suite (f02b4a87)', ()
 
   // ── Case 4 (REGRESSION) ──────────────────────────────────────────────────
   test(
-    'case 4 (REGRESSION): only placeholder [LISTENER_NAME] — throws "Belle B intro has [LISTENER_NAME] but no surrounding text."',
+    'case 4 (REGRESSION): only placeholder [LISTENER_NAME] — throws "Belle B intro has [LISTENER_NAME] but no usable surrounding text."',
     async () => {
       const introText = '[LISTENER_NAME]'
 
       await expect(
         generateBelleIntroWithName(introText, generateVoiceLine, VOICE_ID, STORY_ID, LINE_INDEX)
-      ).rejects.toThrow('Belle B intro has [LISTENER_NAME] but no surrounding text.')
+      ).rejects.toThrow('Belle B intro has [LISTENER_NAME] but no usable surrounding text.')
 
       // No voice generation calls should have been made
       expect(generateVoiceLine).not.toHaveBeenCalled()
+    }
+  )
+
+  test(
+    'case 5: short beforeText is skipped and afterText becomes standalone intro',
+    async () => {
+      const introText = 'Welcome, [LISTENER_NAME] — the laundry chute was never supposed to open from the inside.'
+
+      const { beforeUrl, afterUrl, primaryUrl } = await generateBelleIntroWithName(
+        introText, generateVoiceLine, VOICE_ID, STORY_ID, LINE_INDEX
+      )
+
+      expect(generateVoiceLine.mock.calls.filter(c => c[4] === 'intro_before')).toHaveLength(0)
+      expect(generateVoiceLine.mock.calls.filter(c => c[4] === 'intro_after')).toHaveLength(0)
+
+      const introCalls = generateVoiceLine.mock.calls.filter(c => c[4] === 'intro')
+      expect(introCalls).toHaveLength(1)
+      expect(introCalls[0][0]).toBe('— the laundry chute was never supposed to open from the inside.')
+      expect(beforeUrl).toBeNull()
+      expect(afterUrl).toBeNull()
+      expect(primaryUrl).toBe(FAKE_URL)
     }
   )
 })

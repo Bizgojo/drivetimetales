@@ -16,6 +16,20 @@ export interface StoredUtm {
   captured_at: number | null
 }
 
+export interface SignupAttribution {
+  utm_source: string | null
+  utm_medium: string | null
+  utm_campaign: string | null
+  utm_captured_at: string | null
+  promo_code: string | null
+}
+
+export function normalizePromoCode(code: string | null | undefined): string | null {
+  if (!code) return null
+  const normalized = code.trim().toUpperCase().replace(/\s+/g, '').replace(/\+/g, '')
+  return normalized || null
+}
+
 export function captureUtmFromUrl(): void {
   if (typeof window === 'undefined') return
   try {
@@ -73,4 +87,15 @@ export function clearStoredUtm(): void {
   try {
     localStorage.removeItem(STORAGE_KEY)
   } catch {}
+}
+
+export function readSignupAttribution(promoCode?: string | null): SignupAttribution {
+  const utm = readStoredUtm()
+  return {
+    utm_source: utm.source,
+    utm_medium: utm.medium,
+    utm_campaign: utm.campaign,
+    utm_captured_at: utm.captured_at ? new Date(utm.captured_at).toISOString() : null,
+    promo_code: normalizePromoCode(promoCode),
+  }
 }

@@ -26,7 +26,7 @@ interface AuthContextType {
   session: Session | null
   loading: boolean
   signIn: (email: string, password: string) => Promise<{ error: Error | null }>
-  signUp: (email: string, password: string, firstName: string) => Promise<{ error: Error | null, user: User | null }>
+  signUp: (email: string, password: string, firstName: string, heardAbout?: string) => Promise<{ error: Error | null, user: User | null }>
   signOut: () => Promise<void>
   refreshUser: () => Promise<void>
 }
@@ -139,12 +139,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return { error }
   }
 
-  const signUp = async (email: string, password: string, firstName: string) => {
+  const signUp = async (email: string, password: string, firstName: string, heardAbout?: string) => {
     const { data, error } = await authClient.auth.signUp({
       email,
       password,
       options: {
-        data: { first_name: firstName }
+        data: { first_name: firstName, heard_about_us: heardAbout || null }
       }
     })
     
@@ -157,7 +157,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           body: JSON.stringify({
             userId: data.user.id,
             email: email,
-            firstName: firstName
+            firstName: firstName,
+            heardAbout: heardAbout || null,
           })
         })
         

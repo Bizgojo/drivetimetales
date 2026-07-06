@@ -6,6 +6,7 @@ import HomeHintToast from '@/components/HomeHintToast';
 import PWABackGuard from '@/components/PWABackGuard';
 import UtmCapture from '@/components/UtmCapture';
 import AppShell from '@/components/AppShell';
+import MetaPixel from '@/components/MetaPixel';
 
 export const metadata: Metadata = {
   title: 'Endless Tales - Audio Stories for Your Me-Time',
@@ -55,6 +56,7 @@ export default function RootLayout({
           <AppShell>{children}</AppShell>
         </AuthProvider>
         <Analytics />
+        <MetaPixel />
       </body>
     </html>
   );

@@ -47,6 +47,15 @@ function hasActiveSubscription(
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
+  const host = request.headers.get('host')?.toLowerCase().split(':')[0]
+
+  if (host === 'drivetimetales.com' || host === 'www.drivetimetales.com') {
+    const redirectUrl = request.nextUrl.clone()
+    redirectUrl.protocol = 'https:'
+    redirectUrl.hostname = 'endless-tales.com'
+    redirectUrl.port = ''
+    return NextResponse.redirect(redirectUrl, 301)
+  }
 
   if (PUBLIC_PREFIXES.some(p => pathname.startsWith(p))) return NextResponse.next()
   if (ADDITIONAL_PUBLIC_PREFIXES.some(p => pathname.startsWith(p))) return NextResponse.next()

@@ -4,9 +4,23 @@ import { useState, useEffect, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
 import { supabase } from '@/lib/supabase'
-import { readStoredUtm } from '@/lib/utm'
+import { normalizePromoCode, readSignupAttribution } from '@/lib/utm'
 
 interface Offer { id: string; name: string; offer_type: 'free_days' | 'credits'; referrer_reward: number; referred_reward: number }
+
+declare global {
+  interface Window {
+    fbq?: (...args: any[]) => void
+  }
+}
+
+const HEARD_ABOUT_OPTIONS = [
+  'Facebook/Instagram',
+  'TikTok',
+  'Reddit',
+  'A local group',
+  'Other',
+]
 
 // Trial is locked at 14 days for all users
 function getTrialVariant(): { days: number; variant: 'A' | 'B' } {
@@ -47,6 +61,8 @@ function SignUpContent() {
   const [trialDays, setTrialDays] = useState(14)
   const [trialVariant, setTrialVariant] = useState<'A' | 'B'>('A')
   const [billingCycle, setBillingCycle] = useState<'monthly' | 'annual'>('monthly')
+  const [promoCode, setPromoCode] = useState<string | null>(null)
+  const [heardAbout, setHeardAbout] = useState('')
   const returnTo = safeInternalPath(searchParams.get('returnTo'))
 
   useEffect(() => {
@@ -55,6 +71,7 @@ function SignUpContent() {
     setTrialVariant(variant)
     const ref = searchParams.get('ref')
     if (ref) { setReferralCode(ref); trackOpenAndFetchReferrer(ref) }
+    setPromoCode(normalizePromoCode(searchParams.get('promo') || searchParams.get('code')))
   }, [searchParams])
 
   async function sendNotification(data: any) {
@@ -85,7 +102,9 @@ function SignUpContent() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault(); setError(''); setLoading(true)
-    const { error: signUpError, user } = await signUp(email, password, firstName)
+    const selectedHeardAbout = heardAbout || 'Other'
+    const attribution = readSignupAttribution(promoCode)
+    const { error: signUpError, user } = await signUp(email, password, firstName, selectedHeardAbout)
     if (signUpError) {
       const msg = signUpError.message || ''
       if (msg.toLowerCase().includes('already registered') || msg.toLowerCase().includes('already exists') || msg.toLowerCase().includes('user already')) {
@@ -97,22 +116,19 @@ function SignUpContent() {
     }
     if (!user) { setError('Failed to create account'); setLoading(false); return }
 
-    // Save trial variant to users table for A/B tracking
-
-    // Capture UTM attribution (Priority 5)
+    // Capture attribution and survey response for permanent campaign reporting.
     try {
-      const utm = readStoredUtm()
-      if (utm.source || utm.medium || utm.campaign) {
-        const { error: utmError } = await supabase.from('users').update({
-          utm_source: utm.source,
-          utm_medium: utm.medium,
-          utm_campaign: utm.campaign,
-          utm_captured_at: utm.captured_at ? new Date(utm.captured_at).toISOString() : null,
-        }).eq('id', user.id)
-        if (utmError) console.error('[signup] UTM write failed (non-fatal):', utmError)
-      }
+      const { error: attributionError } = await supabase.from('users').update({
+        utm_source: attribution.utm_source,
+        utm_medium: attribution.utm_medium,
+        utm_campaign: attribution.utm_campaign,
+        utm_captured_at: attribution.utm_captured_at,
+        signup_promo_code: attribution.promo_code,
+        heard_about_us: selectedHeardAbout,
+      }).eq('id', user.id)
+      if (attributionError) console.error('[signup] attribution write failed (non-fatal):', attributionError)
     } catch (utmErr) {
-      console.error('[signup] UTM block threw (non-fatal):', utmErr)
+      console.error('[signup] attribution block threw (non-fatal):', utmErr)
     }
 
     // Handle referral tracking
@@ -130,10 +146,31 @@ function SignUpContent() {
       const response = await fetch('/api/checkout', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: user.id, email, referralCode: referralCode || undefined, offerId: offer?.id || undefined, trialDays: finalTrialDays, billingCycle, returnTo: returnTo || undefined })
+        body: JSON.stringify({
+          userId: user.id,
+          email,
+          referralCode: referralCode || undefined,
+          offerId: offer?.id || undefined,
+          trialDays: finalTrialDays,
+          billingCycle,
+          returnTo: returnTo || undefined,
+          attribution,
+          heardAbout: selectedHeardAbout,
+        })
       })
       const data = await response.json()
-      if (data.url) { window.location.href = data.url }
+      if (data.url) {
+        localStorage.setItem(`et_meta_start_trial_${user.id}`, String(Date.now()))
+        window.fbq?.('track', 'StartTrial', {
+          content_name: 'Endless Tales Trial',
+          value: 0,
+          currency: 'USD',
+          promo_code: attribution.promo_code || undefined,
+          utm_source: attribution.utm_source || undefined,
+          utm_campaign: attribution.utm_campaign || undefined,
+        })
+        window.location.href = data.url
+      }
       else {
         // Checkout failed — delete the orphaned auth user so they can retry
         try { await fetch('/api/user/delete', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId: user.id }) }) } catch {}
@@ -188,6 +225,33 @@ function SignUpContent() {
             <div style={{ position: 'relative' }}>
               <input type={showPassword ? 'text' : 'password'} value={password} onChange={e => setPassword(e.target.value)} required minLength={6} style={{ width: '100%', padding: '0.75rem', paddingRight: '3rem', borderRadius: '8px', border: '1px solid #334155', backgroundColor: '#0f172a', color: 'white', fontSize: '16px', outline: 'none', boxSizing: 'border-box' }} placeholder="Create a password (6+ characters)" />
               <button type="button" onClick={() => setShowPassword(!showPassword)} style={{ position: 'absolute', right: '0.75rem', top: '50%', transform: 'translateY(-50%)', backgroundColor: 'transparent', border: 'none', color: '#94a3b8', cursor: 'pointer', fontSize: '14px' }}>{showPassword ? 'Hide' : 'Show'}</button>
+            </div>
+          </div>
+
+          <div style={{ marginBottom: '1.5rem' }}>
+            <label style={{ color: '#e2e8f0', fontSize: '14px', display: 'block', marginBottom: '0.65rem', fontWeight: 700 }}>Where did you hear about us?</label>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '8px' }}>
+              {HEARD_ABOUT_OPTIONS.map(option => (
+                <button
+                  key={option}
+                  type="button"
+                  onClick={() => setHeardAbout(option)}
+                  style={{
+                    width: '100%',
+                    padding: '10px 12px',
+                    borderRadius: '8px',
+                    border: heardAbout === option ? '1px solid #f97316' : '1px solid #334155',
+                    backgroundColor: heardAbout === option ? 'rgba(249,115,22,0.16)' : '#0f172a',
+                    color: heardAbout === option ? '#fed7aa' : '#cbd5e1',
+                    fontSize: '14px',
+                    fontWeight: 700,
+                    textAlign: 'left',
+                    cursor: 'pointer',
+                  }}
+                >
+                  {option}
+                </button>
+              ))}
             </div>
           </div>
 

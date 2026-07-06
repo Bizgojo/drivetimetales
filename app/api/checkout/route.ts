@@ -16,6 +16,41 @@ const ANNUAL_PRICE_ID = process.env.STRIPE_PRICE_ANNUAL!
 const FOUNDING_MEMBER_ANNUAL_PRICE_ID = process.env.STRIPE_PRICE_FOUNDING_MEMBER_ANNUAL
 const DEFAULT_SUCCESS_PATH = '/home?welcome=true'
 
+type AttributionPayload = {
+  utm_source?: string | null
+  utm_medium?: string | null
+  utm_campaign?: string | null
+  utm_captured_at?: string | null
+  promo_code?: string | null
+}
+
+function metadataValue(value: unknown) {
+  return typeof value === 'string' && value.trim() ? value.trim() : ''
+}
+
+function normalizePromoCode(code: unknown) {
+  if (typeof code !== 'string') return ''
+  return code.trim().toUpperCase().replace(/\s+/g, '').replace(/\+/g, '')
+}
+
+function attributionMetadata(attribution: AttributionPayload | undefined, heardAbout: unknown) {
+  const promoCode = normalizePromoCode(attribution?.promo_code)
+  return {
+    utm_source: metadataValue(attribution?.utm_source),
+    utm_medium: metadataValue(attribution?.utm_medium),
+    utm_campaign: metadataValue(attribution?.utm_campaign),
+    utm_captured_at: metadataValue(attribution?.utm_captured_at),
+    promo_code: promoCode,
+    heard_about_us: metadataValue(heardAbout),
+  }
+}
+
+function compactMetadata(metadata: Record<string, string>) {
+  return Object.fromEntries(
+    Object.entries(metadata).filter(([, value]) => value !== '')
+  )
+}
+
 function safeReturnTo(returnTo: unknown) {
   if (typeof returnTo !== 'string') return DEFAULT_SUCCESS_PATH
   if (!returnTo.startsWith('/') || returnTo.startsWith('//') || returnTo.includes('://')) {
@@ -51,11 +86,12 @@ async function resolvePrice(): Promise<{ priceId: string; isFoundingMember: bool
 
 export async function POST(req: NextRequest) {
   try {
-    const { userId, email, priceId: clientPriceId, referralCode, trialDays: trialDaysParam, billingCycle, returnTo } = await req.json()
+    const { userId, email, priceId: clientPriceId, referralCode, trialDays: trialDaysParam, billingCycle, returnTo, attribution, heardAbout } = await req.json()
 
     if (!userId || !email) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
     }
+    const campaignMetadata = attributionMetadata(attribution, heardAbout)
 
     // Auto-select founding member or standard price (ignore client-supplied priceId)
     const { priceId: resolvedPrice, isFoundingMember } = await resolvePrice()
@@ -100,7 +136,7 @@ export async function POST(req: NextRequest) {
     if (!customerId) {
       const customer = await stripe.customers.create({
         email: email,
-        metadata: { userId }
+        metadata: { userId, ...compactMetadata(campaignMetadata) }
       })
       customerId = customer.id
 
@@ -109,6 +145,10 @@ export async function POST(req: NextRequest) {
         .from('users')
         .update({ stripe_customer_id: customerId })
         .eq('id', userId)
+    } else {
+      await stripe.customers.update(customerId, {
+        metadata: { userId, ...compactMetadata(campaignMetadata) }
+      })
     }
 
     // Use trial days from client (A/B assigned), referrals always get at least 14
@@ -116,6 +156,16 @@ export async function POST(req: NextRequest) {
     if (referralCode) {
       const { data: referrer } = await supabase.from('users').select('id').eq('referral_code', referralCode).single()
       if (referrer) trialDays = Math.max(trialDays, 14)
+    }
+    if (campaignMetadata.promo_code) {
+      const { data: promo } = await supabase
+        .from('promo_codes')
+        .select('code, is_active, max_uses, uses_count, subscription_days')
+        .eq('code', campaignMetadata.promo_code)
+        .single()
+      if (promo?.is_active && (promo.max_uses === null || promo.uses_count < promo.max_uses)) {
+        trialDays = Math.max(trialDays, Number(promo.subscription_days || 14))
+      }
     }
 
     // Create checkout session
@@ -143,12 +193,13 @@ export async function POST(req: NextRequest) {
           isFoundingMember: isFoundingMember ? 'true' : 'false',
           billingCycle: billingCycle || 'monthly',
           fmAnnualApplied: (isFoundingMember && billingCycle === 'annual' && !!FOUNDING_MEMBER_ANNUAL_PRICE_ID) ? 'true' : 'false',
+          ...compactMetadata(campaignMetadata),
         },
         trial_period_days: trialDays > 0 ? trialDays : undefined
       },
       success_url: `${baseUrl}${safeSuccessPath}`,
       cancel_url: `${baseUrl}${cancelPath}`,
-      metadata: { userId, referralCode: referralCode || '' }
+      metadata: { userId, referralCode: referralCode || '', ...compactMetadata(campaignMetadata) }
     })
 
     return NextResponse.json({ url: session.url })

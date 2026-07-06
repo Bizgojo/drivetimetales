@@ -218,6 +218,67 @@ function getSpokenSegmentNumbers(script: string): Set<number> {
   return spoken
 }
 
+function getExpectedStorySegmentNumbers(script: string): Set<number> {
+  const expected = new Set<number>()
+  const rawLines = script.split('\n')
+  const announcerIndices: number[] = []
+  rawLines.forEach((line, i) => {
+    const trimmed = line.trim()
+    if (/^ANNOUNCER:\s*Belle B\s*$/i.test(trimmed)) return
+    if (/^(ANNOUNCER|BELLE B|SANDY):/i.test(trimmed)) announcerIndices.push(i)
+  })
+  const firstAnnouncerIdx = announcerIndices[0] ?? -1
+  const lastAnnouncerIdx = announcerIndices[announcerIndices.length - 1] ?? -1
+  const explicitScriptStartIdx = rawLines.findIndex(l => l.includes('[START AUDIO DRAMA SCRIPT]'))
+  const characterGuideStartIdx = rawLines.findIndex(l => l.includes('CHARACTER GUIDE'))
+  const scriptStartIdx = explicitScriptStartIdx > -1 ? explicitScriptStartIdx : characterGuideStartIdx
+  const headerEndIdx = scriptStartIdx > -1 ? scriptStartIdx : (firstAnnouncerIdx + 1)
+  const headerKeys = [
+    'SERIES:', 'EPISODE:', 'AUTHOR:', 'GENRE:', 'DESCRIPTION:', 'SUNO PROMPT:',
+    'NARRATIVE_VOICE:', 'NARRATOR_IS_CHARACTER:', 'NARRATOR_IS_', 'EPISODE_TITLE:',
+    'SERIES_TOTAL', 'SERIES_IS_FINALE:', '[START AUDIO DRAMA SCRIPT]',
+    'CHARACTER GUIDE', '---'
+  ]
+
+  let lineIndex = 0
+  rawLines.forEach((line, rawIdx) => {
+    const trimmed = line.trim()
+    if (!trimmed) return
+    if (
+      explicitScriptStartIdx > -1 &&
+      rawIdx < explicitScriptStartIdx &&
+      rawIdx !== firstAnnouncerIdx &&
+      rawIdx !== lastAnnouncerIdx
+    ) return
+    if (headerKeys.some(k => trimmed.startsWith(k))) return
+    if (rawIdx < headerEndIdx && rawIdx !== firstAnnouncerIdx && rawIdx !== lastAnnouncerIdx) {
+      if (trimmed.startsWith('NARRATOR:') || trimmed.startsWith('ANNOUNCER:')) return
+    }
+    if (trimmed === '[BEAT]' || trimmed === '[PAUSE]' || /^\[PAUSE:\d+\]$/.test(trimmed)) {
+      expected.add(lineIndex)
+      lineIndex += 1
+      return
+    }
+    if (trimmed.startsWith('[SFX:')) {
+      lineIndex += 1
+      return
+    }
+
+    const bracketMatch = trimmed.match(/^\[([A-Z][A-ZÀ-Ú\s'.()]+?)\]:\s*(.+)$/)
+    const speakerMatch = bracketMatch || trimmed.match(/^([A-Z][A-ZÀ-Ú\s'.()]+?):\s*(.+)$/)
+    if (!speakerMatch) return
+
+    const speaker = speakerMatch[1].trim()
+    const isAnnouncer = speaker === 'ANNOUNCER' || speaker === 'BELLE B' || speaker === 'SANDY'
+    const isIntro = isAnnouncer && rawIdx === firstAnnouncerIdx
+    const isOutro = isAnnouncer && rawIdx === lastAnnouncerIdx
+    if (!isIntro && !isOutro) expected.add(lineIndex)
+    lineIndex += 1
+  })
+
+  return expected
+}
+
 export async function runRenderFinalMix(storyId: string): Promise<{
   success: boolean
   finalAudioUrl?: string
@@ -277,6 +338,19 @@ export async function runRenderFinalMix(storyId: string): Promise<{
     }
 
     const segmentFiles = parsedSegments.map(item => item.file)
+    const expectedSegmentNumbers = getExpectedStorySegmentNumbers(storyRow?.script || '')
+    const presentSegmentNumbers = new Set(parsedSegments.map(item => item.segmentNumber))
+    const missingExpectedSegmentNames = Array.from(expectedSegmentNumbers)
+      .filter(segmentNumber => !presentSegmentNumbers.has(segmentNumber))
+      .sort((a, b) => a - b)
+      .map(segmentNumber => `segment_${segmentNumber.toString().padStart(4, '0')}.mp3`)
+    if (missingExpectedSegmentNames.length > 0) {
+      return {
+        success: false,
+        error: `Missing story segment file ${missingExpectedSegmentNames[0]}`,
+        missingSegments: missingExpectedSegmentNames,
+      }
+    }
     const musicFile = files.find(f => f.name === 'background_music.mp3')
 
     if (!isSplitIntro && !introFile) return { success: false, error: 'No announcement audio found (expected announcement_*.mp3; legacy intro fallback accepts intro.mp3, intro_*.mp3, or intro_before_* + intro_after_* pair)' }
@@ -332,40 +406,81 @@ export async function runRenderFinalMix(storyId: string): Promise<{
     const preparedSegmentNames: string[] = []
     const preparedSegments: Array<{ name: string; segmentNumber: number; path: string }> = []
     const failedSegments: string[] = []
+    const failedSegmentErrors: Array<{ name: string; error: string }> = []
     const segPaths: string[] = []
     // Download and normalize segments in parallel with bounded concurrency (max 10)
     // to avoid the sequential bottleneck (~190–380s for 95 segments → ~38s).
     const CONCURRENCY = 10
+    const rawMap = new Map<number, string>()
     const preparedMap = new Map<number, { name: string; segmentNumber: number; path: string }>()
-    const failedMap = new Map<number, string>()
-    const tasks = parsedSegments.map((parsedSegment, i) => async () => {
+    const failedMap = new Map<number, { name: string; error: string }>()
+    const downloadTasks = parsedSegments.map((parsedSegment, i) => async () => {
       const seg = parsedSegment.file
       try {
+        if (!seg.name || typeof seg.name !== 'string') {
+          throw new Error('Segment inventory entry is missing a filename')
+        }
+        if (typeof seg.metadata?.size === 'number' && seg.metadata.size <= 0) {
+          throw new Error(`Segment file is empty in storage metadata (${seg.metadata.size} bytes)`)
+        }
         const rawPath = path.join(tmpDir, 'raw_' + seg.name)
-        const segPath = path.join(tmpDir, seg.name)
         await download(`${BASE_STORAGE}/asc3/${storyId}/${seg.name}`, rawPath)
         const stat = await fs.stat(rawPath)
+        if (stat.size <= 0) throw new Error(`Segment file is empty after download (${stat.size} bytes)`)
         if (stat.size <= 100) throw new Error(`Segment file too small (${stat.size} bytes)`)
-        // Voice segments are already loudness-QC'd upstream. Do not run
-        // per-segment loudnorm here; short clips can be over-attenuated.
-        await execFileAsync(FFMPEG_PATH, ['-i', rawPath, '-ar', '44100', '-ac', '2', '-b:a', '192k', '-y', segPath])
-        preparedMap.set(i, { name: seg.name, segmentNumber: parsedSegment.segmentNumber, path: segPath })
-        await fs.unlink(rawPath).catch(() => {})
+        rawMap.set(i, rawPath)
       } catch (e) {
-        failedMap.set(i, seg.name)
+        const message = e instanceof Error ? e.message : String(e)
+        failedMap.set(i, { name: seg.name, error: message })
         console.error('  Segment ' + i + ' failed:', e)
       }
     })
-    // Run tasks with bounded concurrency
+    // Run download/validation tasks with bounded concurrency.
     let taskIndex = 0
-    const runWorker = async () => {
-      while (taskIndex < tasks.length) {
+    const runDownloadWorker = async () => {
+      while (taskIndex < downloadTasks.length) {
         const idx = taskIndex++
-        await tasks[idx]()
+        await downloadTasks[idx]()
       }
     }
-    const workers = Array.from({ length: Math.min(CONCURRENCY, tasks.length) }, runWorker)
-    await Promise.all(workers)
+    const downloadWorkers = Array.from({ length: Math.min(CONCURRENCY, downloadTasks.length) }, runDownloadWorker)
+    await Promise.all(downloadWorkers)
+
+    if (failedMap.size === 0 && rawMap.size !== parsedSegments.length) {
+      for (let i = 0; i < parsedSegments.length; i++) {
+        if (!rawMap.has(i)) failedMap.set(i, { name: parsedSegments[i].file.name, error: 'Segment file was not downloaded' })
+      }
+    }
+
+    if (failedMap.size === 0) {
+      const normalizeTasks = parsedSegments.map((parsedSegment, i) => async () => {
+        const seg = parsedSegment.file
+        try {
+          const rawPath = rawMap.get(i)
+          if (!rawPath) throw new Error('Segment file was not downloaded')
+          const segPath = path.join(tmpDir, seg.name)
+          // Voice segments are already loudness-QC'd upstream. Do not run
+          // per-segment loudnorm here; short clips can be over-attenuated.
+          await execFileAsync(FFMPEG_PATH, ['-i', rawPath, '-ar', '44100', '-ac', '2', '-b:a', '192k', '-y', segPath])
+          preparedMap.set(i, { name: seg.name, segmentNumber: parsedSegment.segmentNumber, path: segPath })
+          await fs.unlink(rawPath).catch(() => {})
+        } catch (e) {
+          const message = e instanceof Error ? e.message : String(e)
+          failedMap.set(i, { name: seg.name, error: message })
+          console.error('  Segment ' + i + ' failed:', e)
+        }
+      })
+      taskIndex = 0
+      const runNormalizeWorker = async () => {
+        while (taskIndex < normalizeTasks.length) {
+          const idx = taskIndex++
+          await normalizeTasks[idx]()
+        }
+      }
+      const normalizeWorkers = Array.from({ length: Math.min(CONCURRENCY, normalizeTasks.length) }, runNormalizeWorker)
+      await Promise.all(normalizeWorkers)
+    }
+
     // Re-assemble results in original order
     for (let i = 0; i < parsedSegments.length; i++) {
       if (preparedMap.has(i)) {
@@ -374,19 +489,25 @@ export async function runRenderFinalMix(storyId: string): Promise<{
         preparedSegments.push(entry)
         segPaths.push(entry.path)
       } else if (failedMap.has(i)) {
-        failedSegments.push(failedMap.get(i)!)
+        const failed = failedMap.get(i)!
+        failedSegments.push(failed.name)
+        failedSegmentErrors.push(failed)
       }
     }
     console.log(`  Selected segment count: ${selectedSegmentNames.length}`)
     console.log(`  Prepared segment count: ${preparedSegmentNames.length}`)
     if (failedSegments.length > 0) console.error(`  Failed segment filenames: ${failedSegments.join(', ')}`)
     if (failedSegments.length > 0 || preparedSegmentNames.length !== selectedSegmentNames.length) {
+      const firstFailed = failedSegmentErrors[0]
       return {
         success: false,
-        error: 'Failed to prepare all selected story segments',
+        error: firstFailed
+          ? `Failed to prepare story segment ${firstFailed.name}: ${firstFailed.error}`
+          : 'Failed to prepare all selected story segments',
         selectedCount: selectedSegmentNames.length,
         preparedCount: preparedSegmentNames.length,
-        failedSegments
+        failedSegments,
+        failedSegmentErrors
       }
     }
     const spokenSegmentNumbers = getSpokenSegmentNumbers(storyRow?.script || '')

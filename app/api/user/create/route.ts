@@ -14,6 +14,7 @@ export async function POST(request: NextRequest) {
     const id = body.userId || body.id;
     const email = body.email;
     const firstName = body.firstName || body.first_name || '';
+    const heardAbout = typeof body.heardAbout === 'string' ? body.heardAbout : null;
     const displayName = firstName || email?.split('@')[0] || 'Friend';
 
     if (!id || !email) {
@@ -31,19 +32,33 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: true, exists: true });
     }
 
+    const insertPayload: Record<string, unknown> = {
+      id,
+      email,
+      first_name: firstName,
+      display_name: displayName,
+      credits: 0,
+      plan: 'free',
+    };
+    if (heardAbout) insertPayload.heard_about_us = heardAbout;
+
     // Insert into users table
-    const { data, error } = await supabaseAdmin
+    let { data, error } = await supabaseAdmin
       .from('users')
-      .insert({
-        id,
-        email,
-        first_name: firstName,
-        display_name: displayName,
-        credits: 0,
-        plan: 'free',
-      })
+      .insert(insertPayload)
       .select()
       .single();
+
+    if (error && /heard_about_us/i.test(error.message || '')) {
+      delete insertPayload.heard_about_us;
+      const retry = await supabaseAdmin
+        .from('users')
+        .insert(insertPayload)
+        .select()
+        .single();
+      data = retry.data;
+      error = retry.error;
+    }
 
     if (error) {
       console.error('[User Create] Insert error:', error);

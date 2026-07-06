@@ -3306,6 +3306,36 @@ async function generateVoiceLine(rawText: string, voiceId: string, storyId: stri
   return cacheUrl
 }
 
+async function generateBelleIntroWithName(introText: string, storyId: string, lineIndex: number): Promise<{
+  primaryUrl: string
+  beforeUrl: string | null
+  afterUrl: string | null
+}> {
+  const parts = introText.split('[LISTENER_NAME]')
+  const beforeText = (parts[0] || '').trim()
+  const afterText = (parts[1] || '').trim()
+  const usableBeforeText = beforeText.length >= 10 ? beforeText : ''
+
+  if (!usableBeforeText && !afterText) {
+    throw new Error('Belle B intro has [LISTENER_NAME] but no usable surrounding text.')
+  }
+
+  let beforeUrl: string | null = null
+  let afterUrl: string | null = null
+  let primaryUrl: string
+
+  if (usableBeforeText && afterText) {
+    beforeUrl = await generateVoiceLine(usableBeforeText, CANONICAL_BELLE_B_VOICE_ID, storyId, lineIndex, 'intro_before')
+    afterUrl = await generateVoiceLine(afterText, CANONICAL_BELLE_B_VOICE_ID, storyId, lineIndex + 0.1, 'intro_after')
+    primaryUrl = beforeUrl
+  } else {
+    const standaloneText = afterText || usableBeforeText
+    primaryUrl = await generateVoiceLine(standaloneText, CANONICAL_BELLE_B_VOICE_ID, storyId, lineIndex, 'intro')
+  }
+
+  return { primaryUrl, beforeUrl, afterUrl }
+}
+
 async function generateSFX(description: string, storyId: string, lineIndex: number): Promise<string | null> {
   const fileName = `sfx_${lineIndex.toString().padStart(4, '0')}.mp3`
   const cachePath = `asc3/${storyId}/${fileName}`
@@ -3459,10 +3489,27 @@ export async function POST(req: NextRequest) {
       if (!existingIntroFile && introLine) {
         try {
           const announcementText = introLine.text
-          if (announcementText.includes('[LISTENER_NAME]')) throw new Error('Belle B announcement must not contain [LISTENER_NAME].')
-          const announcementUrl = await generateVoiceLine(announcementText, CANONICAL_BELLE_B_VOICE_ID, storyId, introLine.index, 'announcement')
-          result.introUrl = announcementUrl
-          await supabase.from('stories').update({ announcement_url: announcementUrl, announcement_text: announcementText }).eq('id', storyId)
+          if (announcementText.includes('[LISTENER_NAME]')) {
+            const intro = await generateBelleIntroWithName(announcementText, storyId, introLine.index)
+            result.introUrl = intro.primaryUrl
+            await supabase.from('stories').update({
+              announcement_url: null,
+              announcement_text: announcementText,
+              intro_audio_url: intro.primaryUrl,
+              intro_before_url: intro.beforeUrl,
+              intro_after_url: intro.afterUrl,
+            }).eq('id', storyId)
+          } else {
+            const announcementUrl = await generateVoiceLine(announcementText, CANONICAL_BELLE_B_VOICE_ID, storyId, introLine.index, 'announcement')
+            result.introUrl = announcementUrl
+            await supabase.from('stories').update({
+              announcement_url: announcementUrl,
+              announcement_text: announcementText,
+              intro_audio_url: null,
+              intro_before_url: null,
+              intro_after_url: null,
+            }).eq('id', storyId)
+          }
           result.introStatus = 'generated'
           console.log('  ✅ Belle-only announcement generated')
         } catch (e) {
@@ -4086,11 +4133,27 @@ export async function POST(req: NextRequest) {
       try {
         const announcementText = introLine.text
         if (announcementText.includes('[LISTENER_NAME]')) {
-          throw new Error('Belle B announcement must not contain [LISTENER_NAME].')
+          const intro = await generateBelleIntroWithName(announcementText, storyId, introLine.index)
+          results.intro = intro.primaryUrl
+          await supabase.from('stories').update({
+            announcement_url: null,
+            announcement_text: announcementText,
+            intro_audio_url: intro.primaryUrl,
+            intro_before_url: intro.beforeUrl,
+            intro_after_url: intro.afterUrl,
+          }).eq('id', storyId)
+          console.log('  ✅ Belle B intro split')
+        } else {
+          results.intro = await generateVoiceLine(announcementText, CANONICAL_BELLE_B_VOICE_ID, storyId, introLine.index, 'announcement')
+          await supabase.from('stories').update({
+            announcement_url: results.intro,
+            announcement_text: announcementText,
+            intro_audio_url: null,
+            intro_before_url: null,
+            intro_after_url: null,
+          }).eq('id', storyId)
+          console.log('  ✅ Belle B announcement')
         }
-        results.intro = await generateVoiceLine(announcementText, CANONICAL_BELLE_B_VOICE_ID, storyId, introLine.index, 'announcement')
-        await supabase.from('stories').update({ announcement_url: results.intro, announcement_text: announcementText }).eq('id', storyId)
-        console.log('  ✅ Belle B announcement')
       } catch (e) { console.error('  ❌ Announcement failed:', e) }
     }
     if (outroLine && outroLine.index !== introLine?.index) { try { results.outro = await generateVoiceLine(outroLine.text, CANONICAL_BELLE_B_VOICE_ID, storyId, outroLine.index, 'outro'); console.log('  ✅ Belle B outro') } catch (e) { console.error('  ❌ Outro failed:', e) } }
