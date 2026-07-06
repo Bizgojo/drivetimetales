@@ -7,7 +7,6 @@ import { useAuth } from '@/contexts/AuthContext'
 import StickyHeaderFull from '@/components/StickyHeaderFull'
 import ReviewModal from '@/components/ReviewModal'
 import { buildSeriesPlaybackTarget, storeSeriesPlayback } from '@/lib/seriesPlayback'
-import { getAllLocalPlayerProgress, mergePlayerProgress } from '@/lib/playerProgress'
 import {
   ACTIVE_PLAYLIST_KEY,
   LIBRARY_PLAYLIST_KEY,
@@ -89,26 +88,6 @@ const GENRE_LABELS: Record<string, string> = {
   Thriller: '😱Thrill',
   Horror: '☠️Horr',
   Drama: '🎭Drama',
-}
-
-function mergeLibraryWithLocalProgress(serverRows: LibraryRow[], userId?: string | null): LibraryRow[] {
-  const byStoryId = new Map<string, LibraryRow>()
-  serverRows.forEach((row) => byStoryId.set(row.story_id, row))
-
-  const localRows = getAllLocalPlayerProgress(userId)
-  Object.entries(localRows).forEach(([storyId, local]) => {
-    if (!storyId || !local) return
-    const existing = byStoryId.get(storyId)
-    const merged = mergePlayerProgress(existing, local)
-    byStoryId.set(storyId, {
-      story_id: storyId,
-      progress: merged.progress,
-      completed: merged.completed,
-      not_for_me: existing?.not_for_me || false,
-    })
-  })
-
-  return Array.from(byStoryId.values())
 }
 
 function parsePlaylistKeys(raw: string | null): string[] | null {
@@ -289,9 +268,7 @@ export default function LibraryPage() {
             .select('story_id, progress, completed, not_for_me')
             .eq('user_id', user.id)
           if (libraryError) throw new Error(`user_library failed: ${libraryError.message}`)
-          if (!cancelled && libraryData) {
-            setUserLibrary(mergeLibraryWithLocalProgress(libraryData as LibraryRow[], user.id))
-          }
+          if (!cancelled && libraryData) setUserLibrary(libraryData as LibraryRow[])
 
           const { data: reviewsData, error: reviewsError } = await supabase
             .from('reviews')

@@ -46,8 +46,7 @@ async function currentUser() {
  *   durationSecs? number — total audio duration in seconds (optional)
  *
  * Preservation rules:
- *   - Updates an existing user_library row, or creates one when close-time
- *     progress exists but autoplay did not pre-create the row yet
+ *   - Only updates an EXISTING user_library row (never creates one)
  *   - progress is saved only if incoming > existing (never downgrade)
  *   - completed=true is never changed back to false
  *   - hide_from_home is never touched
@@ -95,14 +94,7 @@ export async function POST(req: NextRequest) {
 
     const supabase = adminClient()
 
-    // Incoming progress is higher — determine if the episode is now complete.
-    // Only mark complete when playback reached >= 95% of known duration
-    // (matches the pattern the player uses for saveProgress(t, done=true)).
-    const isNowComplete = durationSecs !== null && durationSecs > 0
-      ? incomingProgress >= durationSecs * 0.95
-      : false
-
-    // ── Load existing row ───────────────────────────────────────────────────
+    // ── Load existing row (must already exist — pagehide never creates rows) ─
     const { data: existing, error: fetchError } = await supabase
       .from('user_library')
       .select('story_id, progress, completed, hide_from_home, not_for_me')
@@ -116,29 +108,8 @@ export async function POST(req: NextRequest) {
     }
 
     if (!existing) {
-      const { error: insertError } = await supabase
-        .from('user_library')
-        .insert({
-          user_id: user.id,
-          story_id: storyId,
-          progress: incomingProgress,
-          completed: isNowComplete,
-          hide_from_home: false,
-          not_for_me: false,
-          last_played: new Date().toISOString(),
-        })
-
-      if (insertError) {
-        console.error('[save-progress] insert missing row failed:', insertError.message)
-        return NextResponse.json({ error: 'Failed to create progress' }, { status: 500 })
-      }
-
-      return NextResponse.json({
-        success: true,
-        saved: incomingProgress,
-        completed: isNowComplete,
-        created: true,
-      })
+      // No row — nothing to update; pagehide save never creates rows
+      return NextResponse.json({ success: true, skipped: 'no_existing_row' })
     }
 
     // ── Preservation rules ──────────────────────────────────────────────────
@@ -167,6 +138,13 @@ export async function POST(req: NextRequest) {
       if (touchErr) console.warn('[save-progress] last_played touch failed:', touchErr.message)
       return NextResponse.json({ success: true, skipped: 'not_higher_progress' })
     }
+
+    // Incoming progress is higher — determine if the episode is now complete.
+    // Only mark complete when playback reached ≥ 95% of known duration
+    // (matches the pattern the player uses for saveProgress(t, done=true)).
+    const isNowComplete = durationSecs !== null && durationSecs > 0
+      ? incomingProgress >= durationSecs * 0.95
+      : false
 
     // Rule 3: hide_from_home and not_for_me — do NOT touch
     const { error: updateError } = await supabase

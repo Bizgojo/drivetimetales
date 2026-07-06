@@ -7,7 +7,6 @@ import { trackPlayStart, trackPlayEnd } from '@/lib/analytics'
 import { useAuth } from '@/contexts/AuthContext'
 import ReviewModal from '@/components/ReviewModal'
 import type { AutoAdvanceCandidate, AutoAdvanceDisabledReason, PlayerMode, PlayerStory } from './playerTypes'
-import { clearLocalPlayerProgress, getLocalPlayerProgress, mergePlayerProgress, saveLocalPlayerProgress } from '@/lib/playerProgress'
 
 interface QueueItem { url: string; type: 'intro' | 'story' | 'outro'; label: string }
 
@@ -53,7 +52,6 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
   const finalMixRetryAutoplayRef = useRef(false)
   const seriesContinueAutoplayAttemptedRef = useRef(false)
   const reviewPromptHandledRef = useRef(false)
-  const lastLocalProgressWriteRef = useRef(0)
 
   const [story, setStory]       = useState<any | null>(null)
   const [loading, setLoading]   = useState(true)
@@ -276,16 +274,6 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
 
   const getProgressTotalSeconds = () => {
     return isASC3 ? getQueueTotalSeconds() : (duration || (story as any)?.duration_mins * 60 || 0)
-  }
-
-  const persistLocalProgress = (progressSeconds: number, done = false) => {
-    if (!Number.isFinite(progressSeconds) || progressSeconds <= 0) return
-    const totalSeconds = getProgressTotalSeconds()
-    saveLocalPlayerProgress(storyId, progressSeconds, {
-      userId: user?.id,
-      completed: done,
-      durationSecs: Number.isFinite(totalSeconds) && totalSeconds > 0 ? totalSeconds : null,
-    })
   }
 
   const endAnalyticsSession = (
@@ -527,7 +515,6 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
     pendingQueueSeekRef.current = null
     pendingQueueSeekPlayRef.current = false
     reviewPromptHandledRef.current = false
-    lastLocalProgressWriteRef.current = 0
     segDursRef.current = []
     setTotalDur(0)
     setCumTime(0)
@@ -570,16 +557,12 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
     // This fires a small keepalive fetch to /api/user/save-progress so the
     // latest position is persisted even when the tab/app is killed mid-listen.
     const flushProgressEvent = () => {
+      if (!user?.id) return                       // guests have no user_library row
       const currentProgress = isASC3 ? cumTime : currentTime
       if (!Number.isFinite(currentProgress) || currentProgress <= 0) return
       const currentDuration = isASC3
         ? (totalDur > 0 ? totalDur : duration)
         : duration
-      saveLocalPlayerProgress(storyId, currentProgress, {
-        userId: user?.id,
-        durationSecs: Number.isFinite(currentDuration) && currentDuration > 0 ? currentDuration : null,
-      })
-      if (!user?.id) return                       // guests have no user_library row
       // Payload must stay small (keepalive limit: 64 KB)
       const payload: Record<string, unknown> = {
         storyId,
@@ -703,12 +686,6 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
           const resumeFromUrl = Number(resumeParam || 0)
           if (Number.isFinite(resumeFromUrl) && resumeFromUrl > 0) {
             resumeRef.current = resumeFromUrl
-            setHasProgress(true)
-          }
-          const localProgress = getLocalPlayerProgress(storyId, user?.id)
-          const localMerged = mergePlayerProgress(null, localProgress)
-          if (!localMerged.completed && localMerged.progress > resumeRef.current) {
-            resumeRef.current = localMerged.progress
             setHasProgress(true)
           }
 
@@ -840,24 +817,8 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
         if (user?.id) {
           stage = 'user-progress'
           const { data: lib } = await supabase.from('user_library')
-            .select('progress,completed,not_for_me').eq('user_id', user.id).eq('story_id', storyId).maybeSingle()
-          const localProgress = getLocalPlayerProgress(storyId, user.id)
-          const mergedProgress = mergePlayerProgress(lib, localProgress)
-          if (mergedProgress.progress > 0 && !lib?.not_for_me) {
-            resumeRef.current = mergedProgress.completed ? 0 : Math.max(resumeRef.current, mergedProgress.progress)
-            setHasProgress(!mergedProgress.completed)
-          }
-          if (!lib?.not_for_me && !mergedProgress.completed && localProgress?.progress && localProgress.progress > Number(lib?.progress || 0)) {
-            void supabase.from('user_library').upsert({
-              user_id: user.id,
-              story_id: storyId,
-              progress: Math.floor(localProgress.progress),
-              completed: false,
-              hide_from_home: false,
-              not_for_me: false,
-              last_played: localProgress.updatedAt || new Date().toISOString(),
-            }, { onConflict: 'user_id,story_id' })
-          }
+            .select('progress,completed,not_for_me').eq('user_id', user.id).eq('story_id', storyId).single()
+          if (lib?.progress > 0 && !lib?.not_for_me) { resumeRef.current = lib.completed ? 0 : Math.max(0, lib.progress); setHasProgress(true) }
 
           // ── Welcome experience — first play only ─────────────────────────────
           stage = 'welcome-check'
@@ -1107,7 +1068,6 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
   }
 
   const saveProgress = async (t: number, done = false) => {
-    persistLocalProgress(t, done)
     // Analytics: track play end on completion
     if (done && analyticsTrackedRef.current) {
       endAnalyticsSession('completed')
@@ -1274,14 +1234,8 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
         }}
         onTimeUpdate={(e) => {
           const t = e.currentTarget.currentTime; setCurrentTime(t); setCumTime(completedRef.current + t)
-          const progressSeconds = isASC3 ? completedRef.current + t : t
-          const progressFloor = Math.floor(progressSeconds)
-          if (progressFloor > 0 && progressFloor !== lastLocalProgressWriteRef.current) {
-            lastLocalProgressWriteRef.current = progressFloor
-            persistLocalProgress(progressSeconds)
-          }
           if (saveTimer.current) clearTimeout(saveTimer.current)
-          saveTimer.current = setTimeout(() => saveProgress(progressSeconds), 5000)
+          saveTimer.current = setTimeout(() => saveProgress(isASC3 ? completedRef.current + t : t), 5000)
           const rem = e.currentTarget.duration - t
           if (rem < 6 && rem > 0 && isASC3) {
             const ni = queueIndex + 1
@@ -1586,8 +1540,6 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
           {hasProgress && (
             <button onClick={() => {
                 disableAutoAdvanceForSession('stop')
-                clearLocalPlayerProgress(storyId, user?.id)
-                lastLocalProgressWriteRef.current = 0
                 if (!isASC3 && story?.audio_url) {
                   resumeRef.current = 0
                   setHasProgress(false)
