@@ -3328,9 +3328,11 @@ async function generateBelleIntroWithName(introText: string, storyId: string, li
     beforeUrl = await generateVoiceLine(usableBeforeText, CANONICAL_BELLE_B_VOICE_ID, storyId, lineIndex, 'intro_before')
     afterUrl = await generateVoiceLine(afterText, CANONICAL_BELLE_B_VOICE_ID, storyId, lineIndex + 0.1, 'intro_after')
     primaryUrl = beforeUrl
+  } else if (afterText) {
+    afterUrl = await generateVoiceLine(afterText, CANONICAL_BELLE_B_VOICE_ID, storyId, lineIndex + 0.1, 'intro_after')
+    primaryUrl = afterUrl
   } else {
-    const standaloneText = afterText || usableBeforeText
-    primaryUrl = await generateVoiceLine(standaloneText, CANONICAL_BELLE_B_VOICE_ID, storyId, lineIndex, 'intro')
+    primaryUrl = await generateVoiceLine(usableBeforeText, CANONICAL_BELLE_B_VOICE_ID, storyId, lineIndex, 'intro')
   }
 
   return { primaryUrl, beforeUrl, afterUrl }
@@ -3453,9 +3455,9 @@ export async function POST(req: NextRequest) {
       }
 
       let existingIntroFile = [...(existingAudioFiles || [])]
-        .filter(file => file.name === 'announcement.mp3' || file.name.startsWith('announcement_'))
+        .filter(file => file.name === 'announcement.mp3' || file.name.startsWith('announcement_') || file.name === 'intro.mp3' || file.name.startsWith('intro_'))
         .sort((a, b) => {
-          const priority = (name: string) => name === 'announcement.mp3' ? 0 : 1
+          const priority = (name: string) => name === 'announcement.mp3' || name === 'intro.mp3' ? 0 : 1
           return priority(a.name) - priority(b.name) || a.name.localeCompare(b.name)
         })[0]
       let existingOutroFile = [...(existingAudioFiles || [])]

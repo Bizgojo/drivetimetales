@@ -2388,7 +2388,7 @@ async function createStoryRow(job: ProductionJob) {
 async function loadSeriesEpisodes(seriesId: string) {
   const { data, error } = await supabase
     .from('stories')
-    .select('id,title,author,author_style,genre,narrative_voice,description,brief_json,status,script,script_json,script_version,series_id,series_name,episode_number,series_episode_number,series_total_episodes,series_is_finale,story_type,validator_result,validator_report,validator_passed_at,narrator_voice_id,narrator_voice_name')
+    .select('id,title,author,author_style,genre,narrative_voice,description,brief_json,status,script,script_json,script_version,series_id,series_name,episode_number,series_episode_number,series_total_episodes,series_is_finale,story_type,validator_result,validator_report,validator_passed_at,narrator_voice_id,narrator_voice_name,audio_url,story_audio_url')
     .eq('series_id', seriesId)
     .order('episode_number', { ascending: true })
 
@@ -2398,6 +2398,34 @@ async function loadSeriesEpisodes(seriesId: string) {
 
 function episodeNumber(episode: any, fallback: number) {
   return Number(episode.episode_number || episode.series_episode_number || fallback)
+}
+
+async function storyFinalMixStatus(storyId: string, story?: any): Promise<{
+  complete: boolean
+  finalMixUrl: string | null
+  storyBodyUrl: string | null
+}> {
+  let row = story
+  if (!row || row.audio_url === undefined || row.story_audio_url === undefined) {
+    const { data, error } = await supabase
+      .from('stories')
+      .select('id,audio_url,story_audio_url')
+      .eq('id', storyId)
+      .single()
+    if (error) throw new Error(`Failed to load final mix status for ${storyId}: ${error.message}`)
+    row = data
+  }
+
+  const finalMixUrl = String(row?.audio_url || '').trim()
+  const storyBodyUrl = String(row?.story_audio_url || '').trim()
+  if (!finalMixUrl || !storyBodyUrl || finalMixUrl.startsWith('pending:') || storyBodyUrl.startsWith('pending:')) {
+    return { complete: false, finalMixUrl: finalMixUrl || null, storyBodyUrl: storyBodyUrl || null }
+  }
+
+  const { data: files, error } = await supabase.storage.from('audio').list(`asc3/${storyId}`, { limit: 500 })
+  if (error) throw new Error(`Failed to verify final_mix.mp3 for ${storyId}: ${error.message}`)
+  const complete = (files || []).some(file => file.name === 'final_mix.mp3')
+  return { complete, finalMixUrl, storyBodyUrl }
 }
 
 function buildContinuityBundle(prior: any[]) {
@@ -6322,6 +6350,7 @@ async function runSeriesRenderFinalMix(job: ProductionJob, origin: string) {
   const prev = state.seriesRenderFinalMix && typeof state.seriesRenderFinalMix === 'object'
     ? state.seriesRenderFinalMix : {}
   const doneByEp: Record<string, boolean> = prev.doneByEp || {}
+  const finalMixUrlByEp: Record<string, string | null> = prev.finalMixUrlByEp || {}
 
   let processedEp: number | null = null
   let finalMixUrl: string | null = null
@@ -6331,17 +6360,31 @@ async function runSeriesRenderFinalMix(job: ProductionJob, origin: string) {
   for (const ep of episodes) {
     const num = episodeNumber(ep, 0)
     const key = String(num)
-    if (doneByEp[key]) continue
-
     const storyId = String(ep.id)
+
+    const existing = await storyFinalMixStatus(storyId, ep)
+    if (existing.complete) {
+      doneByEp[key] = true
+      finalMixUrlByEp[key] = existing.finalMixUrl
+      continue
+    }
+
+    if (doneByEp[key]) {
+      console.warn(`[runSeriesRenderFinalMix] Ep${num} was marked done in state but final_mix.mp3 is not complete in DB/storage; re-rendering ${storyId}`)
+      doneByEp[key] = false
+      finalMixUrlByEp[key] = null
+    }
+
     // Direct module call — eliminates HTTP hop and Vercel edge network timeout risk (ATL P1-B)
     const report = await runRenderFinalMix(storyId)
-    const ok = report?.success === true
+    const afterRender = await storyFinalMixStatus(storyId)
+    const ok = report?.success === true && afterRender.complete
     doneByEp[key] = ok
     processedEp = num
-    finalMixUrl = String(report?.finalAudioUrl || '') || null
+    finalMixUrl = afterRender.finalMixUrl || String(report?.finalAudioUrl || '') || null
+    finalMixUrlByEp[key] = finalMixUrl
     duration = Number(report?.durationSecs || 0) || null
-    if (!ok) lastError = String(report?.error || 'render failed')
+    if (!ok) lastError = String(report?.error || 'render failed or final_mix.mp3 was not persisted')
     break // one episode per call
   }
 
@@ -6352,7 +6395,7 @@ async function runSeriesRenderFinalMix(job: ProductionJob, origin: string) {
     finalMixUrl,
     duration,
     lastError,
-    state: { ...state, seriesId: String(seriesId), seriesRenderFinalMix: { doneByEp, allDone, lastUpdatedAt: nowIso() } },
+    state: { ...state, seriesId: String(seriesId), seriesRenderFinalMix: { doneByEp, finalMixUrlByEp, allDone, lastUpdatedAt: nowIso() } },
   }
 }
 
