@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 
 export const runtime = 'nodejs'
 import { createClient } from '@supabase/supabase-js'
-import { buildCoverDirectionBrief, buildCoverPrompt } from '@/lib/coverPrompt'
+import { buildCoverDirectionBrief, buildCoverPrompt, ULTRA_BRIGHT_DIRECTIVE } from '@/lib/coverPrompt'
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let sharp: any
 try {
@@ -10,6 +10,40 @@ try {
   sharp = sharpMod?.default || sharpMod
 } catch {
   sharp = null
+}
+
+// ─── Luminance validation ────────────────────────────────────────────────────
+// Threshold: average luminance < 100/255 triggers a brightness retry.
+// Marc may tune LUMINANCE_THRESHOLD via env var.
+const LUMINANCE_THRESHOLD = parseInt(process.env.COVER_LUMINANCE_THRESHOLD || '100', 10)
+
+/**
+ * Compute average luminance (0–255) from a JPEG/PNG buffer using sharp.
+ * Returns null if sharp is unavailable.
+ */
+async function computeAverageLuminance(buffer: Buffer): Promise<number | null> {
+  if (!sharp) return null
+  try {
+    const { data, info } = await sharp(buffer)
+      .resize(64, 64) // downscale for speed
+      .raw()
+      .toBuffer({ resolveWithObject: true })
+    const channels = info.channels // 3 = RGB, 4 = RGBA
+    let total = 0
+    let count = 0
+    for (let i = 0; i < data.length; i += channels) {
+      const r = data[i]
+      const g = data[i + 1]
+      const b = data[i + 2]
+      // Rec.709 luminance
+      total += 0.2126 * r + 0.7152 * g + 0.0722 * b
+      count++
+    }
+    return count > 0 ? total / count : null
+  } catch (err) {
+    console.warn('[luminance] sharp error:', err)
+    return null
+  }
 }
 
 const supabase = createClient(
@@ -287,7 +321,30 @@ export async function POST(req: NextRequest) {
     console.log('[regenerate-cover] cover direction brief:', JSON.stringify(coverDirectionBrief, null, 2))
     console.log('  Prompt preview:', dallePrompt.substring(0, 200))
 
-    const rawBuffer = await generateWithDallE(dallePrompt)
+    let rawBuffer = await generateWithDallE(dallePrompt)
+
+    // ── LUMINANCE VALIDATION GATE (STEP 4) ──────────────────────────────────
+    // Check average luminance. If below threshold, auto-retry ONCE with
+    // ultra-bright constraint prepended. If still below, flag but don't block.
+    let luminance = await computeAverageLuminance(rawBuffer)
+    let luminanceRetried = false
+    let luminanceWarning: string | undefined
+
+    console.log(`[luminance] average: ${luminance !== null ? luminance.toFixed(1) : 'n/a'} (threshold: ${LUMINANCE_THRESHOLD})`)
+
+    if (luminance !== null && luminance < LUMINANCE_THRESHOLD) {
+      console.warn(`[luminance] ⚠️ Cover too dark (${luminance.toFixed(1)} < ${LUMINANCE_THRESHOLD}) — retrying with ultra-bright constraint`)
+      luminanceRetried = true
+      const ultraBrightPrompt = `${ULTRA_BRIGHT_DIRECTIVE} ${dallePrompt}`.slice(0, 4000)
+      rawBuffer = await generateWithDallE(ultraBrightPrompt)
+      luminance = await computeAverageLuminance(rawBuffer)
+      console.log(`[luminance] retry average: ${luminance !== null ? luminance.toFixed(1) : 'n/a'}`)
+
+      if (luminance !== null && luminance < LUMINANCE_THRESHOLD) {
+        luminanceWarning = `Cover luminance still below threshold after retry (${luminance.toFixed(1)} < ${LUMINANCE_THRESHOLD}). Marc review recommended.`
+        console.warn(`[luminance] ⚠️ ${luminanceWarning}`)
+      }
+    }
 
     // Overlay title + author programmatically (Stability AI can't render text reliably)
     const imgBuffer = await overlayText(
@@ -323,6 +380,9 @@ export async function POST(req: NextRequest) {
         candidateCoverUrl: publicUrl,
         coverDirectionBrief,
         promptPreview: dallePrompt.slice(0, 900),
+        luminance: luminance !== null ? parseFloat(luminance.toFixed(1)) : null,
+        luminanceRetried,
+        luminanceWarning: luminanceWarning || null,
       })
     }
 
@@ -335,7 +395,13 @@ export async function POST(req: NextRequest) {
     }
 
     console.log(`✅ Cover regenerated: ${publicUrl}`)
-    return NextResponse.json({ success: true, coverImageUrl: publicUrl })
+    return NextResponse.json({
+      success: true,
+      coverImageUrl: publicUrl,
+      luminance: luminance !== null ? parseFloat(luminance.toFixed(1)) : null,
+      luminanceRetried,
+      luminanceWarning: luminanceWarning || null,
+    })
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
     const details = err && typeof err === 'object' && 'details' in err

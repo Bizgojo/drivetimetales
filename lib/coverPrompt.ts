@@ -19,6 +19,81 @@ type CoverPromptParams = {
   coverFeedback?: string
 }
 
+// ─── Brightness / Darkness constants ───────────────────────────────────────
+
+/**
+ * Default brightness directive — prepended to EVERY cover prompt unless the
+ * story explicitly signals night/darkness (see DARK_STORY_KEYWORDS below).
+ */
+const BRIGHTNESS_DIRECTIVE =
+  'Bright, high-key illustration with a light or daylight background and strong subject contrast.'
+
+/**
+ * Ultra-bright directive used on luminance-gate retry (second attempt).
+ */
+export const ULTRA_BRIGHT_DIRECTIVE =
+  'Ultra-bright, high-key, white or pale background — maximum brightness, luminous and airy, strong subject contrast, no dark areas.'
+
+/**
+ * Keyword list: if any of these appear in the story content, description, or
+ * genre the DARK EXCEPTION BRANCH activates and the brightness directive is
+ * suppressed so a legitimately dark cover can be generated.
+ */
+const DARK_STORY_KEYWORDS = [
+  'night', 'nighttime', 'dark', 'darkness', 'shadow', 'shadows', 'midnight',
+  'dusk', 'underground', 'cave', 'cavern', 'dungeon', 'cellar', 'noir',
+  'haunted', 'gothic', 'abyss', 'tomb', 'crypt', 'void', 'blackout',
+  'storm', 'moonless', 'eclipse',
+]
+
+/**
+ * Palette words that conflict with the brightness directive.
+ * These are stripped from the base prompt before a retry instruction is prepended.
+ */
+const CONFLICTING_PALETTE_WORDS = [
+  'dark', 'shadow', 'moody', 'noir', 'dim', 'murky', 'gloomy', 'nighttime',
+  'shadowy', 'low-light', 'low light', 'underexposed', 'near-black',
+  'blue-black', 'deep-black',
+]
+
+// ─── Dark exception branch ──────────────────────────────────────────────────
+
+/**
+ * Returns true when the story's content explicitly signals night/darkness/shadow.
+ * This is a NAMED BRANCH — darkness in covers must be intentional, not accidental.
+ */
+export function isDarkExceptionStory(params: CoverPromptParams): boolean {
+  const haystack = [
+    params.genre,
+    params.tone,
+    params.concept,
+    params.title,
+    params.script,
+  ]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase()
+
+  return DARK_STORY_KEYWORDS.some((kw) => haystack.includes(kw))
+}
+
+/**
+ * Strip conflicting palette words from a prompt string before retry injection.
+ */
+export function stripConflictingPaletteWords(prompt: string): string {
+  let result = prompt
+  for (const word of CONFLICTING_PALETTE_WORDS) {
+    // word-boundary-safe replacement: replace whole occurrences but don't
+    // break adjacent characters (handles compound forms like "blue-black")
+    const escaped = word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    result = result.replace(new RegExp(escaped, 'gi'), '')
+  }
+  // Collapse double spaces left by removals
+  return result.replace(/  +/g, ' ').trim()
+}
+
+// ─── Helpers ────────────────────────────────────────────────────────────────
+
 const ENDLESS_TALES_COVER_STANDARD = [
   'Endless Tales Cover Standard:',
   'thumbnail-safe at phone size and readable at 100x100 px',
@@ -198,6 +273,8 @@ function inferSettingBackground(genre: string, concept?: string): string {
   return 'a concrete story location with enough detail to feel specific'
 }
 
+// ─── Public API ─────────────────────────────────────────────────────────────
+
 export function buildCoverDirectionBrief(params: CoverPromptParams): CoverDirectionBrief {
   const { genre, tone, concept, coverFeedback } = params
   const feedback = cleanInput(coverFeedback, 500)
@@ -230,6 +307,20 @@ export function buildCoverDirectionBrief(params: CoverPromptParams): CoverDirect
   }
 }
 
+/**
+ * Build the final cover prompt string.
+ *
+ * Prompt structure (STEP 1 fix):
+ *   [BRIGHTNESS DIRECTIVE]   ← leads, unless dark exception
+ *   [STORY CONTENT]
+ *   [STYLE CLOSE]
+ *
+ * Retry structure (STEP 2 fix):
+ *   [RETRY INSTRUCTION]       ← prepended as hard constraint
+ *   [BRIGHTNESS DIRECTIVE]
+ *   [STORY CONTENT (palette-stripped)]
+ *   [STYLE CLOSE]
+ */
 export function buildCoverPrompt(params: CoverPromptParams): string {
   const { title, author, genre, concept, tone, coverFeedback } = params
 
@@ -251,7 +342,6 @@ export function buildCoverPrompt(params: CoverPromptParams): string {
     inspirational: 'radiant warm light, uplifting imagery, soft golden hour tones',
   }
 
-  // Tone overrides genre for mood-driven styles
   const toneStyleMap: Record<string, string> = {
     uplifting: genreStyle.uplifting,
     heartwarming: genreStyle.heartwarming,
@@ -268,7 +358,6 @@ export function buildCoverPrompt(params: CoverPromptParams): string {
   const g = genre.toLowerCase()
   const t = (tone || '').toLowerCase()
 
-  // Check tone first — it overrides genre mood
   const toneOverride = Object.entries(toneStyleMap).find(([k]) => t.includes(k))?.[1]
   const styleRef = toneOverride ||
     Object.entries(genreStyle).find(([k]) => g.includes(k))?.[1] ||
@@ -277,43 +366,68 @@ export function buildCoverPrompt(params: CoverPromptParams): string {
   const toneDesc = tone ? `, ${tone} tone` : ''
   const directionBrief = buildCoverDirectionBrief(params)
 
-  // Build scene description from concept if available
-  const sceneInstruction = concept
-    ? `The scene must visually reflect this story: "${concept.slice(0, 300)}". Depict the specific setting, mood, and atmosphere described — not a generic landscape. `
-    : ''
-  const feedbackInstruction = coverFeedback?.trim()
-    ? `Apply these cover fix instructions from the editor: "${coverFeedback.trim().slice(0, 500)}". `
+  // ── DARK EXCEPTION BRANCH ────────────────────────────────────────────────
+  // Only suppress brightness directive when story content explicitly signals
+  // night/darkness/shadow — this must be intentional, not accidental vocabulary bleed.
+  const darkException = isDarkExceptionStory(params)
+  const brightnessDirective = darkException ? '' : BRIGHTNESS_DIRECTIVE
+
+  // ── RETRY / CHANGE COVER PATH (STEP 2 fix) ──────────────────────────────
+  // When coverFeedback is present (operator instruction), prepend it as a hard
+  // constraint BEFORE the brightness directive. Strip palette words that conflict.
+  const hasRetryInstruction = Boolean(coverFeedback?.trim())
+  const retryInstruction = hasRetryInstruction
+    ? `HARD COVER CONSTRAINT (operator instruction, highest priority): ${coverFeedback!.trim().slice(0, 500)}.`
     : ''
 
-  // No text in the prompt — title/author added programmatically via sharp overlay
-  return (
-    `A thumbnail-first, story-specific background image for an audiobook cover, optimized for small streaming-app thumbnail readability. ` +
-    `Hard priority: the cover must remain instantly readable at about 120px height while someone is scrolling. ` +
-    `${ENDLESS_TALES_COVER_STANDARD} ` +
-    `Genre: ${genre}${toneDesc}. ` +
-    `Title reference: "${title}" by ${author}. Do not render this text. ` +
-    `Visual style: ${styleRef}. ` +
-    sceneInstruction +
-    feedbackInstruction +
-    `Cover Direction Brief: ` +
-    `Primary visual subject: ${directionBrief.primaryVisualSubject}. ` +
-    `Emotional promise: ${directionBrief.emotionalPromise}. ` +
-    `Key object or symbol: ${directionBrief.keyObjectSymbol}. ` +
-    `Setting/background: ${directionBrief.settingBackground}. ` +
-    `Lighting direction: ${directionBrief.lightingDirection}. ` +
-    `Composition/camera distance: ${directionBrief.compositionCameraDistance}. ` +
-    `Thumbnail readability: ${directionBrief.thumbnailReadabilityInstruction}. ` +
-    `Avoid: ${directionBrief.whatToAvoid.join('; ')}. ` +
-    `Square format, fills entire canvas. ` +
-    `Visual hierarchy must be obvious in one glance: who or what matters, the emotional focus, and the key object or symbol. ` +
-    `Hard rendering floor: the image must be well-exposed with a minimum brightness floor; reduce deep-black coverage, avoid full-frame darkness, and keep the subject readable at 100x100 px. ` +
-    `Bright cinematic key lighting, stronger midtone lift, strong edge/rim lighting, brighter skin tones, brighter key object glow when appropriate, professional composition, strong contrast, readable thumbnail design. ` +
-    `Use a large clear foreground subject with a recognizable face, a clearly lit key object, or both; faces must be clearly visible without zooming. ` +
-    `The main subject must occupy meaningful visual area and should not be a tiny distant silhouette. ` +
-    `Maintain cinematic realism and dramatic lighting without losing visibility; avoid muddy blacks, near-black grading, underexposed noir darkness, blue-black shadow soup, tiny dark faces, low-contrast blue-black scenes, large dark empty areas, underexposed shadows, or details disappearing into darkness. ` +
-    `The main subject and focal point must be centered or in the upper half of the image. ` +
-    `Bottom-right corner must be naturally dark or shadowy — no important subjects there. ` +
-    `IMPORTANT: absolutely no text, no words, no letters, no numbers anywhere in the image. ` +
-    `Pure atmospheric visual scene only.`
+  // Build story content section, stripping conflicting palette words when retrying
+  const rawConceptText = concept ? `The scene must visually reflect this story: "${concept.slice(0, 300)}". Depict the specific setting, mood, and atmosphere described — not a generic landscape. ` : ''
+  const sceneInstruction = hasRetryInstruction
+    ? stripConflictingPaletteWords(rawConceptText)
+    : rawConceptText
+
+  // ── STYLE CLOSE ──────────────────────────────────────────────────────────
+  // Keep existing style tokens but strip conflicting palette words
+  const styleClose = hasRetryInstruction
+    ? stripConflictingPaletteWords(styleRef)
+    : styleRef
+
+  // ── ASSEMBLE PROMPT ──────────────────────────────────────────────────────
+  // Order: [RETRY INSTRUCTION] → [BRIGHTNESS DIRECTIVE] → [STORY CONTENT] → [STYLE CLOSE]
+  const parts: string[] = []
+
+  if (retryInstruction) parts.push(retryInstruction)
+  if (brightnessDirective) parts.push(brightnessDirective)
+
+  parts.push(
+    `A thumbnail-first, story-specific background image for an audiobook cover, optimized for small streaming-app thumbnail readability.`,
+    `Hard priority: the cover must remain instantly readable at about 120px height while someone is scrolling.`,
+    ENDLESS_TALES_COVER_STANDARD,
+    `Genre: ${genre}${toneDesc}.`,
+    `Title reference: "${title}" by ${author}. Do not render this text.`,
+    `Visual style: ${styleClose}.`,
+    sceneInstruction,
+    `Cover Direction Brief:`,
+    `Primary visual subject: ${directionBrief.primaryVisualSubject}.`,
+    `Emotional promise: ${directionBrief.emotionalPromise}.`,
+    `Key object or symbol: ${directionBrief.keyObjectSymbol}.`,
+    `Setting/background: ${directionBrief.settingBackground}.`,
+    `Lighting direction: ${directionBrief.lightingDirection}.`,
+    `Composition/camera distance: ${directionBrief.compositionCameraDistance}.`,
+    `Thumbnail readability: ${directionBrief.thumbnailReadabilityInstruction}.`,
+    `Avoid: ${directionBrief.whatToAvoid.join('; ')}.`,
+    `Square format, fills entire canvas.`,
+    `Visual hierarchy must be obvious in one glance: who or what matters, the emotional focus, and the key object or symbol.`,
+    `Hard rendering floor: the image must be well-exposed with a minimum brightness floor; reduce deep-black coverage, avoid full-frame darkness, and keep the subject readable at 100x100 px.`,
+    `Bright cinematic key lighting, stronger midtone lift, strong edge/rim lighting, brighter skin tones, brighter key object glow when appropriate, professional composition, strong contrast, readable thumbnail design.`,
+    `Use a large clear foreground subject with a recognizable face, a clearly lit key object, or both; faces must be clearly visible without zooming.`,
+    `The main subject must occupy meaningful visual area and should not be a tiny distant silhouette.`,
+    `Maintain cinematic realism and dramatic lighting without losing visibility; avoid muddy blacks, near-black grading, underexposed noir darkness, blue-black shadow soup, tiny dark faces, low-contrast blue-black scenes, large dark empty areas, underexposed shadows, or details disappearing into darkness.`,
+    `The main subject and focal point must be centered or in the upper half of the image.`,
+    `Bottom-right corner must be naturally dark or shadowy — no important subjects there.`,
+    `IMPORTANT: absolutely no text, no words, no letters, no numbers anywhere in the image.`,
+    `Pure atmospheric visual scene only.`,
   )
+
+  return parts.filter(Boolean).join(' ')
 }
