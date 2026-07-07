@@ -2,8 +2,9 @@
 
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { useAuth } from '@/contexts/AuthContext'
+import { createBrowserClient } from '@supabase/ssr'
 
 const ADMIN_EMAILS = new Set([
   'marc@endless-tales.com',
@@ -64,12 +65,23 @@ function isActivePath(pathname: string, href: string) {
   return pathname.startsWith(`${href}/`)
 }
 
+// ── ADMIN-STALE-001: Session expiry state ────────────────────────────────────
+// When a session expires mid-session (token refresh fails or token revoked),
+// show a clear "Session expired" banner with a one-click re-auth button
+// instead of silently redirecting to /home with a confusing error state.
+
+type SessionState = 'loading' | 'active' | 'expired' | 'unauthorized'
+
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
   const router = useRouter()
   const { user, loading } = useAuth()
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [sidebarLoaded, setSidebarLoaded] = useState(false)
+  const [sessionState, setSessionState] = useState<SessionState>('loading')
+  const [reauthing, setReauthing] = useState(false)
+  const [reauthed, setReauthed] = useState(false)
+  const hadUserRef = useRef(false)
   const [openGroups, setOpenGroups] = useState<Set<string>>(() => {
     const active = NAV_GROUPS.find(g => g.items.some(i => isActivePath(pathname, i.href)))
     return new Set(active ? [active.id] : ['dashboard'])
@@ -78,7 +90,22 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   useEffect(() => {
     if (loading) return
     const email = (user?.email || '').toLowerCase()
-    if (!user || !ADMIN_EMAILS.has(email)) router.replace('/home')
+
+    if (user && ADMIN_EMAILS.has(email)) {
+      // Valid admin session
+      hadUserRef.current = true
+      setSessionState('active')
+    } else if (!user && hadUserRef.current) {
+      // Had a valid session before, now session is gone → stale/expired
+      // Don't redirect — show session-expired banner instead
+      setSessionState('expired')
+    } else if (!user) {
+      // Never had a session on this admin load → unauthorized (redirect)
+      router.replace('/home')
+    } else {
+      // User exists but not in ADMIN_EMAILS → unauthorized (redirect)
+      router.replace('/home')
+    }
   }, [user, loading, router])
 
   useEffect(() => {
@@ -102,7 +129,102 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     if (active) setOpenGroups(prev => new Set([...Array.from(prev), active.id]))
   }, [pathname])
 
-  if (loading) return <div style={{ minHeight: '100vh', background: '#f5f5f5' }} />
+  // One-click re-auth: call supabase.auth.refreshSession(). If successful,
+  // AuthContext.onAuthStateChange fires → user is restored → sessionState → 'active'.
+  // No full page reload required.
+  const handleReauth = async () => {
+    setReauthing(true)
+    try {
+      const supabase = createBrowserClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      )
+      const { data, error } = await supabase.auth.refreshSession()
+      if (error || !data.session) {
+        // Refresh failed — session is truly gone. Redirect to signin.
+        router.replace('/signin')
+      } else {
+        // Session refreshed — AuthContext will pick up the new session via onAuthStateChange.
+        // Optimistically update state; the useEffect above will confirm.
+        setReauthed(true)
+        setSessionState('loading')
+      }
+    } catch {
+      router.replace('/signin')
+    } finally {
+      setReauthing(false)
+    }
+  }
+
+  // While auth is loading or session state is being determined
+  if (loading || sessionState === 'loading') {
+    return <div style={{ minHeight: '100vh', background: '#f5f5f5' }} />
+  }
+
+  // Session expired mid-session (ADMIN-STALE-001)
+  if (sessionState === 'expired') {
+    return (
+      <div style={{ minHeight: '100vh', background: '#0f172a', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '2rem' }}>
+        <div style={{ background: '#1e293b', borderRadius: '12px', padding: '2.5rem', maxWidth: '420px', width: '100%', textAlign: 'center', border: '1px solid #334155', boxShadow: '0 20px 60px rgba(0,0,0,0.4)' }}>
+          <div style={{ fontSize: '48px', marginBottom: '1rem' }}>⏱️</div>
+          <h1 style={{ color: '#f1f5f9', fontSize: '22px', fontWeight: 700, margin: '0 0 0.75rem' }}>
+            Session Expired
+          </h1>
+          <p style={{ color: '#94a3b8', fontSize: '14px', lineHeight: 1.6, margin: '0 0 1.5rem' }}>
+            Your admin session has expired. Click below to refresh — you won&apos;t lose your place.
+          </p>
+          {reauthed ? (
+            <p style={{ color: '#22c55e', fontSize: '14px', fontWeight: 600 }}>
+              ✅ Session refreshed — reloading…
+            </p>
+          ) : (
+            <button
+              onClick={handleReauth}
+              disabled={reauthing}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '0.5rem',
+                padding: '0.75rem 1.75rem',
+                backgroundColor: reauthing ? '#334155' : '#f97316',
+                color: 'white',
+                border: 'none',
+                borderRadius: '8px',
+                fontSize: '15px',
+                fontWeight: 700,
+                cursor: reauthing ? 'not-allowed' : 'pointer',
+                width: '100%',
+                transition: 'background-color 0.15s',
+                fontFamily: 'inherit',
+              }}
+            >
+              {reauthing ? (
+                <>
+                  <span style={{ display: 'inline-block', width: '14px', height: '14px', border: '2px solid rgba(255,255,255,0.3)', borderTopColor: 'white', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
+                  Refreshing…
+                </>
+              ) : (
+                '🔄 Refresh Session'
+              )}
+            </button>
+          )}
+          <p style={{ color: '#64748b', fontSize: '12px', margin: '1rem 0 0' }}>
+            If this keeps happening,{' '}
+            <button
+              onClick={() => router.replace('/signin')}
+              style={{ color: '#f97316', background: 'none', border: 'none', cursor: 'pointer', fontSize: '12px', textDecoration: 'underline', fontFamily: 'inherit' }}
+            >
+              sign in again
+            </button>
+          </p>
+          <style>{`@keyframes spin { 0%{transform:rotate(0deg)} 100%{transform:rotate(360deg)} }`}</style>
+        </div>
+      </div>
+    )
+  }
+
+  // Not admin or never had session (redirect in progress)
   const email = (user?.email || '').toLowerCase()
   if (!user || !ADMIN_EMAILS.has(email)) return <div style={{ minHeight: '100vh', background: '#f5f5f5' }} />
 
