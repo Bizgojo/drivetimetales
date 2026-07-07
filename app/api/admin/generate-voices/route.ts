@@ -3306,6 +3306,13 @@ async function generateVoiceLine(rawText: string, voiceId: string, storyId: stri
   return cacheUrl
 }
 
+// MIN_BEFORE_TEXT_CHARS: beforeText shorter than this is treated as empty/unusable.
+// When [LISTENER_NAME] appears near the start (e.g. "[LISTENER_NAME], a dead man…"),
+// the resulting beforeText ("" or "Hi,") would cause ElevenLabs to return ~10KB of
+// silence, which validate_belle_assets rejects as SILENCE_BUFFER.  The series path
+// (series_generate_belle_assets) hits this same code via generateBelleOnly:true.
+const MIN_BEFORE_TEXT_CHARS = 5
+
 async function generateBelleIntroWithName(introText: string, storyId: string, lineIndex: number): Promise<{
   primaryUrl: string
   beforeUrl: string | null
@@ -3314,7 +3321,8 @@ async function generateBelleIntroWithName(introText: string, storyId: string, li
   const parts = introText.split('[LISTENER_NAME]')
   const beforeText = (parts[0] || '').trim()
   const afterText = (parts[1] || '').trim()
-  const usableBeforeText = beforeText.length >= 10 ? beforeText : ''
+  // Treat beforeText as unusable if it is empty or too short to produce audible audio.
+  const usableBeforeText = beforeText.length >= MIN_BEFORE_TEXT_CHARS ? beforeText : ''
 
   if (!usableBeforeText && !afterText) {
     throw new Error('Belle B intro has [LISTENER_NAME] but no usable surrounding text.')
@@ -3325,13 +3333,18 @@ async function generateBelleIntroWithName(introText: string, storyId: string, li
   let primaryUrl: string
 
   if (usableBeforeText && afterText) {
+    // [LISTENER_NAME] in the middle — generate a matched before/after pair.
     beforeUrl = await generateVoiceLine(usableBeforeText, CANONICAL_BELLE_B_VOICE_ID, storyId, lineIndex, 'intro_before')
     afterUrl = await generateVoiceLine(afterText, CANONICAL_BELLE_B_VOICE_ID, storyId, lineIndex + 0.1, 'intro_after')
     primaryUrl = beforeUrl
   } else if (afterText) {
-    afterUrl = await generateVoiceLine(afterText, CANONICAL_BELLE_B_VOICE_ID, storyId, lineIndex + 0.1, 'intro_after')
-    primaryUrl = afterUrl
+    // [LISTENER_NAME] at start (or short beforeText skipped) — use afterText as standalone intro.
+    // Use 'intro' prefix (not 'intro_after') so render_final_mix can locate it as a
+    // standard intro asset without requiring a paired beforeUrl.
+    primaryUrl = await generateVoiceLine(afterText, CANONICAL_BELLE_B_VOICE_ID, storyId, lineIndex + 0.1, 'intro')
+    // afterUrl stays null — no paired intro_after file is created
   } else {
+    // [LISTENER_NAME] at end (no afterText) — use beforeText as standalone intro.
     primaryUrl = await generateVoiceLine(usableBeforeText, CANONICAL_BELLE_B_VOICE_ID, storyId, lineIndex, 'intro')
   }
 
