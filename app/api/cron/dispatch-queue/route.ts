@@ -92,7 +92,7 @@ async function validateActiveAuthor(
     const { data, error } = await supabase
       .from('authors')
       .select('id,name')
-      .eq('active', true)
+      .eq('is_active', true)
       .ilike('name', authorName)
 
     if (error) {
