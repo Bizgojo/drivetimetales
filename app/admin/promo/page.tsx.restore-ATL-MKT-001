@@ -18,7 +18,7 @@ function defaultBody(code: string, days: number) {
 
 I wanted to personally invite you to try Endless Tales — original audio dramas made for people on the move. Mystery, western, thriller, sci-fi, and more. Perfect for your commute or road trip.
 
-I'm giving you ${days} days completely free. No credit card needed to redeem.
+I'm giving you ${days} days completely free. Card required. Cancel anytime.
 
 Your code: ${code}
 

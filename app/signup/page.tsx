@@ -22,9 +22,9 @@ const HEARD_ABOUT_OPTIONS = [
   'Other',
 ]
 
-// Trial is locked at 14 days for all users
+// Trial is locked at 7 days for all users
 function getTrialVariant(): { days: number; variant: 'A' | 'B' } {
-  return { days: 14, variant: 'A' }
+  return { days: 7, variant: 'A' }
 }
 
 function LoadingFallback() {
@@ -58,7 +58,7 @@ function SignUpContent() {
   const [referrerEmail, setReferrerEmail] = useState<string | null>(null)
   const [offer, setOffer] = useState<Offer | null>(null)
   const [referralId, setReferralId] = useState<string | null>(null)
-  const [trialDays, setTrialDays] = useState(14)
+  const [trialDays, setTrialDays] = useState(7)
   const [trialVariant, setTrialVariant] = useState<'A' | 'B'>('A')
   const [billingCycle, setBillingCycle] = useState<'monthly' | 'annual'>('monthly')
   const [promoCode, setPromoCode] = useState<string | null>(null)

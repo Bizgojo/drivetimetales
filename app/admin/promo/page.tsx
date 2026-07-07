@@ -573,12 +573,12 @@ export default function AdminPromoPage() {
                           </>
                         )}
                         <br /><br />
-                        I&apos;m giving you <strong style={{ color: '#f97316' }}>{duration} days completely free</strong>. No credit card needed. Just click below and you&apos;re in.
+                        I&apos;m giving you <strong style={{ color: '#f97316' }}>{duration} days completely free</strong>. Card required. Cancel anytime. Just click below and you&apos;re in.
                       </div>
                       <div style={{ textAlign: 'center', marginTop: '24px' }}>
                         <span style={{ display: 'inline-block', background: '#f97316', color: 'white', padding: '14px 36px', borderRadius: '12px', fontSize: '16px', fontWeight: 800 }}>Start Listening Free</span>
                       </div>
-                      <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '12px', textAlign: 'center', marginTop: '14px' }}>One click. No password. No credit card.</div>
+                      <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '12px', textAlign: 'center', marginTop: '14px' }}>One click. No password. Card required.</div>
                     </div>
                     <p style={{ color: 'rgba(255,255,255,0.3)', fontSize: '12px', marginTop: '20px', textAlign: 'center' }}>Questions? Reply to this email.<br />— Marc</p>
                   </div>

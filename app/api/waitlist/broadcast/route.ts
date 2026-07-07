@@ -44,7 +44,7 @@ const LAUNCH_EMAIL_HTML = `
         <p style="color:rgba(255,255,255,0.6);font-size:13px;line-height:1.7;margin:0;text-align:center;">
           Mystery. Thriller. Romance. Drama. Horror.<br>
           New stories every week. Zero ads. Cancel anytime.<br><br>
-          <strong style="color:#f97316;">$7.99/month after your trial — no credit card needed to start.</strong>
+          <strong style="color:#f97316;">$7.99/month after your trial — card required, cancel anytime.</strong>
         </p>
       </div>
     </div>

@@ -47,7 +47,7 @@ export const CONTENT_CALENDAR: ContentPost[] = [
   { id: 'w1-4m', dayOffset: 23, timeSlot: 'morning', theme: 'audience',
     text: `For truck drivers logging midnight miles.\nFor commuters stuck at the same exit again.\nFor walkers who need something better than music.\n\nEndless Tales. April 17.\n\n${utmLink('twitter','audience','drivers')}` },
   { id: 'w1-4e', dayOffset: 23, timeSlot: 'evening', theme: 'social_proof',
-    text: `3 free stories. No account needed. No credit card.\n\nJust press play.\n\nTell us what you think 👇 ${utmLink('twitter','cta','3-free')}` },
+    text: `3 free stories. No account needed.\n\nJust press play.\n\nTell us what you think 👇 ${utmLink('twitter','cta','3-free')}` },
 
   { id: 'w1-5m', dayOffset: 22, timeSlot: 'morning', theme: 'founding',
     text: `Founding member pricing ends at launch.\n\n$2.99/mo for life — only for the first subscribers.\n\nAfter April 17, it's $7.99/mo.\n\nLock yours in → ${utmLink('twitter','founding','pricing')}` },
@@ -96,7 +96,7 @@ export const CONTENT_CALENDAR: ContentPost[] = [
     text: `Honest question:\n\nWould you listen to a 14-minute audio drama on your commute if it was as good as a great TV episode?\n\n(We think the answer is yes. We're building it to prove it.)` },
 
   { id: 'w2-7m', dayOffset: 13, timeSlot: 'morning', theme: 'week_recap',
-    text: `13 days to launch.\n\n3 free stories waiting for you right now.\n\nNo account. No card. Just audio.\n\n→ ${utmLink('twitter','week_recap','w2-7')}` },
+    text: `13 days to launch.\n\n3 free stories waiting for you right now.\n\nNo account. Free trial, cancel anytime. Just audio.\n\n→ ${utmLink('twitter','week_recap','w2-7')}` },
   { id: 'w2-7e', dayOffset: 13, timeSlot: 'evening', theme: 'teaser',
     text: `Coming to Endless Tales in April:\n\n• A detective who takes cases other cops won't touch\n• A lighthouse keeper who gets a message from a ship that sank in 1943\n• A marriage falling apart at 70 mph\n\nApril 17 → ${utmLink('twitter','teaser','coming-soon')}` },
 

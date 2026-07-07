@@ -35,7 +35,7 @@ export async function POST(req: NextRequest) {
 
     // Default landing page outro with CTA
     const outroText = story.outro_text ||
-      `That was "${story.title}" by ${story.author} on Endless Tales.\n\nIf you enjoyed this story, your fourteen-day free trial is waiting above. No credit card, no catch. Just great stories.`
+      `That was "${story.title}" by ${story.author} on Endless Tales.\n\nIf you enjoyed this story, your fourteen-day free trial is waiting above. Card required. Cancel anytime. Just great stories.`
 
     // Check if already copied (avoid duplicates)
     const { data: existing } = await supabase

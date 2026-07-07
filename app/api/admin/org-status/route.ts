@@ -899,7 +899,7 @@ const SEED_BLOCKERS: MarcBlocker[] = [
   },
   {
     id: 'b6',
-    description: 'Confirm trial: 14 days, no card required. Code says 14 days. Docs said 7. Card requirement unclear.',
+    description: 'Confirm trial: 7 days, card required upfront. Promo and referral paths may extend eligible trials.',
     title: 'Confirm trial terms',
     department: 'atlas',
     createdAt: new Date().toISOString(),
@@ -911,15 +911,13 @@ const SEED_BLOCKERS: MarcBlocker[] = [
     nextAction: null,
     inputType: 'choice',
     choiceOptions: [
-      'Confirmed — 14 days, no card required',
+      'Confirmed — 7 days, card required upfront',
       '14 days, card required upfront',
-      '7 days, no card required',
-      '7 days, card required upfront',
     ],
     detail: {
-      what: 'The codebase has trialDays: 14. Some documents said 7 days. The card-required setting has not been confirmed.',
+      what: 'The codebase defaults trialDays to 7. GVL promo codes and referral paths can extend eligible trials to 14 days. Checkout requires a card.',
       why: 'Trial terms affect signup conversion rate, Stripe configuration, and all marketing copy. Wrong terms in marketing = broken user expectation on checkout.',
-      recommendation: 'Confirm 14 days, no card. Code is already set correctly. Just needs Marc sign-off so Atlas can close this gate item.',
+      recommendation: 'Confirm 7 days by default, card required upfront. Promo and referral exceptions should be represented explicitly in campaign copy.',
       followUpOwner: 'atlas',
       nextActionTemplate: 'Atlas confirms trial config matches: {answer}. Gate 2 partial item closed.',
     },
