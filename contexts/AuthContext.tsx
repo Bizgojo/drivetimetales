@@ -1,9 +1,9 @@
 'use client'
 
-import { createContext, useContext, useEffect, useState, ReactNode } from 'react'
+import { createContext, useContext, useEffect, useRef, useState, ReactNode } from 'react'
 import { User, Session } from '@supabase/supabase-js'
-import { supabase } from '@/lib/supabase'
 import { supabaseBrowser } from '@/lib/supabase-browser'
+import { mergeLocalReadingProgress } from '@/lib/readingProgress'
 
 // Use cookie-aware client for all auth operations so middleware can read the session
 const authClient = supabaseBrowser
@@ -37,6 +37,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<(User & Partial<DbUser>) | null>(null)
   const [session, setSession] = useState<Session | null>(null)
   const [loading, setLoading] = useState(true)
+  const mergedReadingProgressForRef = useRef<string | null>(null)
 
   async function loadDbUser(authUser: User): Promise<void> {
     // Use direct fetch to bypass Supabase client issues
@@ -126,6 +127,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       subscription.unsubscribe()
     }
   }, [])
+
+  useEffect(() => {
+    if (!user?.id || mergedReadingProgressForRef.current === user.id) return
+    mergedReadingProgressForRef.current = user.id
+    mergeLocalReadingProgress(authClient, user.id).catch((err) => {
+      console.warn('[AuthContext] Reading progress merge failed:', err)
+      mergedReadingProgressForRef.current = null
+    })
+  }, [user?.id])
 
   const refreshUser = async () => {
     const { data: { session } } = await authClient.auth.getSession()

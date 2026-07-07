@@ -8,6 +8,12 @@ import { useAuth } from '@/contexts/AuthContext'
 import ReviewModal from '@/components/ReviewModal'
 import type { AutoAdvanceCandidate, AutoAdvanceDisabledReason, PlayerMode, PlayerStory } from './playerTypes'
 import { clearLocalPlayerProgress, getLocalPlayerProgress, mergePlayerProgress, saveLocalPlayerProgress } from '@/lib/playerProgress'
+import {
+  flushReadingProgressKeepalive,
+  loadReadingProgress,
+  saveReadingProgress,
+  type ReadingProgress,
+} from '@/lib/readingProgress'
 
 interface QueueItem { url: string; type: 'intro' | 'story' | 'outro'; label: string }
 
@@ -30,7 +36,7 @@ interface CanonicalPlayerProps {
 
 export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 'story' }: CanonicalPlayerProps) {
   const router  = useRouter()
-  const { user, loading: authLoading } = useAuth()
+  const { user, session, loading: authLoading } = useAuth()
   const userEmail = String(user?.email || '').trim().toLowerCase()
   const [returnContext, setReturnContext] = useState({ returnUrl: '', approvalReview: false })
   const safeReturnUrl = returnContext.returnUrl
@@ -105,7 +111,12 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
   const [proseControlsOpen, setProseControlsOpen] = useState(false)
   const [proseHintVisible, setProseHintVisible] = useState(false)
   const [proseHintSeen, setProseHintSeen] = useState(false)
+  const [proseResumeToast, setProseResumeToast] = useState<{ pageNumber: number; totalPages: number } | null>(null)
+  const [readingProgressState, setReadingProgressState] = useState<ReadingProgress | null>(null)
   const proseScrollRef = useRef<HTMLDivElement>(null)
+  const proseSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const proseResumeAppliedRef = useRef(false)
+  const proseLastSavedKeyRef = useRef('')
   const [seriesBookTitle, setSeriesBookTitle] = useState('')
   const [seriesProseChapters, setSeriesProseChapters] = useState<Array<{ id: string; title: string; episode_number: number; prose_text: string }>>([])
   const [authorData, setAuthorData]   = useState<any | null>(null)
@@ -1225,6 +1236,198 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
     else router.back()
   }
 
+  const isSeriesReadIt = Boolean((story as any)?.series_id && seriesProseChapters.length > 0)
+  const proseAvailable = isSeriesReadIt || Boolean((story as any)?.prose_text)
+  const proseBookTitle = isSeriesReadIt ? (seriesBookTitle || (story as any)?.series_name || story?.title || '') : (story?.title || '')
+  const standaloneProseParagraphs = String((story as any)?.prose_text || '').split('\n\n').filter(Boolean)
+  const seriesProseSections = (() => {
+    let startIndex = 0
+    return seriesProseChapters.map((chapter) => {
+      const paragraphs = chapter.prose_text.split('\n\n').filter(Boolean)
+      const section = { ...chapter, paragraphs, startIndex }
+      startIndex += paragraphs.length
+      return section
+    })
+  })()
+  const totalProseParagraphs = isSeriesReadIt
+    ? seriesProseSections.reduce((sum, chapter) => sum + chapter.paragraphs.length, 0)
+    : standaloneProseParagraphs.length
+  const proseTotalPages = Math.max(1, totalProseParagraphs)
+  const playerSeriesTitle = (story as any)?.series_id ? (seriesBookTitle || (story as any)?.series_name || '') : ''
+  const prosePillText = readingProgressState?.completed
+    ? 'Read Again'
+    : (readingProgressState?.paragraphIndex || 0) > 0
+      ? 'Continue Reading'
+      : 'Read'
+
+  const paragraphPageNumber = (paragraphIndex: number) => {
+    if (totalProseParagraphs <= 0) return 1
+    return Math.max(1, Math.min(totalProseParagraphs, Math.floor(paragraphIndex) + 1))
+  }
+
+  const scrollToProseParagraph = (paragraphIndex: number) => {
+    const el = proseScrollRef.current
+    if (!el) return
+    const safeIndex = Math.max(0, Math.min(totalProseParagraphs - 1, Math.floor(paragraphIndex)))
+    const target = el.querySelector<HTMLElement>(`[data-para-index="${safeIndex}"]`)
+    if (!target) {
+      el.scrollTop = 0
+      setProsePage(1)
+      return
+    }
+    const top = target.offsetTop - 8
+    el.scrollTop = Math.max(0, top)
+    setProsePage(paragraphPageNumber(safeIndex))
+  }
+
+  const currentProsePosition = (completedOverride?: boolean): ReadingProgress | null => {
+    const el = proseScrollRef.current
+    if (!el || !storyId || totalProseParagraphs <= 0) return null
+    const containerRect = el.getBoundingClientRect()
+    const bottomPadding = 58
+    const paragraphs = Array.from(el.querySelectorAll<HTMLElement>('[data-para-index]'))
+    let selectedIndex = 0
+
+    const fullyVisible = paragraphs.find((para) => {
+      const rect = para.getBoundingClientRect()
+      return rect.top >= containerRect.top + 4 && rect.bottom <= containerRect.bottom - bottomPadding
+    })
+    const fallbackVisible = paragraphs.find((para) => para.getBoundingClientRect().bottom > containerRect.top + 12)
+    const selected = fullyVisible || fallbackVisible
+    if (selected) selectedIndex = Number(selected.dataset.paraIndex || 0)
+
+    const clampedIndex = Math.max(0, Math.min(totalProseParagraphs - 1, Math.floor(selectedIndex)))
+    const atBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 8
+    const completed = Boolean(completedOverride || atBottom || clampedIndex >= totalProseParagraphs - 1)
+    const pageNumber = completed ? proseTotalPages : paragraphPageNumber(clampedIndex)
+    const percent = totalProseParagraphs > 0
+      ? Math.min(100, Number(((clampedIndex / totalProseParagraphs) * 100).toFixed(2)))
+      : 0
+
+    return {
+      storyId,
+      paragraphIndex: completed ? Math.max(0, totalProseParagraphs - 1) : clampedIndex,
+      charOffset: 0,
+      pageNumber,
+      totalPages: proseTotalPages,
+      percent: completed ? 100 : percent,
+      completed,
+      updatedAt: new Date().toISOString(),
+    }
+  }
+
+  const flushCurrentReadingProgress = (completedOverride?: boolean) => {
+    const progress = currentProsePosition(completedOverride)
+    if (!progress) return
+    const saveKey = `${progress.paragraphIndex}:${progress.completed}:${progress.pageNumber}:${progress.totalPages}`
+    if (proseLastSavedKeyRef.current === saveKey) return
+    proseLastSavedKeyRef.current = saveKey
+    setReadingProgressState(progress)
+    void saveReadingProgress(supabase, user?.id, progress)
+  }
+
+  const scheduleReadingProgressSave = () => {
+    if (proseSaveTimerRef.current) clearTimeout(proseSaveTimerRef.current)
+    proseSaveTimerRef.current = setTimeout(() => flushCurrentReadingProgress(), 2000)
+  }
+
+  const startProseOver = () => {
+    if (proseSaveTimerRef.current) clearTimeout(proseSaveTimerRef.current)
+    scrollToProseParagraph(0)
+    const resetProgress: ReadingProgress = {
+      storyId,
+      paragraphIndex: 0,
+      charOffset: 0,
+      pageNumber: 1,
+      totalPages: proseTotalPages,
+      percent: 0,
+      completed: false,
+      updatedAt: new Date().toISOString(),
+    }
+    proseLastSavedKeyRef.current = ''
+    setReadingProgressState(resetProgress)
+    setProseResumeToast(null)
+    void saveReadingProgress(supabase, user?.id, resetProgress)
+  }
+
+  const closeProseReader = () => {
+    if (proseSaveTimerRef.current) clearTimeout(proseSaveTimerRef.current)
+    flushCurrentReadingProgress()
+    setProseResumeToast(null)
+    setActiveModal(null)
+  }
+
+  useEffect(() => {
+    proseResumeAppliedRef.current = false
+    proseLastSavedKeyRef.current = ''
+    setProseResumeToast(null)
+    setReadingProgressState(null)
+  }, [storyId])
+
+  useEffect(() => {
+    if (activeModal !== 'prose') proseResumeAppliedRef.current = false
+  }, [activeModal])
+
+  useEffect(() => {
+    if (!proseAvailable || totalProseParagraphs <= 0) return
+    let cancelled = false
+    loadReadingProgress(supabase, user?.id, storyId).then((progress) => {
+      if (cancelled) return
+      setReadingProgressState(progress)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [proseAvailable, totalProseParagraphs, storyId, user?.id])
+
+  useEffect(() => {
+    if (activeModal !== 'prose' || !proseAvailable || totalProseParagraphs <= 0 || proseResumeAppliedRef.current) return
+    let cancelled = false
+    loadReadingProgress(supabase, user?.id, storyId).then((progress) => {
+      if (cancelled) return
+      proseResumeAppliedRef.current = true
+      if (!progress || progress.completed) {
+        scrollToProseParagraph(0)
+        setProseResumeToast(null)
+        return
+      }
+      const safeIndex = Math.max(0, Math.min(totalProseParagraphs - 1, progress.paragraphIndex))
+      if (safeIndex <= 0) return
+      requestAnimationFrame(() => {
+        scrollToProseParagraph(safeIndex)
+        const pageNumber = paragraphPageNumber(safeIndex)
+        setProseResumeToast({ pageNumber, totalPages: proseTotalPages })
+        window.setTimeout(() => setProseResumeToast(null), 5000)
+      })
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [activeModal, proseAvailable, totalProseParagraphs, proseTotalPages, storyId, user?.id])
+
+  useEffect(() => {
+    if (activeModal !== 'prose') return
+    const flush = () => {
+      if (proseSaveTimerRef.current) clearTimeout(proseSaveTimerRef.current)
+      flushCurrentReadingProgress()
+    }
+    const flushKeepalive = () => {
+      const progress = currentProsePosition()
+      if (!progress) return
+      flushReadingProgressKeepalive(user?.id, session?.access_token, progress)
+    }
+    const handleVisibility = () => {
+      if (document.visibilityState === 'hidden') flush()
+    }
+    document.addEventListener('visibilitychange', handleVisibility)
+    window.addEventListener('pagehide', flushKeepalive)
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibility)
+      window.removeEventListener('pagehide', flushKeepalive)
+      if (proseSaveTimerRef.current) clearTimeout(proseSaveTimerRef.current)
+    }
+  }, [activeModal, totalProseParagraphs, proseTotalPages, storyId, user?.id, session?.access_token, prosePage])
+
   const fmt = (s: number) => `${Math.floor(s / 60)}:${Math.floor(s % 60).toString().padStart(2, '0')}`
   const fmtMin = (s: number) => (s / 60).toFixed(1) + ' min'
   const actualAudioDuration = Number.isFinite(duration) && duration > 0 ? duration : 0
@@ -1243,12 +1446,6 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
 
   if (loading) return <div style={{ height:'100dvh', backgroundColor:'#020617', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:'14px' }}><div style={{ width:'40px', height:'40px', border:'4px solid #f97316', borderTopColor:'transparent', borderRadius:'50%', animation:'spin 1s linear infinite' }} /><p style={{ color:'rgba(255,255,255,0.72)', fontSize:'14px', fontWeight:600, margin:0 }}>Loading story...</p><style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style></div>
   if (!story)   return <div style={{ height:'100dvh', backgroundColor:'#020617', color:'white', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', padding:'24px', textAlign:'center' }}><p style={{ marginBottom:'16px' }}>This story isn’t available yet.</p><button onClick={() => { disableAutoAdvanceForSession('navigation'); returnToSource('/library') }} style={{ color:'#f97316', background:'none', border:'1px solid rgba(249,115,22,0.35)', borderRadius:'10px', padding:'10px 16px', cursor:'pointer', fontWeight:700 }}>{safeReturnUrl ? 'Back to Approval' : 'Back to Library'}</button></div>
-
-  const isSeriesReadIt = Boolean((story as any).series_id && seriesProseChapters.length > 0)
-  const proseAvailable = isSeriesReadIt || Boolean((story as any).prose_text)
-  const proseBookTitle = isSeriesReadIt ? (seriesBookTitle || (story as any).series_name || story.title) : story.title
-  const standaloneProseParagraphs = String((story as any).prose_text || '').split('\n\n').filter(Boolean)
-  const playerSeriesTitle = (story as any).series_id ? (seriesBookTitle || (story as any).series_name || '') : ''
 
   return (
     <div data-auto-advance-disabled-reason={autoAdvanceDisabledReason || undefined} style={{ height:'100dvh', backgroundColor:'#020617', color:'white', display:'flex', flexDirection:'column', overflow:'hidden' }}>
@@ -1469,8 +1666,8 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
 
         {/* Read It pill */}
         <button onClick={() => setActiveModal('prose')} style={{ display:'flex', flexDirection:'column', alignItems:'center', padding:'8px 14px', borderRadius:'14px', border:'1px solid rgba(255,255,255,0.18)', background:'rgba(255,255,255,0.12)', color:'white', cursor:'pointer', minWidth:90 }}>
-          <span style={{ fontSize:'12px', fontWeight:700, whiteSpace:'nowrap' }}>📖 Read It</span>
-          {proseAvailable && <span style={{ fontSize:'10px', color:'rgba(255,255,255,0.6)', marginTop:'2px' }}>Available</span>}
+          <span style={{ fontSize:'12px', fontWeight:700, whiteSpace:'nowrap' }}>📖 {prosePillText}</span>
+          {proseAvailable && <span style={{ fontSize:'10px', color:'rgba(255,255,255,0.6)', marginTop:'2px' }}>{readingProgressState?.completed ? 'Finished' : (readingProgressState?.paragraphIndex || 0) > 0 ? 'Saved' : 'Available'}</span>}
         </button>
 
       </div>
@@ -1612,7 +1809,7 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
       {/* ── Info Modal Sheet ─────────────────────────────────────────────────── */}
       {activeModal && (
         <div
-          onClick={() => setActiveModal(null)}
+          onClick={() => activeModal === 'prose' ? closeProseReader() : setActiveModal(null)}
           style={{ position:'fixed', inset:0, background:'#000', zIndex:200, display:'flex', alignItems:'flex-end' }}
         >
           <div
@@ -1699,12 +1896,14 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
                         <p style={{ color:'#64748b', fontSize:'12px', margin:'0 0 8px' }}>{(narratorData.follower_count || 0).toLocaleString()} followers</p>
                         <button
                           onClick={async () => {
-                            if (!user) { router.push('/signin'); return }
-                            const nvId = (story as any).narrator_voice_id
-                            const { data: nvRow } = await supabase.from('narrator_voices').select('id').eq('elevenlabs_voice_id', nvId).single().catch(() => ({ data: null }))
-                            if (!nvRow) return
-                            const { data: existing } = await supabase.from('user_follows').select('id').eq('user_id', user.id).eq('entity_type', 'narrator').eq('entity_id', nvRow.id).single().catch(() => ({ data: null }))
-                            if (existing) {
+	                            if (!user) { router.push('/signin'); return }
+	                            const nvId = (story as any).narrator_voice_id
+	                            let nvRow: any = null
+	                            try { const r = await supabase.from('narrator_voices').select('id').eq('elevenlabs_voice_id', nvId).single(); nvRow = r.data } catch(_) {}
+	                            if (!nvRow) return
+	                            let existing: any = null
+	                            try { const r = await supabase.from('user_follows').select('id').eq('user_id', user.id).eq('entity_type', 'narrator').eq('entity_id', nvRow.id).single(); existing = r.data } catch(_) {}
+	                            if (existing) {
                               await supabase.from('user_follows').delete().eq('user_id', user.id).eq('entity_type', 'narrator').eq('entity_id', nvRow.id)
                               setNarratorData((p: any) => ({ ...p, _following: false }))
                             } else {
@@ -1742,7 +1941,7 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
 
                     {/* Sticky header: × | title | book */}
                     <div style={{ flexShrink:0, display:'flex', alignItems:'center', padding:'10px 12px', borderBottom: proseDark ? '1px solid rgba(255,255,255,0.06)' : '1px solid rgba(0,0,0,0.07)', background: proseDark ? '#0f172a' : '#faf7f2' }}>
-                      <button onClick={() => setActiveModal(null)} style={{ width:34, height:34, flexShrink:0, borderRadius:'50%', border: proseDark ? '1px solid rgba(255,255,255,0.18)' : '1px solid rgba(0,0,0,0.13)', background: proseDark ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.05)', color: proseDark ? 'rgba(255,255,255,0.7)' : '#555', fontSize:'17px', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center' }}>×</button>
+                      <button onClick={closeProseReader} style={{ width:34, height:34, flexShrink:0, borderRadius:'50%', border: proseDark ? '1px solid rgba(255,255,255,0.18)' : '1px solid rgba(0,0,0,0.13)', background: proseDark ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.05)', color: proseDark ? 'rgba(255,255,255,0.7)' : '#555', fontSize:'17px', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center' }}>×</button>
                       <div style={{ flex:1, textAlign:'center', padding:'0 8px' }}>
                         <div style={{ fontSize:'15px', fontWeight:800, color: proseDark ? 'white' : '#1a1a1a', fontFamily:'Inter, system-ui, sans-serif' }}>{proseBookTitle}</div>
                         <div style={{ fontSize:'11px', color: proseDark ? 'rgba(255,255,255,0.38)' : 'rgba(0,0,0,0.38)', marginTop:1, fontFamily:'Inter, system-ui, sans-serif' }}>{isSeriesReadIt ? `${seriesProseChapters.length} chapters` : `by ${story.author || 'Endless Tales'}`}</div>
@@ -1771,6 +1970,12 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
                     </div>
 
                     </div>
+                    {proseResumeToast && (
+                      <div style={{ position:'absolute', top:62, left:'50%', transform:'translateX(-50%)', zIndex:35, background:'#1a1a1a', color:'#fff', borderRadius:'999px', padding:'10px 14px', boxShadow:'0 8px 24px rgba(0,0,0,0.28)', display:'flex', alignItems:'center', gap:12, maxWidth:'calc(100% - 32px)', fontFamily:'Inter, system-ui, sans-serif' }}>
+                        <span style={{ color:'#fff', fontSize:'17px', fontWeight:800, whiteSpace:'nowrap' }}>Resuming on page {proseResumeToast.pageNumber} of {proseResumeToast.totalPages}</span>
+                        <button onClick={startProseOver} style={{ border:'none', background:'transparent', color:'#fff', fontSize:'17px', fontWeight:900, textDecoration:'underline', cursor:'pointer', padding:0, whiteSpace:'nowrap' }}>Start over</button>
+                      </div>
+                    )}
                     {/* Scrollable text */}
                     <div
                       ref={proseScrollRef}
@@ -1778,17 +1983,18 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
                       onScroll={() => {
                         const el = proseScrollRef.current
                         if (!el || el.scrollHeight <= el.clientHeight) return
-                        try { localStorage.setItem('et_prose_'+storyId, String(el.scrollTop)) } catch(_) {}
-                        const pct = el.scrollTop / (el.scrollHeight - el.clientHeight)
-                        const total = isSeriesReadIt ? seriesProseChapters.length : standaloneProseParagraphs.length
-                        setProsePage(Math.max(1, Math.min(total, Math.round(pct * total) || 1)))
+                        const position = currentProsePosition()
+                        if (!position) return
+                        setProsePage(position.pageNumber || 1)
+                        if (position.completed) flushCurrentReadingProgress(true)
+                        else scheduleReadingProgressSave()
                       }}
                       style={{ flex:1, overflowY:'auto', padding:'20px 24px 72px', fontFamily:'Literata, Georgia, "Times New Roman", serif' }}
                     >
                       {isSeriesReadIt ? (
                         <>
                           <h1 style={{ fontSize: proseFontSize + 9 + 'px', lineHeight: 1.12, color: proseDark ? '#f8f1e7' : '#1a1a1a', margin:'0 0 28px', letterSpacing:0, fontWeight:700 }}>{proseBookTitle}</h1>
-                          {seriesProseChapters.map((chapter, chapterIndex) => (
+                          {seriesProseSections.map((chapter, chapterIndex) => (
                             <section key={chapter.id} style={{ marginTop: chapterIndex === 0 ? 0 : 42, paddingTop: chapterIndex === 0 ? 0 : 28, borderTop: chapterIndex === 0 ? 'none' : proseDark ? '1px solid rgba(255,255,255,0.09)' : '1px solid rgba(0,0,0,0.12)' }}>
                               <div style={{ fontFamily:'Inter, system-ui, sans-serif', fontSize:'11px', fontWeight:900, color: proseDark ? '#fb923c' : '#9a3412', letterSpacing:'0.12em', textTransform:'uppercase', marginBottom:8 }}>
                                 Chapter {chapterIndex + 1}
@@ -1796,8 +2002,8 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
                               <h2 style={{ fontSize: proseFontSize + 5 + 'px', lineHeight:1.18, color: proseDark ? '#f8f1e7' : '#1a1a1a', margin:'0 0 22px', letterSpacing:0, fontWeight:700 }}>
                                 {chapter.title}
                               </h2>
-                              {chapter.prose_text.split('\n\n').filter(Boolean).map((para: string, i: number) => (
-                                <p key={`${chapter.id}-${i}`} style={{ fontSize: proseFontSize + 'px', lineHeight:1.85, color: proseDark ? '#e2d9c8' : '#2c2c2c', margin:'0 0 20px', textIndent: i === 0 ? 0 : '1.5em', letterSpacing:'0.01em' }}>{para}</p>
+                              {chapter.paragraphs.map((para: string, i: number) => (
+                                <p key={`${chapter.id}-${i}`} data-para-index={chapter.startIndex + i} style={{ fontSize: proseFontSize + 'px', lineHeight:1.85, color: proseDark ? '#e2d9c8' : '#2c2c2c', margin:'0 0 20px', textIndent: i === 0 ? 0 : '1.5em', letterSpacing:'0.01em' }}>{para}</p>
                               ))}
                             </section>
                           ))}
@@ -1807,20 +2013,20 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
                           const first = para.charAt(0)
                           const rest  = para.slice(1)
                           return (
-                            <p key={0} style={{ fontSize: proseFontSize + 'px', lineHeight:1.85, color: proseDark ? '#e2d9c8' : '#2c2c2c', margin:'0 0 20px', letterSpacing:'0.01em', overflow:'hidden' }}>
+                            <p key={0} data-para-index={i} style={{ fontSize: proseFontSize + 'px', lineHeight:1.85, color: proseDark ? '#e2d9c8' : '#2c2c2c', margin:'0 0 20px', letterSpacing:'0.01em', overflow:'hidden' }}>
                               <span style={{ float:'left', fontSize:(proseFontSize * 3.6) + 'px', lineHeight:0.82, fontWeight:700, color: proseDark ? '#e2d9c8' : '#1a1a1a', marginRight:'5px', marginTop:'4px', fontFamily:'Literata, Georgia, serif' }}>{first}</span>
                               {rest}
                             </p>
                           )
                         }
-                        return <p key={i} style={{ fontSize: proseFontSize + 'px', lineHeight:1.85, color: proseDark ? '#e2d9c8' : '#2c2c2c', margin:'0 0 20px', textIndent:'1.5em', letterSpacing:'0.01em' }}>{para}</p>
+                        return <p key={i} data-para-index={i} style={{ fontSize: proseFontSize + 'px', lineHeight:1.85, color: proseDark ? '#e2d9c8' : '#2c2c2c', margin:'0 0 20px', textIndent:'1.5em', letterSpacing:'0.01em' }}>{para}</p>
                       })}
                     </div>
 
                     {/* Page counter — pinned bottom */}
                     <div style={{ position:'absolute', bottom:0, left:0, right:0, height:52, display:'flex', alignItems:'center', justifyContent:'center', background: proseDark ? 'linear-gradient(to top,#0f172a 55%,transparent)' : 'linear-gradient(to top,#faf7f2 55%,transparent)', pointerEvents:'none' }}>
                       <span style={{ fontSize:'13px', fontWeight:600, color: proseDark ? 'rgba(255,255,255,0.55)' : 'rgba(0,0,0,0.45)', letterSpacing:'0.04em' }}>
-                        {prosePage} of {Math.max(1, isSeriesReadIt ? seriesProseChapters.length : standaloneProseParagraphs.length)}
+                        {prosePage} of {proseTotalPages}
                       </span>
                     </div>
 
