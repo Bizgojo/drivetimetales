@@ -73,17 +73,41 @@ async function overlayText(imageBuffer: Buffer, title: string, author: string): 
   return sharp(imageBuffer).resize(size, size).composite([{ input: Buffer.from(svg), blend: 'over' }]).jpeg({ quality: 90 }).toBuffer()
 }
 
+const IMAGE_MODEL = process.env.OPENAI_IMAGE_MODEL || 'gpt-image-1'
+
 async function generateCover(script: string, title: string, author: string, genre: string): Promise<string> {
   const dallePrompt = buildCoverPrompt({ title, author, genre, script })
+
+  const imageRequest: Record<string, unknown> = {
+    model: IMAGE_MODEL,
+    prompt: dallePrompt.slice(0, 4000),
+    n: 1,
+    size: '1024x1024',
+  }
+  if (IMAGE_MODEL.startsWith('gpt-image')) {
+    imageRequest.quality = 'high'
+  } else {
+    imageRequest.quality = 'hd'
+    imageRequest.response_format = 'url'
+  }
+
   const res = await fetch('https://api.openai.com/v1/images/generations', {
     method: 'POST',
     headers: { Authorization: `Bearer ${OPENAI_API_KEY}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ model: 'dall-e-3', prompt: dallePrompt.slice(0, 4000), n: 1, size: '1024x1024', quality: 'hd', response_format: 'url' }),
+    body: JSON.stringify(imageRequest),
   })
-  if (!res.ok) throw new Error(`DALL-E error: ${res.status} - ${await res.text()}`)
+  if (!res.ok) throw new Error(`${IMAGE_MODEL} error: ${res.status} - ${await res.text()}`)
   const json = await res.json() as any
+
+  const b64Json = json.data?.[0]?.b64_json
+  if (b64Json) {
+    const rawBuffer = Buffer.from(b64Json, 'base64')
+    const imgBuffer = await overlayText(rawBuffer, title, author)
+    return imgBuffer.toString('base64')
+  }
+
   const imageUrl = json.data?.[0]?.url
-  if (!imageUrl) throw new Error('DALL-E returned no image URL')
+  if (!imageUrl) throw new Error(`${IMAGE_MODEL} returned no image data`)
   const imgRes = await fetch(imageUrl)
   const rawBuffer = Buffer.from(await imgRes.arrayBuffer())
   const imgBuffer = await overlayText(rawBuffer, title, author)
