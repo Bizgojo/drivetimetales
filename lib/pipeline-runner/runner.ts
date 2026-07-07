@@ -20,12 +20,150 @@ const TRANSIENT_RETRY_SLEEP_MS = 5_000
 const LOUDNESS_RETRY_SLEEP_MS = 2_000
 const STALL_THRESHOLD_MS = 45 * 60 * 1000 // 45 min
 
+// ── Self-healing constants ─────────────────────────────────────────────────
+// HEARTBEAT_ZOMBIE_MS: If a pipeline_runner_state row has last_heartbeat_at
+// older than this, its worker is considered dead. Running jobs locked by that
+// worker are reset to queued so another worker can pick them up.
+const HEARTBEAT_ZOMBIE_MS = 15 * 60 * 1000 // 15 min
+
+// CIRCUIT_BREAKER_THRESHOLD: If the same job fails this many consecutive times
+// on the same step, set needs_attention=true and stop retrying (circuit open).
+const CIRCUIT_BREAKER_THRESHOLD = 5
+
 function nowIso(): string {
   return new Date().toISOString()
 }
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+// ---------------------------------------------------------------------------
+// Self-healing: heartbeat-based zombie cleanup
+// ---------------------------------------------------------------------------
+
+/**
+ * Reset zombie jobs — any production_jobs row that is still status='running'
+ * but whose runner's last_heartbeat_at is older than HEARTBEAT_ZOMBIE_MS.
+ *
+ * This prevents jobs from sitting in a phantom-running state for hours when
+ * a Vercel worker crashes or times out without releasing its lock.
+ *
+ * Safe: only touches jobs whose locked_by matches a zombie runner row.
+ * Returns the number of jobs reset.
+ */
+async function cleanupZombieJobs(supabase: SupabaseClient): Promise<number> {
+  const zombieCutoff = new Date(Date.now() - HEARTBEAT_ZOMBIE_MS).toISOString()
+
+  // Find pipeline_runner_state rows with stale heartbeats
+  const { data: zombieRunners, error: runnerError } = await supabase
+    .from('pipeline_runner_state')
+    .select('id, last_heartbeat_at')
+    .not('last_heartbeat_at', 'is', null)
+    .lt('last_heartbeat_at', zombieCutoff)
+
+  if (runnerError || !zombieRunners?.length) return 0
+
+  const zombieHolderIds = (zombieRunners as Array<{ id: string; last_heartbeat_at: string }>)
+    .map(r => r.id)
+
+  if (zombieHolderIds.length === 0) return 0
+
+  // Reset any running jobs locked by these zombie runners back to queued
+  const { data: resetJobs, error: resetError } = await supabase
+    .from('production_jobs')
+    .update({
+      status: 'queued',
+      locked_at: null,
+      locked_by: null,
+    })
+    .eq('status', 'running')
+    .in('locked_by', zombieHolderIds)
+    .select('id')
+
+  if (resetError) {
+    console.warn('[self-healing] Failed to reset zombie jobs:', resetError.message)
+    return 0
+  }
+
+  const count = resetJobs?.length ?? 0
+  if (count > 0) {
+    console.log(`[self-healing] Reset ${count} zombie job(s) from runners: ${zombieHolderIds.join(', ')}`)
+  }
+  return count
+}
+
+// ---------------------------------------------------------------------------
+// Self-healing: circuit breaker — track consecutive step failures per job
+// ---------------------------------------------------------------------------
+
+type CircuitBreakerState = {
+  step: string | null
+  consecutiveFailures: number
+}
+
+/**
+ * Update the circuit breaker state for a job.
+ *
+ * @returns Whether the circuit is now open (threshold reached → stop retrying).
+ */
+async function updateCircuitBreaker(
+  supabase: SupabaseClient,
+  jobId: string,
+  failedStep: string | null,
+  currentState: CircuitBreakerState,
+): Promise<{ open: boolean; consecutiveFailures: number }> {
+  let { step, consecutiveFailures } = currentState
+
+  if (step === failedStep) {
+    consecutiveFailures += 1
+  } else {
+    // Step changed — reset counter
+    step = failedStep
+    consecutiveFailures = 1
+  }
+
+  const circuitOpen = consecutiveFailures >= CIRCUIT_BREAKER_THRESHOLD
+
+  // Persist updated circuit state in state_json so it survives across runner invocations
+  // Only update if we're approaching or at the threshold to reduce write overhead
+  if (consecutiveFailures >= CIRCUIT_BREAKER_THRESHOLD - 1) {
+    const { data: job } = await supabase
+      .from('production_jobs')
+      .select('state_json')
+      .eq('id', jobId)
+      .single()
+
+    const existingState = (job?.state_json as Record<string, unknown>) ?? {}
+
+    await supabase
+      .from('production_jobs')
+      .update({
+        state_json: {
+          ...existingState,
+          circuitBreaker: { step: failedStep, consecutiveFailures },
+        },
+        ...(circuitOpen ? {
+          status: 'failed',
+          needs_attention: true,
+          needs_attention_reason: `Circuit breaker open: step "${failedStep}" failed ${consecutiveFailures} consecutive times. Stopped retrying — needs manual inspection.`,
+          error_json: {
+            kind: 'circuit_breaker_open',
+            message: `Circuit breaker triggered: ${consecutiveFailures} consecutive failures on step "${failedStep}". Job halted.`,
+            step: failedStep,
+            marc_required: true,
+            at: nowIso(),
+          },
+        } : {}),
+      })
+      .eq('id', jobId)
+
+    if (circuitOpen) {
+      console.error(`[circuit-breaker] Job ${jobId.slice(0, 8)} OPEN after ${consecutiveFailures} consecutive failures on step "${failedStep}". needs_attention=true.`)
+    }
+  }
+
+  return { open: circuitOpen, consecutiveFailures }
 }
 
 function baseUrl(): string {
@@ -282,6 +420,16 @@ export async function runPipelineLoop(
   let jobsCompleted = 0
 
   try {
+    // ── Self-healing: zombie job cleanup ──────────────────────────────────────
+    // Run once per invocation before entering the job loop.
+    // Resets running jobs whose runner's heartbeat is stale (> HEARTBEAT_ZOMBIE_MS).
+    try {
+      await cleanupZombieJobs(supabase)
+    } catch (cleanupErr: unknown) {
+      // Non-fatal — log and continue
+      console.warn('[self-healing] Zombie cleanup error (non-fatal):', cleanupErr instanceof Error ? cleanupErr.message : String(cleanupErr))
+    }
+
     // ── Outer job loop ────────────────────────────────────────────────────────
     while (Date.now() < deadline) {
       // Find the next available job
@@ -312,6 +460,15 @@ export async function runPipelineLoop(
       let exitMessage = 'Budget deadline reached without completing the job.'
       const retryState = new Map<string, number>()
       const stallTracker = new Map<string, StallRecord>()
+
+      // Circuit breaker state — tracks consecutive failures on the same step.
+      // Seeded from state_json.circuitBreaker if a previous invocation persisted it.
+      const persistedCb = (job.state_json as Record<string, unknown> | null)?.circuitBreaker as
+        { step: string | null; consecutiveFailures: number } | undefined
+      let cbState: CircuitBreakerState = {
+        step: persistedCb?.step ?? null,
+        consecutiveFailures: persistedCb?.consecutiveFailures ?? 0,
+      }
 
       // ── Inner step loop ──────────────────────────────────────────────────────
       while (Date.now() < deadline) {
@@ -369,6 +526,14 @@ export async function runPipelineLoop(
           }
         }
 
+        // Refresh heartbeat before each run-next call so zombie detection stays accurate.
+        // Fire-and-forget — don't block the pipeline on this update.
+        supabase.from('pipeline_runner_state')
+          .update({ last_heartbeat_at: nowIso(), updated_at: nowIso() })
+          .eq('id', holderId)
+          .then(() => {/* heartbeat refreshed */})
+          .catch(() => {/* non-fatal */})
+
         // Call run-next
         let result: RunNextResult
         try {
@@ -405,7 +570,11 @@ export async function runPipelineLoop(
           }
           await writeRunnerEvent(supabase, jobId, advanceEvent)
 
-          if (newStep !== currentStep) stallTracker.clear()
+          if (newStep !== currentStep) {
+            stallTracker.clear()
+            // Step advanced → reset circuit breaker consecutive failure count
+            cbState = { step: newStep, consecutiveFailures: 0 }
+          }
           await sleep(STEP_ADVANCE_SLEEP_MS)
           continue
         }
@@ -435,13 +604,33 @@ export async function runPipelineLoop(
           }
         }
 
+        // ── Circuit breaker: count consecutive failures on this step ─────────
+        // If the same step fails CIRCUIT_BREAKER_THRESHOLD times in a row,
+        // mark the job needs_attention and stop retrying (circuit open).
+        const failedStep = classification.context.step ?? currentStep
+        let cbResult: { open: boolean; consecutiveFailures: number } = { open: false, consecutiveFailures: 0 }
+        try {
+          cbResult = await updateCircuitBreaker(supabase, jobId, failedStep, cbState)
+          cbState = { step: failedStep, consecutiveFailures: cbResult.consecutiveFailures }
+        } catch (cbErr: unknown) {
+          console.warn('[circuit-breaker] Update error (non-fatal):', cbErr instanceof Error ? cbErr.message : String(cbErr))
+        }
+
+        if (cbResult.open) {
+          // Circuit is open — job has been marked needs_attention by updateCircuitBreaker.
+          // Stop retrying; exit failure loop.
+          exitReason = 'failure'
+          exitMessage = `Circuit breaker open: step "${failedStep}" failed ${cbResult.consecutiveFailures} consecutive times. Job needs attention.`
+          break
+        }
+
         // Non-retryable failure
         const failureEvent: RunnerEvent = {
           at: nowIso(),
           source: 'autonomous-runner',
           event: 'failure',
           jobId,
-          step: classification.context.step ?? currentStep,
+          step: failedStep,
           classification,
           needs_marc: classification.needsMarc,
           message: classification.reason,
