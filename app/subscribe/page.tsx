@@ -58,7 +58,7 @@ function SubscribeContent() {
         </h1>
 
         <p style={{ color: 'rgba(255,255,255,0.65)', fontSize: '15px', lineHeight: 1.7, margin: '0 0 28px' }}>
-          Original audio dramas made for people on the move. Start your 14-day free trial and get full access to every story.
+          Original audio dramas made for people on the move. Start your 7-day free trial and get full access to every story. Have a promo code? Enter it at checkout to extend to 14 days.
         </p>
 
         <div style={{
