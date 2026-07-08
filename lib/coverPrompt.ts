@@ -388,7 +388,13 @@ export function buildCoverPrompt(params: CoverPromptParams): string {
   // Only suppress brightness directive when story content explicitly signals
   // night/darkness/shadow — this must be intentional, not accidental vocabulary bleed.
   const darkException = isDarkExceptionStory(params)
-  const brightnessDirective = darkException ? '' : BRIGHTNESS_DIRECTIVE
+  // Horror dark exception: darker palette is ALLOWED, but the brightness FLOOR
+  // still applies. The focal subject and key objects must be well-lit and
+  // thumbnail-readable. We swap the full brightness directive for a Horror-specific
+  // floor that permits atmosphere without collapsing into unreadable darkness.
+  const HORROR_BRIGHTNESS_FLOOR =
+    'The focal subject (face, object, or key element) MUST be strongly and visibly lit — bright enough to read at 100x100px thumbnail. Darkness is permitted in the background and periphery only. The key focal point must have high contrast against its surroundings: use a strong practical light source (flashlight, lantern, bioluminescent glow, fire, moonlight) to illuminate the subject directly. No full-frame darkness. The single most important visual element must be the brightest thing in the frame.'
+  const brightnessDirective = darkException ? HORROR_BRIGHTNESS_FLOOR : BRIGHTNESS_DIRECTIVE
 
   // ── RETRY / CHANGE COVER PATH (STEP 2 fix) ──────────────────────────────
   // When coverFeedback is present (operator instruction), prepend it as a hard
