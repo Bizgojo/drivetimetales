@@ -235,3 +235,66 @@ New genres must be assigned to a group (or a new group, with Marc's approval) at
    contract itself is judged holistically; hard rules are binary.
 
 *Ruled by Marc July 7, 2026. Ready for canon lock and handoff to Orion.*
+
+---
+
+## 7. Ending Doctrine (LOCKED by Marc, July 8, 2026, 7:11 PM EDT)
+
+### 7.1 Standalone Stories
+
+**Opening:** every standalone must open with a REAL problem or a disturbing
+question as the hook. The listener knows the stakes within the first two minutes.
+
+**Ending:** must DRAMATICALLY RESOLVE the opening problem. Not restate it. Not
+explain it. Not ignore it. The listener finishes with accomplishment,
+fulfillment, completion.
+
+**BLP hard rule (AUTO-FAIL):** an ending that does not resolve the opening
+problem fails automatically and enters the two-strike rewrite loop, with the
+unresolved problem named as the rewrite instruction.
+
+**Required Hal brief fields:**
+- `CENTRAL_PROBLEM` — the specific problem/question posed in the opening
+- `RESOLUTION_SHAPE` — concretely how the ending resolves it (not "she finds
+  peace" but "she discovers the letter was forged by her brother and confronts him")
+
+### 7.2 Series
+
+**Opening:** Episode 1 opens with a serious OVERARCHING problem spanning the
+full arc. Stakes clear within two minutes of Ep1.
+
+**Per episode:** each episode carries its own MINOR PROBLEM, distinct from the
+overarching one, introduced and either resolved or made materially worse by
+episode's end.
+
+**Non-finale endings (Eps 1 through N-1):** must end on a strong cliffhanger
+that either
+(a) RESOLVES the episode's minor problem while making the overarching problem
+    worse, or
+(b) makes the minor problem significantly worse, raising stakes.
+An episode that neither resolves nor worsens anything is a violation.
+
+**Finale:** rewards the long listen. Every problem, question, and hanging
+thread across the series is resolved. No open doors — except where Horror's
+dark exception (§3) explicitly allows a lingering ambiguity. The finale is not
+a cliffhanger. The finale is the payoff.
+
+**BLP hard rules (AUTO-FAIL) for series:**
+1. Non-finale ends with no resolution and no worsening
+2. Finale leaves any named series problem unresolved
+3. Finale ends on a cliffhanger (non-Horror)
+
+**Required Hal brief fields (series):**
+- `OVERARCHING_PROBLEM` (all episodes, carries forward)
+- `EPISODE_MINOR_PROBLEM`
+- `EPISODE_RESOLUTION_SHAPE` (resolve-or-worsen + cliffhanger form)
+- `SERIES_THREADS_RESOLVED` (finale only — explicit list of every open thread resolved)
+
+### 7.3 Enforcement
+
+Implemented as BLP hard-rule checks per §5.b. Violations AUTO-FAIL into the
+two-strike rewrite loop, with the violated rule and specific unresolved element
+passed as the rewrite instruction. Genre ending contracts (§2) layer on top —
+the doctrine is the floor, the genre contract is the ceiling.
+
+*Locked by Marc July 8, 2026 (Telegram, 7:11 PM EDT: "locked").*
