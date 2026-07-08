@@ -393,7 +393,7 @@ export function buildCoverPrompt(params: CoverPromptParams): string {
   // thumbnail-readable. We swap the full brightness directive for a Horror-specific
   // floor that permits atmosphere without collapsing into unreadable darkness.
   const HORROR_BRIGHTNESS_FLOOR =
-    'The focal subject (face, object, or key element) MUST be strongly and visibly lit — bright enough to read at 100x100px thumbnail. Darkness is permitted in the background and periphery only. The key focal point must have high contrast against its surroundings: use a strong practical light source (flashlight, lantern, bioluminescent glow, fire, moonlight) to illuminate the subject directly. No full-frame darkness. The single most important visual element must be the brightest thing in the frame.'
+    'BRIGHTNESS FLOOR — HORROR EDITION: The entire image must be visibly exposed, not black. Background and environment must read as distinct detail — visible stone texture, atmospheric haze, rock walls, roots, architectural detail, sky, or terrain — never a solid black void. The focal subject (face, object, or key element) must be the brightest element in the frame, lit by a strong practical source (lantern, bioluminescent glow, flashlight, fire, moonlight). Lift the midtones strongly: deep shadows may exist but must not dominate more than 20% of the frame. Think Stephen King hardcover or Guillermo del Toro film still — atmospheric and dark in mood, but every surface is readable. No full-frame darkness. No black void backgrounds.'
   const brightnessDirective = darkException ? HORROR_BRIGHTNESS_FLOOR : BRIGHTNESS_DIRECTIVE
 
   // ── RETRY / CHANGE COVER PATH (STEP 2 fix) ──────────────────────────────
