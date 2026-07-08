@@ -90,7 +90,69 @@ async function cleanupZombieJobs(supabase: SupabaseClient): Promise<number> {
   if (count > 0) {
     console.log(`[self-healing] Reset ${count} zombie job(s) from runners: ${zombieHolderIds.join(', ')}`)
   }
-  return count
+
+  // ── Second pass: unlocked zombie cleanup ──────────────────────────────────
+  // Jobs where status='running', locked_by IS NULL, and updated_at is older
+  // than UNLOCKED_ZOMBIE_STALE_MS are invisible to both the heartbeat-based
+  // cleanup above AND the job pickup query. They must be reset independently.
+  const unlockedZombieCount = await cleanupUnlockedZombieJobs(supabase)
+
+  return count + unlockedZombieCount
+}
+
+// ---------------------------------------------------------------------------
+// Unlocked zombie cleanup — second cleanup pass
+// ---------------------------------------------------------------------------
+
+const UNLOCKED_ZOMBIE_STALE_MS = 15 * 60 * 1000 // 15 min
+
+/**
+ * Reset "unlocked zombie" jobs: status='running', locked_by IS NULL,
+ * updated_at older than UNLOCKED_ZOMBIE_STALE_MS.
+ *
+ * These are invisible to the heartbeat-based zombie cleaner (which requires
+ * locked_by to match a stale runner row) AND to the job pickup query (which
+ * skips status='running' rows). A second dedicated pass is required.
+ *
+ * Resets to status='queued' so any available runner can pick them up.
+ * Returns the number of jobs reset.
+ */
+async function cleanupUnlockedZombieJobs(supabase: SupabaseClient): Promise<number> {
+  const cutoff = new Date(Date.now() - UNLOCKED_ZOMBIE_STALE_MS).toISOString()
+
+  const { data: candidates, error: fetchError } = await supabase
+    .from('production_jobs')
+    .select('id, updated_at')
+    .eq('status', 'running')
+    .is('locked_by', null)
+    .lt('updated_at', cutoff)
+
+  if (fetchError || !candidates?.length) return 0
+
+  let resetCount = 0
+  for (const job of candidates as Array<{ id: string; updated_at: string }>) {
+    const ageMin = Math.round((Date.now() - new Date(job.updated_at).getTime()) / 60_000)
+
+    const { error: updateError } = await supabase
+      .from('production_jobs')
+      .update({
+        status: 'queued',
+        locked_by: null,
+        locked_at: null,
+      })
+      .eq('id', job.id)
+      .eq('status', 'running')   // guard: only reset if still running
+      .is('locked_by', null)     // guard: only reset if still unlocked
+
+    if (!updateError) {
+      console.log(`[self-healing] UNLOCKED_ZOMBIE_RESET: job ${job.id} reset after ${ageMin}min with no lock`)
+      resetCount++
+    } else {
+      console.warn(`[self-healing] Failed to reset unlocked zombie ${job.id}:`, updateError.message)
+    }
+  }
+
+  return resetCount
 }
 
 // ---------------------------------------------------------------------------
