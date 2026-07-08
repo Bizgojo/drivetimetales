@@ -1,3 +1,5 @@
+/** @deprecated Repair workflow decommissioned 2026-07-08 per Marc Ruling 1. Do not use. **/
+
 /**
  * Autonomous Repair Playbooks
  *

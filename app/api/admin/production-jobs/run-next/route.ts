@@ -8741,6 +8741,43 @@ export async function POST(req: NextRequest) {
         })
       }
 
+      // ── Path 2: local render worker routing (ATL render-path-launchd) ──────
+      // If render_path = 'local', queue the job for the Mac render worker to pick
+      // up via launchd (scripts/render-worker/render-worker.mjs).
+      // Vercel returns early here; the local worker advances current_step itself.
+      const jobRenderPath = String((lockedJob as any).render_path || 'vercel').trim()
+      if (jobRenderPath === 'local') {
+        const localLogs = appendLog(lockedJob, 'render_path=local: handing off to local Mac render worker (launchd)', {
+          storyId: lockedJob.story_id,
+          renderPath: 'local',
+          note: 'Vercel returned early. local-render-worker will pick this job up and advance current_step.',
+        })
+        const { data: localJob, error: localUpdateError } = await supabase
+          .from('production_jobs')
+          .update({
+            status: 'queued',
+            locked_by: null,
+            locked_at: null,
+            error_json: null,
+            logs: localLogs,
+          })
+          .eq('id', lockedJob.id)
+          .select('*')
+          .single()
+        if (localUpdateError) throw new Error(`Failed to hand off job to local render worker: ${localUpdateError.message}`)
+        return NextResponse.json({
+          success: true,
+          action: 'local_render_handoff',
+          jobId: localJob.id,
+          currentStep: step,
+          nextStep: 'render_final_mix',
+          renderPath: 'local',
+          message: 'Job queued for local Mac render worker via launchd.',
+          logs: localLogs,
+        })
+      }
+      // ── END Path 2 ──────────────────────────────────────────────────────────
+
       const origin = new URL(req.url).origin
       const result = await runStandaloneRenderFinalMix(lockedJob, origin)
       const logs = appendLog(lockedJob, result.success
