@@ -59,10 +59,28 @@ const CONFLICTING_PALETTE_WORDS = [
 // ─── Dark exception branch ──────────────────────────────────────────────────
 
 /**
- * Returns true when the story's content explicitly signals night/darkness/shadow.
- * This is a NAMED BRANCH — darkness in covers must be intentional, not accidental.
+ * Returns true ONLY when the genre is Horror (case-insensitive).
+ *
+ * Per GENRE-ATTRIBUTES-SPEC v1.0 §3: Horror is the ONLY genre where the dark
+ * exception applies. The previous keyword-heuristic approach incorrectly
+ * triggered the exception for any story containing words like "dusk", "shadow",
+ * or "dark" — suppressing the brightness directive on Western, Thriller, and
+ * other genres where bright covers are required.
+ *
+ * The dark exception means: darker palettes are ALLOWED, but the brightness
+ * floor (thumbnail legibility) still applies. It does NOT mean "suppress all
+ * brightness guidance."
  */
 export function isDarkExceptionStory(params: CoverPromptParams): boolean {
+  const genre = (params.genre || '').toLowerCase().trim()
+  return genre === 'horror' || genre === 'horror/psychological'
+}
+
+/**
+ * Keyword-based heuristic kept as a fallback for legacy callers.
+ * @deprecated Use isDarkExceptionStory() which is genre-gated per the spec.
+ */
+export function isDarkExceptionByKeyword(params: CoverPromptParams): boolean {
   const haystack = [
     params.genre,
     params.tone,
