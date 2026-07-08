@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.endlesstales.renderworker</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/opt/homebrew/bin/node</string>
+    <string>/Users/williampostlewaite/Projects/drivetimetales/scripts/render-worker/render-worker.mjs</string>
+  </array>
+  <key>WorkingDirectory</key>
+  <string>/Users/williampostlewaite/Projects/drivetimetales</string>
+  <key>KeepAlive</key>
+  <true/>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>StandardOutPath</key>
+  <string>/Users/williampostlewaite/Projects/drivetimetales/scripts/render-worker/render-worker.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/williampostlewaite/Projects/drivetimetales/scripts/render-worker/render-worker.log</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>NODE_ENV</key>
+    <string>production</string>
+  </dict>
+</dict>
+</plist>
