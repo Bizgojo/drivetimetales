@@ -153,7 +153,7 @@ export async function POST(req: NextRequest) {
       'Caroline Drake': 'Iris Calloway', 'Claire Ashford': 'Iris Calloway', 'Edmund Worth': 'James Alcott',
       'Dani Reeves': 'Nora Ashby', 'Vera Blackwood': 'Quinn Merritt', 'Buck Callahan': 'Finn Calloway',
       'Zara Osei': 'Marcus Hale', 'Vera Moss': 'Nora Ashby', 'Dr. Kai Osei': 'Elliott Crane',
-      'Zara Storm': 'Sage Wilder', 'Coop Delray': 'Ray Dolan'
+      'Zara Storm': 'Sage Wilder', 'Coop Delray': 'Ray Dolan', 'Cord Dillard': 'Finn Calloway'
     }
     const resolvedNarrator = NARRATOR_MAP[author] || narrator
 
