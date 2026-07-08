@@ -4,6 +4,7 @@ import { useParams, useRouter } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
 import { supabase } from '@/lib/supabase'
 import StickyHeaderFull from '@/components/StickyHeaderFull'
+import CoverTracking from '@/components/CoverTracking'
 
 interface Episode {
   id: string
@@ -203,6 +204,7 @@ export default function SeriesDetailPage() {
 
   return (
     <div style={{ background: '#020617', minHeight: '100vh', paddingBottom: '40px' }}>
+      <CoverTracking />
       <StickyHeaderFull />
 
       {/* Hero */}
@@ -303,6 +305,9 @@ export default function SeriesDetailPage() {
           return (
             <div
               key={ep.id}
+              data-cover-track={ep.id}
+              data-cover-page="series"
+              data-cover-pos={idx + 1}
               onClick={() => handleEpisodeTap(ep)}
               style={{
                 borderRadius: 12,

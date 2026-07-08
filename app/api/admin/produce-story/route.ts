@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
-import { buildCoverPrompt } from '@/lib/coverPrompt'
+import { buildCoverPrompt, isDarkExceptionStory } from '@/lib/coverPrompt'
+import { deriveCoverAttributesFromParams } from '@/lib/coverAttributes'
 import { sanitizeSeriesTitle } from '@/lib/seriesTitle'
 
 export const runtime = 'nodejs'
@@ -218,6 +219,19 @@ export async function POST(req: NextRequest) {
       const { data: { publicUrl } } = supabase.storage.from('audio').getPublicUrl(storagePath)
       updates.cover_url = publicUrl
       steps.cover = { status: 'done', message: publicUrl }
+      // C6 cover attribute tagging — best-effort, separate update so a missing
+      // column can never break the main story save.
+      try {
+        const coverParams = { title, genre, script }
+        const coverAttributes = deriveCoverAttributesFromParams(coverParams, {
+          darkException: isDarkExceptionStory({ title, author, genre, script }),
+        })
+        const { error: attrError } = await supabase
+          .from('stories')
+          .update({ cover_attributes: coverAttributes })
+          .eq('id', realStoryId)
+        if (attrError) console.warn('[cover-attributes] update failed:', attrError.message)
+      } catch (attrErr) { console.warn('[cover-attributes] derivation failed:', attrErr) }
     } catch (e) { steps.cover = { status: 'error', message: String(e) } }
 
     try { const id = await resolveAuthorId(author); if (id) { updates.author_id = id; steps.author = { status: 'done', message: author } } else steps.author = { status: 'error', message: `Not found: ${author}` } }

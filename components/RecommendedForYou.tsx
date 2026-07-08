@@ -217,12 +217,17 @@ export default function RecommendedForYou({ excludeIds = [] }: { excludeIds?: st
     <section style={{ padding: '1.5rem 1rem 1rem' }}>
       <h2 className="text-lg font-bold text-white" style={{ marginBottom: '1rem' }}>RECOMMENDED FOR YOU</h2>
       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-        {displayItems.map(item => {
+        {displayItems.map((item, idx) => {
           if (item.type === 'series') {
-            return <SeriesCard key={'series-' + item.group.id} id={item.group.id} series_name={item.group.series_name} genre={item.group.genre} author={item.group.author} episode_count={item.group.episode_count} total_duration_mins={item.group.total_duration_mins} cover_url={item.group.cover_url} description={item.group.description} episodes={item.group.episodes} play_episode_id={item.group.play_episode_id} resume_seconds={item.group.resume_seconds} is_in_progress={item.group.is_in_progress} />
+            const seriesCoverStoryId = item.group.play_episode_id || item.group.episodes?.[0]?.id
+            return (
+              <div key={'series-' + item.group.id} data-cover-track={seriesCoverStoryId} data-cover-page="home:recommended" data-cover-pos={idx + 1}>
+                <SeriesCard id={item.group.id} series_name={item.group.series_name} genre={item.group.genre} author={item.group.author} episode_count={item.group.episode_count} total_duration_mins={item.group.total_duration_mins} cover_url={item.group.cover_url} description={item.group.description} episodes={item.group.episodes} play_episode_id={item.group.play_episode_id} resume_seconds={item.group.resume_seconds} is_in_progress={item.group.is_in_progress} />
+              </div>
+            )
           }
           return (
-            <div key={item.story.id} onClick={() => router.push('/player/' + item.story.id + '?autoplay=1&playNow=1')} style={{ cursor: 'pointer' }}>
+            <div key={item.story.id} data-cover-track={item.story.id} data-cover-page="home:recommended" data-cover-pos={idx + 1} onClick={() => router.push('/player/' + item.story.id + '?autoplay=1&playNow=1')} style={{ cursor: 'pointer' }}>
               <HorizontalStoryCard id={item.story.id} title={item.story.title} genre={item.story.genre} author={item.story.author || 'Endless Tales'} duration_mins={item.story.duration_mins} cover_url={item.story.cover_url} avg_rating={item.story.avg_rating} review_count={item.story.review_count} />
             </div>
           )

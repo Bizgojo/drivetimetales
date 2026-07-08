@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 
 export const runtime = 'nodejs'
 import { createClient } from '@supabase/supabase-js'
-import { buildCoverDirectionBrief, buildCoverPrompt, ULTRA_BRIGHT_DIRECTIVE } from '@/lib/coverPrompt'
+import { buildCoverDirectionBrief, buildCoverPrompt, ULTRA_BRIGHT_DIRECTIVE, isDarkExceptionStory } from '@/lib/coverPrompt'
+import { deriveCoverAttributesFromParams } from '@/lib/coverAttributes'
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let sharp: any
 try {
@@ -392,6 +393,22 @@ export async function POST(req: NextRequest) {
         substep: 'stories.cover_url update',
         error: coverUpdateError.message,
       })
+    }
+
+    // C6 cover attribute tagging — best-effort, never blocks cover delivery.
+    try {
+      const coverAttributes = deriveCoverAttributesFromParams(promptParams, {
+        darkException: isDarkExceptionStory(promptParams),
+        luminance,
+        luminanceThreshold: LUMINANCE_THRESHOLD,
+      })
+      const { error: attrError } = await supabase
+        .from('stories')
+        .update({ cover_attributes: coverAttributes })
+        .eq('id', storyId)
+      if (attrError) console.warn('[cover-attributes] update failed:', attrError.message)
+    } catch (attrErr) {
+      console.warn('[cover-attributes] derivation failed:', attrErr)
     }
 
     console.log(`✅ Cover regenerated: ${publicUrl}`)

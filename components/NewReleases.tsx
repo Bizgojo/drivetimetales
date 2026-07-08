@@ -134,7 +134,7 @@ export default function NewReleases({ excludeIds = [], onIdsLoaded }: { excludeI
       <h2 className="text-lg font-bold text-white" style={{ marginBottom: '1rem' }}>NEW ARRIVALS</h2>
       {/* When only 1 item qualifies, use a single full-width column so the card isn't half-width */}
       <div style={{ display: 'grid', gridTemplateColumns: stories.length === 1 ? '1fr' : 'repeat(2, 1fr)', gap: '0.75rem' }}>
-        {stories.map(s => {
+        {stories.map((s, idx) => {
           // Series-first: series cards open the series container, not EP1 directly.
           // Standalone stories keep existing direct-player behavior.
           const href = s.series_id ? `/series/${s.series_id}` : `/player/${s.id}?autoplay=1&playNow=1`
@@ -142,6 +142,9 @@ export default function NewReleases({ excludeIds = [], onIdsLoaded }: { excludeI
           return (
             <div
               key={s.id}
+              data-cover-track={s.id}
+              data-cover-page="home:new_arrivals"
+              data-cover-pos={idx + 1}
               onClick={() => router.push(href)}
               className="bg-slate-800 rounded-xl hover:bg-slate-700 transition"
               style={{ display: 'block', padding: '0.5rem', cursor: 'pointer' }}

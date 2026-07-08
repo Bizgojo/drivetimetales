@@ -6,6 +6,7 @@ import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/contexts/AuthContext'
 import StickyHeaderFull from '@/components/StickyHeaderFull'
 import ReviewModal from '@/components/ReviewModal'
+import CoverTracking from '@/components/CoverTracking'
 import { buildSeriesPlaybackTarget, storeSeriesPlayback } from '@/lib/seriesPlayback'
 import { getAllLocalPlayerProgress, mergePlayerProgress } from '@/lib/playerProgress'
 import {
@@ -669,6 +670,7 @@ export default function LibraryPage() {
         paddingBottom: validPlaylist.length > 0 ? '90px' : '20px',
       }}
     >
+      <CoverTracking />
       <StickyHeaderFull />
 
       {/* Genre picker — established one-row treatment */}
@@ -781,13 +783,14 @@ export default function LibraryPage() {
             No stories in this genre yet.
           </div>
         )}
-        {filteredItems.map((item) => {
+        {filteredItems.map((item, cardIndex) => {
           const state = getCardState(item)
           return (
             <StoryCard
               key={item.key}
               item={item}
               state={state}
+              position={cardIndex + 1}
               onPlay={() => {
                 if (item.type === 'single' && item.story) playSingle(item.story.id)
                 else if (item.type === 'series') playSeries(item)
@@ -905,6 +908,7 @@ function formatMinutes(mins: number) {
 function StoryCard({
   item,
   state,
+  position,
   onPlay,
   onCoverClick,
   onTogglePlaylist,
@@ -918,6 +922,7 @@ function StoryCard({
     isNotForMe: boolean
     reviewed: boolean
   }
+  position?: number
   onPlay: () => void
   onCoverClick: () => void
   onTogglePlaylist: () => void
@@ -937,8 +942,13 @@ function StoryCard({
   const showRate = state.completed && !state.reviewed
   const showPlayAgain = !isSeries && state.completed && state.reviewed
 
+  const coverTrackId = item.story?.id || item.playEpisodeId || item.firstEpisodeId
+
   return (
     <div
+      data-cover-track={coverTrackId}
+      data-cover-page="library"
+      data-cover-pos={position}
       style={{
         background: '#2b313d',
         borderRadius: '12px',

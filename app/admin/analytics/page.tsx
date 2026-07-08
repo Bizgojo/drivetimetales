@@ -33,7 +33,7 @@ function fmtMoney(n: number) {
 export default function AdminAnalyticsPage() {
   const router = useRouter()
   const [loading, setLoading] = useState(true)
-  const [tab, setTab] = useState<'overview' | 'subscribers' | 'stories' | 'proforma'>('overview')
+  const [tab, setTab] = useState<'overview' | 'subscribers' | 'stories' | 'covers' | 'proforma'>('overview')
 
   // Core metrics
   const [subs, setSubs] = useState<any[]>([])
@@ -51,10 +51,34 @@ export default function AdminAnalyticsPage() {
   const [newWeek, setNewWeek] = useState(0)
   const [trialEnding3, setTrialEnding3] = useState(0) // trials ending in 3 days
 
+  // C6 — Cover performance (TTR)
+  const [coverData, setCoverData] = useState<any>(null)
+  const [coverLoading, setCoverLoading] = useState(false)
+  const [coverError, setCoverError] = useState('')
+
   const bg = '#FAF9F6'
   const card = { background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: '20px 24px', marginBottom: 16 }
 
   useEffect(() => { load() }, [])
+
+  useEffect(() => {
+    if (tab === 'covers' && !coverData && !coverLoading) loadCovers()
+  }, [tab])
+
+  async function loadCovers() {
+    setCoverLoading(true)
+    setCoverError('')
+    try {
+      const res = await fetch('/api/admin/cover-performance', { credentials: 'same-origin' })
+      const payload = await res.json()
+      if (!res.ok) throw new Error(payload.error || 'Request failed')
+      setCoverData(payload)
+    } catch (e: any) {
+      setCoverError(e?.message || String(e))
+    } finally {
+      setCoverLoading(false)
+    }
+  }
 
   async function load() {
     setLoading(true)
@@ -185,7 +209,7 @@ export default function AdminAnalyticsPage() {
 
       {/* Tabs */}
       <div style={{ display: 'flex', gap: 8, marginBottom: 24 }}>
-        {(['overview', 'subscribers', 'stories', 'proforma'] as const).map(t => (
+        {(['overview', 'subscribers', 'stories', 'covers', 'proforma'] as const).map(t => (
           <button key={t} onClick={() => setTab(t)} style={{ padding: '8px 20px', borderRadius: 8, border: 'none', background: tab === t ? '#f97316' : '#e5e7eb', color: tab === t ? 'white' : '#111', fontWeight: 700, cursor: 'pointer', textTransform: 'capitalize', fontSize: 14 }}>{t}</button>
         ))}
       </div>
@@ -372,6 +396,110 @@ export default function AdminAnalyticsPage() {
             </table>
           )}
         </div>
+      )}
+
+      {/* ── COVERS TAB (C6 — cover performance / TTR) ── */}
+      {tab === 'covers' && (
+        <>
+          {coverLoading && (
+            <div style={{ ...card, textAlign: 'center', color: '#9ca3af' }}>Loading cover performance…</div>
+          )}
+          {coverError && (
+            <div style={{ ...card, color: '#dc2626', fontWeight: 600 }}>
+              Failed to load cover performance: {coverError}
+              <button onClick={loadCovers} style={{ marginLeft: 12, background: '#f97316', color: 'white', border: 'none', padding: '4px 12px', borderRadius: 6, cursor: 'pointer', fontWeight: 600 }}>Retry</button>
+            </div>
+          )}
+          {coverData && (
+            <>
+              {/* Summary */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 16 }}>
+                {[
+                  { label: 'Cover Impressions', value: fmt(coverData.totalImpressions || 0), color: '#0891b2' },
+                  { label: 'Cover Taps', value: fmt(coverData.totalTaps || 0), color: '#2563eb' },
+                  { label: 'Overall TTR', value: coverData.totalImpressions >= coverData.floor ? ((coverData.totalTaps / coverData.totalImpressions) * 100).toFixed(1) + '%' : 'collecting', color: '#16a34a' },
+                  { label: 'Tagged Covers', value: `${coverData.taggedStories}/${coverData.storiesWithCovers}`, color: '#7c3aed' },
+                ].map(m => (
+                  <div key={m.label} style={{ ...card, marginBottom: 0 }}>
+                    <div style={{ color: '#6b7280', fontSize: 12, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 6 }}>{m.label}</div>
+                    <div style={{ color: m.color, fontSize: 28, fontWeight: 900, lineHeight: 1 }}>{m.value}</div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Attribute rollups — what KIND of cover wins */}
+              <div style={{ ...card }}>
+                <h2 style={{ margin: '0 0 4px', fontSize: 16, fontWeight: 800, color: '#111' }}>🎨 What Kind of Cover Wins</h2>
+                <p style={{ color: '#6b7280', fontSize: 12, margin: '0 0 16px' }}>Tap-through rate grouped by cover attribute. Groups under {fmt(coverData.floor)} impressions show “collecting”. Rollups span all placements — use the placement table below for band-clean comparison.</p>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>
+                  {([['palette', 'Palette'], ['dominant_subject', 'Subject'], ['face_visible', 'Face Visible'], ['temperature', 'Temperature']] as const).map(([key, label]) => (
+                    <div key={key} style={{ background: '#f9fafb', borderRadius: 10, padding: 14 }}>
+                      <div style={{ color: '#6b7280', fontSize: 12, fontWeight: 700, marginBottom: 8 }}>{label}</div>
+                      {Object.keys(coverData.attributes?.[key] || {}).length === 0 && (
+                        <div style={{ color: '#9ca3af', fontSize: 12 }}>No tagged data yet</div>
+                      )}
+                      {Object.entries(coverData.attributes?.[key] || {}).sort((a: any, b: any) => (b[1].ttr ?? -1) - (a[1].ttr ?? -1)).map(([value, stats]: [string, any]) => (
+                        <div key={value} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', padding: '4px 0', borderBottom: '1px solid #f3f4f6' }}>
+                          <span style={{ color: '#111', fontSize: 12, fontWeight: 600 }}>{value}</span>
+                          <span style={{ color: stats.collecting ? '#9ca3af' : '#16a34a', fontSize: 12, fontWeight: 800 }}>
+                            {stats.collecting ? `collecting (${fmt(stats.impressions)})` : (stats.ttr * 100).toFixed(1) + '%'}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Per-cover TTR by placement band */}
+              <div style={{ ...card }}>
+                <h2 style={{ margin: '0 0 4px', fontSize: 16, fontWeight: 800, color: '#111' }}>🖼️ Cover TTR by Placement</h2>
+                <p style={{ color: '#6b7280', fontSize: 12, margin: '0 0 16px' }}>Taps ÷ impressions, compared within the same page + position band so placement doesn’t pollute the signal. Covers under {fmt(coverData.floor)} impressions in a band show “collecting”.</p>
+                {(coverData.rows || []).length === 0 ? (
+                  <div style={{ textAlign: 'center', padding: 32, color: '#9ca3af' }}>No impressions recorded yet — data appears as listeners browse covers.</div>
+                ) : (
+                  <div style={{ overflowX: 'auto' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                      <thead>
+                        <tr style={{ borderBottom: '2px solid #e5e7eb' }}>
+                          {['Cover', 'Story', 'Page', 'Positions', 'Impressions', 'Taps', 'TTR', 'Attributes'].map(h => (
+                            <th key={h} style={{ textAlign: 'left', padding: '8px 12px', color: '#6b7280', fontWeight: 700, whiteSpace: 'nowrap' }}>{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {(coverData.rows || []).map((r: any, i: number) => (
+                          <tr key={`${r.story_id}-${r.page}-${r.position_band}`} style={{ borderBottom: '1px solid #f3f4f6', background: i % 2 === 0 ? '#fff' : '#fafafa' }}>
+                            <td style={{ padding: '8px 12px' }}>
+                              {r.cover_url ? <img src={r.cover_url} alt="" style={{ width: 40, height: 40, borderRadius: 6, objectFit: 'cover' }} /> : '—'}
+                            </td>
+                            <td style={{ padding: '8px 12px', fontWeight: 700, color: '#111', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.title}</td>
+                            <td style={{ padding: '8px 12px', color: '#374151' }}>{r.page}</td>
+                            <td style={{ padding: '8px 12px', color: '#374151' }}>{r.position_band}</td>
+                            <td style={{ padding: '8px 12px', fontWeight: 700, color: '#111' }}>{fmt(r.impressions)}</td>
+                            <td style={{ padding: '8px 12px', color: '#374151' }}>{fmt(r.taps)}</td>
+                            <td style={{ padding: '8px 12px' }}>
+                              {r.collecting ? (
+                                <span style={{ color: '#9ca3af', fontSize: 12, fontWeight: 600 }}>collecting ({fmt(r.impressions)}/{fmt(coverData.floor)})</span>
+                              ) : (
+                                <span style={{ color: '#16a34a', fontWeight: 800 }}>{(r.ttr * 100).toFixed(1)}%</span>
+                              )}
+                            </td>
+                            <td style={{ padding: '8px 12px', color: '#6b7280', fontSize: 11 }}>
+                              {r.cover_attributes
+                                ? `${r.cover_attributes.palette || '?'} · ${r.cover_attributes.dominant_subject || '?'} · ${r.cover_attributes.face_visible ? 'face' : 'no face'} · ${r.cover_attributes.temperature || '?'}`
+                                : 'untagged'}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            </>
+          )}
+        </>
       )}
 
       {/* ── PROFORMA TAB ── */}

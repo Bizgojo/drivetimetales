@@ -13,6 +13,7 @@ import InstallAppBanner from '@/components/InstallAppBanner'
 import YourPlaylist from '@/components/YourPlaylist'
 import HorizontalStoryCard from '@/components/HorizontalStoryCard'
 import SeriesCard from '@/components/SeriesCard'
+import CoverTracking from '@/components/CoverTracking'
 import { buildSeriesPlaybackTarget } from '@/lib/seriesPlayback'
 
 declare global {
@@ -230,11 +231,16 @@ function HomeSearchResults({ query }: { query: string }) {
         <div style={{ color: 'white', fontSize: '13px', padding: '0.75rem 0' }}>No stories found.</div>
       )}
       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-        {items.map((item) => {
+        {items.map((item, idx) => {
           if (item.type === 'series') {
             return (
-              <SeriesCard
+              <div
                 key={`series-${item.group.id}`}
+                data-cover-track={item.group.play_episode_id || item.group.episodes?.[0]?.id}
+                data-cover-page="home:search"
+                data-cover-pos={idx + 1}
+              >
+              <SeriesCard
                 id={item.group.id}
                 series_name={item.group.series_name}
                 genre={item.group.genre}
@@ -248,11 +254,12 @@ function HomeSearchResults({ query }: { query: string }) {
                 resume_seconds={item.group.resume_seconds}
                 is_in_progress={item.group.is_in_progress}
               />
+              </div>
             )
           }
 
           return (
-            <div key={item.story.id} onClick={() => router.push(`/player/${item.story.id}?autoplay=1&playNow=1`)} style={{ cursor: 'pointer' }}>
+            <div key={item.story.id} data-cover-track={item.story.id} data-cover-page="home:search" data-cover-pos={idx + 1} onClick={() => router.push(`/player/${item.story.id}?autoplay=1&playNow=1`)} style={{ cursor: 'pointer' }}>
               <HorizontalStoryCard
                 id={item.story.id}
                 title={item.story.title}
@@ -325,6 +332,7 @@ function HomeContent() {
 
   return (
     <div className="min-h-screen bg-slate-950">
+      <CoverTracking />
       <HomeHeader />
       <main className="pb-20">
         <div style={{ padding: '1rem 1rem 0' }}>
