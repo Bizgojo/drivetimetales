@@ -9592,8 +9592,8 @@ export async function POST(req: NextRequest) {
         // Mark job needs_attention so it surfaces in Command Center and stops cycling
         const { data: updatedJob, error: updateError } = await supabase.from('production_jobs')
           .update({
-            status: 'failed',
-            error_json: { kind: 'series_render_retry_exhausted', attempts: seriesRenderAttempts, lastError: result.lastError, step: 'series_render_final_mix', needsAttention: true, needsAttentionReason: `series_render_final_mix exhausted ${MAX_SERIES_RENDER_ATTEMPTS} attempts. Last error: ${String(result.lastError).slice(0, 400)}` },
+            status: 'needs_attention',
+            error_json: { kind: 'series_render_retry_exhausted', attempts: seriesRenderAttempts, lastError: result.lastError, step: 'series_render_final_mix' },
             state_json: { ...result.state, seriesRenderAttempts },
             logs,
             locked_at: null,
