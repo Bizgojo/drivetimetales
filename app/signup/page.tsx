@@ -200,7 +200,7 @@ function SignUpContent() {
         )}
 
         <form onSubmit={handleSubmit} style={{ background: 'linear-gradient(180deg, #27364d 0%, #1f2d43 100%)', border: '1px solid rgba(148,163,184,0.22)', borderRadius: '16px', padding: '1.5rem', boxShadow: '0 18px 45px rgba(0,0,0,0.28)' }}>
-          <h2 style={{ color: 'white', fontSize: '20px', fontWeight: 'bold', marginBottom: '1.5rem', textAlign: 'center' }}>Start Your 14-Day Free Trial</h2>
+          <h2 style={{ color: 'white', fontSize: '20px', fontWeight: 'bold', marginBottom: '1.5rem', textAlign: 'center' }}>Start Your Free Trial</h2>
 
           {error && <div style={{ backgroundColor: '#dc2626', color: 'white', padding: '0.75rem', borderRadius: '8px', marginBottom: '1rem', fontSize: '14px', textAlign: 'center' }}>{error}</div>}
           {alreadyExists && (

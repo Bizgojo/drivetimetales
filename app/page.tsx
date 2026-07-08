@@ -223,10 +223,10 @@ function LandingContent() {
               transition: 'all 0.3s ease',
               boxShadow: '0 0 40px rgba(240,160,48,0.3), 0 4px 20px rgba(0,0,0,0.4)'
             }}>
-              ▶ &nbsp;Start your 14-day free trial
+              ▶ &nbsp;Start your free trial
             </Link>
             <span style={{ fontSize: '0.85rem', color: 'rgba(240,236,228,0.55)' }}>
-              Credit card required. Cancel before the trial ends and you won&apos;t be charged.
+              7-day free trial · credit card required · use a code for 14 days · cancel anytime
             </span>
             <Link href="/guest" style={{
               color: 'rgba(240,236,228,0.72)', fontSize: '0.9rem',
@@ -274,7 +274,7 @@ function LandingContent() {
             { icon: '🛣️', title: 'Hands-Free Controls', desc: 'Large buttons, simple gestures, sticky playback bar. Designed so you never need to look at your phone while driving.' },
             { icon: '📚', title: 'Something for Everyone', desc: 'Learn something new with our educational series. Laugh out loud with comedy. Get lost in a thriller. Rediscover the classics. New stories added every week.' },
             { icon: '🎵', title: 'Road Trip Playlists', desc: "Heading cross-country? Build a playlist of multiple stories and series to carry you through the whole trip. Hours of entertainment, queued and ready." },
-            { icon: '💰', title: 'Simple Access', desc: "Start with a 14-day free trial, then keep listening with one subscription. Cancel anytime before the trial ends and you won't be charged." },
+            { icon: '💰', title: 'Simple Access', desc: "Start with a 7-day free trial, then keep listening with one subscription. Have a code? It extends your trial to 14 days. Cancel anytime before the trial ends and you won't be charged." },
           ].map((f, i) => (
             <div key={i} className="land-card" style={{
               background: '#12121a', border: '1px solid rgba(255,255,255,0.05)',
@@ -306,7 +306,7 @@ function LandingContent() {
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 0, maxWidth: '600px', margin: '3rem auto 0' }}>
           {[
-            { num: '1', title: 'Start Your Free Trial', desc: "Create your account, choose a plan, and start a 14-day trial. Credit card required, with no charge if you cancel before the trial ends." },
+            { num: '1', title: 'Start Your Free Trial', desc: "Create your account, choose a plan, and start a 7-day free trial. Have a promo code? Enter it to get 14 days. Credit card required — no charge if you cancel before the trial ends." },
             { num: '2', title: 'Browse the Library', desc: 'Filter by genre, length, or mood. Find stories that match your drive time.' },
             { num: '3', title: 'Hit Play and Drive', desc: 'Tap play, set your phone down, and let the story carry you to your destination.' },
           ].map((s, i) => (
@@ -429,7 +429,7 @@ function LandingContent() {
           transition: 'all 0.3s ease',
           boxShadow: '0 0 40px rgba(240,160,48,0.3), 0 4px 20px rgba(0,0,0,0.4)'
         }}>
-          ▶ &nbsp;Start your 14-day free trial
+          ▶ &nbsp;Start your free trial
         </Link>
         <div style={{ position: 'relative', zIndex: 1, marginTop: '1rem' }}>
           <Link href="/guest" style={{
