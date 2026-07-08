@@ -287,15 +287,28 @@ export async function runRenderFinalMix(storyId: string): Promise<{
   error?: string
   [key: string]: unknown
 }> {
-  // Clean up any leftover et-mix-* dirs from previous invocations on this
+  // Clean up STALE leftover et-mix-* dirs from previous invocations on this
   // warm container — Vercel reuses /tmp across calls; accumulated dirs cause ENOSPC.
+  // CRITICAL: only remove dirs older than 20 minutes. With Fluid Compute, multiple
+  // renders can run concurrently in the same container — deleting ALL et-mix dirs
+  // at startup destroys a concurrent render's working files mid-render, causing
+  // random "Failed to prepare story segment segment_NNNN.mp3" failures.
   try {
     const tmpBase = os.tmpdir()
+    const staleMs = 20 * 60 * 1000
     const entries = await fs.readdir(tmpBase)
     await Promise.all(
       entries
         .filter(e => e.startsWith('et-mix-'))
-        .map(e => fs.rm(path.join(tmpBase, e), { recursive: true, force: true }).catch(() => {}))
+        .map(async e => {
+          const dirPath = path.join(tmpBase, e)
+          try {
+            const stat = await fs.stat(dirPath)
+            if (Date.now() - stat.mtimeMs > staleMs) {
+              await fs.rm(dirPath, { recursive: true, force: true })
+            }
+          } catch { /* ignore per-dir errors */ }
+        })
     )
   } catch { /* never block on cleanup */ }
 
