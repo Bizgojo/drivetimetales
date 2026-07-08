@@ -1879,6 +1879,50 @@ function voiceMatchesRegionalTags(voice: CharacterVoiceRow, regionalTags: string
   return regionalTags.some(tag => voiceTags.includes(tag))
 }
 
+// ── Hard rotation exclusion: last 20 stories ────────────────────────────────
+// QUAL-001 fix: voices used in the most recent 20 completed stories are
+// excluded from selection (hard exclusion), not just down-weighted.
+// This prevents voice fatigue from the same voices appearing in back-to-back
+// stories for listeners who binge.
+//
+// Implementation: fetch character voice assignments from the 20 most recently
+// completed stories, build a "recent voices" exclusion set, and add it to
+// blockedVoiceIds before scoring. If excluding recent voices leaves no valid
+// candidates, fall back to the full pool (soft exclusion grace).
+
+const HARD_ROTATION_STORY_WINDOW = 20
+
+async function getRecentlyUsedVoiceIds(currentStoryId: string): Promise<Set<string>> {
+  try {
+    // Fetch the 20 most recently produced stories (excluding the current one)
+    const { data: recentStories, error } = await supabase
+      .from('production_jobs')
+      .select('state_json')
+      .eq('job_type', 'story')
+      .eq('status', 'complete')
+      .neq('story_id', currentStoryId)
+      .order('completed_at', { ascending: false })
+      .limit(HARD_ROTATION_STORY_WINDOW)
+
+    if (error || !recentStories?.length) return new Set()
+
+    const recentVoiceIds = new Set<string>()
+    for (const job of recentStories) {
+      const stateJson = (job.state_json as Record<string, unknown>) || {}
+      const voiceMap = stateJson.voiceMap as Record<string, string> | undefined
+      if (voiceMap) {
+        for (const voiceId of Object.values(voiceMap)) {
+          if (voiceId) recentVoiceIds.add(voiceId)
+        }
+      }
+    }
+    return recentVoiceIds
+  } catch {
+    // Non-fatal: if query fails, proceed without exclusion
+    return new Set()
+  }
+}
+
 function pickRotatedCandidate(
   scored: Array<{ voice: CharacterVoiceRow; score: number }>,
   meta: { regionalTags: string[] }
@@ -1890,6 +1934,7 @@ function pickRotatedCandidate(
     : []
   const band = regionalMatches.length > 0 ? regionalMatches : baseBand
 
+  // Sort by last_used_at (oldest first) within the band — secondary to hard exclusion
   band.sort((a, b) => {
     if (!a.voice.last_used_at && b.voice.last_used_at) return -1
     if (a.voice.last_used_at && !b.voice.last_used_at) return 1
@@ -2127,8 +2172,23 @@ async function findVoiceForCharacter(
     return { voiceId, reusedVoice: true, voiceName: voiceName || undefined }
   }
 
-  const blockedVoiceIds = new Set<string>([...usedVoiceIds, narratorVoiceId, ...RESERVED_BELLE_B_VOICE_IDS])
-  const scored = scoreCharacterVoiceCandidates(meta, characterVoices, blockedVoiceIds)
+  // Hard rotation exclusion: also block voices used in the last 20 completed stories.
+  // This is a hard exclusion — not a soft down-weight. Falls back to full pool if needed.
+  const recentlyUsedVoiceIds = await getRecentlyUsedVoiceIds(context.storyId)
+  const blockedVoiceIds = new Set<string>([
+    ...usedVoiceIds,
+    narratorVoiceId,
+    ...RESERVED_BELLE_B_VOICE_IDS,
+    ...recentlyUsedVoiceIds,
+  ])
+  let scored = scoreCharacterVoiceCandidates(meta, characterVoices, blockedVoiceIds)
+  if (scored.length === 0 && recentlyUsedVoiceIds.size > 0) {
+    // Hard exclusion removed all candidates — fall back to pool without recent exclusion
+    // (grace mode: avoid infinite voice starvation on small pools)
+    console.log(`  ${characterName}: hard rotation exclusion left 0 candidates — falling back to soft exclusion`)
+    const blockedWithoutRecent = new Set<string>([...usedVoiceIds, narratorVoiceId, ...RESERVED_BELLE_B_VOICE_IDS])
+    scored = scoreCharacterVoiceCandidates(meta, characterVoices, blockedWithoutRecent)
+  }
 
   if (scored.length === 0) {
     const genderFallback = characterVoices.find(v =>
