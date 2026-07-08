@@ -9533,7 +9533,7 @@ export async function POST(req: NextRequest) {
         result.allDone ? 'Series Belle assets complete for all episodes' : `Belle generated for Ep${result.processedEp}`,
         { processedEp: result.processedEp, introUrl: result.introUrl, outroUrl: result.outroUrl, allDone: result.allDone, error: result.lastError || undefined })
       const { data: updatedJob, error: updateError } = await supabase.from('production_jobs')
-        .update({ status: 'running', current_step: nextStep, state_json: result.state, error_json: null, logs, locked_at: null, locked_by: null })
+        .update({ status: 'queued', current_step: nextStep, state_json: result.state, error_json: null, logs, locked_at: null, locked_by: null })
         .eq('id', lockedJob.id).select('*').single()
       if (updateError) throw new Error(`Failed to save series Belle state: ${updateError.message}`)
       return NextResponse.json({ success: !result.lastError, jobId: updatedJob.id, currentStep: step, nextStep: updatedJob.current_step, processedEp: result.processedEp, allDone: result.allDone, introUrl: result.introUrl, outroUrl: result.outroUrl, error: result.lastError || undefined, logs })
@@ -9547,7 +9547,7 @@ export async function POST(req: NextRequest) {
         result.allDone ? 'Series music complete for all episodes' : `Music generated for Ep${result.processedEp}`,
         { processedEp: result.processedEp, musicUrl: result.musicUrl, allDone: result.allDone, error: result.lastError || undefined })
       const { data: updatedJob, error: updateError } = await supabase.from('production_jobs')
-        .update({ status: 'running', current_step: nextStep, state_json: result.state, error_json: null, logs, locked_at: null, locked_by: null })
+        .update({ status: 'queued', current_step: nextStep, state_json: result.state, error_json: null, logs, locked_at: null, locked_by: null })
         .eq('id', lockedJob.id).select('*').single()
       if (updateError) throw new Error(`Failed to save series music state: ${updateError.message}`)
       return NextResponse.json({ success: !result.lastError, jobId: updatedJob.id, currentStep: step, nextStep: updatedJob.current_step, processedEp: result.processedEp, allDone: result.allDone, musicUrl: result.musicUrl, error: result.lastError || undefined, logs })
@@ -9608,7 +9608,7 @@ export async function POST(req: NextRequest) {
       }
 
       const { data: updatedJob, error: updateError } = await supabase.from('production_jobs')
-        .update({ status: 'running', current_step: nextStep, state_json: { ...result.state, seriesRenderAttempts }, error_json: null, logs, locked_at: null, locked_by: null })
+        .update({ status: 'queued', current_step: nextStep, state_json: { ...result.state, seriesRenderAttempts }, error_json: null, logs, locked_at: null, locked_by: null })
         .eq('id', lockedJob.id).select('*').single()
       if (updateError) throw new Error(`Failed to save series render state: ${updateError.message}`)
       return NextResponse.json({ success: !result.lastError, jobId: updatedJob.id, currentStep: step, nextStep: updatedJob.current_step, processedEp: result.processedEp, allDone: result.allDone, finalMixUrl: result.finalMixUrl, durationMins: result.duration, error: result.lastError || undefined, logs })
