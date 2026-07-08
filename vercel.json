@@ -108,6 +108,10 @@
     {
       "path": "/api/cron/production-runner?worker=4",
       "schedule": "*/1 * * * *"
+    },
+    {
+      "path": "/api/admin/pipeline-health",
+      "schedule": "*/30 * * * *"
     }
   ]
 }
