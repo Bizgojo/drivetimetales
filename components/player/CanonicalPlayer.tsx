@@ -1633,9 +1633,18 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
           <img src="/images/et-logo.png" alt="Endless Tales" style={{ width:'28px', height:'28px', objectFit:'contain' }} />
           <span style={{ fontWeight:800, fontSize:'18px', color:'white' }}>Endless <span style={{ color:'#f97316' }}>Tales</span></span>
         </div>
-        <div style={{ width:'40px', height:'40px', borderRadius:'50%', backgroundColor:'#f97316', display:'flex', alignItems:'center', justifyContent:'center', fontWeight:700, fontSize:'16px', color:'white' }}>
-          {user?.email?.[0]?.toUpperCase() || 'M'}
-        </div>
+        <button
+          type="button"
+          onClick={() => router.push('/account')}
+          style={{ width:'40px', height:'40px', borderRadius:'50%', backgroundColor:'#f97316', border:'none', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', fontWeight:700, fontSize:'16px', color:'white' }}
+          aria-label={user ? 'Go to account' : 'Sign in or view account'}
+        >
+          {user?.user_metadata?.first_name?.[0]?.toUpperCase()
+            || user?.user_metadata?.name?.[0]?.toUpperCase()
+            || user?.email?.[0]?.toUpperCase()
+            || <svg width="20" height="20" fill="none" stroke="white" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+          }
+        </button>
       </div>
 
       {/* Cover */}
