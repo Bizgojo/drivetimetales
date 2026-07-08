@@ -6552,7 +6552,7 @@ export async function POST(req: NextRequest) {
         .from('production_jobs')
         .update({
           series_id: result.seriesId,
-          status: 'running',
+          status: 'queued',
           current_step: result.nextStep,
           step_index: Math.max(Number(lockedJob.step_index || 0), 0) + (result.generated ? 1 : 0),
           state_json: result.state,
@@ -6780,7 +6780,7 @@ export async function POST(req: NextRequest) {
         .from('production_jobs')
         .update({
           series_id: result.seriesId,
-          status: 'running',
+          status: 'queued',
           current_step: result.nextStep,
           step_index: Math.max(Number(lockedJob.step_index || 0), 0) + 1,
           state_json: result.state,
@@ -6865,7 +6865,7 @@ export async function POST(req: NextRequest) {
         .from('production_jobs')
         .update({
           series_id: result.seriesId,
-          status: 'running',
+          status: 'queued',
           current_step: result.nextStep,
           step_index: Math.max(Number(lockedJob.step_index || 0), 0) + 1,
           state_json: result.state,
@@ -6915,7 +6915,7 @@ export async function POST(req: NextRequest) {
         .from('production_jobs')
         .update({
           story_id: result.storyId,
-          status: 'running',
+          status: 'queued',
           current_step: NEXT_STEP_AFTER_STANDALONE_SCRIPT,
           step_index: Math.max(Number(lockedJob.step_index || 0), 0) + 1,
           state_json: result.state,
@@ -7167,7 +7167,7 @@ export async function POST(req: NextRequest) {
         .from('production_jobs')
         .update({
           story_id: result.storyId,
-          status: 'running',
+          status: 'queued',
           current_step: NEXT_STEP_AFTER_STANDALONE_VALIDATION,
           step_index: Math.max(Number(lockedJob.step_index || 0), 0) + 1,
           state_json: result.state,
@@ -7257,7 +7257,7 @@ export async function POST(req: NextRequest) {
         .from('production_jobs')
         .update({
           story_id: result.storyId,
-          status: 'running',
+          status: 'queued',
           current_step: NEXT_STEP_AFTER_STANDALONE_RESOLUTION,
           step_index: Math.max(Number(lockedJob.step_index || 0), 0) + 1,
           state_json: result.state,
@@ -7525,7 +7525,7 @@ export async function POST(req: NextRequest) {
         .from('production_jobs')
         .update({
           story_id: result.storyId,
-          status: 'running',
+          status: 'queued',
           current_step: NEXT_STEP_AFTER_STANDALONE_PREFLIGHT,
           step_index: Math.max(Number(lockedJob.step_index || 0), 0) + 1,
           state_json: result.state,
@@ -7695,7 +7695,7 @@ export async function POST(req: NextRequest) {
         .from('production_jobs')
         .update({
           story_id: result.storyId,
-          status: 'running',
+          status: 'queued',
           current_step: result.complete ? NEXT_STEP_AFTER_STANDALONE_VOICES : NEXT_STEP_AFTER_STANDALONE_PREFLIGHT,
           step_index: Math.max(Number(lockedJob.step_index || 0), 0) + (result.complete ? 1 : 0),
           state_json: result.state,
@@ -7792,7 +7792,7 @@ export async function POST(req: NextRequest) {
         .from('production_jobs')
         .update({
           series_id: result.seriesId,
-          status: 'running',
+          status: 'queued',
           current_step: result.complete ? NEXT_STEP_AFTER_SERIES_VOICES : NEXT_STEP_AFTER_SERIES_PREFLIGHT,
           step_index: Math.max(Number(lockedJob.step_index || 0), 0) + (result.complete ? 1 : 0),
           state_json: result.state,
@@ -7887,7 +7887,7 @@ export async function POST(req: NextRequest) {
         .from('production_jobs')
         .update({
           story_id: result.storyId,
-          status: 'running',
+          status: 'queued',
           current_step: NEXT_STEP_AFTER_STANDALONE_BELLE,
           step_index: Math.max(Number(lockedJob.step_index || 0), 0) + 1,
           state_json: result.state,
@@ -7963,7 +7963,7 @@ export async function POST(req: NextRequest) {
               .from('production_jobs')
               .update({
                 story_id: result.storyId,
-                status: 'running',
+                status: 'queued',
                 current_step: NEXT_STEP_AFTER_STANDALONE_BELLE_VALIDATION,
                 step_index: Math.max(Number(lockedJob.step_index || 0), 0) + 1,
                 state_json: {
@@ -8060,7 +8060,7 @@ export async function POST(req: NextRequest) {
               .from('production_jobs')
               .update({
                 story_id: result.storyId,
-                status: 'running',
+                status: 'queued',
                 current_step: NEXT_STEP_AFTER_STANDALONE_BELLE_REPAIR,
                 state_json: repairState,
                 error_json: repairErrorJson,
@@ -8198,7 +8198,7 @@ export async function POST(req: NextRequest) {
         .from('production_jobs')
         .update({
           story_id: result.storyId,
-          status: 'running',
+          status: 'queued',
           current_step: NEXT_STEP_AFTER_STANDALONE_BELLE_VALIDATION,
           step_index: Math.max(Number(lockedJob.step_index || 0), 0) + 1,
           state_json: result.state,
@@ -8267,7 +8267,7 @@ export async function POST(req: NextRequest) {
             .from('production_jobs')
             .update({
               story_id: result.storyId,
-              status: 'running',
+              status: 'queued',
               current_step: NEXT_STEP_AFTER_STANDALONE_BELLE_QUALITY,
               step_index: Math.max(Number(lockedJob.step_index || 0), 0) + 1,
               state_json: { ...result.state, belleQualityAdvisory: { kind: llmKind, issues: llmIssues, introScore: result.report.introScore } },
@@ -8307,7 +8307,7 @@ export async function POST(req: NextRequest) {
             .from('production_jobs')
             .update({
               story_id: result.storyId,
-              status: 'running',
+              status: 'queued',
               current_step: NEXT_STEP_AFTER_STANDALONE_BELLE_REPAIR,
               state_json: repairState,
               error_json: null,
@@ -8371,7 +8371,7 @@ export async function POST(req: NextRequest) {
         .from('production_jobs')
         .update({
           story_id: result.storyId,
-          status: 'running',
+          status: 'queued',
           current_step: NEXT_STEP_AFTER_STANDALONE_BELLE_QUALITY,
           step_index: Math.max(Number(lockedJob.step_index || 0), 0) + 1,
           state_json: result.state,
@@ -8442,7 +8442,7 @@ export async function POST(req: NextRequest) {
           .from('production_jobs')
           .update({
             story_id: result.storyId,
-            status: 'running',
+            status: 'queued',
             current_step: NEXT_STEP_AFTER_STANDALONE_VOICES,
             step_index: Math.max(Number(lockedJob.step_index || 0), 0) + 1,
             state_json: result.state,
@@ -8700,7 +8700,7 @@ export async function POST(req: NextRequest) {
         .from('production_jobs')
         .update({
           story_id: result.storyId,
-          status: 'running',
+          status: 'queued',
           current_step: NEXT_STEP_AFTER_STANDALONE_MUSIC,
           step_index: Math.max(Number(lockedJob.step_index || 0), 0) + 1,
           state_json: result.state,
@@ -8830,7 +8830,7 @@ export async function POST(req: NextRequest) {
         .from('production_jobs')
         .update({
           story_id: result.storyId,
-          status: 'running',
+          status: 'queued',
           current_step: NEXT_STEP_AFTER_STANDALONE_RENDER,
           step_index: Math.max(Number(lockedJob.step_index || 0), 0) + 1,
           state_json: result.state,
@@ -9260,7 +9260,7 @@ export async function POST(req: NextRequest) {
         .from('production_jobs')
         .update({
           story_id: result.storyId,
-          status: 'running',
+          status: 'queued',
           current_step: NEXT_STEP_AFTER_STANDALONE_PACKAGE,
           step_index: Math.max(Number(lockedJob.step_index || 0), 0) + 1,
           state_json: result.state,
@@ -9339,7 +9339,7 @@ export async function POST(req: NextRequest) {
             .from('production_jobs')
             .update({
               story_id: result.storyId,
-              status: 'running',
+              status: 'queued',
               current_step: NEXT_STEP_AFTER_STANDALONE_BELLE_REPAIR,
               state_json: rfrRepairState,
               error_json: buildStructuredError(issueClassification.kind, `RFR gate: ${result.contentIssues?.[0] || 'unknown issue'}`, step, {
@@ -9634,7 +9634,7 @@ export async function POST(req: NextRequest) {
         .from('production_jobs')
         .update({
           series_id: result.seriesId,
-          status: 'running',
+          status: 'queued',
           current_step: NEXT_STEP_AFTER_SERIES_CREATE,
           step_index: 1,
           total_steps: 9,
@@ -9684,7 +9684,7 @@ export async function POST(req: NextRequest) {
       .from('production_jobs')
       .update({
         story_id: result.storyId,
-        status: 'running',
+        status: 'queued',
         current_step: NEXT_STEP_AFTER_CREATE,
         step_index: Math.max(Number(lockedJob.step_index || 0), 0) + 1,
         total_steps: 9,
