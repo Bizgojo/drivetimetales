@@ -9593,9 +9593,7 @@ export async function POST(req: NextRequest) {
         const { data: updatedJob, error: updateError } = await supabase.from('production_jobs')
           .update({
             status: 'failed',
-            needs_attention: true,
-            needs_attention_reason: `series_render_final_mix exhausted ${MAX_SERIES_RENDER_ATTEMPTS} attempts. Last error: ${String(result.lastError).slice(0, 400)}`,
-            error_json: { kind: 'series_render_retry_exhausted', attempts: seriesRenderAttempts, lastError: result.lastError, step: 'series_render_final_mix' },
+            error_json: { kind: 'series_render_retry_exhausted', attempts: seriesRenderAttempts, lastError: result.lastError, step: 'series_render_final_mix', needsAttention: true, needsAttentionReason: `series_render_final_mix exhausted ${MAX_SERIES_RENDER_ATTEMPTS} attempts. Last error: ${String(result.lastError).slice(0, 400)}` },
             state_json: { ...result.state, seriesRenderAttempts },
             logs,
             locked_at: null,
