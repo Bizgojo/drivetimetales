@@ -207,6 +207,13 @@ async function updateCircuitBreaker(
         },
         ...(circuitOpen ? {
           status: 'failed',
+          // ATL-RENDER-STATE-INDEX-001: release the lock when opening the
+          // circuit — the (possibly still running) zombie invocation must not
+          // keep an ownership claim on a terminal row. run-next writes are
+          // fenced on locked_by/locked_at/status='running', so the zombie's
+          // late completion write becomes a harmless 0-row no-op.
+          locked_at: null,
+          locked_by: null,
           needs_attention: true,
           needs_attention_reason: `Circuit breaker open: step "${failedStep}" failed ${consecutiveFailures} consecutive times. Stopped retrying — needs manual inspection.`,
           error_json: {

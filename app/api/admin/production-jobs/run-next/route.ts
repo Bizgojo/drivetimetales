@@ -11,6 +11,7 @@ import { buildStructuredError, type StructuredErrorJsonKind } from '@/lib/pipeli
 import { classifyTrueState } from '@/lib/pipelineTruth'
 import { getPlaybookByKind } from '@/lib/repairPlaybooks'
 import { loadActiveMission } from '@/lib/missionContext'
+import { ownedJobFence, isLockLostError, lockLostMessage } from '@/lib/jobLockGuard'
 
 export const runtime = 'nodejs'
 // maxDuration governed by vercel.json (800s) — do not override here
@@ -2175,12 +2176,16 @@ async function lockJob(job: ProductionJob, lockHolderId: string) {
   return data as ProductionJob | null
 }
 
-async function clearLock(jobId: string, lockHolderId: string) {
-  await supabase
+async function clearLock(jobId: string, lockHolderId: string, lockedAt?: string | null) {
+  // ATL-RENDER-STATE-INDEX-001: fence on locked_at too — a zombie invocation's
+  // finally-block must not clear a NEWER lock taken by the same worker id.
+  let query = supabase
     .from('production_jobs')
     .update({ locked_at: null, locked_by: null })
     .eq('id', jobId)
     .eq('locked_by', lockHolderId)
+  if (lockedAt) query = query.eq('locked_at', lockedAt)
+  await query
 }
 
 async function readJsonOrDiagnostic(response: Response, endpoint: string) {
@@ -2285,7 +2290,10 @@ async function failJob(job: ProductionJob, error: unknown) {
     }
   )
   
-  await supabase
+  // ATL-RENDER-STATE-INDEX-001: fenced — only mark failed if this invocation
+  // still owns the lock. A zombie invocation must not fail a job that was
+  // reclaimed by another worker or already superseded.
+  const { data: failedRows } = await supabase
     .from('production_jobs')
     .update({
       status: 'failed',
@@ -2294,7 +2302,13 @@ async function failJob(job: ProductionJob, error: unknown) {
       locked_at: null,
       locked_by: null,
     })
-    .eq('id', job.id)
+    .match(ownedJobFence(job))
+    .select('id')
+
+  if (!failedRows || failedRows.length === 0) {
+    console.warn(lockLostMessage(normalizeStep(job.current_step), job.id))
+    return { message, logs, lockLost: true }
+  }
 
   const state = job.state_json && typeof job.state_json === 'object' ? job.state_json : {}
   await markStoryNeedsAttention(
@@ -6432,26 +6446,30 @@ async function runSeriesRenderFinalMix(job: ProductionJob, origin: string) {
         seriesRenderFinalMix: { doneByEp, finalMixUrlByEp, allDone: allDoneNow, lastUpdatedAt: nowIso() },
       }
 
-      const { error: stateError } = await supabase
+      // ATL-RENDER-STATE-INDEX-001: fenced checkpoint — only write if this
+      // invocation still owns the lock. Lock columns are NOT touched here;
+      // the single release-to-queued happens once, in the step handler.
+      const { data: checkpointRows, error: stateError } = await supabase
         .from('production_jobs')
         .update({ state_json: checkpointState })
-        .eq('id', job.id)
+        .match(ownedJobFence(job))
+        .select('id')
       if (stateError) throw new Error(`Failed to checkpoint series render state: ${stateError.message}`)
+      if (!checkpointRows || checkpointRows.length === 0) {
+        // Lock lost mid-render: this invocation was superseded (job failed by
+        // the runner watchdog and possibly re-dispatched as a new row). Do NOT
+        // resurrect the row — that is exactly the write the
+        // production_jobs_one_active_per_series index rejects. The rendered
+        // final_mix.mp3 is already in storage; the replacement job's
+        // storyFinalMixStatus() check will reuse it.
+        throw new Error(lockLostMessage('series_render_final_mix', job.id))
+      }
 
       if (!allDoneNow) {
-        const { error: queueError } = await supabase
-          .from('production_jobs')
-          .update({
-            status: 'queued',
-            current_step: NEXT_STEP_AFTER_SERIES_MUSIC,
-            state_json: checkpointState,
-            error_json: null,
-            locked_at: null,
-            locked_by: null,
-          })
-          .eq('id', job.id)
-        if (queueError) throw new Error(`Failed to release series render checkpoint: ${queueError.message}`)
-
+        // NOTE: the pre-ATL-RENDER-STATE-INDEX-001 code released the job to
+        // 'queued' here AND again in the step handler (double release). The
+        // release now happens exactly once, fenced, in the handler's
+        // checkpointQueued branch.
         return {
           allDone: false,
           processedEp,
@@ -6561,7 +6579,7 @@ export async function POST(req: NextRequest) {
           locked_at: null,
           locked_by: null,
         })
-        .eq('id', lockedJob.id)
+        .match(ownedJobFence(lockedJob, lockHolderId))
         .select('*')
         .single()
 
@@ -6706,7 +6724,7 @@ export async function POST(req: NextRequest) {
               locked_at: null,
               locked_by: null,
             })
-            .eq('id', lockedJob.id)
+            .match(ownedJobFence(lockedJob, lockHolderId))
             .select('*')
             .single()
 
@@ -6756,7 +6774,7 @@ export async function POST(req: NextRequest) {
             locked_at: null,
             locked_by: null,
           })
-          .eq('id', lockedJob.id)
+          .match(ownedJobFence(lockedJob, lockHolderId))
           .select('*')
           .single()
 
@@ -6789,7 +6807,7 @@ export async function POST(req: NextRequest) {
           locked_at: null,
           locked_by: null,
         })
-        .eq('id', lockedJob.id)
+        .match(ownedJobFence(lockedJob, lockHolderId))
         .select('*')
         .single()
 
@@ -6841,7 +6859,7 @@ export async function POST(req: NextRequest) {
             locked_at: null,
             locked_by: null,
           })
-          .eq('id', lockedJob.id)
+          .match(ownedJobFence(lockedJob, lockHolderId))
           .select('*')
           .single()
 
@@ -6874,7 +6892,7 @@ export async function POST(req: NextRequest) {
           locked_at: null,
           locked_by: null,
         })
-        .eq('id', lockedJob.id)
+        .match(ownedJobFence(lockedJob, lockHolderId))
         .select('*')
         .single()
 
@@ -6924,7 +6942,7 @@ export async function POST(req: NextRequest) {
           locked_at: null,
           locked_by: null,
         })
-        .eq('id', lockedJob.id)
+        .match(ownedJobFence(lockedJob, lockHolderId))
         .select('*')
         .single()
 
@@ -7067,7 +7085,7 @@ export async function POST(req: NextRequest) {
               locked_by: null,
               logs: retryLogs,
             })
-            .eq('id', lockedJob.id)
+            .match(ownedJobFence(lockedJob, lockHolderId))
             .select('*')
             .single()
 
@@ -7139,7 +7157,7 @@ export async function POST(req: NextRequest) {
             locked_at: null,
             locked_by: null,
           })
-          .eq('id', lockedJob.id)
+          .match(ownedJobFence(lockedJob, lockHolderId))
           .select('*')
           .single()
 
@@ -7176,7 +7194,7 @@ export async function POST(req: NextRequest) {
           locked_at: null,
           locked_by: null,
         })
-        .eq('id', lockedJob.id)
+        .match(ownedJobFence(lockedJob, lockHolderId))
         .select('*')
         .single()
 
@@ -7236,7 +7254,7 @@ export async function POST(req: NextRequest) {
             locked_at: null,
             locked_by: null,
           })
-          .eq('id', lockedJob.id)
+          .match(ownedJobFence(lockedJob, lockHolderId))
           .select('*')
           .single()
 
@@ -7266,7 +7284,7 @@ export async function POST(req: NextRequest) {
           locked_at: null,
           locked_by: null,
         })
-        .eq('id', lockedJob.id)
+        .match(ownedJobFence(lockedJob, lockHolderId))
         .select('*')
         .single()
 
@@ -7426,7 +7444,7 @@ export async function POST(req: NextRequest) {
               locked_at: null,
               locked_by: null,
             })
-            .eq('id', lockedJob.id)
+            .match(ownedJobFence(lockedJob, lockHolderId))
             .select('*')
             .single()
           
@@ -7495,7 +7513,7 @@ export async function POST(req: NextRequest) {
             locked_at: null,
             locked_by: null,
           })
-          .eq('id', lockedJob.id)
+          .match(ownedJobFence(lockedJob, lockHolderId))
           .select('*')
           .single()
 
@@ -7534,7 +7552,7 @@ export async function POST(req: NextRequest) {
           locked_at: null,
           locked_by: null,
         })
-        .eq('id', lockedJob.id)
+        .match(ownedJobFence(lockedJob, lockHolderId))
         .select('*')
         .single()
 
@@ -7673,7 +7691,7 @@ export async function POST(req: NextRequest) {
             locked_at: null,
             locked_by: null,
           })
-          .eq('id', lockedJob.id)
+          .match(ownedJobFence(lockedJob, lockHolderId))
           .select('*')
           .single()
 
@@ -7704,7 +7722,7 @@ export async function POST(req: NextRequest) {
           locked_at: null,
           locked_by: null,
         })
-        .eq('id', lockedJob.id)
+        .match(ownedJobFence(lockedJob, lockHolderId))
         .select('*')
         .single()
 
@@ -7768,7 +7786,7 @@ export async function POST(req: NextRequest) {
             locked_at: null,
             locked_by: null,
           })
-          .eq('id', lockedJob.id)
+          .match(ownedJobFence(lockedJob, lockHolderId))
           .select('*')
           .single()
 
@@ -7801,7 +7819,7 @@ export async function POST(req: NextRequest) {
           locked_at: null,
           locked_by: null,
         })
-        .eq('id', lockedJob.id)
+        .match(ownedJobFence(lockedJob, lockHolderId))
         .select('*')
         .single()
 
@@ -7866,7 +7884,7 @@ export async function POST(req: NextRequest) {
             locked_at: null,
             locked_by: null,
           })
-          .eq('id', lockedJob.id)
+          .match(ownedJobFence(lockedJob, lockHolderId))
           .select('*')
           .single()
 
@@ -7896,7 +7914,7 @@ export async function POST(req: NextRequest) {
           locked_at: null,
           locked_by: null,
         })
-        .eq('id', lockedJob.id)
+        .match(ownedJobFence(lockedJob, lockHolderId))
         .select('*')
         .single()
 
@@ -7980,7 +7998,7 @@ export async function POST(req: NextRequest) {
                 logs: advisoryLogs,
                 locked_at: null, locked_by: null,
               })
-              .eq('id', lockedJob.id).select('*').single()
+              .match(ownedJobFence(lockedJob, lockHolderId)).select('*').single()
             if (advErr) throw new Error(`Advisory advance failed: ${advErr.message}`)
             return NextResponse.json({
               success: true,
@@ -8068,7 +8086,7 @@ export async function POST(req: NextRequest) {
                 locked_at: null,
                 locked_by: null,
               })
-              .eq('id', lockedJob.id)
+              .match(ownedJobFence(lockedJob, lockHolderId))
               .select('*')
               .single()
 
@@ -8119,7 +8137,7 @@ export async function POST(req: NextRequest) {
               locked_at: null,
               locked_by: null,
             })
-            .eq('id', lockedJob.id)
+            .match(ownedJobFence(lockedJob, lockHolderId))
             .select('*')
             .single()
 
@@ -8176,7 +8194,7 @@ export async function POST(req: NextRequest) {
             locked_at: null,
             locked_by: null,
           })
-          .eq('id', lockedJob.id)
+          .match(ownedJobFence(lockedJob, lockHolderId))
           .select('*')
           .single()
 
@@ -8207,7 +8225,7 @@ export async function POST(req: NextRequest) {
           locked_at: null,
           locked_by: null,
         })
-        .eq('id', lockedJob.id)
+        .match(ownedJobFence(lockedJob, lockHolderId))
         .select('*')
         .single()
 
@@ -8275,7 +8293,7 @@ export async function POST(req: NextRequest) {
               logs: advisoryLogs,
               locked_at: null, locked_by: null,
             })
-            .eq('id', lockedJob.id).select('*').single()
+            .match(ownedJobFence(lockedJob, lockHolderId)).select('*').single()
           if (advErr) throw new Error(`Belle quality advisory advance failed: ${advErr.message}`)
           return NextResponse.json({
             success: true,
@@ -8315,7 +8333,7 @@ export async function POST(req: NextRequest) {
               locked_at: null,
               locked_by: null,
             })
-            .eq('id', lockedJob.id)
+            .match(ownedJobFence(lockedJob, lockHolderId))
             .select('*')
             .single()
 
@@ -8350,7 +8368,7 @@ export async function POST(req: NextRequest) {
             locked_at: null,
             locked_by: null,
           })
-          .eq('id', lockedJob.id)
+          .match(ownedJobFence(lockedJob, lockHolderId))
           .select('*')
           .single()
 
@@ -8380,7 +8398,7 @@ export async function POST(req: NextRequest) {
           locked_at: null,
           locked_by: null,
         })
-        .eq('id', lockedJob.id)
+        .match(ownedJobFence(lockedJob, lockHolderId))
         .select('*')
         .single()
 
@@ -8451,7 +8469,7 @@ export async function POST(req: NextRequest) {
             locked_at: null,
             locked_by: null,
           })
-          .eq('id', lockedJob.id)
+          .match(ownedJobFence(lockedJob, lockHolderId))
           .select('*')
           .single()
 
@@ -8556,7 +8574,7 @@ export async function POST(req: NextRequest) {
               locked_at: null,
               locked_by: null,
             })
-            .eq('id', lockedJob.id)
+            .match(ownedJobFence(lockedJob, lockHolderId))
             .select('*')
             .single()
 
@@ -8614,7 +8632,7 @@ export async function POST(req: NextRequest) {
             locked_at: null,
             locked_by: null,
           })
-          .eq('id', lockedJob.id)
+          .match(ownedJobFence(lockedJob, lockHolderId))
           .select('*')
           .single()
 
@@ -8678,7 +8696,7 @@ export async function POST(req: NextRequest) {
             locked_at: null,
             locked_by: null,
           })
-          .eq('id', lockedJob.id)
+          .match(ownedJobFence(lockedJob, lockHolderId))
           .select('*')
           .single()
 
@@ -8709,7 +8727,7 @@ export async function POST(req: NextRequest) {
           locked_at: null,
           locked_by: null,
         })
-        .eq('id', lockedJob.id)
+        .match(ownedJobFence(lockedJob, lockHolderId))
         .select('*')
         .single()
 
@@ -8761,7 +8779,7 @@ export async function POST(req: NextRequest) {
             error_json: null,
             logs: localLogs,
           })
-          .eq('id', lockedJob.id)
+          .match(ownedJobFence(lockedJob, lockHolderId))
           .select('*')
           .single()
         if (localUpdateError) throw new Error(`Failed to hand off job to local render worker: ${localUpdateError.message}`)
@@ -8809,7 +8827,7 @@ export async function POST(req: NextRequest) {
             locked_at: null,
             locked_by: null,
           })
-          .eq('id', lockedJob.id)
+          .match(ownedJobFence(lockedJob, lockHolderId))
           .select('*')
           .single()
 
@@ -8839,7 +8857,7 @@ export async function POST(req: NextRequest) {
           locked_at: null,
           locked_by: null,
         })
-        .eq('id', lockedJob.id)
+        .match(ownedJobFence(lockedJob, lockHolderId))
         .select('*')
         .single()
 
@@ -9053,7 +9071,7 @@ export async function POST(req: NextRequest) {
                   locked_at: null,
                   locked_by: null,
                 })
-                .eq('id', lockedJob.id)
+                .match(ownedJobFence(lockedJob, lockHolderId))
                 .select('*')
                 .single()
               if (retryUpdateError) throw new Error(`Failed to queue series Belle retry: ${retryUpdateError.message}`)
@@ -9096,7 +9114,7 @@ export async function POST(req: NextRequest) {
               locked_at: null,
               locked_by: null,
             })
-            .eq('id', lockedJob.id)
+            .match(ownedJobFence(lockedJob, lockHolderId))
             .select('*')
             .single()
 
@@ -9179,7 +9197,7 @@ export async function POST(req: NextRequest) {
             locked_at: null,
             locked_by: null,
           })
-          .eq('id', lockedJob.id)
+          .match(ownedJobFence(lockedJob, lockHolderId))
           .select('*')
           .single()
 
@@ -9232,7 +9250,7 @@ export async function POST(req: NextRequest) {
             locked_at: null,
             locked_by: null,
           })
-          .eq('id', lockedJob.id)
+          .match(ownedJobFence(lockedJob, lockHolderId))
           .select('*')
           .single()
 
@@ -9269,7 +9287,7 @@ export async function POST(req: NextRequest) {
           locked_at: null,
           locked_by: null,
         })
-        .eq('id', lockedJob.id)
+        .match(ownedJobFence(lockedJob, lockHolderId))
         .select('*')
         .single()
 
@@ -9350,7 +9368,7 @@ export async function POST(req: NextRequest) {
               locked_at: null,
               locked_by: null,
             })
-            .eq('id', lockedJob.id)
+            .match(ownedJobFence(lockedJob, lockHolderId))
             .select('*')
             .single()
 
@@ -9413,7 +9431,7 @@ export async function POST(req: NextRequest) {
             locked_at: null,
             locked_by: null,
           })
-          .eq('id', lockedJob.id)
+          .match(ownedJobFence(lockedJob, lockHolderId))
           .select('*')
           .single()
 
@@ -9497,7 +9515,7 @@ export async function POST(req: NextRequest) {
           locked_at: null,
           locked_by: null,
         })
-        .eq('id', lockedJob.id)
+        .match(ownedJobFence(lockedJob, lockHolderId))
           .select('*')
           .single()
 
@@ -9534,7 +9552,7 @@ export async function POST(req: NextRequest) {
         { processedEp: result.processedEp, introUrl: result.introUrl, outroUrl: result.outroUrl, allDone: result.allDone, error: result.lastError || undefined })
       const { data: updatedJob, error: updateError } = await supabase.from('production_jobs')
         .update({ status: 'queued', current_step: nextStep, state_json: result.state, error_json: null, logs, locked_at: null, locked_by: null })
-        .eq('id', lockedJob.id).select('*').single()
+        .match(ownedJobFence(lockedJob, lockHolderId)).select('*').single()
       if (updateError) throw new Error(`Failed to save series Belle state: ${updateError.message}`)
       return NextResponse.json({ success: !result.lastError, jobId: updatedJob.id, currentStep: step, nextStep: updatedJob.current_step, processedEp: result.processedEp, allDone: result.allDone, introUrl: result.introUrl, outroUrl: result.outroUrl, error: result.lastError || undefined, logs })
     }
@@ -9548,7 +9566,7 @@ export async function POST(req: NextRequest) {
         { processedEp: result.processedEp, musicUrl: result.musicUrl, allDone: result.allDone, error: result.lastError || undefined })
       const { data: updatedJob, error: updateError } = await supabase.from('production_jobs')
         .update({ status: 'queued', current_step: nextStep, state_json: result.state, error_json: null, logs, locked_at: null, locked_by: null })
-        .eq('id', lockedJob.id).select('*').single()
+        .match(ownedJobFence(lockedJob, lockHolderId)).select('*').single()
       if (updateError) throw new Error(`Failed to save series music state: ${updateError.message}`)
       return NextResponse.json({ success: !result.lastError, jobId: updatedJob.id, currentStep: step, nextStep: updatedJob.current_step, processedEp: result.processedEp, allDone: result.allDone, musicUrl: result.musicUrl, error: result.lastError || undefined, logs })
     }
@@ -9583,7 +9601,7 @@ export async function POST(req: NextRequest) {
             locked_at: null,
             locked_by: null,
           })
-          .eq('id', lockedJob.id).select('*').single()
+          .match(ownedJobFence(lockedJob, lockHolderId)).select('*').single()
         if (updateError) throw new Error(`Failed to save series render checkpoint logs: ${updateError.message}`)
         return NextResponse.json({ success: true, jobId: updatedJob.id, currentStep: step, nextStep: updatedJob.current_step, status: updatedJob.status, processedEp: result.processedEp, allDone: result.allDone, finalMixUrl: result.finalMixUrl, durationMins: result.duration, checkpointQueued: true, logs })
       }
@@ -9599,7 +9617,7 @@ export async function POST(req: NextRequest) {
             locked_at: null,
             locked_by: null,
           })
-          .eq('id', lockedJob.id).select('*').single()
+          .match(ownedJobFence(lockedJob, lockHolderId)).select('*').single()
         if (updateError) throw new Error(`Failed to save series render exhaustion state: ${updateError.message}`)
         console.error(`[series_render_final_mix] RETRY EXHAUSTED after ${MAX_SERIES_RENDER_ATTEMPTS} attempts — job ${lockedJob.id} marked needs_attention`)
         return NextResponse.json({ success: false, jobId: updatedJob?.id, currentStep: step, retryExhausted: true, error: result.lastError, logs })
@@ -9607,7 +9625,7 @@ export async function POST(req: NextRequest) {
 
       const { data: updatedJob, error: updateError } = await supabase.from('production_jobs')
         .update({ status: 'queued', current_step: nextStep, state_json: { ...result.state, seriesRenderAttempts }, error_json: null, logs, locked_at: null, locked_by: null })
-        .eq('id', lockedJob.id).select('*').single()
+        .match(ownedJobFence(lockedJob, lockHolderId)).select('*').single()
       if (updateError) throw new Error(`Failed to save series render state: ${updateError.message}`)
       return NextResponse.json({ success: !result.lastError, jobId: updatedJob.id, currentStep: step, nextStep: updatedJob.current_step, processedEp: result.processedEp, allDone: result.allDone, finalMixUrl: result.finalMixUrl, durationMins: result.duration, error: result.lastError || undefined, logs })
     }
@@ -9644,7 +9662,7 @@ export async function POST(req: NextRequest) {
           locked_at: null,
           locked_by: null,
         })
-        .eq('id', lockedJob.id)
+        .match(ownedJobFence(lockedJob, lockHolderId))
         .select('*')
         .single()
 
@@ -9694,7 +9712,7 @@ export async function POST(req: NextRequest) {
         locked_at: null,
         locked_by: null,
       })
-      .eq('id', lockedJob.id)
+      .match(ownedJobFence(lockedJob, lockHolderId))
       .select('*')
       .single()
 
@@ -9720,6 +9738,21 @@ export async function POST(req: NextRequest) {
     })
   } catch (error) {
     if (lockedJob) {
+      // ATL-RENDER-STATE-INDEX-001: a fenced write that matched 0 rows means
+      // this invocation lost the lock / was superseded (runner watchdog failed
+      // the job and dispatch may have created a replacement). Don't write a
+      // 'failed' status over someone else's row — report 409 so the runner
+      // backs off like any other lock contention.
+      const rawMessage = error instanceof Error ? error.message : String(error)
+      if (isLockLostError({ message: rawMessage }) || rawMessage.includes('[job-lock-guard]')) {
+        const msg = lockLostMessage(normalizeStep(lockedJob.current_step), lockedJob.id)
+        console.warn(msg)
+        return bad(msg, 409, {
+          jobId: lockedJob.id,
+          currentStep: normalizeStep(lockedJob.current_step),
+          lockLost: true,
+        })
+      }
       const failed = await failJob(lockedJob, error)
       return bad(failed.message, 500, {
         jobId: lockedJob.id,
@@ -9740,7 +9773,7 @@ export async function POST(req: NextRequest) {
         }
       }
 
-      await clearLock(lockedJob.id, lockHolderId)
+      await clearLock(lockedJob.id, lockHolderId, lockedJob.locked_at)
     }
   }
 }
