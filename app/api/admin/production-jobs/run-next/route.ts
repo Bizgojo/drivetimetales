@@ -2442,6 +2442,12 @@ async function loadSeriesEpisodes(seriesId: string) {
     .from('stories')
     .select('id,title,author,author_style,genre,narrative_voice,description,brief_json,status,script,script_json,script_version,series_id,series_name,episode_number,series_episode_number,series_total_episodes,series_is_finale,story_type,validator_result,validator_report,validator_passed_at,narrator_voice_id,narrator_voice_name,audio_url,story_audio_url')
     .eq('series_id', seriesId)
+    // Rule-1 doctrine (Marc 2026-07-09): cold_storage episodes are retired from
+    // production and must not contaminate series validation/production — a
+    // recommissioned replacement occupies the slot (dispatch-queue applies the
+    // same exclusion). Without this, a retired row makes the validator see
+    // duplicate/extra episodes (Limestone canary failure 22:06Z).
+    .neq('workflow_state', 'cold_storage')
     .order('episode_number', { ascending: true })
 
   if (error) throw new Error(`Failed to load series episodes: ${error.message}`)
