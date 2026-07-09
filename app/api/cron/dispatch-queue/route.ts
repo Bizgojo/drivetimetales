@@ -356,7 +356,15 @@ async function handleDispatchQueue(request: NextRequest) {
         continue
       }
 
-      const episodes = (seriesStories || []) as StoryRow[]
+      // Rule-1 doctrine (Marc 2026-07-09): cold_storage rows are retired from
+      // production. They must not count toward series completeness or block
+      // dispatch — a recommissioned replacement occupies the episode slot
+      // (e.g. Limestone ep3 "Forty Feet Down" replacing cold-stored "The
+      // Sealing"). A cold-stored episode with NO replacement leaves a real
+      // episode-number gap, so seriesIsReady still correctly waits.
+      const episodes = ((seriesStories || []) as StoryRow[]).filter(
+        (row) => String(row.workflow_state || '').trim() !== 'cold_storage',
+      )
       const attentionEpisode = episodes.find((episode) => episode.needs_attention === true)
       if (attentionEpisode) {
         needsAttentionSkipped += 1
