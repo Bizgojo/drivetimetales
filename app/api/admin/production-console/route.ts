@@ -448,7 +448,7 @@ function repairNextAction(stage: string, categories: string[]): string {
 }
 
 function repairAfterCompletion(stage: string): string {
-  if (stage === 'vega_review') return 'PASS → Ready For Review · FAIL → Repair Queue with Vega notes'
+  if (stage === 'vega_review') return 'PASS → Ready For Review · FAIL → Production Holds with Vega notes'
   return 'Hal marks repair complete → Vega Review → Ready For Review (if PASS)'
 }
 

@@ -274,9 +274,10 @@ const WORKFLOW_LABELS: Record<WorkflowTab, string> = {
   ready_for_review: 'Ready for Review',
   approved_ready: 'Ready to Publish',
   published: 'Published',
-  repair_queue: 'Repair Queue',
-  being_repaired: 'Repair Queue',
-  failed: 'Repair Queue',
+  // ATL-FOLLOWUP-002: UI label only — DB state value stays repair_queue (two-phase plan)
+  repair_queue: 'Production Holds',
+  being_repaired: 'Production Holds',
+  failed: 'Production Holds',
   stories_in_queue: 'Production Queue',
   scripts_ready: 'Production Queue',
   cold_storage: 'Cold Storage / Training Archive',
@@ -285,7 +286,7 @@ const WORKFLOW_LABELS: Record<WorkflowTab, string> = {
 
 const WORKFLOW_VISUALS: Record<InternalWorkflowLane, { id: InternalWorkflowLane; label: string; description: string; color: string; softColor: string; glowColor: string }> = {
   ready_for_review: { id: 'ready_for_review', label: 'Ready for Review', description: 'Ready for review.', color: '#f59e0b', softColor: '#fef3c7', glowColor: 'rgba(245,158,11,0.30)' },
-  repair_shop: { id: 'repair_shop', label: 'Repair Queue', description: 'Pipeline failures and active repair work.', color: '#f97316', softColor: '#ffedd5', glowColor: 'rgba(249,115,22,0.30)' },
+  repair_shop: { id: 'repair_shop', label: 'Production Holds', description: 'Pipeline failures and active repair work.', color: '#f97316', softColor: '#ffedd5', glowColor: 'rgba(249,115,22,0.30)' },
   production_queue: { id: 'production_queue', label: 'Production Queue', description: 'Scripts ready for audio production.', color: '#0ea5e9', softColor: '#e0f2fe', glowColor: 'rgba(14,165,233,0.28)' },
   approved_ready: { id: 'approved_ready', label: 'Ready to Publish', description: 'Cleared by Marc.', color: '#22c55e', softColor: '#dcfce7', glowColor: 'rgba(34,197,94,0.28)' },
   cold_storage: { id: 'cold_storage', label: 'Cold Storage / Training Archive', description: 'Preserved artifacts.', color: '#8b5cf6', softColor: '#ede9fe', glowColor: 'rgba(139,92,246,0.28)' },
@@ -311,7 +312,7 @@ const ACTIVE_PRODUCTION_JOB_STATUSES = ['queued', 'running', 'waiting_for_extern
 
 const STREAMING_PIPELINE: Array<{ id: WorkflowLane; label: string; sub: string; color: string }> = [
   { id: 'ready_for_review', label: 'Ready for Review', sub: 'Ready for review', color: '#F59E0B' },
-  { id: 'repair_shop', label: 'Repair Queue', sub: 'Failures and active repairs', color: '#F97316' },
+  { id: 'repair_shop', label: 'Production Holds', sub: 'Failures and active repairs', color: '#F97316' },
   { id: 'production_queue', label: 'Production Queue', sub: 'Scripts ready for audio', color: '#0EA5E9' },
   { id: 'approved_ready', label: 'Ready to Publish', sub: 'Cleared by Marc', color: '#10B981' },
   { id: 'published', label: 'Published', sub: 'Live in app', color: '#059669' },
@@ -4683,11 +4684,11 @@ export default function AdminStoriesPage() {
 
         {repairQueueItemCount > 0 && !repairQueueBannerDismissed && (
           <div style={{ marginTop: '16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', padding: '10px 12px', borderRadius: '10px', border: '1px solid #FED7AA', backgroundColor: '#FFF7ED', color: '#9A3412', fontSize: '12px', fontWeight: 900 }}>
-            <span>Repair Queue: {repairQueueItemCount} item(s) need attention — view in Production Console</span>
+            <span>Production Holds: {repairQueueItemCount} item(s) need attention — view in Production Console</span>
             <button
               type="button"
               onClick={() => setRepairQueueBannerDismissed(true)}
-              aria-label="Dismiss repair queue notice"
+              aria-label="Dismiss production holds notice"
               style={{ width: '24px', height: '24px', border: 'none', borderRadius: '6px', backgroundColor: 'transparent', color: '#9A3412', cursor: 'pointer', fontSize: '14px', fontWeight: 900, lineHeight: 1 }}
             >
               ×
@@ -4776,7 +4777,7 @@ export default function AdminStoriesPage() {
         {activePipelineTab === 'repair_shop' && (
           <div style={{ marginTop: '14px', display: 'grid', gap: '10px' }}>
             <div style={{ padding: '12px 14px', borderRadius: '10px', border: '1px solid #FED7AA', backgroundColor: '#FFF7ED', color: '#9A3412', fontSize: '12px', fontWeight: 900 }}>
-              Repair Queue is processed before new Production Queue stories begin.
+              Production Holds are processed before new Production Queue stories begin.
             </div>
             {activelyRepairedStory && (
               <div style={{ padding: '12px 14px', borderRadius: '10px', border: '1px solid #BFDBFE', backgroundColor: '#EFF6FF', color: '#1E40AF', fontSize: '13px', fontWeight: 900 }}>
@@ -4790,7 +4791,7 @@ export default function AdminStoriesPage() {
           <div style={{ marginTop: '14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap' }}>
             <div style={{ flex: '1 1 320px', padding: '12px 14px', borderRadius: '10px', border: `1px solid ${repairQueueItemCount > 0 ? '#FED7AA' : '#A7F3D0'}`, backgroundColor: repairQueueItemCount > 0 ? '#FFF7ED' : '#ECFDF5', color: repairQueueItemCount > 0 ? '#9A3412' : '#047857', fontSize: '12px', fontWeight: 900 }}>
               {repairQueueItemCount > 0
-                ? `Production paused - ${repairQueueItemCount} stories in Repair Queue`
+                ? `Production paused - ${repairQueueItemCount} stories in Production Holds`
                 : `Production active - next up: ${nextProductionStory?.title || 'nothing queued'}`}
             </div>
             <div style={{ display: 'inline-flex', border: '1px solid #D1D5DB', borderRadius: '8px', overflow: 'hidden', backgroundColor: '#ffffff' }}>

@@ -10,6 +10,7 @@ import {
   type JobStatusRow,
 } from '@/lib/dispatchGuards'
 import { findQueueDuplicates, type QueueDedupRow } from '@/lib/dispatchDedup'
+import { failureDestinationForStory, ONE_REPAIR_PASS_REASON } from '@/lib/workflowTransitions'
 
 export const runtime = 'nodejs'
 export const maxDuration = 60
@@ -47,6 +48,7 @@ type StoryRow = {
   series_total_episodes: number | null
   needs_attention?: boolean | null
   dispatch_failure_reset_at?: string | null
+  production_repair_count?: number | null
 }
 
 type DispatchResult = {
@@ -279,24 +281,66 @@ async function handleDispatchQueue(request: NextRequest) {
       if (failureCircuitOpen((recentSeriesFailures || []) as JobStatusRow[], Date.now())) {
         const failCount = countRecentFailures((recentSeriesFailures || []) as JobStatusRow[], Date.now())
         const reason = `Dispatch failure circuit open: ${failCount} failed production jobs for series ${seriesId} within 2h (threshold ${DISPATCH_FAILURE_THRESHOLD}). Moved to repair_queue by dispatch-queue cron — repeated re-dispatch was creating a new failing job every cycle.`
-        const { error: repairMoveError } = await supabase
+
+        // ATL-FOLLOWUP-002 (Marc 2026-07-09): episodes that already consumed
+        // their single repair pass go straight to cold_storage; the rest go to
+        // the hold bucket (repair_queue — displayed as "Production Holds").
+        const { data: circuitEpisodes, error: circuitEpisodesError } = await supabase
           .from('stories')
-          .update({
-            workflow_state: 'repair_queue',
-            workflow_state_changed_by: 'atlas',
-            workflow_state_changed_at: now,
-            workflow_state_change_reason: reason,
-            needs_attention: true,
-            needs_attention_reason: reason,
-          })
+          .select('id,production_repair_count')
           .eq('series_id', seriesId)
           .eq('workflow_state', 'stories_in_queue')
 
-        if (repairMoveError) {
-          console.error('[dispatch-queue] Failed to move failing series to repair_queue:', seriesId, repairMoveError)
+        if (circuitEpisodesError) {
+          console.error('[dispatch-queue] Failed to load episodes for failure-circuit routing:', seriesId, circuitEpisodesError)
+          skipped.push({ seriesId, reason: 'failure_circuit_open', failedJobsInWindow: failCount, movedTo: 'none', error: circuitEpisodesError.message })
+          continue
         }
-        console.warn('[dispatch-queue] Failure circuit OPEN — series moved to repair_queue:', seriesId, reason)
-        skipped.push({ seriesId, reason: 'failure_circuit_open', failedJobsInWindow: failCount, movedTo: 'repair_queue' })
+
+        const episodeRows = (circuitEpisodes || []) as Array<{ id: string; production_repair_count: number | null }>
+        const coldStorageIds = episodeRows.filter((row) => failureDestinationForStory(row.production_repair_count).state === 'cold_storage').map((row) => row.id)
+        const repairQueueIds = episodeRows.filter((row) => !coldStorageIds.includes(row.id)).map((row) => row.id)
+
+        if (repairQueueIds.length > 0) {
+          const { error: repairMoveError } = await supabase
+            .from('stories')
+            .update({
+              workflow_state: 'repair_queue',
+              workflow_state_changed_by: 'atlas',
+              workflow_state_changed_at: now,
+              workflow_state_change_reason: reason,
+              needs_attention: true,
+              needs_attention_reason: reason,
+            })
+            .in('id', repairQueueIds)
+
+          if (repairMoveError) {
+            console.error('[dispatch-queue] Failed to move failing series to repair_queue:', seriesId, repairMoveError)
+          }
+        }
+
+        if (coldStorageIds.length > 0) {
+          const coldReason = `${reason} Doctrine: ${ONE_REPAIR_PASS_REASON}.`
+          const { error: coldMoveError } = await supabase
+            .from('stories')
+            .update({
+              workflow_state: 'cold_storage',
+              workflow_state_changed_by: 'atlas',
+              workflow_state_changed_at: now,
+              workflow_state_change_reason: coldReason,
+              needs_attention: true,
+              needs_attention_reason: coldReason,
+            })
+            .in('id', coldStorageIds)
+
+          if (coldMoveError) {
+            console.error('[dispatch-queue] Failed to move repeat-failure episodes to cold_storage:', seriesId, coldMoveError)
+          }
+          console.warn('[dispatch-queue] One-repair-pass doctrine — episodes moved to cold_storage:', seriesId, coldStorageIds)
+        }
+
+        console.warn('[dispatch-queue] Failure circuit OPEN — series moved to repair_queue/cold_storage:', seriesId, reason)
+        skipped.push({ seriesId, reason: 'failure_circuit_open', failedJobsInWindow: failCount, movedTo: 'repair_queue', movedToColdStorage: coldStorageIds.length, movedToRepairQueue: repairQueueIds.length })
         continue
       }
 
@@ -434,7 +478,7 @@ async function handleDispatchQueue(request: NextRequest) {
 
     const { data: standaloneStories, error: standaloneError } = await supabase
       .from('stories')
-      .select('id,title,story_type,workflow_state,series_id,series_name,episode_number,series_episode_number,series_total_episodes,needs_attention,dispatch_failure_reset_at')
+      .select('id,title,story_type,workflow_state,series_id,series_name,episode_number,series_episode_number,series_total_episodes,needs_attention,dispatch_failure_reset_at,production_repair_count')
       .eq('workflow_state', 'stories_in_queue')
       .in('story_type', ['standalone', 'single'])
       .not('needs_attention', 'eq', true)
@@ -493,11 +537,16 @@ async function handleDispatchQueue(request: NextRequest) {
 
       if (failureCircuitOpen((recentStoryFailures || []) as JobStatusRow[], Date.now())) {
         const failCount2h = countRecentFailures((recentStoryFailures || []) as JobStatusRow[], Date.now())
-        const reason = `Dispatch failure circuit open: ${failCount2h} failed production jobs for story within 2h (threshold ${DISPATCH_FAILURE_THRESHOLD}). Moved to repair_queue by dispatch-queue cron — repeated re-dispatch was creating a new failing job every cycle.`
+        // ATL-FOLLOWUP-002 (Marc 2026-07-09): a story that already consumed its
+        // single repair pass goes straight to cold_storage on the next
+        // production failure; first-time failures go to the hold bucket.
+        const destination = failureDestinationForStory(story.production_repair_count)
+        const baseReason = `Dispatch failure circuit open: ${failCount2h} failed production jobs for story within 2h (threshold ${DISPATCH_FAILURE_THRESHOLD}). Moved to ${destination.state} by dispatch-queue cron — repeated re-dispatch was creating a new failing job every cycle.`
+        const reason = destination.doctrineReason ? `${baseReason} Doctrine: ${destination.doctrineReason}.` : baseReason
         const { error: repairMoveError } = await supabase
           .from('stories')
           .update({
-            workflow_state: 'repair_queue',
+            workflow_state: destination.state,
             workflow_state_changed_by: 'atlas',
             workflow_state_changed_at: now,
             workflow_state_change_reason: reason,
@@ -508,10 +557,10 @@ async function handleDispatchQueue(request: NextRequest) {
           .eq('workflow_state', 'stories_in_queue')
 
         if (repairMoveError) {
-          console.error('[dispatch-queue] Failed to move failing story to repair_queue:', story.id, repairMoveError)
+          console.error(`[dispatch-queue] Failed to move failing story to ${destination.state}:`, story.id, repairMoveError)
         }
-        console.warn('[dispatch-queue] Failure circuit OPEN — story moved to repair_queue:', story.id, story.title, reason)
-        skipped.push({ storyId: story.id, reason: 'failure_circuit_open', failedJobsInWindow: failCount2h, movedTo: 'repair_queue' })
+        console.warn(`[dispatch-queue] Failure circuit OPEN — story moved to ${destination.state}:`, story.id, story.title, reason)
+        skipped.push({ storyId: story.id, reason: 'failure_circuit_open', failedJobsInWindow: failCount2h, movedTo: destination.state })
         continue
       }
 
