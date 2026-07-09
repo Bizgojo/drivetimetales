@@ -324,7 +324,17 @@ async function reactivateJob(supabase, jobId) {
     .select('id,status,current_step')
     .single()
 
-  if (error) throw new Error(`Failed to reactivate production job ${jobId}: ${error.message}`)
+  if (error) {
+    // ATL-RENDER-STATE-INDEX-001: if a replacement job for the same
+    // story/series is already active, the one-active partial unique index
+    // rejects the reactivation. That is the invariant working, not a crash —
+    // report and let the active job proceed.
+    if (/production_jobs_one_active_per_(series|story)/.test(String(error.message || ''))) {
+      console.warn(`[autopilot] Reactivation of ${jobId} blocked by one-active index — a replacement job is already active for this story/series. Skipping.`)
+      return null
+    }
+    throw new Error(`Failed to reactivate production job ${jobId}: ${error.message}`)
+  }
   return data
 }
 

@@ -153,7 +153,11 @@ async function poll() {
       const nextStep = 'complete_story_package'
       log(`Job ${job.id.slice(0, 8)} render succeeded → advancing to ${nextStep}`)
 
-      await supabase
+      // ATL-RENDER-STATE-INDEX-001: fenced — only advance if this worker still
+      // owns the lock and the job wasn't failed/superseded mid-render.
+      // Resurrecting a superseded row to 'queued' collides with
+      // production_jobs_one_active_per_story/_series.
+      const { data: advancedRows } = await supabase
         .from('production_jobs')
         .update({
           status: 'queued',
@@ -164,11 +168,19 @@ async function poll() {
           logs: appendLog(job.logs, `[render-worker] render_final_mix complete at ${completedAt}. Advancing to ${nextStep}.`),
         })
         .eq('id', job.id)
+        .eq('locked_by', WORKER_ID)
+        .eq('status', 'running')
+        .select('id')
+      if (!advancedRows || advancedRows.length === 0) {
+        log(`Job ${job.id.slice(0, 8)} lock lost/superseded during render — NOT advancing (final_mix.mp3 is in storage for reuse).`)
+      }
     } else {
       // Fail the job
       log(`Job ${job.id.slice(0, 8)} render FAILED: ${renderError}`)
 
-      await supabase
+      // ATL-RENDER-STATE-INDEX-001: fenced — do not fail a job this worker no
+      // longer owns.
+      const { data: failedRows } = await supabase
         .from('production_jobs')
         .update({
           status: 'failed',
@@ -183,6 +195,12 @@ async function poll() {
           logs: appendLog(job.logs, `[render-worker] render_final_mix FAILED at ${completedAt}: ${renderError}`),
         })
         .eq('id', job.id)
+        .eq('locked_by', WORKER_ID)
+        .eq('status', 'running')
+        .select('id')
+      if (!failedRows || failedRows.length === 0) {
+        log(`Job ${job.id.slice(0, 8)} lock lost/superseded — NOT writing failed status.`)
+      }
     }
   } catch (err) {
     log('ERROR in poll loop:', err.message || String(err))
