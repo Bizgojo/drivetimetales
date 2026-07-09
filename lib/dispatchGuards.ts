@@ -30,6 +30,52 @@ export const UI_ACTIVE_JOB_STATUSES = ['running', 'queued'] as const
 export const DISPATCH_FAILURE_WINDOW_MS = 2 * 60 * 60 * 1000 // 2 hours
 export const DISPATCH_FAILURE_THRESHOLD = 3                  // failed jobs within the window
 
+// Retry cap (PIPE-AUDIT-001 item 4): failed jobs inside RETRY_CAP_WINDOW_MS
+// block re-dispatch once RETRY_CAP is reached. The window start is floored by
+// per-story dispatch_failure_reset_at and the global
+// RETRY_CAP_IGNORE_FAILURES_BEFORE env (set to the last relevant fix deploy)
+// so infra-era failures whose causes are already fixed stop counting.
+export const RETRY_CAP = 5
+export const RETRY_CAP_WINDOW_MS = 7 * 24 * 60 * 60 * 1000 // 7 days
+
+/**
+ * Compute the timestamp (ms) from which failed jobs count toward the retry
+ * cap: the newest of (now - window), the per-story reset, and the global
+ * ignore-before floor. Invalid/absent dates are ignored.
+ */
+export function retryCapWindowStartMs(
+  nowMs: number,
+  opts: {
+    windowMs?: number
+    /** stories.dispatch_failure_reset_at — per-story reset with audit trail. */
+    resetAtIso?: string | null
+    /** RETRY_CAP_IGNORE_FAILURES_BEFORE — global floor (last fix deploy). */
+    ignoreBeforeIso?: string | null
+  } = {},
+): number {
+  const windowMs = opts.windowMs ?? RETRY_CAP_WINDOW_MS
+  let start = nowMs - windowMs
+  for (const iso of [opts.resetAtIso, opts.ignoreBeforeIso]) {
+    const parsed = Date.parse(iso || '')
+    if (Number.isFinite(parsed) && parsed > start) start = parsed
+  }
+  return start
+}
+
+/** Count failed jobs at/after the retry-cap window start. */
+export function countRetryCapFailures(
+  jobs: JobStatusRow[],
+  nowMs: number,
+  opts: Parameters<typeof retryCapWindowStartMs>[1] = {},
+): number {
+  const start = retryCapWindowStartMs(nowMs, opts)
+  return jobs.filter((job) => {
+    if (cleanStatus(job.status) !== 'failed') return false
+    const failedAt = Date.parse(job.updated_at || '')
+    return Number.isFinite(failedAt) && failedAt >= start
+  }).length
+}
+
 function cleanStatus(status: unknown): string {
   return String(status ?? '').trim().toLowerCase()
 }

@@ -3,10 +3,13 @@ import { createClient } from '@supabase/supabase-js'
 import {
   DISPATCH_FAILURE_THRESHOLD,
   DISPATCH_FAILURE_WINDOW_MS,
+  RETRY_CAP,
   failureCircuitOpen,
   countRecentFailures,
+  retryCapWindowStartMs,
   type JobStatusRow,
 } from '@/lib/dispatchGuards'
+import { findQueueDuplicates, type QueueDedupRow } from '@/lib/dispatchDedup'
 
 export const runtime = 'nodejs'
 export const maxDuration = 60
@@ -30,7 +33,6 @@ const READY_OR_FURTHER_STATES = new Set([
 ])
 const NUM_RUNNERS = 4              // production-runner:worker-1..4 (pipeline_runner_state)
 const MAX_DISPATCH_PER_RUN = NUM_RUNNERS * 4  // Keep 4 jobs queued per runner (16 total)
-const RETRY_CAP = 5
 
 type StoryRow = {
   id: string
@@ -44,6 +46,7 @@ type StoryRow = {
   series_episode_number: number | null
   series_total_episodes: number | null
   needs_attention?: boolean | null
+  dispatch_failure_reset_at?: string | null
 }
 
 type DispatchResult = {
@@ -159,55 +162,42 @@ async function handleDispatchQueue(request: NextRequest) {
   const deduped: Array<{ id: string; title: string }> = []
   let needsAttentionSkipped = 0
 
-  // ── Auto-deduplication ──────────────────────────────────────────────────────
-  // Find all stories_in_queue, group by title. For each title with >1 entry,
-  // keep the one with highest production_priority (then earliest created_at)
-  // and cold-storage the rest automatically.
+  // ── Duplicate-title detection (PIPE-AUDIT-001 item 3) ──────────────────────
+  // Series-scoped matching only (see lib/dispatchDedup.ts). Duplicates are
+  // FLAGGED for human confirmation (needs_attention) — never auto-moved to
+  // cold_storage and never job-cancelled. The needs_attention gates below
+  // keep flagged stories out of dispatch until a human decides.
   const { data: allQueued } = await supabase
     .from('stories')
-    .select('id,title,production_priority,created_at')
+    .select('id,title,series_id,story_type,production_priority,created_at,needs_attention')
     .eq('workflow_state', 'stories_in_queue')
-    .order('production_priority', { ascending: false, nullsFirst: false })
-    .order('created_at', { ascending: true })
 
   if (allQueued && allQueued.length > 0) {
-    const seenTitles = new Map<string, string>() // title → keeper id
-    const dupesToRemove: string[] = []
+    const duplicateGroups = findQueueDuplicates(allQueued as QueueDedupRow[])
+    const alreadyFlagged = new Set(
+      (allQueued as Array<{ id: string; needs_attention?: boolean | null }>)
+        .filter((story) => story.needs_attention === true)
+        .map((story) => story.id),
+    )
+    const dupesToFlag = duplicateGroups
+      .flatMap((group) => group.duplicateIds)
+      .filter((id) => !alreadyFlagged.has(id))
 
-    for (const story of allQueued as Array<{ id: string; title: string; production_priority: number | null; created_at: string }>) {
-      const title = (story.title || '').trim().toLowerCase()
-      if (!title) continue
-      if (seenTitles.has(title)) {
-        dupesToRemove.push(story.id)
-      } else {
-        seenTitles.set(title, story.id)
-      }
-    }
-
-    if (dupesToRemove.length > 0) {
-      const { data: removed } = await supabase
+    if (dupesToFlag.length > 0) {
+      const { data: flagged } = await supabase
         .from('stories')
         .update({
-          workflow_state: 'cold_storage',
-          workflow_state_changed_by: 'orion',
-          workflow_state_changed_at: now,
-          workflow_state_change_reason: 'Duplicate title auto-removed from queue by dispatch-queue cron',
+          needs_attention: true,
+          needs_attention_reason:
+            'Possible duplicate title within the same series/standalone scope detected by dispatch-queue cron. Human confirmation required before removal — no automatic cold_storage.',
+          needs_attention_at: now,
         })
-        .in('id', dupesToRemove)
+        .in('id', dupesToFlag)
         .select('id,title')
 
-      // Also cancel any active jobs for removed stories
-      if (dupesToRemove.length > 0) {
-        await supabase
-          .from('production_jobs')
-          .update({ status: 'cancelled' })
-          .in('story_id', dupesToRemove)
-          .in('status', ACTIVE_JOB_STATUSES)
-      }
-
-      for (const r of (removed || []) as Array<{ id: string; title: string }>) {
+      for (const r of (flagged || []) as Array<{ id: string; title: string }>) {
         deduped.push({ id: r.id, title: r.title })
-        console.log(`[dispatch-queue] Auto-deduped: "${r.title}" (${r.id})`)
+        console.log(`[dispatch-queue] Duplicate title flagged for review: "${r.title}" (${r.id})`)
       }
     }
   }
@@ -444,7 +434,7 @@ async function handleDispatchQueue(request: NextRequest) {
 
     const { data: standaloneStories, error: standaloneError } = await supabase
       .from('stories')
-      .select('id,title,story_type,workflow_state,series_id,series_name,episode_number,series_episode_number,series_total_episodes,needs_attention')
+      .select('id,title,story_type,workflow_state,series_id,series_name,episode_number,series_episode_number,series_total_episodes,needs_attention,dispatch_failure_reset_at')
       .eq('workflow_state', 'stories_in_queue')
       .in('story_type', ['standalone', 'single'])
       .not('needs_attention', 'eq', true)
@@ -525,20 +515,31 @@ async function handleDispatchQueue(request: NextRequest) {
         continue
       }
 
+      // ── PIPE-AUDIT-001 item 4: retry cap with reset floor ────────────────
+      // Failures older than the per-story dispatch_failure_reset_at (set with
+      // audit trail when a human clears flags) or the global
+      // RETRY_CAP_IGNORE_FAILURES_BEFORE deploy floor no longer count —
+      // otherwise infra-era failures re-block stories for a full 7 days even
+      // after their causes are fixed and flags are cleared.
+      const capWindowStart = new Date(retryCapWindowStartMs(Date.now(), {
+        resetAtIso: story.dispatch_failure_reset_at ?? null,
+        ignoreBeforeIso: process.env.RETRY_CAP_IGNORE_FAILURES_BEFORE || null,
+      })).toISOString()
       const { count: failCount } = await supabase
         .from('production_jobs')
         .select('id', { count: 'exact', head: true })
         .eq('story_id', story.id)
         .eq('status', 'failed')
-        .gte('updated_at', new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString())
+        .gte('updated_at', capWindowStart)
 
       if ((failCount ?? 0) >= RETRY_CAP) {
-        const reason = `Retry cap reached: ${RETRY_CAP} failed jobs in 7 days. Manual review required.`
+        const reason = `Retry cap reached: ${failCount} failed jobs since ${capWindowStart} (cap ${RETRY_CAP}/7d). Manual review required — clear the flag via content-approval clear_needs_attention to reset the counter with an audit trail.`
         const { error: attentionError } = await supabase
           .from('stories')
           .update({
             needs_attention: true,
             needs_attention_reason: reason,
+            needs_attention_at: now,
           })
           .eq('id', story.id)
 
