@@ -4,6 +4,7 @@ import { Fragment, useState, useEffect, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
 import { evaluateStoryGate, evaluateQCChecklist, deriveOrionRecommendation } from '@/lib/story-gates'
 import type { QCChecklistItem } from '@/lib/story-gates'
+import { runnerDisplayName, isTerminalJobStatus } from '@/lib/dispatchGuards'
 
 interface Story {
   id: string
@@ -548,12 +549,10 @@ const PIPELINE_STEP_LABEL_MAP: Record<string, string> = {
   complete_story_package: 'Finish', series_complete_story_package: 'Finish',
   ready_for_review: 'RFR',
 }
-const WORKER_SHORT_NAMES: Record<string, string> = {
-  'production-runner:worker-1': 'Larry',
-  'production-runner:worker-2': 'Curly',
-  'production-runner:worker-3': 'Moe',
-  'production-runner:worker-4': 'Groucho',
-}
+// ATL-DISPATCH-DEFECTS-001: legacy stage names (Larry/Curly/Moe/Groucho)
+// removed — runner displays now use the actual pipeline_runner_state ids
+// (worker-1..worker-4) via runnerDisplayName().
+const RUNNER_WORKER_KEYS = ['worker-1', 'worker-2', 'worker-3', 'worker-4']
 
 function repairQueueStates(story: Story) {
   return ['repair_queue', 'being_repaired', 'failed'].includes(effectiveWorkflowState(story))
@@ -2827,6 +2826,9 @@ export default function AdminStoriesPage() {
   })
   const [runnerWorkers, setRunnerWorkers] = useState<RunnerWorkerState[]>([])
   const [runnerRefreshTick, setRunnerRefreshTick] = useState(0)
+  // ATL-DISPATCH-DEFECTS-001: job ids verified terminal (failed/cancelled/complete)
+  // after the page's stories snapshot was loaded — these must never render as active.
+  const [terminalJobIds, setTerminalJobIds] = useState<Set<string>>(new Set())
   const [idleSeconds, setIdleSeconds] = useState<Record<string, number>>({})
   const [lastJobDetailsByWorker, setLastJobDetailsByWorker] = useState<Record<string, { jobId: string; storyId: string; step: string; title: string; updatedAt: string } | null>>({})
   const [markedForDeletionIds, setMarkedForDeletionIds] = useState<Record<string, boolean>>({})
@@ -3917,10 +3919,14 @@ export default function AdminStoriesPage() {
     counts[key] = (counts[key] || 0) + 1
     return counts
   }, {})
-  // Only jobs the runner is ACTIVELY processing right now (not just waiting in queue)
-  const RUNNER_ACTIVE_STATUSES = ['running', 'processing', 'waiting_for_external']
+  // Only jobs the runner is ACTIVELY processing right now (not just waiting in queue).
+  // ATL-DISPATCH-DEFECTS-001: additionally exclude jobs whose status was verified
+  // terminal by the 15s re-check below — the stories snapshot can go stale, and
+  // terminal jobs (failed/cancelled/complete) must never render as active.
+  const RUNNER_ACTIVE_STATUSES = ['running']
   const activeRunnerJobs = Array.from(new Map(stories
     .filter((story) => productionQueueStates(story) && RUNNER_ACTIVE_STATUSES.includes(String(story.source_job?.status || '').trim()))
+    .filter((story) => !story.source_job?.id || !terminalJobIds.has(String(story.source_job.id)))
     .map((story) => [story.source_job?.id || story.id, story])
   ).values())
     .sort((a, b) => new Date(b.source_job?.updated_at || 0).getTime() - new Date(a.source_job?.updated_at || 0).getTime())
@@ -3989,6 +3995,31 @@ export default function AdminStoriesPage() {
       .like('id', 'production-runner:worker-%')
       .order('last_heartbeat_at', { ascending: false, nullsFirst: false })
       .then(({ data }) => { if (data) setRunnerWorkers(data as RunnerWorkerState[]) })
+
+    // ATL-DISPATCH-DEFECTS-001: re-verify source_job statuses so jobs that
+    // reached a terminal state after the stories snapshot loaded stop
+    // rendering as active. This is what caused terminal jobs to show as
+    // "actively rendering" for hours (911 Dispatcher / Charity's Shadow).
+    const sourceJobIds = Array.from(new Set(
+      stories.map((story) => story.source_job?.id).filter((id): id is string => Boolean(id))
+    ))
+    if (sourceJobIds.length === 0) return
+    supabase
+      .from('production_jobs')
+      .select('id,status')
+      .in('id', sourceJobIds)
+      .then(({ data }) => {
+        if (!data) return
+        const stale = new Set<string>(
+          (data as Array<{ id: string; status: string | null }>)
+            .filter((job) => isTerminalJobStatus(job.status))
+            .map((job) => job.id)
+        )
+        setTerminalJobIds((prev) => {
+          if (prev.size === stale.size && Array.from(stale).every((id) => prev.has(id))) return prev
+          return stale
+        })
+      })
   }, [runnerRefreshTick])
 
   // Idle countdown: tick every second for idle workers
@@ -3996,8 +4027,7 @@ export default function AdminStoriesPage() {
     const timer = setInterval(() => {
       setIdleSeconds(prev => {
         const next = { ...prev }
-        const WORKER_NAMES: Record<string, string> = { 'worker-1': 'Larry', 'worker-2': 'Curly', 'worker-3': 'Moe', 'worker-4': 'Groucho' }
-        for (const key of Object.keys(WORKER_NAMES)) {
+        for (const key of RUNNER_WORKER_KEYS) {
           next[key] = (next[key] ?? 0) + 1
         }
         return next
@@ -4902,14 +4932,9 @@ export default function AdminStoriesPage() {
                 <div style={{ minWidth: 0, display: 'grid', gap: '2px' }}>
                   <span style={{ fontWeight: 950 }}>Runners: ({runnerWorkerLabel}) · {queuedRunnerJobCount} queued</span>
                   {(() => {
-                    const WORKER_NAMES: Record<string, string> = {
-                      'worker-1': 'Larry',
-                      'worker-2': 'Curly',
-                      'worker-3': 'Moe',
-                      'worker-4': 'Groucho',
-                    }
                     // Always show all known workers, active or idle
-                    const allWorkerKeys = ['worker-1', 'worker-2', 'worker-3', 'worker-4']
+                    // ATL-DISPATCH-DEFECTS-001: display actual pipeline_runner_state ids
+                    const allWorkerKeys = RUNNER_WORKER_KEYS
                     const workerById = Object.fromEntries(runnerWorkers.map(w => [w.id, w]))
                     const fmtElapsed = (lockedAt: string | null | undefined) => {
                       if (!lockedAt) return ''
@@ -4929,7 +4954,7 @@ export default function AdminStoriesPage() {
                     return allWorkerKeys.map(key => {
                       const workerId = `production-runner:${key}`
                       const worker = workerById[workerId]
-                      const name = WORKER_NAMES[key] || key
+                      const name = runnerDisplayName(workerId)
                       const isActive = worker && worker.lease_holder && worker.last_heartbeat_at &&
                         Date.now() - new Date(worker.last_heartbeat_at).getTime() <= 15 * 60 * 1000
                       const activeJob = isActive
@@ -5015,7 +5040,7 @@ export default function AdminStoriesPage() {
                 for (const story of activeRunnerJobs) {
                   const lockedBy = story.source_job?.locked_by as string | undefined
                   if (!lockedBy) continue
-                  const name = WORKER_SHORT_NAMES[lockedBy] || lockedBy
+                  const name = runnerDisplayName(lockedBy)
                   const step = PIPELINE_STEP_LABEL_MAP[story.source_job?.current_step as string] || story.source_job?.current_step || ''
                   // Only set if not already claimed by another worker (first locked wins)
                   if (!runnerByStoryId[story.id]) {

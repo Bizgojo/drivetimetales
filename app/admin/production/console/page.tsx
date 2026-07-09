@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
+import { partitionProductionItems, isTerminalJobStatus } from '@/lib/dispatchGuards'
 
 // ── Types (must mirror route ConsoleItem.op shape) ────────────────────────────
 
@@ -32,6 +33,9 @@ type OpData = {
   errorSummary?: string | null
   recoveryAction?: string | null
   seriesDisplay?: string | null
+  // ATL-DISPATCH-DEFECTS-001: explicit activity flags from the API
+  isTerminal?: boolean
+  isActiveJob?: boolean
   // ATL-OPS-001 CHANGE 1: story metadata for failed-job displays
   storyTitle?: string | null
   episodeDisplay?: string | null
@@ -310,7 +314,11 @@ function ProductionCard({ item }: { item: ConsoleItem }) {
   const pct = op.progressPct ?? 0
   const isStalled = op.isStalled === true
   const stalled = op.stalledHours ?? 0
-  const color = isStalled ? '#dc2626' : '#2563eb'
+  // ATL-DISPATCH-DEFECTS-001: terminal jobs (failed/cancelled/complete) must
+  // never render an "In Production"/active badge.
+  const status = String(item.status || '').trim().toLowerCase()
+  const isTerminal = op.isTerminal === true || isTerminalJobStatus(status)
+  const color = isStalled || status === 'failed' ? '#dc2626' : isTerminal ? '#64748b' : '#2563eb'
 
   return (
     <div style={{ border: `1px solid ${isStalled ? '#FECACA' : '#BFDBFE'}`, borderLeft: `4px solid ${color}`, borderRadius: '8px', backgroundColor: '#ffffff', overflow: 'hidden' } as React.CSSProperties}>
@@ -324,7 +332,11 @@ function ProductionCard({ item }: { item: ConsoleItem }) {
             <span style={{ color: '#111827', fontSize: '15px', fontWeight: 950 } as React.CSSProperties}>{item.title}</span>
             {isStalled
               ? <Badge color="#dc2626">⚠️ STALLED {stalled}h</Badge>
-              : <Badge color="#2563eb">In Production</Badge>}
+              : status === 'failed'
+                ? <Badge color="#dc2626">❌ Failed — Not Running</Badge>
+                : isTerminal
+                  ? <Badge color="#64748b">{status === 'complete' ? 'Complete' : 'Cancelled'} — Not Running</Badge>
+                  : <Badge color="#2563eb">In Production</Badge>}
           </div>
           {/* Progress bar */}
           <div style={{ marginTop: '8px' } as React.CSSProperties}>
@@ -393,8 +405,10 @@ function ProductionCard({ item }: { item: ConsoleItem }) {
 }
 
 function ProductionSection({ items }: { items: ConsoleItem[] }) {
-  const active  = items.filter(i => !i.op?.isStalled)
-  const stalled = items.filter(i => i.op?.isStalled)
+  // ATL-DISPATCH-DEFECTS-001: "Active" may contain ONLY status IN ('running','queued').
+  // Terminal jobs (failed/cancelled/complete) are shown in their own group and
+  // must never be presented as active/rendering.
+  const { active, stalled, terminal, waiting } = partitionProductionItems(items)
   if (items.length === 0) return (
     <SectionShell icon="⚙️" title="In Production" color="#2563eb" count={0}>
       <EmptyState text="No active production jobs." />
@@ -407,8 +421,16 @@ function ProductionSection({ items }: { items: ConsoleItem[] }) {
         {stalled.map(i => <ProductionCard key={i.key} item={i} />)}
       </>}
       {active.length > 0 && <>
-        {stalled.length > 0 && <div style={{ color: '#2563eb', fontSize: '11px', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.06em' } as React.CSSProperties}>Active ({active.length})</div>}
+        <div style={{ color: '#2563eb', fontSize: '11px', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.06em' } as React.CSSProperties}>Active ({active.length})</div>
         {active.map(i => <ProductionCard key={i.key} item={i} />)}
+      </>}
+      {waiting.length > 0 && <>
+        <div style={{ color: '#a16207', fontSize: '11px', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.06em' } as React.CSSProperties}>⏳ Waiting on External ({waiting.length})</div>
+        {waiting.map(i => <ProductionCard key={i.key} item={i} />)}
+      </>}
+      {terminal.length > 0 && <>
+        <div style={{ color: '#dc2626', fontSize: '11px', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.06em' } as React.CSSProperties}>❌ Failed / Terminal — Not Running ({terminal.length})</div>
+        {terminal.map(i => <ProductionCard key={i.key} item={i} />)}
       </>}
     </SectionShell>
   )
