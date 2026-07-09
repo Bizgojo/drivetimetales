@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { createServerClient } from '@supabase/ssr'
+import {
+  personalizedAssetGateReason,
+  recordPersonalizationFallback,
+} from '@/lib/personalization/fallbackTelemetry'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -158,6 +162,19 @@ async function pickNameOpenerClip(userId: string, pronunciationKey: string, tone
   return chosen
 }
 
+type PersonalizedQueuePayload = {
+  queue: PlaybackQueueItem[]
+  toneCluster: string
+  openerId: string
+}
+
+type PersonalizedQueueResult = {
+  payload: PersonalizedQueuePayload | null
+  // PERS-FIX-002: when payload is null, the gate reason is returned so the
+  // fallback is countable instead of silent.
+  fallbackReason: string | null
+}
+
 async function buildPersonalizedQueue({
   story,
   userId,
@@ -166,15 +183,13 @@ async function buildPersonalizedQueue({
   story: any
   userId: string
   pronunciationKey: string
-}) {
-  if (!pronunciationKey) return null
-  if (!String(story?.announcement_url || '').trim()) return null
-  if (!String(story?.story_audio_url || '').trim()) return null
+}): Promise<PersonalizedQueueResult> {
+  const gateReason = personalizedAssetGateReason(story, pronunciationKey)
+  if (gateReason) return { payload: null, fallbackReason: gateReason }
   const outroUrl = String(story?.outro_with_music_url || story?.outro_audio_url || '').trim()
-  if (!outroUrl) return null
 
   const ready = await assertNamePoolReady(pronunciationKey)
-  if (!ready) return null
+  if (!ready) return { payload: null, fallbackReason: 'name_pool_not_ready' }
 
   const toneCluster = await resolveToneClusterForStory(story)
   const opener = await pickNameOpenerClip(userId, pronunciationKey, toneCluster)
@@ -186,9 +201,12 @@ async function buildPersonalizedQueue({
   ]
 
   return {
-    queue,
-    toneCluster,
-    openerId: opener.opener_id,
+    payload: {
+      queue,
+      toneCluster,
+      openerId: opener.opener_id,
+    },
+    fallbackReason: null,
   }
 }
 
@@ -232,22 +250,42 @@ export async function GET(req: NextRequest) {
   }
 
   const refUrl = String(story.audio_url || '').trim()
-  let personalizedPayload: Awaited<ReturnType<typeof buildPersonalizedQueue>> | null = null
-  if (authUser?.id && pronunciationKey) {
-    try {
-      personalizedPayload = await buildPersonalizedQueue({
-        story,
-        userId: authUser.id,
-        pronunciationKey,
-      })
-    } catch (err) {
-      console.warn('[story-playlist] personalized queue failed; falling back to baked final_mix:', {
-        storyId: story.id,
-        userId: authUser.id,
-        pronunciation_key: pronunciationKey,
-        error: err instanceof Error ? err.message : String(err),
-      })
+  let personalizedPayload: PersonalizedQueuePayload | null = null
+  let fallbackReason: string | null = null
+  if (authUser?.id) {
+    if (!pronunciationKey) {
+      fallbackReason = 'missing_pronunciation_key'
+    } else {
+      try {
+        const result = await buildPersonalizedQueue({
+          story,
+          userId: authUser.id,
+          pronunciationKey,
+        })
+        personalizedPayload = result.payload
+        fallbackReason = result.fallbackReason
+      } catch (err) {
+        fallbackReason = 'personalized_queue_error'
+        console.warn('[story-playlist] personalized queue failed; falling back to baked final_mix:', {
+          storyId: story.id,
+          userId: authUser.id,
+          pronunciation_key: pronunciationKey,
+          error: err instanceof Error ? err.message : String(err),
+        })
+      }
     }
+  }
+
+  // PERS-FIX-002: silent degradation must be countable. Best-effort row +
+  // structured log for every AUTHENTICATED play that falls back to the baked
+  // final_mix (anonymous plays are expected to be generic — not recorded).
+  if (authUser?.id && !personalizedPayload && fallbackReason) {
+    await recordPersonalizationFallback(supabase, {
+      storyId: story.id,
+      userId: authUser.id,
+      pronunciationKey,
+      reason: fallbackReason,
+    })
   }
 
   console.log('[story-playlist] playback resolution', {
@@ -285,6 +323,7 @@ export async function GET(req: NextRequest) {
       preferredName: preferredName || null,
       pronunciationKey: pronunciationKey || null,
       skippedReason: pronunciationKey ? 'personalized assets unavailable' : 'missing ready pronunciation key',
+      fallbackReason: authUser?.id ? fallbackReason : 'no_auth_user',
     },
   }, { headers: { 'Cache-Control': 'no-store' } })
 }

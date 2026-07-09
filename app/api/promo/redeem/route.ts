@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { ensureNamePoolForUser } from '@/lib/personalization/ensureNamePool'
+import { planSignupNameEnsure } from '@/lib/personalization/signupEnsure'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -39,7 +41,7 @@ export async function POST(req: NextRequest) {
     const now = new Date()
     const { data: userData } = await supabase
       .from('users')
-      .select('subscription_ends_at, subscription_type, plan')
+      .select('subscription_ends_at, subscription_type, plan, first_name, name_pronunciation_key')
       .eq('id', userId)
       .single()
 
@@ -54,6 +56,19 @@ export async function POST(req: NextRequest) {
       subscription_ends_at: newEndsAt.toISOString(),
       plan: userData?.plan && userData.plan !== 'free' ? userData.plan : 'standard',
     }).eq('id', userId)
+
+    // PERS-FIX-002: promo/GVL redemption is a signup path — it must key the
+    // account and ensure the name pool (idempotent; skips the enqueue when the
+    // pool is already ready). Only runs with a non-empty first_name so an
+    // existing key is never cleared. Non-fatal.
+    const ensurePlan = planSignupNameEnsure([(userData as any)?.first_name])
+    if (ensurePlan.run) {
+      try {
+        await ensureNamePoolForUser(userId, ensurePlan.firstName)
+      } catch (nameErr) {
+        console.error('[promo] ensureNamePoolForUser failed (non-fatal):', nameErr)
+      }
+    }
 
     // Log redemption
     await supabase.from('promo_redemptions').insert({
