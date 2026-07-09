@@ -1,14 +1,24 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import {
+  DISPATCH_FAILURE_THRESHOLD,
+  DISPATCH_FAILURE_WINDOW_MS,
+  failureCircuitOpen,
+  countRecentFailures,
+  type JobStatusRow,
+} from '@/lib/dispatchGuards'
 
 export const runtime = 'nodejs'
 export const maxDuration = 60
 
 const ACTIVE_JOB_STATUSES = ['queued', 'running', 'waiting_for_external']
 // Statuses that mean "a job already exists for this story — don't create another"
-// Note: 'failed' is intentionally excluded — a failed job does not block re-dispatch.
-// Failed stories stay in stories_in_queue and get re-dispatched normally.
-// Duplicate creation is prevented at the runner level (skip stories locked by another runner).
+// Note: 'failed' is intentionally excluded — a single failed job does not block
+// re-dispatch. But repeated failures DO: the story/series-level failure circuit
+// (ATL-DISPATCH-DEFECTS-001) blocks dispatch after DISPATCH_FAILURE_THRESHOLD
+// failed jobs inside a rolling DISPATCH_FAILURE_WINDOW_MS window and moves the
+// stories to repair_queue. The per-job circuit breaker in the runner cannot
+// catch this because every dispatch retry is a NEW job row.
 const BLOCKING_JOB_STATUSES = ['queued', 'running', 'waiting_for_external']
 const READY_OR_FURTHER_STATES = new Set([
   'stories_in_queue',
@@ -18,7 +28,7 @@ const READY_OR_FURTHER_STATES = new Set([
   'unpublished_library',
   'published',
 ])
-const NUM_RUNNERS = 4              // Larry, Curly, Moe, Groucho
+const NUM_RUNNERS = 4              // production-runner:worker-1..4 (pipeline_runner_state)
 const MAX_DISPATCH_PER_RUN = NUM_RUNNERS * 4  // Keep 4 jobs queued per runner (16 total)
 const RETRY_CAP = 5
 
@@ -258,6 +268,48 @@ async function handleDispatchQueue(request: NextRequest) {
         continue
       }
 
+      // ── ATL-DISPATCH-DEFECTS-001: series-level failure circuit ──────────
+      // >= DISPATCH_FAILURE_THRESHOLD failed jobs for this series inside the
+      // rolling window → do NOT create another job; park the queued episodes
+      // in repair_queue so a human/repair flow decides what happens next.
+      const failureWindowStart = new Date(Date.now() - DISPATCH_FAILURE_WINDOW_MS).toISOString()
+      const { data: recentSeriesFailures, error: seriesFailuresError } = await supabase
+        .from('production_jobs')
+        .select('id,status,updated_at')
+        .eq('series_id', seriesId)
+        .eq('status', 'failed')
+        .gte('updated_at', failureWindowStart)
+
+      if (seriesFailuresError) {
+        console.error('[dispatch-queue] Failed to load recent series failures:', seriesId, seriesFailuresError)
+        skipped.push({ seriesId, reason: 'failure_lookup_failed', error: seriesFailuresError.message })
+        continue
+      }
+
+      if (failureCircuitOpen((recentSeriesFailures || []) as JobStatusRow[], Date.now())) {
+        const failCount = countRecentFailures((recentSeriesFailures || []) as JobStatusRow[], Date.now())
+        const reason = `Dispatch failure circuit open: ${failCount} failed production jobs for series ${seriesId} within 2h (threshold ${DISPATCH_FAILURE_THRESHOLD}). Moved to repair_queue by dispatch-queue cron — repeated re-dispatch was creating a new failing job every cycle.`
+        const { error: repairMoveError } = await supabase
+          .from('stories')
+          .update({
+            workflow_state: 'repair_queue',
+            workflow_state_changed_by: 'atlas',
+            workflow_state_changed_at: now,
+            workflow_state_change_reason: reason,
+            needs_attention: true,
+            needs_attention_reason: reason,
+          })
+          .eq('series_id', seriesId)
+          .eq('workflow_state', 'stories_in_queue')
+
+        if (repairMoveError) {
+          console.error('[dispatch-queue] Failed to move failing series to repair_queue:', seriesId, repairMoveError)
+        }
+        console.warn('[dispatch-queue] Failure circuit OPEN — series moved to repair_queue:', seriesId, reason)
+        skipped.push({ seriesId, reason: 'failure_circuit_open', failedJobsInWindow: failCount, movedTo: 'repair_queue' })
+        continue
+      }
+
       const { data: seriesStories, error: seriesStoriesError } = await supabase
         .from('stories')
         .select('id,title,author,story_type,workflow_state,series_id,series_name,episode_number,series_episode_number,series_total_episodes,needs_attention')
@@ -303,6 +355,29 @@ async function handleDispatchQueue(request: NextRequest) {
 
       const episodeCount = expectedEpisodeCount(episodes)
       const seriesName = episodes.find((episode) => episode.series_name)?.series_name || null
+
+      // ── ATL-DISPATCH-DEFECTS-001: defensive uniqueness re-check ─────────
+      // The activeSeriesIds snapshot above can be seconds stale (overlapping
+      // cron invocations). Re-verify no non-terminal job exists immediately
+      // before insert. The partial unique index
+      // production_jobs_one_active_per_series is the final guarantee.
+      const { count: activeSeriesNow, error: activeRecheckError } = await supabase
+        .from('production_jobs')
+        .select('id', { count: 'exact', head: true })
+        .eq('series_id', seriesId)
+        .in('status', BLOCKING_JOB_STATUSES)
+
+      if (activeRecheckError) {
+        console.error('[dispatch-queue] Active-job recheck failed for series:', seriesId, activeRecheckError)
+        skipped.push({ seriesId, reason: 'active_recheck_failed', error: activeRecheckError.message })
+        continue
+      }
+      if ((activeSeriesNow ?? 0) > 0) {
+        console.warn('[dispatch-queue] Skipped series — active job appeared between snapshot and insert:', seriesId)
+        skipped.push({ seriesId, reason: 'active_job_exists_recheck' })
+        continue
+      }
+
       const { data: job, error: insertError } = await supabase
         .from('production_jobs')
         .insert({
@@ -408,6 +483,48 @@ async function handleDispatchQueue(request: NextRequest) {
         continue
       }
 
+      // ── ATL-DISPATCH-DEFECTS-001: story-level failure circuit ───────────
+      // Checked BEFORE the 7-day retry cap: 3 failures in 2h is a retry storm
+      // (a new failing job every dispatch cycle) and must stop immediately,
+      // long before the 5-in-7-days cap trips.
+      const storyFailureWindowStart = new Date(Date.now() - DISPATCH_FAILURE_WINDOW_MS).toISOString()
+      const { data: recentStoryFailures, error: storyFailuresError } = await supabase
+        .from('production_jobs')
+        .select('id,status,updated_at')
+        .eq('story_id', story.id)
+        .eq('status', 'failed')
+        .gte('updated_at', storyFailureWindowStart)
+
+      if (storyFailuresError) {
+        console.error('[dispatch-queue] Failed to load recent story failures:', story.id, storyFailuresError)
+        skipped.push({ storyId: story.id, reason: 'failure_lookup_failed', error: storyFailuresError.message })
+        continue
+      }
+
+      if (failureCircuitOpen((recentStoryFailures || []) as JobStatusRow[], Date.now())) {
+        const failCount2h = countRecentFailures((recentStoryFailures || []) as JobStatusRow[], Date.now())
+        const reason = `Dispatch failure circuit open: ${failCount2h} failed production jobs for story within 2h (threshold ${DISPATCH_FAILURE_THRESHOLD}). Moved to repair_queue by dispatch-queue cron — repeated re-dispatch was creating a new failing job every cycle.`
+        const { error: repairMoveError } = await supabase
+          .from('stories')
+          .update({
+            workflow_state: 'repair_queue',
+            workflow_state_changed_by: 'atlas',
+            workflow_state_changed_at: now,
+            workflow_state_change_reason: reason,
+            needs_attention: true,
+            needs_attention_reason: reason,
+          })
+          .eq('id', story.id)
+          .eq('workflow_state', 'stories_in_queue')
+
+        if (repairMoveError) {
+          console.error('[dispatch-queue] Failed to move failing story to repair_queue:', story.id, repairMoveError)
+        }
+        console.warn('[dispatch-queue] Failure circuit OPEN — story moved to repair_queue:', story.id, story.title, reason)
+        skipped.push({ storyId: story.id, reason: 'failure_circuit_open', failedJobsInWindow: failCount2h, movedTo: 'repair_queue' })
+        continue
+      }
+
       const { count: failCount } = await supabase
         .from('production_jobs')
         .select('id', { count: 'exact', head: true })
@@ -434,6 +551,25 @@ async function handleDispatchQueue(request: NextRequest) {
         needsAttentionSkipped += 1
         console.log('[dispatch-queue] Skipped (needs_attention):', story.id, story.title)
         skipped.push({ storyId: story.id, reason: 'retry_cap_reached', failedJobsInSevenDays: failCount ?? 0 })
+        continue
+      }
+
+      // ── ATL-DISPATCH-DEFECTS-001: defensive uniqueness re-check ─────────
+      // See series-path comment. Backed by production_jobs_one_active_per_story.
+      const { count: activeStoryNow, error: storyRecheckError } = await supabase
+        .from('production_jobs')
+        .select('id', { count: 'exact', head: true })
+        .eq('story_id', story.id)
+        .in('status', BLOCKING_JOB_STATUSES)
+
+      if (storyRecheckError) {
+        console.error('[dispatch-queue] Active-job recheck failed for story:', story.id, storyRecheckError)
+        skipped.push({ storyId: story.id, reason: 'active_recheck_failed', error: storyRecheckError.message })
+        continue
+      }
+      if ((activeStoryNow ?? 0) > 0) {
+        console.warn('[dispatch-queue] Skipped story — active job appeared between snapshot and insert:', story.id)
+        skipped.push({ storyId: story.id, reason: 'active_job_exists_recheck' })
         continue
       }
 
