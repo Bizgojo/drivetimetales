@@ -228,7 +228,7 @@ export function deriveOrionRecommendation(gate: GateResult): {
 
 export type RecommendedAction =
   | 'Resume Production'
-  | 'Send to Repair Queue'
+  | 'Send to Production Holds'
   | 'Move to Cold Storage'
   | 'Await Missing Episode'
   | 'Await Metadata Completion'
@@ -335,10 +335,10 @@ function deriveRecommendedAction(
   blockReasons: string[]
 ): RecommendedAction {
   // Previously rejected — needs human decision
-  if (reviewStatus === 'not_approved') return 'Send to Repair Queue'
+  if (reviewStatus === 'not_approved') return 'Send to Production Holds'
 
   // Validator failed — broken script/audio
-  if (status === 'validator_failed') return 'Send to Repair Queue'
+  if (status === 'validator_failed') return 'Send to Production Holds'
 
   // No audio at all — needs to go back into production
   if (!audioUrl) return 'Resume Production'

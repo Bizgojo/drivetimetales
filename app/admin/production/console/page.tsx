@@ -108,7 +108,7 @@ type SectionId = 'queue' | 'production' | 'repair' | 'cold'
 const SECTIONS: Array<{ id: SectionId; label: string; color: string; icon: string }> = [
   { id: 'queue',      label: 'Stories In Queue', color: '#64748b', icon: '📋' },
   { id: 'production', label: 'In Production',    color: '#2563eb', icon: '⚙️' },
-  { id: 'repair',     label: 'Repair Queue',     color: '#f97316', icon: '🔧' },
+  { id: 'repair',     label: 'Production Holds', color: '#f97316', icon: '🔧' },
   { id: 'cold',       label: 'Cold Storage',     color: '#8b5cf6', icon: '🗄️' },
 ]
 
@@ -274,8 +274,8 @@ function RepairCard({ item }: { item: ConsoleItem }) {
 
 function RepairSection({ items }: { items: ConsoleItem[] }) {
   if (items.length === 0) return (
-    <SectionShell icon="🔧" title="Repair Queue" color="#f97316" count={0}>
-      <EmptyState text="No stories currently in Repair Queue." />
+    <SectionShell icon="🔧" title="Production Holds" color="#f97316" count={0}>
+      <EmptyState text="No stories currently in Production Holds." />
     </SectionShell>
   )
   const staged = {
@@ -285,7 +285,7 @@ function RepairSection({ items }: { items: ConsoleItem[] }) {
     blocked:           items.filter(i => i.op?.repairStage === 'blocked'),
   }
   return (
-    <SectionShell icon="🔧" title="Repair Queue" color="#f97316" count={items.length}>
+    <SectionShell icon="🔧" title="Production Holds" color="#f97316" count={items.length}>
       {staged.vega_review.length > 0 && <>
         <div style={{ color: '#7c3aed', fontSize: '11px', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.06em' } as React.CSSProperties}>Under Vega Review ({staged.vega_review.length})</div>
         {staged.vega_review.map(i => <RepairCard key={i.key} item={i} />)}

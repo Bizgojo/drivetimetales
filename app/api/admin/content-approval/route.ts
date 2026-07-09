@@ -3,7 +3,7 @@ import { createClient } from '@supabase/supabase-js'
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import { evaluateStoryGate, evaluateSeriesGate, groupBySeriesForApproval } from '@/lib/story-gates'
-import { transitionAllowed } from '@/lib/workflowTransitions'
+import { transitionAllowed, shouldIncrementRepairCount } from '@/lib/workflowTransitions'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -46,6 +46,7 @@ type StoryRow = {
   production_standard_updated_at?: string | null
   production_standard_updated_by?: string | null
   production_priority?: number | null
+  production_repair_count?: number | null
   audio_url: string | null
   story_audio_url: string | null
   announcement_url?: string | null
@@ -915,6 +916,19 @@ export async function POST(req: NextRequest) {
     const storyId = clean(body.storyId || body.story_id)
     const changedBy = clean(body.changedBy || body.changed_by) || 'admin'
     const changeReason = clean(body.reason || body.change_reason) || null
+
+    // ATL-FOLLOWUP-002 (Marc 2026-07-09): explicit repair-vs-pipeline-defect
+    // signal for production_repair_count. `pipelineDefect: true` = our bug, a
+    // code fix unblocked the story, the story record was never repaired — the
+    // repair pass is NOT consumed. `storyRecordChanged: true/false` is the
+    // direct signal. When neither is provided, shouldIncrementRepairCount
+    // infers from the state machine (leaving being_repaired counts).
+    const storyRecordChanged: boolean | undefined =
+      typeof body.storyRecordChanged === 'boolean'
+        ? body.storyRecordChanged
+        : body.pipelineDefect === true
+          ? false
+          : undefined
     if (action === 'set_production_priority') {
       const priority = Number(body.priority)
       if (!storyId) return json({ success: false, error: 'Missing storyId' }, 400)
@@ -1094,7 +1108,7 @@ export async function POST(req: NextRequest) {
 
       const { data: seriesRows, error: seriesError } = await supabase
         .from('stories')
-        .select('id,title,episode_number,series_number,status,is_hidden,review_status,workflow_state')
+        .select('id,title,episode_number,series_number,status,is_hidden,review_status,workflow_state,production_repair_count')
         .eq('series_id', seriesId)
 
       if (seriesError) return json({ success: false, error: seriesError.message }, 500)
@@ -1138,6 +1152,22 @@ export async function POST(req: NextRequest) {
         .select('id,status,is_hidden,review_status,workflow_state')
 
       if (error) return json({ success: false, error: error.message }, 500)
+
+      // ATL-FOLLOWUP-002: consume the repair pass for episodes that left the
+      // production-holds bucket after a technical repair (per-row — each
+      // episode may be in a different from-state).
+      for (const row of seriesRows as Array<StoryRow & { production_repair_count?: number | null }>) {
+        const rowFrom = effectiveWorkflowState({ ...row, repair_checklist: null, repair_notes: null })
+        if (!shouldIncrementRepairCount({ from: rowFrom, to: state, storyRecordChanged })) continue
+        const { error: repairCountError } = await supabase
+          .from('stories')
+          .update({ production_repair_count: (row.production_repair_count ?? 0) + 1 })
+          .eq('id', row.id)
+        if (repairCountError) {
+          console.error('[content-approval] Failed to increment production_repair_count:', row.id, repairCountError)
+        }
+      }
+
       const updatedCount = data?.length || 0
       if (updatedCount !== seriesRows.length) {
         return json({
@@ -1258,7 +1288,7 @@ export async function POST(req: NextRequest) {
 
     const { data: storyData, error: storyError } = await supabase
       .from('stories')
-      .select('id,status,is_hidden,review_status,workflow_state')
+      .select('id,status,is_hidden,review_status,workflow_state,production_repair_count')
       .eq('id', storyId)
       .maybeSingle()
 
@@ -1279,6 +1309,12 @@ export async function POST(req: NextRequest) {
     if (from === 'published' && state !== 'published') {
       update.status = 'audio_ready'
       update.published_on = null
+    }
+    // ATL-FOLLOWUP-002: leaving the production-holds bucket after a technical
+    // repair consumes the story's single repair pass. Pipeline-defect releases
+    // (code fix unblocked it) do not.
+    if (shouldIncrementRepairCount({ from, to: state, storyRecordChanged })) {
+      update.production_repair_count = (((storyData as Record<string, unknown>).production_repair_count as number | null) ?? 0) + 1
     }
     update.workflow_state_changed_by = changedBy
     update.workflow_state_changed_at = new Date().toISOString()
