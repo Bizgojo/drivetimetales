@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
-import { promises as fs } from 'fs'
+import { promises as fs, statfsSync } from 'node:fs'
 import path from 'path'
 import os from 'os'
 import { execFile } from 'child_process'
@@ -12,6 +12,7 @@ const supabase = createClient(
 
 const BASE_STORAGE = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/audio`
 const STING_URL = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/audio/sting/ET_Signature_Sting_v7.mp3.mp3`
+const TMP_MIN_FREE_MB = 150
 
 // ASC3 Mix Spec v1.2 (ATL-PIPE-007 — 2026-06-10)
 // 1. STING         — full volume, no music
@@ -56,6 +57,29 @@ async function download(url: string, dest: string): Promise<void> {
 
   if (lastError instanceof Error) throw lastError
   throw new Error(`Download failed after retries: ${url}`)
+}
+
+function getTmpFreeSpaceMb(): number {
+  const stats = statfsSync(os.tmpdir())
+  return Math.floor((Number(stats.bavail) * Number(stats.bsize)) / 1024 / 1024)
+}
+
+async function cleanupEtMixDirsOlderThan(staleMs: number): Promise<void> {
+  const tmpBase = os.tmpdir()
+  const entries = await fs.readdir(tmpBase)
+  await Promise.all(
+    entries
+      .filter(e => e.startsWith('et-mix-'))
+      .map(async e => {
+        const dirPath = path.join(tmpBase, e)
+        try {
+          const stat = await fs.stat(dirPath)
+          if (Date.now() - stat.mtimeMs > staleMs) {
+            await fs.rm(dirPath, { recursive: true, force: true })
+          }
+        } catch { /* ignore per-dir errors */ }
+      })
+  )
 }
 
 async function getAudioDuration(filePath: string): Promise<number> {
@@ -287,34 +311,34 @@ export async function runRenderFinalMix(storyId: string): Promise<{
   error?: string
   [key: string]: unknown
 }> {
-  // Clean up STALE leftover et-mix-* dirs from previous invocations on this
-  // warm container — Vercel reuses /tmp across calls; accumulated dirs cause ENOSPC.
-  // CRITICAL: only remove dirs older than 20 minutes. With Fluid Compute, multiple
-  // renders can run concurrently in the same container — deleting ALL et-mix dirs
-  // at startup destroys a concurrent render's working files mid-render, causing
-  // random "Failed to prepare story segment segment_NNNN.mp3" failures.
-  try {
-    const tmpBase = os.tmpdir()
-    const staleMs = 20 * 60 * 1000
-    const entries = await fs.readdir(tmpBase)
-    await Promise.all(
-      entries
-        .filter(e => e.startsWith('et-mix-'))
-        .map(async e => {
-          const dirPath = path.join(tmpBase, e)
-          try {
-            const stat = await fs.stat(dirPath)
-            if (Date.now() - stat.mtimeMs > staleMs) {
-              await fs.rm(dirPath, { recursive: true, force: true })
-            }
-          } catch { /* ignore per-dir errors */ }
-        })
-    )
-  } catch { /* never block on cleanup */ }
-
-  const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'et-mix-'))
+  let tmpDir: string | null = null
   try {
     console.log(`\n🎛 render-final-mix: ${storyId}`)
+    console.log(`  /tmp free at render start: ${getTmpFreeSpaceMb()} MB`)
+
+    // Clean up STALE leftover et-mix-* dirs from previous invocations on this
+    // warm container — Vercel reuses /tmp across calls; accumulated dirs cause ENOSPC.
+    // CRITICAL: only remove dirs older than 20 minutes. With Fluid Compute, multiple
+    // renders can run concurrently in the same container — deleting ALL et-mix dirs
+    // at startup destroys a concurrent render's working files mid-render, causing
+    // random "Failed to prepare story segment segment_NNNN.mp3" failures.
+    const staleMs = 20 * 60 * 1000
+    await cleanupEtMixDirsOlderThan(staleMs).catch(() => {})
+    console.log(`  /tmp free after stale cleanup: ${getTmpFreeSpaceMb()} MB`)
+
+    const freeAfterStaleCleanupMb = getTmpFreeSpaceMb()
+    if (freeAfterStaleCleanupMb < TMP_MIN_FREE_MB) {
+      const lowSpaceStaleMs = 5 * 60 * 1000
+      console.warn(`  /tmp free below ${TMP_MIN_FREE_MB} MB (${freeAfterStaleCleanupMb} MB); cleaning et-mix-* dirs older than 5 minutes`)
+      await cleanupEtMixDirsOlderThan(lowSpaceStaleMs).catch(() => {})
+      const freeAfterLowSpaceCleanupMb = getTmpFreeSpaceMb()
+      console.log(`  /tmp free after low-space cleanup: ${freeAfterLowSpaceCleanupMb} MB`)
+      if (freeAfterLowSpaceCleanupMb < TMP_MIN_FREE_MB) {
+        throw new Error(`TMP_SPACE_LOW: /tmp has <${TMP_MIN_FREE_MB}MB free; render deferred`)
+      }
+    }
+
+    tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'et-mix-'))
 
     const { data: files } = await supabase.storage.from('audio').list(`asc3/${storyId}`, { limit: 500 })
     if (!files || files.length === 0) return { success: false, error: 'No audio files found' }
@@ -975,6 +999,6 @@ export async function runRenderFinalMix(storyId: string): Promise<{
     console.error('render-final-mix error:', err)
     return { success: false, error: String(err) }
   } finally {
-    await fs.rm(tmpDir, { recursive: true, force: true }).catch(() => {})
+    if (tmpDir) await fs.rm(tmpDir, { recursive: true, force: true }).catch(() => {})
   }
 }
