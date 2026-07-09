@@ -7,6 +7,7 @@ import { classifyTrueState } from '@/lib/pipelineTruth'
 import { loadActiveMission } from '@/lib/missionContext'
 import { recommendRepair } from '@/lib/repairPlaybooks'
 import { loadActiveExcellenceLessons } from '@/lib/storyExcellenceLedger'
+import { isTerminalJobStatus, isUiActiveJobStatus } from '@/lib/dispatchGuards'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -178,6 +179,10 @@ export type ConsoleItem = {
     errorSummary?: string | null
     recoveryAction?: string | null
     seriesDisplay?: string | null
+    // ATL-DISPATCH-DEFECTS-001: explicit activity flags — UI must never render
+    // a terminal job (failed/cancelled/complete) as active.
+    isTerminal?: boolean
+    isActiveJob?: boolean
     // ATL-OPS-001 CHANGE 1: story metadata for failed-job displays
     storyTitle?: string | null
     episodeDisplay?: string | null
@@ -748,6 +753,10 @@ function buildInProductionItems(jobs: ProductionJobRow[], stories: StoryRow[], q
     const isFailed = status === 'failed'
     const errorSummaryResult = isFailed ? buildErrorSummary(job.error_json) : null
 
+    // ATL-DISPATCH-DEFECTS-001: explicit flags so no UI has to guess from status strings
+    const isTerminal = isTerminalJobStatus(status)
+    const isActiveJob = isUiActiveJobStatus(status)
+
     // ATL-MON-002: fix series_id === null showing "unknown" — show "Standalone" instead
     const seriesDisplay = job.series_id ? (seriesTitles.get(job.series_id) || job.series_id) : 'Standalone'
 
@@ -779,12 +788,17 @@ function buildInProductionItems(jobs: ProductionJobRow[], stories: StoryRow[], q
         isStalled,
         stalledHours: Math.round(stalledHours),
         productionOwner: owner,
-        productionNextAction: nextAction,
+        productionNextAction: isFailed
+          ? 'Failed — NOT running. Review error details and dispatch repair; do not treat as active.'
+          : nextAction,
         productionBlocker: blocker,
         // ATL-MON-002: error details for failed jobs
         errorSummary: errorSummaryResult?.summary ?? null,
         recoveryAction: errorSummaryResult?.recoveryAction ?? null,
         seriesDisplay,
+        // ATL-DISPATCH-DEFECTS-001
+        isTerminal,
+        isActiveJob,
         // ATL-OPS-001 CHANGE 1: story metadata fields
         storyTitle: storyTitle || null,
         episodeDisplay: episodeDisplay || null,
