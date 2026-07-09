@@ -234,6 +234,14 @@ function LandingContent() {
             }}>
               Listen to 2 free stories as a guest
             </Link>
+            {/* RETENTION-PATH-001: returning-user path — signed-in visitors are
+                auto-redirected to /home above; signed-out members need a visible door */}
+            <Link href="/signin" style={{
+              color: '#f0a030', fontSize: '0.95rem', fontWeight: 600,
+              textDecoration: 'underline', textUnderlineOffset: '4px'
+            }}>
+              Already a member? Open the app →
+            </Link>
           </div>
         </div>
       </section>
@@ -457,6 +465,7 @@ function LandingContent() {
           {[
             { label: 'Subscription', href: '/subscribe' },
             { label: 'About', href: '/about' },
+            { label: 'Sign In', href: '/signin' },
             { label: 'Start Free Trial', href: '/signup' },
           ].map((l, i) => (
             <Link key={i} href={l.href} style={{

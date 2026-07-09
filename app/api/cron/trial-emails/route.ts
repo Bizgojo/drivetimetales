@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { Resend } from 'resend'
+import { renderDay1InstallEmail } from '@/lib/emails/retentionTemplates'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -41,7 +42,58 @@ export async function GET(request: NextRequest) {
   }
 
   const now = new Date()
-  const results = { day3: 0, day10: 0, day13: 0, errors: 0 }
+  const results = { day1: 0, day3: 0, day10: 0, day13: 0, errors: 0 }
+
+  // ── Day-1 home-screen install email (RETENTION-PATH-001) ─────────────────
+  // All users created 24-48h ago who haven't received it yet, regardless of
+  // plan — the retention risk applies to anyone who signed up and may never
+  // find the app again without a home-screen icon.
+  // Requires migration 20260709170000_day1_email_sent_at.sql; if the column
+  // is missing this block logs and skips without breaking day-3/10/13 sends.
+  try {
+    const windowEnd = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString()
+    const windowStart = new Date(now.getTime() - 48 * 60 * 60 * 1000).toISOString()
+    const { data: day1Users, error: day1Error } = await supabase
+      .from('users')
+      .select('id, email, first_name, display_name, created_at, day1_email_sent_at')
+      .gte('created_at', windowStart)
+      .lte('created_at', windowEnd)
+      .is('day1_email_sent_at', null)
+
+    if (day1Error) {
+      console.error('[trial-emails] Day-1 query failed (migration applied?):', day1Error.message)
+    } else {
+      for (const user of day1Users || []) {
+        if (!user.email) continue
+        try {
+          const name = user.first_name || user.display_name || 'there'
+          const template = renderDay1InstallEmail(name)
+          await resend.emails.send({
+            from: 'Endless Tales <hello@endless-tales.com>',
+            to: user.email,
+            subject: template.subject,
+            html: template.html,
+          })
+          // Stamp AFTER a successful send; if the send throws we retry tomorrow
+          // (user still inside the 24-48h window on the next daily run is rare,
+          // but a missed stamp only risks one duplicate, never a silent skip).
+          const { error: stampError } = await supabase
+            .from('users')
+            .update({ day1_email_sent_at: new Date().toISOString() })
+            .eq('id', user.id)
+          if (stampError) console.error('[trial-emails] Day-1 stamp failed for', user.id, stampError.message)
+          results.day1++
+          console.log(`[trial-emails] Day-1 install email sent to ${user.email}`)
+        } catch (err) {
+          console.error('[trial-emails] Day-1 send error for user', user.id, err)
+          results.errors++
+        }
+      }
+    }
+  } catch (err) {
+    console.error('[trial-emails] Day-1 block error:', err)
+    results.errors++
+  }
 
   // Fetch all trialing users with subscription_start set
   const { data: users, error } = await supabase

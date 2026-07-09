@@ -6,6 +6,8 @@ import { supabase } from '@/lib/supabase'
 import { trackPlayStart, trackPlayEnd } from '@/lib/analytics'
 import { useAuth } from '@/contexts/AuthContext'
 import ReviewModal from '@/components/ReviewModal'
+import InstallAppBanner from '@/components/InstallAppBanner'
+import { requestInstallReoffer } from '@/lib/installReoffer'
 import type { AutoAdvanceCandidate, AutoAdvanceDisabledReason, PlayerMode, PlayerStory } from './playerTypes'
 import { clearLocalPlayerProgress, getLocalPlayerProgress, mergePlayerProgress, saveLocalPlayerProgress } from '@/lib/playerProgress'
 import {
@@ -77,6 +79,8 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
   const [audioSrc, setAudioSrc] = useState('')  // resolved single-file URL (state so init effect re-runs)
   const segDursRef    = useRef<number[]>([])
   const completedRef  = useRef(0)
+  // RETENTION-PATH-001: re-offer install banner at most once per completed story session
+  const installReofferFiredRef = useRef(false)
   const activeQueueIndexRef = useRef(0)
   const pendingQueueSeekRef = useRef<number | null>(null)
   const pendingQueueSeekPlayRef = useRef(false)
@@ -538,6 +542,7 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
     pendingQueueSeekRef.current = null
     pendingQueueSeekPlayRef.current = false
     reviewPromptHandledRef.current = false
+    installReofferFiredRef.current = false
     lastLocalProgressWriteRef.current = 0
     segDursRef.current = []
     setTotalDur(0)
@@ -1129,7 +1134,16 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
       not_for_me: false,      // Clear not_for_me if user plays again
       last_played: new Date().toISOString()
     })
-    if (done) void maybeShowCompletionReviewPrompt()
+    if (done) {
+      void maybeShowCompletionReviewPrompt()
+      // RETENTION-PATH-001: completed playback is the fulfillment moment —
+      // re-offer the home-screen install banner (max once per story session,
+      // no-op when already installed/standalone).
+      if (!installReofferFiredRef.current) {
+        installReofferFiredRef.current = true
+        requestInstallReoffer()
+      }
+    }
   }
 
   const seekToClientX = (clientX: number) => {
@@ -1610,6 +1624,9 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
         }}
       />
       <audio ref={musicRef} loop style={{ display:'none' }} />
+
+      {/* RETENTION-PATH-001: shows only when a completed-story re-offer fires */}
+      <InstallAppBanner reofferOnly />
 
       {showReview && user?.id && story && (
         <ReviewModal
