@@ -4,6 +4,7 @@ import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import { evaluateStoryGate, evaluateSeriesGate, groupBySeriesForApproval } from '@/lib/story-gates'
 import { transitionAllowed, shouldIncrementRepairCount } from '@/lib/workflowTransitions'
+import { personalizationPublishBlockers } from '@/lib/personalization/publishGuard'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -50,6 +51,9 @@ type StoryRow = {
   audio_url: string | null
   story_audio_url: string | null
   announcement_url?: string | null
+  // PERS-FIX-002: selected by the publish-guard paths
+  announcement_text?: string | null
+  script?: string | null
   intro_audio_url: string | null
   intro_before_url: string | null
   intro_after_url: string | null
@@ -1108,7 +1112,7 @@ export async function POST(req: NextRequest) {
 
       const { data: seriesRows, error: seriesError } = await supabase
         .from('stories')
-        .select('id,title,episode_number,series_number,status,is_hidden,review_status,workflow_state,production_repair_count')
+        .select('id,title,episode_number,series_number,status,is_hidden,review_status,workflow_state,production_repair_count,announcement_url,announcement_text,script')
         .eq('series_id', seriesId)
 
       if (seriesError) return json({ success: false, error: seriesError.message }, 500)
@@ -1121,13 +1125,22 @@ export async function POST(req: NextRequest) {
           repair_notes: null,
         })
         const allowed = transitionAllowed(from, state, body.retire === true)
-        return allowed ? null : {
+        // PERS-FIX-002: publishing via workflow transition hits the same
+        // personalization guard as /api/admin/publish-story.
+        const personalizationReasons = state === 'published'
+          ? personalizationPublishBlockers(story as any)
+          : []
+        const reasons = [
+          ...(allowed ? [] : [`Transition ${from} → ${state} is not allowed`]),
+          ...personalizationReasons,
+        ]
+        return reasons.length === 0 ? null : {
           storyId: story.id,
           title: story.title || `Episode ${storyEpisodeNumber(story) || '?'}`,
           episodeNumber: storyEpisodeNumber(story),
           from,
           to: state,
-          reason: `Transition ${from} → ${state} is not allowed`,
+          reason: reasons.join('; '),
         }
       }).filter(Boolean)
 
@@ -1288,7 +1301,7 @@ export async function POST(req: NextRequest) {
 
     const { data: storyData, error: storyError } = await supabase
       .from('stories')
-      .select('id,status,is_hidden,review_status,workflow_state,production_repair_count')
+      .select('id,status,is_hidden,review_status,workflow_state,production_repair_count,announcement_url,announcement_text,script')
       .eq('id', storyId)
       .maybeSingle()
 
@@ -1303,6 +1316,19 @@ export async function POST(req: NextRequest) {
     })
     if (!transitionAllowed(from, state, body.retire === true)) {
       return json({ success: false, error: `Transition ${from} → ${state} is not allowed` }, 400)
+    }
+
+    // PERS-FIX-002: publishing via workflow transition hits the same
+    // personalization guard as /api/admin/publish-story (blocking).
+    if (state === 'published') {
+      const personalizationBlockers = personalizationPublishBlockers(storyData as any)
+      if (personalizationBlockers.length) {
+        return json({
+          success: false,
+          error: `Personalization publish guard: ${personalizationBlockers.join('; ')}`,
+          personalizationBlockers,
+        }, 400)
+      }
     }
 
     const update = workflowUpdateForState(state, body)

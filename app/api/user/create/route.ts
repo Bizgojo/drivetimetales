@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { Resend } from 'resend';
 import { ensureNamePoolForUser } from '@/lib/personalization/ensureNamePool';
+import { planSignupNameEnsure } from '@/lib/personalization/signupEnsure';
 import { renderWelcomeEmail } from '@/lib/emails/retentionTemplates';
 
 const supabaseAdmin = createClient(
@@ -25,11 +26,25 @@ export async function POST(request: NextRequest) {
     // Check if already exists in "User" base table
     const { data: existing } = await supabaseAdmin
       .from('users')
-      .select('id')
+      .select('id, first_name, name_pronunciation_key')
       .eq('id', id)
       .single();
 
     if (existing) {
+      // PERS-FIX-002: the ensure hook must run for EXISTING rows too. The GVL
+      // promo flow (promo/send-magic-link) inserts the users row first, so the
+      // old early-return skipped name keying forever (Liam/Marion/Ryan/Kim,
+      // Jun 23 – Jul 9: all NULL name_pronunciation_key). DB first_name wins
+      // over the request payload — the auth callback passes an email-prefix
+      // guess. Never runs with an empty name (would clear an existing key).
+      const plan = planSignupNameEnsure([existing.first_name, firstName]);
+      if (plan.run) {
+        try {
+          await ensureNamePoolForUser(id, plan.firstName);
+        } catch (nameErr) {
+          console.error('[User Create] Name pool keying failed (existing user):', nameErr);
+        }
+      }
       return NextResponse.json({ success: true, exists: true });
     }
 

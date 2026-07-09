@@ -40,6 +40,9 @@ const STING_FADE_UNDER_BELLE_SEC = 1.2
 const OPENERS_PER_TONE = Number(process.env.OPENERS_PER_TONE || 0)
 const CONCURRENCY = 3
 const WATCH_INTERVAL_MS = 15_000
+// PERS-FIX-002: stable heartbeat id (launchd StartInterval=900 → health check
+// alerts when last_run_at is >2×900s stale or last_error is non-null).
+const HEARTBEAT_WORKER_ID = 'personalization-pool-worker'
 
 function startMarker(label) {
   console.log(`${BOLD_RED}========== START ${label} ==========${RESET}`)
@@ -59,6 +62,27 @@ function requireEnv() {
 
 function cleanError(err) {
   return String(err instanceof Error ? err.message : err).slice(0, 2000)
+}
+
+// PERS-FIX-002: upsert a workers_heartbeat row every cycle. This worker ran
+// 1,274 cycles of processed=0 with zero external surface — the heartbeat
+// makes both staleness and errors alertable. Best-effort: never throws.
+async function writeWorkerHeartbeat({ processed = null, lastError = null } = {}) {
+  try {
+    const now = new Date().toISOString()
+    const { error } = await supabase
+      .from('workers_heartbeat')
+      .upsert({
+        worker_id: HEARTBEAT_WORKER_ID,
+        last_run_at: now,
+        last_processed_count: processed,
+        last_error: lastError ? String(lastError).slice(0, 2000) : null,
+        updated_at: now,
+      }, { onConflict: 'worker_id' })
+    if (error) console.error(`[name-pool-worker] heartbeat upsert failed: ${error.message}`)
+  } catch (err) {
+    console.error(`[name-pool-worker] heartbeat write failed: ${cleanError(err)}`)
+  }
 }
 
 function safePathPart(value) {
@@ -337,17 +361,27 @@ async function processJob(job) {
 async function runOnce({ retry = false } = {}) {
   requireEnv()
   let processed = 0
-  while (true) {
-    const job = await claimOneJob({ retry })
-    if (!job) break
-    processed += 1
-    try {
-      await processJob(job)
-    } catch (err) {
-      await markJobFailed(job, err)
+  let lastError = null
+  try {
+    while (true) {
+      const job = await claimOneJob({ retry })
+      if (!job) break
+      processed += 1
+      try {
+        await processJob(job)
+      } catch (err) {
+        lastError = cleanError(err)
+        await markJobFailed(job, err)
+      }
     }
+  } catch (err) {
+    lastError = cleanError(err)
+    throw err
+  } finally {
+    await writeWorkerHeartbeat({ processed, lastError })
+    // PERS-DIAG-001 rec: log lines carried no timestamps — add one here.
+    console.log(`[name-pool-worker] ${new Date().toISOString()} run complete processed=${processed}${lastError ? ` last_error=${lastError}` : ''}`)
   }
-  console.log(`[name-pool-worker] run complete processed=${processed}`)
   return processed
 }
 
@@ -367,7 +401,9 @@ async function main() {
   }
 }
 
-main().catch(err => {
+main().catch(async err => {
   console.error('[name-pool-worker] fatal:', cleanError(err))
+  // Best-effort: surface the fatal in the heartbeat so the health check alerts.
+  await writeWorkerHeartbeat({ processed: null, lastError: cleanError(err) })
   process.exitCode = 1
 })

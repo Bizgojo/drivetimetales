@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { personalizationPublishBlockers } from '@/lib/personalization/publishGuard'
 
 export const runtime = 'nodejs'
 
@@ -62,7 +63,7 @@ export async function POST(req: NextRequest) {
 
       const { data: episodes, error: fetchError } = await supabase
         .from('stories')
-        .select('id,title,author,genre,audio_url,cover_url,description,duration_mins,status,is_hidden,review_status,workflow_state,episode_number,series_number')
+        .select('id,title,author,genre,audio_url,cover_url,description,duration_mins,status,is_hidden,review_status,workflow_state,episode_number,series_number,announcement_url,announcement_text,script')
         .eq('series_id', seriesId)
 
       if (fetchError) {
@@ -78,6 +79,9 @@ export async function POST(req: NextRequest) {
         const reasons = [
           ...missing.map((field) => `missing ${field}`),
           ...(workflowState === 'approved_ready' ? [] : [`workflow_state is ${workflowState}, expected approved_ready`]),
+          // PERS-FIX-002: publish-time personalization guard — no episode may
+          // ship with a NULL announcement_url or a legacy [LISTENER_NAME] token.
+          ...personalizationPublishBlockers(episode),
         ]
         return reasons.length === 0 ? null : {
           storyId: episode.id,
@@ -142,7 +146,7 @@ export async function POST(req: NextRequest) {
 
     const { data: existingStory, error: existingError } = await supabase
       .from('stories')
-      .select('id, title, author, genre, audio_url, cover_url, description, duration_mins')
+      .select('id, title, author, genre, audio_url, cover_url, description, duration_mins, announcement_url, announcement_text, script')
       .eq('id', storyId)
       .single()
 
@@ -173,6 +177,21 @@ export async function POST(req: NextRequest) {
     if (missing.length) {
       return NextResponse.json(
         { success: false, error: `Missing required publish field(s): ${missing.join(', ')}` },
+        { status: 400 }
+      )
+    }
+
+    // PERS-FIX-002: publish-time personalization guard. "Weight of the Water"
+    // shipped with a legacy [LISTENER_NAME] intro and announcement_url = NULL,
+    // which hard-disabled personalized playback (PERS-DIAG-001). Blocking.
+    const personalizationBlockers = personalizationPublishBlockers(existingStory as any)
+    if (personalizationBlockers.length) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: `Personalization publish guard: ${personalizationBlockers.join('; ')}`,
+          personalizationBlockers,
+        },
         { status: 400 }
       )
     }

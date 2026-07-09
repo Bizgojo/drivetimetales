@@ -51,6 +51,10 @@ try {
 const POLL_INTERVAL_MS = 30_000
 const LOCAL_RENDER_URL = 'http://localhost:3000/api/asc3/render-final-mix'
 const WORKER_ID = `local-render-worker-${process.pid}`
+// PERS-FIX-002: stable heartbeat id (no pid — one row across restarts).
+// Poll interval is 30s → health check alerts when last_run_at is >2 cycles
+// stale or last_error is non-null. This worker erred 1,485 cycles unnoticed.
+const HEARTBEAT_WORKER_ID = 'local-render-worker'
 
 // ── Logger ───────────────────────────────────────────────────────────────────
 function log(...args) {
@@ -71,8 +75,30 @@ const supabase = createClient(supabaseUrl, supabaseKey, {
   auth: { persistSession: false, autoRefreshToken: false },
 })
 
+// PERS-FIX-002: upsert a workers_heartbeat row every poll cycle. Best-effort.
+async function writeWorkerHeartbeat({ processed = null, lastError = null } = {}) {
+  try {
+    const now = new Date().toISOString()
+    const { error } = await supabase
+      .from('workers_heartbeat')
+      .upsert({
+        worker_id: HEARTBEAT_WORKER_ID,
+        last_run_at: now,
+        last_processed_count: processed,
+        last_error: lastError ? String(lastError).slice(0, 2000) : null,
+        updated_at: now,
+      }, { onConflict: 'worker_id' })
+    if (error) log('WARN: heartbeat upsert failed:', error.message)
+  } catch (err) {
+    log('WARN: heartbeat write failed:', err.message || String(err))
+  }
+}
+
 // ── Poll loop ────────────────────────────────────────────────────────────────
 async function poll() {
+  // PERS-FIX-002: track per-cycle outcome for the heartbeat.
+  let cycleProcessed = 0
+  let cycleError = null
   try {
     // Find one queued local render job
     const { data: jobs, error: fetchError } = await supabase
@@ -86,6 +112,7 @@ async function poll() {
       .limit(1)
 
     if (fetchError) {
+      cycleError = `fetching jobs: ${fetchError.message}`
       log('ERROR fetching jobs:', fetchError.message)
       return
     }
@@ -96,6 +123,7 @@ async function poll() {
     }
 
     const job = jobs[0]
+    cycleProcessed = 1
     log(`Picked up job ${job.id.slice(0, 8)} for story ${job.story_id}`)
 
     // Lock the job
@@ -111,6 +139,7 @@ async function poll() {
       .eq('status', 'queued') // optimistic lock — only update if still queued
 
     if (lockError) {
+      cycleError = `locking job ${job.id.slice(0, 8)}: ${lockError.message}`
       log(`ERROR locking job ${job.id.slice(0, 8)}:`, lockError.message)
       return
     }
@@ -176,6 +205,7 @@ async function poll() {
       }
     } else {
       // Fail the job
+      cycleError = `render failed for job ${job.id.slice(0, 8)} (story ${job.story_id}): ${renderError}`
       log(`Job ${job.id.slice(0, 8)} render FAILED: ${renderError}`)
 
       // ATL-RENDER-STATE-INDEX-001: fenced — do not fail a job this worker no
@@ -203,7 +233,12 @@ async function poll() {
       }
     }
   } catch (err) {
-    log('ERROR in poll loop:', err.message || String(err))
+    cycleError = err.message || String(err)
+    log('ERROR in poll loop:', cycleError)
+  } finally {
+    // Runs on every exit path (including early returns) — the heartbeat is
+    // written once per cycle no matter what happened.
+    await writeWorkerHeartbeat({ processed: cycleProcessed, lastError: cycleError })
   }
 }
 

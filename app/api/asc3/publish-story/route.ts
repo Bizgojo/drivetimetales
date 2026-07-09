@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { personalizationPublishBlockers } from '@/lib/personalization/publishGuard'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -14,7 +15,7 @@ export async function POST(req: NextRequest) {
 
     const { data: story, error: storyError } = await supabase
       .from('stories')
-      .select('id, title, author, genre, audio_url, cover_url, description, duration_mins')
+      .select('id, title, author, genre, audio_url, cover_url, description, duration_mins, announcement_url, announcement_text, script')
       .eq('id', storyId)
       .single()
 
@@ -37,6 +38,21 @@ export async function POST(req: NextRequest) {
     if (missing.length) {
       return NextResponse.json(
         { success: false, error: `Missing required publish field(s): ${missing.join(', ')}` },
+        { status: 400 }
+      )
+    }
+
+    // PERS-FIX-002: publish-time personalization guard — no story may ship
+    // with a NULL announcement_url or a legacy [LISTENER_NAME] token
+    // (PERS-DIAG-001: WotW slipped through exactly this way). Blocking.
+    const personalizationBlockers = personalizationPublishBlockers(story as any)
+    if (personalizationBlockers.length) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: `Personalization publish guard: ${personalizationBlockers.join('; ')}`,
+          personalizationBlockers,
+        },
         { status: 400 }
       )
     }

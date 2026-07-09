@@ -7,6 +7,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { Resend } from 'resend'
 import twilio from 'twilio'
+import { ensureNamePoolForUser } from '@/lib/personalization/ensureNamePool'
 
 export const runtime = 'nodejs'
 
@@ -133,6 +134,17 @@ export async function POST(req: NextRequest) {
         ...coreProfile,
       }
       await supabase.from('users').upsert(insertPayload, { onConflict: 'id' })
+    }
+
+    // 3b. PERS-FIX-002: key the account + ensure the name pool exists.
+    // This path wrote first_name but NEVER enqueued name-clip generation —
+    // every real GVL signup since Jun 23 had NULL name_pronunciation_key
+    // (PERS-DIAG-001 Q4b). trimmedName is validated non-empty above.
+    // Non-fatal: a keying failure must not block the invite.
+    try {
+      await ensureNamePoolForUser(userId, trimmedName)
+    } catch (nameErr) {
+      console.error('[promo/send-magic-link] ensureNamePoolForUser failed (non-fatal):', nameErr)
     }
 
     // 4. Log redemption + update code
