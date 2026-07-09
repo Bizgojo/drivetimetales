@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js'
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import { evaluateStoryGate, evaluateSeriesGate, groupBySeriesForApproval } from '@/lib/story-gates'
+import { transitionAllowed } from '@/lib/workflowTransitions'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -646,23 +647,8 @@ function reviewStatusForWorkflowState(state: WorkflowState) {
   return 'not_approved'
 }
 
-function transitionAllowed(from: string, to: WorkflowState, retire: boolean) {
-  const allowed: Record<string, WorkflowState[]> = {
-    ready_for_review: ['approved_ready', 'repair_queue', 'cold_storage'],
-    approved_ready: ['published', 'repair_queue', 'cold_storage'],
-    repair_queue: ['being_repaired', 'ready_for_review', 'cold_storage'],
-    being_repaired: ['ready_for_review', 'cold_storage'],
-    failed: ['being_repaired', 'repair_queue', 'ready_for_review', 'cold_storage'],
-    stories_in_queue: ['scripts_ready', 'ready_for_review', 'repair_queue', 'cold_storage'],
-    scripts_ready: ['ready_for_review', 'repair_queue', 'cold_storage'],
-    published: ['unpublished_library', 'repair_queue'],
-    unpublished_library: ['ready_for_review', 'repair_queue', 'cold_storage'],
-    cold_storage: ['ready_for_review'],
-  }
-
-  if (from === 'published' && to === 'cold_storage') return retire
-  return (allowed[from] || []).includes(to)
-}
+// Canonical transition matrix lives in lib/workflowTransitions.ts (PIPE-AUDIT-001)
+// so every writer and the test suite share one guard.
 
 function workflowUpdateForState(state: WorkflowState, body: any = {}) {
   const reviewedAt = new Date().toISOString()
@@ -921,7 +907,7 @@ export async function POST(req: NextRequest) {
     if (unauthorized) return unauthorized
 
     const action = clean(req.nextUrl.searchParams.get('action'))
-    if (!["set_workflow_state","set_series_workflow_state","set_series_ready_for_review","set_production_standard","set_production_priority","recover_from_cold_storage","set_incubator_tag","record_review_outcome"].includes(action)) {
+    if (!["set_workflow_state","set_series_workflow_state","set_series_ready_for_review","set_production_standard","set_production_priority","recover_from_cold_storage","set_incubator_tag","record_review_outcome","clear_needs_attention"].includes(action)) {
       return json({ success: false, error: 'Unsupported action' }, 400)
     }
 
@@ -999,6 +985,37 @@ export async function POST(req: NextRequest) {
       if (error) return json({ success: false, error: error.message }, 500)
       if (!data) return json({ success: false, error: 'Story not found' }, 404)
       return json({ success: true, story: data })
+    }
+
+    if (action === 'clear_needs_attention') {
+      // PIPE-AUDIT-001 item 4/5a: the ONLY sanctioned way to clear a
+      // needs_attention flag. Stamps dispatch_failure_reset_at/_by so the
+      // dispatch retry cap stops counting failures older than this reset and
+      // the clear itself is attributable (raw DB clears are not).
+      const seriesIdForClear = clean(body.seriesId || body.series_id)
+      if (!storyId && !seriesIdForClear) {
+        return json({ success: false, error: 'Missing storyId or seriesId' }, 400)
+      }
+      const clearedAt = new Date().toISOString()
+      const update = {
+        needs_attention: false,
+        needs_attention_reason: null,
+        needs_attention_at: null,
+        dispatch_failure_reset_at: clearedAt,
+        dispatch_failure_reset_by: changedBy,
+      }
+      let query = supabase.from('stories').update(update).eq('needs_attention', true)
+      query = storyId ? query.eq('id', storyId) : query.eq('series_id', seriesIdForClear)
+      const { data, error } = await query.select('id,title,needs_attention,dispatch_failure_reset_at,dispatch_failure_reset_by')
+
+      if (error) return json({ success: false, error: error.message }, 500)
+      return json({
+        success: true,
+        clearedCount: data?.length || 0,
+        stories: data || [],
+        clearedBy: changedBy,
+        reason: changeReason,
+      })
     }
 
     if (action === 'record_review_outcome') {
