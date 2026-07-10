@@ -33,7 +33,12 @@ const READY_OR_FURTHER_STATES = new Set([
   'published',
 ])
 const NUM_RUNNERS = 4              // production-runner:worker-1..4 (pipeline_runner_state)
-const MAX_DISPATCH_PER_RUN = NUM_RUNNERS * 4  // Keep 4 jobs queued per runner (16 total)
+// ATL-IO-CAP-001 (Marc GO 2026-07-10): IO-aware ceiling on total ACTIVE jobs.
+// NANO exhausted its daily IO budget under ~16 uncapped concurrent jobs (Jul 9
+// outage). MEDIUM has ~8x NANO's IO baseline (dashboard ceilings: 3K IOPS /
+// 125 MB/s). 8 = half the load that killed NANO on 8x the budget -> >10x
+// headroom for launch traffic. Raise only with dashboard IO evidence.
+const MAX_DISPATCH_PER_RUN = 8
 
 type StoryRow = {
   id: string
