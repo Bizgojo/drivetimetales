@@ -30,6 +30,18 @@ export function normalizePromoCode(code: string | null | undefined): string | nu
   return normalized || null
 }
 
+// Builds the homepage → signup CTA href, carrying partner and promo code.
+// Partner formatting is preserved exactly as legacy behavior (raw slug).
+// Promo is normalized (trim/uppercase, same rules as signup page) and
+// URL-encoded. Used by app/page.tsx (ATL-PROMO-CARRY-001).
+export function buildSignupCtaHref(partner: string | null | undefined, promoCode: string | null | undefined): string {
+  const params: string[] = []
+  if (partner) params.push(`partner=${partner}`)
+  const promo = normalizePromoCode(promoCode)
+  if (promo) params.push(`promo=${encodeURIComponent(promo)}`)
+  return params.length ? `/signup?${params.join('&')}` : '/signup'
+}
+
 export function captureUtmFromUrl(): void {
   if (typeof window === 'undefined') return
   try {
