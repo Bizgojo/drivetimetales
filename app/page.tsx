@@ -16,11 +16,15 @@ import React, { useEffect, useState, Suspense } from 'react'
 import Link from 'next/link'
 import { useSearchParams, useRouter } from 'next/navigation'
 import { supabaseBrowser as supabase } from '@/lib/supabase-browser'
+import { buildSignupCtaHref } from '@/lib/utm'
 
 function LandingContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const partner = searchParams.get('partner')
+  // ATL-PROMO-CARRY-001: carry promo code from ad landings through to /signup.
+  // Same param precedence as app/signup/page.tsx: ?promo= wins over ?code=.
+  const promo = searchParams.get('promo') || searchParams.get('code')
   const [partnerName, setPartnerName] = useState<string | null>(null)
   const [authResolving, setAuthResolving] = useState(true)
 
@@ -89,7 +93,7 @@ function LandingContent() {
     } catch (_) {}
   }, [partner])
 
-  const ctaHref = partner ? `/signup?partner=${partner}` : '/signup'
+  const ctaHref = buildSignupCtaHref(partner, promo)
 
   if (authResolving) return <LaunchSplash />
 
@@ -466,7 +470,7 @@ function LandingContent() {
             { label: 'Subscription', href: '/subscribe' },
             { label: 'About', href: '/about' },
             { label: 'Sign In', href: '/signin' },
-            { label: 'Start Free Trial', href: '/signup' },
+            { label: 'Start Free Trial', href: ctaHref },
           ].map((l, i) => (
             <Link key={i} href={l.href} style={{
               fontSize: '0.85rem',
