@@ -81,6 +81,167 @@ export const ORDINAL_WORDS: Record<string, string> = {
   ninetieth: '90',
 }
 
+const CARDINAL_NUMBER_WORD_PATTERN = [
+  'zero',
+  'oh',
+  'o',
+  'one',
+  'two',
+  'three',
+  'four',
+  'five',
+  'six',
+  'seven',
+  'eight',
+  'nine',
+  'ten',
+  'eleven',
+  'twelve',
+  'thirteen',
+  'fourteen',
+  'fifteen',
+  'sixteen',
+  'seventeen',
+  'eighteen',
+  'nineteen',
+  'twenty',
+  'thirty',
+  'forty',
+  'fifty',
+  'sixty',
+  'seventy',
+  'eighty',
+  'ninety',
+  'hundred',
+  'thousand',
+  'and',
+].join('|')
+
+const SPOKEN_NUMBER_PHRASE_RE = new RegExp(
+  `\\b(?:${CARDINAL_NUMBER_WORD_PATTERN})(?:[-\\s]+(?:${CARDINAL_NUMBER_WORD_PATTERN}))*\\b`,
+  'gi'
+)
+
+const SPOKEN_DECIMAL_RE = new RegExp(
+  `\\b((?:${CARDINAL_NUMBER_WORD_PATTERN})(?:[-\\s]+(?:${CARDINAL_NUMBER_WORD_PATTERN}))*)[-\\s]+point[-\\s]+` +
+  `((?:zero|oh|o|one|two|three|four|five|six|seven|eight|nine)(?:[-\\s]+(?:zero|oh|o|one|two|three|four|five|six|seven|eight|nine))*)\\b`,
+  'gi'
+)
+
+const ORDINAL_SUFFIXES: Record<string, string> = {
+  '1': 'st',
+  '2': 'nd',
+  '3': 'rd',
+}
+
+function ordinalDigit(value: string): string {
+  const suffix = ORDINAL_SUFFIXES[value.slice(-1)] && !/1[123]$/.test(value)
+    ? ORDINAL_SUFFIXES[value.slice(-1)]
+    : 'th'
+  return `${value}${suffix}`
+}
+
+function tokenizeSpokenNumberPhrase(text: string): string[] {
+  return text
+    .toLowerCase()
+    .replace(/[—–-]/g, ' ')
+    .split(/\s+/)
+    .filter(Boolean)
+}
+
+function parseTensOnes(words: string[]): number | null {
+  if (words.length === 0) return 0
+  if (words.length > 2) return null
+
+  const first = NUMBER_WORDS[words[0]]
+  if (first === undefined) return null
+
+  const firstValue = Number(first)
+  if (!Number.isFinite(firstValue)) return null
+  if (words.length === 1) return firstValue
+
+  const second = NUMBER_WORDS[words[1]]
+  const secondValue = second === undefined ? NaN : Number(second)
+  if (!Number.isFinite(secondValue)) return null
+  if (firstValue >= 20 && firstValue <= 90 && secondValue >= 1 && secondValue <= 9) {
+    return firstValue + secondValue
+  }
+  return null
+}
+
+function parseUnderThousand(words: string[]): number | null {
+  const parts = words.filter(word => word !== 'and')
+  const hundredIndex = parts.indexOf('hundred')
+  if (hundredIndex >= 0) {
+    if (hundredIndex !== 1) return null
+    const hundredWordValue = NUMBER_WORDS[parts[0]]
+    const hundredValue = hundredWordValue === undefined ? NaN : Number(hundredWordValue)
+    if (!Number.isFinite(hundredValue) || hundredValue < 1 || hundredValue > 9) return null
+    const remainder = parseTensOnes(parts.slice(2))
+    return remainder === null ? null : hundredValue * 100 + remainder
+  }
+  return parseTensOnes(parts)
+}
+
+function parseSpokenCardinal(words: string[]): number | null {
+  const parts = words.filter(word => word !== 'and')
+  if (parts.length === 0) return null
+
+  // Common spoken year form: "nineteen eighty four" -> 1984.
+  if (parts.length >= 2 && parts.length <= 3) {
+    const first = Number(NUMBER_WORDS[parts[0]] ?? NaN)
+    const rest = parseTensOnes(parts.slice(1))
+    if (Number.isFinite(first) && first >= 10 && first <= 19 && rest !== null && rest >= 0 && rest <= 99) {
+      return first * 100 + rest
+    }
+  }
+
+  const thousandIndex = parts.indexOf('thousand')
+  if (thousandIndex >= 0) {
+    if (thousandIndex === 0 || parts.indexOf('thousand', thousandIndex + 1) >= 0) return null
+    const thousands = parseUnderThousand(parts.slice(0, thousandIndex))
+    const remainder = parseUnderThousand(parts.slice(thousandIndex + 1))
+    if (thousands === null || remainder === null) return null
+    return thousands * 1000 + remainder
+  }
+
+  return parseUnderThousand(parts)
+}
+
+export function normalizeSpokenNumberPhrases(text: string): string {
+  return text
+    .replace(SPOKEN_DECIMAL_RE, (match, integerWords, fractionWords) => {
+      const integerValue = parseSpokenCardinal(tokenizeSpokenNumberPhrase(integerWords))
+      if (integerValue === null) return match
+      const fractionDigits = tokenizeSpokenNumberPhrase(fractionWords)
+        .map(word => NUMBER_WORDS[word])
+      if (fractionDigits.length === 0 || fractionDigits.some(value => value === undefined || Number(value) > 9)) {
+        return match
+      }
+      return `${integerValue}.${fractionDigits.join('')}`
+    })
+    .replace(
+      /\b(twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety)[\s-]+(first|second|third|fourth|fifth|sixth|seventh|eighth|ninth)\b/gi,
+      (match, tensWord, ordinalWord) => {
+        const tens = NUMBER_WORDS[String(tensWord).toLowerCase()]
+        const ones = ORDINAL_WORDS[String(ordinalWord).toLowerCase()]
+        const value = Number(tens) + Number(ones)
+        return Number.isFinite(value) ? ordinalDigit(String(value)) : match
+      }
+    )
+    .replace(
+      /\b(first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|eleventh|twelfth|thirteenth|fourteenth|fifteenth|sixteenth|seventeenth|eighteenth|nineteenth|twentieth|thirtieth|fortieth|fiftieth|sixtieth|seventieth|eightieth|ninetieth)\b/gi,
+      (match, ordinalWord) => {
+        const value = ORDINAL_WORDS[String(ordinalWord).toLowerCase()]
+        return value ? ordinalDigit(value) : match
+      }
+    )
+    .replace(SPOKEN_NUMBER_PHRASE_RE, (match) => {
+      const value = parseSpokenCardinal(tokenizeSpokenNumberPhrase(match))
+      return value === null ? match : String(value)
+    })
+}
+
 // ATL-PIPE-011: normalise compound spoken numbers and currency forms before token comparison.
 // Fixes the gap where "three hundred and forty thousand" normalises to "300 and 40000"
 // instead of "340000", causing false REPEATED_IDENTICAL_TRUNCATION failures.
@@ -224,7 +385,7 @@ export function normalizeOrdinalDateForms(text: string): string {
 }
 
 export function normalizeNumberWords(text: string): string {
-  return text
+  return normalizeSpokenNumberPhrases(text)
     // ── Hyphenated spoken time formats ────────────────────────────────────
     // "eleven-nineteen" → "1119"  |  "four-fifteen" → "415"  |  "eight-thirty" → "830"
     // Script writers use HOUR-MINUTE hyphenation for clock times.
@@ -466,6 +627,7 @@ export function normalizeForQC(text: string): string {
   // transcriptTokens — "941 p m" ≡ "9 41 p m", and round hours "10 00 p m" ≡ "10 p m".
   s = s.replace(/\b(1[0-2]|[1-9])([0-5]\d)\b/g, '$1 $2')
   s = s.replace(/\b(\d{1,2}) 00 ([ap]) m\b/g, '$1 $2 m')
+  s = s.replace(/\b(1[3-9]|2[0-5])(\d{2})\b/g, '$1 $2')
 
   const numMap: Record<string, string> = {
     'zero': '0',
@@ -875,6 +1037,19 @@ export function transcriptVariantCoverage(expected: string[], detected: string[]
   }
   return best
 }
+
+export function numericTokenSequence(tokens: string[]): string[] {
+  return compactTranscriptTokens(tokens).filter(token => /^\d+$/.test(token))
+}
+
+export function numericTokenSequenceMismatch(expected: string[], detected: string[]): boolean {
+  const expectedNumbers = numericTokenSequence(expected)
+  const detectedNumbers = numericTokenSequence(detected)
+  if (expectedNumbers.length === 0 && detectedNumbers.length === 0) return false
+  if (expectedNumbers.length !== detectedNumbers.length) return true
+  return expectedNumbers.some((value, index) => value !== detectedNumbers[index])
+}
+
 /**
  * Low-information function words that Whisper commonly drops at clip boundaries.
  * Used by isSafeTerminalTailDrop — keep this set small and evidence-based.
@@ -1084,6 +1259,7 @@ export function evaluateTranscriptQC(expectedText: string, detectedText: string)
   const coverage = Math.max(...expectedVariants.map(variant => transcriptVariantCoverage(variant, detected)))
   const tokenSimilarity = Math.max(...expectedVariants.map(variant => transcriptSimilarity(variant, detected)))
   const similarity = Math.max(tokenSimilarity, normalizedSimilarity)
+  const numericMismatch = numericTokenSequenceMismatch(expected, detected)
   const shortLineMatches = expected.length <= 8
     ? expectedVariants.some(variant => containsOrderedTokenVariant(detected, variant)) || similarity >= 0.88
     : true
@@ -1108,6 +1284,7 @@ export function evaluateTranscriptQC(expectedText: string, detectedText: string)
   const normalizedQcPassed = normalizedExactMatch || normalizedSimilarity >= 0.85
   const passed = !detectedBlank
     && !radicalLengthMismatch
+    && !numericMismatch
     && (tokenQcPassed || normalizedQcPassed)
 
   return {
