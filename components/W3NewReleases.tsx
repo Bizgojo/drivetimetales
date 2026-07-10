@@ -32,6 +32,8 @@ import Link from 'next/link'
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
+import { useAuth } from '@/contexts/AuthContext'
+import { isEntitledUser } from '@/lib/entitlement'
 
 // =============================================================================
 // TYPES
@@ -78,6 +80,11 @@ function formatDate(dateString: string): string {
 
 export default function W3NewReleases({ credits }: W3NewReleasesProps) {
   const router = useRouter()
+  // ATL-POST-SUB-LOOP-001 (approved by Marc — rehearsal finding #4): the
+  // credits system is RETIRED (PLAYER_SPEC). Entitled subscribers (incl.
+  // trialing) must never see the "not enough credits" → /subscribe popup.
+  const { user } = useAuth()
+  const entitled = isEntitledUser(user)
   const [stories, setStories] = useState<Story[]>([])
   const [loading, setLoading] = useState(true)
   const [showPopup, setShowPopup] = useState(false)
@@ -121,7 +128,7 @@ export default function W3NewReleases({ credits }: W3NewReleasesProps) {
 
   const handleStoryClick = (story: Story) => {
     const storyCost = getCredits(story.duration_mins)
-    if (credits >= storyCost) {
+    if (entitled || credits >= storyCost) {
       router.push(`/player/${story.id}?autoplay=1&playNow=1`)
     } else {
       setShowPopup(true)
@@ -164,8 +171,8 @@ export default function W3NewReleases({ credits }: W3NewReleasesProps) {
 
   return (
     <>
-      {/* Insufficient Credits Popup */}
-      {showPopup && (
+      {/* Insufficient Credits Popup — never renders for entitled users */}
+      {showPopup && !entitled && (
         <div 
           onClick={() => setShowPopup(false)}
           style={{

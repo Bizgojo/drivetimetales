@@ -18,6 +18,8 @@ import Link from 'next/link'
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
+import { useAuth } from '@/contexts/AuthContext'
+import { isEntitledUser } from '@/lib/entitlement'
 import HorizontalStoryCard from '@/components/HorizontalStoryCard'
 
 interface Story {
@@ -40,6 +42,11 @@ function getCredits(duration_mins: number): number {
 
 export default function W4PopularSeries({ credits }: W4PopularSeriesProps) {
   const router = useRouter()
+  // ATL-POST-SUB-LOOP-001: the credits system is RETIRED (PLAYER_SPEC).
+  // Entitled subscribers (incl. trialing) must never be click-blocked or see
+  // the "not enough credits" → /subscribe popup, regardless of the credits prop.
+  const { user } = useAuth()
+  const entitled = isEntitledUser(user)
   const [stories, setStories] = useState<Story[]>([])
   const [loading, setLoading] = useState(true)
   const [showPopup, setShowPopup] = useState(false)
@@ -92,6 +99,7 @@ export default function W4PopularSeries({ credits }: W4PopularSeriesProps) {
   }, [])
 
   const handleCardClick = (e: React.MouseEvent, story: Story) => {
+    if (entitled) return // subscribers always click through to the story
     const storyCost = getCredits(story.duration_mins)
     if (credits < storyCost) {
       e.preventDefault()
@@ -130,8 +138,8 @@ export default function W4PopularSeries({ credits }: W4PopularSeriesProps) {
 
   return (
     <>
-      {/* Insufficient Credits Popup */}
-      {showPopup && (
+      {/* Insufficient Credits Popup — never renders for entitled users */}
+      {showPopup && !entitled && (
         <div 
           onClick={() => setShowPopup(false)}
           style={{
@@ -185,7 +193,7 @@ export default function W4PopularSeries({ credits }: W4PopularSeriesProps) {
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
           {stories.map((story) => {
             const storyCost = getCredits(story.duration_mins)
-            const canAfford = credits >= storyCost
+            const canAfford = entitled || credits >= storyCost
             
             return (
               <div 

@@ -8,6 +8,7 @@ import { useAuth } from '@/contexts/AuthContext'
 import ReviewModal from '@/components/ReviewModal'
 import InstallAppBanner from '@/components/InstallAppBanner'
 import { requestInstallReoffer } from '@/lib/installReoffer'
+import { isEntitled } from '@/lib/entitlement'
 import type { AutoAdvanceCandidate, AutoAdvanceDisabledReason, PlayerMode, PlayerStory } from './playerTypes'
 import { clearLocalPlayerProgress, getLocalPlayerProgress, mergePlayerProgress, saveLocalPlayerProgress } from '@/lib/playerProgress'
 import {
@@ -838,12 +839,17 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
           if (!isMarc) {
             const { data: dbUser } = await supabase
               .from('users')
-              .select('plan, subscription_ends_at')
+              .select('plan, subscription_type, subscription_ends_at')
               .eq('id', user.id)
               .single()
+            // ATL-POST-SUB-LOOP-001: also honor the shared entitlement predicate
+            // (subscription_type written by the Stripe webhook) so an entitled
+            // user with a stale plan value is never bounced to /subscribe.
+            // Access only widens: the legacy plan-based path is kept intact.
             const hasAccess = (
-              dbUser?.plan && dbUser.plan !== 'free' &&
-              (!dbUser?.subscription_ends_at || new Date(dbUser.subscription_ends_at) > new Date())
+              isEntitled(dbUser?.subscription_type, dbUser?.subscription_ends_at) ||
+              (dbUser?.plan && dbUser.plan !== 'free' &&
+                (!dbUser?.subscription_ends_at || new Date(dbUser.subscription_ends_at) > new Date()))
             )
             if (!hasAccess) {
               redirected = true

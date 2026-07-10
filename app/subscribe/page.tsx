@@ -3,6 +3,7 @@
 import { Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
+import { isEntitledUser } from '@/lib/entitlement'
 
 function safeInternalPath(path: string | null) {
   if (!path || !path.startsWith('/') || path.startsWith('//') || path.includes('://')) return ''
@@ -27,10 +28,22 @@ function LoadingFallback() {
 function SubscribeContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
-  const { user } = useAuth()
+  const { user, loading: authLoading } = useAuth()
   const firstName = (user as any)?.first_name || ''
   const returnTo = safeInternalPath(searchParams.get('returnTo'))
   const signupPath = returnTo ? `/signup?returnTo=${encodeURIComponent(returnTo)}` : '/signup'
+
+  // ATL-POST-SUB-LOOP-001: entitled users (incl. trialing — webhook writes
+  // subscription_type='active' for both) must never see trial/subscribe CTAs.
+  // We replace the CTA in place rather than redirecting to /home so a
+  // client/middleware entitlement disagreement can never redirect-loop
+  // (/home → /subscribe → /home …).
+  const entitled = isEntitledUser(user)
+
+  // No flash of the guest CTA while auth is still resolving.
+  if (authLoading) {
+    return <LoadingFallback />
+  }
 
   return (
     <div style={{
@@ -78,16 +91,29 @@ function SubscribeContent() {
           </div>
         </div>
 
-        <button
-          onClick={() => router.push(signupPath)}
-          style={{
-            width: '100%', padding: '16px', background: '#f97316', color: 'white',
-            border: 'none', borderRadius: '12px', fontSize: '16px', fontWeight: 800,
-            cursor: 'pointer', marginBottom: '12px',
-          }}
-        >
-          Start Free Trial →
-        </button>
+        {entitled ? (
+          <button
+            onClick={() => router.push(returnTo || '/home')}
+            style={{
+              width: '100%', padding: '16px', background: '#f97316', color: 'white',
+              border: 'none', borderRadius: '12px', fontSize: '16px', fontWeight: 800,
+              cursor: 'pointer', marginBottom: '12px',
+            }}
+          >
+            Go to Library →
+          </button>
+        ) : (
+          <button
+            onClick={() => router.push(signupPath)}
+            style={{
+              width: '100%', padding: '16px', background: '#f97316', color: 'white',
+              border: 'none', borderRadius: '12px', fontSize: '16px', fontWeight: 800,
+              cursor: 'pointer', marginBottom: '12px',
+            }}
+          >
+            Start Free Trial →
+          </button>
+        )}
 
 
         <button
@@ -98,15 +124,17 @@ function SubscribeContent() {
         </button>
         </div>
 
-        <p style={{ marginTop: '24px', fontSize: '13px', color: 'rgba(255,255,255,0.35)', textAlign: 'center' }}>
-          Already subscribed?{' '}
-          <button
-            onClick={() => router.push('/signin')}
-            style={{ background: 'none', border: 'none', color: '#f97316', cursor: 'pointer', fontSize: '13px', fontWeight: 600, padding: 0 }}
-          >
-            Sign in
-          </button>
-        </p>
+        {!user && (
+          <p style={{ marginTop: '24px', fontSize: '13px', color: 'rgba(255,255,255,0.35)', textAlign: 'center' }}>
+            Already subscribed?{' '}
+            <button
+              onClick={() => router.push('/signin')}
+              style={{ background: 'none', border: 'none', color: '#f97316', cursor: 'pointer', fontSize: '13px', fontWeight: 600, padding: 0 }}
+            >
+              Sign in
+            </button>
+          </p>
+        )}
       </div>
     </div>
   )
