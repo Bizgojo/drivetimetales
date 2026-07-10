@@ -274,19 +274,19 @@ function SignUpContent() {
 
           <div style={{ marginBottom: '1rem' }}>
             <label style={{ color: '#e2e8f0', fontSize: '14px', display: 'block', marginBottom: '0.5rem', fontWeight: 700 }}>What do your friends call you?</label>
-            <input type="text" value={firstName} onChange={e => setFirstName(e.target.value)} required style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', border: '1px solid #334155', backgroundColor: '#0f172a', color: 'white', fontSize: '16px', outline: 'none', boxSizing: 'border-box' }} placeholder="Enter the name you go by" />
+            <input type="text" name="firstName" value={firstName} onChange={e => setFirstName(e.target.value)} required autoComplete="given-name" style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', border: '1px solid #334155', backgroundColor: '#0f172a', color: 'white', fontSize: '16px', outline: 'none', boxSizing: 'border-box' }} placeholder="Enter the name you go by" />
             <div style={{ color: '#cbd5e1', fontSize: '12.5px', lineHeight: 1.55, marginTop: '0.45rem' }}>Belle will use this name when she talks with you between stories.</div>
           </div>
 
           <div style={{ marginBottom: '1rem' }}>
             <label style={{ color: '#e2e8f0', fontSize: '14px', display: 'block', marginBottom: '0.5rem', fontWeight: 700 }}>Email</label>
-            <input type="email" value={email} onChange={e => setEmail(e.target.value)} required style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', border: '1px solid #334155', backgroundColor: '#0f172a', color: 'white', fontSize: '16px', outline: 'none', boxSizing: 'border-box' }} placeholder="Enter your email" />
+            <input type="email" name="email" value={email} onChange={e => setEmail(e.target.value)} required autoComplete="email" inputMode="email" autoCapitalize="none" autoCorrect="off" spellCheck={false} style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', border: '1px solid #334155', backgroundColor: '#0f172a', color: 'white', fontSize: '16px', outline: 'none', boxSizing: 'border-box' }} placeholder="Enter your email" />
           </div>
 
           <div style={{ marginBottom: '1.5rem' }}>
             <label style={{ color: '#e2e8f0', fontSize: '14px', display: 'block', marginBottom: '0.5rem', fontWeight: 700 }}>Password</label>
             <div style={{ position: 'relative' }}>
-              <input type={showPassword ? 'text' : 'password'} value={password} onChange={e => setPassword(e.target.value)} required minLength={6} style={{ width: '100%', padding: '0.75rem', paddingRight: '3rem', borderRadius: '8px', border: '1px solid #334155', backgroundColor: '#0f172a', color: 'white', fontSize: '16px', outline: 'none', boxSizing: 'border-box' }} placeholder="Create a password (6+ characters)" />
+              <input type={showPassword ? 'text' : 'password'} name="password" value={password} onChange={e => setPassword(e.target.value)} required minLength={6} autoComplete="new-password" style={{ width: '100%', padding: '0.75rem', paddingRight: '3rem', borderRadius: '8px', border: '1px solid #334155', backgroundColor: '#0f172a', color: 'white', fontSize: '16px', outline: 'none', boxSizing: 'border-box' }} placeholder="Create a password (6+ characters)" />
               <button type="button" onClick={() => setShowPassword(!showPassword)} style={{ position: 'absolute', right: '0.75rem', top: '50%', transform: 'translateY(-50%)', backgroundColor: 'transparent', border: 'none', color: '#94a3b8', cursor: 'pointer', fontSize: '14px' }}>{showPassword ? 'Hide' : 'Show'}</button>
             </div>
           </div>

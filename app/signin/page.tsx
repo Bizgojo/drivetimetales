@@ -81,6 +81,18 @@ function SignInContent() {
     }
   }
 
+  // ATL-AUTOFILL-001: single form wrapping email + (conditional) password so
+  // iOS Safari sees username+password together and credential autofill works.
+  // Dispatches to the same handlers as before — no submit logic changed.
+  const handleFormSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (showPasswordForm) {
+      handlePasswordSignIn(e)
+    } else {
+      handleMagicLink()
+    }
+  }
+
   if (authLoading || session) return <AuthLaunchSplash />
 
   return (
@@ -114,15 +126,21 @@ function SignInContent() {
             </div>
           )}
 
+          <form onSubmit={handleFormSubmit}>
           <div style={{ marginBottom: '12px' }}>
-            <label style={{ display: 'block', color: '#94a3b8', fontSize: '13px', fontWeight: 600, marginBottom: '6px' }}>Email</label>
+            <label htmlFor="signin-email" style={{ display: 'block', color: '#94a3b8', fontSize: '13px', fontWeight: 600, marginBottom: '6px' }}>Email</label>
             <input
+              id="signin-email"
               type="email"
+              name="email"
               value={email}
               onChange={e => setEmail(e.target.value)}
               onFocus={e => setTimeout(() => e.target.scrollIntoView({ behavior: 'smooth', block: 'center' }), 300)}
-              onKeyDown={e => { if (e.key === 'Enter' && !showPasswordForm) handleMagicLink() }}
-              autoComplete="email"
+              autoComplete="username"
+              inputMode="email"
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
               placeholder="you@example.com"
               style={{ width: '100%', padding: '13px 14px', backgroundColor: '#1e293b', border: '1px solid #334155', borderRadius: '10px', color: 'white', fontSize: '16px', boxSizing: 'border-box', outline: 'none' }}
             />
@@ -148,7 +166,7 @@ function SignInContent() {
           )}
 
           {showPasswordForm && (
-            <form onSubmit={handlePasswordSignIn}>
+            <>
               <div style={{ marginBottom: '16px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
                   <label style={{ color: '#94a3b8', fontSize: '13px', fontWeight: 600 }}>Password</label>
@@ -157,6 +175,7 @@ function SignInContent() {
                 <div style={{ position: 'relative' }}>
                   <input
                     type={showPw ? 'text' : 'password'}
+                    name="password"
                     value={password}
                     onChange={e => setPassword(e.target.value)}
                     onFocus={e => setTimeout(() => e.target.scrollIntoView({ behavior: 'smooth', block: 'center' }), 300)}
@@ -181,8 +200,9 @@ function SignInContent() {
                 style={{ width: '100%', padding: '12px', backgroundColor: 'transparent', color: '#64748b', border: '1px solid #1e293b', borderRadius: '12px', fontSize: '14px', cursor: 'pointer' }}>
                 ← Send me a login link instead
               </button>
-            </form>
+            </>
           )}
+          </form>
         </div>
 
         <p style={{ textAlign: 'center', color: '#475569', fontSize: '13px', marginTop: '20px' }}>

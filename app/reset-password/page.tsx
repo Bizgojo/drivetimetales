@@ -186,6 +186,7 @@ function ResetPasswordContent() {
               <label className="block text-sm text-slate-400 mb-1">New Password</label>
               <input
                 type="password"
+                name="new-password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="••••••••"
@@ -201,6 +202,7 @@ function ResetPasswordContent() {
               <label className="block text-sm text-slate-400 mb-1">Confirm New Password</label>
               <input
                 type="password"
+                name="confirm-password"
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
                 placeholder="••••••••"
