@@ -51,6 +51,17 @@ const NEXT_STEP_AFTER_SERIES_RENDER = 'complete_story_package'
 const MAX_SERIES_DESCRIPTION_RETRIES = 2
 const MAX_SERIES_BELLE_RETRIES = 3
 const NARRATIVE_HOOK_FALLBACK_MODEL = 'claude-haiku-4-5'
+// ATL-PIPE-MODEL-001: per-step model routing. Prose is the product — script
+// GENERATION and prose repair/regeneration stay on Opus; VALIDATION/QC steps
+// run on Sonnet. body.model / body.validationModel override for canaries.
+const STEP_MODELS = {
+  generate: 'claude-opus-4-6',   // generateStandaloneScript, generateOneSeriesEpisodeScript,
+                                 // repairStandaloneBelleQuality, regenerateSeriesBelleFromFeedback,
+                                 // regenerateSeriesDescriptionFromEpisodeFeedback (customer-facing prose)
+  validate: 'claude-sonnet-4-6', // validateStandaloneScript, validateStandaloneStoryResolution,
+                                 // validateStandaloneBelleQuality, validateSeriesEpisodeScript,
+                                 // validateSeriesPackageWithAi, scoreValidateSeriesPackage
+} as const
 const NARRATIVE_HOOK_FALLBACK_TIMEOUT_MS = 8000
 const VOICE_PREFLIGHT_TIMEOUT_MS = 120_000
 const TITLE_MAX_CHARS = 28
@@ -6516,7 +6527,9 @@ export async function POST(req: NextRequest) {
     const body = await req.json().catch(() => ({}))
     const requestedJobId = String(body.jobId || '').trim()
     lockHolderId = String(body.holderId || WORKER_ID).trim() || WORKER_ID
-    const model = String(body.model || 'claude-opus-4-6')
+    const model = String(body.model || STEP_MODELS.generate)
+    // ATL-PIPE-MODEL-001: validation/QC steps run on a cheaper model than generation.
+    const validationModel = String(body.validationModel || STEP_MODELS.validate)
 
     // ── ONE JOB PER WORKER GUARD ──────────────────────────────────────────
     // If this worker already holds a running job (fresh lock, not stale),
@@ -6562,6 +6575,7 @@ export async function POST(req: NextRequest) {
 
     const step = normalizeStep(lockedJob.current_step)
     activeStage = step
+    console.log(`[run-next] job ${lockedJob.id.slice(0, 8)} step=${step} models: generation=${model} validation=${validationModel}`)
     await recordStageStarted(lockedJob, step)
 
     if (step === NEXT_STEP_AFTER_SERIES_CREATE) {
@@ -6610,7 +6624,7 @@ export async function POST(req: NextRequest) {
     }
 
     if (step === NEXT_STEP_AFTER_SERIES_SCRIPTS) {
-      const result = await scoreValidateSeriesPackage(lockedJob, model)
+      const result = await scoreValidateSeriesPackage(lockedJob, validationModel)
       const logs = appendLog(lockedJob, result.failed
         ? 'Series package validation failed'
         : result.complete
@@ -6983,7 +6997,7 @@ export async function POST(req: NextRequest) {
         })
       }
 
-      const result = await validateStandaloneScript(lockedJob, model)
+      const result = await validateStandaloneScript(lockedJob, validationModel)
       const logs = appendLog(lockedJob, result.passed
         ? (result.skipped ? 'Reused existing standalone validation pass' : 'Validated standalone script')
         : 'Standalone script validation failed', {
@@ -7231,7 +7245,7 @@ export async function POST(req: NextRequest) {
         })
       }
 
-      const result = await validateStandaloneStoryResolution(lockedJob, model)
+      const result = await validateStandaloneStoryResolution(lockedJob, validationModel)
       const logs = appendLog(lockedJob, result.passed
         ? (result.skipped ? 'Reused existing standalone story resolution pass' : 'Validated standalone story resolution')
         : 'Standalone story resolution validation failed', {
@@ -8260,7 +8274,7 @@ export async function POST(req: NextRequest) {
         })
       }
 
-      const result = await validateStandaloneBelleQuality(lockedJob, model)
+      const result = await validateStandaloneBelleQuality(lockedJob, validationModel)
       const logs = appendLog(lockedJob, result.success
         ? (result.skipped ? 'Reused existing standalone Belle quality pass' : 'Validated standalone Belle intro/outro quality')
         : 'Standalone Belle quality validation failed', {
