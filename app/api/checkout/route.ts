@@ -9,11 +9,12 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
 
-const FOUNDING_LIMIT = parseInt(process.env.ET_FOUNDING_MEMBER_LIMIT || '500')
-const FOUNDING_PRICE_ID = process.env.STRIPE_PRICE_FOUNDING_MEMBER!
+// ATL-FM-RETIRE-001 (2026-07-10, Marc decision from GVL rehearsal finding #2):
+// The Founding Member program is RETIRED. Every monthly signup gets STANDARD
+// ($7.99/mo); annual gets ANNUAL. The FM Stripe prices are archived — do not
+// reintroduce a selection path without an explicit pricing decision from Marc.
 const STANDARD_PRICE_ID = process.env.STRIPE_PRICE_STANDARD!
 const ANNUAL_PRICE_ID = process.env.STRIPE_PRICE_ANNUAL!
-const FOUNDING_MEMBER_ANNUAL_PRICE_ID = process.env.STRIPE_PRICE_FOUNDING_MEMBER_ANNUAL
 const DEFAULT_SUCCESS_PATH = '/home?welcome=true'
 
 type AttributionPayload = {
@@ -59,31 +60,6 @@ function safeReturnTo(returnTo: unknown) {
   return returnTo
 }
 
-async function resolvePrice(): Promise<{ priceId: string; isFoundingMember: boolean }> {
-  try {
-    let count = 0
-    let hasMore = true
-    let startingAfter: string | undefined
-    while (hasMore) {
-      const subs = await stripe.subscriptions.list({
-        price: FOUNDING_PRICE_ID,
-        status: 'active',
-        limit: 100,
-        ...(startingAfter ? { starting_after: startingAfter } : {})
-      })
-      count += subs.data.length
-      hasMore = subs.has_more
-      if (subs.data.length > 0) startingAfter = subs.data[subs.data.length - 1].id
-      if (count >= FOUNDING_LIMIT) break
-    }
-    const isFoundingMember = count < FOUNDING_LIMIT
-    return { priceId: isFoundingMember ? FOUNDING_PRICE_ID : STANDARD_PRICE_ID, isFoundingMember }
-  } catch {
-    // Fallback to standard if Stripe query fails
-    return { priceId: STANDARD_PRICE_ID, isFoundingMember: false }
-  }
-}
-
 export async function POST(req: NextRequest) {
   try {
     const { userId, email, priceId: clientPriceId, referralCode, trialDays: trialDaysParam, billingCycle, returnTo, attribution, heardAbout } = await req.json()
@@ -93,33 +69,20 @@ export async function POST(req: NextRequest) {
     }
     const campaignMetadata = attributionMetadata(attribution, heardAbout)
 
-    // Auto-select founding member or standard price (ignore client-supplied priceId)
-    const { priceId: resolvedPrice, isFoundingMember } = await resolvePrice()
-    
-    // Determine final price based on FM eligibility + billing cycle
+    // Server-selected price (client-supplied priceId is ignored).
+    // FM program retired — standard monthly or standard annual only.
     let priceId: string
     let priceLabel: string
-    
-    // ATL-PIPE-006: Apply FM annual rate when eligible + annual billing selected
     if (billingCycle === 'annual') {
       if (!ANNUAL_PRICE_ID) {
         console.error('[checkout] STRIPE_PRICE_ANNUAL env var is not set')
         return NextResponse.json({ error: 'Annual plan not available' }, { status: 500 })
       }
-      if (isFoundingMember && FOUNDING_MEMBER_ANNUAL_PRICE_ID) {
-        priceId = FOUNDING_MEMBER_ANNUAL_PRICE_ID
-        priceLabel = 'founding member annual $29.99 locked'
-      } else if (isFoundingMember && !FOUNDING_MEMBER_ANNUAL_PRICE_ID) {
-        console.warn(`[checkout] Founding member selected annual billing but STRIPE_PRICE_FOUNDING_MEMBER_ANNUAL not configured; using standard annual`)
-        priceId = ANNUAL_PRICE_ID
-        priceLabel = 'annual $59.99'
-      } else {
-        priceId = ANNUAL_PRICE_ID
-        priceLabel = 'annual $59.99'
-      }
+      priceId = ANNUAL_PRICE_ID
+      priceLabel = 'annual $59.99'
     } else {
-      priceId = resolvedPrice
-      priceLabel = isFoundingMember ? 'founding member $2.99/mo locked' : 'standard $7.99/mo'
+      priceId = STANDARD_PRICE_ID
+      priceLabel = 'standard $7.99/mo'
     }
     console.log(`[checkout] Assigned price: ${priceLabel}`)
 
@@ -190,9 +153,9 @@ export async function POST(req: NextRequest) {
       subscription_data: {
         metadata: { 
           userId, 
-          isFoundingMember: isFoundingMember ? 'true' : 'false',
+          isFoundingMember: 'false',
           billingCycle: billingCycle || 'monthly',
-          fmAnnualApplied: (isFoundingMember && billingCycle === 'annual' && !!FOUNDING_MEMBER_ANNUAL_PRICE_ID) ? 'true' : 'false',
+          fmAnnualApplied: 'false',
           ...compactMetadata(campaignMetadata),
         },
         trial_period_days: trialDays > 0 ? trialDays : undefined

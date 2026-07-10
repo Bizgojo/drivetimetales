@@ -344,7 +344,7 @@ function SignUpContent() {
 
         <p style={{ color: '#475569', fontSize: '12px', textAlign: 'center', marginTop: '1rem', lineHeight: 1.5 }}>
           By signing up you agree to our <a href="/terms" style={{ color: "#f0a030", textDecoration: "none" }}>Terms of Service</a> and <a href="/privacy" style={{ color: "#f0a030", textDecoration: "none" }}>Privacy Policy</a>.<br/>
-          $7.99/mo or $59.99/yr after trial. Founding members get $2.99/mo — locked for life.
+          $7.99/mo or $59.99/yr after trial.
         </p>
       </div>
     </div>

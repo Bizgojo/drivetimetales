@@ -42,9 +42,12 @@ async function getFoundingMemberCount(): Promise<number> {
 
 export async function GET() {
   try {
+    // ATL-FM-RETIRE-001 (2026-07-10): FM program retired — report unavailable
+    // regardless of subscriber count so no caller can advertise $2.99.
+    // Response shape preserved for any legacy consumer.
     const foundingCount = await getFoundingMemberCount()
-    const spotsRemaining = Math.max(0, FOUNDING_LIMIT - foundingCount)
-    const isFoundingAvailable = spotsRemaining > 0
+    const spotsRemaining = 0
+    const isFoundingAvailable = false
 
     const response = NextResponse.json({
       isFoundingAvailable,
