@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import Stripe from 'stripe'
 import { createClient } from '@supabase/supabase-js'
+import { normalizeEmail } from '@/lib/email'
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, { apiVersion: '2023-10-16' })
 
@@ -62,9 +63,14 @@ function safeReturnTo(returnTo: unknown) {
 
 export async function POST(req: NextRequest) {
   try {
-    const { userId, email, priceId: clientPriceId, referralCode, trialDays: trialDaysParam, billingCycle, returnTo, attribution, heardAbout } = await req.json()
+    const { userId, email, firstName: requestFirstName, priceId: clientPriceId, referralCode, trialDays: trialDaysParam, billingCycle, returnTo, attribution, heardAbout } = await req.json()
 
-    if (!userId || !email) {
+    // ATL-CHECKOUT-HYGIENE-001 (defect 2): normalize before any Stripe
+    // customer create/lookup — mixed-case emails were creating
+    // duplicate-looking Stripe customers.
+    const normalizedEmail = normalizeEmail(email)
+
+    if (!userId || !normalizedEmail) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
     }
     const campaignMetadata = attributionMetadata(attribution, heardAbout)
@@ -89,16 +95,25 @@ export async function POST(req: NextRequest) {
     // Check if user already has a Stripe customer
     const { data: userData } = await supabase
       .from('users')
-      .select('stripe_customer_id')
+      .select('stripe_customer_id, first_name')
       .eq('id', userId)
       .single()
 
     let customerId = userData?.stripe_customer_id
 
+    // ATL-CHECKOUT-HYGIENE-001 (defect 1): every Stripe customer was created
+    // with name=NONE despite users entering a name at signup — Stripe Checkout
+    // showed 'Name not provided' to the paying customer. DB first_name wins
+    // (written by /api/user/create before checkout); request payload is the
+    // fallback.
+    const dbFirstName = typeof userData?.first_name === 'string' ? userData.first_name.trim() : ''
+    const customerName = dbFirstName || (typeof requestFirstName === 'string' ? requestFirstName.trim() : '')
+
     // Create Stripe customer if doesn't exist
     if (!customerId) {
       const customer = await stripe.customers.create({
-        email: email,
+        email: normalizedEmail,
+        ...(customerName ? { name: customerName } : {}),
         metadata: { userId, ...compactMetadata(campaignMetadata) }
       })
       customerId = customer.id
@@ -109,7 +124,21 @@ export async function POST(req: NextRequest) {
         .update({ stripe_customer_id: customerId })
         .eq('id', userId)
     } else {
+      // Backfill name on existing customers ONLY if Stripe has none — never
+      // overwrite a name the customer set themselves (e.g. billing portal).
+      let nameUpdate: { name?: string } = {}
+      if (customerName) {
+        try {
+          const existing = await stripe.customers.retrieve(customerId)
+          if (!('deleted' in existing && existing.deleted) && !(existing as Stripe.Customer).name) {
+            nameUpdate = { name: customerName }
+          }
+        } catch (retrieveErr) {
+          console.warn('[checkout] could not retrieve customer for name backfill (non-fatal):', retrieveErr)
+        }
+      }
       await stripe.customers.update(customerId, {
+        ...nameUpdate,
         metadata: { userId, ...compactMetadata(campaignMetadata) }
       })
     }

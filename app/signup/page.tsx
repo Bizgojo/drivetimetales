@@ -4,7 +4,8 @@ import { useState, useEffect, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
 import { supabase } from '@/lib/supabase'
-import { normalizePromoCode, readSignupAttribution } from '@/lib/utm'
+import { buildAttributionUpdatePayload, normalizePromoCode, readSignupAttribution } from '@/lib/utm'
+import { normalizeEmail } from '@/lib/email'
 import { applyPromoTrialDays } from '@/lib/promo'
 
 interface Offer { id: string; name: string; offer_type: 'free_days' | 'credits'; referrer_reward: number; referred_reward: number }
@@ -136,7 +137,9 @@ function SignUpContent() {
     e.preventDefault(); setError(''); setLoading(true)
     const selectedHeardAbout = heardAbout || 'Other'
     const attribution = readSignupAttribution(promoCode)
-    const { error: signUpError, user } = await signUp(email, password, firstName, selectedHeardAbout)
+    // ATL-CHECKOUT-HYGIENE-001 (defect 2): normalize once, use everywhere below.
+    const normalizedEmail = normalizeEmail(email)
+    const { error: signUpError, user } = await signUp(normalizedEmail, password, firstName, selectedHeardAbout)
     if (signUpError) {
       const msg = signUpError.message || ''
       if (msg.toLowerCase().includes('already registered') || msg.toLowerCase().includes('already exists') || msg.toLowerCase().includes('user already')) {
@@ -149,26 +152,29 @@ function SignUpContent() {
     if (!user) { setError('Failed to create account'); setLoading(false); return }
 
     // Capture attribution and survey response for permanent campaign reporting.
+    // Payload built by buildAttributionUpdatePayload — unit-tested against the
+    // migrated column list so a schema mismatch fails in CI, not silently here
+    // (ATL-CHECKOUT-HYGIENE-001 defect 3: one missing column nulled ALL fields).
     try {
-      const { error: attributionError } = await supabase.from('users').update({
-        utm_source: attribution.utm_source,
-        utm_medium: attribution.utm_medium,
-        utm_campaign: attribution.utm_campaign,
-        utm_captured_at: attribution.utm_captured_at,
-        signup_promo_code: attribution.promo_code,
-        heard_about_us: selectedHeardAbout,
-      }).eq('id', user.id)
-      if (attributionError) console.error('[signup] attribution write failed (non-fatal):', attributionError)
+      const attributionPayload = buildAttributionUpdatePayload(attribution, selectedHeardAbout)
+      const { error: attributionError } = await supabase.from('users').update(attributionPayload).eq('id', user.id)
+      if (attributionError) {
+        console.error(
+          '[signup] ATTRIBUTION WRITE FAILED (non-fatal for signup, fatal for campaign reporting):',
+          attributionError.message,
+          'payload keys:', Object.keys(attributionPayload).join(',')
+        )
+      }
     } catch (utmErr) {
       console.error('[signup] attribution block threw (non-fatal):', utmErr)
     }
 
     // Handle referral tracking
     if (referralId && referrerId) {
-      await supabase.from('referrals').update({ referred_id: user.id, referred_email: email, status: 'signed_up' }).eq('id', referralId)
+      await supabase.from('referrals').update({ referred_id: user.id, referred_email: normalizedEmail, status: 'signed_up' }).eq('id', referralId)
       if (referrerEmail) await sendNotification({ referralId, type: 'referral_signed_up', referrerEmail, referrerName: referrerName || 'Friend', referredName: firstName })
     } else if (referrerId && !referralId) {
-      const { data: newRef } = await supabase.from('referrals').insert({ referrer_id: referrerId, referred_id: user.id, referred_email: email, offer_id: offer?.id, status: 'signed_up', opened_at: new Date().toISOString() }).select('id').single()
+      const { data: newRef } = await supabase.from('referrals').insert({ referrer_id: referrerId, referred_id: user.id, referred_email: normalizedEmail, offer_id: offer?.id, status: 'signed_up', opened_at: new Date().toISOString() }).select('id').single()
       if (referrerEmail && newRef) await sendNotification({ referralId: newRef.id, type: 'referral_signed_up', referrerEmail, referrerName: referrerName || 'Friend', referredName: firstName })
     }
 
@@ -180,7 +186,8 @@ function SignUpContent() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           userId: user.id,
-          email,
+          email: normalizedEmail,
+          firstName,
           referralCode: referralCode || undefined,
           offerId: offer?.id || undefined,
           trialDays: finalTrialDays,

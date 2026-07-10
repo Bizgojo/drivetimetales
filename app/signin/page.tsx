@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { useAuth } from '@/contexts/AuthContext'
 import { supabaseBrowser } from '@/lib/supabase-browser'
+import { normalizeEmail } from '@/lib/email'
 
 function SignInContent() {
   const router = useRouter()
@@ -52,10 +53,10 @@ function SignInContent() {
       const res = await fetch('/api/auth/magic-link', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: email.trim(), returnTo }),
+        body: JSON.stringify({ email: normalizeEmail(email), returnTo }),
       })
       if (!res.ok) throw new Error('Request failed')
-      router.push(`/auth/magic-sent?email=${encodeURIComponent(email.trim())}`)
+      router.push(`/auth/magic-sent?email=${encodeURIComponent(normalizeEmail(email))}`)
     } catch {
       setError('Something went wrong. Please try again.')
       setMagicLoading(false)
@@ -66,7 +67,10 @@ function SignInContent() {
     e.preventDefault()
     setError('')
     setPwLoading(true)
-    const { error } = await signIn(email, password)
+    // ATL-CHECKOUT-HYGIENE-001 (defect 2): consistent with signup — Supabase
+    // auth already compares emails case-insensitively, so this is safe for
+    // accounts created before normalization.
+    const { error } = await signIn(normalizeEmail(email), password)
     if (error) {
       setError(error.message === 'Invalid login credentials'
         ? 'Email or password is incorrect.'

@@ -101,6 +101,47 @@ export function clearStoredUtm(): void {
   } catch {}
 }
 
+// ATL-CHECKOUT-HYGIENE-001 (defect 3): the signup page's attribution UPDATE
+// on public.users fails WHOLESALE if any single column in the payload does
+// not exist (PostgREST rejects the entire update). That silently nulled
+// utm_source/utm_medium/utm_campaign/utm_captured_at/signup_promo_code/
+// heard_about_us for EVERY signup while users.signup_promo_code was missing.
+//
+// This list is the contract between the client-side write and the DB schema.
+// Keep it in sync with
+// supabase/migrations/20260710120000_checkout_hygiene_attribution_columns.sql
+// — the unit test in __tests__/atl-checkout-hygiene-001.test.ts pins it.
+export const SIGNUP_ATTRIBUTION_COLUMNS = [
+  'utm_source',
+  'utm_medium',
+  'utm_campaign',
+  'utm_captured_at',
+  'signup_promo_code',
+  'heard_about_us',
+] as const
+
+export type SignupAttributionColumn = (typeof SIGNUP_ATTRIBUTION_COLUMNS)[number]
+
+export type SignupAttributionUpdate = Record<SignupAttributionColumn, string | null>
+
+// Builds the exact payload the signup page writes to public.users after
+// account creation. Extracted so it is unit-testable: if a key is added here
+// without a matching column migration, the pinned-columns test fails loudly
+// instead of the write failing silently in production.
+export function buildAttributionUpdatePayload(
+  attribution: SignupAttribution,
+  heardAbout: string | null | undefined
+): SignupAttributionUpdate {
+  return {
+    utm_source: attribution.utm_source ?? null,
+    utm_medium: attribution.utm_medium ?? null,
+    utm_campaign: attribution.utm_campaign ?? null,
+    utm_captured_at: attribution.utm_captured_at ?? null,
+    signup_promo_code: attribution.promo_code ?? null,
+    heard_about_us: heardAbout && heardAbout.trim() ? heardAbout.trim() : null,
+  }
+}
+
 export function readSignupAttribution(promoCode?: string | null): SignupAttribution {
   const utm = readStoredUtm()
   return {
