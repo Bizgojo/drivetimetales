@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
 import { supabase } from '@/lib/supabase'
 import { normalizePromoCode, readSignupAttribution } from '@/lib/utm'
+import { applyPromoTrialDays } from '@/lib/promo'
 
 interface Offer { id: string; name: string; offer_type: 'free_days' | 'credits'; referrer_reward: number; referred_reward: number }
 
@@ -22,7 +23,10 @@ const HEARD_ABOUT_OPTIONS = [
   'Other',
 ]
 
-// Trial is locked at 7 days for all users
+// Base trial is locked at 7 days for all users. A valid promo code in the
+// URL can raise the DISPLAYED (and checkout-granted) trial via the
+// /api/promo/validate check below (ATL-PROMO-UI-001) — same max(base, days)
+// math as app/api/checkout/route.ts.
 function getTrialVariant(): { days: number; variant: 'A' | 'B' } {
   return { days: 7, variant: 'A' }
 }
@@ -62,6 +66,8 @@ function SignUpContent() {
   const [trialVariant, setTrialVariant] = useState<'A' | 'B'>('A')
   const [billingCycle, setBillingCycle] = useState<'monthly' | 'annual'>('monthly')
   const [promoCode, setPromoCode] = useState<string | null>(null)
+  // 'none' = no code or validation unavailable (fail quiet → default display)
+  const [promoStatus, setPromoStatus] = useState<'none' | 'valid' | 'invalid'>('none')
   const [heardAbout, setHeardAbout] = useState('')
   const returnTo = safeInternalPath(searchParams.get('returnTo'))
 
@@ -73,6 +79,32 @@ function SignUpContent() {
     if (ref) { setReferralCode(ref); trackOpenAndFetchReferrer(ref) }
     setPromoCode(normalizePromoCode(searchParams.get('promo') || searchParams.get('code')))
   }, [searchParams])
+
+  // ATL-PROMO-UI-001: server-truth promo validation for honest trial display.
+  // Valid → show real trial length + "applied" line. Invalid → subtle note,
+  // keep 7-day display. Endpoint down/slow → fail quiet, default display.
+  useEffect(() => {
+    if (!promoCode) { setPromoStatus('none'); return }
+    let cancelled = false
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), 5000)
+    fetch(`/api/promo/validate?code=${encodeURIComponent(promoCode)}`, { signal: controller.signal })
+      .then(res => (res.ok ? res.json() : null))
+      .then((data: { valid?: boolean; days?: number | null } | null) => {
+        if (cancelled || !data) return
+        if (data.valid === true) {
+          setPromoStatus('valid')
+          // Same max(base, promoDays) math checkout applies server-side, so
+          // the number shown matches what Stripe will actually grant.
+          setTrialDays(prev => applyPromoTrialDays(prev, data.days))
+        } else if (data.valid === false) {
+          setPromoStatus('invalid')
+        }
+      })
+      .catch(() => { /* fail quiet — signup must never break on validation */ })
+      .finally(() => clearTimeout(timer))
+    return () => { cancelled = true; controller.abort(); clearTimeout(timer) }
+  }, [promoCode])
 
   async function sendNotification(data: any) {
     try {
@@ -274,6 +306,18 @@ function SignUpContent() {
               </button>
             </div>
           </div>
+
+          {/* Promo code status (ATL-PROMO-UI-001) */}
+          {promoCode && promoStatus === 'valid' && (
+            <div style={{ color: '#86efac', fontSize: '13px', fontWeight: 700, textAlign: 'center', marginBottom: '0.75rem' }}>
+              Code {promoCode} applied ✓
+            </div>
+          )}
+          {promoCode && promoStatus === 'invalid' && (
+            <div style={{ color: '#94a3b8', fontSize: '12.5px', textAlign: 'center', marginBottom: '0.75rem' }}>
+              Code {promoCode} not recognized
+            </div>
+          )}
 
           <button
             type={alreadyExists ? 'button' : 'submit'}
