@@ -265,12 +265,28 @@ async function handleDispatchQueue(request: NextRequest) {
       // rolling window → do NOT create another job; park the queued episodes
       // in repair_queue so a human/repair flow decides what happens next.
       const failureWindowStart = new Date(Date.now() - DISPATCH_FAILURE_WINDOW_MS).toISOString()
+      // PIPE-AUDIT-001 item-4 parity for the SERIES circuit: an authorized
+      // dispatch_failure_reset_at stamp on the series' episodes floors the
+      // failure window — failures at/before the reset are already-diagnosed
+      // history and must not re-trip the circuit (previously only the
+      // standalone retry cap honored resets; every re-release cost a 2h wait).
+      const { data: seriesResetRows } = await supabase
+        .from('stories')
+        .select('dispatch_failure_reset_at')
+        .eq('series_id', seriesId)
+        .not('dispatch_failure_reset_at', 'is', null)
+        .order('dispatch_failure_reset_at', { ascending: false })
+        .limit(1)
+      const seriesResetMs = Date.parse(seriesResetRows?.[0]?.dispatch_failure_reset_at || '') || 0
+      const effectiveWindowStart = seriesResetMs > Date.parse(failureWindowStart)
+        ? new Date(seriesResetMs).toISOString()
+        : failureWindowStart
       const { data: recentSeriesFailures, error: seriesFailuresError } = await supabase
         .from('production_jobs')
         .select('id,status,updated_at')
         .eq('series_id', seriesId)
         .eq('status', 'failed')
-        .gte('updated_at', failureWindowStart)
+        .gte('updated_at', effectiveWindowStart)
 
       if (seriesFailuresError) {
         console.error('[dispatch-queue] Failed to load recent series failures:', seriesId, seriesFailuresError)
