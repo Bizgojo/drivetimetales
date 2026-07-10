@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { INSTALL_REOFFER_EVENT, consumeInstallReoffer } from '@/lib/installReoffer'
+import { detectIosBrowser, iosBrowserLabel, type IosBrowser } from '@/lib/iosBrowser'
 
 interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>
@@ -23,6 +24,8 @@ export default function InstallAppBanner({ reofferOnly = false }: InstallAppBann
   const [isInstalled, setIsInstalled] = useState(false)
   const [visible, setVisible] = useState(false)
   const [isIOS, setIsIOS] = useState(false)
+  const [iosBrowser, setIosBrowser] = useState<IosBrowser>('not-ios')
+  const [copied, setCopied] = useState(false)
   const [showGuide, setShowGuide] = useState(false)
 
   useEffect(() => {
@@ -38,6 +41,7 @@ export default function InstallAppBanner({ reofferOnly = false }: InstallAppBann
 
     const ios = /iphone|ipad|ipod/i.test(navigator.userAgent) && !(window as any).MSStream
     setIsIOS(ios)
+    setIosBrowser(detectIosBrowser(navigator.userAgent))
 
     let showTimer: ReturnType<typeof setTimeout> | null = null
 
@@ -92,6 +96,16 @@ export default function InstallAppBanner({ reofferOnly = false }: InstallAppBann
     if (outcome === 'accepted') { setInstallPrompt(null); setIsInstalled(true); setVisible(false) }
   }
 
+  // ATL-INSTALL-SHEET-001: Chrome/Firefox/etc. on iOS can't add to home screen —
+  // let the user copy the URL to paste into Safari.
+  const handleCopyLink = async () => {
+    try {
+      await navigator.clipboard.writeText(window.location.href)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2500)
+    } catch { /* clipboard unavailable — button just won't confirm */ }
+  }
+
   const handleDismiss = () => {
     setVisible(false); setShowGuide(false)
     localStorage.setItem('et_install_dismissed', '1')
@@ -111,6 +125,10 @@ export default function InstallAppBanner({ reofferOnly = false }: InstallAppBann
         { icon: '✓', text: 'Confirm — Endless Tales appears on your home screen' },
       ]
 
+  // ATL-INSTALL-SHEET-001: on iOS in a non-Safari browser, flip the sheet —
+  // lead with the Safari requirement + copy-link, then show the Safari steps.
+  const nonSafariIos = isIOS && iosBrowser !== 'safari' && iosBrowser !== 'not-ios'
+
   if (showGuide) {
     return (
       <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', zIndex: 9999, display: 'flex', alignItems: 'flex-end', backdropFilter: 'blur(4px)' }}>
@@ -125,6 +143,22 @@ export default function InstallAppBanner({ reofferOnly = false }: InstallAppBann
             </div>
             <button onClick={handleDismiss} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.4)', fontSize: 20, cursor: 'pointer' }}>✕</button>
           </div>
+          {nonSafariIos && (
+            <div style={{ marginBottom: 20 }}>
+              <div style={{ background: 'rgba(249,115,22,0.1)', border: '1px solid rgba(249,115,22,0.3)', borderRadius: 10, padding: '12px 16px', display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+                <span style={{ fontSize: 18, flexShrink: 0 }}>⚠️</span>
+                <span style={{ color: 'white', fontSize: 14, lineHeight: 1.5 }}>
+                  You&apos;re in {iosBrowserLabel(iosBrowser)} — this needs Safari. Copy the link below, open Safari, and paste it in the address bar. Then:
+                </span>
+              </div>
+              <button
+                onClick={handleCopyLink}
+                style={{ width: '100%', marginTop: 12, background: copied ? '#16a34a' : '#f97316', color: 'white', border: 'none', borderRadius: 10, padding: '12px 16px', fontWeight: 700, fontSize: 14, cursor: 'pointer' }}
+              >
+                {copied ? 'Copied ✓' : '🔗 Copy link for Safari'}
+              </button>
+            </div>
+          )}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
             {steps.map((step, i) => (
               <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
@@ -133,7 +167,7 @@ export default function InstallAppBanner({ reofferOnly = false }: InstallAppBann
               </div>
             ))}
           </div>
-          {isIOS && (
+          {isIOS && !nonSafariIos && (
             <div style={{ marginTop: 20, background: 'rgba(249,115,22,0.1)', border: '1px solid rgba(249,115,22,0.3)', borderRadius: 10, padding: '12px 16px', display: 'flex', alignItems: 'flex-start', gap: 10 }}>
               <span style={{ fontSize: 18, flexShrink: 0 }}>💡</span>
               <span style={{ color: 'white', fontSize: 13, lineHeight: 1.5 }}>Make sure you&apos;re using Safari — this won&apos;t work in Chrome or Firefox on iPhone.</span>
