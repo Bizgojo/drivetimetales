@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
+import { isEntitled } from '@/lib/entitlement'
 import StickyHeaderFull from '@/components/StickyHeaderFull'
 
 interface Invoice {
@@ -53,8 +54,12 @@ export default function ManageSubscriptionPage() {
     return null
   }
 
-  const isActive = user.subscription_status === 'active' || user.subscription_status === 'trialing'
-  const isCancelling = user.subscription_status === 'cancelling'
+  // ATL-POST-SUB-LOOP-001: `subscription_status` is not a column AuthContext
+  // loads (it was always undefined), so every entitled user fell through to
+  // isFree and saw a "Subscribe Now" → /signup CTA. Entitlement now uses the
+  // shared predicate over the fields the Stripe webhook actually writes.
+  const isActive = isEntitled(user.subscription_type, user.subscription_ends_at)
+  const isCancelling = (user as any).subscription_status === 'cancelling'
   const isFree = !isActive && !isCancelling
   const hasSubscription = isActive || isCancelling
 

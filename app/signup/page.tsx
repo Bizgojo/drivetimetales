@@ -7,6 +7,7 @@ import { supabase } from '@/lib/supabase'
 import { buildAttributionUpdatePayload, normalizePromoCode, readSignupAttribution } from '@/lib/utm'
 import { normalizeEmail } from '@/lib/email'
 import { applyPromoTrialDays } from '@/lib/promo'
+import { isEntitledUser } from '@/lib/entitlement'
 
 interface Offer { id: string; name: string; offer_type: 'free_days' | 'credits'; referrer_reward: number; referred_reward: number }
 
@@ -49,7 +50,7 @@ function safeInternalPath(path: string | null) {
 function SignUpContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
-  const { signUp } = useAuth()
+  const { signUp, user: authedUser, loading: authLoading } = useAuth()
   const [firstName, setFirstName] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -71,6 +72,22 @@ function SignUpContent() {
   const [promoStatus, setPromoStatus] = useState<'none' | 'valid' | 'invalid'>('none')
   const [heardAbout, setHeardAbout] = useState('')
   const returnTo = safeInternalPath(searchParams.get('returnTo'))
+
+  // ATL-POST-SUB-LOOP-001: authenticated users must never see the signup form.
+  // Plain /signup → always bounce to /home. /signup?canceled=true (Stripe
+  // checkout cancel_url) → bounce only when the user is already entitled; an
+  // authed-but-unentitled user who backed out of checkout keeps the page so
+  // the retry path isn't a dead end (Marc's spec).
+  // `!loading` guard: a brand-new signup becomes authenticated the moment
+  // signUp() succeeds — while handleSubmit is still in flight to Stripe
+  // checkout. Never redirect out from under that handoff.
+  const checkoutCanceled = searchParams.get('canceled') === 'true'
+  const redirectAuthed = Boolean(authedUser) && !loading && (!checkoutCanceled || isEntitledUser(authedUser))
+
+  useEffect(() => {
+    if (authLoading || !redirectAuthed) return
+    router.replace('/home')
+  }, [authLoading, redirectAuthed, router])
 
   useEffect(() => {
     const { days, variant } = getTrialVariant()
@@ -225,6 +242,13 @@ function SignUpContent() {
   const rewardText = offer
     ? (offer.offer_type === 'free_days' ? offer.referred_reward + ' days free' : 'Referral offer applied')
     : `${trialDays} days free`
+
+  // No flash-of-wrong-state: while auth is resolving, or while an authed user
+  // is being redirected away, show the same spinner used as the Suspense
+  // fallback instead of the guest signup form (ATL-POST-SUB-LOOP-001).
+  if (authLoading || redirectAuthed) {
+    return <LoadingFallback />
+  }
 
   return (
     <div style={{ minHeight: '100vh', backgroundColor: '#020617', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>

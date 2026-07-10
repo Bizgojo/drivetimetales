@@ -77,7 +77,10 @@ export default function GuestPage() {
     </div>
   )
 
-  if (showPrompt) {
+  // ATL-POST-SUB-LOOP-001: authenticated users are redirected to /home above,
+  // but stale guest-gate localStorage could flash the trial prompt for one
+  // render before the redirect lands. Never show it to a signed-in user.
+  if (showPrompt && !user) {
     return (
       <GuestSignupPrompt
         minutesPlayed={Math.round(guestMinutes)}
