@@ -82,7 +82,16 @@ export async function middleware(request: NextRequest) {
       { cookies: { getAll: () => request.cookies.getAll(), setAll: () => {} } }
     )
     const { data: { user: landingUser } } = await tempSupabase.auth.getUser()
-    if (landingUser) return NextResponse.redirect(new URL('/home', request.url))
+    if (landingUser) {
+      // ORION-LANDING-PARAMS-001 (2026-07-11): carry the query string through
+      // this redirect. A signed-in user clicking an ad link was bounced to
+      // /home with utm_*/promo params silently dropped — attribution lost and,
+      // during launch rehearsal, indistinguishable from a broken redirect
+      // chain. Params on /home are harmless; UtmCapture still records them.
+      const homeUrl = new URL('/home', request.url)
+      homeUrl.search = request.nextUrl.search
+      return NextResponse.redirect(homeUrl)
+    }
     return NextResponse.next()
   }
 
