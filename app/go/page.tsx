@@ -31,7 +31,8 @@ import Link from 'next/link'
 import Image from 'next/image'
 import { useSearchParams } from 'next/navigation'
 import { buildCampaignSignupHref, normalizePromoCode } from '@/lib/utm'
-import { getTrialDisplay, PromoStatus } from '@/lib/landing'
+import { getTrialDisplay, PromoStatus, GO_SAMPLE_STORY } from '@/lib/landing'
+import GoSamplePlayer from '@/components/GoSamplePlayer'
 
 function LoadingFallback() {
   return (
@@ -130,28 +131,31 @@ function GoLandingContent() {
           fontSize: 'clamp(1rem, 4vw, 1.15rem)',
           lineHeight: 1.55,
           color: '#ffffff',
-          margin: '0 0 1.4rem',
+          margin: '0 0 1.3rem',
           maxWidth: '420px',
         }}>
           Original audio series made for the drive. New episodes every week.
         </p>
 
-        <ul style={{
-          listStyle: 'none',
-          padding: 0,
-          margin: '0 0 1.6rem',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: '0.55rem',
-          fontSize: '0.98rem',
-          lineHeight: 1.4,
-          color: '#ffffff',
-          fontWeight: 500,
-        }}>
-          <li>✓ Original series you can&apos;t hear anywhere else</li>
-          <li>✓ Episodes sized to fit your drive</li>
-          <li>✓ Hands-free. Eyes on the road.</li>
-        </ul>
+        {/* SUS/ATL-LANDING-001 rev A: the playable story IS the funnel.
+            Listen first (free, no account) → then the CTA to keep going.
+            Sample story is swappable via the single GO_SAMPLE_STORY const
+            in lib/landing.ts. */}
+        <p style={{ fontSize: '0.95rem', fontWeight: 700, color: '#ffffff', margin: '0 0 0.6rem' }}>
+          Don&apos;t take our word for it — press play.
+        </p>
+        <GoSamplePlayer
+          storyId={GO_SAMPLE_STORY.id}
+          audioUrl={GO_SAMPLE_STORY.audioUrl}
+          title={GO_SAMPLE_STORY.title}
+          author={GO_SAMPLE_STORY.author}
+          genre={GO_SAMPLE_STORY.genre}
+          durationMins={GO_SAMPLE_STORY.durationMins}
+        />
+        <p style={{ fontSize: '0.9rem', color: '#ffffff', margin: '0.7rem 0 1.3rem', maxWidth: '400px', lineHeight: 1.5 }}>
+          Like what you hear? Start your free trial and keep the story going —
+          plus hundreds more like it.
+        </p>
 
         {/* Promo applied badge (only after server-truth validation) */}
         {trial.appliedBadge && (
@@ -184,6 +188,23 @@ function GoLandingContent() {
         <p style={{ fontSize: '0.85rem', color: '#ffffff', marginTop: '0.9rem', maxWidth: '360px', lineHeight: 1.5 }}>
           {trial.subtext}
         </p>
+
+        <ul style={{
+          listStyle: 'none',
+          padding: 0,
+          margin: '1.5rem 0 0',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '0.55rem',
+          fontSize: '0.95rem',
+          lineHeight: 1.4,
+          color: '#ffffff',
+          fontWeight: 500,
+        }}>
+          <li>✓ Original series you can&apos;t hear anywhere else</li>
+          <li>✓ Episodes sized to fit your drive</li>
+          <li>✓ Hands-free. Eyes on the road.</li>
+        </ul>
 
         {/* Legal — small, bottom */}
         <div style={{ marginTop: 'auto', paddingTop: '2.5rem', fontSize: '0.75rem', color: '#ffffff' }}>

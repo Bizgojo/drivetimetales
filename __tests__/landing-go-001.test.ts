@@ -5,11 +5,24 @@
 //   2. middleware.ts — '/go' present in PUBLIC_ROUTES (source assertion).
 //   3. getTrialDisplay — valid 14-day promo copy + applied badge;
 //      invalid/missing → 7-day default, no badge.
+//   4. (rev A) sample player — GO_SAMPLE_STORY swappable const shape, player
+//      wired into app/go/page.tsx via the const only (source pins; jest here
+//      is node-env with a ts-only transform, so .tsx cannot be imported).
+//   5. (rev B) sample progress persistence — pure save/load/expiry/corrupt
+//      logic.
 
 import fs from 'fs'
 import path from 'path'
 import { buildCampaignSignupHref, buildSignupCtaHref, UTM_PARAM_KEYS } from '@/lib/utm'
-import { getTrialDisplay } from '@/lib/landing'
+import {
+  getTrialDisplay,
+  GO_SAMPLE_STORY,
+  SAMPLE_PROGRESS_KEY,
+  SAMPLE_PROGRESS_MAX_AGE_MS,
+  serializeSampleProgress,
+  parseSampleProgress,
+  shouldPersistProgress,
+} from '@/lib/landing'
 
 const FULL_UTM = {
   utm_source: 'facebook',
@@ -133,5 +146,90 @@ describe('SUS/ATL-LANDING-001: getTrialDisplay', () => {
     expect(d.ctaLabel).toBe('Start Your 7-Day Free Trial')
     // Still validated → badge shows even though days clamp to base.
     expect(d.appliedBadge).toBe('Code SHORT3 applied ✓')
+  })
+})
+
+describe('SUS/ATL-LANDING-001 rev A: sample player', () => {
+  const pageSrc = fs.readFileSync(path.join(__dirname, '..', 'app', 'go', 'page.tsx'), 'utf8')
+  const playerSrc = fs.readFileSync(path.join(__dirname, '..', 'components', 'GoSamplePlayer.tsx'), 'utf8')
+
+  test('GO_SAMPLE_STORY const has a valid, complete shape', () => {
+    expect(GO_SAMPLE_STORY.id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/)
+    expect(GO_SAMPLE_STORY.audioUrl).toMatch(/^https:\/\//)
+    expect(GO_SAMPLE_STORY.title.length).toBeGreaterThan(0)
+    expect(GO_SAMPLE_STORY.author.length).toBeGreaterThan(0)
+    expect(GO_SAMPLE_STORY.genre.length).toBeGreaterThan(0)
+    expect(GO_SAMPLE_STORY.durationMins).toBeGreaterThan(0)
+  })
+
+  test('/go page renders the player, wired ONLY through GO_SAMPLE_STORY (swappable single const)', () => {
+    expect(pageSrc).toContain('GoSamplePlayer')
+    expect(pageSrc).toContain('GO_SAMPLE_STORY')
+    // Swappability pin: the page must NOT hardcode the story id or audio URL —
+    // changing the const in lib/landing.ts must be the only edit needed.
+    expect(pageSrc).not.toContain(GO_SAMPLE_STORY.id)
+    expect(pageSrc).not.toContain(GO_SAMPLE_STORY.audioUrl)
+  })
+
+  test('player is a real audio player with seek + no auth/paywall surface', () => {
+    expect(playerSrc).toContain('<audio')
+    expect(playerSrc).toContain('type="range"') // seek bar
+    // No-account rule: neither the player nor the page may import supabase
+    // or the auth context (comments may mention them; imports may not).
+    for (const src of [playerSrc, pageSrc]) {
+      expect(src).not.toMatch(/from\s+['"](@\/lib\/supabase|@supabase)/)
+      expect(src).not.toMatch(/useAuth|AuthContext/)
+    }
+  })
+})
+
+describe('SUS/ATL-LANDING-001 rev B: sample progress persistence (pure logic)', () => {
+  const STORY = GO_SAMPLE_STORY.id
+  const NOW = 1_800_000_000_000
+
+  test('save/load roundtrip returns the saved seconds', () => {
+    const raw = serializeSampleProgress(STORY, 123.9, NOW)
+    expect(parseSampleProgress(raw, STORY, NOW)).toBe(123) // floored
+  })
+
+  test('storage key is the stable documented key', () => {
+    expect(SAMPLE_PROGRESS_KEY).toBe('et_go_sample_progress')
+  })
+
+  test('different story id → null (stale progress never resumes wrong story)', () => {
+    const raw = serializeSampleProgress('other-story-id', 200, NOW)
+    expect(parseSampleProgress(raw, STORY, NOW)).toBeNull()
+  })
+
+  test('expired progress → null; just-inside-window → seconds', () => {
+    const raw = serializeSampleProgress(STORY, 60, NOW)
+    expect(parseSampleProgress(raw, STORY, NOW + SAMPLE_PROGRESS_MAX_AGE_MS + 1)).toBeNull()
+    expect(parseSampleProgress(raw, STORY, NOW + SAMPLE_PROGRESS_MAX_AGE_MS - 1)).toBe(60)
+  })
+
+  test('corrupt/hostile payloads → null, never throws', () => {
+    for (const bad of [null, undefined, '', 'not json', '42', '"str"', 'null', '[]', '{}',
+      JSON.stringify({ storyId: STORY, seconds: 'NaN', updatedAt: NOW }),
+      JSON.stringify({ storyId: STORY, seconds: -5, updatedAt: NOW }),
+      JSON.stringify({ storyId: STORY, seconds: 0, updatedAt: NOW }),
+      JSON.stringify({ storyId: STORY, seconds: Infinity, updatedAt: NOW }),
+      JSON.stringify({ storyId: STORY, seconds: 60 }), // missing updatedAt
+    ]) {
+      expect(parseSampleProgress(bad as string | null, STORY, NOW)).toBeNull()
+    }
+  })
+
+  test('serialize clamps negative/fractional seconds to a safe integer', () => {
+    expect(JSON.parse(serializeSampleProgress(STORY, -10, NOW)).seconds).toBe(0)
+    expect(JSON.parse(serializeSampleProgress(STORY, 61.7, NOW)).seconds).toBe(61)
+  })
+
+  test('shouldPersistProgress throttles writes to ≥5s of movement', () => {
+    expect(shouldPersistProgress(null, 1)).toBe(true) // first write
+    expect(shouldPersistProgress(10, 12)).toBe(false) // <5s delta
+    expect(shouldPersistProgress(10, 15)).toBe(true) // =5s delta
+    expect(shouldPersistProgress(100, 20)).toBe(true) // backwards seek >5s
+    expect(shouldPersistProgress(null, 0)).toBe(false) // nothing to save
+    expect(shouldPersistProgress(null, NaN)).toBe(false)
   })
 })
