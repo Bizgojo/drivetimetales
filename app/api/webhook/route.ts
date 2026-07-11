@@ -34,18 +34,6 @@ export async function POST(request: NextRequest) {
   const body = await request.text()
   const signature = request.headers.get('stripe-signature')!
 
-  // TEMP DIAGNOSTIC — WEBHOOK-DIAG-001 (2026-07-11, Marc-directed): compare the
-  // secret the RUNNING code holds vs the Stripe dashboard value. Logs first 8
-  // chars only (whsec_ prefix + 2). REMOVE after the 400 investigation closes.
-  console.log(
-    '[webhook-diag]',
-    'env_secret_prefix:', (process.env.STRIPE_WEBHOOK_SECRET || 'UNSET').slice(0, 8),
-    'raw_len:', (process.env.STRIPE_WEBHOOK_SECRET || '').length,
-    'trimmed_len:', (process.env.STRIPE_WEBHOOK_SECRET || '').trim().length,
-    'module_secret_len:', webhookSecret.length,
-    'sig_header_present:', !!signature
-  )
-
   let event: Stripe.Event
 
   try {
