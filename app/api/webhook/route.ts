@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import Stripe from 'stripe'
 import { createClient } from '@supabase/supabase-js'
 import { Resend } from 'resend'
+import { isActivatableStatus, planFields } from '@/lib/webhookGuards'
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, { apiVersion: '2023-10-16' })
 
@@ -27,7 +28,7 @@ function getBillingCycle(subscription: Stripe.Subscription): 'annual' | 'monthly
 }
 
 function getPlanName(isFoundingMember: boolean): string {
-  return isFoundingMember ? 'founding_member' : 'standard'
+  return planFields(isFoundingMember).plan
 }
 
 export async function POST(request: NextRequest) {
@@ -60,6 +61,17 @@ export async function POST(request: NextRequest) {
       if (session.mode === 'subscription' && session.subscription) {
         // Retrieve subscription to get isFoundingMember from metadata
         const subscription = await stripe.subscriptions.retrieve(session.subscription as string)
+
+        // WEBHOOK-REPLAY-001: replayed checkout events must not re-activate a
+        // subscription that is no longer live in Stripe (e.g. replay after cancel).
+        if (!isActivatableStatus(subscription.status)) {
+          console.log(
+            `[webhook] checkout.session.completed ignored — subscription ${subscription.id} ` +
+            `status is '${subscription.status}', not activatable (user ${userId}); likely a replay`
+          )
+          break
+        }
+
         const isFoundingMember = subscription.metadata?.isFoundingMember === 'true'
         const planName = getPlanName(isFoundingMember)
         const periodEnd = subscription.current_period_end
@@ -70,13 +82,15 @@ export async function POST(request: NextRequest) {
 
         const billingCycle = getBillingCycle(subscription)
         const { error } = await supabase.from('users').update({
-          plan: planName,
+          ...planFields(isFoundingMember),
           subscription_type: 'active',
           stripe_customer_id: session.customer as string,
           stripe_subscription_id: session.subscription as string,
           subscription_start: new Date().toISOString(),
           subscription_ends_at: periodEnd,
           billing_cycle: billingCycle,
+          // Fresh, verified-live activation supersedes any earlier cancellation stamp.
+          cancelled_at: null,
         }).eq('id', userId)
 
         if (error) console.error('Error updating user after checkout:', error)
@@ -125,7 +139,7 @@ export async function POST(request: NextRequest) {
 
       const billingCycleIp = getBillingCycle(subscription)
       const { error } = await supabase.from('users').update({
-        plan: planName,
+        ...planFields(isFoundingMember),
         subscription_type: 'active',
         subscription_ends_at: periodEnd,
         billing_cycle: billingCycleIp,
@@ -184,14 +198,16 @@ export async function POST(request: NextRequest) {
       const isFoundingMember = subscription.metadata?.isFoundingMember === 'true'
       const planName = getPlanName(isFoundingMember)
       const status = subscription.status // active, trialing, past_due, canceled, etc.
-      const isActive = status === 'active' || status === 'trialing'
+      const isActive = isActivatableStatus(status)
       const periodEnd = new Date(subscription.current_period_end * 1000).toISOString()
 
       console.log(`[webhook] subscription updated — user ${userId}, status: ${status}, plan: ${planName}`)
 
       const billingCycleSu = getBillingCycle(subscription)
       const { error } = await supabase.from('users').update({
-        plan: isActive ? planName : 'free',
+        // On deactivation, plan drops to 'free' but is_founding_member is left
+        // untouched (historical flag; pricing lock decisions live elsewhere).
+        ...(isActive ? planFields(isFoundingMember) : { plan: 'free' }),
         subscription_type: isActive ? 'active' : null,
         subscription_ends_at: isActive ? periodEnd : null,
         billing_cycle: isActive ? billingCycleSu : null,
