@@ -10,7 +10,10 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
 
-const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET!
+// Defensive .trim(): 2026-07-11 Stripe 400s were caused by an invisible
+// trailing character pasted into the Vercel env var (len 39 vs 38).
+// Permanent fix — env secrets get trimmed at read.
+const webhookSecret = (process.env.STRIPE_WEBHOOK_SECRET || '').trim()
 
 function getBillingCycle(subscription: Stripe.Subscription): 'annual' | 'monthly' | null {
   try {
@@ -37,8 +40,9 @@ export async function POST(request: NextRequest) {
   console.log(
     '[webhook-diag]',
     'env_secret_prefix:', (process.env.STRIPE_WEBHOOK_SECRET || 'UNSET').slice(0, 8),
-    'module_secret_prefix:', (webhookSecret || 'UNSET').slice(0, 8),
-    'env_secret_len:', (process.env.STRIPE_WEBHOOK_SECRET || '').length,
+    'raw_len:', (process.env.STRIPE_WEBHOOK_SECRET || '').length,
+    'trimmed_len:', (process.env.STRIPE_WEBHOOK_SECRET || '').trim().length,
+    'module_secret_len:', webhookSecret.length,
     'sig_header_present:', !!signature
   )
 
