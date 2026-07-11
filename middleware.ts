@@ -7,6 +7,11 @@ const PUBLIC_ROUTES = new Set([
   '/player',
   '/reset-password', '/auth/callback', '/auth/signup', '/auth/confirm', '/auth/magic-sent',
   '/subscribe',
+  // SUS/ATL-LANDING-001: /go is the paid-ads campaign landing page. It must
+  // render identically for anonymous and signed-in visitors — no auth checks,
+  // no subscription checks, no redirects (the '/' signed-in bounce below does
+  // NOT apply here because pathname === '/go', not '/').
+  '/go',
   '/terms', '/privacy',
   '/sw.js',
 ])

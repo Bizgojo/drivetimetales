@@ -42,6 +42,40 @@ export function buildSignupCtaHref(partner: string | null | undefined, promoCode
   return params.length ? `/signup?${params.join('&')}` : '/signup'
 }
 
+// SUS/ATL-LANDING-001: full UTM param set carried from campaign landing
+// pages (/go) through to /signup. Order here is the canonical order params
+// appear in the built href.
+export const UTM_PARAM_KEYS = [
+  'utm_source',
+  'utm_medium',
+  'utm_campaign',
+  'utm_content',
+  'utm_term',
+] as const
+
+// Minimal read interface satisfied by both URLSearchParams and Next.js's
+// ReadonlyURLSearchParams (from useSearchParams()).
+interface ParamsLike {
+  get(name: string): string | null
+}
+
+// SUS/ATL-LANDING-001: campaign landing (/go) → signup CTA href.
+// Carries the promo code (same ?promo= wins over ?code= precedence and
+// normalization as app/signup/page.tsx) PLUS the full utm_* set from the
+// current URL, so attribution survives even if localStorage capture fails.
+// buildSignupCtaHref above is intentionally untouched (backward-compatible;
+// still used by app/page.tsx for partner QR landings).
+export function buildCampaignSignupHref(searchParams: ParamsLike | null | undefined): string {
+  const parts: string[] = []
+  const promo = normalizePromoCode(searchParams?.get('promo') || searchParams?.get('code'))
+  if (promo) parts.push(`promo=${encodeURIComponent(promo)}`)
+  for (const key of UTM_PARAM_KEYS) {
+    const value = searchParams?.get(key)
+    if (value) parts.push(`${key}=${encodeURIComponent(value)}`)
+  }
+  return parts.length ? `/signup?${parts.join('&')}` : '/signup'
+}
+
 export function captureUtmFromUrl(): void {
   if (typeof window === 'undefined') return
   try {
