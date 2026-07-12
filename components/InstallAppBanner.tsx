@@ -17,9 +17,15 @@ interface InstallAppBannerProps {
    * mid-story.
    */
   reofferOnly?: boolean
+  /**
+   * ORION-HOME-WALK-001 fix 3 (Marc walk, 2026-07-12): when true, the banner
+   * docks ABOVE the fixed bottom nav (BottomStickyButtons) instead of bottom:0,
+   * so it never obscures the Library/navigation buttons.
+   */
+  aboveBottomNav?: boolean
 }
 
-export default function InstallAppBanner({ reofferOnly = false }: InstallAppBannerProps) {
+export default function InstallAppBanner({ reofferOnly = false, aboveBottomNav = false }: InstallAppBannerProps) {
   const [installPrompt, setInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null)
   const [isInstalled, setIsInstalled] = useState(false)
   const [visible, setVisible] = useState(false)
@@ -179,7 +185,7 @@ export default function InstallAppBanner({ reofferOnly = false }: InstallAppBann
   }
 
   return (
-    <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 9998, background: '#1e293b', borderTop: '1px solid rgba(249,115,22,0.3)', padding: '14px 20px', display: 'flex', alignItems: 'center', gap: 12 }}>
+    <div style={{ position: 'fixed', bottom: aboveBottomNav ? 'calc(64px + env(safe-area-inset-bottom, 0px))' : 0, left: 0, right: 0, zIndex: 9998, background: '#1e293b', borderTop: '1px solid rgba(249,115,22,0.3)', borderBottom: aboveBottomNav ? '1px solid #334155' : 'none', padding: '14px 20px', display: 'flex', alignItems: 'center', gap: 12 }}>
       <img src="/icons/icon-192x192.png" alt="" style={{ width: 44, height: 44, borderRadius: 10, flexShrink: 0 }} />
       <div style={{ flex: 1 }}>
         <div style={{ color: 'white', fontWeight: 700, fontSize: 14 }}>Add Endless Tales to your home screen</div>
