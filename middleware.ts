@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
+import { carryQueryString } from '@/lib/subscribeFunnel'
 
 const PUBLIC_ROUTES = new Set([
   '/signin', '/login', '/signup', '/welcome', '/guest', '/forgot-password',
@@ -144,6 +145,11 @@ export async function middleware(request: NextRequest) {
       dbUser?.subscription_ends_at ?? null
     )) {
       const subscribeUrl = new URL('/subscribe', request.url)
+      // ORION-RESUB-FUNNEL-001: carry the original query (promo/utm/etc.)
+      // onto /subscribe — previously only returnTo survived, so a non-entitled
+      // user's ad-click promo was dropped at this hop. returnTo is still set
+      // last (pathname only, as before) and overrides any inbound returnTo.
+      subscribeUrl.search = carryQueryString(request.nextUrl.search)
       subscribeUrl.searchParams.set('returnTo', pathname)
       return NextResponse.redirect(subscribeUrl)
     }

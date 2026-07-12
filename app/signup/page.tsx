@@ -8,6 +8,7 @@ import { buildAttributionUpdatePayload, normalizePromoCode, readSignupAttributio
 import { normalizeEmail } from '@/lib/email'
 import { applyPromoTrialDays } from '@/lib/promo'
 import { isEntitledUser } from '@/lib/entitlement'
+import { carryQueryString, AUTHED_REDIRECT_EXCLUDED_PARAMS } from '@/lib/subscribeFunnel'
 
 interface Offer { id: string; name: string; offer_type: 'free_days' | 'credits'; referrer_reward: number; referred_reward: number }
 
@@ -86,8 +87,12 @@ function SignUpContent() {
 
   useEffect(() => {
     if (authLoading || !redirectAuthed) return
-    router.replace('/home')
-  }, [authLoading, redirectAuthed, router])
+    // ORION-RESUB-FUNNEL-001: carry the current query onto /home so an authed
+    // (e.g. canceled) user clicking an ad link keeps promo/utm params through
+    // this bounce — bare '/home' was silently dropping them. 'canceled' and
+    // 'returnTo' are stripped (stale routing state, not attribution).
+    router.replace(`/home${carryQueryString(searchParams.toString(), AUTHED_REDIRECT_EXCLUDED_PARAMS)}`)
+  }, [authLoading, redirectAuthed, router, searchParams])
 
   useEffect(() => {
     const { days, variant } = getTrialVariant()
