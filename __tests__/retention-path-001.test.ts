@@ -19,17 +19,23 @@ describe('RETENTION-PATH-001 email templates', () => {
     expect(t.html).toMatch(new RegExp(`<a href="${APP_HOME_URL}"[^>]*background:#f97316`))
   })
 
-  test.each(templates)('%s email contains iPhone home-screen install steps', (_name, t) => {
+  // ORION-EMAIL-AUDIT-001 (Marc, 2026-07-12): Safari share-sheet walkthrough
+  // replaced with install-banner copy (in-app install sheet owns the steps).
+  // Emails must never again claim "must use Safari".
+  test.each(templates)('%s email points at the in-app install banner, not Safari steps', (_name, t) => {
+    expect(t.html).toContain('Install')
+    expect(t.html).toContain('home screen')
     expect(t.html).toContain('iPhone')
-    expect(t.html).toContain('Safari')
-    expect(t.html).toContain('Share')
-    expect(t.html).toContain('Add to Home Screen')
+    expect(t.html).toContain('Android')
+    expect(t.html).not.toContain('must use Safari')
+    expect(t.html).not.toContain('Share')
   })
 
-  test.each(templates)('%s email contains Android home-screen install steps', (_name, t) => {
-    expect(t.html).toContain('Android')
-    expect(t.html).toContain('Chrome')
-    expect(t.html).toMatch(/Add to Home Screen|Install app/)
+  // ORION-EMAIL-AUDIT-001: fallback under the CTA button must be a real link
+  // (was plain text) so a mangled button anchor still leaves a tappable path.
+  test.each(templates)('%s email has a real fallback link under the CTA', (_name, t) => {
+    const fallback = new RegExp(`<a href="${APP_HOME_URL}" target="_blank"[^>]*text-decoration:underline[^>]*>app\\.endless-tales\\.com/home</a>`)
+    expect(t.html).toMatch(fallback)
   })
 
   test('welcome email greets by name and keeps trial framing', () => {
