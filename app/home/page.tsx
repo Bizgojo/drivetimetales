@@ -10,6 +10,7 @@ import NewReleases from '@/components/NewReleases'
 import RecommendedForYou from '@/components/RecommendedForYou'
 import BottomStickyButtons from '@/components/BottomStickyButtons'
 import InstallAppBanner from '@/components/InstallAppBanner'
+import ContinueSampleHero from '@/components/ContinueSampleHero'
 import YourPlaylist from '@/components/YourPlaylist'
 import HorizontalStoryCard from '@/components/HorizontalStoryCard'
 import SeriesCard from '@/components/SeriesCard'
@@ -365,7 +366,9 @@ function HomeContent() {
           <HomeSearchResults query={homeSearch} />
         ) : (
           <>
-            <ContinueListening onIdsLoaded={(ids) => { setContinueIds(ids); setAllExcludeIds([...new Set([...ids, ...playlistIds])]) }} />
+            {/* ORION-HOME-WALK-001: /go sample continue hero LEADS the page (Marc walk, 2026-07-12). */}
+            <ContinueSampleHero onStoryId={(id) => { setContinueIds(prev => Array.from(new Set([id, ...prev]))); setAllExcludeIds(prev => Array.from(new Set([id, ...prev]))) }} />
+            <ContinueListening onIdsLoaded={(ids) => { setContinueIds(prev => Array.from(new Set([...prev, ...ids]))); setAllExcludeIds(prev => Array.from(new Set([...prev, ...ids, ...playlistIds]))) }} />
             <YourPlaylist onIdsLoaded={(ids) => { setPlaylistIds(ids); setAllExcludeIds(prev => [...new Set([...prev, ...ids])]) }} />
             <NewReleases
               excludeIds={[...new Set([...continueIds, ...playlistIds])]}
@@ -378,7 +381,8 @@ function HomeContent() {
           </>
         )}
       </main>
-      <InstallAppBanner />
+      {/* ORION-HOME-WALK-001 fix 3: banner must never obscure the bottom nav (Marc walk, 2026-07-12). */}
+      <InstallAppBanner aboveBottomNav />
       <BottomStickyButtons />
     </div>
   )

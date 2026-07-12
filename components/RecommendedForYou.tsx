@@ -199,7 +199,8 @@ export default function RecommendedForYou({ excludeIds = [] }: { excludeIds?: st
       ...seriesList.map(g => ({ type: 'series' as const, group: g, score: scoreSeries(g) }))
     ].sort((a, b) => b.score - a.score)
 
-    setDisplayItems(all.slice(0, 5).map(item => item.type === 'series' ? { type: 'series', group: item.group } : { type: 'single', story: item.story }))
+    // ORION-HOME-WALK-001 fix 2 (Marc walk, 2026-07-12): cap at 3 (was 5).
+    setDisplayItems(all.slice(0, 3).map(item => item.type === 'series' ? { type: 'series', group: item.group } : { type: 'single', story: item.story }))
     setLoading(false)
   }
 

@@ -32,6 +32,13 @@ export interface GoStory {
   hook: string
   coverUrl: string
   audioUrl: string
+  /**
+   * ORION-HOME-WALK-001: main-catalog stories.id for this landing sample, so
+   * post-signup /home can offer "Continue listening" into the app player
+   * (which already supports /player/<id>?resume=<seconds>). null = sample has
+   * no catalog counterpart yet (Grave/control — fast-follow).
+   */
+  catalogStoryId: string | null
 }
 
 /** DEFAULT — live today. Always renders while GO_AB_LIVE is false. */
@@ -43,6 +50,9 @@ export const GO_SAMPLE_STORY: GoStory = {
   hook: 'A retired sheriff comes home to bury a friend — and finds the grave already dug.',
   audioUrl: 'https://vmyhlfeouzslixtkmddy.supabase.co/storage/v1/object/public/audio/landing/49730f36-46a9-4309-927c-6b9140afac79/final_mix.mp3',
   coverUrl: 'https://vmyhlfeouzslixtkmddy.supabase.co/storage/v1/object/public/Covers/landing/49730f36-46a9-4309-927c-6b9140afac79/cover_20260712.jpg',
+  // Grave is a landing-only sample (not in the main catalog) — continue-on-home
+  // for the control variant is an honest fast-follow (Marc walk, 2026-07-12).
+  catalogStoryId: null,
 }
 
 /** Greenville test variants — inert until GO_AB_LIVE flips to true. */
@@ -53,6 +63,8 @@ export const GO_STORY_VARIANTS: Record<string, GoStory> = {
     genre: 'Comedy',
     // SUSAN-PASS: placeholder hook, Susan owns final copy.
     hook: 'Greenville\u2019s Commuter of the Year has never once made the drive.',
+    // "The Borrowed Buick" — Commuter of the Year ep1, published 2026-07-12.
+    catalogStoryId: 'fe23bfd4-d6c9-4ad9-b833-37657287c0f3',
     coverUrl: 'https://vmyhlfeouzslixtkmddy.supabase.co/storage/v1/object/public/Covers/landing/go-variant-a/cover.jpg',
     audioUrl: 'https://vmyhlfeouzslixtkmddy.supabase.co/storage/v1/object/public/audio/landing/go-variant-a/final_mix.mp3',
   },
@@ -62,6 +74,8 @@ export const GO_STORY_VARIANTS: Record<string, GoStory> = {
     genre: 'Mystery',
     // SUSAN-PASS: placeholder hook, Susan owns final copy.
     hook: 'A shopkeeper lies dead below Liberty Bridge — and all of Greenville has a theory.',
+    // "The Wrong Quote" — Murder at Falls Park ep1, published 2026-07-12.
+    catalogStoryId: '09457ef0-e32f-48e2-a1bb-3311ddd68a49',
     // Liberty Bridge corrected art (Marc redo directive 2026-07-12): curved
     // single-side-cable pedestrian suspension bridge, vision-QA PASS.
     coverUrl: 'https://vmyhlfeouzslixtkmddy.supabase.co/storage/v1/object/public/Covers/landing/go-variant-b/cover_20260712_liberty.jpg',
@@ -241,5 +255,94 @@ export function getTrialDisplay(
     // ORION-GO-OFFER-COPY-001 (Marc, 2026-07-12): never show raw promo codes
     // in customer-facing copy — generic offer language only.
     appliedBadge: promoStatus === 'valid' && promoCode ? `Special offer applied — ${days}-day free trial ✓` : null,
+  }
+}
+
+// ============================================================================
+// ORION-HOME-WALK-001 (Marc walk feedback, 2026-07-12): post-signup /home must
+// LEAD with a "Continue listening" hero for the story the visitor was sampling
+// on /go. The sample progress lives in localStorage (per-story keys above);
+// these helpers find the freshest resumable sample that has a main-catalog
+// counterpart, so /home can deep-link /player/<catalogStoryId>?resume=<s>.
+// ============================================================================
+
+export interface ResumableSample {
+  /** Landing sample id (localStorage key owner). */
+  sampleId: string
+  /** Main-catalog stories.id to play in the app player. */
+  catalogStoryId: string
+  title: string
+  genre: string
+  coverUrl: string
+  seconds: number
+  updatedAt: number
+}
+
+/** All landing samples /home should consider (control + variants). */
+export function goSampleCandidates(): GoStory[] {
+  return [GO_SAMPLE_STORY, ...Object.values(GO_STORY_VARIANTS)]
+}
+
+/**
+ * Parse a stored progress payload into {seconds, updatedAt}. Same validation
+ * rules as parseSampleProgress (which returns seconds only — kept for the /go
+ * player); never throws.
+ */
+export function parseSampleProgressEntry(
+  raw: string | null | undefined,
+  expectedStoryId: string,
+  now: number = Date.now(),
+  maxAgeMs: number = SAMPLE_PROGRESS_MAX_AGE_MS
+): { seconds: number; updatedAt: number } | null {
+  if (!raw) return null
+  try {
+    const parsed = JSON.parse(raw) as Partial<SampleProgress> | null
+    if (!parsed || typeof parsed !== 'object') return null
+    if (parsed.storyId !== expectedStoryId) return null
+    if (typeof parsed.seconds !== 'number' || !Number.isFinite(parsed.seconds) || parsed.seconds <= 0) return null
+    if (typeof parsed.updatedAt !== 'number' || !Number.isFinite(parsed.updatedAt)) return null
+    if (now - parsed.updatedAt > maxAgeMs) return null
+    return { seconds: parsed.seconds, updatedAt: parsed.updatedAt }
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Pure core: given a key→raw-payload snapshot, return the freshest resumable
+ * sample that maps into the main catalog, or null. Samples without a
+ * catalogStoryId (Grave/control today) are skipped — no dead-end heroes.
+ */
+export function pickFreshestResumableSample(
+  read: (key: string) => string | null | undefined,
+  now: number = Date.now()
+): ResumableSample | null {
+  let best: ResumableSample | null = null
+  for (const story of goSampleCandidates()) {
+    if (!story.catalogStoryId) continue
+    const entry = parseSampleProgressEntry(read(sampleProgressKey(story.id)), story.id, now)
+    if (!entry) continue
+    if (!best || entry.updatedAt > best.updatedAt) {
+      best = {
+        sampleId: story.id,
+        catalogStoryId: story.catalogStoryId,
+        title: story.title,
+        genre: story.genre,
+        coverUrl: story.coverUrl,
+        seconds: entry.seconds,
+        updatedAt: entry.updatedAt,
+      }
+    }
+  }
+  return best
+}
+
+/** Browser wrapper — reads localStorage; returns null on server / any error. */
+export function loadFreshestResumableSample(): ResumableSample | null {
+  if (typeof window === 'undefined') return null
+  try {
+    return pickFreshestResumableSample((key) => localStorage.getItem(key))
+  } catch {
+    return null
   }
 }
