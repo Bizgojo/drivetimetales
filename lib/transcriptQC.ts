@@ -1070,7 +1070,16 @@ export function transcriptVariantCoverage(expected: string[], detected: string[]
 }
 
 export function numericTokenSequence(tokens: string[]): string[] {
-  return compactTranscriptTokens(tokens).filter(token => /^\d+$/.test(token))
+  // ORION-QC-ALNUM-001 (2026-07-12): Whisper fuses hyphenated alphanumeric
+  // designators ("OD-7" → "OD7"), while the script side tokenizes to
+  // ["od","7"]. The old whole-token filter (/^\d+$/) then saw ["7"] vs []
+  // and hard-vetoed segments whose similarity/coverage were a perfect 1.0
+  // (Consciousness Protocol ep2 seg64: expected "James opened OD-7.",
+  // detected "James opened OD7.", similarity 100.0%, FAILED). Extract
+  // embedded digit runs from every token instead, so fused and split
+  // alphanumerics yield the same numeric sequence on both sides. Genuine
+  // digit changes ("OD-7" vs "OD-8") still mismatch.
+  return compactTranscriptTokens(tokens).flatMap(token => token.match(/\d+/g) ?? [])
 }
 
 export function numericTokenSequenceMismatch(expected: string[], detected: string[]): boolean {
