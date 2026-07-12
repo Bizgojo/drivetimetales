@@ -139,3 +139,39 @@ describe('ORION-HOME-WALK-001: page wiring pins', () => {
     expect(bannerSrc).toContain("aboveBottomNav ? 'calc(64px + env(safe-area-inset-bottom, 0px))' : 0")
   })
 })
+
+describe('ORION-CARD-CANON-001: fix 4 — one canonical HSC card per list', () => {
+  const homeSrc2 = fs.readFileSync(path.join(process.cwd(), 'app/home/page.tsx'), 'utf8')
+  const recSrc2 = fs.readFileSync(path.join(process.cwd(), 'components/RecommendedForYou.tsx'), 'utf8')
+  const hscSrc = fs.readFileSync(path.join(process.cwd(), 'components/HorizontalStoryCard.tsx'), 'utf8')
+
+  test('RecommendedForYou renders NO SeriesCard — HSC only', () => {
+    expect(recSrc2).not.toContain('SeriesCard')
+    expect(recSrc2).toContain('HorizontalStoryCard')
+  })
+
+  test('RecommendedForYou singles pass description (The Manifest stale-card fix)', () => {
+    expect(recSrc2).toContain('description={item.story.description}')
+  })
+
+  test('home search results render NO SeriesCard — HSC only', () => {
+    // SeriesEpisodeCard (player surface) is a different component and allowed.
+    expect(homeSrc2).not.toMatch(/from '@\/components\/SeriesCard'/)
+    expect(homeSrc2).not.toMatch(/<SeriesCard/)
+  })
+
+  test('series groups deep-link the next-up episode through HSC', () => {
+    for (const src of [homeSrc2, recSrc2]) {
+      expect(src).toContain('item.group.play_episode_id || item.group.episodes[0]?.id || item.group.id')
+      expect(src).toContain('series_total={item.group.episode_count}')
+    }
+  })
+
+  test('HSC play-pill canon intact: Play / Continue / Play Again, orange default, bottom-right', () => {
+    expect(hscSrc).toContain("let playLabel = 'Play'")
+    expect(hscSrc).toContain("playLabel = 'Play Again'")
+    expect(hscSrc).toContain("playLabel = 'Continue'")
+    expect(hscSrc).toContain("rgba(249,115,22,0.88)")
+    expect(hscSrc).toMatch(/bottom: '7px', right: '7px'/)
+  })
+})
