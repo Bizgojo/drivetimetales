@@ -236,6 +236,17 @@ async function updateCircuitBreaker(
 }
 
 function baseUrl(): string {
+  // ORION-RUNNER-ORIGIN-001 (2026-07-11): in production, internal pipeline
+  // calls (run-next → generate-voices etc.) must ALWAYS hit the current
+  // production deployment via the canonical domain. Deriving this from
+  // NEXT_PUBLIC_APP_URL proved dangerous: pointed at a stale deployment it
+  // silently pins the ENTIRE pipeline to old code — QC fixes shipped to main
+  // (e.g. spoken-number normalization, 3f612fb4) were live on the public
+  // domain while voice-gen kept failing on pre-fix code (Consciousness ep2
+  // seg50, REPEATED_IDENTICAL_TRUNCATION, Jul 10-11). Canonical domain always
+  // tracks the latest production deployment; env override remains for
+  // local/preview only.
+  if (process.env.VERCEL_ENV === 'production') return 'https://app.endless-tales.com'
   return (
     (process.env.NEXT_PUBLIC_APP_URL ?? '').replace(/\/+$/, '') ||
     'https://drivetimetales.vercel.app'
