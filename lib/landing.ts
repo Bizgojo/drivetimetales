@@ -10,74 +10,108 @@
 import { BASE_TRIAL_DAYS, applyPromoTrialDays } from './promo'
 
 // ============================================================================
-// SUS/ATL-LANDING-001 rev A: the ONE curated free sample story on /go.
-// Swap the sample by editing THIS CONST ONLY — nothing else references a
-// story id. Chosen row: landing_stories slot 2 (id 49730f36…), "The Grave
-// He Dug Himself":
-//   - audio verified publicly playable (HTTP 206, 16 MB, dedicated landing
-//     final_mix at audio/landing/<id>/final_mix.mp3)
-//   - 14 min — long enough that visitors sign up to CONTINUE (slot 1
-//     "When Rosie Came Home" is only 3 min and finishes pre-signup;
-//     slot 3's audio_url returns 400)
-//   - cover art (SUS/ATL-LANDING-002): freshly generated + QA'd portrait
-//     cover, uploaded to the public Covers bucket and verified HTTP 200.
-//     The page renders a dark-gradient fallback if the image errors.
+// SUS/ATL-LANDING-002 rev C: /go story variants (Greenville A/B test).
+// The DEFAULT story (Grave — live today) always renders while GO_AB_LIVE is
+// false. Variants A/B are pre-staged for the Greenville test but GATED:
+// Marc has not approved the Greenville stories yet. Flipping GO_AB_LIVE to
+// true is the one-line follow-up that activates ?v=a|b selection.
+//
+// Default story provenance (rev A/B, unchanged): landing_stories slot 2
+// (id 49730f36…), "The Grave He Dug Himself" — audio verified publicly
+// playable (HTTP 206, dedicated landing final_mix), QA'd portrait cover in
+// the public Covers bucket. The page renders a dark-gradient fallback if
+// the image errors.
 // ============================================================================
-export const GO_SAMPLE_STORY = {
-  /** landing_stories.id */
+
+export interface GoStory {
+  /** landing_stories.id (default) or synthetic variant id. */
+  id: string
+  title: string
+  genre: string
+  /** One-line selling sentence shown under the title (below the art). */
+  hook: string
+  coverUrl: string
+  audioUrl: string
+}
+
+/** DEFAULT — live today. Always renders while GO_AB_LIVE is false. */
+export const GO_SAMPLE_STORY: GoStory = {
   id: '49730f36-46a9-4309-927c-6b9140afac79',
   title: 'The Grave He Dug Himself',
-  author: 'Dale Harmon',
   genre: 'Adventure',
-  durationMins: 14,
+  // SUSAN-PASS: placeholder hook, Susan owns final copy.
+  hook: 'A retired sheriff comes home to bury a friend — and finds the grave already dug.',
   audioUrl: 'https://vmyhlfeouzslixtkmddy.supabase.co/storage/v1/object/public/audio/landing/49730f36-46a9-4309-927c-6b9140afac79/final_mix.mp3',
   coverUrl: 'https://vmyhlfeouzslixtkmddy.supabase.co/storage/v1/object/public/Covers/landing/49730f36-46a9-4309-927c-6b9140afac79/cover_20260712.jpg',
-} as const
+}
+
+/** Greenville test variants — inert until GO_AB_LIVE flips to true. */
+export const GO_STORY_VARIANTS: Record<string, GoStory> = {
+  a: {
+    id: 'go-variant-a',
+    title: 'Commuter of the Year',
+    genre: 'Comedy',
+    // SUSAN-PASS: placeholder hook, Susan owns final copy.
+    hook: 'Greenville\u2019s Commuter of the Year has never once made the drive.',
+    coverUrl: 'https://vmyhlfeouzslixtkmddy.supabase.co/storage/v1/object/public/Covers/landing/go-variant-a/cover.jpg',
+    audioUrl: 'https://vmyhlfeouzslixtkmddy.supabase.co/storage/v1/object/public/audio/landing/go-variant-a/final_mix.mp3',
+  },
+  b: {
+    id: 'go-variant-b',
+    title: 'Murder at Falls Park',
+    genre: 'Mystery',
+    // SUSAN-PASS: placeholder hook, Susan owns final copy.
+    hook: 'A shopkeeper lies dead below Liberty Bridge — and all of Greenville has a theory.',
+    coverUrl: 'https://vmyhlfeouzslixtkmddy.supabase.co/storage/v1/object/public/Covers/landing/go-variant-b/cover.jpg',
+    audioUrl: 'https://vmyhlfeouzslixtkmddy.supabase.co/storage/v1/object/public/audio/landing/go-variant-b/final_mix.mp3',
+  },
+}
+
+// APPROVAL GATE (Marc): while false, ?v= is IGNORED and the default Grave
+// story always renders. Flip to true (one line) once Marc approves the
+// Greenville variant stories.
+export const GO_AB_LIVE = false
+
+/**
+ * Resolve which story /go renders from the URL query string (?v=a|b).
+ * Pure: accepts the search string ('?v=a' or 'v=a' both fine). While the
+ * gate is off (abLive=false), the default story is ALWAYS returned. Unknown
+ * or junk ?v values fall back to the default. Never throws.
+ */
+export function resolveGoStory(search: string, abLive: boolean = GO_AB_LIVE): GoStory {
+  if (!abLive) return GO_SAMPLE_STORY
+  try {
+    const v = new URLSearchParams(search ?? '').get('v')
+    const key = (v ?? '').trim().toLowerCase()
+    return GO_STORY_VARIANTS[key] ?? GO_SAMPLE_STORY
+  } catch {
+    return GO_SAMPLE_STORY
+  }
+}
 
 // ============================================================================
-// SUS/ATL-LANDING-002: trial CTA reveal logic.
-// The bottom-sheet trial CTA is HIDDEN on arrival and slides up when the
-// visitor has demonstrably engaged (or demonstrably won't). Pure + exported
-// so it is unit-testable (__tests__/landing-go-002).
-//
-// Reveal when ANY of:
-//   a) cumulative LISTENING time (audio actually playing) ≥ 45s
-//   b) the user pauses after having played (natural decision moment)
-//   c) fallback: ~20s idle with NO play ever pressed (don't lose the
-//      never-listeners — still give them the offer)
-// Once revealed, it stays revealed (alreadyRevealed latch).
+// SUS/ATL-LANDING-002 rev C: trial CTA reveal logic (Marc final spec).
+// The bottom-sheet trial CTA is HIDDEN on arrival and slides up ONLY when
+// cumulative REAL listening reaches 45s. Rev C REMOVED the pause-after-play
+// trigger and the 20s idle fallback (the idle timer fired while Marc was
+// still reading, before he ever pressed play). Once revealed, it stays
+// revealed (alreadyRevealed latch). Pure + exported so it is unit-testable
+// (__tests__/landing-go-002).
 // ============================================================================
 
 /** Cumulative listened seconds that reveal the trial CTA. */
 export const CTA_REVEAL_LISTEN_SEC = 45
 
-/** Idle seconds (never pressed play) that reveal the trial CTA. */
-export const CTA_REVEAL_IDLE_SEC = 20
-
 export interface CtaRevealInput {
   /** Cumulative seconds of actual playback (timeupdate deltas while playing). */
   listenedSec: number
-  /** Has play ever been pressed (audio actually started)? */
-  everPlayed: boolean
-  /** Has the user paused AFTER having played? (ended counts — story over) */
-  pausedAfterPlay: boolean
-  /** Seconds since page load with no play ever pressed. */
-  idleSec: number
   /** Latch: once shown, stays shown. */
   alreadyRevealed?: boolean
 }
 
 export function shouldRevealTrialCta(input: CtaRevealInput): boolean {
   if (input.alreadyRevealed) return true
-  // (b) pause is only meaningful after a real play (guard against a stray
-  // pause event from an audio element that never started).
-  if (input.everPlayed && input.pausedAfterPlay) return true
-  // (a) 45s of cumulative real listening.
-  if (input.everPlayed && input.listenedSec >= CTA_REVEAL_LISTEN_SEC) return true
-  // (c) idle fallback ONLY when play was never pressed — an active listener
-  // is not idle, however long they listen under 45s.
-  if (!input.everPlayed && input.idleSec >= CTA_REVEAL_IDLE_SEC) return true
-  return false
+  return Number.isFinite(input.listenedSec) && input.listenedSec >= CTA_REVEAL_LISTEN_SEC
 }
 
 // ============================================================================
@@ -90,6 +124,19 @@ export function shouldRevealTrialCta(input: CtaRevealInput): boolean {
 // ============================================================================
 
 export const SAMPLE_PROGRESS_KEY = 'et_go_sample_progress'
+
+/**
+ * rev C (per-story resume): variants must not collide in localStorage, so
+ * the progress key includes the story id. CHOICE: the default Grave story
+ * KEEPS the original bare key, so resume positions saved by the live page
+ * survive this deploy with zero migration; only variant stories get the
+ * suffixed per-story key.
+ */
+export function sampleProgressKey(storyId: string): string {
+  return storyId === GO_SAMPLE_STORY.id
+    ? SAMPLE_PROGRESS_KEY
+    : `${SAMPLE_PROGRESS_KEY}:${storyId}`
+}
 
 /** Saved progress older than this is ignored (stale ad-click sessions). */
 export const SAMPLE_PROGRESS_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000 // 30 days
@@ -147,7 +194,7 @@ export function shouldPersistProgress(
 export function saveSampleProgress(storyId: string, seconds: number): void {
   if (typeof window === 'undefined') return
   try {
-    localStorage.setItem(SAMPLE_PROGRESS_KEY, serializeSampleProgress(storyId, seconds))
+    localStorage.setItem(sampleProgressKey(storyId), serializeSampleProgress(storyId, seconds))
   } catch { /* never break the page over storage */ }
 }
 
@@ -155,7 +202,7 @@ export function saveSampleProgress(storyId: string, seconds: number): void {
 export function loadSampleProgress(storyId: string): number | null {
   if (typeof window === 'undefined') return null
   try {
-    return parseSampleProgress(localStorage.getItem(SAMPLE_PROGRESS_KEY), storyId)
+    return parseSampleProgress(localStorage.getItem(sampleProgressKey(storyId)), storyId)
   } catch {
     return null
   }

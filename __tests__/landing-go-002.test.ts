@@ -1,75 +1,141 @@
-// SUS/ATL-LANDING-002: /go landing page redesign (cover-art hero + deferred
-// trial CTA bottom sheet). Covers:
-//   1. shouldRevealTrialCta — the pure reveal decision:
-//        a) 45s cumulative listening triggers
-//        b) pause-after-play triggers
-//        c) 20s idle triggers ONLY when play was never pressed
+// SUS/ATL-LANDING-002 rev C: /go landing page (Marc FINAL spec, Jul 12).
+// Covers:
+//   1. shouldRevealTrialCta — 45s cumulative listening is the ONLY trigger:
+//        a) ≥45s listening reveals; <45s stays hidden
+//        b) NO pause-after-play trigger (removed in rev C)
+//        c) NO idle fallback (removed in rev C — fired while Marc was reading)
 //        d) once revealed, stays revealed (latch)
-//   2. GO_SAMPLE_STORY.coverUrl — present, https, and the page/player render
-//      the hero through the const only (no hardcoded URLs).
-//   3. Redesign copy pins — headline 'Stories made for the drive.', CTA sheet
-//      copy, no feature bullets, badge copy unchanged.
+//   2. Story variants (Greenville A/B, approval-gated) — resolveGoStory:
+//      ?v=a|b selection, GO_AB_LIVE=false gate-off behavior, junk values,
+//      variant shapes, Greenville hooks.
+//   3. Cover art hero — coverUrl through the resolved story only, graceful
+//      image fallback, pill retained.
+//   4. rev C layout pins — NO headline, NO duration pre-play, below-art
+//      title/hook/'Genre · Listen free' stack, CTA sheet copy unchanged,
+//      static always-present bottom CTA.
 
 import fs from 'fs'
 import path from 'path'
 import {
   shouldRevealTrialCta,
   CTA_REVEAL_LISTEN_SEC,
-  CTA_REVEAL_IDLE_SEC,
   GO_SAMPLE_STORY,
+  GO_STORY_VARIANTS,
+  GO_AB_LIVE,
+  resolveGoStory,
   getTrialDisplay,
 } from '@/lib/landing'
 
 const pageSrc = fs.readFileSync(path.join(__dirname, '..', 'app', 'go', 'page.tsx'), 'utf8')
 const playerSrc = fs.readFileSync(path.join(__dirname, '..', 'components', 'GoSamplePlayer.tsx'), 'utf8')
+const landingSrc = fs.readFileSync(path.join(__dirname, '..', 'lib', 'landing.ts'), 'utf8')
 
-// Baseline: fresh arrival — nothing revealed.
-const base = { listenedSec: 0, everPlayed: false, pausedAfterPlay: false, idleSec: 0 }
-
-describe('SUS/ATL-LANDING-002: shouldRevealTrialCta', () => {
+describe('SUS/ATL-LANDING-002 rev C: shouldRevealTrialCta (45s-only)', () => {
   test('fresh arrival → hidden', () => {
-    expect(shouldRevealTrialCta(base)).toBe(false)
+    expect(shouldRevealTrialCta({ listenedSec: 0 })).toBe(false)
   })
 
-  test('(a) cumulative listening reaches threshold → reveal', () => {
-    expect(shouldRevealTrialCta({ ...base, everPlayed: true, listenedSec: CTA_REVEAL_LISTEN_SEC })).toBe(true)
-    expect(shouldRevealTrialCta({ ...base, everPlayed: true, listenedSec: CTA_REVEAL_LISTEN_SEC + 30 })).toBe(true)
+  test('cumulative listening reaches 45s → reveal', () => {
+    expect(shouldRevealTrialCta({ listenedSec: CTA_REVEAL_LISTEN_SEC })).toBe(true)
+    expect(shouldRevealTrialCta({ listenedSec: CTA_REVEAL_LISTEN_SEC + 30 })).toBe(true)
   })
 
-  test('(a) listening below threshold → still hidden', () => {
-    expect(shouldRevealTrialCta({ ...base, everPlayed: true, listenedSec: CTA_REVEAL_LISTEN_SEC - 1 })).toBe(false)
-    expect(shouldRevealTrialCta({ ...base, everPlayed: true, listenedSec: 0 })).toBe(false)
+  test('listening below 45s → still hidden', () => {
+    expect(shouldRevealTrialCta({ listenedSec: CTA_REVEAL_LISTEN_SEC - 1 })).toBe(false)
+    expect(shouldRevealTrialCta({ listenedSec: 0.0001 })).toBe(false)
   })
 
-  test('(b) pause after having played → reveal (even at low listened time)', () => {
-    expect(shouldRevealTrialCta({ ...base, everPlayed: true, pausedAfterPlay: true, listenedSec: 3 })).toBe(true)
+  test('garbage listenedSec never reveals', () => {
+    expect(shouldRevealTrialCta({ listenedSec: NaN })).toBe(false)
+    expect(shouldRevealTrialCta({ listenedSec: Infinity })).toBe(false)
   })
 
-  test('(b) stray pause without ever playing → does NOT reveal', () => {
-    expect(shouldRevealTrialCta({ ...base, everPlayed: false, pausedAfterPlay: true })).toBe(false)
+  test('latch: once revealed, stays revealed regardless of listenedSec', () => {
+    expect(shouldRevealTrialCta({ listenedSec: 0, alreadyRevealed: true })).toBe(true)
   })
 
-  test('(c) idle threshold with NO play ever → reveal', () => {
-    expect(shouldRevealTrialCta({ ...base, idleSec: CTA_REVEAL_IDLE_SEC })).toBe(true)
-    expect(shouldRevealTrialCta({ ...base, idleSec: CTA_REVEAL_IDLE_SEC + 100 })).toBe(true)
-  })
-
-  test('(c) idle below threshold → hidden', () => {
-    expect(shouldRevealTrialCta({ ...base, idleSec: CTA_REVEAL_IDLE_SEC - 1 })).toBe(false)
-  })
-
-  test('(c) idle does NOT apply once the user has played (active listener is not idle)', () => {
-    expect(shouldRevealTrialCta({ ...base, everPlayed: true, idleSec: 999, listenedSec: 10 })).toBe(false)
-  })
-
-  test('(d) once revealed, stays revealed regardless of other inputs', () => {
-    expect(shouldRevealTrialCta({ ...base, alreadyRevealed: true })).toBe(true)
-    expect(shouldRevealTrialCta({ listenedSec: 0, everPlayed: true, pausedAfterPlay: false, idleSec: 0, alreadyRevealed: true })).toBe(true)
-  })
-
-  test('thresholds are the Marc-spec values (45s listen / 20s idle)', () => {
+  test('threshold is the Marc-spec value (45s)', () => {
     expect(CTA_REVEAL_LISTEN_SEC).toBe(45)
-    expect(CTA_REVEAL_IDLE_SEC).toBe(20)
+  })
+
+  test('rev C REMOVED the pause-after-play trigger (no such input exists)', () => {
+    // The signature is minimal: pausedAfterPlay/everPlayed are gone from the
+    // lib AND the page no longer wires any pause-driven reveal.
+    expect(landingSrc).not.toMatch(/pausedAfterPlay/)
+    expect(pageSrc).not.toMatch(/pausedAfterPlay|onPauseAfterPlay/)
+    expect(playerSrc).not.toMatch(/onPauseAfterPlay|onFirstPlay/)
+  })
+
+  test('rev C REMOVED the 20s idle fallback (no timer, no constant)', () => {
+    expect(landingSrc).not.toMatch(/CTA_REVEAL_IDLE_SEC|idleSec/)
+    expect(pageSrc).not.toMatch(/CTA_REVEAL_IDLE_SEC|idleSec|idleTimer/)
+  })
+})
+
+describe('SUS/ATL-LANDING-002 rev C: story variants (Greenville A/B, gated)', () => {
+  test('GO_AB_LIVE gate is OFF (Marc has not approved the Greenville stories)', () => {
+    expect(GO_AB_LIVE).toBe(false)
+  })
+
+  test('gate OFF: ?v=a and ?v=b are IGNORED — default Grave always renders', () => {
+    expect(resolveGoStory('?v=a')).toBe(GO_SAMPLE_STORY)
+    expect(resolveGoStory('v=b')).toBe(GO_SAMPLE_STORY)
+    expect(resolveGoStory('')).toBe(GO_SAMPLE_STORY)
+  })
+
+  test('gate ON (future one-line flip): ?v=a|b select the variants', () => {
+    expect(resolveGoStory('?v=a', true)).toBe(GO_STORY_VARIANTS.a)
+    expect(resolveGoStory('v=b', true)).toBe(GO_STORY_VARIANTS.b)
+    // Case-insensitive + trims.
+    expect(resolveGoStory('?v=A', true)).toBe(GO_STORY_VARIANTS.a)
+  })
+
+  test('gate ON: missing/junk ?v values fall back to the default, never throw', () => {
+    for (const junk of ['', '?v=', '?v=c', '?v=zzz', '?v=aa', '?other=1', '?v=%00', 'utm_source=fb']) {
+      expect(resolveGoStory(junk, true)).toBe(GO_SAMPLE_STORY)
+    }
+  })
+
+  test('default story is Grave (live today), correct id + copy', () => {
+    expect(GO_SAMPLE_STORY.id).toBe('49730f36-46a9-4309-927c-6b9140afac79')
+    expect(GO_SAMPLE_STORY.title).toBe('The Grave He Dug Himself')
+    expect(GO_SAMPLE_STORY.genre).toBe('Adventure')
+    expect(GO_SAMPLE_STORY.hook).toContain('retired sheriff')
+  })
+
+  test('variant A is Commuter of the Year (Comedy) with the spec URLs', () => {
+    const a = GO_STORY_VARIANTS.a
+    expect(a.id).toBe('go-variant-a')
+    expect(a.title).toBe('Commuter of the Year')
+    expect(a.genre).toBe('Comedy')
+    expect(a.coverUrl).toBe('https://vmyhlfeouzslixtkmddy.supabase.co/storage/v1/object/public/Covers/landing/go-variant-a/cover.jpg')
+    expect(a.audioUrl).toBe('https://vmyhlfeouzslixtkmddy.supabase.co/storage/v1/object/public/audio/landing/go-variant-a/final_mix.mp3')
+  })
+
+  test('variant B is Murder at Falls Park (Mystery) with the spec URLs', () => {
+    const b = GO_STORY_VARIANTS.b
+    expect(b.id).toBe('go-variant-b')
+    expect(b.title).toBe('Murder at Falls Park')
+    expect(b.genre).toBe('Mystery')
+    expect(b.coverUrl).toBe('https://vmyhlfeouzslixtkmddy.supabase.co/storage/v1/object/public/Covers/landing/go-variant-b/cover.jpg')
+    expect(b.audioUrl).toBe('https://vmyhlfeouzslixtkmddy.supabase.co/storage/v1/object/public/audio/landing/go-variant-b/final_mix.mp3')
+  })
+
+  test('variant hooks are Greenville-localized (a + b)', () => {
+    expect(GO_STORY_VARIANTS.a.hook).toContain('Greenville')
+    expect(GO_STORY_VARIANTS.b.hook).toContain('Greenville')
+  })
+
+  test('hooks are marked SUSAN-PASS (Susan owns final copy)', () => {
+    expect((landingSrc.match(/SUSAN-PASS: placeholder hook, Susan owns final copy/g) || []).length)
+      .toBeGreaterThanOrEqual(3)
+  })
+
+  test('page wires the resolved story (no GO_SAMPLE_STORY direct render, no hardcoded variant URLs)', () => {
+    expect(pageSrc).toContain('resolveGoStory(searchParams.toString())')
+    expect(pageSrc).toContain('storyId={story.id}')
+    expect(pageSrc).not.toContain('go-variant-a')
+    expect(pageSrc).not.toContain('go-variant-b')
   })
 })
 
@@ -79,8 +145,8 @@ describe('SUS/ATL-LANDING-002: cover art hero', () => {
     expect(GO_SAMPLE_STORY.coverUrl).toContain(GO_SAMPLE_STORY.id)
   })
 
-  test('page passes coverUrl through the const only (no hardcoded cover URL)', () => {
-    expect(pageSrc).toContain('coverUrl={GO_SAMPLE_STORY.coverUrl}')
+  test('page passes coverUrl through the resolved story only (no hardcoded cover URL)', () => {
+    expect(pageSrc).toContain('coverUrl={story.coverUrl}')
     expect(pageSrc).not.toContain(GO_SAMPLE_STORY.coverUrl)
     expect(playerSrc).not.toContain(GO_SAMPLE_STORY.coverUrl)
   })
@@ -91,18 +157,42 @@ describe('SUS/ATL-LANDING-002: cover art hero', () => {
     expect(playerSrc).toMatch(/linear-gradient/) // dark gradient fallback block
   })
 
-  test('hero overlays: free-sample pill + slim title/genre/duration bar', () => {
+  test('free-sample pill retained at the top of the art', () => {
     expect(playerSrc).toContain('Free sample — no account needed')
-    expect(playerSrc).toContain('{title} · {genre} · {durationMins} min')
   })
 })
 
-describe('SUS/ATL-LANDING-002: redesign copy pins', () => {
-  test("headline is exactly 'Stories made for the drive.'", () => {
-    expect(pageSrc).toContain('Stories made for the drive.')
-    // Old LANDING-001 copy must be gone.
+describe('SUS/ATL-LANDING-002 rev C: layout + copy pins', () => {
+  test("rev C REMOVED the 'Stories made for the drive.' headline", () => {
+    expect(pageSrc).not.toContain('Stories made for the drive.')
+    // Old LANDING-001 copy also still gone.
     expect(pageSrc).not.toContain('Turn Your Daily Commute Into Story Time')
-    expect(pageSrc).not.toContain('press play')
+  })
+
+  test('rev C REMOVED the slim on-art title bar (title lives below the art)', () => {
+    expect(playerSrc).not.toContain('{title} · {genre}')
+    expect(playerSrc).not.toMatch(/durationMins/)
+  })
+
+  test('NO duration display pre-play anywhere (times only in the progress row once playing)', () => {
+    // No minutes copy on page or player.
+    expect(pageSrc).not.toMatch(/durationMins|\bmin\b(?![A-Za-z])/)
+    expect(playerSrc).not.toMatch(/durationMins|\{.*\} min/)
+    // The progress row (formatTime) exists but only inside the hasStarted block.
+    expect(playerSrc).toContain('{hasStarted && (')
+    expect(playerSrc).toContain('formatTime(duration)')
+  })
+
+  test("below-art stack: title → hook → 'Genre · Listen free'", () => {
+    expect(pageSrc).toContain('{story.title}')
+    expect(pageSrc).toContain('{story.hook}')
+    expect(pageSrc).toContain('{story.genre} · Listen free')
+  })
+
+  test('below-art stack sizes per spec (19px title / 15px hook / 12.5px genre line)', () => {
+    expect(pageSrc).toContain("fontSize: '19px'")
+    expect(pageSrc).toContain("fontSize: '15px'")
+    expect(pageSrc).toContain("fontSize: '12.5px'")
   })
 
   test('no feature bullets anywhere (Marc rule)', () => {
@@ -111,7 +201,7 @@ describe('SUS/ATL-LANDING-002: redesign copy pins', () => {
     expect(pageSrc).not.toMatch(/<ul/)
   })
 
-  test('CTA sheet copy: heading, subline, button, microcopy', () => {
+  test('CTA sheet copy unchanged: heading, subline, button, microcopy', () => {
     expect(pageSrc).toContain('Keep the story going')
     expect(pageSrc).toContain('-day free trial · cancel anytime')
     expect(pageSrc).toContain('Start free trial')
@@ -124,15 +214,30 @@ describe('SUS/ATL-LANDING-002: redesign copy pins', () => {
     expect(pageSrc).toContain('shouldRevealTrialCta')
   })
 
+  test('STATIC BOTTOM CTA: always-present in-flow block with button + trial subline', () => {
+    expect(pageSrc).toContain('STATIC BOTTOM CTA')
+    // Two 'Start free trial' buttons: the sheet + the static block.
+    expect((pageSrc.match(/Start free trial/g) || []).length).toBe(2)
+    // Both carry the same campaign href.
+    expect((pageSrc.match(/href=\{ctaHref\}/g) || []).length).toBe(2)
+    // The subline appears in the sheet AND the static block.
+    expect((pageSrc.match(/-day free trial · cancel anytime/g) || []).length).toBe(2)
+  })
+
+  test('static CTA never animates (no transform/transition, not gated on ctaRevealed)', () => {
+    const staticBlock = pageSrc.slice(pageSrc.indexOf('STATIC BOTTOM CTA'), pageSrc.indexOf('Legal — small, bottom'))
+    expect(staticBlock.length).toBeGreaterThan(0)
+    expect(staticBlock).not.toMatch(/transform|transition|ctaRevealed/)
+  })
+
   test('promo badge copy unchanged (never raw codes)', () => {
     const d = getTrialDisplay('GVLMETA', 'valid', 14)
     expect(d.appliedBadge).toBe('Special offer applied — 14-day free trial ✓')
     expect(pageSrc).toContain('trial.appliedBadge')
   })
 
-  test('CTA href still carries promo + utm via buildCampaignSignupHref', () => {
+  test('CTA hrefs still carry promo + utm via buildCampaignSignupHref', () => {
     expect(pageSrc).toContain('buildCampaignSignupHref(searchParams)')
-    expect(pageSrc).toMatch(/href=\{ctaHref\}/)
   })
 
   test('terms/privacy footer links remain', () => {

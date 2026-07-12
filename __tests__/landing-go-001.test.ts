@@ -5,11 +5,12 @@
 //   2. middleware.ts — '/go' present in PUBLIC_ROUTES (source assertion).
 //   3. getTrialDisplay — valid 14-day promo copy + applied badge;
 //      invalid/missing → 7-day default, no badge.
-//   4. (rev A) sample player — GO_SAMPLE_STORY swappable const shape, player
-//      wired into app/go/page.tsx via the const only (source pins; jest here
+//   4. (rev A/C) sample player — GO_SAMPLE_STORY story shape, player wired
+//      into app/go/page.tsx via resolveGoStory only (source pins; jest here
 //      is node-env with a ts-only transform, so .tsx cannot be imported).
-//   5. (rev B) sample progress persistence — pure save/load/expiry/corrupt
-//      logic.
+//   5. (rev B/C) sample progress persistence — pure save/load/expiry/corrupt
+//      logic + per-story keys (rev C: variants must not collide; the default
+//      Grave story keeps the original bare key so live resume survives).
 
 import fs from 'fs'
 import path from 'path'
@@ -19,6 +20,7 @@ import {
   GO_SAMPLE_STORY,
   SAMPLE_PROGRESS_KEY,
   SAMPLE_PROGRESS_MAX_AGE_MS,
+  sampleProgressKey,
   serializeSampleProgress,
   parseSampleProgress,
   shouldPersistProgress,
@@ -152,24 +154,24 @@ describe('SUS/ATL-LANDING-001: getTrialDisplay', () => {
   })
 })
 
-describe('SUS/ATL-LANDING-001 rev A: sample player', () => {
+describe('SUS/ATL-LANDING-001 rev A/C: sample player', () => {
   const pageSrc = fs.readFileSync(path.join(__dirname, '..', 'app', 'go', 'page.tsx'), 'utf8')
   const playerSrc = fs.readFileSync(path.join(__dirname, '..', 'components', 'GoSamplePlayer.tsx'), 'utf8')
 
-  test('GO_SAMPLE_STORY const has a valid, complete shape', () => {
+  test('GO_SAMPLE_STORY const has a valid, complete story shape (rev C)', () => {
     expect(GO_SAMPLE_STORY.id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/)
     expect(GO_SAMPLE_STORY.audioUrl).toMatch(/^https:\/\//)
+    expect(GO_SAMPLE_STORY.coverUrl).toMatch(/^https:\/\//)
     expect(GO_SAMPLE_STORY.title.length).toBeGreaterThan(0)
-    expect(GO_SAMPLE_STORY.author.length).toBeGreaterThan(0)
     expect(GO_SAMPLE_STORY.genre.length).toBeGreaterThan(0)
-    expect(GO_SAMPLE_STORY.durationMins).toBeGreaterThan(0)
+    expect(GO_SAMPLE_STORY.hook.length).toBeGreaterThan(0)
   })
 
-  test('/go page renders the player, wired ONLY through GO_SAMPLE_STORY (swappable single const)', () => {
+  test('/go page renders the player, wired ONLY through resolveGoStory (swappable, no hardcoded story)', () => {
     expect(pageSrc).toContain('GoSamplePlayer')
-    expect(pageSrc).toContain('GO_SAMPLE_STORY')
+    expect(pageSrc).toContain('resolveGoStory')
     // Swappability pin: the page must NOT hardcode the story id or audio URL —
-    // changing the const in lib/landing.ts must be the only edit needed.
+    // changing lib/landing.ts must be the only edit needed.
     expect(pageSrc).not.toContain(GO_SAMPLE_STORY.id)
     expect(pageSrc).not.toContain(GO_SAMPLE_STORY.audioUrl)
   })
@@ -197,6 +199,17 @@ describe('SUS/ATL-LANDING-001 rev B: sample progress persistence (pure logic)', 
 
   test('storage key is the stable documented key', () => {
     expect(SAMPLE_PROGRESS_KEY).toBe('et_go_sample_progress')
+  })
+
+  test('rev C per-story keys: default Grave story keeps the ORIGINAL bare key (live resume survives)', () => {
+    expect(sampleProgressKey(GO_SAMPLE_STORY.id)).toBe('et_go_sample_progress')
+  })
+
+  test('rev C per-story keys: variant stories get suffixed keys that never collide', () => {
+    expect(sampleProgressKey('go-variant-a')).toBe('et_go_sample_progress:go-variant-a')
+    expect(sampleProgressKey('go-variant-b')).toBe('et_go_sample_progress:go-variant-b')
+    expect(sampleProgressKey('go-variant-a')).not.toBe(sampleProgressKey('go-variant-b'))
+    expect(sampleProgressKey('go-variant-a')).not.toBe(sampleProgressKey(GO_SAMPLE_STORY.id))
   })
 
   test('different story id → null (stale progress never resumes wrong story)', () => {
