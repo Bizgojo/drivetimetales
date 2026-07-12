@@ -73,9 +73,10 @@ export const GO_STORY_VARIANTS: Record<string, GoStory> = {
 // Marc has listened to the story and approved its hook line.
 //   'a' (Commuter of the Year): APPROVED — published + hook approved,
 //        Marc 2026-07-12 13:57 EDT ("Hook approved — flip variant A live").
-//   'b' (Murder at Falls Park): NOT yet — awaiting Marc's listen.
+//   'b' (Murder at Falls Park): APPROVED — published + hook + Liberty Bridge
+//        cover PASS, Marc 2026-07-12 15:50 EDT ("flip variant B live — full A/B active").
 // GO_AB_LIVE retained for compatibility: true = at least one variant live.
-export const GO_LIVE_VARIANTS: ReadonlyArray<string> = ['a']
+export const GO_LIVE_VARIANTS: ReadonlyArray<string> = ['a', 'b']
 export const GO_AB_LIVE = GO_LIVE_VARIANTS.length > 0
 
 /**

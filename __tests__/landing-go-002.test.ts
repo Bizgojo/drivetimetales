@@ -74,10 +74,10 @@ describe('SUS/ATL-LANDING-002 rev C: shouldRevealTrialCta (45s-only)', () => {
 })
 
 describe('SUS/ATL-LANDING-002 rev C: story variants (Greenville A/B, per-variant gate)', () => {
-  // Marc 2026-07-12 13:57 EDT: Commuter published + hook approved → variant A live.
-  // Falls Park (b) still awaits his listen.
-  test('live allowlist: A approved, B not yet', () => {
-    expect(GO_LIVE_VARIANTS).toEqual(['a'])
+  // Marc 2026-07-12: A approved 13:57; B approved 15:50 (published + hook +
+  // Liberty Bridge cover PASS) — full A/B active.
+  test('live allowlist: both Greenville variants approved', () => {
+    expect(GO_LIVE_VARIANTS).toEqual(['a', 'b'])
     expect(GO_AB_LIVE).toBe(true)
   })
 
@@ -87,14 +87,10 @@ describe('SUS/ATL-LANDING-002 rev C: story variants (Greenville A/B, per-variant
     expect(resolveGoStory('?v=A')).toBe(GO_STORY_VARIANTS.a)
   })
 
-  test('?v=b still falls back to default — Falls Park NOT approved yet', () => {
-    expect(resolveGoStory('?v=b')).toBe(GO_SAMPLE_STORY)
-    expect(resolveGoStory('v=b')).toBe(GO_SAMPLE_STORY)
-  })
-
-  test('future: adding b to the allowlist serves Falls Park', () => {
-    expect(resolveGoStory('?v=b', ['a', 'b'])).toBe(GO_STORY_VARIANTS.b)
-    expect(resolveGoStory('?v=a', ['a', 'b'])).toBe(GO_STORY_VARIANTS.a)
+  test('?v=b serves Falls Park (approved 15:50); case-insensitive + trims', () => {
+    expect(resolveGoStory('?v=b')).toBe(GO_STORY_VARIANTS.b)
+    expect(resolveGoStory('v=b')).toBe(GO_STORY_VARIANTS.b)
+    expect(resolveGoStory('?v=B')).toBe(GO_STORY_VARIANTS.b)
   })
 
   test('empty allowlist = everything defaults (full gate-off)', () => {
