@@ -22,6 +22,7 @@ import {
   GO_SAMPLE_STORY,
   GO_STORY_VARIANTS,
   GO_AB_LIVE,
+  GO_LIVE_VARIANTS,
   resolveGoStory,
   getTrialDisplay,
 } from '@/lib/landing'
@@ -72,27 +73,39 @@ describe('SUS/ATL-LANDING-002 rev C: shouldRevealTrialCta (45s-only)', () => {
   })
 })
 
-describe('SUS/ATL-LANDING-002 rev C: story variants (Greenville A/B, gated)', () => {
-  test('GO_AB_LIVE gate is OFF (Marc has not approved the Greenville stories)', () => {
-    expect(GO_AB_LIVE).toBe(false)
+describe('SUS/ATL-LANDING-002 rev C: story variants (Greenville A/B, per-variant gate)', () => {
+  // Marc 2026-07-12 13:57 EDT: Commuter published + hook approved → variant A live.
+  // Falls Park (b) still awaits his listen.
+  test('live allowlist: A approved, B not yet', () => {
+    expect(GO_LIVE_VARIANTS).toEqual(['a'])
+    expect(GO_AB_LIVE).toBe(true)
   })
 
-  test('gate OFF: ?v=a and ?v=b are IGNORED — default Grave always renders', () => {
-    expect(resolveGoStory('?v=a')).toBe(GO_SAMPLE_STORY)
+  test('?v=a serves Commuter (approved); case-insensitive + trims', () => {
+    expect(resolveGoStory('?v=a')).toBe(GO_STORY_VARIANTS.a)
+    expect(resolveGoStory('v=a')).toBe(GO_STORY_VARIANTS.a)
+    expect(resolveGoStory('?v=A')).toBe(GO_STORY_VARIANTS.a)
+  })
+
+  test('?v=b still falls back to default — Falls Park NOT approved yet', () => {
+    expect(resolveGoStory('?v=b')).toBe(GO_SAMPLE_STORY)
     expect(resolveGoStory('v=b')).toBe(GO_SAMPLE_STORY)
-    expect(resolveGoStory('')).toBe(GO_SAMPLE_STORY)
   })
 
-  test('gate ON (future one-line flip): ?v=a|b select the variants', () => {
-    expect(resolveGoStory('?v=a', true)).toBe(GO_STORY_VARIANTS.a)
-    expect(resolveGoStory('v=b', true)).toBe(GO_STORY_VARIANTS.b)
-    // Case-insensitive + trims.
-    expect(resolveGoStory('?v=A', true)).toBe(GO_STORY_VARIANTS.a)
+  test('future: adding b to the allowlist serves Falls Park', () => {
+    expect(resolveGoStory('?v=b', ['a', 'b'])).toBe(GO_STORY_VARIANTS.b)
+    expect(resolveGoStory('?v=a', ['a', 'b'])).toBe(GO_STORY_VARIANTS.a)
   })
 
-  test('gate ON: missing/junk ?v values fall back to the default, never throw', () => {
+  test('empty allowlist = everything defaults (full gate-off)', () => {
+    expect(resolveGoStory('?v=a', [])).toBe(GO_SAMPLE_STORY)
+    expect(resolveGoStory('?v=b', [])).toBe(GO_SAMPLE_STORY)
+  })
+
+  test('missing/junk ?v values fall back to the default, never throw', () => {
     for (const junk of ['', '?v=', '?v=c', '?v=zzz', '?v=aa', '?other=1', '?v=%00', 'utm_source=fb']) {
-      expect(resolveGoStory(junk, true)).toBe(GO_SAMPLE_STORY)
+      expect(resolveGoStory(junk)).toBe(GO_SAMPLE_STORY)
+      expect(resolveGoStory(junk, ['a', 'b'])).toBe(GO_SAMPLE_STORY)
     }
   })
 

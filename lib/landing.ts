@@ -67,22 +67,26 @@ export const GO_STORY_VARIANTS: Record<string, GoStory> = {
   },
 }
 
-// APPROVAL GATE (Marc): while false, ?v= is IGNORED and the default Grave
-// story always renders. Flip to true (one line) once Marc approves the
-// Greenville variant stories.
-export const GO_AB_LIVE = false
+// APPROVAL GATE (Marc): per-variant allowlist. A variant serves ONLY after
+// Marc has listened to the story and approved its hook line.
+//   'a' (Commuter of the Year): APPROVED — published + hook approved,
+//        Marc 2026-07-12 13:57 EDT ("Hook approved — flip variant A live").
+//   'b' (Murder at Falls Park): NOT yet — awaiting Marc's listen.
+// GO_AB_LIVE retained for compatibility: true = at least one variant live.
+export const GO_LIVE_VARIANTS: ReadonlyArray<string> = ['a']
+export const GO_AB_LIVE = GO_LIVE_VARIANTS.length > 0
 
 /**
  * Resolve which story /go renders from the URL query string (?v=a|b).
- * Pure: accepts the search string ('?v=a' or 'v=a' both fine). While the
- * gate is off (abLive=false), the default story is ALWAYS returned. Unknown
- * or junk ?v values fall back to the default. Never throws.
+ * Pure: accepts the search string ('?v=a' or 'v=a' both fine). Only
+ * variants in the live allowlist serve; unknown, junk, or not-yet-approved
+ * ?v values fall back to the default. Never throws.
  */
-export function resolveGoStory(search: string, abLive: boolean = GO_AB_LIVE): GoStory {
-  if (!abLive) return GO_SAMPLE_STORY
+export function resolveGoStory(search: string, liveVariants: ReadonlyArray<string> = GO_LIVE_VARIANTS): GoStory {
   try {
     const v = new URLSearchParams(search ?? '').get('v')
     const key = (v ?? '').trim().toLowerCase()
+    if (!liveVariants.includes(key)) return GO_SAMPLE_STORY
     return GO_STORY_VARIANTS[key] ?? GO_SAMPLE_STORY
   } catch {
     return GO_SAMPLE_STORY
