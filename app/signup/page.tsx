@@ -298,7 +298,7 @@ function SignUpContent() {
           <div style={{ marginBottom: '1rem' }}>
             <label style={{ color: '#e2e8f0', fontSize: '14px', display: 'block', marginBottom: '0.5rem', fontWeight: 700 }}>What do your friends call you?</label>
             <input type="text" name="firstName" value={firstName} onChange={e => setFirstName(e.target.value)} required autoComplete="given-name" style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', border: '1px solid #334155', backgroundColor: '#0f172a', color: 'white', fontSize: '16px', outline: 'none', boxSizing: 'border-box' }} placeholder="Enter the name you go by" />
-            <div style={{ color: '#cbd5e1', fontSize: '12.5px', lineHeight: 1.55, marginTop: '0.45rem' }}>Belle will use this name when she talks with you between stories.</div>
+            <div style={{ color: '#cbd5e1', fontSize: '12.5px', lineHeight: 1.55, marginTop: '0.45rem' }}>Your storyteller will greet you by name between episodes.</div>
           </div>
 
           <div style={{ marginBottom: '1rem' }}>
