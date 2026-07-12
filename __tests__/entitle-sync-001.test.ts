@@ -85,4 +85,8 @@ describe('ORION-ENTITLE-SYNC-001: data client is a session follower (fix 4)', ()
     expect(libSrc).toContain('autoRefreshToken: false')
     expect(libSrc).toContain('detectSessionInUrl: false')
   })
+
+  test('data client uses a DISTINCT storage key — shared GoTrue lock deadlocked auth init', () => {
+    expect(libSrc).toContain("storageKey: 'sb-dtt-data-client'")
+  })
 })

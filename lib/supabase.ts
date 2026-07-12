@@ -30,6 +30,11 @@ export const supabase = createClient(
     auth: {
       autoRefreshToken: false,
       detectSessionInUrl: false,
+      // CRITICAL: distinct storage key. GoTrue derives its navigator lock name
+      // from the storage key — sharing the cookie client's default key made
+      // setSession (mirror) deadlock against the cookie client's held lock,
+      // and auth loading timed out on /home. Distinct key = distinct lock.
+      storageKey: 'sb-dtt-data-client',
     },
   }
 );
