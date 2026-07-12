@@ -150,3 +150,27 @@ describe('ORION-FUNNEL-POLISH-001: hasUtmAttribution', () => {
     expect(hasUtmAttribution({ source: null, medium: null, campaign: null })).toBe(false)
   })
 })
+
+// ORION-SUB-CHROME-001: /subscribe chrome rule — ad-funnel arrivals get no header.
+import { isAdFunnelArrival } from '@/lib/subscribeFunnel'
+
+describe('ORION-SUB-CHROME-001: isAdFunnelArrival', () => {
+  test('promo param → ad funnel', () => {
+    expect(isAdFunnelArrival('?promo=GVLMETA&returnTo=%2Fhome')).toBe(true)
+  })
+  test('code param → ad funnel', () => {
+    expect(isAdFunnelArrival('code=SUMMER')).toBe(true)
+  })
+  test('any utm_* param → ad funnel', () => {
+    expect(isAdFunnelArrival('?utm_source=facebook')).toBe(true)
+    expect(isAdFunnelArrival('?utm_campaign=gvl-launch-202607')).toBe(true)
+  })
+  test('returnTo alone → organic (header stays)', () => {
+    expect(isAdFunnelArrival('?returnTo=%2Fhome')).toBe(false)
+  })
+  test('empty/no query → organic', () => {
+    expect(isAdFunnelArrival('')).toBe(false)
+    expect(isAdFunnelArrival(null)).toBe(false)
+    expect(isAdFunnelArrival(undefined)).toBe(false)
+  })
+})

@@ -83,3 +83,20 @@ export function buildSubscribeCheckoutPayload(args: {
     attribution: args.attribution,
   }
 }
+
+/**
+ * ORION-SUB-CHROME-001 (Marc, 2026-07-12): /subscribe hides the app header
+ * for ad-funnel arrivals (promo/code/utm_* in the query — "no exits"), but
+ * keeps it for organic in-app visitors. Pure so AppShell can stay
+ * useSearchParams-free (reads window.location.search in an effect instead,
+ * avoiding a root-layout CSR bailout).
+ */
+export function isAdFunnelArrival(search: string | null | undefined): boolean {
+  if (!search) return false
+  const params = new URLSearchParams(search.startsWith('?') ? search.slice(1) : search)
+  let hit = false
+  params.forEach((_value, key) => {
+    if (key === 'promo' || key === 'code' || key.startsWith('utm_')) hit = true
+  })
+  return hit
+}
