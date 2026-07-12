@@ -508,18 +508,35 @@ export function transcriptTokens(text: string): string[] {
   // Pre-normalise: NFC canonical compose, strip leading/trailing whitespace,
   // collapse internal runs of whitespace.  Catches no-break spaces, zero-width
   // chars, and any trailing newline from script source or Whisper output.
-  // ORION-QC-UNIDASH-001 (2026-07-12): normalize Unicode dash variants to ASCII
-  // hyphen and strip zero-width/NBSP chars BEFORE any number normalization.
-  // Root cause of Consciousness ep2 seg50: cached segment expectedText contained
-  // U+2011 non-breaking hyphens ("Four‑point‑seven") — invisible in logs, absent
-  // from the repaired script — so SPOKEN_DECIMAL_RE ([-\s] separators only) never
-  // matched and tokens came out ["4","point","7","seconds"] vs ["4","7","seconds"],
-  // sim 0.643, false REPEATED_IDENTICAL_TRUNCATION. NFC does NOT fold these.
-  const pre = text.normalize('NFC')
-    .replace(/[\u200B\u200C\u200D\uFEFF]/g, '')
-    .replace(/\u00A0/g, ' ')
-    .replace(/[\u2010\u2011\u2012\u2013\u2014\u2015\u2212]/g, '-')
-    .trim().replace(/\s+/g, ' ')
+  // ORION-QC-PIPELINE-001 (2026-07-12): two-pass normalisation to fix the
+  // decimal-phrase pipeline ordering problem.
+  //
+  // Root cause (Consciousness ep2 seg50, three days of failed fixes):
+  // normalizeCompoundNumbers runs FIRST in the chain and converts the leading
+  // cardinal word "Four" → "4", leaving "4-point-seven".  When
+  // normalizeSpokenNumberPhrases (via normalizeNumberWords) runs later, the
+  // SPOKEN_DECIMAL_RE pattern requires a spelled-out integer part — "4" is a
+  // digit, not a word, so it never matches.  "point" survives as a token,
+  // giving ["4","point","7","seconds"] vs Whisper's ["4","7","seconds"],
+  // sim 0.643, false REPEATED_IDENTICAL_TRUNCATION on every retry.
+  //
+  // Fix: run normalizeSpokenNumberPhrases FIRST (pass 1) so decimal phrases
+  // like "Four-point-seven" → "4.7" BEFORE compound-number processing can
+  // eat the integer part alone.  The main chain (pass 2) then handles all
+  // remaining compound-integer and currency forms.
+  //
+  // ORION-QC-UNIDASH-001 (same session): also fold Unicode dash variants and
+  // strip zero-width/NBSP here so pass-1 regex separators work regardless of
+  // source-text dash style.  empirically verified: codepoints were ASCII 0x2d
+  // in this incident, but other scripts may contain U+2011 (non-breaking
+  // hyphen) which NFC does not fold.
+  const pre = normalizeSpokenNumberPhrases(
+    text.normalize('NFC')
+      .replace(/[\u200B\u200C\u200D\uFEFF]/g, '')
+      .replace(/\u00A0/g, ' ')
+      .replace(/[\u2010\u2011\u2012\u2013\u2014\u2015\u2212]/g, '-')
+      .trim().replace(/\s+/g, ' ')
+  )
   // ATL-PIPE-011: normalizeCompoundNumbers runs first to resolve "three hundred and forty thousand"
   // → "340000", strip $-signs, strip commas in digit strings, and remove "and" in number sequences
   // before the rest of the pipeline sees the text.
