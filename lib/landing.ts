@@ -19,8 +19,9 @@ import { BASE_TRIAL_DAYS, applyPromoTrialDays } from './promo'
 //   - 14 min — long enough that visitors sign up to CONTINUE (slot 1
 //     "When Rosie Came Home" is only 3 min and finishes pre-signup;
 //     slot 3's audio_url returns 400)
-//   - cover_url for ALL landing_stories rows currently 400s, so no cover
-//     is rendered (add coverUrl here when fixed).
+//   - cover art (SUS/ATL-LANDING-002): freshly generated + QA'd portrait
+//     cover, uploaded to the public Covers bucket and verified HTTP 200.
+//     The page renders a dark-gradient fallback if the image errors.
 // ============================================================================
 export const GO_SAMPLE_STORY = {
   /** landing_stories.id */
@@ -30,7 +31,54 @@ export const GO_SAMPLE_STORY = {
   genre: 'Adventure',
   durationMins: 14,
   audioUrl: 'https://vmyhlfeouzslixtkmddy.supabase.co/storage/v1/object/public/audio/landing/49730f36-46a9-4309-927c-6b9140afac79/final_mix.mp3',
+  coverUrl: 'https://vmyhlfeouzslixtkmddy.supabase.co/storage/v1/object/public/Covers/landing/49730f36-46a9-4309-927c-6b9140afac79/cover_20260712.jpg',
 } as const
+
+// ============================================================================
+// SUS/ATL-LANDING-002: trial CTA reveal logic.
+// The bottom-sheet trial CTA is HIDDEN on arrival and slides up when the
+// visitor has demonstrably engaged (or demonstrably won't). Pure + exported
+// so it is unit-testable (__tests__/landing-go-002).
+//
+// Reveal when ANY of:
+//   a) cumulative LISTENING time (audio actually playing) ≥ 45s
+//   b) the user pauses after having played (natural decision moment)
+//   c) fallback: ~20s idle with NO play ever pressed (don't lose the
+//      never-listeners — still give them the offer)
+// Once revealed, it stays revealed (alreadyRevealed latch).
+// ============================================================================
+
+/** Cumulative listened seconds that reveal the trial CTA. */
+export const CTA_REVEAL_LISTEN_SEC = 45
+
+/** Idle seconds (never pressed play) that reveal the trial CTA. */
+export const CTA_REVEAL_IDLE_SEC = 20
+
+export interface CtaRevealInput {
+  /** Cumulative seconds of actual playback (timeupdate deltas while playing). */
+  listenedSec: number
+  /** Has play ever been pressed (audio actually started)? */
+  everPlayed: boolean
+  /** Has the user paused AFTER having played? (ended counts — story over) */
+  pausedAfterPlay: boolean
+  /** Seconds since page load with no play ever pressed. */
+  idleSec: number
+  /** Latch: once shown, stays shown. */
+  alreadyRevealed?: boolean
+}
+
+export function shouldRevealTrialCta(input: CtaRevealInput): boolean {
+  if (input.alreadyRevealed) return true
+  // (b) pause is only meaningful after a real play (guard against a stray
+  // pause event from an audio element that never started).
+  if (input.everPlayed && input.pausedAfterPlay) return true
+  // (a) 45s of cumulative real listening.
+  if (input.everPlayed && input.listenedSec >= CTA_REVEAL_LISTEN_SEC) return true
+  // (c) idle fallback ONLY when play was never pressed — an active listener
+  // is not idle, however long they listen under 45s.
+  if (!input.everPlayed && input.idleSec >= CTA_REVEAL_IDLE_SEC) return true
+  return false
+}
 
 // ============================================================================
 // SUS/ATL-LANDING-001 rev B (localStorage variant): anonymous listening
