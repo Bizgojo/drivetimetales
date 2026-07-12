@@ -116,7 +116,9 @@ describe('SUS/ATL-LANDING-001: getTrialDisplay', () => {
     expect(d.days).toBe(14)
     expect(d.ctaLabel).toBe('Start Your 14-Day Free Trial')
     expect(d.subtext).toContain('14 days')
-    expect(d.appliedBadge).toBe('Code GVLMETA applied ✓')
+    // ORION-GO-OFFER-COPY-001: raw promo codes must never appear in copy.
+    expect(d.appliedBadge).toBe('Special offer applied — 14-day free trial ✓')
+    expect(d.appliedBadge).not.toContain('GVLMETA')
   })
 
   test('no promo → 7-day default, no badge', () => {
@@ -137,7 +139,7 @@ describe('SUS/ATL-LANDING-001: getTrialDisplay', () => {
     // Mirrors lib/promo.ts promoGrantedDays: null/0/'' → 14.
     const d = getTrialDisplay('GVLMETA', 'valid', null)
     expect(d.days).toBe(14)
-    expect(d.appliedBadge).toBe('Code GVLMETA applied ✓')
+    expect(d.appliedBadge).toBe('Special offer applied — 14-day free trial ✓')
   })
 
   test('valid promo with days below base → base 7 wins (max math)', () => {
@@ -145,7 +147,8 @@ describe('SUS/ATL-LANDING-001: getTrialDisplay', () => {
     expect(d.days).toBe(7)
     expect(d.ctaLabel).toBe('Start Your 7-Day Free Trial')
     // Still validated → badge shows even though days clamp to base.
-    expect(d.appliedBadge).toBe('Code SHORT3 applied ✓')
+    expect(d.appliedBadge).toBe('Special offer applied — 7-day free trial ✓')
+    expect(d.appliedBadge).not.toContain('SHORT3')
   })
 })
 
