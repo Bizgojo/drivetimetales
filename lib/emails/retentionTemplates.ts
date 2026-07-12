@@ -22,32 +22,29 @@ const LOGO_BLOCK = `
  * iPhone + Android home-screen install instructions.
  * Kept as one shared block so welcome and day-1 emails never drift apart.
  */
+// ORION-EMAIL-AUDIT-001 (Marc, 2026-07-12): the old copy walked through
+// Safari share-sheet steps ("must use Safari") — stale since the in-app
+// install sheet shipped (ATL-INSTALL-SHEET-001). The app now detects the
+// browser and walks the user through install itself, including the
+// non-Safari-on-iOS copy-link flow. The email just needs to get them there.
 export function installStepsBlock(): string {
   return `
     <div style="background:rgba(59,130,246,0.08);border:1px solid rgba(59,130,246,0.3);border-radius:10px;padding:16px 20px;margin-bottom:20px;">
       <div style="color:#60a5fa;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:10px;">📲 Save the app to your home screen</div>
       <div style="color:rgba(255,255,255,0.85);font-size:14px;line-height:1.8;">
-        <div style="margin-bottom:10px;">
-          <strong style="color:#ffffff;">iPhone / iPad</strong> (must use Safari):<br>
-          1. Open <a href="${APP_HOME_URL}" style="color:#f97316;text-decoration:underline;">app.endless-tales.com</a> in Safari<br>
-          2. Tap the <strong>Share</strong> button (square with an arrow)<br>
-          3. Scroll down and tap <strong>&ldquo;Add to Home Screen&rdquo;</strong>, then tap <strong>Add</strong>
-        </div>
-        <div>
-          <strong style="color:#ffffff;">Android</strong> (Chrome):<br>
-          1. Open <a href="${APP_HOME_URL}" style="color:#f97316;text-decoration:underline;">app.endless-tales.com</a> in Chrome<br>
-          2. Tap the <strong>⋮ menu</strong> (top right)<br>
-          3. Tap <strong>&ldquo;Add to Home Screen&rdquo;</strong> (or <strong>Install app</strong>), then confirm
-        </div>
+        Open <a href="${APP_HOME_URL}" target="_blank" style="color:#f97316;text-decoration:underline;">app.endless-tales.com</a> on your phone and tap <strong>Install</strong> when the banner appears — it walks you through the rest. About 10 seconds, no app store, works on iPhone and Android.
       </div>
     </div>`
 }
 
+// ORION-EMAIL-AUDIT-001: the line under the button is now a REAL link (it
+// was plain text) so there is always a tappable fallback if a mail client
+// mangles the button anchor; target=_blank added for client compatibility.
 function appLinkButton(label: string): string {
   return `
     <div style="text-align:center;margin-bottom:24px;">
-      <a href="${APP_HOME_URL}" style="display:inline-block;background:#f97316;color:white;text-decoration:none;padding:16px 40px;border-radius:10px;font-size:16px;font-weight:800;letter-spacing:0.01em;">${label}</a>
-      <div style="color:rgba(255,255,255,0.45);font-size:12px;margin-top:8px;">app.endless-tales.com</div>
+      <a href="${APP_HOME_URL}" target="_blank" style="display:inline-block;background:#f97316;color:white;text-decoration:none;padding:16px 40px;border-radius:10px;font-size:16px;font-weight:800;letter-spacing:0.01em;">${label}</a>
+      <div style="font-size:12px;margin-top:8px;"><a href="${APP_HOME_URL}" target="_blank" style="color:rgba(255,255,255,0.45);text-decoration:underline;">app.endless-tales.com/home</a></div>
     </div>`
 }
 
