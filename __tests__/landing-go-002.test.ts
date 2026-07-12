@@ -130,7 +130,8 @@ describe('SUS/ATL-LANDING-002 rev C: story variants (Greenville A/B, per-variant
     expect(b.id).toBe('go-variant-b')
     expect(b.title).toBe('Murder at Falls Park')
     expect(b.genre).toBe('Mystery')
-    expect(b.coverUrl).toBe('https://vmyhlfeouzslixtkmddy.supabase.co/storage/v1/object/public/Covers/landing/go-variant-b/cover.jpg')
+    // Liberty Bridge corrected art (Marc redo 2026-07-12) — versioned filename.
+    expect(b.coverUrl).toBe('https://vmyhlfeouzslixtkmddy.supabase.co/storage/v1/object/public/Covers/landing/go-variant-b/cover_20260712_liberty.jpg')
     expect(b.audioUrl).toBe('https://vmyhlfeouzslixtkmddy.supabase.co/storage/v1/object/public/audio/landing/go-variant-b/final_mix.mp3')
   })
 
