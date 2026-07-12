@@ -209,6 +209,9 @@ function parseSpokenCardinal(words: string[]): number | null {
 }
 
 export function normalizeSpokenNumberPhrases(text: string): string {
+  // ORION-QC-UNIDASH-001: fold Unicode dashes → ASCII so [-\s] separator classes
+  // in the spoken-number regexes match regardless of source-text dash style.
+  text = text.replace(/[\u2010\u2011\u2012\u2013\u2014\u2015\u2212]/g, '-')
   return text
     .replace(SPOKEN_DECIMAL_RE, (match, integerWords, fractionWords) => {
       const integerValue = parseSpokenCardinal(tokenizeSpokenNumberPhrase(integerWords))
@@ -505,7 +508,18 @@ export function transcriptTokens(text: string): string[] {
   // Pre-normalise: NFC canonical compose, strip leading/trailing whitespace,
   // collapse internal runs of whitespace.  Catches no-break spaces, zero-width
   // chars, and any trailing newline from script source or Whisper output.
-  const pre = text.normalize('NFC').trim().replace(/\s+/g, ' ')
+  // ORION-QC-UNIDASH-001 (2026-07-12): normalize Unicode dash variants to ASCII
+  // hyphen and strip zero-width/NBSP chars BEFORE any number normalization.
+  // Root cause of Consciousness ep2 seg50: cached segment expectedText contained
+  // U+2011 non-breaking hyphens ("Four‑point‑seven") — invisible in logs, absent
+  // from the repaired script — so SPOKEN_DECIMAL_RE ([-\s] separators only) never
+  // matched and tokens came out ["4","point","7","seconds"] vs ["4","7","seconds"],
+  // sim 0.643, false REPEATED_IDENTICAL_TRUNCATION. NFC does NOT fold these.
+  const pre = text.normalize('NFC')
+    .replace(/[\u200B\u200C\u200D\uFEFF]/g, '')
+    .replace(/\u00A0/g, ' ')
+    .replace(/[\u2010\u2011\u2012\u2013\u2014\u2015\u2212]/g, '-')
+    .trim().replace(/\s+/g, ' ')
   // ATL-PIPE-011: normalizeCompoundNumbers runs first to resolve "three hundred and forty thousand"
   // → "340000", strip $-signs, strip commas in digit strings, and remove "and" in number sequences
   // before the rest of the pipeline sees the text.
