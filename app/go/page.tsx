@@ -1,28 +1,36 @@
 /*
 ================================================================================
-🚗 /go — GVL CAMPAIGN LANDING PAGE (SUS/ATL-LANDING-002 redesign of 001)
+🚗 /go — GVL CAMPAIGN LANDING PAGE (SUS/ATL-LANDING-002 rev C — Marc final)
 Location: app/go/page.tsx
 
 PURPOSE:
 Dedicated landing page for paid ad traffic (Greenville launch). The story's
-COVER ART is the hero with one big play button; the trial CTA is a bottom
-sheet that reveals only after engagement (see lib/landing.ts
-shouldRevealTrialCta). Single CTA to /signup carrying promo + full utm_*.
+COVER ART is the hero with one big play button; below the art: story title,
+one-line hook, and 'Genre · Listen free'. The trial CTA is a bottom sheet
+that reveals ONLY after 45s of real listening (lib/landing.ts
+shouldRevealTrialCta), plus a static always-present CTA at the very bottom
+for scrollers. CTAs go to /signup carrying promo + full utm_*.
 
 HARD RULES:
 - NO auth calls of any kind. Renders identically for anonymous and
   signed-in visitors. '/go' is in PUBLIC_ROUTES (middleware.ts) so the
   middleware never touches Supabase for this path.
-- Dark background, WHITE text only (standing UI rule). Orange (#f97316) is
-  allowed only as the CTA/play-button accent.
-- ONE CTA. No nav, no header menu, no footer link farm. Terms/privacy
-  links only.
-- ABOVE THE FOLD ≤ ~12 words (Marc): one headline, no feature bullets,
-  no paragraphs.
-- CTA REVEAL (Marc): hidden on arrival; slides up (translateY bottom sheet)
-  when 45s cumulative listening OR pause-after-play OR 20s idle with no
-  play. Once shown it stays shown. Audio keeps playing when the sheet
-  appears (sheet is an overlay; the <audio> element is untouched).
+- Dark background, white-first text (standing UI rule; Marc rev C allows
+  the small gray genre line). Orange (#f97316) is the CTA/play accent only.
+- No nav, no header menu, no footer link farm. Terms/privacy links only.
+- NO duration/timeline anywhere pre-play (Marc rev C): times appear only
+  in the player's progress row once playing.
+- NO marketing headline (rev C removed the rev-B one); the below-art
+  title/hook stack is the selling copy.
+- CTA REVEAL (Marc rev C): hidden on arrival; slides up (translateY bottom
+  sheet) ONLY when cumulative real listening ≥ 45s, latched once shown.
+  The rev-B pause-after-play and 20s-idle triggers were REMOVED (the idle
+  timer fired while Marc was still reading, before play). Audio keeps
+  playing when the sheet appears (sheet is an overlay; the <audio> element
+  is untouched).
+- A/B VARIANTS (rev C, gated): story selection via resolveGoStory(?v=a|b)
+  — INERT while GO_AB_LIVE is false in lib/landing.ts (Marc has not
+  approved the Greenville stories); the default Grave story always renders.
 - UTM capture: root layout mounts <UtmCapture /> (verified in
   app/layout.tsx), which fires captureUtmFromUrl() on this route too. The
   CTA href additionally carries the full utm_* set directly, so attribution
@@ -35,7 +43,7 @@ HARD RULES:
 
 'use client'
 
-import { useState, useEffect, useRef, useCallback, Suspense } from 'react'
+import { useState, useEffect, useCallback, Suspense } from 'react'
 import Link from 'next/link'
 import Image from 'next/image'
 import { useSearchParams } from 'next/navigation'
@@ -43,10 +51,9 @@ import { buildCampaignSignupHref, normalizePromoCode } from '@/lib/utm'
 import {
   getTrialDisplay,
   PromoStatus,
-  GO_SAMPLE_STORY,
+  resolveGoStory,
   shouldRevealTrialCta,
   CTA_REVEAL_LISTEN_SEC,
-  CTA_REVEAL_IDLE_SEC,
 } from '@/lib/landing'
 import GoSamplePlayer from '@/components/GoSamplePlayer'
 
@@ -67,47 +74,20 @@ function GoLandingContent() {
   const [promoStatus, setPromoStatus] = useState<PromoStatus>('none')
   const [promoDays, setPromoDays] = useState<number | null>(null)
 
-  // ===== SUS/ATL-LANDING-002: trial CTA reveal state =====
-  // The sheet is hidden on arrival; engagement facts come from the player
-  // callbacks, the decision is lib/landing.ts shouldRevealTrialCta, and the
+  // ===== SUS/ATL-LANDING-002 rev C: trial CTA reveal state =====
+  // The sheet is hidden on arrival; the ONLY trigger is 45s of cumulative
+  // real listening (player onListenedSeconds → shouldRevealTrialCta). The
   // latch (once shown, stays shown) lives here.
   const [ctaRevealed, setCtaRevealed] = useState(false)
-  const everPlayedRef = useRef(false)
-  const idleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  const evaluateReveal = useCallback((facts: { listenedSec?: number; pausedAfterPlay?: boolean; idleSec?: number }) => {
-    setCtaRevealed(prev => shouldRevealTrialCta({
-      listenedSec: facts.listenedSec ?? 0,
-      everPlayed: everPlayedRef.current,
-      pausedAfterPlay: facts.pausedAfterPlay ?? false,
-      idleSec: facts.idleSec ?? 0,
-      alreadyRevealed: prev,
-    }))
-  }, [])
-
-  // (c) idle fallback: ~20s with NO play ever pressed → reveal. The timer is
-  // cleared on first play, so an engaged listener never hits this path.
-  useEffect(() => {
-    idleTimerRef.current = setTimeout(() => {
-      evaluateReveal({ idleSec: CTA_REVEAL_IDLE_SEC })
-    }, CTA_REVEAL_IDLE_SEC * 1000)
-    return () => { if (idleTimerRef.current) clearTimeout(idleTimerRef.current) }
-  }, [evaluateReveal])
-
-  const handleFirstPlay = useCallback(() => {
-    everPlayedRef.current = true
-    if (idleTimerRef.current) clearTimeout(idleTimerRef.current)
-  }, [])
-
-  // (a) cumulative listening reaches threshold (timeupdate-driven, playing only)
   const handleListenedSeconds = useCallback((cum: number) => {
-    if (cum >= CTA_REVEAL_LISTEN_SEC) evaluateReveal({ listenedSec: cum })
-  }, [evaluateReveal])
+    if (cum < CTA_REVEAL_LISTEN_SEC) return
+    setCtaRevealed(prev => shouldRevealTrialCta({ listenedSec: cum, alreadyRevealed: prev }))
+  }, [])
 
-  // (b) paused after having played (ended counts too)
-  const handlePauseAfterPlay = useCallback(() => {
-    evaluateReveal({ pausedAfterPlay: true })
-  }, [evaluateReveal])
+  // A/B story selection — gated by GO_AB_LIVE in lib/landing.ts (currently
+  // OFF: the default Grave story always renders regardless of ?v=).
+  const story = resolveGoStory(searchParams.toString())
 
   // CTA href: promo + full utm_* set from the current URL → /signup.
   const ctaHref = buildCampaignSignupHref(searchParams)
@@ -166,34 +146,46 @@ function GoLandingContent() {
         paddingBottom: ctaRevealed ? '230px' : '0',
       }}>
 
-        {/* ===== HERO: cover art + big play + pill + slim info bar =====
-            Swappable via the single GO_SAMPLE_STORY const in lib/landing.ts —
-            the page hardcodes NO story id / URL. */}
+        {/* ===== HERO: cover art + big play + pill =====
+            Story resolved via resolveGoStory (lib/landing.ts) — the page
+            hardcodes NO story id / URL. */}
         <GoSamplePlayer
-          storyId={GO_SAMPLE_STORY.id}
-          audioUrl={GO_SAMPLE_STORY.audioUrl}
-          coverUrl={GO_SAMPLE_STORY.coverUrl}
-          title={GO_SAMPLE_STORY.title}
-          genre={GO_SAMPLE_STORY.genre}
-          durationMins={GO_SAMPLE_STORY.durationMins}
-          onFirstPlay={handleFirstPlay}
-          onPauseAfterPlay={handlePauseAfterPlay}
+          storyId={story.id}
+          audioUrl={story.audioUrl}
+          coverUrl={story.coverUrl}
+          title={story.title}
           onListenedSeconds={handleListenedSeconds}
         />
 
-        {/* ===== THE headline (≤12 words above the fold — this is 5) ===== */}
-        <h1 style={{
-          fontSize: 'clamp(1.7rem, 7.5vw, 2.4rem)',
-          fontWeight: 800,
-          lineHeight: 1.15,
-          letterSpacing: '-0.02em',
-          color: '#ffffff',
-          margin: '1.4rem 1.25rem 0.9rem',
-        }}>
-          Stories made for the drive.
-        </h1>
+        {/* ===== BELOW-ART STACK (rev C): title → hook → genre line =====
+            Replaces the rev-B headline. No duration anywhere pre-play. */}
+        <div style={{ margin: '1.1rem 1.25rem 1.2rem' }}>
+          <div style={{
+            fontSize: '19px',
+            fontWeight: 700,
+            lineHeight: 1.25,
+            color: '#ffffff',
+          }}>
+            {story.title}
+          </div>
+          <div style={{
+            fontSize: '15px',
+            lineHeight: 1.4,
+            color: '#ffffff',
+            margin: '0.45rem 0 0',
+          }}>
+            {story.hook}
+          </div>
+          <div style={{
+            fontSize: '12.5px',
+            color: '#9ca3af',
+            marginTop: '0.5rem',
+          }}>
+            {story.genre} · Listen free
+          </div>
+        </div>
 
-        {/* Brand mark — small, below the headline (art owns the top) */}
+        {/* Brand mark — small, below the story stack (art owns the top) */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '1rem' }}>
           <Image src="/images/et-logo.png" alt="" width={24} height={24} style={{ objectFit: 'contain' }} priority />
           <span style={{ fontSize: '1rem', fontWeight: 800, lineHeight: 1, whiteSpace: 'nowrap' }}>
@@ -202,8 +194,33 @@ function GoLandingContent() {
           </span>
         </div>
 
+        {/* ===== STATIC BOTTOM CTA (rev C) — plain in-flow block at the very
+            bottom for scrollers. Always present from arrival, never animates.
+            Modest styling so it doesn't compete with the hero. */}
+        <div style={{ marginTop: 'auto', width: '100%', padding: '3rem 1.5rem 0' }}>
+          <Link
+            href={ctaHref}
+            style={{
+              display: 'block',
+              width: '100%',
+              padding: '0.85rem 1.25rem',
+              borderRadius: '12px',
+              backgroundColor: '#f97316',
+              color: '#ffffff',
+              fontSize: '1rem',
+              fontWeight: 700,
+              textDecoration: 'none',
+            }}
+          >
+            Start free trial
+          </Link>
+          <div style={{ fontSize: '0.8rem', color: '#9ca3af', marginTop: '0.55rem' }}>
+            {trial.days}-day free trial · cancel anytime
+          </div>
+        </div>
+
         {/* Legal — small, bottom */}
-        <div style={{ marginTop: 'auto', paddingTop: '2rem', fontSize: '0.75rem', color: '#ffffff' }}>
+        <div style={{ paddingTop: '1.6rem', fontSize: '0.75rem', color: '#ffffff' }}>
           <Link href="/terms" style={{ color: '#ffffff', textDecoration: 'underline' }}>Terms</Link>
           <span style={{ margin: '0 0.6rem' }}>·</span>
           <Link href="/privacy" style={{ color: '#ffffff', textDecoration: 'underline' }}>Privacy</Link>

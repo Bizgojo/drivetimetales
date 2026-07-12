@@ -1,9 +1,12 @@
 'use client'
 
-// components/GoSamplePlayer.tsx — SUS/ATL-LANDING-002 (redesign of rev A/B)
+// components/GoSamplePlayer.tsx — SUS/ATL-LANDING-002 rev C
 // Hero sample player for the /go campaign landing page: the story's COVER
 // ART is the hero, with one large circular play button overlaid. After play
-// starts, the overlay becomes a compact pause/seek row under the art.
+// starts, the overlay becomes a compact pause/seek row under the art — the
+// timeline/times appear ONLY there, once playing (rev C: NO duration is
+// shown anywhere pre-play, and the slim title bar on the art is gone; the
+// title/hook stack lives on the page, below the art).
 // White-on-dark, single #f97316 accent. NO login prompt, NO paywall
 // interruption — the sample plays free, start to finish.
 //
@@ -11,18 +14,18 @@
 // pulls auth context, playlists, library state, and guest-minute gating —
 // all forbidden on /go (no auth calls, no interruptions).
 //
-// Persistence (rev B, unchanged): listening position saved under
-// et_go_sample_progress (throttled ~5s + on pause/seek/unmount) and resumed
-// on mount, so the visitor's spot survives the signup round-trip in the
-// same browser.
+// Persistence (rev B/C): listening position saved under a per-story key
+// (lib/landing.ts sampleProgressKey — the default Grave story keeps the
+// original et_go_sample_progress key), throttled ~5s + on
+// pause/seek/unmount, and resumed on mount, so the visitor's spot survives
+// the signup round-trip in the same browser.
 //
-// Engagement callbacks (LANDING-002): the page owns the trial-CTA reveal
-// decision (lib/landing.ts shouldRevealTrialCta). This component only
-// reports facts:
-//   - onFirstPlay(): play pressed for the first time (audio started)
-//   - onPauseAfterPlay(): paused (or ended) after having played
+// Engagement callback (rev C — the ONLY one): the page owns the trial-CTA
+// reveal decision (lib/landing.ts shouldRevealTrialCta).
 //   - onListenedSeconds(cum): cumulative REAL listening seconds, counted
 //     from timeupdate deltas only while playing (seeks don't count).
+// The rev-B first-play and pause-after-play callbacks were REMOVED with
+// the pause + idle reveal triggers (Marc final spec).
 
 import { useEffect, useRef, useState } from 'react'
 import {
@@ -44,10 +47,6 @@ interface GoSamplePlayerProps {
   audioUrl: string
   coverUrl: string
   title: string
-  genre: string
-  durationMins: number
-  onFirstPlay?: () => void
-  onPauseAfterPlay?: () => void
   onListenedSeconds?: (cumulativeSeconds: number) => void
 }
 
@@ -56,16 +55,11 @@ export default function GoSamplePlayer({
   audioUrl,
   coverUrl,
   title,
-  genre,
-  durationMins,
-  onFirstPlay,
-  onPauseAfterPlay,
   onListenedSeconds,
 }: GoSamplePlayerProps) {
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const lastSavedRef = useRef<number | null>(null)
   const resumeAppliedRef = useRef(false)
-  const everPlayedRef = useRef(false)
   // Listening-time accumulation: previous timeupdate position + running total.
   const lastTickRef = useRef<number | null>(null)
   const listenedRef = useRef(0)
@@ -157,10 +151,6 @@ export default function GoSamplePlayer({
     setHasStarted(true)
     const el = audioRef.current
     if (el) lastTickRef.current = el.currentTime
-    if (!everPlayedRef.current) {
-      everPlayedRef.current = true
-      onFirstPlay?.()
-    }
   }
 
   const handlePauseLike = () => {
@@ -168,7 +158,6 @@ export default function GoSamplePlayer({
     lastTickRef.current = null
     const el = audioRef.current
     if (el && el.currentTime > 0) persist(el.currentTime, true)
-    if (everPlayedRef.current) onPauseAfterPlay?.()
   }
 
   return (
@@ -288,27 +277,6 @@ export default function GoSamplePlayer({
             ▶
           </button>
         )}
-
-        {/* Slim translucent info bar — bottom edge of the art */}
-        <div style={{
-          position: 'absolute',
-          left: 0,
-          right: 0,
-          bottom: 0,
-          padding: '0.55rem 0.9rem',
-          backgroundColor: 'rgba(15,15,26,0.72)',
-          backdropFilter: 'blur(6px)',
-          WebkitBackdropFilter: 'blur(6px)',
-          color: '#ffffff',
-          fontSize: '0.85rem',
-          fontWeight: 600,
-          textAlign: 'center',
-          whiteSpace: 'nowrap',
-          overflow: 'hidden',
-          textOverflow: 'ellipsis',
-        }}>
-          {title} · {genre} · {durationMins} min
-        </div>
       </div>
 
       {/* ===== Compact pause/seek row — replaces the big overlay once started ===== */}
