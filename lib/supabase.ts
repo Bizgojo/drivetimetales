@@ -17,10 +17,21 @@ if (!supabaseUrl || !supabaseAnonKey) {
   console.error('[DTT Debug] Make sure NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY are set in Vercel');
 }
 
-// Client-side Supabase client
+// Client-side Supabase client.
+// ORION-ENTITLE-SYNC-001: this client is a session FOLLOWER. AuthContext
+// mirrors the cookie session into it (setSession) on every auth event, so
+// data queries carry the user's JWT. It must NEVER refresh tokens itself —
+// two refreshers on one refresh-token family trip Supabase's rotation
+// reuse detection and force sign-outs. Cookie client owns the session.
 export const supabase = createClient(
   supabaseUrl || 'https://placeholder.supabase.co',
-  supabaseAnonKey || 'placeholder-key'
+  supabaseAnonKey || 'placeholder-key',
+  {
+    auth: {
+      autoRefreshToken: false,
+      detectSessionInUrl: false,
+    },
+  }
 );
 
 // ============================================

@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
+import { supabaseBrowser } from '@/lib/supabase-browser'
 import { trackPlayStart, trackPlayEnd } from '@/lib/analytics'
 import { useAuth } from '@/contexts/AuthContext'
 import ReviewModal from '@/components/ReviewModal'
@@ -837,7 +838,12 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
           }
           const isMarc = user.email === 'marc@endless-tales.com' || user.email === 'm.postlewaite@gmail.com'
           if (!isMarc) {
-            const { data: dbUser } = await supabase
+            // ORION-ENTITLE-SYNC-001 (launch blocker, 2026-07-12): this gate
+            // MUST query through the cookie-based auth client. The plain
+            // lib/supabase client ran as ANON for cookie-only sessions (the
+            // default for this app's signup), RLS returned no row, and PAYING
+            // subscribers were bounced to /subscribe from the player.
+            const { data: dbUser } = await supabaseBrowser
               .from('users')
               .select('plan, subscription_type, subscription_ends_at')
               .eq('id', user.id)

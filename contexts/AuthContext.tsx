@@ -3,10 +3,35 @@
 import { createContext, useContext, useEffect, useRef, useState, ReactNode } from 'react'
 import { User, Session } from '@supabase/supabase-js'
 import { supabaseBrowser } from '@/lib/supabase-browser'
+import { supabase } from '@/lib/supabase'
 import { mergeLocalReadingProgress } from '@/lib/readingProgress'
 
 // Use cookie-aware client for all auth operations so middleware can read the session
 const authClient = supabaseBrowser
+
+// ORION-ENTITLE-SYNC-001 (launch blocker, 2026-07-12): the app has TWO browser
+// clients — this cookie-based auth client, and the plain localStorage client in
+// lib/supabase.ts that 40+ data components query through. Sessions created by
+// this app's signup/signin are cookie-ONLY, so every per-user query through
+// the plain client silently ran as ANON: RLS returned no users row, the player
+// paywall bounced PAYING subscribers to /subscribe, and user_library reads
+// came back empty. Mirror every cookie session into the data client so all
+// data queries carry the user's JWT. The data client never refreshes tokens
+// itself (autoRefreshToken:false) — it is a pure follower of this client.
+async function mirrorSessionToDataClient(session: Session | null) {
+  try {
+    if (session?.access_token && session?.refresh_token) {
+      await supabase.auth.setSession({
+        access_token: session.access_token,
+        refresh_token: session.refresh_token,
+      })
+    } else {
+      await supabase.auth.signOut({ scope: 'local' })
+    }
+  } catch (err) {
+    console.error('[AuthContext] data-client session mirror failed:', err)
+  }
+}
 
 interface DbUser {
   id: string
@@ -53,10 +78,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       const apiUrl = `${url}/rest/v1/users?id=eq.${authUser.id}&select=first_name,last_name,display_name,credits,plan,subscription_type,subscription_ends_at,is_founding_member`
       
+      // ORION-ENTITLE-SYNC-001: authorize as the USER, not the anon key — RLS
+      // returns nothing for anon, which silently stripped subscription fields
+      // from the context user (same defect class as the player paywall bounce).
+      const { data: { session: currentSession } } = await authClient.auth.getSession()
       const response = await fetch(apiUrl, {
         headers: {
           'apikey': key,
-          'Authorization': `Bearer ${key}`,
+          'Authorization': `Bearer ${currentSession?.access_token || key}`,
           'Content-Type': 'application/json'
         }
       })
@@ -90,6 +119,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         
         if (!isMounted) return
         
+        // ORION-ENTITLE-SYNC-001: keep the data client's auth in lockstep.
+        await mirrorSessionToDataClient(session)
+        
         setSession(session)
         
         if (session?.user) {
@@ -110,6 +142,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const { data: { subscription } } = authClient.auth.onAuthStateChange(async (_event, session) => {
       if (!isMounted) return
+      
+      // ORION-ENTITLE-SYNC-001: mirror on every auth event (sign-in, refresh,
+      // sign-out) so the data client can never drift back to anon mid-session.
+      await mirrorSessionToDataClient(session)
       
       setSession(session)
       
