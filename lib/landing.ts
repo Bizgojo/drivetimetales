@@ -62,7 +62,9 @@ export const GO_STORY_VARIANTS: Record<string, GoStory> = {
     genre: 'Mystery',
     // SUSAN-PASS: placeholder hook, Susan owns final copy.
     hook: 'A shopkeeper lies dead below Liberty Bridge — and all of Greenville has a theory.',
-    coverUrl: 'https://vmyhlfeouzslixtkmddy.supabase.co/storage/v1/object/public/Covers/landing/go-variant-b/cover.jpg',
+    // Liberty Bridge corrected art (Marc redo directive 2026-07-12): curved
+    // single-side-cable pedestrian suspension bridge, vision-QA PASS.
+    coverUrl: 'https://vmyhlfeouzslixtkmddy.supabase.co/storage/v1/object/public/Covers/landing/go-variant-b/cover_20260712_liberty.jpg',
     audioUrl: 'https://vmyhlfeouzslixtkmddy.supabase.co/storage/v1/object/public/audio/landing/go-variant-b/final_mix.mp3',
   },
 }
