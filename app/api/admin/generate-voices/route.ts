@@ -2318,12 +2318,24 @@ async function generateVoiceLine(rawText: string, voiceId: string, storyId: stri
           )
           const splitRescueUrl = await trySplitTruncationRescue()
           if (splitRescueUrl) return splitRescueUrl
-          throw attachSplitDiagnostics(new Error(
-            `Segment transcript QC failed for ${fileName} [REPEATED_IDENTICAL_TRUNCATION]: ` +
-            `Whisper returned the same partial output "${truncatedAt}" across all ${transcriptDetectedTexts.length} retry candidates. ` +
-            `Retrying will not help. Split this segment into shorter sub-segments. ` +
-            `expected "${transcriptFailure.expectedText}"`
-          ), splitRescueDiagnostics)
+          // ORION-QC-DIAG-001 (2026-07-12, temporary): seg50 keeps throwing here in
+          // production while current main provably accepts the pair via PIPE-011
+          // (similarity 1.0 in repo). Stamp the deployed commit + the values THIS
+          // runtime actually computed into the error so the next failure identifies
+          // the executing build from error_json alone. Remove after root-cause close.
+          {
+            const diagExpTok = transcriptTokens(transcriptFailure.expectedText || '')
+            const diagDetTok = transcriptTokens(truncatedAt || transcriptFailure.detectedText || '')
+            const diagSim = transcriptSimilarity(diagExpTok, diagDetTok)
+            throw attachSplitDiagnostics(new Error(
+              `Segment transcript QC failed for ${fileName} [REPEATED_IDENTICAL_TRUNCATION]: ` +
+              `Whisper returned the same partial output "${truncatedAt}" across all ${transcriptDetectedTexts.length} retry candidates. ` +
+              `Retrying will not help. Split this segment into shorter sub-segments. ` +
+              `expected "${transcriptFailure.expectedText}" ` +
+              `[qc-diag build=${process.env.VERCEL_GIT_COMMIT_SHA || 'unknown'} ` +
+              `pipe011sim=${diagSim.toFixed(3)} expTok=${JSON.stringify(diagExpTok)} detTok=${JSON.stringify(diagDetTok)}]`
+            ), splitRescueDiagnostics)
+          }
         }
         // INC-005: if Whisper returned exactly "?" (or empty), this is not a normalizable
         // mismatch — Whisper was confused by the audio. Classify immediately as
