@@ -46,3 +46,6 @@ tsconfig.tsbuildinfo
 
 # Personalization worker runtime logs
 scripts/personalization/pool-worker.log
+
+# symlinked node_modules (worktrees) — trailing-slash pattern above misses symlinks
+node_modules

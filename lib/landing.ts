@@ -136,6 +136,8 @@ export function getTrialDisplay(
     days,
     ctaLabel: `Start Your ${days}-Day Free Trial`,
     subtext: `Free for ${days} days. Cancel anytime — you won't be charged before your trial ends.`,
-    appliedBadge: promoStatus === 'valid' && promoCode ? `Code ${promoCode} applied ✓` : null,
+    // ORION-GO-OFFER-COPY-001 (Marc, 2026-07-12): never show raw promo codes
+    // in customer-facing copy — generic offer language only.
+    appliedBadge: promoStatus === 'valid' && promoCode ? `Special offer applied — ${days}-day free trial ✓` : null,
   }
 }
