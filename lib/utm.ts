@@ -128,6 +128,14 @@ export function readStoredUtm(): StoredUtm {
   }
 }
 
+// ORION-FUNNEL-POLISH-001 (Marc, 2026-07-12): paid/UTM arrivals already carry
+// their source — the signup form hides the 'Where did you hear about us?'
+// question for them (every removed field lifts conversion) and only asks
+// organic/no-UTM visitors.
+export function hasUtmAttribution(utm: Pick<StoredUtm, 'source' | 'medium' | 'campaign'>): boolean {
+  return Boolean(utm.source || utm.medium || utm.campaign)
+}
+
 export function clearStoredUtm(): void {
   if (typeof window === 'undefined') return
   try {

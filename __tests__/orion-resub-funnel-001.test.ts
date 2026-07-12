@@ -135,3 +135,18 @@ describe('ORION-RESUB-FUNNEL-001: buildSubscribeCheckoutPayload (signed-in CTA)'
     expect(payload.returnTo).toBeUndefined()
   })
 })
+
+// ORION-FUNNEL-POLISH-001: heard-about question hides for UTM arrivals.
+import { hasUtmAttribution } from '@/lib/utm'
+
+describe('ORION-FUNNEL-POLISH-001: hasUtmAttribution', () => {
+  test('utm_source present → attribution', () => {
+    expect(hasUtmAttribution({ source: 'facebook', medium: null, campaign: null })).toBe(true)
+  })
+  test('utm_campaign alone → attribution', () => {
+    expect(hasUtmAttribution({ source: null, medium: null, campaign: 'gvl-launch-202607' })).toBe(true)
+  })
+  test('no utm fields → organic (question shows)', () => {
+    expect(hasUtmAttribution({ source: null, medium: null, campaign: null })).toBe(false)
+  })
+})

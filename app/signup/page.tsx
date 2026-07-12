@@ -4,7 +4,7 @@ import { useState, useEffect, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
 import { supabase } from '@/lib/supabase'
-import { buildAttributionUpdatePayload, normalizePromoCode, readSignupAttribution } from '@/lib/utm'
+import { buildAttributionUpdatePayload, hasUtmAttribution, normalizePromoCode, readSignupAttribution, readStoredUtm } from '@/lib/utm'
 import { normalizeEmail } from '@/lib/email'
 import { applyPromoTrialDays } from '@/lib/promo'
 import { isEntitledUser } from '@/lib/entitlement'
@@ -23,6 +23,8 @@ const HEARD_ABOUT_OPTIONS = [
   'TikTok',
   'Reddit',
   'A local group',
+  // ORION-FUNNEL-POLISH-001: referral-program option for organic arrivals.
+  'A friend told me',
   'Other',
 ]
 
@@ -72,6 +74,10 @@ function SignUpContent() {
   // 'none' = no code or validation unavailable (fail quiet → default display)
   const [promoStatus, setPromoStatus] = useState<'none' | 'valid' | 'invalid'>('none')
   const [heardAbout, setHeardAbout] = useState('')
+  // ORION-FUNNEL-POLISH-001: UTM arrivals already tell us the source — hide
+  // the heard-about question for them (fewer fields → higher conversion).
+  // Determined client-side only (localStorage + URL) to stay SSR-safe.
+  const [showHeardAbout, setShowHeardAbout] = useState(false)
   const returnTo = safeInternalPath(searchParams.get('returnTo'))
 
   // ATL-POST-SUB-LOOP-001: authenticated users must never see the signup form.
@@ -93,6 +99,16 @@ function SignUpContent() {
     // 'returnTo' are stripped (stale routing state, not attribution).
     router.replace(`/home${carryQueryString(searchParams.toString(), AUTHED_REDIRECT_EXCLUDED_PARAMS)}`)
   }, [authLoading, redirectAuthed, router, searchParams])
+
+  useEffect(() => {
+    const stored = readStoredUtm()
+    const urlUtm = {
+      source: searchParams.get('utm_source'),
+      medium: searchParams.get('utm_medium'),
+      campaign: searchParams.get('utm_campaign'),
+    }
+    setShowHeardAbout(!hasUtmAttribution(stored) && !hasUtmAttribution(urlUtm))
+  }, [searchParams])
 
   useEffect(() => {
     const { days, variant } = getTrialVariant()
@@ -157,7 +173,9 @@ function SignUpContent() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault(); setError(''); setLoading(true)
-    const selectedHeardAbout = heardAbout || 'Other'
+    // ORION-FUNNEL-POLISH-001: when the question is hidden (UTM arrival) we
+    // record nothing — attribution columns carry the real source.
+    const selectedHeardAbout = showHeardAbout ? (heardAbout || 'Other') : ''
     const attribution = readSignupAttribution(promoCode)
     // ATL-CHECKOUT-HYGIENE-001 (defect 2): normalize once, use everywhere below.
     const normalizedEmail = normalizeEmail(email)
@@ -296,6 +314,7 @@ function SignUpContent() {
             </div>
           </div>
 
+          {showHeardAbout && (
           <div style={{ marginBottom: '1.5rem' }}>
             <label style={{ color: '#e2e8f0', fontSize: '14px', display: 'block', marginBottom: '0.65rem', fontWeight: 700 }}>Where did you hear about us?</label>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '8px' }}>
@@ -322,6 +341,7 @@ function SignUpContent() {
               ))}
             </div>
           </div>
+          )}
 
           {/* Billing cycle toggle */}
           <div style={{ marginBottom: '1.5rem' }}>
@@ -346,12 +366,13 @@ function SignUpContent() {
           {/* Promo code status (ATL-PROMO-UI-001) */}
           {promoCode && promoStatus === 'valid' && (
             <div style={{ color: '#86efac', fontSize: '13px', fontWeight: 700, textAlign: 'center', marginBottom: '0.75rem' }}>
-              Code {promoCode} applied ✓
+              {/* ORION-FUNNEL-POLISH-001: never show raw promo codes in copy. */}
+              Special offer applied — {trialDays}-day free trial ✓
             </div>
           )}
           {promoCode && promoStatus === 'invalid' && (
             <div style={{ color: '#94a3b8', fontSize: '12.5px', textAlign: 'center', marginBottom: '0.75rem' }}>
-              Code {promoCode} not recognized
+              That offer link isn’t valid — standard trial applies
             </div>
           )}
 

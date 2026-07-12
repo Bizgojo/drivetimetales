@@ -152,12 +152,13 @@ function SubscribeContent() {
 
         {promoCode && promoStatus === 'valid' && (
           <div style={{ color: '#86efac', fontSize: '13px', fontWeight: 700, textAlign: 'center', marginBottom: '0.75rem' }}>
-            Code {promoCode} applied ✓ — {trialDays}-day free trial
+            {/* ORION-FUNNEL-POLISH-001: never show raw promo codes in copy. */}
+            Special offer applied — {trialDays}-day free trial ✓
           </div>
         )}
         {promoCode && promoStatus === 'invalid' && (
           <div style={{ color: '#94a3b8', fontSize: '12.5px', textAlign: 'center', marginBottom: '0.75rem' }}>
-            Code {promoCode} not recognized
+            That offer link isn’t valid — standard trial applies
           </div>
         )}
 
