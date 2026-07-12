@@ -1,10 +1,8 @@
 'use client'
 import { useState, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/contexts/AuthContext'
 import HorizontalStoryCard from '@/components/HorizontalStoryCard'
-import SeriesCard from '@/components/SeriesCard'
 import { buildSeriesPlaybackTarget } from '@/lib/seriesPlayback'
 
 interface Story {
@@ -43,7 +41,6 @@ function isLaunchInventory(story: Story) {
 }
 
 export default function RecommendedForYou({ excludeIds = [] }: { excludeIds?: string[] }) {
-  const router = useRouter()
   const { user } = useAuth()
   const [displayItems, setDisplayItems] = useState<DisplayItem[]>([])
   const [loading, setLoading] = useState(true)
@@ -219,13 +216,29 @@ export default function RecommendedForYou({ excludeIds = [] }: { excludeIds?: st
       <h2 className="text-lg font-bold text-white" style={{ marginBottom: '1rem' }}>RECOMMENDED FOR YOU</h2>
       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
         {displayItems.map(item => {
+          // ORION-CARD-CANON-001 (Marc walk fix 4, 2026-07-12): ONE canonical
+          // card design per list — HSC everywhere (orange pill canon), for both
+          // series groups and singles. Series cards deep-link the next-up
+          // episode; the player merges saved progress so Continue just works.
           if (item.type === 'series') {
-            return <SeriesCard key={'series-' + item.group.id} id={item.group.id} series_name={item.group.series_name} genre={item.group.genre} author={item.group.author} episode_count={item.group.episode_count} total_duration_mins={item.group.total_duration_mins} cover_url={item.group.cover_url} description={item.group.description} episodes={item.group.episodes} play_episode_id={item.group.play_episode_id} resume_seconds={item.group.resume_seconds} is_in_progress={item.group.is_in_progress} />
+            return (
+              <HorizontalStoryCard
+                key={'series-' + item.group.id}
+                id={item.group.play_episode_id || item.group.episodes[0]?.id || item.group.id}
+                title={item.group.series_name}
+                genre={item.group.genre}
+                author={item.group.author || 'Endless Tales'}
+                duration_mins={item.group.total_duration_mins}
+                cover_url={item.group.cover_url}
+                description={item.group.description}
+                series_name={item.group.series_name}
+                series_total={item.group.episode_count}
+                progress_percent={item.group.is_in_progress ? Math.min(99, Math.max(1, Math.round(((item.group.resume_seconds || 0) / Math.max(1, item.group.total_duration_mins * 60)) * 100))) : undefined}
+              />
+            )
           }
           return (
-            <div key={item.story.id} onClick={() => router.push('/player/' + item.story.id + '?autoplay=1&playNow=1')} style={{ cursor: 'pointer' }}>
-              <HorizontalStoryCard id={item.story.id} title={item.story.title} genre={item.story.genre} author={item.story.author || 'Endless Tales'} duration_mins={item.story.duration_mins} cover_url={item.story.cover_url} avg_rating={item.story.avg_rating} review_count={item.story.review_count} />
-            </div>
+            <HorizontalStoryCard key={item.story.id} id={item.story.id} title={item.story.title} genre={item.story.genre} author={item.story.author || 'Endless Tales'} duration_mins={item.story.duration_mins} cover_url={item.story.cover_url} description={item.story.description} avg_rating={item.story.avg_rating} review_count={item.story.review_count} />
           )
         })}
       </div>
