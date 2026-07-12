@@ -2333,7 +2333,8 @@ async function generateVoiceLine(rawText: string, voiceId: string, storyId: stri
               `Retrying will not help. Split this segment into shorter sub-segments. ` +
               `expected "${transcriptFailure.expectedText}" ` +
               `[qc-diag build=${process.env.VERCEL_GIT_COMMIT_SHA || 'unknown'} ` +
-              `pipe011sim=${diagSim.toFixed(3)} expTok=${JSON.stringify(diagExpTok)} detTok=${JSON.stringify(diagDetTok)}]`
+              `pipe011sim=${diagSim.toFixed(3)} expTok=${JSON.stringify(diagExpTok)} detTok=${JSON.stringify(diagDetTok)} ` +
+              `expCP=${[...(transcriptFailure.expectedText || '')].slice(0, 60).map(c => c.codePointAt(0)!.toString(16)).join(',')}]`
             ), splitRescueDiagnostics)
           }
         }
