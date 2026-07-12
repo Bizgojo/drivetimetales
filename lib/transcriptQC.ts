@@ -1316,3 +1316,7 @@ export function evaluateTranscriptQC(expectedText: string, detectedText: string)
     normalizedSimilarity,
   }
 }
+
+// ORION-QC-DIAG-002b: module build marker — printed by the generate-voices
+// truncation diagnostic to detect stale compiled chunks in deployments.
+export const QC_MODULE_MARKER = 'unidash-001-20260712'
