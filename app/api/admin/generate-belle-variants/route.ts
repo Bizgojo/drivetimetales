@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { anthropicCall } from '@/app/lib/anthropic-logger'
 import { CANONICAL_BELLE_B_VOICE_ID } from '@/lib/voiceConstants'
+import { computeBelleVariantCacheKey, isBelleVariantCacheHit } from '@/lib/belleVariantCache'
 
 export const runtime = 'nodejs'
 export const maxDuration = 120
@@ -23,6 +24,11 @@ type BelleVariant = {
 
 const INTRO_VARIANTS = ['session_first', 'session_continue', 'returning_listener', 'simple']
 const OUTRO_VARIANTS = ['simple', 'reflective', 'series_continue']
+const BELLE_VARIANT_MODEL = 'claude-haiku-4-5'
+const EXPECTED_VARIANT_KEYS = [
+  ...INTRO_VARIANTS.map((key) => `intro:${key}`),
+  ...OUTRO_VARIANTS.map((key) => `outro:${key}`),
+]
 const CANNED_PATTERNS = [
   /\bwelcome\b/i,
   /\bwelcome to endless tales\b/i,
@@ -289,8 +295,37 @@ Return strict JSON only:
   ]
 }`
 
+    // ATL-BELLE-CACHE-001: reuse previously generated variants when the
+    // inputs (script/prose excerpts + template version + variant parameters,
+    // all embedded in the prompt) are unchanged. Retries after package races
+    // or circuit re-dispatches hit this path and skip the LLM call entirely.
+    const scriptHash = computeBelleVariantCacheKey({ model: BELLE_VARIANT_MODEL, prompt })
+    const { data: existingVariants, error: cacheLookupError } = await supabase
+      .from('story_belle_variants')
+      .select('*')
+      .eq('story_id', storyId)
+      .order('kind', { ascending: true })
+
+    if (cacheLookupError) {
+      // Fail open: a lookup error must never block generation.
+      console.warn(`[belle-variant-cache] lookup failed for story ${storyId}: ${cacheLookupError.message}`)
+    } else if (isBelleVariantCacheHit(existingVariants, EXPECTED_VARIANT_KEYS, scriptHash)) {
+      console.log(`belle variant cache HIT for ${scriptHash} (story ${storyId}) — reusing ${existingVariants!.length} stored variants, skipping LLM call`)
+      return json({
+        success: true,
+        storyId,
+        belleName: 'Belle',
+        belleVoiceId: CANONICAL_BELLE_B_VOICE_ID,
+        count: existingVariants!.length,
+        variants: existingVariants,
+        cached: true,
+        scriptHash,
+      })
+    }
+    console.log(`belle variant cache MISS for ${scriptHash} (story ${storyId}) — generating variants`)
+
     const response = await anthropicCall({
-      model: 'claude-haiku-4-5',
+      model: BELLE_VARIANT_MODEL,
       max_tokens: 1800,
       messages: [{ role: 'user', content: prompt }],
     }, {
@@ -304,7 +339,7 @@ Return strict JSON only:
     const raw = String(response.content?.[0]?.type === 'text' ? response.content[0].text : '').trim()
     const parsed = extractJsonObject(raw)
     const variants = Array.isArray(parsed?.variants) ? parsed.variants.map(normalizeVariant) : []
-    const expectedKeys = new Set([...INTRO_VARIANTS.map((key) => `intro:${key}`), ...OUTRO_VARIANTS.map((key) => `outro:${key}`)])
+    const expectedKeys = new Set(EXPECTED_VARIANT_KEYS)
     const seenKeys = new Set(variants.map((variant) => `${variant.kind}:${variant.variant_key}`))
     const missingExpected = Array.from(expectedKeys).filter((key) => !seenKeys.has(key))
 
@@ -337,16 +372,33 @@ Return strict JSON only:
       tone: entry.variant.tone || null,
       series_position: entry.variant.series_position || position,
       opening_style: entry.variant.opening_style || null,
+      script_hash: scriptHash,
     }))
 
     const { error: deleteError } = await supabase.from('story_belle_variants').delete().eq('story_id', storyId)
     if (deleteError) throw new Error(`Failed to clear existing Belle variants: ${deleteError.message}`)
 
-    const { data: inserted, error: insertError } = await supabase
+    let { data: inserted, error: insertError } = await supabase
       .from('story_belle_variants')
       .insert(rows)
       .select('*')
       .order('kind', { ascending: true })
+
+    if (insertError && /script_hash/i.test(insertError.message || '')) {
+      // Safety net: script_hash column not migrated yet. Store variants
+      // without the hash (behaves as a permanent cache miss) rather than
+      // failing the pipeline step. Apply migration
+      // supabase/migrations/20260712120000_belle_variant_script_hash.sql.
+      console.warn(`[belle-variant-cache] script_hash column missing — storing variants without hash: ${insertError.message}`)
+      const legacyRows = rows.map(({ script_hash: _omit, ...rest }) => rest)
+      const retry = await supabase
+        .from('story_belle_variants')
+        .insert(legacyRows)
+        .select('*')
+        .order('kind', { ascending: true })
+      inserted = retry.data
+      insertError = retry.error
+    }
 
     if (insertError) throw new Error(`Failed to store Belle variants: ${insertError.message}`)
 
@@ -357,6 +409,8 @@ Return strict JSON only:
       belleVoiceId: CANONICAL_BELLE_B_VOICE_ID,
       count: inserted?.length || 0,
       variants: inserted || [],
+      cached: false,
+      scriptHash,
     })
   } catch (err) {
     return json({
