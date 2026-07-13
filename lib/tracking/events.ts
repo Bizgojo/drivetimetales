@@ -29,12 +29,12 @@ export type TrackedEventName =
   | 'StartTrial'
   | 'Subscribe'
 
-// Meta paid-conversion event name — DECISION PENDING WITH MARC
-// (GVL_ADS_PLAYBOOK v1 reconciliation, 2026-07-13): his ticket says
-// 'Subscribe'; Susan proposes standard 'Purchase' for optimization strength.
-// Isolated here so the swap is ONE line either way. value+currency are sent
-// regardless (webhook passes invoice amount).
-export const META_PAID_CONVERSION_EVENT: 'Subscribe' | 'Purchase' = 'Subscribe'
+// Meta paid-conversion event name — DECIDED BY MARC 2026-07-13 10:46 EDT:
+// standard 'Purchase' (Susan's optimization-strength recommendation) with
+// value/currency from the actual invoice (7.99 monthly), sent by the webhook.
+// Internal tracked-event name stays 'Subscribe'; only the Meta wire name
+// changes here.
+export const META_PAID_CONVERSION_EVENT: 'Subscribe' | 'Purchase' = 'Purchase'
 
 // Meta standard events otherwise map 1:1.
 export function metaEventName(name: TrackedEventName): string {

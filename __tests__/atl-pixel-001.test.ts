@@ -41,9 +41,9 @@ describe('event name mapping (STANDARD events both platforms — playbook-reconc
     }
   })
 
-  test('Meta paid conversion routed through one-line-swap constant (Subscribe vs Purchase pending Marc)', () => {
-    expect(metaEventName('Subscribe')).toBe(META_PAID_CONVERSION_EVENT)
-    expect(['Subscribe', 'Purchase']).toContain(META_PAID_CONVERSION_EVENT)
+  test('Meta paid conversion = Purchase (Marc decision 2026-07-13 10:46 EDT)', () => {
+    expect(META_PAID_CONVERSION_EVENT).toBe('Purchase')
+    expect(metaEventName('Subscribe')).toBe('Purchase')
   })
 
   // FINALIZED TikTok architecture (Orion 2026-07-13): CompleteRegistration
