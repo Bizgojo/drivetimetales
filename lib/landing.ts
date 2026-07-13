@@ -23,6 +23,14 @@ import { BASE_TRIAL_DAYS, applyPromoTrialDays } from './promo'
 // the image errors.
 // ============================================================================
 
+/**
+ * Cumulative listened seconds that reveal the trial CTA — DEFAULT only.
+ * WALK-BUG-0713 #1 (Marc, 2026-07-13): the reveal is PER-STORY, keyed to when
+ * each sample's hook actually lands (GoStory.ctaRevealSeconds); this constant
+ * is the fallback. Declared above the story literals — they reference it.
+ */
+export const CTA_REVEAL_LISTEN_SEC = 45
+
 export interface GoStory {
   /** landing_stories.id (default) or synthetic variant id. */
   id: string
@@ -39,6 +47,12 @@ export interface GoStory {
    * no catalog counterpart yet (Grave/control — fast-follow).
    */
   catalogStoryId: string | null
+  /**
+   * WALK-BUG-0713 #1 (Marc, 2026-07-13): cumulative listened seconds before
+   * ANY trial CTA (sheet + static footer) appears — per-story, keyed to when
+   * the sample's hook lands. No CTA of any kind renders before this.
+   */
+  ctaRevealSeconds: number
 }
 
 /** DEFAULT — live today. Always renders while GO_AB_LIVE is false. */
@@ -53,6 +67,8 @@ export const GO_SAMPLE_STORY: GoStory = {
   // Grave is a landing-only sample (not in the main catalog) — continue-on-home
   // for the control variant is an honest fast-follow (Marc walk, 2026-07-12).
   catalogStoryId: null,
+  // Hook not yet timed for the control sample — default threshold.
+  ctaRevealSeconds: CTA_REVEAL_LISTEN_SEC,
 }
 
 /** Greenville test variants — inert until GO_AB_LIVE flips to true. */
@@ -65,6 +81,9 @@ export const GO_STORY_VARIANTS: Record<string, GoStory> = {
     hook: 'Greenville\u2019s Commuter of the Year has never once made the drive.',
     // "The Borrowed Buick" — Commuter of the Year ep1, published 2026-07-12.
     catalogStoryId: 'fe23bfd4-d6c9-4ad9-b833-37657287c0f3',
+    // INTERIM 45s — hook moment being timed from the sample transcript
+    // (WALK-BUG-0713 #1); Marc confirms the final value.
+    ctaRevealSeconds: CTA_REVEAL_LISTEN_SEC,
     coverUrl: 'https://vmyhlfeouzslixtkmddy.supabase.co/storage/v1/object/public/Covers/landing/go-variant-a/cover.jpg',
     audioUrl: 'https://vmyhlfeouzslixtkmddy.supabase.co/storage/v1/object/public/audio/landing/go-variant-a/final_mix.mp3',
   },
@@ -76,6 +95,9 @@ export const GO_STORY_VARIANTS: Record<string, GoStory> = {
     hook: 'A shopkeeper lies dead below Liberty Bridge — and all of Greenville has a theory.',
     // "The Wrong Quote" — Murder at Falls Park ep1, published 2026-07-12.
     catalogStoryId: '09457ef0-e32f-48e2-a1bb-3311ddd68a49',
+    // Falls Park hook lands at 1:36 in the sample — CTA at ~100s (Marc,
+    // 2026-07-13, WALK-BUG-0713 #1 amendment).
+    ctaRevealSeconds: 100,
     // Liberty Bridge corrected art (Marc redo directive 2026-07-12): curved
     // single-side-cable pedestrian suspension bridge, vision-QA PASS.
     coverUrl: 'https://vmyhlfeouzslixtkmddy.supabase.co/storage/v1/object/public/Covers/landing/go-variant-b/cover_20260712_liberty.jpg',
@@ -120,19 +142,25 @@ export function resolveGoStory(search: string, liveVariants: ReadonlyArray<strin
 // (__tests__/landing-go-002).
 // ============================================================================
 
-/** Cumulative listened seconds that reveal the trial CTA. */
-export const CTA_REVEAL_LISTEN_SEC = 45
+// CTA_REVEAL_LISTEN_SEC is declared above the GoStory literals (they
+// reference it); per-story values live on GoStory.ctaRevealSeconds.
 
 export interface CtaRevealInput {
   /** Cumulative seconds of actual playback (timeupdate deltas while playing). */
   listenedSec: number
   /** Latch: once shown, stays shown. */
   alreadyRevealed?: boolean
+  /** Per-story reveal threshold (GoStory.ctaRevealSeconds). Default 45. */
+  revealAfterSec?: number
 }
 
 export function shouldRevealTrialCta(input: CtaRevealInput): boolean {
   if (input.alreadyRevealed) return true
-  return Number.isFinite(input.listenedSec) && input.listenedSec >= CTA_REVEAL_LISTEN_SEC
+  const threshold =
+    Number.isFinite(input.revealAfterSec) && (input.revealAfterSec as number) > 0
+      ? (input.revealAfterSec as number)
+      : CTA_REVEAL_LISTEN_SEC
+  return Number.isFinite(input.listenedSec) && input.listenedSec >= threshold
 }
 
 // ============================================================================

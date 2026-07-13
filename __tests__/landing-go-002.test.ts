@@ -224,7 +224,7 @@ describe('SUS/ATL-LANDING-002 rev C: layout + copy pins', () => {
     expect(pageSrc).toContain('shouldRevealTrialCta')
   })
 
-  test('STATIC BOTTOM CTA: always-present in-flow block with button + trial subline', () => {
+  test('STATIC BOTTOM CTA: in-flow block with button + trial subline (WALK-BUG-0713: reveal-gated)', () => {
     expect(pageSrc).toContain('STATIC BOTTOM CTA')
     // Two 'Start free trial' buttons: the sheet + the static block.
     expect((pageSrc.match(/Start free trial/g) || []).length).toBe(2)
@@ -234,10 +234,12 @@ describe('SUS/ATL-LANDING-002 rev C: layout + copy pins', () => {
     expect((pageSrc.match(/-day free trial · cancel anytime/g) || []).length).toBe(2)
   })
 
-  test('static CTA never animates (no transform/transition, not gated on ctaRevealed)', () => {
+  test('static CTA never animates (no transform/transition) but IS gated on ctaRevealed (WALK-BUG-0713 #1)', () => {
     const staticBlock = pageSrc.slice(pageSrc.indexOf('STATIC BOTTOM CTA'), pageSrc.indexOf('Legal — small, bottom'))
     expect(staticBlock.length).toBeGreaterThan(0)
-    expect(staticBlock).not.toMatch(/transform|transition|ctaRevealed/)
+    expect(staticBlock).not.toMatch(/transform|transition/)
+    // Marc 2026-07-13: NO trial CTA of any kind before the hook lands.
+    expect(staticBlock).toMatch(/\{ctaRevealed && \(/)
   })
 
   test('promo badge copy unchanged (never raw codes)', () => {
@@ -253,5 +255,43 @@ describe('SUS/ATL-LANDING-002 rev C: layout + copy pins', () => {
   test('terms/privacy footer links remain', () => {
     expect(pageSrc).toContain('href="/terms"')
     expect(pageSrc).toContain('href="/privacy"')
+  })
+})
+
+// ============================================================================
+// WALK-BUG-0713 #1 (Marc, 2026-07-13): per-story CTA reveal + NO pre-hook CTA
+// ============================================================================
+describe('WALK-BUG-0713 #1: per-story CTA reveal', () => {
+  test('per-story threshold wins over the 45s default', () => {
+    expect(shouldRevealTrialCta({ listenedSec: 45, revealAfterSec: 100 })).toBe(false)
+    expect(shouldRevealTrialCta({ listenedSec: 99.9, revealAfterSec: 100 })).toBe(false)
+    expect(shouldRevealTrialCta({ listenedSec: 100, revealAfterSec: 100 })).toBe(true)
+  })
+
+  test('invalid per-story threshold falls back to 45s default', () => {
+    expect(shouldRevealTrialCta({ listenedSec: 45, revealAfterSec: NaN })).toBe(true)
+    expect(shouldRevealTrialCta({ listenedSec: 45, revealAfterSec: 0 })).toBe(true)
+    expect(shouldRevealTrialCta({ listenedSec: 44, revealAfterSec: undefined })).toBe(false)
+  })
+
+  test('latch still wins regardless of threshold', () => {
+    expect(shouldRevealTrialCta({ listenedSec: 0, alreadyRevealed: true, revealAfterSec: 100 })).toBe(true)
+  })
+
+  test('Falls Park (variant b) reveals at ~100s — hook lands at 1:36', () => {
+    expect(GO_STORY_VARIANTS.b.ctaRevealSeconds).toBe(100)
+  })
+
+  test('variant a + default carry explicit thresholds (interim 45 pending hook timing)', () => {
+    expect(GO_STORY_VARIANTS.a.ctaRevealSeconds).toBe(CTA_REVEAL_LISTEN_SEC)
+    expect(GO_SAMPLE_STORY.ctaRevealSeconds).toBe(CTA_REVEAL_LISTEN_SEC)
+  })
+
+  test('page gates the static bottom CTA behind the reveal latch (no pre-hook CTA)', () => {
+    // The static footer CTA must render ONLY inside a {ctaRevealed && ...}
+    // block, and the page must pass the per-story threshold into the check.
+    expect(pageSrc).toMatch(/\{ctaRevealed && \(/)
+    expect(pageSrc).toMatch(/revealAfterSec/)
+    expect(pageSrc).not.toMatch(/Always present from arrival/)
   })
 })
