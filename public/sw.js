@@ -1,7 +1,12 @@
-// Endless Tales Service Worker v6
+// Endless Tales Service Worker v7
 // Full offline support: app shell + audio caching
+// v7 (WALK-BUG-0713, 2026-07-13): cache-name bump to force-purge stale shells.
+// Devices whose SW predated the isNextScriptChunk exemption were serving old
+// webpack chunks into fresh HTML — old module factories hydrating new pages
+// (crash on /home post-signup, mixed-era chrome/double headers, missing
+// Continue hero). Activating v7 deletes et-shell-v6 and recaches clean.
 
-const SHELL_CACHE  = 'et-shell-v6'
+const SHELL_CACHE  = 'et-shell-v7'
 const AUDIO_CACHE  = 'et-audio-v1'
 
 // App shell pages to cache on install

@@ -80,14 +80,17 @@ function GoLandingContent() {
   // latch (once shown, stays shown) lives here.
   const [ctaRevealed, setCtaRevealed] = useState(false)
 
-  const handleListenedSeconds = useCallback((cum: number) => {
-    if (cum < CTA_REVEAL_LISTEN_SEC) return
-    setCtaRevealed(prev => shouldRevealTrialCta({ listenedSec: cum, alreadyRevealed: prev }))
-  }, [])
-
   // A/B story selection — gated by GO_AB_LIVE in lib/landing.ts (currently
   // OFF: the default Grave story always renders regardless of ?v=).
   const story = resolveGoStory(searchParams.toString())
+
+  // WALK-BUG-0713 #1: per-story reveal threshold — the CTA appears only once
+  // this sample's hook has landed (GoStory.ctaRevealSeconds), not a fixed 45s.
+  const revealAfterSec = story.ctaRevealSeconds
+  const handleListenedSeconds = useCallback((cum: number) => {
+    if (cum < revealAfterSec) return
+    setCtaRevealed(prev => shouldRevealTrialCta({ listenedSec: cum, alreadyRevealed: prev, revealAfterSec }))
+  }, [revealAfterSec])
 
   // CTA href: promo + full utm_* set from the current URL → /signup.
   const ctaHref = buildCampaignSignupHref(searchParams)
@@ -194,9 +197,11 @@ function GoLandingContent() {
           </span>
         </div>
 
-        {/* ===== STATIC BOTTOM CTA (rev C) — plain in-flow block at the very
-            bottom for scrollers. Always present from arrival, never animates.
-            Modest styling so it doesn't compete with the hero. */}
+        {/* ===== STATIC BOTTOM CTA — WALK-BUG-0713 #1 (Marc, 2026-07-13):
+            NO trial CTA of any kind before the hook lands. This block now
+            renders only after the same per-story reveal latch as the sheet
+            (was: always present from arrival — that was the walk bug). */}
+        {ctaRevealed && (
         <div style={{ marginTop: 'auto', width: '100%', padding: '3rem 1.5rem 0' }}>
           <Link
             href={ctaHref}
@@ -218,6 +223,7 @@ function GoLandingContent() {
             {trial.days}-day free trial · cancel anytime
           </div>
         </div>
+        )}
 
         {/* Legal — small, bottom */}
         <div style={{ paddingTop: '1.6rem', fontSize: '0.75rem', color: '#ffffff' }}>
