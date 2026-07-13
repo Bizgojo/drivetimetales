@@ -11,6 +11,7 @@
 import {
   metaEventName,
   tiktokEventName,
+  META_PAID_CONVERSION_EVENT,
   registrationEventId,
   startTrialEventId,
   subscribeEventId,
@@ -32,23 +33,35 @@ const EMAIL_HASH = '973dfe463ec85785f5f95af5ba3906eedb2d931c24e69824a89ea65dba4e
 const PHONE_HASH = 'd6736136ea896c1bfdc553e0e86e702c70d060d805696ca3e4e9e0961353860a' // 15551234567
 const EXTID_HASH = 'a8347d5a84b1ee3d0bfc244c6e15984a60d911095147dc3ec17fcb2a7119d695' // user-uuid-123
 
-describe('event name mapping (identical both platforms except documented TikTok diffs)', () => {
-  test('Meta names pass through unchanged', () => {
-    for (const name of ['PageView', 'ViewContent', 'CompleteRegistration', 'InitiateCheckout', 'StartTrial', 'Subscribe'] as const) {
+describe('event name mapping (STANDARD events both platforms — playbook-reconciled)', () => {
+  test('Meta names pass through unchanged (except paid-conversion constant)', () => {
+    for (const name of ['PageView', 'ViewContent', 'CompleteRegistration', 'InitiateCheckout', 'StartTrial'] as const) {
       expect(metaEventName(name)).toBe(name)
     }
   })
 
-  test('TikTok: Subscribe → CompletePayment (Marc spec: first paid invoice)', () => {
+  test('Meta paid conversion routed through one-line-swap constant (Subscribe vs Purchase pending Marc)', () => {
+    expect(metaEventName('Subscribe')).toBe(META_PAID_CONVERSION_EVENT)
+    expect(['Subscribe', 'Purchase']).toContain(META_PAID_CONVERSION_EVENT)
+  })
+
+  test('TikTok: StartTrial → Subscribe (TikTok STANDARD event for trial start — optimization eligible)', () => {
+    expect(tiktokEventName('StartTrial')).toBe('Subscribe')
+  })
+
+  test('TikTok: Subscribe (first paid invoice) → CompletePayment', () => {
     expect(tiktokEventName('Subscribe')).toBe('CompletePayment')
+  })
+
+  test('TikTok: trial-start and paid-conversion map to DISTINCT TikTok events', () => {
+    expect(tiktokEventName('StartTrial')).not.toBe(tiktokEventName('Subscribe'))
   })
 
   test('TikTok: PageView → Pageview (TikTok standard casing)', () => {
     expect(tiktokEventName('PageView')).toBe('Pageview')
   })
 
-  test('TikTok: StartTrial/ViewContent/CompleteRegistration/InitiateCheckout unchanged', () => {
-    expect(tiktokEventName('StartTrial')).toBe('StartTrial')
+  test('TikTok: ViewContent/CompleteRegistration/InitiateCheckout unchanged (already standard)', () => {
     expect(tiktokEventName('ViewContent')).toBe('ViewContent')
     expect(tiktokEventName('CompleteRegistration')).toBe('CompleteRegistration')
     expect(tiktokEventName('InitiateCheckout')).toBe('InitiateCheckout')
@@ -177,8 +190,8 @@ describe('TikTok Events API v1.3 payload', () => {
     expect((payload as any).test_event_code).toBe('TTTEST1')
   })
 
-  test('event name mapped (StartTrial stays; Subscribe→CompletePayment)', () => {
-    expect(evt.event).toBe('StartTrial')
+  test('event name mapped (StartTrial→Subscribe; Subscribe→CompletePayment)', () => {
+    expect(evt.event).toBe('Subscribe')
     const sub = buildTikTokPayload({ name: 'Subscribe', eventId: 'sub_in_1' }, 'TTPIXEL1')
     expect(sub.data[0].event).toBe('CompletePayment')
     expect('test_event_code' in sub).toBe(false)

@@ -29,20 +29,30 @@ export type TrackedEventName =
   | 'StartTrial'
   | 'Subscribe'
 
-// Meta standard events map 1:1 except nothing to rename.
+// Meta paid-conversion event name — DECISION PENDING WITH MARC
+// (GVL_ADS_PLAYBOOK v1 reconciliation, 2026-07-13): his ticket says
+// 'Subscribe'; Susan proposes standard 'Purchase' for optimization strength.
+// Isolated here so the swap is ONE line either way. value+currency are sent
+// regardless (webhook passes invoice amount).
+export const META_PAID_CONVERSION_EVENT: 'Subscribe' | 'Purchase' = 'Subscribe'
+
+// Meta standard events otherwise map 1:1.
 export function metaEventName(name: TrackedEventName): string {
-  return name
+  return name === 'Subscribe' ? META_PAID_CONVERSION_EVENT : name
 }
 
-// TikTok standard events differ:
-//  - Subscribe (first paid invoice) → CompletePayment per Marc's spec
-//  - StartTrial is NOT a TikTok standard event; sent as a custom event with
-//    the same name per the identical-mapping instruction. Flagged to Susan's
-//    playbook cross-check: TikTok campaign optimization on custom events must
-//    be confirmed in Ads Manager before campaigns train on it.
+// TikTok mapping uses STANDARD events only (Susan's GVL_ADS_PLAYBOOK v1
+// Section 1, reconciled via Orion 2026-07-13 — beats custom events for
+// TikTok optimization eligibility):
+//  - StartTrial (trial begun)      → 'Subscribe'      (TikTok standard)
+//  - Subscribe  (first paid inv.)  → 'CompletePayment' (TikTok standard)
+//  - PageView                      → 'Pageview'        (TikTok casing)
+// event_id scheme is IDENTICAL across platforms (st_<cs>, sub_<invoice>...)
+// — only names differ, so dedup pairs stay intact.
 export function tiktokEventName(name: TrackedEventName): string {
   switch (name) {
     case 'PageView': return 'Pageview'
+    case 'StartTrial': return 'Subscribe'
     case 'Subscribe': return 'CompletePayment'
     default: return name
   }
