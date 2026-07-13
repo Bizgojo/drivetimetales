@@ -192,7 +192,7 @@ describe('Meta CAPI payload', () => {
     const p = buildMetaCapiPayload({ name: 'Subscribe', eventId: 'sub_in_1' })
     const ud = (p.data[0] as any).user_data
     expect(ud).toEqual({})
-    expect(p.data[0].event_name).toBe('Subscribe')
+    expect(p.data[0].event_name).toBe('Purchase') // Meta wire name per Marc's decision
   })
 })
 
