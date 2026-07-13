@@ -2,7 +2,8 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/contexts/AuthContext'
-import HorizontalStoryCard from '@/components/HorizontalStoryCard'
+import { useRouter } from 'next/navigation'
+import LibraryStoryCard from '@/components/LibraryStoryCard'
 import { buildSeriesPlaybackTarget } from '@/lib/seriesPlayback'
 
 interface Story {
@@ -42,8 +43,41 @@ function isLaunchInventory(story: Story) {
 
 export default function RecommendedForYou({ excludeIds = [] }: { excludeIds?: string[] }) {
   const { user } = useAuth()
+  const router = useRouter()
   const [displayItems, setDisplayItems] = useState<DisplayItem[]>([])
   const [loading, setLoading] = useState(true)
+  // WALK-BUG-0713 #7: same playlist store as Library (localStorage keys
+  // single-<id> / series-<id>) so "+ Queue" here and there are one queue.
+  const [playlist, setPlaylist] = useState<string[]>([])
+  const playlistKey = user ? `et_current_playlist_${user.id}` : 'et_current_playlist'
+
+  useEffect(() => {
+    const sync = () => {
+      try {
+        const raw = localStorage.getItem(playlistKey)
+        const parsed = raw ? JSON.parse(raw) : []
+        setPlaylist(Array.isArray(parsed) ? parsed.filter((k: unknown): k is string => typeof k === 'string') : [])
+      } catch { setPlaylist([]) }
+    }
+    sync()
+    window.addEventListener('et_playlist_saved', sync)
+    window.addEventListener('et_playlist_cleared', sync)
+    return () => {
+      window.removeEventListener('et_playlist_saved', sync)
+      window.removeEventListener('et_playlist_cleared', sync)
+    }
+  }, [playlistKey])
+
+  function togglePlaylist(key: string) {
+    setPlaylist(prev => {
+      const next = prev.includes(key) ? prev.filter(k => k !== key) : [...prev, key]
+      try {
+        localStorage.setItem(playlistKey, JSON.stringify(next))
+        window.dispatchEvent(new Event('et_playlist_saved'))
+      } catch {}
+      return next
+    })
+  }
 
   useEffect(() => { load() }, [user?.id, excludeIds.join(',')])
 
@@ -216,29 +250,61 @@ export default function RecommendedForYou({ excludeIds = [] }: { excludeIds?: st
       <h2 className="text-lg font-bold text-white" style={{ marginBottom: '1rem' }}>RECOMMENDED FOR YOU</h2>
       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
         {displayItems.map(item => {
-          // ORION-CARD-CANON-001 (Marc walk fix 4, 2026-07-12): ONE canonical
-          // card design per list — HSC everywhere (orange pill canon), for both
-          // series groups and singles. Series cards deep-link the next-up
-          // episode; the player merges saved progress so Continue just works.
+          // WALK-BUG-0713 #7 (Marc, 2026-07-13): Recommended renders the ONE
+          // canonical library card (LibraryStoryCard) — mirror image of the
+          // Library page, no second implementation. (Replaces the HSC render
+          // from ORION-CARD-CANON-001.)
           if (item.type === 'series') {
+            const g = item.group
+            const key = `series-${g.id}`
+            const playId = g.play_episode_id || g.episodes[0]?.id
             return (
-              <HorizontalStoryCard
-                key={'series-' + item.group.id}
-                id={item.group.play_episode_id || item.group.episodes[0]?.id || item.group.id}
-                title={item.group.series_name}
-                genre={item.group.genre}
-                author={item.group.author || 'Endless Tales'}
-                duration_mins={item.group.total_duration_mins}
-                cover_url={item.group.cover_url}
-                description={item.group.description}
-                series_name={item.group.series_name}
-                series_total={item.group.episode_count}
-                progress_percent={item.group.is_in_progress ? Math.min(99, Math.max(1, Math.round(((item.group.resume_seconds || 0) / Math.max(1, item.group.total_duration_mins * 60)) * 100))) : undefined}
+              <LibraryStoryCard
+                key={key}
+                item={{
+                  key,
+                  type: 'series',
+                  seriesId: g.id,
+                  seriesName: g.series_name,
+                  episodeCount: g.episode_count,
+                  totalDuration: g.total_duration_mins,
+                  avgDuration: g.avg_episode_duration || (g.episode_count ? Math.round(g.total_duration_mins / g.episode_count) : 0),
+                  cover: g.cover_url,
+                  author: g.author || 'Endless Tales',
+                  genre: g.genre,
+                  description: g.description,
+                  seriesInProgress: !!g.is_in_progress,
+                }}
+                state={{ inPlaylist: playlist.includes(key), progress: 0, completed: false, isNotForMe: false, reviewed: false }}
+                onPlay={() => { if (playId) router.push(`/player/${playId}?autoplay=1&playNow=1`) }}
+                onCoverClick={() => router.push(`/series/${g.id}`)}
+                onTogglePlaylist={() => togglePlaylist(key)}
+                onRate={() => {}}
               />
             )
           }
+          const st = item.story
+          const key = `single-${st.id}`
           return (
-            <HorizontalStoryCard key={item.story.id} id={item.story.id} title={item.story.title} genre={item.story.genre} author={item.story.author || 'Endless Tales'} duration_mins={item.story.duration_mins} cover_url={item.story.cover_url} description={item.story.description} avg_rating={item.story.avg_rating} review_count={item.story.review_count} />
+            <LibraryStoryCard
+              key={key}
+              item={{
+                key,
+                type: 'single',
+                story: { id: st.id, title: st.title, duration_mins: st.duration_mins },
+                cover: st.cover_url,
+                author: st.author || 'Endless Tales',
+                genre: st.genre,
+                description: st.description,
+                avgRating: st.avg_rating,
+                reviewCount: st.review_count,
+              }}
+              state={{ inPlaylist: playlist.includes(key), progress: 0, completed: false, isNotForMe: false, reviewed: false }}
+              onPlay={() => router.push(`/player/${st.id}?autoplay=1&playNow=1`)}
+              onCoverClick={() => router.push(`/player/${st.id}?autoplay=1&playNow=1`)}
+              onTogglePlaylist={() => togglePlaylist(key)}
+              onRate={() => {}}
+            />
           )
         })}
       </div>

@@ -145,13 +145,16 @@ describe('ORION-CARD-CANON-001: fix 4 — one canonical HSC card per list', () =
   const recSrc2 = fs.readFileSync(path.join(process.cwd(), 'components/RecommendedForYou.tsx'), 'utf8')
   const hscSrc = fs.readFileSync(path.join(process.cwd(), 'components/HorizontalStoryCard.tsx'), 'utf8')
 
-  test('RecommendedForYou renders NO SeriesCard — HSC only', () => {
-    expect(recSrc2).not.toContain('SeriesCard')
-    expect(recSrc2).toContain('HorizontalStoryCard')
+  // WALK-BUG-0713 #7 (Marc, 2026-07-13) SUPERSEDES the HSC render here:
+  // Recommended now renders the ONE canonical library card.
+  test('RecommendedForYou renders the canonical LibraryStoryCard — no HSC, no SeriesCard', () => {
+    expect(recSrc2).not.toMatch(/<SeriesCard|from '@\/components\/SeriesCard'/)
+    expect(recSrc2).not.toContain('HorizontalStoryCard')
+    expect(recSrc2).toContain('LibraryStoryCard')
   })
 
   test('RecommendedForYou singles pass description (The Manifest stale-card fix)', () => {
-    expect(recSrc2).toContain('description={item.story.description}')
+    expect(recSrc2).toContain('description: st.description')
   })
 
   test('home search results render NO SeriesCard — HSC only', () => {
@@ -160,11 +163,11 @@ describe('ORION-CARD-CANON-001: fix 4 — one canonical HSC card per list', () =
     expect(homeSrc2).not.toMatch(/<SeriesCard/)
   })
 
-  test('series groups deep-link the next-up episode through HSC', () => {
-    for (const src of [homeSrc2, recSrc2]) {
-      expect(src).toContain('item.group.play_episode_id || item.group.episodes[0]?.id || item.group.id')
-      expect(src).toContain('series_total={item.group.episode_count}')
-    }
+  test('series groups deep-link the next-up episode (both surfaces)', () => {
+    expect(homeSrc2).toContain('item.group.play_episode_id || item.group.episodes[0]?.id || item.group.id')
+    expect(homeSrc2).toContain('series_total={item.group.episode_count}')
+    // Recommended (canonical card): next-up episode id feeds the play action.
+    expect(recSrc2).toContain('g.play_episode_id || g.episodes[0]?.id')
   })
 
   test('HSC play-pill canon intact: Play / Continue / Play Again, orange default, bottom-right', () => {
@@ -260,5 +263,36 @@ describe('WALK-BUG-0713 #8: single shared header', () => {
   test('#8b: Drama chip label carries no glyph', () => {
     const src = fs.readFileSync('app/library/page.tsx', 'utf8')
     expect(src).toMatch(/Drama: 'Drama',/)
+  })
+})
+
+// ============================================================================
+// WALK-BUG-0713 #7 (Marc, 2026-07-13): ONE canonical card — mirror images.
+// ============================================================================
+describe('WALK-BUG-0713 #7: canonical LibraryStoryCard everywhere', () => {
+  const fs = require('fs')
+  const cardSrc = fs.readFileSync('components/LibraryStoryCard.tsx', 'utf8')
+  const libSrc = fs.readFileSync('app/library/page.tsx', 'utf8')
+  const recSrc = fs.readFileSync('components/RecommendedForYou.tsx', 'utf8')
+
+  test('library page has NO local card implementation — imports the shared one', () => {
+    expect(libSrc).not.toMatch(/function StoryCard\(/)
+    expect(libSrc).not.toMatch(/function formatMinutes\(/)
+    expect(libSrc).toContain("from '@/components/LibraryStoryCard'")
+    expect(libSrc).toContain('<LibraryStoryCard')
+  })
+
+  test('canonical card carries the library canon: pills, duration format, +Queue', () => {
+    expect(cardSrc).toContain("isSeries ? `Series · ${item.episodeCount} eps` : 'Single Story'")
+    expect(cardSrc).toContain('total · Avg.')
+    expect(cardSrc).toContain("state.inPlaylist ? '✓ Remove' : '+ Queue'")
+    expect(cardSrc).toContain('View Episodes')
+  })
+
+  test('Recommended wires +Queue to the same playlist store as Library (keys + events)', () => {
+    expect(recSrc).toContain('et_current_playlist_')
+    expect(recSrc).toContain("`series-${g.id}`")
+    expect(recSrc).toContain("`single-${st.id}`")
+    expect(recSrc).toContain("window.dispatchEvent(new Event('et_playlist_saved'))")
   })
 })
