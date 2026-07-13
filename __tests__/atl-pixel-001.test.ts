@@ -45,11 +45,20 @@ describe('event name mapping (STANDARD events both platforms — playbook-reconc
     expect(['Subscribe', 'Purchase']).toContain(META_PAID_CONVERSION_EVENT)
   })
 
-  test('TikTok: StartTrial → Subscribe (TikTok STANDARD event for trial start — optimization eligible)', () => {
-    expect(tiktokEventName('StartTrial')).toBe('Subscribe')
+  // FINALIZED TikTok architecture (Orion 2026-07-13): CompleteRegistration
+  // (standard) is the OPTIMIZATION event; StartTrial is a CUSTOM event for
+  // attribution/reporting at checkout completion; CompletePayment (standard)
+  // at first paid invoice. Pinned so a re-mapping edit fails loudly — the
+  // campaign optimization target depends on these exact names.
+  test('TikTok: CompleteRegistration unchanged (standard — the OPTIMIZATION event)', () => {
+    expect(tiktokEventName('CompleteRegistration')).toBe('CompleteRegistration')
   })
 
-  test('TikTok: Subscribe (first paid invoice) → CompletePayment', () => {
+  test('TikTok: StartTrial stays CUSTOM \'StartTrial\' (attribution/reporting only)', () => {
+    expect(tiktokEventName('StartTrial')).toBe('StartTrial')
+  })
+
+  test('TikTok: Subscribe (first paid invoice) → CompletePayment (standard)', () => {
     expect(tiktokEventName('Subscribe')).toBe('CompletePayment')
   })
 
@@ -61,9 +70,8 @@ describe('event name mapping (STANDARD events both platforms — playbook-reconc
     expect(tiktokEventName('PageView')).toBe('Pageview')
   })
 
-  test('TikTok: ViewContent/CompleteRegistration/InitiateCheckout unchanged (already standard)', () => {
+  test('TikTok: ViewContent/InitiateCheckout unchanged (already standard)', () => {
     expect(tiktokEventName('ViewContent')).toBe('ViewContent')
-    expect(tiktokEventName('CompleteRegistration')).toBe('CompleteRegistration')
     expect(tiktokEventName('InitiateCheckout')).toBe('InitiateCheckout')
   })
 })
@@ -190,8 +198,8 @@ describe('TikTok Events API v1.3 payload', () => {
     expect((payload as any).test_event_code).toBe('TTTEST1')
   })
 
-  test('event name mapped (StartTrial→Subscribe; Subscribe→CompletePayment)', () => {
-    expect(evt.event).toBe('Subscribe')
+  test('event name mapped (StartTrial custom, unchanged; Subscribe→CompletePayment)', () => {
+    expect(evt.event).toBe('StartTrial')
     const sub = buildTikTokPayload({ name: 'Subscribe', eventId: 'sub_in_1' }, 'TTPIXEL1')
     expect(sub.data[0].event).toBe('CompletePayment')
     expect('test_event_code' in sub).toBe(false)

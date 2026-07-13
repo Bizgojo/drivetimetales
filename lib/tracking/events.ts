@@ -41,18 +41,21 @@ export function metaEventName(name: TrackedEventName): string {
   return name === 'Subscribe' ? META_PAID_CONVERSION_EVENT : name
 }
 
-// TikTok mapping uses STANDARD events only (Susan's GVL_ADS_PLAYBOOK v1
-// Section 1, reconciled via Orion 2026-07-13 — beats custom events for
-// TikTok optimization eligibility):
-//  - StartTrial (trial begun)      → 'Subscribe'      (TikTok standard)
-//  - Subscribe  (first paid inv.)  → 'CompletePayment' (TikTok standard)
-//  - PageView                      → 'Pageview'        (TikTok casing)
-// event_id scheme is IDENTICAL across platforms (st_<cs>, sub_<invoice>...)
-// — only names differ, so dedup pairs stay intact.
+// TikTok event architecture — FINALIZED (Orion, 2026-07-13, supersedes the
+// earlier standard-Subscribe-for-trial-start recommendation):
+//  - OPTIMIZATION event = CompleteRegistration (standard) at account
+//    creation — at $10/day, trial starts can't hit 50 conversions/week to
+//    exit learning phase; registrations have the volume.
+//  - StartTrial → CUSTOM event 'StartTrial' at Stripe checkout completion.
+//    Attribution/reporting only, NOT the optimization target.
+//  - Subscribe (first paid inv.) → 'CompletePayment' (standard). Rejected
+//    for optimization: 14-day trial lag ≈ zero signals in the 30-day window.
+//  - PageView → 'Pageview' (TikTok casing); InitiateCheckout standard.
+// Firing moments and the event_id scheme (st_<cs>, sub_<invoice>, reg_<user>)
+// are IDENTICAL across platforms — only names/roles differ per platform.
 export function tiktokEventName(name: TrackedEventName): string {
   switch (name) {
     case 'PageView': return 'Pageview'
-    case 'StartTrial': return 'Subscribe'
     case 'Subscribe': return 'CompletePayment'
     default: return name
   }
