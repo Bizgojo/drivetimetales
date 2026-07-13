@@ -175,3 +175,29 @@ describe('ORION-CARD-CANON-001: fix 4 — one canonical HSC card per list', () =
     expect(hscSrc).toMatch(/bottom: '7px', right: '7px'/)
   })
 })
+
+describe('ATL-CONSOLE-EPCOUNT-001: cold_storage excluded from series math', () => {
+  const apiSrc = fs.readFileSync(path.join(process.cwd(), 'app/api/admin/content-approval/route.ts'), 'utf8')
+  const pageSrc = fs.readFileSync(path.join(process.cwd(), 'app/admin/production/approval/page.tsx'), 'utf8')
+
+  test('API: present count + missing + blocking use ACTIVE episodes only', () => {
+    expect(apiSrc).toContain("episodes.filter((episode) => episode.workflowState !== 'cold_storage')")
+    expect(apiSrc).toContain('presentEpisodeCount: activeStories.length,')
+    expect(apiSrc).toContain('const missing = missingEpisodes(activeStories, expected)')
+    expect(apiSrc).toContain('...activeEpisodes.flatMap((episode) => episode.approvalBlockingReasons')
+    // coldStorage visibility count stays.
+    expect(apiSrc).toContain("coldStorage: episodes.filter((episode) => episode.workflowState === 'cold_storage').length")
+  })
+
+  test('console: review-all-to-enable gate ignores cold_storage rows (Limestone unfreeze)', () => {
+    expect(pageSrc).toContain('const selectedGateStories = selectedAllStories.filter(')
+    expect(pageSrc).toContain("effectiveWorkflowState(story) !== 'cold_storage'")
+    expect(pageSrc).toContain('selectedReviewCompleteCount === selectedGateStories.length')
+    expect(pageSrc).toContain('Review all ${selectedGateStories.length || 1} episode')
+  })
+
+  test('console: groupPresentCount excludes cold_storage', () => {
+    const fn = pageSrc.slice(pageSrc.indexOf('function groupPresentCount'), pageSrc.indexOf('function isTrueSeriesGroup'))
+    expect(fn).toContain("effectiveWorkflowState(story) !== 'cold_storage'")
+  })
+})

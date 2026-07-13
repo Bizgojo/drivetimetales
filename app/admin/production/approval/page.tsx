@@ -1086,6 +1086,11 @@ function groupExpectedCount(group: StoryGroup) {
 
 function groupPresentCount(group: StoryGroup) {
   if (group.type === 'standalone') return 1
+  // ATL-CONSOLE-EPCOUNT-001: "present" excludes cold_storage (counting-rule
+  // canon 2026-07-11). Client-side count is authoritative here because the
+  // API's presentEpisodeCount predates the rule.
+  const active = group.stories.filter((story) => effectiveWorkflowState(story) !== 'cold_storage').length
+  if (active > 0) return active
   return group.presentEpisodeCount || group.stories[0]?.present_episode_count || group.stories.length
 }
 
@@ -4369,18 +4374,25 @@ export default function AdminStoriesPage() {
   const selectedSeriesDescription = selectedIsSeries ? seriesDescriptionForReview(selectedGroup, selectedAllStories) : null
   const selectedShortDescription = selectedIsSeries ? selectedSeriesDescription?.text || '' : selectedFirst?.description || ''
   const selectedNarrator = selectedIsSeries ? firstNarratorLabel(selectedAllStories) : selectedFirst ? narratorLabel(selectedFirst) : 'Narrator pending'
-  const selectedReviewCompleteCount = selectedAllStories.filter(
+  // ATL-CONSOLE-EPCOUNT-001 (counting-rule canon, 2026-07-11; bumped by Marc
+  // 2026-07-12): cold_storage episodes are OUT of the series for review/release
+  // math. A cold-storaged episode (e.g. Limestone's "The Sealing") can never be
+  // reviewed in this flow, so counting it froze the review-all-to-enable gate.
+  const selectedGateStories = selectedAllStories.filter(
+    (story) => effectiveWorkflowState(story) !== 'cold_storage'
+  )
+  const selectedReviewCompleteCount = selectedGateStories.filter(
     (story) => ['no_repair', 'finished'].includes(effectiveEpisodeRepairMark(story).reviewState)
   ).length
-  const selectedAllReviewed = selectedAllStories.length > 0 && selectedReviewCompleteCount === selectedAllStories.length
-  const selectedHasRepair = selectedAllStories.some((story) => {
+  const selectedAllReviewed = selectedGateStories.length > 0 && selectedReviewCompleteCount === selectedGateStories.length
+  const selectedHasRepair = selectedGateStories.some((story) => {
     const mark = effectiveEpisodeRepairMark(story)
     return mark.needed === true && ['needs_repair', 'finished'].includes(mark.reviewState)
   })
   const selectedCanApprove = selectedAllReviewed && !selectedHasRepair
   const selectedCanRepair = selectedAllReviewed && selectedHasRepair
   const selectedReviewGateMessage = !selectedAllReviewed
-    ? `Review all ${selectedAllStories.length || 1} episode${(selectedAllStories.length || 1) === 1 ? '' : 's'} to enable`
+    ? `Review all ${selectedGateStories.length || 1} episode${(selectedGateStories.length || 1) === 1 ? '' : 's'} to enable`
     : selectedHasRepair
       ? 'Issues found: send to repair or move to cold storage.'
       : 'Reviewed clean: ready to publish or move to cold storage.'
