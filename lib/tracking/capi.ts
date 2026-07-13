@@ -20,6 +20,7 @@ import {
   TrackedEventName,
   metaEventName,
   tiktokEventName,
+  tiktokCompanionEventNames,
   normalizeEmailForHash,
   normalizePhoneForHash,
 } from './events'
@@ -120,20 +121,23 @@ export function buildTikTokPayload(evt: ServerTrackingEvent, pixelId: string, te
   if (typeof evt.value === 'number') properties.value = evt.value
   if (evt.currency) properties.currency = evt.currency.toUpperCase()
 
+  // Primary event + any TikTok companion emits (e.g. StartTrial also sends
+  // standard 'Subscribe') share time/id/user/properties — one API request.
+  const eventNames = [tiktokEventName(evt.name), ...tiktokCompanionEventNames(evt.name)]
+  const eventTime = evt.eventTime ?? Math.floor(Date.now() / 1000)
+
   return {
     event_source: 'web' as const,
     event_source_id: pixelId,
     ...(testEventCode ? { test_event_code: testEventCode } : {}),
-    data: [
-      {
-        event: tiktokEventName(evt.name),
-        event_time: evt.eventTime ?? Math.floor(Date.now() / 1000),
-        event_id: evt.eventId,
-        user,
-        ...(Object.keys(properties).length ? { properties } : {}),
-        ...(evt.sourceUrl ? { page: { url: evt.sourceUrl } } : {}),
-      },
-    ],
+    data: eventNames.map(eventName => ({
+      event: eventName,
+      event_time: eventTime,
+      event_id: evt.eventId,
+      user,
+      ...(Object.keys(properties).length ? { properties } : {}),
+      ...(evt.sourceUrl ? { page: { url: evt.sourceUrl } } : {}),
+    })),
   }
 }
 

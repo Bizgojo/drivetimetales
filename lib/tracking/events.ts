@@ -61,6 +61,18 @@ export function tiktokEventName(name: TrackedEventName): string {
   }
 }
 
+// TikTok trial-start DUAL EMIT (Susan's patched playbook 1C, via Orion
+// 2026-07-13, closing the spec triangle): standard 'Subscribe' fires
+// ALONGSIDE custom 'StartTrial' at Stripe checkout completion, client+server,
+// sharing the st_<checkoutSessionId> dedup key (TikTok dedups per event
+// name, so one id across two names is safe). Purpose: builds standard-event
+// history at the trial-start moment, so optimization can later switch from
+// CompleteRegistration to Subscribe with data instead of starting cold.
+// TikTok-only — Meta emits exactly one event per tracked moment.
+export function tiktokCompanionEventNames(name: TrackedEventName): string[] {
+  return name === 'StartTrial' ? ['Subscribe'] : []
+}
+
 // ── Deterministic event ids (client+server dedup keys) ──────────────────────
 
 export function registrationEventId(userId: string): string {

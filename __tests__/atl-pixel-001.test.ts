@@ -11,6 +11,7 @@
 import {
   metaEventName,
   tiktokEventName,
+  tiktokCompanionEventNames,
   META_PAID_CONVERSION_EVENT,
   registrationEventId,
   startTrialEventId,
@@ -73,6 +74,13 @@ describe('event name mapping (STANDARD events both platforms — playbook-reconc
   test('TikTok: ViewContent/InitiateCheckout unchanged (already standard)', () => {
     expect(tiktokEventName('ViewContent')).toBe('ViewContent')
     expect(tiktokEventName('InitiateCheckout')).toBe('InitiateCheckout')
+  })
+
+  test('TikTok DUAL EMIT: StartTrial also sends standard Subscribe; no other event has companions', () => {
+    expect(tiktokCompanionEventNames('StartTrial')).toEqual(['Subscribe'])
+    for (const name of ['PageView', 'ViewContent', 'CompleteRegistration', 'InitiateCheckout', 'Subscribe'] as const) {
+      expect(tiktokCompanionEventNames(name)).toEqual([])
+    }
   })
 })
 
@@ -202,7 +210,21 @@ describe('TikTok Events API v1.3 payload', () => {
     expect(evt.event).toBe('StartTrial')
     const sub = buildTikTokPayload({ name: 'Subscribe', eventId: 'sub_in_1' }, 'TTPIXEL1')
     expect(sub.data[0].event).toBe('CompletePayment')
+    expect(sub.data).toHaveLength(1) // paid conversion emits ONE TikTok event
     expect('test_event_code' in sub).toBe(false)
+  })
+
+  test('trial-start DUAL EMIT: custom StartTrial + standard Subscribe in one request, shared id/time/user', () => {
+    expect(payload.data).toHaveLength(2)
+    expect(payload.data.map(d => d.event)).toEqual(['StartTrial', 'Subscribe'])
+    expect(payload.data[1].event_id).toBe('st_cs_test_abc')
+    expect(payload.data[1].event_time).toBe(payload.data[0].event_time)
+    expect((payload.data[1] as any).user.email).toBe(EMAIL_HASH)
+    expect((payload.data[1] as any).properties.utm_source).toBe('facebook')
+  })
+
+  test('Meta emits exactly ONE event per tracked moment (dual emit is TikTok-only)', () => {
+    expect(buildMetaCapiPayload(BASE_EVENT).data).toHaveLength(1)
   })
 
   test('shared event_id matches Meta twin (cross-platform consistency)', () => {

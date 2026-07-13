@@ -5,7 +5,7 @@
 // Safe everywhere: no-ops when pixels are not loaded (env-gated components)
 // or when running server-side. Never throws — ads must never break the app.
 
-import { TrackedEventName, metaEventName, tiktokEventName } from './events'
+import { TrackedEventName, metaEventName, tiktokEventName, tiktokCompanionEventNames } from './events'
 
 declare global {
   interface Window {
@@ -48,6 +48,11 @@ export function trackClientEvent(
   }
   try {
     window.ttq?.track(tiktokEventName(name), props, { event_id: eventId })
+    // TikTok dual emit (e.g. StartTrial → also standard 'Subscribe').
+    // Same event_id is safe: TikTok dedups per event name.
+    for (const companion of tiktokCompanionEventNames(name)) {
+      window.ttq?.track(companion, props, { event_id: eventId })
+    }
   } catch (err) {
     console.warn('[tracking] ttq track failed (non-fatal):', err)
   }
