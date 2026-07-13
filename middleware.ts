@@ -20,7 +20,11 @@ const PUBLIC_ROUTES = new Set([
 // Path prefixes that are always public (checked below)
 const ADDITIONAL_PUBLIC_PREFIXES = ['/promo/']
 
-const PUBLIC_PREFIXES = ['/api/', '/_next/', '/images/', '/icons/', '/favicon', '/podcast', '/player/']
+// manifest.json + sw.js + offline.html: PWA assets MUST be public — middleware
+// was 307-redirecting /manifest.json to signin HTML, breaking PWA install
+// (console: 'Manifest: syntax error') for signed-out visitors (found in
+// pre-launch audit, 2026-07-12).
+const PUBLIC_PREFIXES = ['/api/', '/_next/', '/images/', '/icons/', '/favicon', '/podcast', '/player/', '/manifest.json', '/sw.js', '/offline.html']
 
 const SUBSCRIPTION_REQUIRED_PREFIXES = [
   '/home',
@@ -159,5 +163,5 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/((?!_next/static|_next/image|favicon.ico|images|icons|api|podcast).*)'],
+  matcher: ['/((?!_next/static|_next/image|favicon.ico|images|icons|api|podcast|manifest.json|sw.js|offline.html).*)'],
 }
