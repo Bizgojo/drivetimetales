@@ -274,6 +274,9 @@ function HomeContent() {
   const { loading, user } = useAuth()
   const searchParams = useSearchParams()
   const [continueIds, setContinueIds] = useState<string[]>([])
+  // WALK-BUG-0713 #5: catalog story id the ContinueSampleHero is showing —
+  // the Continue Listening list excludes it (no same-story double-stack).
+  const [heroStoryId, setHeroStoryId] = useState<string | null>(null)
   const [playlistIds, setPlaylistIds] = useState<string[]>([])
   const [allExcludeIds, setAllExcludeIds] = useState<string[]>([])
   // Gate: do not render RecommendedForYou until NewReleases has reported its IDs.
@@ -364,8 +367,10 @@ function HomeContent() {
         ) : (
           <>
             {/* ORION-HOME-WALK-001: /go sample continue hero LEADS the page (Marc walk, 2026-07-12). */}
-            <ContinueSampleHero onStoryId={(id) => { setContinueIds(prev => Array.from(new Set([id, ...prev]))); setAllExcludeIds(prev => Array.from(new Set([id, ...prev]))) }} />
-            <ContinueListening onIdsLoaded={(ids) => { setContinueIds(prev => Array.from(new Set([...prev, ...ids]))); setAllExcludeIds(prev => Array.from(new Set([...prev, ...ids, ...playlistIds]))) }} />
+            {/* WALK-BUG-0713 #5 (Marc, 2026-07-13): the hero's story must not repeat
+                in the Continue Listening list below — heroStoryId feeds its exclude. */}
+            <ContinueSampleHero onStoryId={(id) => { setHeroStoryId(id); setContinueIds(prev => Array.from(new Set([id, ...prev]))); setAllExcludeIds(prev => Array.from(new Set([id, ...prev]))) }} />
+            <ContinueListening excludeStoryId={heroStoryId} onIdsLoaded={(ids) => { setContinueIds(prev => Array.from(new Set([...prev, ...ids]))); setAllExcludeIds(prev => Array.from(new Set([...prev, ...ids, ...playlistIds]))) }} />
             <YourPlaylist onIdsLoaded={(ids) => { setPlaylistIds(ids); setAllExcludeIds(prev => [...new Set([...prev, ...ids])]) }} />
             <NewReleases
               excludeIds={[...new Set([...continueIds, ...playlistIds])]}

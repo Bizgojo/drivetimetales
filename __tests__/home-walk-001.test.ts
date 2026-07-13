@@ -201,3 +201,29 @@ describe('ATL-CONSOLE-EPCOUNT-001: cold_storage excluded from series math', () =
     expect(fn).toContain("effectiveWorkflowState(story) !== 'cold_storage'")
   })
 })
+
+// ============================================================================
+// WALK-BUG-0713 #5 (Marc, 2026-07-13): hero story must not repeat in the
+// Continue Listening list — same title was stacking twice on /home.
+// ============================================================================
+describe('WALK-BUG-0713 #5: hero/list same-story dedup', () => {
+  const fs = require('fs')
+  const path = require('path')
+  const homeSrc = fs.readFileSync(path.join(process.cwd(), 'app/home/page.tsx'), 'utf8')
+  const listSrc = fs.readFileSync(path.join(process.cwd(), 'components/ContinueListening.tsx'), 'utf8')
+
+  test('home passes the hero story id into ContinueListening as excludeStoryId', () => {
+    expect(homeSrc).toMatch(/setHeroStoryId\(id\)/)
+    expect(homeSrc).toMatch(/<ContinueListening excludeStoryId=\{heroStoryId\}/)
+  })
+
+  test('ContinueListening filters the excluded id and falls back to the next row (limit 2)', () => {
+    expect(listSrc).toMatch(/excludeStoryId\?: string \| null/)
+    expect(listSrc).toMatch(/\.limit\(2\)/)
+    expect(listSrc).toMatch(/story_id !== excludeStoryId/)
+    // Re-loads when the hero reports late (async live-check).
+    expect(listSrc).toMatch(/\[user, excludeStoryId\]/)
+    // The old single-row fetch is gone.
+    expect(listSrc).not.toMatch(/\.limit\(1\)\s*\n\s*\.single\(\)/)
+  })
+})
