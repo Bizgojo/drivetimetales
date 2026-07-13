@@ -73,8 +73,19 @@ describe('ORION-ENTITLE-SYNC-001: loadDbUser authorizes as the user (fix 3)', ()
   const authSrc = read('contexts/AuthContext.tsx')
 
   test('users REST fetch uses the session access token, anon key only as fallback', () => {
-    expect(authSrc).toContain('currentSession?.access_token || key')
+    expect(authSrc).toContain('accessToken || key')
     expect(authSrc).not.toContain("'Authorization': `Bearer ${key}`")
+  })
+
+  test('loadDbUser NEVER calls authClient.auth.getSession — re-entrant call inside onAuthStateChange deadlocks GoTrue', () => {
+    // The token must be PASSED IN from the session the callback already has.
+    expect(authSrc).toContain('accessToken?: string | null')
+    const loadDbUserBody = authSrc.slice(authSrc.indexOf('async function loadDbUser'), authSrc.indexOf('useEffect(() => {'))
+    // Match actual CALLS only — the explanatory comment names the API.
+    expect(loadDbUserBody).not.toMatch(/await\s+authClient\.auth\.getSession/)
+    // Every call site passes the token.
+    expect(authSrc.match(/loadDbUser\(session\.user, session\.access_token\)/g)?.length).toBe(3)
+    expect(authSrc).not.toMatch(/loadDbUser\(session\.user\)/)
   })
 })
 

@@ -64,7 +64,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true)
   const mergedReadingProgressForRef = useRef<string | null>(null)
 
-  async function loadDbUser(authUser: User): Promise<void> {
+  async function loadDbUser(authUser: User, accessToken?: string | null): Promise<void> {
     // Use direct fetch to bypass Supabase client issues
     const url = process.env.NEXT_PUBLIC_SUPABASE_URL
     const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
@@ -81,11 +81,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // ORION-ENTITLE-SYNC-001: authorize as the USER, not the anon key — RLS
       // returns nothing for anon, which silently stripped subscription fields
       // from the context user (same defect class as the player paywall bounce).
-      const { data: { session: currentSession } } = await authClient.auth.getSession()
+      // The token is PASSED IN: calling authClient.auth.getSession() here
+      // deadlocks — this runs inside onAuthStateChange, and GoTrue holds its
+      // client lock while dispatching callbacks (re-entrant call never returns).
       const response = await fetch(apiUrl, {
         headers: {
           'apikey': key,
-          'Authorization': `Bearer ${currentSession?.access_token || key}`,
+          'Authorization': `Bearer ${accessToken || key}`,
           'Content-Type': 'application/json'
         }
       })
@@ -125,7 +127,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setSession(session)
         
         if (session?.user) {
-          await loadDbUser(session.user)
+          await loadDbUser(session.user, session.access_token)
         } else {
           setUser(null)
         }
@@ -150,7 +152,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setSession(session)
       
       if (session?.user) {
-        await loadDbUser(session.user)
+        await loadDbUser(session.user, session.access_token)
       } else {
         setUser(null)
       }
@@ -176,7 +178,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const refreshUser = async () => {
     const { data: { session } } = await authClient.auth.getSession()
     if (session?.user) {
-      await loadDbUser(session.user)
+      await loadDbUser(session.user, session.access_token)
     }
   }
 
