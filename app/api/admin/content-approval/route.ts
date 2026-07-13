@@ -510,8 +510,15 @@ function seriesObject(seriesId: string, stories: StoryRow[], jobs: ProductionJob
   const seriesJobs = jobs.filter((job) => jobSeriesIds(job).has(seriesId))
   const expectedProof = expectedEpisodeCountProof(sortedStories, seriesJobs)
   const expected = expectedProof.count || sortedStories.length
-  const missing = missingEpisodes(sortedStories, expected)
   const episodes = sortedStories.map((story) => episodeObject(story, sourceJobForStory(story, jobs)))
+  // ATL-CONSOLE-EPCOUNT-001 (counting-rule canon 2026-07-11): cold_storage
+  // episodes are OUT of series math — present count, missing-episode checks,
+  // and approval blocking all consider ACTIVE episodes only. A cold-storaged
+  // orphan (Limestone's "The Sealing") must not block review/approval flows.
+  // counts.coldStorage below still reports them for visibility.
+  const activeEpisodes = episodes.filter((episode) => episode.workflowState !== 'cold_storage')
+  const activeStories = sortedStories.filter((_, index) => episodes[index].workflowState !== 'cold_storage')
+  const missing = missingEpisodes(activeStories, expected)
   const completionSortDate = episodes
     .map((episode) => episode.completionSortDate)
     .filter(Boolean)
@@ -520,7 +527,7 @@ function seriesObject(seriesId: string, stories: StoryRow[], jobs: ProductionJob
   const approvalBlockingReasons = [
     ...(expectedProof.count ? [] : [`series expected episode count is not proven (${expectedProof.source})`]),
     ...(missing.length ? [`missing episode(s): ${missing.join(', ')}`] : []),
-    ...episodes.flatMap((episode) => episode.approvalBlockingReasons.map((reason) => `Episode ${episode.episodeNumber || '?'}: ${reason}`)),
+    ...activeEpisodes.flatMap((episode) => episode.approvalBlockingReasons.map((reason) => `Episode ${episode.episodeNumber || '?'}: ${reason}`)),
     ...blockingJobs.map((job) => `Active failed production job ${job.id} at ${job.current_step || 'unknown step'}`),
   ]
   const newestJob = jobs
@@ -533,7 +540,7 @@ function seriesObject(seriesId: string, stories: StoryRow[], jobs: ProductionJob
     title: seriesTitle(sortedStories),
     expectedEpisodeCount: expected,
     expectedEpisodeCountSource: expectedProof.source,
-    presentEpisodeCount: sortedStories.length,
+    presentEpisodeCount: activeStories.length,
     missingEpisodes: missing,
     approvalReady: approvalBlockingReasons.length === 0,
     approvalEntryReason: missing.length
