@@ -558,7 +558,17 @@ export default function LibraryPage() {
   }
 
   function openSeries(seriesId: string) {
-    router.push(`/series/${seriesId}`)
+    // Same hard-navigation fallback as navigateToPlayer: router.push from
+    // /library intermittently no-ops (see 80d9d775) — View Episodes was the
+    // last button still relying on bare router.push (Marc report 2026-07-13).
+    const targetUrl = `/series/${seriesId}`
+    router.push(targetUrl)
+    window.setTimeout(() => {
+      if (window.location.pathname === '/library') {
+        console.warn('[Library] View Episodes router.push did not leave Library; falling back to hard navigation', { targetUrl, seriesId })
+        window.location.assign(targetUrl)
+      }
+    }, 700)
   }
 
   function playPlaylistFromBar() {
