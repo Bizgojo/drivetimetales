@@ -29,7 +29,12 @@ function DismissModal({ label, onConfirm, onCancel }: { label: string; onConfirm
   )
 }
 
-export default function ContinueListening({ onIdsLoaded }: { onIdsLoaded?: (ids: string[]) => void } = {}) {
+// WALK-BUG-0713 #5 (Marc, 2026-07-13): when the ContinueSampleHero is already
+// showing a story, this list must NOT repeat it — same title stacked twice on
+// /home. excludeStoryId is the hero's catalog story id; we fetch the top TWO
+// in-progress rows and surface the first one that isn't the hero's, so the
+// section still earns its place with a second story and disappears otherwise.
+export default function ContinueListening({ onIdsLoaded, excludeStoryId = null }: { onIdsLoaded?: (ids: string[]) => void; excludeStoryId?: string | null } = {}) {
   const { user } = useAuth()
   const router = useRouter()
   const [card, setCard] = useState<ContinueCard | null>(null)
@@ -39,7 +44,7 @@ export default function ContinueListening({ onIdsLoaded }: { onIdsLoaded?: (ids:
   useEffect(() => {
     if (!user) { setLoading(false); onIdsLoaded?.([]); return }
     load()
-  }, [user])
+  }, [user, excludeStoryId])
 
   async function load() {
     setLoading(true)
@@ -51,12 +56,13 @@ export default function ContinueListening({ onIdsLoaded }: { onIdsLoaded?: (ids:
       .eq('hide_from_home', false)
       .gt('progress', 60)
       .order('last_played', { ascending: false })
-      .limit(1)
-      .single()
-    if (data && data.stories) {
-      const s = data.stories as any
-      setCard({ story_id: data.story_id, title: s.title, author: s.author, genre: s.genre, cover_url: s.cover_url, duration_mins: s.duration_mins, progress: data.progress, last_played: data.last_played, series_name: s.series_name || null, series_id: s.series_id || null, episode_number: s.episode_number || null })
-      onIdsLoaded?.([data.story_id])
+      .limit(2)
+    const rows = (data || []).filter(r => r.stories && r.story_id !== excludeStoryId)
+    const top = rows[0]
+    if (top) {
+      const s = top.stories as any
+      setCard({ story_id: top.story_id, title: s.title, author: s.author, genre: s.genre, cover_url: s.cover_url, duration_mins: s.duration_mins, progress: top.progress, last_played: top.last_played, series_name: s.series_name || null, series_id: s.series_id || null, episode_number: s.episode_number || null })
+      onIdsLoaded?.([top.story_id])
     } else {
       setCard(null)
       onIdsLoaded?.([])
