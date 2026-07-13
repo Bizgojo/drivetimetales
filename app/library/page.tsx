@@ -89,6 +89,9 @@ const GENRE_LABELS: Record<string, string> = {
   Thriller: '😱Thrill',
   Horror: '☠️Horr',
   Drama: '🎭Drama',
+  // Marc 2026-07-13: 'Heartwarming' too long for the pill — split into two
+  // words so it wraps to two lines (pill whiteSpace allows wrapping).
+  Heartwarming: 'Heart Warming',
 }
 
 function mergeLibraryWithLocalProgress(serverRows: LibraryRow[], userId?: string | null): LibraryRow[] {
@@ -707,7 +710,9 @@ export default function LibraryPage() {
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  whiteSpace: 'nowrap',
+                  whiteSpace: 'normal',
+                  textAlign: 'center',
+                  lineHeight: 1.15,
                 }}
               >
                 {GENRE_LABELS[g] || g}
