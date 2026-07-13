@@ -1,7 +1,6 @@
 'use client';
 
 import React, { useState } from 'react';
-import StickyHeaderFull from '@/components/StickyHeaderFull';
 import { LogoStacked } from '@/components/ui/Logo';
 
 const faqs = [
@@ -36,7 +35,6 @@ export default function AboutPage() {
 
   return (
     <div className="min-h-screen bg-gray-950 text-white">
-      <StickyHeaderFull />
       
       <div className="px-4 py-5">
         {/* Hero */}

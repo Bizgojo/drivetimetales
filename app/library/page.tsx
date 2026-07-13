@@ -4,7 +4,6 @@ import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/contexts/AuthContext'
-import StickyHeaderFull from '@/components/StickyHeaderFull'
 import ReviewModal from '@/components/ReviewModal'
 import { buildSeriesPlaybackTarget, storeSeriesPlayback } from '@/lib/seriesPlayback'
 import { getAllLocalPlayerProgress, mergePlayerProgress } from '@/lib/playerProgress'
@@ -88,7 +87,8 @@ const GENRE_LABELS: Record<string, string> = {
   Mystery: '🔍Myst',
   Thriller: '😱Thrill',
   Horror: '☠️Horr',
-  Drama: '🎭Drama',
+  // WALK-BUG-0713 #8b (Marc, 2026-07-13): stray glyph before the label — clean.
+  Drama: 'Drama',
 }
 
 function mergeLibraryWithLocalProgress(serverRows: LibraryRow[], userId?: string | null): LibraryRow[] {
@@ -641,7 +641,6 @@ export default function LibraryPage() {
   if (loading || (authLoading && !authWaitExpired)) {
     return (
       <div style={{ minHeight: '100vh', backgroundColor: '#0a0a0a' }}>
-        <StickyHeaderFull />
         <div style={{ padding: '40px 16px', color: 'white', textAlign: 'center', fontSize: '14px' }}>
           Loading library…
         </div>
@@ -652,7 +651,6 @@ export default function LibraryPage() {
   if (loadError) {
     return (
       <div style={{ minHeight: '100vh', backgroundColor: '#0a0a0a' }}>
-        <StickyHeaderFull />
         <div style={{ padding: '40px 16px', color: 'white', textAlign: 'center' }}>
           <div style={{ fontSize: '15px', fontWeight: 600, marginBottom: '8px' }}>Library failed to load</div>
           <div style={{ color: 'white', fontSize: '12px', lineHeight: 1.5 }}>{loadError}</div>
@@ -669,7 +667,6 @@ export default function LibraryPage() {
         paddingBottom: validPlaylist.length > 0 ? '90px' : '20px',
       }}
     >
-      <StickyHeaderFull />
 
       {/* Genre picker — established one-row treatment */}
       <div style={{ position: 'sticky', top: '60px', zIndex: 40, padding: '0 12px 12px' }}>

@@ -227,3 +227,38 @@ describe('WALK-BUG-0713 #5: hero/list same-story dedup', () => {
     expect(listSrc).not.toMatch(/\.limit\(1\)\s*\n\s*\.single\(\)/)
   })
 })
+
+// ============================================================================
+// WALK-BUG-0713 #8 (Marc, 2026-07-13): ONE shared header everywhere.
+// ============================================================================
+describe('WALK-BUG-0713 #8: single shared header', () => {
+  const fs = require('fs')
+  const path = require('path')
+  const glob = (d: string): string[] => fs.readdirSync(d, { recursive: true })
+    .map((f: string) => path.join(d, f))
+    .filter((f: string) => f.endsWith('.tsx') && !f.includes('restore'))
+
+  test('no per-page header copies remain anywhere in app/', () => {
+    for (const f of glob('app')) {
+      const src = fs.readFileSync(f, 'utf8')
+      expect(src).not.toMatch(/StickyHeaderFull|StickyHeaderHome|StickyHeaderGuest|StickyHeader\b|HomeHeader/)
+    }
+  })
+
+  test('retired header stub files are deleted', () => {
+    for (const stub of ['StickyHeaderFull', 'StickyHeaderHome', 'StickyHeaderGuest', 'StickyHeader', 'HomeHeader']) {
+      expect(fs.existsSync(path.join('components', stub + '.tsx'))).toBe(false)
+    }
+  })
+
+  test('AppHeader: logo goes /home signed-in, / signed-out; avatar goes /account', () => {
+    const src = fs.readFileSync('components/AppHeader.tsx', 'utf8')
+    expect(src).toMatch(/router\.push\(user \? '\/home' : '\/'\)/)
+    expect(src).toMatch(/router\.push\('\/account'\)/)
+  })
+
+  test('#8b: Drama chip label carries no glyph', () => {
+    const src = fs.readFileSync('app/library/page.tsx', 'utf8')
+    expect(src).toMatch(/Drama: 'Drama',/)
+  })
+})

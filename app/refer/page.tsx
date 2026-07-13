@@ -4,7 +4,6 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/contexts/AuthContext'
-import StickyHeaderFull from '@/components/StickyHeaderFull'
 
 interface Offer { id: string; name: string; description: string; offer_type: 'free_days' | 'credits'; referrer_reward: number; referred_reward: number; weight: number }
 interface ReferralStats { total: number; opened: number; signed_up: number; subscribed: number; rewarded: number }
@@ -104,7 +103,6 @@ export default function ReferPage() {
 
   return (
     <div style={{ minHeight: '100vh', backgroundColor: '#0f172a' }}>
-      <StickyHeaderFull />
       
       <div style={{ padding: '24px 16px', maxWidth: '400px', margin: '0 auto' }}>
 

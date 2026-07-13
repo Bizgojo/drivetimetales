@@ -1,5 +1,4 @@
 'use client'
-import StickyHeaderFull from '@/components/StickyHeaderFull'
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
@@ -99,7 +98,6 @@ export default function CancelSubscriptionPage() {
 
   return (
     <div className="min-h-screen bg-slate-950">
-      <StickyHeaderFull />
 
       <div className="p-6 max-w-md mx-auto">
         <div className="text-center mb-8">

@@ -2,7 +2,6 @@
 
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
-import StickyHeaderFull from '@/components/StickyHeaderFull';
 import { useAuth } from '@/contexts/AuthContext';
 
 interface DownloadedStory {
@@ -78,7 +77,6 @@ export default function DownloadsPage() {
 
   return (
     <div className="min-h-screen bg-gray-950 text-white">
-      <StickyHeaderFull />
       
       <div className="px-4 py-5">
         <h1 className="text-2xl font-bold text-white mb-2">📥 Downloads</h1>

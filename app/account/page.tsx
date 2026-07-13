@@ -1,5 +1,4 @@
 'use client';
-import StickyHeaderFull from '@/components/StickyHeaderFull';
 
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
@@ -195,7 +194,6 @@ export default function AccountPage() {
 
   return (
     <div className="min-h-screen bg-gray-950 text-white">
-      <StickyHeaderFull />
       
       <div className="px-4 py-5">
         {/* Profile Header - No large avatar circle */}

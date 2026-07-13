@@ -3,7 +3,6 @@ import React, { useState, useEffect } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
 import { supabase } from '@/lib/supabase'
-import StickyHeaderFull from '@/components/StickyHeaderFull'
 
 interface Episode {
   id: string
@@ -203,7 +202,6 @@ export default function SeriesDetailPage() {
 
   return (
     <div style={{ background: '#020617', minHeight: '100vh', paddingBottom: '40px' }}>
-      <StickyHeaderFull />
 
       {/* Hero */}
       <div style={{ padding: '18px 16px 0', display: 'flex', gap: '16px', alignItems: 'flex-start' }}>

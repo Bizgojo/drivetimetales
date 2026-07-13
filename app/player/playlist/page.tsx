@@ -3,7 +3,6 @@
 import { Suspense, useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import CanonicalPlayer from '@/components/player/CanonicalPlayer'
-import StickyHeaderFull from '@/components/StickyHeaderFull'
 
 interface LegacyEpisodeEntry {
   id?: string
@@ -67,7 +66,6 @@ function PlaylistPlayerContent() {
   if (!storyId) {
     return (
       <div style={{ minHeight: '100vh', backgroundColor: '#020617', color: 'white', display: 'flex', flexDirection: 'column' }}>
-        <StickyHeaderFull />
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '16px', textAlign: 'center' }}>
           <div style={{ fontSize: '48px', marginBottom: '16px' }}>🎧</div>
           <h2 style={{ fontSize: '20px', fontWeight: 'bold', marginBottom: '8px' }}>No Playlist Selected</h2>

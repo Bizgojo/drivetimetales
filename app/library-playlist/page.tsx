@@ -4,7 +4,6 @@ import { useState, useEffect, Suspense } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
 import { supabase } from '@/lib/supabase'
-import StickyHeaderFull from '@/components/StickyHeaderFull'
 import LibraryFiltersV2 from '@/components/LibraryFiltersV2'
 
 interface StoryItem {
@@ -416,7 +415,6 @@ function LibraryPlaylistContent() {
 
   return (
     <div style={{ background: '#020617', minHeight: '100vh', paddingBottom: 120 }}>
-      <StickyHeaderFull />
 
       <div style={{ padding: '16px 16px 8px' }}>
         <h1 style={{ color: 'white', fontSize: 20, fontWeight: 800, margin: 0 }}>Build Your Playlist</h1>

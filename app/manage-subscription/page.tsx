@@ -4,7 +4,6 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
 import { isEntitled } from '@/lib/entitlement'
-import StickyHeaderFull from '@/components/StickyHeaderFull'
 
 interface Invoice {
   id: string
@@ -112,7 +111,6 @@ export default function ManageSubscriptionPage() {
 
   return (
     <div style={{ minHeight: '100vh', backgroundColor: '#020617', color: 'white' }}>
-      <StickyHeaderFull />
 
       <div style={{ padding: '20px 20px 0', maxWidth: '480px', margin: '0 auto' }}>
         <h1 style={{ fontSize: '22px', fontWeight: '700', color: 'white', margin: '0 0 20px' }}>Billing &amp; Subscription</h1>

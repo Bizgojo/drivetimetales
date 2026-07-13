@@ -1,7 +1,6 @@
 'use client';
 
 import React, { useState } from 'react';
-import StickyHeaderFull from '@/components/StickyHeaderFull';
 import { useAuth } from '@/contexts/AuthContext';
 
 export default function SettingsPage() {
@@ -32,7 +31,6 @@ export default function SettingsPage() {
 
   return (
     <div className="min-h-screen bg-gray-950 text-white">
-      <StickyHeaderFull />
       
       <div className="px-4 py-5">
         <h1 className="text-2xl font-bold text-white mb-6">⚙️ Settings</h1>
