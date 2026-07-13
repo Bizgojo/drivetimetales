@@ -3,6 +3,8 @@ import Stripe from 'stripe'
 import { createClient } from '@supabase/supabase-js'
 import { Resend } from 'resend'
 import { isActivatableStatus, planFields } from '@/lib/webhookGuards'
+import { sendServerEvent } from '@/lib/tracking/capi'
+import { startTrialEventId, subscribeEventId } from '@/lib/tracking/events'
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, { apiVersion: '2023-10-16' })
 
@@ -118,6 +120,30 @@ export async function POST(request: NextRequest) {
             console.error('[webhook] Welcome email failed (non-fatal):', emailErr)
           }
         }
+
+        // ATL-PIXEL-001: server-side StartTrial (Meta CAPI + TikTok Events
+        // API) — checkout completed, trial begun. PRIMARY optimization event.
+        // event_id st_<session.id> matches the client fire on /home (?cs=)
+        // → platforms dedup client+server to ONE event. Hashed identifiers
+        // only (em/external_id — hashing inside sendServerEvent); attribution
+        // from checkout session metadata (written by /api/checkout). Replays
+        // re-send the same event_id → deduped, harmless. Never throws, ≤4s.
+        await sendServerEvent({
+          name: 'StartTrial',
+          eventId: startTrialEventId(session.id),
+          email: session.customer_details?.email || session.customer_email || null,
+          externalId: userId,
+          value: 0,
+          currency: 'USD',
+          sourceUrl: 'https://endless-tales.com/signup',
+          customData: {
+            content_name: 'Endless Tales Trial',
+            utm_source: session.metadata?.utm_source,
+            utm_medium: session.metadata?.utm_medium,
+            utm_campaign: session.metadata?.utm_campaign,
+            promo_code: session.metadata?.promo_code,
+          },
+        })
       }
       break
     }
@@ -151,7 +177,7 @@ export async function POST(request: NextRequest) {
       try {
         const { data: existing } = await supabase
           .from('users')
-          .select('first_paid_date')
+          .select('first_paid_date, email')
           .eq('id', userId)
           .single()
         if (existing && !existing.first_paid_date) {
@@ -161,6 +187,31 @@ export async function POST(request: NextRequest) {
             .eq('id', userId)
           if (fpdErr) console.error('[webhook] first_paid_date write failed (non-fatal):', fpdErr)
           else console.log(`[webhook] first_paid_date set for user ${userId}`)
+
+          // ATL-PIXEL-001: trial→paid conversion — Subscribe (Meta) /
+          // CompletePayment (TikTok). SERVER-SIDE ONLY: this lands ~14 days
+          // post-click, which is why CAPI is required. Anchored to the exact
+          // once-only first_paid_date transition; event_id sub_<invoice.id>
+          // dedups Stripe webhook retries. Hashed identifiers only;
+          // attribution from subscription metadata. Never throws, ≤4s.
+          await sendServerEvent({
+            name: 'Subscribe',
+            eventId: subscribeEventId(String(invoice.id)),
+            email: existing.email || invoice.customer_email || null,
+            externalId: userId,
+            value: (invoice.amount_paid || 0) / 100,
+            currency: (invoice.currency || 'usd').toUpperCase(),
+            sourceUrl: 'https://endless-tales.com',
+            customData: {
+              content_name: 'Endless Tales Subscription',
+              plan: planName,
+              billing_cycle: billingCycleIp || undefined,
+              utm_source: subscription.metadata?.utm_source,
+              utm_medium: subscription.metadata?.utm_medium,
+              utm_campaign: subscription.metadata?.utm_campaign,
+              promo_code: subscription.metadata?.promo_code,
+            },
+          })
         }
       } catch (fpdCatch) {
         console.error('[webhook] first_paid_date block threw (non-fatal):', fpdCatch)

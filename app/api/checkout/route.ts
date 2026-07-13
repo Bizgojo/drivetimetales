@@ -189,7 +189,10 @@ export async function POST(req: NextRequest) {
         },
         trial_period_days: trialDays > 0 ? trialDays : undefined
       },
-      success_url: `${baseUrl}${safeSuccessPath}`,
+      // ATL-PIXEL-001: Stripe substitutes {CHECKOUT_SESSION_ID} at redirect.
+      // /home reads ?cs= to fire client StartTrial with event_id st_<cs> —
+      // the same id the webhook's server-side StartTrial uses (dedup pair).
+      success_url: `${baseUrl}${safeSuccessPath}${safeSuccessPath.includes('?') ? '&' : '?'}cs={CHECKOUT_SESSION_ID}`,
       cancel_url: `${baseUrl}${cancelPath}`,
       metadata: { userId, referralCode: referralCode || '', ...compactMetadata(campaignMetadata) }
     })

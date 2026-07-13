@@ -14,6 +14,8 @@ import ContinueSampleHero from '@/components/ContinueSampleHero'
 import YourPlaylist from '@/components/YourPlaylist'
 import HorizontalStoryCard from '@/components/HorizontalStoryCard'
 import { buildSeriesPlaybackTarget } from '@/lib/seriesPlayback'
+import { trackClientEvent } from '@/lib/tracking/client'
+import { startTrialEventId, randomEventId } from '@/lib/tracking/events'
 
 declare global {
   interface Window {
@@ -288,13 +290,19 @@ function HomeContent() {
     if (searchParams.get('welcome') === 'true') {
       setShowWelcome(true)
       if (user?.id) {
+        // ATL-PIXEL-001: StartTrial — checkout completed (Stripe success
+        // redirect lands here with ?welcome=true&cs=<checkout session id>).
+        // PRIMARY optimization event. The Stripe webhook fires the server
+        // twin with the SAME event_id (st_<cs>) → platforms dedup to one.
+        // localStorage guard remains as a refresh/revisit belt-and-braces.
         const eventKey = `et_meta_start_trial_${user.id}`
         if (!localStorage.getItem(eventKey)) {
-          window.fbq?.('track', 'StartTrial', {
+          const cs = searchParams.get('cs')
+          trackClientEvent('StartTrial', {
             content_name: 'Endless Tales Trial',
             value: 0,
             currency: 'USD',
-          })
+          }, cs ? startTrialEventId(cs) : randomEventId('st'))
           localStorage.setItem(eventKey, String(Date.now()))
         }
       }

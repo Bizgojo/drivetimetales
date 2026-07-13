@@ -9,6 +9,8 @@ import { normalizeEmail } from '@/lib/email'
 import { applyPromoTrialDays } from '@/lib/promo'
 import { isEntitledUser } from '@/lib/entitlement'
 import { carryQueryString, AUTHED_REDIRECT_EXCLUDED_PARAMS } from '@/lib/subscribeFunnel'
+import { trackClientEvent } from '@/lib/tracking/client'
+import { registrationEventId, randomEventId } from '@/lib/tracking/events'
 
 interface Offer { id: string; name: string; offer_type: 'free_days' | 'credits'; referrer_reward: number; referred_reward: number }
 
@@ -191,6 +193,17 @@ function SignUpContent() {
     }
     if (!user) { setError('Failed to create account'); setLoading(false); return }
 
+    // ATL-PIXEL-001: CompleteRegistration — account created. Fires client-side
+    // here AND server-side from /api/user/create with the SAME deterministic
+    // event_id (reg_<userId>), so Meta/TikTok dedup to one event.
+    trackClientEvent('CompleteRegistration', {
+      content_name: 'Endless Tales Account',
+      promo_code: attribution.promo_code || undefined,
+      utm_source: attribution.utm_source || undefined,
+      utm_medium: attribution.utm_medium || undefined,
+      utm_campaign: attribution.utm_campaign || undefined,
+    }, registrationEventId(user.id))
+
     // Capture attribution and survey response for permanent campaign reporting.
     // Payload built by buildAttributionUpdatePayload — unit-tested against the
     // migrated column list so a schema mismatch fails in CI, not silently here
@@ -239,15 +252,19 @@ function SignUpContent() {
       })
       const data = await response.json()
       if (data.url) {
-        localStorage.setItem(`et_meta_start_trial_${user.id}`, String(Date.now()))
-        window.fbq?.('track', 'StartTrial', {
+        // ATL-PIXEL-001: this used to fire StartTrial at checkout INITIATION
+        // (and localStorage-suppressed the real post-checkout fire on /home),
+        // inflating the primary optimization event with abandoners. Now:
+        // InitiateCheckout here; the true StartTrial fires on the checkout
+        // success redirect (/home?welcome=true&cs=...) + server webhook, deduped.
+        trackClientEvent('InitiateCheckout', {
           content_name: 'Endless Tales Trial',
           value: 0,
           currency: 'USD',
           promo_code: attribution.promo_code || undefined,
           utm_source: attribution.utm_source || undefined,
           utm_campaign: attribution.utm_campaign || undefined,
-        })
+        }, randomEventId('ic'))
         window.location.href = data.url
       }
       else {

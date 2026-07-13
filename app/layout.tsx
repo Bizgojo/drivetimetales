@@ -7,6 +7,7 @@ import PWABackGuard from '@/components/PWABackGuard';
 import UtmCapture from '@/components/UtmCapture';
 import AppShell from '@/components/AppShell';
 import MetaPixel from '@/components/MetaPixel';
+import TikTokPixel from '@/components/TikTokPixel';
 
 export const metadata: Metadata = {
   title: 'Endless Tales - Audio Stories for Your Me-Time',
@@ -57,6 +58,7 @@ export default function RootLayout({
         </AuthProvider>
         <Analytics />
         <MetaPixel />
+        <TikTokPixel />
       </body>
     </html>
   );

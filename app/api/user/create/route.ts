@@ -4,6 +4,8 @@ import { Resend } from 'resend';
 import { ensureNamePoolForUser } from '@/lib/personalization/ensureNamePool';
 import { planSignupNameEnsure } from '@/lib/personalization/signupEnsure';
 import { renderWelcomeEmail } from '@/lib/emails/retentionTemplates';
+import { sendServerEvent } from '@/lib/tracking/capi';
+import { registrationEventId } from '@/lib/tracking/events';
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -86,6 +88,20 @@ export async function POST(request: NextRequest) {
     } catch (nameErr) {
       console.error('[User Create] Name pool keying failed:', nameErr);
     }
+
+    // ATL-PIXEL-001: server-side CompleteRegistration (Meta CAPI + TikTok
+    // Events API). Same deterministic event_id as the client fire on the
+    // signup page (reg_<userId>) → platforms dedup to one event. Covers
+    // creation paths with no client pixel too (magic-link promo flow).
+    // Fire-and-forget contract: sendServerEvent never throws, ≤4s.
+    await sendServerEvent({
+      name: 'CompleteRegistration',
+      eventId: registrationEventId(id),
+      email,
+      externalId: id,
+      sourceUrl: 'https://endless-tales.com/signup',
+      customData: { content_name: 'Endless Tales Account' },
+    });
 
     // Send welcome email (non-blocking)
     try {
