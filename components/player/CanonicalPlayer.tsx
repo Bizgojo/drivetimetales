@@ -1653,19 +1653,7 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
         />
       )}
 
-      {/* Header */}
-      <div style={{ padding:'calc(10px + env(safe-area-inset-top)) 16px 10px', flexShrink:0, display:'flex', alignItems:'center', justifyContent:'space-between', background:'#0f172a', borderBottom:'1px solid rgba(148,163,184,0.06)' }}>
-        <button onClick={handleBack} style={{ width:'40px', height:'40px', borderRadius:'50%', backgroundColor:'#3b82f6', border:'none', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center' }}>
-          <svg width="18" height="18" fill="none" stroke="white" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7"/></svg>
-        </button>
-        <div onClick={() => { disableAutoAdvanceForSession('navigation'); router.push('/home') }} style={{ display:'flex', alignItems:'center', gap:'8px', cursor:'pointer' }}>
-          <img src="/images/et-logo.png" alt="Endless Tales" style={{ width:'28px', height:'28px', objectFit:'contain' }} />
-          <span style={{ fontWeight:800, fontSize:'18px', color:'white' }}>Endless <span style={{ color:'#f97316' }}>Tales</span></span>
-        </div>
-        <div style={{ width:'40px', height:'40px', borderRadius:'50%', backgroundColor:'#f97316', display:'flex', alignItems:'center', justifyContent:'center', fontWeight:700, fontSize:'16px', color:'white' }}>
-          {user?.email?.[0]?.toUpperCase() || 'M'}
-        </div>
-      </div>
+      {/* Header removed 2026-07-13 (Marc): global AppHeader in AppShell already renders back/logo/account — inline player header was a duplicate */}
 
       {/* Cover */}
       <div style={{ width:'100vw', height:'min(46vh, 360px)', minHeight:'260px', flexShrink:0, overflow:'hidden' }}>
