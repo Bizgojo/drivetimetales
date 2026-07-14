@@ -282,8 +282,8 @@ describe('WALK-BUG-0713 #1: per-story CTA reveal', () => {
     expect(GO_STORY_VARIANTS.b.ctaRevealSeconds).toBe(100)
   })
 
-  test('variant a + default carry explicit thresholds (interim 45 pending hook timing)', () => {
-    expect(GO_STORY_VARIANTS.a.ctaRevealSeconds).toBe(CTA_REVEAL_LISTEN_SEC)
+  test('variant a reveals at 70s — whisper-timed hook (Marc confirmed 2026-07-14); default keeps 45', () => {
+    expect(GO_STORY_VARIANTS.a.ctaRevealSeconds).toBe(70)
     expect(GO_SAMPLE_STORY.ctaRevealSeconds).toBe(CTA_REVEAL_LISTEN_SEC)
   })
 
