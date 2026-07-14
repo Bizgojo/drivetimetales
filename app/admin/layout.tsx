@@ -100,13 +100,15 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       // Don't redirect — show session-expired banner instead
       setSessionState('expired')
     } else if (!user) {
-      // Never had a session on this admin load → unauthorized (redirect)
-      router.replace('/home')
+      // Never had a session on this admin load → send to signin with a return
+      // path instead of a silent /home redirect (Marc, 2026-07-13).
+      router.replace(`/signin?returnTo=${encodeURIComponent(pathname || '/admin')}`)
     } else {
-      // User exists but not in ADMIN_EMAILS → unauthorized (redirect)
-      router.replace('/home')
+      // Signed in but not in ADMIN_EMAILS → show an explicit access-denied
+      // screen instead of silently redirecting to /home (Marc, 2026-07-13).
+      setSessionState('unauthorized')
     }
-  }, [user, loading, router])
+  }, [user, loading, router, pathname])
 
   useEffect(() => {
     document.body.classList.add('admin-page')
@@ -224,7 +226,53 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     )
   }
 
-  // Not admin or never had session (redirect in progress)
+  // Signed in but not an admin — explicit access-denied screen
+  if (sessionState === 'unauthorized') {
+    return (
+      <div style={{ minHeight: '100vh', background: '#0f172a', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '2rem' }}>
+        <div style={{ background: '#1e293b', borderRadius: '12px', padding: '2.5rem', maxWidth: '420px', width: '100%', textAlign: 'center', border: '1px solid #334155', boxShadow: '0 20px 60px rgba(0,0,0,0.4)' }}>
+          <div style={{ fontSize: '48px', marginBottom: '1rem' }}>🔒</div>
+          <h1 style={{ color: '#f1f5f9', fontSize: '22px', fontWeight: 700, margin: '0 0 0.75rem' }}>
+            Access Denied
+          </h1>
+          <p style={{ color: '#94a3b8', fontSize: '14px', lineHeight: 1.6, margin: '0 0 1.5rem' }}>
+            This area is for Endless Tales administrators only. Your account doesn&apos;t have admin access.
+          </p>
+          <button
+            onClick={() => router.replace('/home')}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: '0.75rem 1.75rem',
+              backgroundColor: '#f97316',
+              color: 'white',
+              border: 'none',
+              borderRadius: '8px',
+              fontSize: '15px',
+              fontWeight: 700,
+              cursor: 'pointer',
+              width: '100%',
+              fontFamily: 'inherit',
+            }}
+          >
+            Back to Stories
+          </button>
+          <p style={{ color: '#64748b', fontSize: '12px', margin: '1rem 0 0' }}>
+            Admin account?{' '}
+            <button
+              onClick={() => router.replace(`/signin?returnTo=${encodeURIComponent(pathname || '/admin')}`)}
+              style={{ color: '#f97316', background: 'none', border: 'none', cursor: 'pointer', fontSize: '12px', textDecoration: 'underline', fontFamily: 'inherit' }}
+            >
+              Sign in with a different account
+            </button>
+          </p>
+        </div>
+      </div>
+    )
+  }
+
+  // Never had a session (signin redirect in progress)
   const email = (user?.email || '').toLowerCase()
   if (!user || !ADMIN_EMAILS.has(email)) return <div style={{ minHeight: '100vh', background: '#f5f5f5' }} />
 
