@@ -49,3 +49,9 @@ scripts/personalization/pool-worker.log
 
 # symlinked node_modules (worktrees) — trailing-slash pattern above misses symlinks
 node_modules
+
+# === Agent/ops artifacts (added 2026-07-14, repo hygiene per Marc) ===
+scripts/render-worker/*.log
+supabase/.temp/
+tmp/
+tsconfig.tsbuildinfo
