@@ -263,7 +263,7 @@ Every ET author is permanently paired with a specific narrator. Use this table â
 | Caroline Voss | Iris Calloway | American (New England) | Sharp, precise |
 | Coop Delray | Quinn Merritt | American (warm) | Enthusiastic, quirky |
 | Declan Marsh | Iris Calloway | American (New England) | Sharp, precise |
-| Dex Carver | Morgan Veil | American (neutral) | Relaxed, immersive |
+| Dex Carver | Ray Dolan | American (neutral) | Relaxed, immersive |
 | Diana Reeve | Elliott Crane | American (intimate) | Wise, unhurried |
 | Edmund Farr | James Alcott | British (warm) | Gravitas, captivating |
 | Frances Adler | Elliott Crane | American (intimate) | Wise, unhurried |
