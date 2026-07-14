@@ -1,10 +1,20 @@
-// Endless Tales Service Worker v7
+// Endless Tales Service Worker v8
 // Full offline support: app shell + audio caching
 // v7 (WALK-BUG-0713, 2026-07-13): cache-name bump to force-purge stale shells.
 // Devices whose SW predated the isNextScriptChunk exemption were serving old
 // webpack chunks into fresh HTML — old module factories hydrating new pages
 // (crash on /home post-signup, mixed-era chrome/double headers, missing
 // Continue hero). Activating v7 deletes et-shell-v6 and recaches clean.
+// v8 (ORION-SW-RANGE-001, Marc walk bug 2026-07-14): audio handler was
+// range-blind — cache.match ignores the Range header, so a mid-stream
+// `Range: bytes=X-` request was answered with the FULL cached 200 body:
+// Chromium's media stack misaligns and playback dies at a deterministic
+// offset (reproducible fixed-position stall). Also `response.ok` is true for
+// 206 partials, so streaming responses were cache.put() — which the Cache API
+// REJECTS (unhandled throw): streaming playback never populated the cache at
+// all. v8 synthesizes proper 206 slices from cached full bodies, passes
+// uncached ranged requests to the network untouched, and only ever stores
+// full status-200 responses.
 
 const SHELL_CACHE  = 'et-shell-v7'
 const AUDIO_CACHE  = 'et-audio-v1'
@@ -105,21 +115,9 @@ self.addEventListener('fetch', e => {
     url.includes('hot-update')
   ) return
 
-  // Audio files: cache-first, then network+cache
+  // Audio files: range-aware cache-first (ORION-SW-RANGE-001)
   if (isAudioRequest(url) && isAudioDomain(url)) {
-    e.respondWith(
-      caches.open(AUDIO_CACHE).then(async cache => {
-        const cached = await cache.match(e.request)
-        if (cached) return cached
-        try {
-          const response = await fetch(e.request)
-          if (response.ok) cache.put(e.request, response.clone())
-          return response
-        } catch {
-          return new Response('', { status: 503, statusText: 'Audio unavailable offline' })
-        }
-      })
-    )
+    e.respondWith(serveAudio(e.request))
     return
   }
 
@@ -173,6 +171,66 @@ self.addEventListener('fetch', e => {
   }
 })
 
+// ── Audio serving: range-aware cache-first (ORION-SW-RANGE-001) ────────────
+async function serveAudio(request) {
+  const cache = await caches.open(AUDIO_CACHE)
+  const rangeHeader = request.headers.get('range')
+  // Cache is keyed by URL and only ever holds full status-200 bodies.
+  const cached = await cache.match(request.url)
+
+  if (!rangeHeader) {
+    if (cached) return cached
+    try {
+      const response = await fetch(request)
+      // ONLY full 200s. 206 partials are both invalid to store (Cache API
+      // rejects them) and dangerous to serve whole. Await + swallow so a
+      // quota/put failure can never break playback.
+      if (response.status === 200) {
+        try { await cache.put(request.url, response.clone()) } catch (_) {}
+      }
+      return response
+    } catch {
+      return new Response('', { status: 503, statusText: 'Audio unavailable offline' })
+    }
+  }
+
+  // Ranged request: synthesize a real 206 slice from the cached full body —
+  // never hand a full 200 to a Range request (fixed-position stall bug).
+  const parsed = /bytes=(\d+)-(\d+)?/.exec(rangeHeader)
+  if (cached && parsed) {
+    const buf = await cached.arrayBuffer()
+    const total = buf.byteLength
+    const start = Number(parsed[1])
+    const end = parsed[2] ? Math.min(Number(parsed[2]), total - 1) : total - 1
+    if (start >= total || start > end) {
+      return new Response(null, {
+        status: 416,
+        statusText: 'Range Not Satisfiable',
+        headers: { 'Content-Range': `bytes */${total}` },
+      })
+    }
+    const slice = buf.slice(start, end + 1)
+    return new Response(slice, {
+      status: 206,
+      statusText: 'Partial Content',
+      headers: {
+        'Content-Type': cached.headers.get('Content-Type') || 'audio/mpeg',
+        'Content-Length': String(slice.byteLength),
+        'Content-Range': `bytes ${start}-${end}/${total}`,
+        'Accept-Ranges': 'bytes',
+      },
+    })
+  }
+
+  // No cached full body (or unparseable range): straight network passthrough —
+  // the origin handles ranges correctly (curl-verified 206 + Accept-Ranges).
+  try {
+    return await fetch(request)
+  } catch {
+    return new Response('', { status: 503, statusText: 'Audio unavailable offline' })
+  }
+}
+
 // ── Message handler: app-triggered audio caching ─────────────────────────────
 self.addEventListener('message', e => {
   if (e.data && e.data.type === 'CACHE_AUDIO') {
@@ -182,7 +240,8 @@ self.addEventListener('message', e => {
         cache.match(url).then(cached => {
           if (!cached) {
             fetch(url)
-              .then(r => { if (r.ok) cache.put(url, r) })
+              // ORION-SW-RANGE-001: full 200s only — never store partials.
+              .then(r => { if (r.status === 200) return cache.put(url, r) })
               .catch(() => {})
           }
         })
