@@ -1687,6 +1687,26 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
             }
             return
           }
+          // ORION-PLAYER-ENDED-001 (Marc walk bug 4, 2026-07-14): an element
+          // consuming a misaligned/truncated response can fire 'ended' EARLY
+          // — Ep2 quit mid-story, got marked complete, and auto-advance
+          // navigated away. Trust 'ended' only when playback actually reached
+          // the end (2.5s tolerance); otherwise it's a stall — recover in
+          // place, never mark complete, never advance.
+          {
+            const el = audioRef.current
+            if (el && Number.isFinite(el.duration) && el.duration > 0 && el.currentTime < el.duration - 2.5) {
+              console.error('[player] spurious early ended — treating as stall', {
+                storyId,
+                at: el.currentTime,
+                duration: el.duration,
+                readyState: el.readyState,
+                networkState: el.networkState,
+              })
+              recoverFromStall()
+              return
+            }
+          }
           if (!isASC3) {
             setIsPlaying(false); saveProgress(duration, true)
             maybeAutoAdvanceFromNaturalEnd('natural_ended')
