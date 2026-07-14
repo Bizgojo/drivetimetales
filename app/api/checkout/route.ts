@@ -22,6 +22,9 @@ type AttributionPayload = {
   utm_source?: string | null
   utm_medium?: string | null
   utm_campaign?: string | null
+  // ADMIN-MKT-001 (2026-07-14): ad set + ad creative slugs.
+  utm_term?: string | null
+  utm_content?: string | null
   utm_captured_at?: string | null
   promo_code?: string | null
 }
@@ -41,6 +44,8 @@ function attributionMetadata(attribution: AttributionPayload | undefined, heardA
     utm_source: metadataValue(attribution?.utm_source),
     utm_medium: metadataValue(attribution?.utm_medium),
     utm_campaign: metadataValue(attribution?.utm_campaign),
+    utm_term: metadataValue(attribution?.utm_term),
+    utm_content: metadataValue(attribution?.utm_content),
     utm_captured_at: metadataValue(attribution?.utm_captured_at),
     promo_code: promoCode,
     heard_about_us: metadataValue(heardAbout),

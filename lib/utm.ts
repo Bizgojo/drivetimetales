@@ -13,6 +13,10 @@ export interface StoredUtm {
   source: string | null
   medium: string | null
   campaign: string | null
+  // ADMIN-MKT-001 (Marc, 2026-07-14): ad-level attribution — term = ad set,
+  // content = ad creative. Captured and persisted alongside the original trio.
+  term: string | null
+  content: string | null
   captured_at: number | null
 }
 
@@ -20,6 +24,8 @@ export interface SignupAttribution {
   utm_source: string | null
   utm_medium: string | null
   utm_campaign: string | null
+  utm_term: string | null
+  utm_content: string | null
   utm_captured_at: string | null
   promo_code: string | null
 }
@@ -83,17 +89,22 @@ export function captureUtmFromUrl(): void {
     const source = urlParams.get('utm_source')
     const medium = urlParams.get('utm_medium')
     const campaign = urlParams.get('utm_campaign')
+    // ADMIN-MKT-001: ad set + ad creative slugs.
+    const term = urlParams.get('utm_term')
+    const content = urlParams.get('utm_content')
 
     // Only write if at least one UTM param is present in the current URL.
     // This means a normal page navigation without UTM does not clobber
     // an earlier captured UTM (which is what we want — last-touch with
     // a UTM still wins, but a non-UTM page load is a no-op).
-    if (!source && !medium && !campaign) return
+    if (!source && !medium && !campaign && !term && !content) return
 
     const utm: StoredUtm = {
       source: source,
       medium: medium,
       campaign: campaign,
+      term: term,
+      content: content,
       captured_at: Date.now(),
     }
     localStorage.setItem(STORAGE_KEY, JSON.stringify(utm))
@@ -109,6 +120,8 @@ export function readStoredUtm(): StoredUtm {
     source: null,
     medium: null,
     campaign: null,
+    term: null,
+    content: null,
     captured_at: null,
   }
   if (typeof window === 'undefined') return empty
@@ -120,6 +133,9 @@ export function readStoredUtm(): StoredUtm {
       source: parsed.source ?? null,
       medium: parsed.medium ?? null,
       campaign: parsed.campaign ?? null,
+      // Older stored payloads predate term/content — null is correct.
+      term: parsed.term ?? null,
+      content: parsed.content ?? null,
       captured_at: parsed.captured_at ?? null,
     }
   } catch (err) {
@@ -157,6 +173,10 @@ export const SIGNUP_ATTRIBUTION_COLUMNS = [
   'utm_source',
   'utm_medium',
   'utm_campaign',
+  // ADMIN-MKT-001: ad set + ad creative — columns added in
+  // supabase/migrations/20260714170000_users_utm_term_content.sql
+  'utm_term',
+  'utm_content',
   'utm_captured_at',
   'signup_promo_code',
   'heard_about_us',
@@ -178,6 +198,8 @@ export function buildAttributionUpdatePayload(
     utm_source: attribution.utm_source ?? null,
     utm_medium: attribution.utm_medium ?? null,
     utm_campaign: attribution.utm_campaign ?? null,
+    utm_term: attribution.utm_term ?? null,
+    utm_content: attribution.utm_content ?? null,
     utm_captured_at: attribution.utm_captured_at ?? null,
     signup_promo_code: attribution.promo_code ?? null,
     heard_about_us: heardAbout && heardAbout.trim() ? heardAbout.trim() : null,
@@ -190,6 +212,8 @@ export function readSignupAttribution(promoCode?: string | null): SignupAttribut
     utm_source: utm.source,
     utm_medium: utm.medium,
     utm_campaign: utm.campaign,
+    utm_term: utm.term,
+    utm_content: utm.content,
     utm_captured_at: utm.captured_at ? new Date(utm.captured_at).toISOString() : null,
     promo_code: normalizePromoCode(promoCode),
   }

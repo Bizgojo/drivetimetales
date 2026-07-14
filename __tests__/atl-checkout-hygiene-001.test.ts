@@ -45,6 +45,8 @@ describe('ATL-CHECKOUT-HYGIENE-001 defect 3: attribution payload builder', () =>
     utm_source: 'meta',
     utm_medium: 'paid_social',
     utm_campaign: 'gvl-test-001',
+    utm_term: 'gvl-broad-202607',
+    utm_content: 'falls-park-murder-v1',
     utm_captured_at: '2026-07-10T12:00:00.000Z',
     promo_code: 'GVLMETA',
   }
@@ -57,14 +59,16 @@ describe('ATL-CHECKOUT-HYGIENE-001 defect 3: attribution payload builder', () =>
     expect(Object.keys(payload).sort()).toEqual([...SIGNUP_ATTRIBUTION_COLUMNS].sort())
   })
 
-  test('column list matches the columns added/verified by migration 20260710120000', () => {
+  test('column list matches migrations 20260710120000 + 20260714170000 (utm_term/utm_content, ADMIN-MKT-001)', () => {
     expect([...SIGNUP_ATTRIBUTION_COLUMNS].sort()).toEqual([
       'heard_about_us',
       'signup_promo_code',
       'utm_campaign',
       'utm_captured_at',
+      'utm_content',
       'utm_medium',
       'utm_source',
+      'utm_term',
     ])
   })
 
@@ -74,6 +78,8 @@ describe('ATL-CHECKOUT-HYGIENE-001 defect 3: attribution payload builder', () =>
       utm_source: 'meta',
       utm_medium: 'paid_social',
       utm_campaign: 'gvl-test-001',
+      utm_term: 'gvl-broad-202607',
+      utm_content: 'falls-park-murder-v1',
       utm_captured_at: '2026-07-10T12:00:00.000Z',
       signup_promo_code: 'GVLMETA',
       heard_about_us: 'TikTok',
@@ -82,7 +88,7 @@ describe('ATL-CHECKOUT-HYGIENE-001 defect 3: attribution payload builder', () =>
 
   test('empty attribution yields all-null payload (never undefined keys)', () => {
     const payload = buildAttributionUpdatePayload(
-      { utm_source: null, utm_medium: null, utm_campaign: null, utm_captured_at: null, promo_code: null },
+      { utm_source: null, utm_medium: null, utm_campaign: null, utm_term: null, utm_content: null, utm_captured_at: null, promo_code: null },
       ''
     )
     for (const col of SIGNUP_ATTRIBUTION_COLUMNS) {

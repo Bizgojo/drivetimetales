@@ -84,6 +84,8 @@ describe('ORION-RESUB-FUNNEL-001: buildSubscribeCheckoutPayload (signed-in CTA)'
     utm_source: 'facebook',
     utm_medium: 'paid',
     utm_campaign: 'launch',
+    utm_term: null,
+    utm_content: null,
     utm_captured_at: '2026-07-12T00:00:00.000Z',
     promo_code: 'GVLMETA',
   }
