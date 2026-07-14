@@ -81,9 +81,9 @@ export const GO_STORY_VARIANTS: Record<string, GoStory> = {
     hook: 'Greenville\u2019s Commuter of the Year has never once made the drive.',
     // "The Borrowed Buick" — Commuter of the Year ep1, published 2026-07-12.
     catalogStoryId: 'fe23bfd4-d6c9-4ad9-b833-37657287c0f3',
-    // INTERIM 45s — hook moment being timed from the sample transcript
-    // (WALK-BUG-0713 #1); Marc confirms the final value.
-    ctaRevealSeconds: CTA_REVEAL_LISTEN_SEC,
+    // Whisper transcript timing: fraud clear at 0:41, plaque read completes
+    // 1:09 → CTA at 70s (Marc confirmed 2026-07-14, WALK-BUG-0713 #1).
+    ctaRevealSeconds: 70,
     coverUrl: 'https://vmyhlfeouzslixtkmddy.supabase.co/storage/v1/object/public/Covers/landing/go-variant-a/cover.jpg',
     audioUrl: 'https://vmyhlfeouzslixtkmddy.supabase.co/storage/v1/object/public/audio/landing/go-variant-a/final_mix.mp3',
   },
