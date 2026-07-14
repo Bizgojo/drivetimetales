@@ -1,5 +1,4 @@
 'use client'
-import StickyHeaderFull from '@/components/StickyHeaderFull';
 
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
@@ -63,7 +62,6 @@ export default function HelpPage() {
 
   return (
     <div className="min-h-screen bg-gray-950 text-white">
-      <StickyHeaderFull />
 
       <div className="px-4 py-5 pb-24 max-w-2xl mx-auto">
         {/* Page Header */}

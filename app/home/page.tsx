@@ -4,7 +4,6 @@ import { Suspense, useState, useEffect } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
 import { supabase } from '@/lib/supabase'
-import HomeHeader from '@/components/HomeHeader'
 import ContinueListening from '@/components/ContinueListening'
 import NewReleases from '@/components/NewReleases'
 import RecommendedForYou from '@/components/RecommendedForYou'
@@ -339,7 +338,6 @@ function HomeContent() {
 
   return (
     <div className="min-h-screen bg-slate-950">
-      <HomeHeader />
       <main className="pb-20">
         <div style={{ padding: '1rem 1rem 0' }}>
           <label htmlFor="home-story-search" style={{ display: 'block', color: 'white', fontSize: '12px', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: '0.5rem' }}>

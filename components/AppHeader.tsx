@@ -43,7 +43,10 @@ export default function AppHeader() {
 
         <button
           type="button"
-          onClick={() => router.push('/')}
+          // WALK-BUG-0713 #8 (Marc, 2026-07-13): logo → /home directly for
+          // signed-in users (was '/' + signed-in bounce — one hop fewer, and
+          // never depends on the root redirect). Signed-out keeps '/'.
+          onClick={() => router.push(user ? '/home' : '/')}
           className="absolute left-1/2 flex -translate-x-1/2 items-center gap-2 border-0 bg-transparent p-0"
           aria-label="Go to Endless Tales home"
         >

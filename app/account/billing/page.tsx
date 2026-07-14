@@ -1,5 +1,4 @@
 'use client'
-import StickyHeaderFull from '@/components/StickyHeaderFull'
 
 import Link from 'next/link'
 import { useState, useEffect } from 'react'
@@ -91,7 +90,6 @@ export default function BillingPage() {
 
   return (
     <div className="min-h-screen bg-slate-950">
-      <StickyHeaderFull />
       
       <main className="p-4 space-y-6 pb-24">
         <section className="bg-slate-800 rounded-xl p-4">

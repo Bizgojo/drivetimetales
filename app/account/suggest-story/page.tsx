@@ -1,5 +1,4 @@
 'use client'
-import StickyHeaderFull from '@/components/StickyHeaderFull';
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
@@ -120,7 +119,6 @@ export default function SuggestStoryPage() {
   if (checkingEligibility) {
     return (
       <div className="min-h-screen bg-gray-950 text-white">
-        <StickyHeaderFull />
         <div className="flex items-center justify-center py-20">
           <div className="text-gray-400 text-sm">Checking eligibility…</div>
         </div>
@@ -131,7 +129,6 @@ export default function SuggestStoryPage() {
   if (cooldown.active && cooldown.nextAvailable) {
     return (
       <div className="min-h-screen bg-gray-950 text-white">
-        <StickyHeaderFull />
         <div className="flex flex-col items-center justify-center px-6 py-20 text-center">
           <span className="text-6xl mb-6">⏳</span>
           <h1 className="text-2xl font-bold text-white mb-3">You're All Set for Now</h1>
@@ -155,7 +152,6 @@ export default function SuggestStoryPage() {
   if (submitted) {
     return (
       <div className="min-h-screen bg-gray-950 text-white">
-        <StickyHeaderFull />
         <div className="flex flex-col items-center justify-center px-6 py-20 text-center">
           <span className="text-6xl mb-6">🎙️</span>
           <h1 className="text-2xl font-bold text-white mb-3">Idea Received!</h1>
@@ -176,7 +172,6 @@ export default function SuggestStoryPage() {
 
   return (
     <div className="min-h-screen bg-gray-950 text-white">
-      <StickyHeaderFull />
 
       <div className="px-4 py-6 pb-24 max-w-xl mx-auto">
         {/* Header */}
