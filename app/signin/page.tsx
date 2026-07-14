@@ -55,10 +55,17 @@ function SignInContent() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: normalizeEmail(email), returnTo }),
       })
-      if (!res.ok) throw new Error('Request failed')
+      if (!res.ok) {
+        // ORION-MAGIC-VISIBILITY-001: surface the real reason — a swallowed
+        // rate limit looked like a sent email on Marc's 0714b walk leg.
+        const body = await res.json().catch(() => null)
+        throw new Error(body?.message || 'Request failed')
+      }
       router.push(`/auth/magic-sent?email=${encodeURIComponent(normalizeEmail(email))}`)
-    } catch {
-      setError('Something went wrong. Please try again.')
+    } catch (err) {
+      setError(err instanceof Error && err.message !== 'Request failed'
+        ? err.message
+        : 'Something went wrong. Please try again.')
       setMagicLoading(false)
     }
   }
