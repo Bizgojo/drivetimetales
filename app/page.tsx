@@ -16,7 +16,7 @@ import React, { useEffect, useState, Suspense } from 'react'
 import Link from 'next/link'
 import { useSearchParams, useRouter } from 'next/navigation'
 import { supabaseBrowser as supabase } from '@/lib/supabase-browser'
-import { buildSignupCtaHref } from '@/lib/utm'
+import { buildSignupCtaHref, captureUtmFromUrl } from '@/lib/utm'
 
 function LandingContent() {
   const router = useRouter()
@@ -27,6 +27,35 @@ function LandingContent() {
   const promo = searchParams.get('promo') || searchParams.get('code')
   const [partnerName, setPartnerName] = useState<string | null>(null)
   const [authResolving, setAuthResolving] = useState(true)
+
+  // ORION-LANDING-FORWARD-001 (Marc walk-blocker, 2026-07-14): the
+  // www.endless-tales.com → app 308 redirect DROPS the URL path (query
+  // survives) — mobile ad clicks meant for /go landed HERE, promo-blind, and
+  // UTM attribution died silently. Heal ANY upstream path-dropper on every
+  // device: forward ad-parameter arrivals to their intended page with the
+  // full query intact. ?v= is /go's variant param → /go; promo/code without
+  // partner → /signup. Partner QR arrivals stay — root is their real landing.
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const qs = window.location.search
+    if (!qs || qs.length < 2) return
+    const params = new URLSearchParams(qs)
+    if (params.has('v')) {
+      router.replace(`/go${qs}`)
+      return
+    }
+    if ((params.has('promo') || params.has('code')) && !params.has('partner')) {
+      router.replace(`/signup${qs}`)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // ORION-LANDING-FORWARD-001: attribution safety — capture utm_* into
+  // localStorage on the root page too (was /go- and /signup-only), so even
+  // arrivals that legitimately stay here don't lose ad attribution.
+  useEffect(() => {
+    captureUtmFromUrl()
+  }, [])
 
   // PWA launches must not paint public/login surfaces until Supabase restores.
   useEffect(() => {
