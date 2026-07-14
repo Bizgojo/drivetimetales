@@ -589,10 +589,9 @@ export default function LibraryPage() {
     }
   }
 
-  function savePlaylistToHome() {
-    try {
-      const items = validPlaylist
-        .map((key) => {
+  function buildActivePlaylistItems() {
+    return validPlaylist
+      .map((key) => {
           const item = cardItems.find((i) => i.key === key)
           if (!item) return null
           if (item.type === 'single' && item.story) {
@@ -625,16 +624,47 @@ export default function LibraryPage() {
           return null
         })
         .filter(Boolean)
-      const savedPlaylist = {
-        id: `library-${Date.now()}`,
-        items,
-        remaining_mins: playlistTotalMins,
-        completed: 0,
-      }
-      saveActivePlaylist(savedPlaylist, validPlaylist)
+  }
+
+  function syncQueueToHome() {
+    const savedPlaylist = {
+      id: `library-${Date.now()}`,
+      items: buildActivePlaylistItems(),
+      remaining_mins: playlistTotalMins,
+      completed: 0,
+    }
+    saveActivePlaylist(savedPlaylist, validPlaylist)
+  }
+
+  function savePlaylistToHome() {
+    try {
+      syncQueueToHome()
       router.push('/home')
     } catch {}
   }
+
+  // Marc 2026-07-13: queueing in the library must show up on /home without the
+  // extra "Save to home" tap — auto-sync the queue to the home playlist card
+  // whenever it changes. Equality guard prevents save-event feedback loops and
+  // preserves the existing playlist's completed count when nothing changed.
+  useEffect(() => {
+    if (loading || !playlistHydrated || validPlaylist.length === 0) return
+    try {
+      const raw = localStorage.getItem(ACTIVE_PLAYLIST_KEY)
+      if (raw) {
+        const active = JSON.parse(raw)
+        const items = active?.items || active?.stories || []
+        const existingKeys = (Array.isArray(items) ? items : [])
+          .map((item: any) => item?.type === 'series'
+            ? (item.series_id || item.id ? `series-${item.series_id || item.id}` : null)
+            : (item?.id ? `single-${item.id}` : null))
+          .filter(Boolean)
+        if (existingKeys.length === validPlaylist.length && existingKeys.every((k: string, i: number) => k === validPlaylist[i])) return
+      }
+      syncQueueToHome()
+    } catch {}
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, playlistHydrated, validPlaylist, playlistTotalMins])
 
   function getCardState(item: CardItem) {
     const inPlaylist = validPlaylist.includes(item.key)
