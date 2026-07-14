@@ -96,6 +96,9 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
   const inWelcomeRef    = useRef(false)
   const [cumTime, setCumTime]   = useState(0)
   const [audioErrorMessage, setAudioErrorMessage] = useState('')
+  // ORION-PLAYER-STALL-001: true while playback is data-starved (button shows
+  // Buffering… instead of lying with a playing state).
+  const [isBuffering, setIsBuffering] = useState(false)
   const [autoplayBlocked, setAutoplayBlocked] = useState(false)
   const isAdvancingRef = useRef(false)
   const mountedRef = useRef(false)
@@ -165,6 +168,49 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
   const bustAudioUrl = (url: string) => {
     const sep = url.includes('?') ? '&' : '?'
     return `${url}${sep}et_retry=${Date.now()}`
+  }
+
+  // ── ORION-PLAYER-STALL-001 (Marc walk bug, 2026-07-14) ───────────────────
+  // A stalled stream (data starvation — e.g. failed range fetch after a resume
+  // seek) previously looked IDENTICAL to playback: isPlaying stayed true, the
+  // button said Pause, and nothing recovered — a silent player. The watchdog
+  // samples currentTime every 2s while playing: frozen ≥4s → Buffering UI;
+  // frozen ≥8s → reload the same src cache-busted at the same position and
+  // resume (2 attempts); still frozen → explicit stall card via
+  // audioErrorMessage. Natural advancement resets everything.
+  const stallSampleRef = useRef<{ t: number; at: number } | null>(null)
+  const stallRecoveryCountRef = useRef(0)
+  const stallRecoveringRef = useRef(false)
+
+  const recoverFromStall = () => {
+    const audio = audioRef.current
+    if (!audio || stallRecoveringRef.current) return
+    stallRecoveringRef.current = true
+    stallRecoveryCountRef.current += 1
+    const src = audio.currentSrc || audio.src || ''
+    const pos = Number.isFinite(audio.currentTime) ? audio.currentTime : 0
+    console.warn('[player] stall watchdog: recovering', {
+      storyId,
+      attempt: stallRecoveryCountRef.current,
+      pos,
+      src: src.slice(-80),
+      readyState: audio.readyState,
+      networkState: audio.networkState,
+    })
+    const onMeta = () => {
+      audio.removeEventListener('loadedmetadata', onMeta)
+      try { audio.currentTime = pos } catch (_) {}
+      audio.play().then(() => {
+        stallRecoveringRef.current = false
+        stallSampleRef.current = null
+      }).catch((err) => {
+        stallRecoveringRef.current = false
+        console.error('[player] stall recovery play() failed:', err)
+      })
+    }
+    audio.addEventListener('loadedmetadata', onMeta)
+    audio.src = bustAudioUrl(src.replace(/[?&]et_retry=\d+/, ''))
+    audio.load()
   }
 
   const canPreviewReviewStory = () => {
@@ -1095,6 +1141,54 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
 
   // ── Play / Pause ───────────────────────────────────────────────────────────
 
+  // ORION-PLAYER-STALL-001: watchdog — samples currentTime every 2s while the
+  // UI believes we are playing. Frozen ≥4s → buffering UI. Frozen ≥8s →
+  // recovery attempt (max 2). Still frozen after that → explicit stall card.
+  useEffect(() => {
+    if (!isPlaying) {
+      stallSampleRef.current = null
+      setIsBuffering(false)
+      return
+    }
+    const id = window.setInterval(() => {
+      const audio = audioRef.current
+      if (!audio || audio.paused || stallRecoveringRef.current) return
+      const now = Date.now()
+      const t = audio.currentTime
+      const sample = stallSampleRef.current
+      if (!sample || Math.abs(t - sample.t) > 0.25) {
+        // Advancing normally — reset the freeze window and recovery budget.
+        stallSampleRef.current = { t, at: now }
+        if (stallRecoveryCountRef.current) stallRecoveryCountRef.current = 0
+        setIsBuffering(false)
+        return
+      }
+      const frozenMs = now - sample.at
+      if (frozenMs >= 4000) setIsBuffering(true)
+      if (frozenMs >= 8000) {
+        if (stallRecoveryCountRef.current < 2) {
+          stallSampleRef.current = { t, at: now } // restart window for the attempt
+          recoverFromStall()
+        } else {
+          console.error('[player] stall watchdog: unrecovered after retries', {
+            storyId,
+            pos: t,
+            readyState: audio.readyState,
+            networkState: audio.networkState,
+          })
+          audio.pause()
+          setIsPlaying(false)
+          setIsBuffering(false)
+          setAudioErrorMessage('Audio stalled — check your connection and try again.')
+          stallSampleRef.current = null
+          stallRecoveryCountRef.current = 0
+        }
+      }
+    }, 2000)
+    return () => window.clearInterval(id)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isPlaying])
+
   const handlePlayPause = () => {
     if (!audioRef.current) return
     if (isPlaying) {
@@ -1515,6 +1609,11 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
           setIsPlaying(true)
           if (!noMusicRef.current) duck()
         }}
+        // ORION-PLAYER-STALL-001: immediate buffering feedback — the watchdog
+        // confirms/clears it from actual currentTime movement.
+        onWaiting={() => setIsBuffering(true)}
+        onStalled={() => setIsBuffering(true)}
+        onPlaying={() => setIsBuffering(false)}
         onPause={() => setIsPlaying(false)}
         onEnded={() => {
           // ── Welcome chain ────────────────────────────────────────────────
@@ -1795,7 +1894,7 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
         </div>
         <div style={{ display:'flex', gap:'12px' }}>
           <button onClick={handlePlayPause} style={{ flex:2, padding:'16px', borderRadius:'14px', border:'none', fontSize:'16px', fontWeight:700, cursor:'pointer', backgroundColor: isPlaying ? '#f97316' : '#22c55e', color:'white' }}>
-            {isPlaying ? '⏸ Pause' : hasProgress ? '▶ Continue' : '▶ Play'}
+            {isPlaying ? (isBuffering ? '⏳ Buffering…' : '⏸ Pause') : hasProgress ? '▶ Continue' : '▶ Play'}
           </button>
           {hasProgress && (
             <button onClick={() => {
