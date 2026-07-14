@@ -999,24 +999,58 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
 
     let cancelled = false
     setTotalDur(0)
-    Promise.all(queue.map((segment, index) => new Promise<{ index: number; duration: number }>((resolve) => {
-      const probe = new Audio()
-      probe.preload = 'metadata'
-      probe.onloadedmetadata = () => {
-        const segmentDuration = Number.isFinite(probe.duration) && probe.duration > 0 ? probe.duration : 0
-        resolve({ index, duration: segmentDuration })
-      }
-      probe.onerror = () => resolve({ index, duration: 0 })
-      probe.src = segment.url
-      probe.load()
-    }))).then((durations) => {
+    // ORION-PLAYER-SEEK-001 (Marc walk addendum, 2026-07-14): the old probes
+    // had NO timeout — one hung metadata fetch (Firefox private windows were
+    // the repro) left Promise.all pending FOREVER: totalDur stayed 0, which
+    // silently killed the resume seek AND the drag-to-seek bar (both gate on
+    // total duration). Every probe now settles within PROBE_TIMEOUT_MS, zero
+    // results get one retry, and partial results still produce a usable total
+    // (the main element's own loadedmetadata keeps refining segDursRef).
+    const PROBE_TIMEOUT_MS = 4000
+    const probeSegmentDuration = (url: string): Promise<number> =>
+      new Promise<number>((resolve) => {
+        let settled = false
+        const probe = new Audio()
+        const finish = (d: number) => {
+          if (settled) return
+          settled = true
+          window.clearTimeout(timer)
+          probe.onloadedmetadata = null
+          probe.onerror = null
+          try { probe.src = '' } catch (_) {}
+          resolve(d)
+        }
+        const timer = window.setTimeout(() => {
+          console.warn('[player] duration probe timeout:', url.slice(-60))
+          finish(0)
+        }, PROBE_TIMEOUT_MS)
+        probe.preload = 'metadata'
+        probe.onloadedmetadata = () => finish(Number.isFinite(probe.duration) && probe.duration > 0 ? probe.duration : 0)
+        probe.onerror = () => finish(0)
+        probe.src = url
+        probe.load()
+      })
+    const runProbes = async () => {
+      const durations = await Promise.all(queue.map(async (segment, index) => {
+        let d = await probeSegmentDuration(segment.url)
+        if (d <= 0 && !cancelled) d = await probeSegmentDuration(segment.url) // one retry
+        return { index, duration: d }
+      }))
       if (cancelled) return
+      const failed = durations.filter((entry) => entry.duration <= 0)
+      if (failed.length) {
+        console.warn('[player] duration probes incomplete — seeking uses partial totals', {
+          storyId,
+          failedSegments: failed.map((entry) => entry.index),
+        })
+      }
       durations.forEach(({ index, duration: segmentDuration }) => {
         if (segmentDuration > 0) segDursRef.current[index] = segmentDuration
       })
       const total = segDursRef.current.reduce((sum, value) => sum + (Number.isFinite(value) && value > 0 ? value : 0), 0)
       if (total > 0) setTotalDur(total)
-    })
+    }
+    runProbes()
 
     return () => {
       cancelled = true
@@ -1025,8 +1059,13 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
 
   useEffect(() => {
     if (!isASC3 || !queue.length || loading || resumeRef.current <= 0 || totalDur <= 0) return
+    // ORION-PLAYER-SEEK-001: if durations arrived late (probe timeout path)
+    // and the listener already pressed play from 0:00, don't yank their
+    // position — the resume intent is stale at that point.
+    if (isPlaying) { resumeRef.current = 0; return }
     seekASC3ToGlobalTime(resumeRef.current, false)
     resumeRef.current = 0
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isASC3, queue, loading, totalDur])
 
   useEffect(() => {
