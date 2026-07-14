@@ -949,6 +949,14 @@ function StoryCard({
     description.length > 70 ? description.slice(0, 67) + '…' : description
   const showProgress = !isSeries && state.progress > 0 && !state.completed
   const inProgress = isSeries ? !!item.seriesInProgress : showProgress
+  // Marc 2026-07-13: series Continue button shows "Continue / Episode ##" on
+  // two lines; fall back to "Ep." when the number is 3+ digits so it still fits.
+  const resumeEpisodeNumber = isSeries
+    ? item.episodePlaylist?.find((ep) => ep.id === item.playEpisodeId)?.episode_number || null
+    : null
+  const continueEpisodeLabel = resumeEpisodeNumber
+    ? `${resumeEpisodeNumber >= 100 ? 'Ep.' : 'Episode'} ${resumeEpisodeNumber}`
+    : null
   const showRate = state.completed && !state.reviewed
   const showPlayAgain = !isSeries && state.completed && state.reviewed
 
@@ -1069,13 +1077,27 @@ function StoryCard({
                 padding: '2px 6px',
                 borderRadius: '6px',
                 fontSize: '11px',
-                lineHeight: 1,
+                lineHeight: 1.2,
                 minHeight: '32px',
                 fontWeight: 500,
                 cursor: 'pointer',
               }}
             >
-              {showPlayAgain ? '▶ Play Again' : inProgress ? '▶ Continue' : isSeries ? '▶ Play series' : '▶ Play now'}
+              {showPlayAgain ? (
+                '▶ Play Again'
+              ) : inProgress && isSeries && continueEpisodeLabel ? (
+                <span>
+                  ▶ Continue
+                  <br />
+                  {continueEpisodeLabel}
+                </span>
+              ) : inProgress ? (
+                '▶ Continue'
+              ) : isSeries ? (
+                '▶ Play series'
+              ) : (
+                '▶ Play now'
+              )}
             </button>
             {showRate ? (
               <button
