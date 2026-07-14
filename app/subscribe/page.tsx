@@ -7,6 +7,8 @@ import { isEntitledUser } from '@/lib/entitlement'
 import { normalizePromoCode, readSignupAttribution } from '@/lib/utm'
 import { applyPromoTrialDays, BASE_TRIAL_DAYS } from '@/lib/promo'
 import { buildSubscribeCheckoutPayload, buildSubscribeSignupPath } from '@/lib/subscribeFunnel'
+import { trackClientEvent } from '@/lib/tracking/client'
+import { randomEventId } from '@/lib/tracking/events'
 
 function safeInternalPath(path: string | null) {
   if (!path || !path.startsWith('/') || path.startsWith('//') || path.includes('://')) return ''
@@ -96,6 +98,19 @@ function SubscribeContent() {
       })
       const data = await response.json()
       if (data?.url) {
+        // ATL-PIXEL-001 walk finding: the live ad funnel initiates checkout
+        // HERE (signup redirects authed non-entitled users to /subscribe),
+        // so InitiateCheckout must fire here too — the signup-page fire only
+        // covers the direct-checkout path.
+        const attribution = readSignupAttribution(promoCode)
+        trackClientEvent('InitiateCheckout', {
+          content_name: 'Endless Tales Trial',
+          value: 0,
+          currency: 'USD',
+          promo_code: attribution.promo_code || undefined,
+          utm_source: attribution.utm_source || undefined,
+          utm_campaign: attribution.utm_campaign || undefined,
+        }, randomEventId('ic'))
         window.location.href = data.url
         return
       }

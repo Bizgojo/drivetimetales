@@ -14,6 +14,8 @@ import ContinueSampleHero from '@/components/ContinueSampleHero'
 import YourPlaylist from '@/components/YourPlaylist'
 import HorizontalStoryCard from '@/components/HorizontalStoryCard'
 import { buildSeriesPlaybackTarget } from '@/lib/seriesPlayback'
+import { trackClientEvent } from '@/lib/tracking/client'
+import { startTrialEventId, randomEventId } from '@/lib/tracking/events'
 
 declare global {
   interface Window {
@@ -288,19 +290,30 @@ function HomeContent() {
   const [homeSearch, setHomeSearch] = useState('')
 
   useEffect(() => {
-    if (searchParams.get('welcome') === 'true') {
-      setShowWelcome(true)
-      if (user?.id) {
-        const eventKey = `et_meta_start_trial_${user.id}`
-        if (!localStorage.getItem(eventKey)) {
-          window.fbq?.('track', 'StartTrial', {
-            content_name: 'Endless Tales Trial',
-            value: 0,
-            currency: 'USD',
-          })
-          localStorage.setItem(eventKey, String(Date.now()))
-        }
+    // ATL-PIXEL-001 (walk finding, 2026-07-13): StartTrial keys on the ?cs=
+    // param — Stripe's success redirect is the ONLY thing that appends
+    // cs={CHECKOUT_SESSION_ID} (see /api/checkout success_url). The live ad
+    // funnel goes signup→/subscribe→checkout with returnTo='/home', which
+    // lands WITHOUT welcome=true — gating on welcome would silently drop the
+    // primary optimization event for exactly the users ads care about.
+    // PRIMARY optimization event. The Stripe webhook fires the server twin
+    // with the SAME event_id (st_<cs>) → platforms dedup to one event.
+    // localStorage guard remains as a refresh/revisit belt-and-braces.
+    const cs = searchParams.get('cs')
+    const welcome = searchParams.get('welcome') === 'true'
+    if ((cs || welcome) && user?.id) {
+      const eventKey = `et_meta_start_trial_${user.id}`
+      if (!localStorage.getItem(eventKey)) {
+        trackClientEvent('StartTrial', {
+          content_name: 'Endless Tales Trial',
+          value: 0,
+          currency: 'USD',
+        }, cs ? startTrialEventId(cs) : randomEventId('st'))
+        localStorage.setItem(eventKey, String(Date.now()))
       }
+    }
+    if (welcome) {
+      setShowWelcome(true)
       const t = setTimeout(() => setShowWelcome(false), 6000)
       return () => clearTimeout(t)
     }

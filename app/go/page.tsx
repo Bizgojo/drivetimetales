@@ -43,7 +43,7 @@ HARD RULES:
 
 'use client'
 
-import { useState, useEffect, useCallback, Suspense } from 'react'
+import { useState, useEffect, useCallback, useRef, Suspense } from 'react'
 import Link from 'next/link'
 import Image from 'next/image'
 import { useSearchParams } from 'next/navigation'
@@ -56,6 +56,8 @@ import {
   CTA_REVEAL_LISTEN_SEC,
 } from '@/lib/landing'
 import GoSamplePlayer from '@/components/GoSamplePlayer'
+import { trackClientEvent } from '@/lib/tracking/client'
+import { randomEventId } from '@/lib/tracking/events'
 
 function LoadingFallback() {
   return (
@@ -94,6 +96,26 @@ function GoLandingContent() {
 
   // CTA href: promo + full utm_* set from the current URL → /signup.
   const ctaHref = buildCampaignSignupHref(searchParams)
+
+  // ATL-PIXEL-001: ViewContent on landing view (both GVL variants), carrying
+  // UTM params so ad platforms attribute the view. Client-only event — random
+  // event_id; ref guards React 18 strict-mode double-mount in dev.
+  const viewContentFired = useRef(false)
+  useEffect(() => {
+    if (viewContentFired.current) return
+    viewContentFired.current = true
+    trackClientEvent('ViewContent', {
+      content_name: story.title,
+      content_category: 'landing',
+      content_id: story.id,
+      utm_source: searchParams.get('utm_source'),
+      utm_medium: searchParams.get('utm_medium'),
+      utm_campaign: searchParams.get('utm_campaign'),
+      utm_content: searchParams.get('utm_content'),
+      utm_term: searchParams.get('utm_term'),
+    }, randomEventId('vc'))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   // ATL-PROMO-UI-001 pattern: server-truth promo validation for honest trial
   // display. Valid → real trial length + "applied" badge. Invalid, missing,
