@@ -75,9 +75,9 @@ describe('ORION-PLAYER-ENDSTATE-001: completed end-state (Play Again / Next epis
     )
   })
 
-  test('re-arm toggle exists as a one-line switch and DEFAULTS FALSE (pending design ruling)', () => {
-    expect(PLAYER).toMatch(/const REARM_AUTO_ADVANCE_ON_RESUME = false/)
-    expect(PLAYER).not.toMatch(/const REARM_AUTO_ADVANCE_ON_RESUME = true/)
+  test('re-arm toggle is ON per Marc ruling A (2026-07-15 msg 2634): resume re-arms auto-advance', () => {
+    expect(PLAYER).toMatch(/const REARM_AUTO_ADVANCE_ON_RESUME = true/)
+    expect(PLAYER).not.toMatch(/const REARM_AUTO_ADVANCE_ON_RESUME = false/)
     // Resume branch honors it: clears the manual_pause disable reason when ON
     expect(PLAYER).toMatch(
       /REARM_AUTO_ADVANCE_ON_RESUME && autoAdvanceDisabledReason === 'manual_pause'[\s\S]{0,200}setAutoAdvanceDisabledReason\(null\)/
