@@ -90,6 +90,36 @@ async function getAudioDuration(filePath: string): Promise<number> {
   return parseInt(m[1]) * 3600 + parseInt(m[2]) * 60 + parseFloat(m[3])
 }
 
+// ORION-MIX-TRAILPAD-001 (2026-07-15, Marc merge word 09:21 EDT): minimum trailing-
+// silence pad on voice segments. ElevenLabs clips can end hot (0–50ms of tail);
+// butted directly against the next speaker at body concat, the turn reads as a
+// cut-off (Mile Markers listen defect — 21 hot-tail boundaries measured, while
+// Whisper QC stays green because the words are all present). Each voice segment
+// is topped up to at least MIN_TRAILING_SILENCE_SEC of tail before concat.
+// Segments already at/above the minimum are untouched — approved-catalog sound
+// (Falls Park class) is preserved. SFX/intro/outro are not padded.
+const MIN_TRAILING_SILENCE_SEC = 0.3
+const TRAILING_SILENCE_NOISE_FLOOR = '-40dB'
+
+async function getTrailingSilenceSec(filePath: string): Promise<number> {
+  try {
+    const result = await execFileAsync(FFMPEG_PATH, [
+      '-i', filePath,
+      '-af', `areverse,silencedetect=noise=${TRAILING_SILENCE_NOISE_FLOOR}:d=0.02`,
+      '-f', 'null', '-',
+    ], { encoding: 'utf8' }).catch(e => ({ stdout: '', stderr: e?.stderr || '' }))
+    const out = String((result as any).stderr || (result as any).stdout || '')
+    // On reversed audio, trailing silence surfaces as the first silence event at ~0.
+    const startMatch = out.match(/silence_start:\s*(-?[\d.]+)/)
+    if (!startMatch || Number(startMatch[1]) > 0.02) return 0
+    const endMatch = out.match(/silence_end:\s*([\d.]+)/)
+    return endMatch ? Math.max(0, Number(endMatch[1])) : 0
+  } catch {
+    // Measurement failure → assume hot tail; padding is the safe direction.
+    return 0
+  }
+}
+
 async function logLoudnessDiagnostics(label: string, filePath: string): Promise<void> {
   try {
     const result = await execFileAsync(FFMPEG_PATH, [
@@ -510,7 +540,17 @@ export async function runRenderFinalMix(storyId: string): Promise<{
           const segPath = path.join(tmpDir, seg.name)
           // Voice segments are already loudness-QC'd upstream. Do not run
           // per-segment loudnorm here; short clips can be over-attenuated.
-          await execFileAsync(FFMPEG_PATH, ['-i', rawPath, '-ar', '44100', '-ac', '2', '-b:a', '192k', '-y', segPath])
+          // ORION-MIX-TRAILPAD-001: guarantee a minimum trailing-silence tail so
+          // the next speaker never steps on this line's final word at concat.
+          const trailingSilenceSec = await getTrailingSilenceSec(rawPath)
+          const padDeficitSec = Math.max(0, MIN_TRAILING_SILENCE_SEC - trailingSilenceSec)
+          const reformatArgs = ['-i', rawPath]
+          if (padDeficitSec > 0.005) reformatArgs.push('-af', `apad=pad_dur=${padDeficitSec.toFixed(3)}`)
+          reformatArgs.push('-ar', '44100', '-ac', '2', '-b:a', '192k', '-y', segPath)
+          await execFileAsync(FFMPEG_PATH, reformatArgs)
+          if (padDeficitSec > 0.005) {
+            console.log(`  Segment ${seg.name}: trailing silence ${(trailingSilenceSec * 1000).toFixed(0)}ms → padded +${(padDeficitSec * 1000).toFixed(0)}ms`)
+          }
           preparedMap.set(i, { name: seg.name, segmentNumber: parsedSegment.segmentNumber, path: segPath })
           await fs.unlink(rawPath).catch(() => {})
         } catch (e) {
