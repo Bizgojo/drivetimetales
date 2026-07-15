@@ -195,7 +195,15 @@ export default function LibraryPage() {
     if (!playlistHydrated || !user) return
     try {
       if (playlist.length > 0) localStorage.setItem(playlistKey, JSON.stringify(playlist))
-      else clearActivePlaylist()
+      else {
+        // UX-PLAYLIST-002 (2026-07-15): the user-scoped key must be removed too.
+        // clearActivePlaylist() only clears the unscoped keys, then fires
+        // et_playlist_cleared/saved — which syncPlaylist() answers by rehydrating
+        // from this stale user-scoped key, silently resurrecting the removed item.
+        // Net effect: tapping "✓ Remove" on the LAST playlist item did nothing.
+        localStorage.removeItem(playlistKey)
+        clearActivePlaylist()
+      }
     } catch {}
   }, [playlistHydrated, playlist])
 
