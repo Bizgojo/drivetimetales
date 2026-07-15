@@ -545,7 +545,10 @@ export async function runRenderFinalMix(storyId: string): Promise<{
           const trailingSilenceSec = await getTrailingSilenceSec(rawPath)
           const padDeficitSec = Math.max(0, MIN_TRAILING_SILENCE_SEC - trailingSilenceSec)
           const reformatArgs = ['-i', rawPath]
-          if (padDeficitSec > 0.005) reformatArgs.push('-af', `apad=pad_dur=${padDeficitSec.toFixed(3)}`)
+          // apad=pad_dur requires ffmpeg >= 4.1; the deployed static binary (2018) only
+          // supports pad_len (samples). Force 44100 Hz via aresample first so the sample
+          // math is exact regardless of the segment's native rate. (ORION-MIX-FFMPEGPAD-001)
+          if (padDeficitSec > 0.005) reformatArgs.push('-af', `aresample=44100,apad=pad_len=${Math.round(padDeficitSec * 44100)}`)
           reformatArgs.push('-ar', '44100', '-ac', '2', '-b:a', '192k', '-y', segPath)
           await execFileAsync(FFMPEG_PATH, reformatArgs)
           if (padDeficitSec > 0.005) {

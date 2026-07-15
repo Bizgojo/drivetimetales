@@ -26,7 +26,10 @@ describe('ORION-MIX-TRAILPAD-001: minimum trailing-silence pad at speaker turns'
 
   it('pads only the deficit (conditional, never a blanket pad)', () => {
     expect(CORE).toMatch(/Math\.max\(0, MIN_TRAILING_SILENCE_SEC - trailingSilenceSec\)/)
-    expect(CORE).toMatch(/if \(padDeficitSec > 0\.005\) reformatArgs\.push\('-af', `apad=pad_dur=\$\{padDeficitSec\.toFixed\(3\)\}`\)/)
+    // ORION-MIX-FFMPEGPAD-001: pad_dur needs ffmpeg >= 4.1; deployed static binary (2018)
+    // only knows pad_len (samples), so pin the old-compatible aresample+pad_len form.
+    expect(CORE).toMatch(/if \(padDeficitSec > 0\.005\) reformatArgs\.push\('-af', `aresample=44100,apad=pad_len=\$\{Math\.round\(padDeficitSec \* 44100\)\}`\)/)
+    expect(CORE).not.toMatch(/pad_dur=/)
   })
 
   it('treats measurement failure as a hot tail (pads — the safe direction)', () => {
