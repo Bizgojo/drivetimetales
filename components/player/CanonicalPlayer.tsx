@@ -1316,12 +1316,20 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
       // so once a row existed (created by the play-button upsert) every progress/
       // completion write failed 23505 duplicate-key — and was silently swallowed.
       // Confirmed live: walk fixture rows sat at progress 0 through completed plays.
-      const { error: progressError } = await supabase.from('user_library').upsert({
-        user_id: user.id, story_id: storyId, progress: Math.floor(t), completed: done,
+      // ORION-COMPLETION-STICKY-001 (2026-07-15): completion is MONOTONIC. The old
+      // payload wrote `completed: done` on every save, so any later progress write
+      // (periodic 5s save, pause, unmount, re-listen) clobbered an earned
+      // completed=true back to false — silently corroding the completion% metric.
+      // Include `completed` only when earning it; updates without the column leave
+      // the stored value untouched (inserts fall back to the column default false).
+      const progressRow: Record<string, unknown> = {
+        user_id: user.id, story_id: storyId, progress: Math.floor(t),
         hide_from_home: false,  // Reset dismiss if user plays again
         not_for_me: false,      // Clear not_for_me if user plays again
         last_played: new Date().toISOString()
-      }, { onConflict: 'user_id,story_id' })
+      }
+      if (done) progressRow.completed = true
+      const { error: progressError } = await supabase.from('user_library').upsert(progressRow, { onConflict: 'user_id,story_id' })
       if (progressError) {
         console.error('[player] user_library progress write failed', { storyId, t: Math.floor(t), done, error: progressError.message })
       }
