@@ -42,8 +42,25 @@ export async function POST(request: Request) {
   })
 
   if (error) {
-    console.error('[MagicLink] Error:', error.message)
-    return NextResponse.json({ ok: true })
+    // ORION-MAGIC-VISIBILITY-001 (Marc walk 0714b, 2026-07-14): this route
+    // used to return ok:true on EVERY failure — Marc's magic link was
+    // rejected upstream (no auth user was ever created for the address) and
+    // the UI still said "link sent." With shouldCreateUser:true there is no
+    // user-enumeration concern (every address gets an account), so masking
+    // has no security value here — it only hides outages and rate limits.
+    console.error('[MagicLink] Error:', error.status, error.code, error.message)
+    const isRateLimit =
+      error.status === 429 || /rate limit|too many/i.test(error.message || '')
+    return NextResponse.json(
+      {
+        ok: false,
+        error: isRateLimit ? 'rate_limited' : 'send_failed',
+        message: isRateLimit
+          ? 'Too many login emails right now — wait a minute and try again.'
+          : 'We couldn\u2019t send the login link. Try again, or sign in with your password.',
+      },
+      { status: isRateLimit ? 429 : 502 }
+    )
   }
 
   const response = NextResponse.json({ ok: true })
