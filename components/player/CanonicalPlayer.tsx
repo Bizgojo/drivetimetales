@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { supabaseBrowser } from '@/lib/supabase-browser'
-import { trackPlayStart, trackPlayEnd } from '@/lib/analytics'
+import { trackPlayStart, trackPlayEnd, trackSpuriousEndedRecovered, type PlayStartSource } from '@/lib/analytics'
 import { useAuth } from '@/contexts/AuthContext'
 import ReviewModal from '@/components/ReviewModal'
 import InstallAppBanner from '@/components/InstallAppBanner'
@@ -351,8 +351,29 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
     })
   }
 
+  // ORION-ANALYTICS-GAP-001 (2026-07-15): single entry point for STARTING an
+  // analytics play session. Proven gap (walk account gvlwalk0715a/69c3ab3a):
+  // only the gesture play button called trackPlayStart, so auto-advanced and
+  // autoplay episode starts created ZERO play_events rows — Ep2/Ep3 of a series
+  // listen were invisible and the Ep1→Ep2 continuation metric (the spine of the
+  // GVL A/B/C ad test) was blind. Every playback start path now calls this with
+  // its start source ('gesture' | 'autoplay' | 'auto_advance').
+  const startAnalyticsSession = (startSource: PlayStartSource) => {
+    if (analyticsTrackedRef.current) return
+    analyticsTrackedRef.current = true
+    trackPlayStart({
+      userId: user?.id,
+      storyId,
+      genre: (story as any)?.genre,
+      author: (story as any)?.author,
+      narrator: (story as any)?.narrator_voice_name,
+      durationMins: (story as any)?.duration_mins,
+      startSource,
+    }).catch(() => {})
+  }
+
   const endAnalyticsSession = (
-    stopReason: 'completed' | 'not_for_me' | 'navigated_away' | 'network_error' | 'app_closed' | 'manual_pause',
+    stopReason: 'completed' | 'not_for_me' | 'navigated_away' | 'network_error' | 'app_closed' | 'manual_pause' | 'tab_hidden' | 'playback_error',
     keepalive = false
   ) => {
     if (!analyticsTrackedRef.current) return
@@ -667,7 +688,17 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
     }
 
     const handleVisibility = () => {
-      if (document.visibilityState === 'hidden') saveGuestMinutes()
+      if (document.visibilityState === 'hidden') {
+        saveGuestMinutes()
+        // ORION-ANALYTICS-GAP-001: a session left open with audio PAUSED when
+        // the tab goes hidden (e.g. OS/lock-screen pause, which never routes
+        // through handlePlayPause) would otherwise dangle until pagehide or
+        // forever. End it as tab_hidden (keepalive). A PLAYING session is left
+        // alone — background audio keeps playing and must keep its session.
+        if (analyticsTrackedRef.current && audioRef.current?.paused) {
+          endAnalyticsSession('tab_hidden', true)
+        }
+      }
       if (document.visibilityState === 'visible' && !user) sessionStartRef.current = Date.now()
     }
     document.addEventListener('visibilitychange', handleVisibility)
@@ -1086,12 +1117,21 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
     if (!isASC3 && !audioSrc) return
 
     seriesContinueAutoplayAttemptedRef.current = true
+    // ORION-ANALYTICS-GAP-001: this is the auto-started playback path — it was
+    // completely invisible to analytics. seriesContinue/autoAdvance params are
+    // set by navigateToAutoAdvanceCandidate()/advancePlaylist() (auto-advance
+    // chains); plain autoplay+playNow/playlist intents are 'autoplay'.
+    const autoStartSource: PlayStartSource =
+      params.get('seriesContinue') === '1' || params.get('autoAdvance') === '1'
+        ? 'auto_advance'
+        : 'autoplay'
     const audio = audioRef.current
     const attemptPlay = () => {
       audio.play()
         .then(() => {
           setIsPlaying(true)
           setAutoplayBlocked(false)
+          startAnalyticsSession(autoStartSource)
         })
         .catch((error) => {
           console.warn('[player] series continuation autoplay blocked:', error)
@@ -1224,6 +1264,9 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
           setIsPlaying(false)
           setIsBuffering(false)
           setAudioErrorMessage('Audio stalled — check your connection and try again.')
+          // ORION-ANALYTICS-GAP-001: terminal player failure must close the
+          // analytics session with a diagnosable reason instead of dangling.
+          endAnalyticsSession('playback_error')
           stallSampleRef.current = null
           stallRecoveryCountRef.current = 0
         }
@@ -1248,18 +1291,8 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
         setAutoplayBlocked(false)
         if (!user && !sessionStartRef.current) { sessionStartRef.current = Date.now() }
         if (user?.id) supabase.from('user_library').upsert({ user_id: user.id, story_id: storyId, not_for_me: false, last_played: new Date().toISOString() }, { onConflict: 'user_id,story_id' }).then(() => {})
-        // Analytics: track play start (only once per session)
-        if (!analyticsTrackedRef.current) {
-          analyticsTrackedRef.current = true
-          trackPlayStart({
-            userId: user?.id,
-            storyId,
-            genre: (story as any)?.genre,
-            author: (story as any)?.author,
-            narrator: (story as any)?.narrator_voice_name,
-            durationMins: (story as any)?.duration_mins,
-          }).catch(() => {})
-        }
+        // Analytics: track play start (only once per session) — user-gesture path
+        startAnalyticsSession('gesture')
         const m = musicRef.current
         if (!noMusicRef.current && m && introMusicRef.current) {
           if (!m.src || m.src === 'about:blank' || m.src === window.location.href) {
@@ -1719,6 +1752,12 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
                 storyId, at: el.currentTime, duration: el.duration, readyState: el.readyState, networkState: el.networkState,
               })
               recoverFromStall()
+              // ORION-ANALYTICS-GAP-001 §3: server-side evidence of the suppressed
+              // false 'ended' (previously console-only, invisible in play_events).
+              void trackSpuriousEndedRecovered({
+                userId: user?.id, storyId, kind: 'unknown_duration',
+                currentTime: el.currentTime, elementDuration: null, expectedDuration: null,
+              })
               return
             }
             if (el && elDuration !== null && el.currentTime < elDuration - 2.5) {
@@ -1730,6 +1769,10 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
                 networkState: el.networkState,
               })
               recoverFromStall()
+              void trackSpuriousEndedRecovered({
+                userId: user?.id, storyId, kind: 'early_ended',
+                currentTime: el.currentTime, elementDuration: elDuration, expectedDuration: null,
+              })
               return
             }
             // ORION-PLAYER-QUIT-001 blind spot 2 (Firefox truncated-stream class):
@@ -1748,6 +1791,12 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
                   storyId, elDuration, expectedSec, isASC3, queueIndex,
                 })
                 recoverFromStall()
+                // ORION-ANALYTICS-GAP-001 §3: the Firefox truncated-stream class —
+                // exactly the case Marc needs server-side counts for.
+                void trackSpuriousEndedRecovered({
+                  userId: user?.id, storyId, kind: 'duration_shortfall',
+                  currentTime: el.currentTime, elementDuration: elDuration, expectedDuration: expectedSec,
+                })
                 return
               }
             }
@@ -1812,6 +1861,9 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
               })
               setIsPlaying(false)
               setAudioErrorMessage('Couldn’t load audio. Try again.')
+              // ORION-ANALYTICS-GAP-001: final-mix retries exhausted — terminal
+              // error ends the session as playback_error instead of dangling.
+              endAnalyticsSession('playback_error')
             }
             return
           }
