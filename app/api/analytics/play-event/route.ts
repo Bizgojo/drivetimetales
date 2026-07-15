@@ -13,7 +13,22 @@ const VALID_STOP_REASONS = new Set([
   'network_error',
   'app_closed',
   'manual_pause',
+  // ORION-ANALYTICS-GAP-001 (2026-07-15): diagnostic stop reasons —
+  // tab_hidden = session left open with audio paused when the tab went hidden;
+  // playback_error = terminal player error (stall unrecovered / final-mix
+  // retries exhausted). Free text in play_events.stop_reason; this set is the
+  // server-side vocabulary.
+  'tab_hidden',
+  'playback_error',
 ])
+
+// ORION-ANALYTICS-GAP-001: how the play session started. Encoded in the
+// existing text column `origin` for non-gesture starts (play_events has no
+// jsonb/metadata column; adding one requires Marc-approved schema work).
+const VALID_START_SOURCES = new Set(['gesture', 'autoplay', 'auto_advance'])
+
+const SPURIOUS_ENDED_STOP_REASON = 'spurious_ended_recovered'
+const DIAGNOSTIC_BEACON_ORIGIN = 'diagnostic_beacon'
 
 function adminClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -76,6 +91,14 @@ export async function POST(req: NextRequest) {
 
     if (action === 'start') {
       const device = body?.device || {}
+      // ORION-ANALYTICS-GAP-001: non-gesture starts (autoplay / auto_advance)
+      // record their start source in `origin`; gesture starts keep the
+      // client-detected acquisition origin exactly as before.
+      const startSource = stringOrNull(body?.startSource)
+      const origin =
+        startSource && startSource !== 'gesture' && VALID_START_SOURCES.has(startSource)
+          ? startSource
+          : stringOrNull(body?.origin) || 'direct'
       const row = {
         user_id: user.id,
         story_id: storyId,
@@ -85,7 +108,7 @@ export async function POST(req: NextRequest) {
         device_os: stringOrNull(device.device_os) || 'unknown',
         browser: stringOrNull(device.browser) || 'unknown',
         is_offline: Boolean(body?.isOffline),
-        origin: stringOrNull(body?.origin) || 'direct',
+        origin,
         referrer_url: stringOrNull(body?.referrerUrl),
         genre: stringOrNull(body?.genre),
         author: stringOrNull(body?.author),
@@ -175,6 +198,38 @@ export async function POST(req: NextRequest) {
       }
 
       return NextResponse.json({ success: true, mode: 'inserted_end_fallback' })
+    }
+
+    // ORION-ANALYTICS-GAP-001 §3 — spurious-ended diagnostic beacon.
+    // Zero-length marker row written when the ORION-PLAYER-ENDED-001 guard
+    // suppressed a false 'ended' (Firefox truncated-stream class) and playback
+    // recovered in place. NOT a session end — the live session row is untouched.
+    // Exclude from all listening metrics via origin = 'diagnostic_beacon'.
+    if (action === 'beacon') {
+      const device = body?.device || {}
+      const nowIso = new Date().toISOString()
+      const detail = stringOrNull(body?.detail)
+      const { error } = await supabase.from('play_events').insert({
+        user_id: user.id,
+        story_id: storyId,
+        session_id: sessionId,
+        started_at: nowIso,
+        ended_at: nowIso,
+        seconds_played: 0,
+        progress_pct: 0,
+        stop_reason: SPURIOUS_ENDED_STOP_REASON,
+        origin: DIAGNOSTIC_BEACON_ORIGIN,
+        referrer_url: detail ? detail.slice(0, 500) : null,
+        device_type: stringOrNull(device.device_type) || 'unknown',
+        device_os: stringOrNull(device.device_os) || 'unknown',
+        browser: stringOrNull(device.browser) || 'unknown',
+        is_offline: Boolean(body?.isOffline),
+      })
+      if (error) {
+        console.warn('[analytics/play-event] beacon insert failed:', error.message)
+        return NextResponse.json({ error: 'Failed to record beacon' }, { status: 500 })
+      }
+      return NextResponse.json({ success: true, mode: 'beacon' })
     }
 
     return NextResponse.json({ error: 'Invalid action' }, { status: 400 })

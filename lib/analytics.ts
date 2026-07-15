@@ -6,7 +6,42 @@
 
 import { supabase } from './supabase'
 
-type StopReason = 'completed' | 'not_for_me' | 'navigated_away' | 'network_error' | 'app_closed' | 'manual_pause'
+// ORION-ANALYTICS-GAP-001 (2026-07-15): 'tab_hidden' (session left open, audio
+// paused, tab went hidden) and 'playback_error' (terminal player error — stall
+// unrecovered / final-mix retries exhausted) added so session ends are
+// diagnosable. Values are free text in play_events.stop_reason (no DB
+// constraint); the API whitelist in app/api/analytics/play-event/route.ts is
+// the single server-side vocabulary.
+type StopReason =
+  | 'completed'
+  | 'not_for_me'
+  | 'navigated_away'
+  | 'network_error'
+  | 'app_closed'
+  | 'manual_pause'
+  | 'tab_hidden'
+  | 'playback_error'
+
+// ORION-ANALYTICS-GAP-001: how a play session STARTED. Proven gap (walk account
+// gvlwalk0715a/69c3ab3a, 2026-07-14/15): sessions were only created on
+// user-gesture play, so auto-advanced Ep2/Ep3 produced ZERO play_events rows and
+// the Ep1→Ep2 continuation metric was blind. play_events has NO jsonb/metadata
+// column (see supabase/migrations/20260527000_create_play_events.sql), so the
+// discriminator is encoded in the existing text column `origin`:
+//   - 'gesture'      → origin keeps its acquisition semantics (direct/tiktok/…)
+//   - 'autoplay'     → origin = 'autoplay'
+//   - 'auto_advance' → origin = 'auto_advance'
+// Auto-started rows did not exist before this change, so no existing
+// acquisition query loses data; acquisition origin lives on the gesture row
+// that started the listening chain.
+export type PlayStartSource = 'gesture' | 'autoplay' | 'auto_advance'
+
+// Marker value for the spurious-ended diagnostic beacon rows (NOT a session
+// stop reason — the session keeps running after recovery). Beacon rows are
+// zero-length rows with origin = 'diagnostic_beacon' so every session/
+// listening query can exclude them with one predicate.
+export const SPURIOUS_ENDED_STOP_REASON = 'spurious_ended_recovered'
+export const DIAGNOSTIC_BEACON_ORIGIN = 'diagnostic_beacon'
 
 type PlayEventSnapshot = {
   userId: string | undefined
@@ -119,6 +154,9 @@ export async function trackPlayStart(params: {
   author?: string
   narrator?: string
   durationMins?: number
+  // ORION-ANALYTICS-GAP-001: defaults to 'gesture' so every existing caller
+  // keeps its exact behavior; autoplay/auto-advance starts pass their source.
+  startSource?: PlayStartSource
 }): Promise<void> {
   try {
     currentSessionId = generateUUID()
@@ -126,8 +164,12 @@ export async function trackPlayStart(params: {
     const startedAt = new Date().toISOString()
     currentSnapshot = { ...params, startedAt }
 
+    const startSource: PlayStartSource = params.startSource || 'gesture'
     const { device_type, device_os, browser } = getDeviceInfo()
-    const { origin, referrer_url } = getOrigin()
+    const { origin: acquisitionOrigin, referrer_url } = getOrigin()
+    // Non-gesture starts encode the start source in `origin` (no jsonb column
+    // exists on play_events; adding one needs Marc's word — see PlayStartSource).
+    const origin = startSource === 'gesture' ? acquisitionOrigin : startSource
 
     const row = {
       user_id: params.userId || null,
@@ -155,6 +197,7 @@ export async function trackPlayStart(params: {
         sessionId: currentSessionId,
         storyId: params.storyId,
         startedAt,
+        startSource,
         genre: params.genre || null,
         author: params.author || null,
         narrator: params.narrator || null,
@@ -277,6 +320,75 @@ export async function trackPlayEnd(params: {
 }
 
 /**
+ * ORION-ANALYTICS-GAP-001 §3 — spurious-ended diagnostic beacon.
+ *
+ * Called when the ORION-PLAYER-ENDED-001 guard (commit 65507cc0) suppresses a
+ * false 'ended' and recovers in place. Until now the only evidence of the
+ * Firefox truncated-stream class was a client console.error — invisible
+ * server-side. This writes a zero-length marker row to play_events:
+ *
+ *   stop_reason  = 'spurious_ended_recovered'
+ *   origin       = 'diagnostic_beacon'   (exclude with one predicate)
+ *   referrer_url = 'spurious_ended:<kind>:at=<s>:elDur=<s>:expected=<s>'
+ *   started_at   = ended_at = now, seconds_played = 0
+ *   session_id   = the LIVE session id when one exists (ties the beacon to the
+ *                  session that survived), else a fresh UUID.
+ *
+ * The active play session is NOT ended — playback continues after recovery.
+ * Fire-and-forget; never blocks the player.
+ */
+export async function trackSpuriousEndedRecovered(params: {
+  userId: string | undefined
+  storyId: string
+  kind: 'unknown_duration' | 'early_ended' | 'duration_shortfall'
+  currentTime: number
+  elementDuration: number | null
+  expectedDuration: number | null
+}): Promise<void> {
+  try {
+    const fmt = (v: number | null) =>
+      v !== null && Number.isFinite(v) ? String(Math.round(v * 10) / 10) : 'na'
+    const detail = `spurious_ended:${params.kind}:at=${fmt(params.currentTime)}:elDur=${fmt(params.elementDuration)}:expected=${fmt(params.expectedDuration)}`
+    const sessionId = currentSessionId || generateUUID()
+    const nowIso = new Date().toISOString()
+    const { device_type, device_os, browser } = getDeviceInfo()
+
+    if (params.userId) {
+      const apiResult = await postPlayEvent({
+        action: 'beacon',
+        sessionId,
+        storyId: params.storyId,
+        detail,
+        device: { device_type, device_os, browser },
+        isOffline: isOffline(),
+      })
+      if (apiResult?.success) return
+    }
+
+    // Guest / API-failure fallback — same pattern as trackPlayStart (RLS may
+    // drop anonymous rows silently; that is acceptable for a diagnostic).
+    await supabase.from('play_events').insert({
+      user_id: params.userId || null,
+      story_id: params.storyId,
+      session_id: sessionId,
+      started_at: nowIso,
+      ended_at: nowIso,
+      seconds_played: 0,
+      progress_pct: 0,
+      stop_reason: SPURIOUS_ENDED_STOP_REASON,
+      origin: DIAGNOSTIC_BEACON_ORIGIN,
+      referrer_url: detail,
+      device_type,
+      device_os,
+      browser,
+      is_offline: isOffline(),
+    })
+  } catch (e) {
+    console.warn('[analytics] trackSpuriousEndedRecovered failed:', e)
+  }
+}
+
+/**
  * Update aggregated user preferences after a play session.
  */
 async function updateUserPreferences(userId: string): Promise<void> {
@@ -287,6 +399,9 @@ async function updateUserPreferences(userId: string): Promise<void> {
       .select('genre, author, narrator, duration_mins, seconds_played, progress_pct, stop_reason, device_type, started_at')
       .eq('user_id', userId)
       .not('ended_at', 'is', null)
+      // ORION-ANALYTICS-GAP-001: diagnostic beacon rows are zero-length markers,
+      // not listening sessions — never let them dilute preference aggregates.
+      .neq('origin', DIAGNOSTIC_BEACON_ORIGIN)
 
     if (!events || events.length === 0) return
 
