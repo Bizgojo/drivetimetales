@@ -32,14 +32,17 @@ const RAISE_MS        = 600    // ms to raise after voice ends
 const AUTO_ADVANCE_STORY_SELECT = 'id,title,author,genre,audio_url,cover_url,duration_mins,episode_number,series_id,series_name,is_free,prose_text,author_id,narrator_voice_id,narrator_voice_name,status,is_hidden,published_on'
 const ADMIN_REVIEW_EMAILS = new Set(['marc@endless-tales.com', 'm.postlewaite@gmail.com'])
 
-// ── ORION-PLAYER-ENDSTATE-001 §3 — RE-ARM TOGGLE (pending Marc design ruling) ──
-// Default false = the soak-validated pause-path spec (2026-07-14): a manual
-// pause disarms auto-advance for the remainder of the session, and an in-page
-// resume does NOT re-arm it — only a fresh episode mount resets the disable
-// reason. Flip to true to treat an explicit in-page resume (play after a
-// manual pause) as fresh listening intent that re-arms auto-advance.
+// ── ORION-PLAYER-ENDSTATE-001 §3 — RE-ARM TOGGLE (Marc ruling A, 2026-07-15) ──
+// RULED A by Marc (2026-07-15 16:40 EDT, msg 2634): in-page resume after a
+// manual pause RE-ARMS auto-advance. Rationale (spec log): hands-free is the
+// product promise; a pause is an interruption, resume is the intent signal;
+// the 10-second countdown remains the escape hatch. This CONSCIOUSLY
+// SUPERSEDES the pause-path spec accepted 2026-07-15 AM (soak-validated
+// 2026-07-14): pause no longer disarms for the whole session once resumed.
+// Scope guard below: re-arm clears ONLY the 'manual_pause' disable reason —
+// an explicit auto-advance Stop is never silently re-armed.
 // One-line switch only; do not add further conditions without a ruling.
-const REARM_AUTO_ADVANCE_ON_RESUME = false
+const REARM_AUTO_ADVANCE_ON_RESUME = true
 
 interface CanonicalPlayerProps {
   storyId: string
