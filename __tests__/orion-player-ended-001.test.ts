@@ -15,7 +15,10 @@ const src = fs.readFileSync(
 
 describe('ORION-PLAYER-ENDED-001: spurious early ended guard', () => {
   test('ended is only trusted when currentTime reached duration (2.5s tolerance)', () => {
-    expect(src).toMatch(/el\.currentTime < el\.duration - 2\.5/)
+    // ORION-PLAYER-QUIT-001 (2026-07-15): guard strengthened — element duration is
+    // resolved once as elDuration (null when unknown, which is now treated as a
+    // stall instead of bypassing the guard). Same 2.5s tolerance contract.
+    expect(src).toMatch(/el\.currentTime < elDuration - 2\.5/)
   })
 
   test('early ended recovers in place instead of completing/advancing', () => {

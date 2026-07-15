@@ -534,7 +534,12 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
     if (!mountedRef.current) return
     if (isAdvancingRef.current) return
     if (!autoAdvanceEnabledRef.current) {
-      setTimeout(() => returnToSource('/library'), 1500)
+      // ORION-PLAYER-QUIT-001 (2026-07-15): this used to setTimeout-navigate to
+      // /library 1.5s after a natural end whenever auto-advance had been disabled
+      // earlier in the session (e.g. by a manual pause). Combined with any falsely
+      // trusted 'ended', that is an abrupt mid-play yank to the library with zero
+      // user action — Marc walk #2 failure class. Never navigate on the player's
+      // own initiative: stay on the finished player; the user owns navigation.
       return
     }
 
@@ -1273,12 +1278,21 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
     if (done && analyticsTrackedRef.current) {
       endAnalyticsSession('completed')
     }
-    if (user?.id) await supabase.from('user_library').upsert({
-      user_id: user.id, story_id: storyId, progress: Math.floor(t), completed: done,
-      hide_from_home: false,  // Reset dismiss if user plays again
-      not_for_me: false,      // Clear not_for_me if user plays again
-      last_played: new Date().toISOString()
-    })
+    if (user?.id) {
+      // ORION-PLAYER-QUIT-001 (2026-07-15): this upsert was missing onConflict,
+      // so once a row existed (created by the play-button upsert) every progress/
+      // completion write failed 23505 duplicate-key — and was silently swallowed.
+      // Confirmed live: walk fixture rows sat at progress 0 through completed plays.
+      const { error: progressError } = await supabase.from('user_library').upsert({
+        user_id: user.id, story_id: storyId, progress: Math.floor(t), completed: done,
+        hide_from_home: false,  // Reset dismiss if user plays again
+        not_for_me: false,      // Clear not_for_me if user plays again
+        last_played: new Date().toISOString()
+      }, { onConflict: 'user_id,story_id' })
+      if (progressError) {
+        console.error('[player] user_library progress write failed', { storyId, t: Math.floor(t), done, error: progressError.message })
+      }
+    }
     if (done) {
       void maybeShowCompletionReviewPrompt()
       // RETENTION-PATH-001: completed playback is the fulfillment moment —
@@ -1695,7 +1709,19 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
           // place, never mark complete, never advance.
           {
             const el = audioRef.current
-            if (el && Number.isFinite(el.duration) && el.duration > 0 && el.currentTime < el.duration - 2.5) {
+            const elDuration = el && Number.isFinite(el.duration) && el.duration > 0 ? el.duration : null
+            // ORION-PLAYER-QUIT-001 blind spot 1: an element with UNKNOWN duration
+            // (NaN/0/Infinity) previously bypassed this guard entirely — an errored
+            // element's 'ended' was trusted blindly. Unknown duration = untrustworthy
+            // end signal; treat as stall.
+            if (el && elDuration === null) {
+              console.error('[player] ended with unknown element duration — treating as stall', {
+                storyId, at: el.currentTime, duration: el.duration, readyState: el.readyState, networkState: el.networkState,
+              })
+              recoverFromStall()
+              return
+            }
+            if (el && elDuration !== null && el.currentTime < elDuration - 2.5) {
               console.error('[player] spurious early ended — treating as stall', {
                 storyId,
                 at: el.currentTime,
@@ -1705,6 +1731,25 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
               })
               recoverFromStall()
               return
+            }
+            // ORION-PLAYER-QUIT-001 blind spot 2 (Firefox truncated-stream class):
+            // Firefox SHRINKS el.duration to the bytes it actually received, so a
+            // truncated stream "ends" with currentTime ≈ duration and the early-ended
+            // check above passes. Compare against an INDEPENDENT expected duration —
+            // the probed segment duration (ASC3) or the DB runtime (final-mix) — and
+            // treat a large shortfall as a stall, never a completion.
+            if (el && elDuration !== null) {
+              const expectedSec = isASC3
+                ? (segDursRef.current[queueIndex] || 0)
+                : (Number((story as any)?.duration_mins) > 0 ? Number((story as any).duration_mins) * 60 : 0)
+              const shortfallTolerance = isASC3 ? 5 : 120
+              if (expectedSec > 0 && elDuration < expectedSec - shortfallTolerance) {
+                console.error('[player] ended on truncated stream (duration shortfall) — treating as stall', {
+                  storyId, elDuration, expectedSec, isASC3, queueIndex,
+                })
+                recoverFromStall()
+                return
+              }
             }
           }
           if (!isASC3) {
