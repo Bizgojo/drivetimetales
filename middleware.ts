@@ -7,6 +7,11 @@ const PUBLIC_ROUTES = new Set([
   '/signin', '/login', '/signup', '/welcome', '/guest', '/forgot-password',
   '/player',
   '/reset-password', '/auth/callback', '/auth/signup', '/auth/confirm', '/auth/magic-sent',
+  // ORION-LINK-EXPIRED-001: expired-magic-link visitors are BY DEFINITION
+  // unauthenticated — gating this page behind auth bounced them to /signin
+  // with no explanation (found in LAUNCHEVE Battery 1, Marc-approved freeze
+  // exception 2026-07-16).
+  '/auth/link-expired',
   '/subscribe',
   // SUS/ATL-LANDING-001: /go is the paid-ads campaign landing page. It must
   // render identically for anonymous and signed-in visitors — no auth checks,

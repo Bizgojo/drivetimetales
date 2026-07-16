@@ -26,7 +26,7 @@ export default function LinkExpiredPage() {
           This link has expired
         </h1>
         <p style={{ color: 'rgba(255,255,255,0.6)', fontSize: '15px', lineHeight: 1.6, margin: '0 0 28px' }}>
-          Magic links can only be used once and expire after one hour. Ask Marc to send you a new one.
+          This link expired &mdash; magic links work once and last one hour. Enter your email on the sign-in page and we&rsquo;ll send you a fresh one right away.
         </p>
         <a
           href="/signin"
