@@ -9,7 +9,15 @@
 //                     completes = trial begins)
 //   Total subs      = users.first_paid_date in window (webhook stamps this once,
 //                     on the first PAID invoice = trial→paid conversion)
-//   Sub Rev. Added  = Total subs in window × $7.99 (Standard monthly price)
+//   Sub Rev. Added  = (monthly conversions in window × $7.99)
+//                     + (annual conversions in window × $59.99).
+//                     billing_cycle is 'monthly' | 'annual' | null (webhook
+//                     derives it from the Stripe price interval and nulls it on
+//                     deactivation). null/unknown counts as MONTHLY: monthly is
+//                     the standard default plan, every converter to date is
+//                     monthly, and it gives the conservative (lower) estimate.
+//                     Approximation only — Stripe is the source of truth for
+//                     actual revenue (no invoice amounts stored in our DB).
 //
 // FETCHED rows come from public.launch_metrics (populated by Marc's local
 // script — see supabase/migrations/20260717160000_launch_metrics.sql). If the
@@ -21,8 +29,12 @@
 //                     date; '—' when trials = 0. Per-window CAC is ambiguous
 //                     (spend windows vs. trial windows don't line up), so CAC is
 //                     shown ONLY in "Total to date" — flagged for Marc's review.
-//   Total Expenses  = sum of the six expense rows per window (missing TikTok
-//                     treated as $0 pre-TikTok-launch).
+//   Total Expenses  = sum of the six expense rows per window. Renders only
+//                     when at least one REAL expense row exists in
+//                     launch_metrics for that window; the TikTok $0 default
+//                     alone never produces a numeric total (shows '—' while
+//                     awaiting data). Missing TikTok still counts as $0 once
+//                     real expense rows are present.
 //
 // Launch anchor for "Total to date": 2026-07-17 9:55 AM ET = 13:55 UTC.
 
@@ -44,6 +56,7 @@ export const dynamic = 'force-dynamic'
 // Next.js route files only allow whitelisted exports — keep these module-local.
 const LAUNCH_ANCHOR_ISO = '2026-07-17T13:55:00.000Z'
 const STANDARD_MONTHLY_PRICE = 7.99
+const STANDARD_ANNUAL_PRICE = 59.99
 
 type WindowKey = 'h4' | 'h24' | 'total'
 type WindowValues = Record<WindowKey, number | null>
@@ -160,7 +173,7 @@ export async function GET(req: NextRequest) {
     // ── LIVE metrics from users ──────────────────────────────────────────────
     const { data: userRows, error: usersError } = await admin
       .from('users')
-      .select('email, plan, subscription_type, created_at, cancelled_at, subscription_start, first_paid_date, stripe_subscription_id')
+      .select('email, plan, subscription_type, created_at, cancelled_at, subscription_start, first_paid_date, stripe_subscription_id, billing_cycle')
       .limit(20000)
     if (usersError) throw new Error(`users query failed: ${usersError.message}`)
 
@@ -169,10 +182,15 @@ export async function GET(req: NextRequest) {
     const cancelations = countInWindows(customers, 'cancelled_at', starts)
     const trials = countInWindows(customers.filter(u => u.stripe_subscription_id), 'subscription_start', starts)
     const paidSubs = countInWindows(customers, 'first_paid_date', starts)
+    // Sub Rev. Added: monthly × $7.99 + annual × $59.99. null/unknown
+    // billing_cycle counts as monthly (default plan; conservative estimate —
+    // see header). Approximation; Stripe is source of truth for real revenue.
+    const paidAnnual = countInWindows(customers.filter(u => u.billing_cycle === 'annual'), 'first_paid_date', starts)
+    const paidMonthly = countInWindows(customers.filter(u => u.billing_cycle !== 'annual'), 'first_paid_date', starts)
     const subRev: WindowValues = {
-      h4: (paidSubs.h4 ?? 0) * STANDARD_MONTHLY_PRICE,
-      h24: (paidSubs.h24 ?? 0) * STANDARD_MONTHLY_PRICE,
-      total: (paidSubs.total ?? 0) * STANDARD_MONTHLY_PRICE,
+      h4: (paidMonthly.h4 ?? 0) * STANDARD_MONTHLY_PRICE + (paidAnnual.h4 ?? 0) * STANDARD_ANNUAL_PRICE,
+      h24: (paidMonthly.h24 ?? 0) * STANDARD_MONTHLY_PRICE + (paidAnnual.h24 ?? 0) * STANDARD_ANNUAL_PRICE,
+      total: (paidMonthly.total ?? 0) * STANDARD_MONTHLY_PRICE + (paidAnnual.total ?? 0) * STANDARD_ANNUAL_PRICE,
     }
 
     // ── FETCHED metrics from launch_metrics (graceful if table missing) ─────
@@ -215,11 +233,17 @@ export async function GET(req: NextRequest) {
       note: 'Point-in-time balance — window columns not applicable',
     })
 
-    // ── COMPUTED: Total Expenses (per window, missing TikTok counts as $0) ──
+    // ── COMPUTED: Total Expenses ─────────────────────────────────────────────
+    // Numeric ONLY when at least one REAL expense metric row exists in
+    // launch_metrics for the window — the TikTok $0 default alone must never
+    // render as a real total (Marc's revision #5). Once a real row is present,
+    // the sum includes every populated cell (TikTok's $0 default included).
     const expenseRows = [tiktok, meta, anthropic, openai, el, other]
     const totalExpenses: WindowValues = { h4: null, h24: null, total: null }
     let expensesAsOf: string | null = null
     for (const wk of ['h4', 'h24', 'total'] as WindowKey[]) {
+      const hasRealExpenseData = expenseRows.some(r => metrics?.[r.key]?.[wk] !== undefined)
+      if (!hasRealExpenseData) continue // '—' until real launch_metrics expense rows exist
       const present = expenseRows.filter(r => r.windows[wk] !== null)
       if (present.length > 0) {
         totalExpenses[wk] = present.reduce((sum, r) => sum + (r.windows[wk] as number), 0)
@@ -257,11 +281,11 @@ export async function GET(req: NextRequest) {
       {
         key: 'total_expenses', label: 'Total Expenses', kind: 'computed', format: 'usd',
         windows: totalExpenses, asOf: expensesAsOf,
-        note: 'Sum of the six expense rows above',
+        note: 'Sum of the six expense rows above; \u2014 until real expense data arrives in launch_metrics',
       },
       {
         key: 'sub_rev', label: 'Sub Rev. Added', kind: 'live', format: 'usd', windows: subRev, asOf: null,
-        note: `New paid conversions × $${STANDARD_MONTHLY_PRICE}`,
+        note: `Monthly conversions × $${STANDARD_MONTHLY_PRICE} + annual × $${STANDARD_ANNUAL_PRICE} (unknown billing cycle counted as monthly); approximation — Stripe is source of truth`,
       },
       mercury,
     ]
