@@ -222,17 +222,17 @@ const MARKETING_ASSETS: MarketingAsset[] = [
     id: 'meta_ads',
     platform: 'Meta Ads',
     icon: '📢',
-    accountName: '—',
-    handle: '—',
+    accountName: 'WonderBooks Press portfolio (Marc personal business account)',
+    handle: 'Ad account 10211115959074229',
     profileUrl: '—',
-    status: 'not_created',
-    statusLabel: 'NOT CREATED',
+    status: 'connected',
+    statusLabel: 'ACTIVE',
     recoveryEmail: '—',
-    note: 'No Meta Ads account.',
-    owner: '—',
-    twoFAStatus: 'N/A',
-    passwordManager: 'N/A',
-    details: 'No Meta Business Manager, no Ad Account, no Meta Pixel in codebase. Required before running Facebook/Instagram campaigns.',
+    note: 'LIVE since Jul 17, 2026 ~9:55 AM ET — campaign GVL-TEST-001, 2 ad sets / 6 ads delivering.',
+    owner: 'Marc personally — no agent access, no agent credentials (standing governance rule)',
+    twoFAStatus: 'unknown',
+    passwordManager: "Marc's own",
+    details: 'Meta ads live as of Jul 17, 2026 ~9:55 AM ET under Marc\u2019s personal business account (WonderBooks Press portfolio, ad account 10211115959074229). Campaign GVL-TEST-001: 2 ad sets (gvl-broad, gvl-audio-intent), 6 ads delivering. Payment: GVL-Meta Mercury card ••7468.',
   },
   {
     id: 'reddit_ads',
@@ -534,11 +534,11 @@ export default function MarketingAssetsPage() {
                 TikTok Pixel — blocks paid campaigns
               </div>
               <div style={{ fontSize: 12, color: '#64748b', lineHeight: 1.5 }}>
-                TikTok Business Center is active but the pixel is not installed on app.endless-tales.com. Paid campaigns cannot run until pixel is in place. No ad spend committed yet.
+                TikTok Business Center is active but the pixel is not installed on app.endless-tales.com. Gates TikTok paid launch only (not yet scheduled) — does not affect the current Meta test. In queue for TikTok launch prep.
               </div>
             </div>
-            <span style={{ backgroundColor: '#fee2e2', color: '#991b1b', borderRadius: 12, padding: '2px 8px', fontSize: 10, fontWeight: 800, whiteSpace: 'nowrap' as const, flexShrink: 0 }}>
-              P1
+            <span style={{ backgroundColor: '#fef3c7', color: '#92400e', borderRadius: 12, padding: '2px 8px', fontSize: 10, fontWeight: 800, whiteSpace: 'nowrap' as const, flexShrink: 0 }}>
+              P2
             </span>
           </div>
 
@@ -556,14 +556,14 @@ export default function MarketingAssetsPage() {
             <span style={{ fontSize: 18, flexShrink: 0 }}>📈</span>
             <div>
               <div style={{ fontWeight: 700, fontSize: 13, color: '#0f172a', marginBottom: 2 }}>
-                Ad pixels missing on all platforms
+                Ad pixels not installed — post-launch upgrade candidate
               </div>
               <div style={{ fontSize: 12, color: '#64748b', lineHeight: 1.5 }}>
-                No Meta Pixel, no TikTok Pixel, no Reddit Pixel, no Google Tag Manager in codebase. All paid acquisition is currently attribution-blind — blocks ROAS measurement on any campaign.
+                Not attribution-blind: GVL-TEST-001 runs three-layer attribution by design — promo codes (GVLMETA/GVLTOK), UTM parameters, and the signup survey. Pixels are a deliberate post-launch upgrade decision (would enable conversion-optimized campaigns + ROAS), not a launch blocker.
               </div>
             </div>
-            <span style={{ backgroundColor: '#fee2e2', color: '#991b1b', borderRadius: 12, padding: '2px 8px', fontSize: 10, fontWeight: 800, whiteSpace: 'nowrap' as const, flexShrink: 0 }}>
-              P1
+            <span style={{ backgroundColor: '#f1f5f9', color: '#475569', borderRadius: 12, padding: '2px 8px', fontSize: 10, fontWeight: 800, whiteSpace: 'nowrap' as const, flexShrink: 0 }}>
+              P3
             </span>
           </div>
 
