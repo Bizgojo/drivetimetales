@@ -116,11 +116,11 @@ const MARKETING_ASSETS: MarketingAsset[] = [
     status: 'partial',
     statusLabel: 'PARTIAL',
     recoveryEmail: '—',
-    note: 'Vercel Analytics active (pageviews only). No GA4, no Meta Pixel, no ad platform pixels.',
+    note: 'Vercel Analytics active (pageviews only). No GA4, no ad platform pixels — attribution runs on promo codes + UTMs + signup survey.',
     owner: 'Atlas',
     twoFAStatus: 'N/A',
     passwordManager: 'N/A',
-    details: 'Vercel Analytics tracks pageviews. No Google Analytics 4, no Google Tag Manager, no Meta Pixel, no TikTok Pixel, no Reddit Pixel in codebase. All paid acquisition is attribution-blind.',
+    details: 'Vercel Analytics tracks pageviews. No Google Analytics 4, no Google Tag Manager, no Meta Pixel, no TikTok Pixel, no Reddit Pixel in codebase. Paid acquisition attribution runs on three layers by design: promo codes (GVLMETA/GVLTOK), UTM parameters, and the signup survey. Pixels are a post-launch upgrade candidate (would enable conversion-optimized campaigns + ROAS).',
   },
   {
     id: 'instagram',
@@ -581,10 +581,10 @@ export default function MarketingAssetsPage() {
             <span style={{ fontSize: 18, flexShrink: 0 }}>📘</span>
             <div>
               <div style={{ fontWeight: 700, fontSize: 13, color: '#0f172a', marginBottom: 2 }}>
-                Facebook handle reservation + Meta Ads setup
+                Facebook handle reservation + brand Business Manager
               </div>
               <div style={{ fontSize: 12, color: '#64748b', lineHeight: 1.5 }}>
-                No Facebook Page confirmed. Instagram is active (@endlesstalesllc) but no Meta Business Manager or Ad Account created. Reserve Facebook handle and create Meta Business Manager before launch.
+                No Facebook Page confirmed. Instagram is active (@endlesstalesllc); Meta ads run under Marc’s personal business account (WonderBooks Press portfolio). Post-launch item: reserve the Facebook handle and decide on a dedicated brand Business Manager.
               </div>
             </div>
             <span style={{ backgroundColor: '#fef3c7', color: '#92400e', borderRadius: 12, padding: '2px 8px', fontSize: 10, fontWeight: 800, whiteSpace: 'nowrap' as const, flexShrink: 0 }}>
