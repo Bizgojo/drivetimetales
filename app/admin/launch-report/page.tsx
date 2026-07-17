@@ -169,8 +169,9 @@ export default function LaunchReportPage() {
       <p style={{ marginTop: 18, fontSize: 14, color: '#6b7280', lineHeight: 1.6 }}>
         Live rows (Sign ups, Cancelations, Total trials, Total subs, Sub Rev. Added) are computed from the users table
         in real time. Fetched rows come from the launch_metrics table, upserted by Marc&rsquo;s local script — each shows
-        its own &ldquo;as of&rdquo; freshness. CAC = (Meta + TikTok spend to date) ÷ trials to date, total column only.
-        TikTok expenses default to $0 until TikTok launch. Sub Rev. Added = monthly conversions × $7.99 +
+        its own &ldquo;as of&rdquo; freshness. Cost per Trial = (Meta + TikTok spend to date) ÷ trials to date;
+        True CAC (paid) = (Meta + TikTok spend to date) ÷ paid conversions to date (same count as Total subs) —
+        both total column only. TikTok expenses default to $0 until TikTok launch. Sub Rev. Added = monthly conversions × $7.99 +
         annual conversions × $59.99 (unknown billing cycle counted as monthly) &mdash; an approximation; Stripe is
         the source of truth for actual revenue. Total Expenses shows &ldquo;—&rdquo; until real expense rows exist in
         launch_metrics (the TikTok $0 default alone never counts as a total).

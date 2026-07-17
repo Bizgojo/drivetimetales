@@ -24,17 +24,35 @@
 // table doesn't exist yet (migration not applied), the report degrades to
 // "awaiting data" instead of crashing.
 //
-// COMPUTED rows:
-//   CAC             = (Meta + TikTok expenses, total-to-date) ÷ Total trials to
-//                     date; '—' when trials = 0. Per-window CAC is ambiguous
-//                     (spend windows vs. trial windows don't line up), so CAC is
-//                     shown ONLY in "Total to date" — flagged for Marc's review.
+// COMPUTED rows (ATL-LAUNCH-REPORT-003 split the old single CAC row in two):
+//   Cost per Trial  = (Meta + TikTok expenses, total-to-date) ÷ Total trials to
+//                     date — the original CAC formula, relabeled. '—' when
+//                     trials = 0.
+//   True CAC (paid) = (Meta + TikTok expenses, total-to-date) ÷ paid
+//                     conversions to date. The denominator REUSES the exact
+//                     "Total subs" total count (first_paid_date since launch
+//                     anchor, test/admin accounts excluded) so the two rows can
+//                     never disagree. '—' while paid conversions = 0 — first
+//                     trials can convert Jul 31.
+//                     Both rows: per-window values are ambiguous (spend windows
+//                     vs. trial/conversion windows don't line up), so they show
+//                     ONLY in "Total to date" — same ruling as the original CAC.
+//                     Absent tiktok_expenses counts as $0 in the shared spend
+//                     numerator (Meta spend alone is enough for a value).
 //   Total Expenses  = sum of the six expense rows per window. Renders only
 //                     when at least one REAL expense row exists in
 //                     launch_metrics for that window; the TikTok $0 default
 //                     alone never produces a numeric total (shows '—' while
 //                     awaiting data). Missing TikTok still counts as $0 once
 //                     real expense rows are present.
+//
+// LIVE OVERRIDES (ATL-LAUNCH-REPORT-002): on each request the server also
+// tries to fetch live numbers directly from Meta + Mercury (see the "live
+// sources" section below). Successes override the launch_metrics 'total'
+// cells ONLY (as_of = now); 4h/24h windows always come from launch_metrics —
+// Marc's local fetcher snapshot history stays the window engine. Any live
+// failure (or absent env var) falls back to stored launch_metrics values
+// exactly as before; the page never errors on upstream failure.
 //
 // Launch anchor for "Total to date": 2026-07-17 9:55 AM ET = 13:55 UTC.
 
@@ -130,6 +148,132 @@ function countInWindows(rows: any[], field: string, starts: Record<WindowKey, nu
 
 const WINDOW_TO_KEY: Record<string, WindowKey> = { '4h': 'h4', '24h': 'h24', total: 'total' }
 
+// ── LIVE SOURCES (ATL-LAUNCH-REPORT-002) ────────────────────────────────────
+//
+//   Meta Graph insights for act_10211115959074229 (env META_ACCESS_TOKEN):
+//     impressions → impressions, inline_link_clicks → lp_clicks,
+//     spend → meta_expenses. time_range since launch day, until today.
+//   Mercury (env MERCURY_API_TOKEN): GET /api/v1/accounts, sum of
+//     currentBalance across accounts → mercury_balance.
+//
+// The two sources are INDEPENDENT: Meta failing never blocks Mercury and
+// vice versa. Live meta_expenses counts as a real expense row for the Total
+// Expenses gating rule and flows into CAC (both total-window only).
+//
+// Cache: module-level, per source, 60s TTL — successes AND failures — so
+// repeated admin refreshes don't hammer Meta rate limits. BEST-EFFORT on
+// Vercel serverless: each lambda instance has its own module scope, so cold
+// starts / concurrent instances may still fetch; acceptable for an admin page.
+//
+// TOKEN HYGIENE: token values are read from process.env and placed ONLY in
+// the Authorization header — never in a URL, never logged, never returned to
+// the client. Upstream error bodies are redacted + truncated before logging
+// (defense in depth: Meta error payloads can echo request URLs).
+
+const META_AD_ACCOUNT = 'act_10211115959074229'
+const META_API_VERSION = 'v23.0'
+const META_SINCE = '2026-07-17' // launch day
+const LIVE_CACHE_TTL_MS = 60_000
+const LIVE_FETCH_TIMEOUT_MS = 6_000
+
+type LiveMeta = { impressions: number; lpClicks: number; spend: number }
+type LiveMercury = { balance: number }
+type LiveCacheEntry<T> = { result: T | null; fetchedAt: number }
+
+let metaLiveCache: LiveCacheEntry<LiveMeta> | null = null
+let mercuryLiveCache: LiveCacheEntry<LiveMercury> | null = null
+
+// Strip anything token-shaped from a string before it can reach a log line.
+function redactSecrets(s: string): string {
+  return s
+    .replace(/access_token=[^&\s"']+/gi, 'access_token=[REDACTED]')
+    .replace(/Bearer\s+[A-Za-z0-9._~+/=-]+/g, 'Bearer [REDACTED]')
+}
+
+function logLiveFailure(source: string, detail: unknown) {
+  const msg = detail instanceof Error ? detail.message : String(detail)
+  console.error(`[launch-report] live ${source} fetch failed:`, redactSecrets(msg).slice(0, 300))
+}
+
+async function fetchWithTimeout(url: string, headers: Record<string, string>): Promise<Response> {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), LIVE_FETCH_TIMEOUT_MS)
+  try {
+    return await fetch(url, { headers, signal: controller.signal, cache: 'no-store' })
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+async function fetchMetaLive(): Promise<LiveMeta | null> {
+  const token = process.env.META_ACCESS_TOKEN
+  if (!token) return null // env absent → fallback, silently
+  const startedAt = Date.now()
+  if (metaLiveCache && startedAt - metaLiveCache.fetchedAt < LIVE_CACHE_TTL_MS) {
+    return metaLiveCache.result
+  }
+  let result: LiveMeta | null = null
+  try {
+    const until = new Date().toISOString().slice(0, 10) // UTC today; a not-yet-started (ET) date just returns no extra rows
+    const params = new URLSearchParams({
+      fields: 'impressions,inline_link_clicks,spend',
+      time_range: JSON.stringify({ since: META_SINCE, until }),
+      level: 'account',
+    })
+    const res = await fetchWithTimeout(
+      `https://graph.facebook.com/${META_API_VERSION}/${META_AD_ACCOUNT}/insights?${params.toString()}`,
+      { Authorization: `Bearer ${token}` }, // token in header only — never in the URL
+    )
+    if (!res.ok) {
+      const body = await res.text().catch(() => '')
+      throw new Error(`HTTP ${res.status}: ${body}`)
+    }
+    const json = await res.json()
+    const rows: any[] = Array.isArray(json?.data) ? json.data : []
+    // Empty data (no delivery in range yet) is a valid live answer: zeros.
+    const sum = (field: string) => rows.reduce((acc, r) => acc + (Number(r?.[field]) || 0), 0)
+    result = {
+      impressions: sum('impressions'),
+      lpClicks: sum('inline_link_clicks'),
+      spend: sum('spend'),
+    }
+  } catch (err) {
+    logLiveFailure('Meta', err)
+    result = null
+  }
+  metaLiveCache = { result, fetchedAt: startedAt }
+  return result
+}
+
+async function fetchMercuryLive(): Promise<LiveMercury | null> {
+  const token = process.env.MERCURY_API_TOKEN
+  if (!token) return null // env absent → fallback, silently
+  const startedAt = Date.now()
+  if (mercuryLiveCache && startedAt - mercuryLiveCache.fetchedAt < LIVE_CACHE_TTL_MS) {
+    return mercuryLiveCache.result
+  }
+  let result: LiveMercury | null = null
+  try {
+    const res = await fetchWithTimeout('https://api.mercury.com/api/v1/accounts', {
+      Authorization: `Bearer ${token}`,
+    })
+    if (!res.ok) {
+      const body = await res.text().catch(() => '')
+      throw new Error(`HTTP ${res.status}: ${body}`)
+    }
+    const json = await res.json()
+    const accounts: any[] = Array.isArray(json?.accounts) ? json.accounts : []
+    // Zero accounts would make a $0 balance override look real — treat as failure.
+    if (accounts.length === 0) throw new Error('no accounts in response')
+    result = { balance: accounts.reduce((acc, a) => acc + (Number(a?.currentBalance) || 0), 0) }
+  } catch (err) {
+    logLiveFailure('Mercury', err)
+    result = null
+  }
+  mercuryLiveCache = { result, fetchedAt: startedAt }
+  return result
+}
+
 type MetricCell = { value: number; asOf: string | null }
 type MetricMap = Record<string, Partial<Record<WindowKey, MetricCell>>>
 
@@ -217,6 +361,25 @@ export async function GET(req: NextRequest) {
       }
     }
 
+    // ── LIVE overrides (ATL-LAUNCH-REPORT-002): 'total' window only ────────
+    // Per-source independence: each fetch resolves to null on its own failure
+    // (never throws), so one source failing can't block the other or the page.
+    const [liveMeta, liveMercury] = await Promise.all([fetchMetaLive(), fetchMercuryLive()])
+    const liveAsOf = new Date(now).toISOString()
+    const setLiveTotal = (key: string, value: number) => {
+      metrics = metrics || {}
+      metrics[key] = metrics[key] || {}
+      metrics[key]!.total = { value, asOf: liveAsOf }
+    }
+    if (liveMeta) {
+      setLiveTotal('impressions', liveMeta.impressions)
+      setLiveTotal('lp_clicks', liveMeta.lpClicks)
+      // Counts as a REAL expense row for the Total Expenses gating rule and
+      // flows into CAC (both consume the metrics map below).
+      setLiveTotal('meta_expenses', liveMeta.spend)
+    }
+    if (liveMercury) setLiveTotal('mercury_balance', liveMercury.balance)
+
     const impressions = fetchedRow(metrics, 'impressions', 'Impressions', 'int')
     const lpClicks = fetchedRow(metrics, 'lp_clicks', 'Clicks to Landing Page', 'int')
     const tiktok = fetchedRow(metrics, 'tiktok_expenses', 'TikTok expenses', 'usd', {
@@ -253,12 +416,21 @@ export async function GET(req: NextRequest) {
       if (r.asOf && (!expensesAsOf || r.asOf < expensesAsOf)) expensesAsOf = r.asOf
     }
 
-    // ── COMPUTED: CAC = (Meta + TikTok spend to date) ÷ trials to date ──────
-    // Shown only in "Total to date" — per-window CAC is ambiguous (see header).
+    // ── COMPUTED: Cost per Trial + True CAC (ATL-LAUNCH-REPORT-003) ─────────
+    // Shared numerator: Meta + TikTok spend, total window; absent TikTok
+    // counts as $0 (Meta spend alone is enough — same as the old CAC).
+    // Both shown only in "Total to date" — per-window values are ambiguous
+    // (see header).
     const adSpendTotal =
       meta.windows.total !== null ? meta.windows.total + (tiktok.windows.total ?? 0) : null
+    // Cost per Trial = the original CAC formula, relabeled.
     const trialsTotal = trials.total ?? 0
-    const cacTotal = adSpendTotal !== null && trialsTotal > 0 ? adSpendTotal / trialsTotal : null
+    const costPerTrialTotal = adSpendTotal !== null && trialsTotal > 0 ? adSpendTotal / trialsTotal : null
+    // True CAC (paid): denominator reuses the exact "Total subs" total count
+    // (paidSubs = first_paid_date since anchor, exclusions applied) so the two
+    // rows can never disagree.
+    const paidConversionsTotal = paidSubs.total ?? 0
+    const trueCacTotal = adSpendTotal !== null && paidConversionsTotal > 0 ? adSpendTotal / paidConversionsTotal : null
 
     const rows: ReportRow[] = [
       impressions,
@@ -266,9 +438,14 @@ export async function GET(req: NextRequest) {
       { key: 'signups', label: 'Sign ups', kind: 'live', format: 'int', windows: signups, asOf: null },
       { key: 'cancelations', label: 'Cancelations', kind: 'live', format: 'int', windows: cancelations, asOf: null },
       {
-        key: 'cac', label: 'CAC', kind: 'computed', format: 'usd',
-        windows: { h4: null, h24: null, total: cacTotal }, asOf: meta.asOf,
-        note: '(Meta + TikTok spend to date) ÷ trials to date; total column only',
+        key: 'cost_per_trial', label: 'Cost per Trial', kind: 'computed', format: 'usd',
+        windows: { h4: null, h24: null, total: costPerTrialTotal }, asOf: meta.asOf,
+        note: 'Ad spend per trial start',
+      },
+      {
+        key: 'true_cac', label: 'True CAC (paid)', kind: 'computed', format: 'usd',
+        windows: { h4: null, h24: null, total: trueCacTotal }, asOf: meta.asOf,
+        note: "Ad spend per paid conversion \u2014 first trials can convert Jul 31; expect '\u2014' until then",
       },
       { key: 'trials', label: 'Total trials', kind: 'live', format: 'int', windows: trials, asOf: null },
       { key: 'subs', label: 'Total subs', kind: 'live', format: 'int', windows: paidSubs, asOf: null },
@@ -294,6 +471,7 @@ export async function GET(req: NextRequest) {
       anchor: LAUNCH_ANCHOR_ISO,
       generatedAt: new Date(now).toISOString(),
       metricsTableAvailable,
+      liveSources: { meta: Boolean(liveMeta), mercury: Boolean(liveMercury) },
       rows,
     })
   } catch (err) {
