@@ -19,6 +19,7 @@ const SIDEBAR_STORAGE_KEY = 'admin_sidebar_open'
 const NAV_GROUPS = [
   { id: 'dashboard', label: 'Dashboard', icon: '📊', items: [
     { href: '/admin', label: 'Overview' },
+    { href: '/admin/launch-report', label: 'Launch Report' },
     { href: '/admin/command-center', label: 'Command Center' },
     { href: '/admin/workspace', label: 'Workspace' },
     { href: '/admin/accounts', label: 'Accounts & Integrations' },
