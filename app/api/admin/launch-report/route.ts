@@ -24,11 +24,21 @@
 // table doesn't exist yet (migration not applied), the report degrades to
 // "awaiting data" instead of crashing.
 //
-// COMPUTED rows:
-//   CAC             = (Meta + TikTok expenses, total-to-date) ÷ Total trials to
-//                     date; '—' when trials = 0. Per-window CAC is ambiguous
-//                     (spend windows vs. trial windows don't line up), so CAC is
-//                     shown ONLY in "Total to date" — flagged for Marc's review.
+// COMPUTED rows (ATL-LAUNCH-REPORT-003 split the old single CAC row in two):
+//   Cost per Trial  = (Meta + TikTok expenses, total-to-date) ÷ Total trials to
+//                     date — the original CAC formula, relabeled. '—' when
+//                     trials = 0.
+//   True CAC (paid) = (Meta + TikTok expenses, total-to-date) ÷ paid
+//                     conversions to date. The denominator REUSES the exact
+//                     "Total subs" total count (first_paid_date since launch
+//                     anchor, test/admin accounts excluded) so the two rows can
+//                     never disagree. '—' while paid conversions = 0 — first
+//                     trials can convert Jul 31.
+//                     Both rows: per-window values are ambiguous (spend windows
+//                     vs. trial/conversion windows don't line up), so they show
+//                     ONLY in "Total to date" — same ruling as the original CAC.
+//                     Absent tiktok_expenses counts as $0 in the shared spend
+//                     numerator (Meta spend alone is enough for a value).
 //   Total Expenses  = sum of the six expense rows per window. Renders only
 //                     when at least one REAL expense row exists in
 //                     launch_metrics for that window; the TikTok $0 default
@@ -406,12 +416,21 @@ export async function GET(req: NextRequest) {
       if (r.asOf && (!expensesAsOf || r.asOf < expensesAsOf)) expensesAsOf = r.asOf
     }
 
-    // ── COMPUTED: CAC = (Meta + TikTok spend to date) ÷ trials to date ──────
-    // Shown only in "Total to date" — per-window CAC is ambiguous (see header).
+    // ── COMPUTED: Cost per Trial + True CAC (ATL-LAUNCH-REPORT-003) ─────────
+    // Shared numerator: Meta + TikTok spend, total window; absent TikTok
+    // counts as $0 (Meta spend alone is enough — same as the old CAC).
+    // Both shown only in "Total to date" — per-window values are ambiguous
+    // (see header).
     const adSpendTotal =
       meta.windows.total !== null ? meta.windows.total + (tiktok.windows.total ?? 0) : null
+    // Cost per Trial = the original CAC formula, relabeled.
     const trialsTotal = trials.total ?? 0
-    const cacTotal = adSpendTotal !== null && trialsTotal > 0 ? adSpendTotal / trialsTotal : null
+    const costPerTrialTotal = adSpendTotal !== null && trialsTotal > 0 ? adSpendTotal / trialsTotal : null
+    // True CAC (paid): denominator reuses the exact "Total subs" total count
+    // (paidSubs = first_paid_date since anchor, exclusions applied) so the two
+    // rows can never disagree.
+    const paidConversionsTotal = paidSubs.total ?? 0
+    const trueCacTotal = adSpendTotal !== null && paidConversionsTotal > 0 ? adSpendTotal / paidConversionsTotal : null
 
     const rows: ReportRow[] = [
       impressions,
@@ -419,9 +438,14 @@ export async function GET(req: NextRequest) {
       { key: 'signups', label: 'Sign ups', kind: 'live', format: 'int', windows: signups, asOf: null },
       { key: 'cancelations', label: 'Cancelations', kind: 'live', format: 'int', windows: cancelations, asOf: null },
       {
-        key: 'cac', label: 'CAC', kind: 'computed', format: 'usd',
-        windows: { h4: null, h24: null, total: cacTotal }, asOf: meta.asOf,
-        note: '(Meta + TikTok spend to date) ÷ trials to date; total column only',
+        key: 'cost_per_trial', label: 'Cost per Trial', kind: 'computed', format: 'usd',
+        windows: { h4: null, h24: null, total: costPerTrialTotal }, asOf: meta.asOf,
+        note: 'Ad spend per trial start',
+      },
+      {
+        key: 'true_cac', label: 'True CAC (paid)', kind: 'computed', format: 'usd',
+        windows: { h4: null, h24: null, total: trueCacTotal }, asOf: meta.asOf,
+        note: "Ad spend per paid conversion \u2014 first trials can convert Jul 31; expect '\u2014' until then",
       },
       { key: 'trials', label: 'Total trials', kind: 'live', format: 'int', windows: trials, asOf: null },
       { key: 'subs', label: 'Total subs', kind: 'live', format: 'int', windows: paidSubs, asOf: null },
