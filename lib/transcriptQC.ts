@@ -504,6 +504,48 @@ export function normalizeContractionExpansions(text: string): string {
     .replace(/\bcouldn(?:'|')t\b/gi, 'could not')
 }
 
+/**
+ * ATL-QC-FP-002 (2026-07-17): fold Latin diacritics to their ASCII base
+ * letters on BOTH sides before ANY word-level normalization runs.
+ *
+ * Root cause (Consciousness Protocol ep3 seg33, the "São Paulo class"):
+ * Whisper cannot emit diacritics ("São" → "Sao"), while script text keeps
+ * them.  Without folding, "São" survives the whole normalization chain
+ * intact — but 'ã' is a regex NON-WORD character, so the \b-anchored
+ * number-word rules in normalizeNumberWords see a word boundary inside the
+ * token and convert the trailing "o" to the digit "0" (NUMBER_WORDS maps
+ * o → '0' for spoken phone digits).  "São" therefore tokenizes to
+ * ["s", "0"], which:
+ *   1. stalls the sequential coverage cursor (detected "sao" never matches
+ *      expected "s"), collapsing coverage (0.675 on seg33 despite 99.8%
+ *      similarity), and
+ *   2. injects a phantom digit into numericTokenSequence, tripping the
+ *      numericTokenSequenceMismatch HARD VETO — which is why even the
+ *      normalized-similarity fallback (0.9979 ≥ 0.85) could not pass it.
+ *
+ * Mirrors the QC-NUMNORM-002 approach: normalize the surface-form variance
+ * away in the shared pipeline so both sides converge, instead of loosening
+ * thresholds.  Coverage/tail/numeric detection of REAL defects (missing
+ * sentences, truncation loops, hallucinated expansions) is unaffected —
+ * a diacritic is never a spoken-content difference.
+ *
+ * NFD decomposition + combining-mark strip handles all composed Latin forms
+ * (ã á à â ä å ç é è ê ë í ì î ï ñ ó ò ô ö ú ù û ü ý ÿ …).  A small explicit
+ * map covers Latin letters with no NFD decomposition (ø æ œ ß đ ł).
+ */
+export function foldDiacritics(text: string): string {
+  return text
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/ø/g, 'o').replace(/Ø/g, 'O')
+    .replace(/æ/g, 'ae').replace(/Æ/g, 'AE')
+    .replace(/œ/g, 'oe').replace(/Œ/g, 'OE')
+    .replace(/ß/g, 'ss')
+    .replace(/đ/g, 'd').replace(/Đ/g, 'D')
+    .replace(/ł/g, 'l').replace(/Ł/g, 'L')
+    .normalize('NFC')
+}
+
 export function transcriptTokens(text: string): string[] {
   // Pre-normalise: NFC canonical compose, strip leading/trailing whitespace,
   // collapse internal runs of whitespace.  Catches no-break spaces, zero-width
@@ -530,8 +572,17 @@ export function transcriptTokens(text: string): string[] {
   // source-text dash style.  empirically verified: codepoints were ASCII 0x2d
   // in this incident, but other scripts may contain U+2011 (non-breaking
   // hyphen) which NFC does not fold.
+  //
+  // ATL-QC-FP-002: foldDiacritics runs FIRST so no \b-anchored rule ever sees
+  // a combining/precomposed diacritic as an internal word boundary (São→Sao).
+  // Typographic punctuation is already neutralized downstream: em/en-dashes
+  // fold to '-' below (UNIDASH-001), curly quotes fold via the apostrophe net,
+  // and ALL remaining sentence punctuation (periods, commas, ellipses, quotes)
+  // collapses to token separators in the final [^a-z0-9\s] strip — so
+  // "elegant. That" ≡ "elegant, that" and "content—it" ≡ "content, it" at the
+  // token level.  Locked by __tests__/qc-coverage-fp-002.test.ts.
   const pre = normalizeSpokenNumberPhrases(
-    text.normalize('NFC')
+    foldDiacritics(text)
       .replace(/[\u200B\u200C\u200D\uFEFF]/g, '')
       .replace(/\u00A0/g, ' ')
       .replace(/[\u2010\u2011\u2012\u2013\u2014\u2015\u2212]/g, '-')
