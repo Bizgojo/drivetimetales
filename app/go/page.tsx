@@ -35,9 +35,11 @@ HARD RULES:
   app/layout.tsx), which fires captureUtmFromUrl() on this route too. The
   CTA href additionally carries the full utm_* set directly, so attribution
   survives even if localStorage capture fails.
-- Promo trial display mirrors app/signup/page.tsx (ATL-PROMO-UI-001):
-  server-truth via GET /api/promo/validate, fail-quiet to 7-day default.
-  Raw promo codes never shown (ORION-GO-OFFER-COPY-001).
+- Promo trial display mirrors app/signup/page.tsx's ATL-PROMO-UI-001
+  pattern: server-truth via GET /api/promo/validate, fail-quiet to the
+  14-day default (GO_BASE_TRIAL_DAYS — the ad funnel's Stripe checkout
+  grants 14 days; Marc msg 2868). Raw promo codes never shown
+  (ORION-GO-OFFER-COPY-001).
 ================================================================================
 */
 
@@ -154,7 +156,8 @@ function GoLandingContent() {
 
   // ATL-PROMO-UI-001 pattern: server-truth promo validation for honest trial
   // display. Valid → real trial length + "applied" badge. Invalid, missing,
-  // or endpoint down/slow → quietly keep the 7-day default. Never blocking.
+  // or endpoint down/slow → quietly keep the 14-day default (this funnel's
+  // Stripe checkout grants 14 days — Marc msg 2868). Never blocking.
   useEffect(() => {
     if (!promoCode) { setPromoStatus('none'); return }
     let cancelled = false
@@ -171,7 +174,7 @@ function GoLandingContent() {
           setPromoStatus('invalid')
         }
       })
-      .catch(() => { /* fail quiet — default 7-day display */ })
+      .catch(() => { /* fail quiet — default 14-day display */ })
       .finally(() => clearTimeout(timer))
     return () => { cancelled = true; controller.abort(); clearTimeout(timer) }
   }, [promoCode])

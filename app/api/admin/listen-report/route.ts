@@ -11,7 +11,12 @@
 // session collapses to the set of events it reached plus the furthest
 // audio position seen.
 //
-// METRICS (per variant, and split by utm_source):
+// WINDOWS (final revisions, Marc msg 2868): every metric below is reported
+// in TWO windows — Last 24h (rolling; sessions whose first event created_at
+// >= now-24h) and All-time. Aggregation logic lives in lib/listenReport.ts
+// (pure, unit-tested in __tests__/listen-report-001.test.ts).
+//
+// METRICS (per variant, and split by utm_source — each in both windows):
 //   Sample starts      = sessions with play_start
 //   Median listen s    = median over started sessions of max(position_seconds)
 //                        across listen events (cta_click excluded — clicking
@@ -38,6 +43,9 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
+import { buildSessions, groupWindows, inLast24h, ListenEventRow } from '@/lib/listenReport'
+
+export type { ListenGroupStats, ListenGroupWindows } from '@/lib/listenReport'
 
 const ADMIN_EMAILS = new Set([
   'marc@endless-tales.com',
@@ -51,35 +59,7 @@ export const dynamic = 'force-dynamic'
 
 const PAGE_SIZE = 10000
 const MAX_ROWS = 100000
-
-type ListenEventRow = {
-  session_id: string
-  variant: string
-  utm_source: string | null
-  event: string
-  position_seconds: number
-}
-
-type SessionAgg = {
-  variant: string
-  utmSource: string | null
-  events: Set<string>
-  maxListenSeconds: number
-}
-
-export type ListenGroupStats = {
-  key: string
-  starts: number
-  totalSessions: number
-  medianListenSeconds: number | null
-  pct25Rate: number | null
-  pct50Rate: number | null
-  pct75Rate: number | null
-  completionRate: number | null
-  ctaClickRate: number | null
-  listenedFullyNoCta: number
-  clickedCta: number
-}
+const WINDOW_24H_MS = 24 * 60 * 60 * 1000
 
 function clients() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -116,67 +96,6 @@ async function requireAdmin(req: NextRequest) {
   return Boolean(email && ADMIN_EMAILS.has(email))
 }
 
-function median(values: number[]): number | null {
-  if (values.length === 0) return null
-  const sorted = [...values].sort((a, b) => a - b)
-  const mid = Math.floor(sorted.length / 2)
-  return sorted.length % 2 === 1 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2
-}
-
-function buildSessions(rows: ListenEventRow[]): Map<string, SessionAgg> {
-  const sessions = new Map<string, SessionAgg>()
-  for (const row of rows) {
-    let s = sessions.get(row.session_id)
-    if (!s) {
-      s = { variant: row.variant, utmSource: row.utm_source, events: new Set(), maxListenSeconds: 0 }
-      sessions.set(row.session_id, s)
-    }
-    if (s.utmSource === null && row.utm_source !== null) s.utmSource = row.utm_source
-    s.events.add(row.event)
-    const pos = Number(row.position_seconds)
-    // cta_click position is where they clicked, not how far they listened —
-    // exclude it from the listen-depth measure.
-    if (row.event !== 'cta_click' && Number.isFinite(pos) && pos > s.maxListenSeconds) {
-      s.maxListenSeconds = pos
-    }
-  }
-  return sessions
-}
-
-function computeStats(key: string, group: SessionAgg[]): ListenGroupStats {
-  const started = group.filter(s => s.events.has('play_start'))
-  const starts = started.length
-  const withEvent = (event: string) => started.filter(s => s.events.has(event)).length
-  const rate = (n: number) => (starts > 0 ? (n / starts) * 100 : null)
-  const reached75 = group.filter(s => s.events.has('pct_75') || s.events.has('complete'))
-  return {
-    key,
-    starts,
-    totalSessions: group.length,
-    medianListenSeconds: median(started.map(s => s.maxListenSeconds)),
-    pct25Rate: rate(withEvent('pct_25')),
-    pct50Rate: rate(withEvent('pct_50')),
-    pct75Rate: rate(withEvent('pct_75')),
-    completionRate: rate(withEvent('complete')),
-    ctaClickRate: rate(group.filter(s => s.events.has('cta_click')).length),
-    listenedFullyNoCta: reached75.filter(s => !s.events.has('cta_click')).length,
-    clickedCta: group.filter(s => s.events.has('cta_click')).length,
-  }
-}
-
-function groupBy(sessions: SessionAgg[], keyOf: (s: SessionAgg) => string): ListenGroupStats[] {
-  const groups = new Map<string, SessionAgg[]>()
-  for (const s of sessions) {
-    const key = keyOf(s)
-    const list = groups.get(key)
-    if (list) list.push(s)
-    else groups.set(key, [s])
-  }
-  return Array.from(groups.entries())
-    .map(([key, group]) => computeStats(key, group))
-    .sort((a, b) => b.starts - a.starts || a.key.localeCompare(b.key))
-}
-
 export async function GET(req: NextRequest) {
   try {
     if (!(await requireAdmin(req))) {
@@ -194,7 +113,7 @@ export async function GET(req: NextRequest) {
     for (let from = 0; from < MAX_ROWS; from += PAGE_SIZE) {
       const { data, error } = await admin
         .from('go_listen_events')
-        .select('session_id, variant, utm_source, event, position_seconds')
+        .select('session_id, variant, utm_source, event, position_seconds, created_at')
         .order('created_at', { ascending: true })
         .range(from, from + PAGE_SIZE - 1)
       if (error) {
@@ -209,16 +128,19 @@ export async function GET(req: NextRequest) {
       if (from + PAGE_SIZE >= MAX_ROWS) truncated = true
     }
 
+    const cutoffMs = Date.now() - WINDOW_24H_MS
     const sessions = tableAvailable ? Array.from(buildSessions(rows).values()) : []
-    const byVariant = groupBy(sessions, s => s.variant)
-    const bySource = groupBy(sessions, s => s.utmSource ?? '(none)')
+    const byVariant = groupWindows(sessions, cutoffMs, s => s.variant)
+    const bySource = groupWindows(sessions, cutoffMs, s => s.utmSource ?? '(none)')
 
     return NextResponse.json({
       generatedAt: new Date().toISOString(),
+      window24hStart: new Date(cutoffMs).toISOString(),
       tableAvailable,
       truncated,
       totalEvents: rows.length,
       totalSessions: sessions.length,
+      totalSessions24h: sessions.filter(s => inLast24h(s, cutoffMs)).length,
       byVariant,
       bySource,
     })

@@ -6,11 +6,15 @@
 // milestone funnel, CTA click rate, and the decision signal Marc asked for:
 // "listened ≥75% but never clicked the CTA" (player worked, CTA didn't) vs
 // clicked CTA.
+// Final revisions (Marc msg 2868): EVERY metric renders in two windows —
+// Last 24h (rolling) and All-time — as paired rows per group (the
+// launch-report windows-as-columns convention, adapted: this table already
+// spends its columns on ten metrics, so windows stack as adjacent rows).
 // UI rules (mandatory): light background, dark text, LARGE type — same as
 // /admin/launch-report. If the go_listen_events migration hasn't been
 // applied yet, the page shows an awaiting-data state and never crashes.
 
-import { useEffect, useState } from 'react'
+import { Fragment, useEffect, useState } from 'react'
 
 type GroupStats = {
   key: string
@@ -26,14 +30,23 @@ type GroupStats = {
   clickedCta: number
 }
 
+// One variant/source with both reporting windows (Marc msg 2868).
+type GroupWindows = {
+  key: string
+  h24: GroupStats
+  total: GroupStats
+}
+
 type ReportPayload = {
   generatedAt: string
+  window24hStart: string
   tableAvailable: boolean
   truncated: boolean
   totalEvents: number
   totalSessions: number
-  byVariant: GroupStats[]
-  bySource: GroupStats[]
+  totalSessions24h: number
+  byVariant: GroupWindows[]
+  bySource: GroupWindows[]
 }
 
 const ET = 'America/New_York'
@@ -71,10 +84,28 @@ const tdNum: React.CSSProperties = {
   color: '#111827', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap',
 }
 
+// The metric cells for one window row — identical metric set in both
+// windows (Marc msg 2868: every metric gets the 24h/all-time split).
+function MetricCells({ stats }: { stats: GroupStats }) {
+  return (
+    <>
+      <td style={tdNum}>{stats.starts.toLocaleString('en-US')}</td>
+      <td style={tdNum}>{fmtSeconds(stats.medianListenSeconds)}</td>
+      <td style={tdNum}>{fmtPct(stats.pct25Rate)}</td>
+      <td style={tdNum}>{fmtPct(stats.pct50Rate)}</td>
+      <td style={tdNum}>{fmtPct(stats.pct75Rate)}</td>
+      <td style={tdNum}>{fmtPct(stats.completionRate)}</td>
+      <td style={tdNum}>{fmtPct(stats.ctaClickRate)}</td>
+      <td style={{ ...tdNum, color: '#b45309' }}>{stats.listenedFullyNoCta.toLocaleString('en-US')}</td>
+      <td style={{ ...tdNum, color: '#15803d' }}>{stats.clickedCta.toLocaleString('en-US')}</td>
+    </>
+  )
+}
+
 function StatsTable({ title, subtitle, rows, keyLabel, labelFor }: {
   title: string
   subtitle: string
-  rows: GroupStats[]
+  rows: GroupWindows[]
   keyLabel: string
   labelFor?: (key: string) => string
 }) {
@@ -94,6 +125,7 @@ function StatsTable({ title, subtitle, rows, keyLabel, labelFor }: {
             <thead>
               <tr style={{ background: '#f8fafc', borderBottom: '2px solid #e5e7eb' }}>
                 <th style={{ ...th, textAlign: 'left' }}>{keyLabel}</th>
+                <th style={{ ...th, textAlign: 'left' }}>Window</th>
                 <th style={th}>Sample starts</th>
                 <th style={th}>Median listen</th>
                 <th style={th}>≥25%</th>
@@ -107,21 +139,24 @@ function StatsTable({ title, subtitle, rows, keyLabel, labelFor }: {
             </thead>
             <tbody>
               {rows.map(row => (
-                <tr key={row.key} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                  <td style={{ padding: '14px 16px', fontSize: 18, fontWeight: 850, color: '#111827' }}>
-                    {labelFor ? labelFor(row.key) : row.key}
-                    <div style={{ fontSize: 13, color: '#9ca3af', fontWeight: 600 }}>{row.totalSessions} session{row.totalSessions === 1 ? '' : 's'}</div>
-                  </td>
-                  <td style={tdNum}>{row.starts.toLocaleString('en-US')}</td>
-                  <td style={tdNum}>{fmtSeconds(row.medianListenSeconds)}</td>
-                  <td style={tdNum}>{fmtPct(row.pct25Rate)}</td>
-                  <td style={tdNum}>{fmtPct(row.pct50Rate)}</td>
-                  <td style={tdNum}>{fmtPct(row.pct75Rate)}</td>
-                  <td style={tdNum}>{fmtPct(row.completionRate)}</td>
-                  <td style={tdNum}>{fmtPct(row.ctaClickRate)}</td>
-                  <td style={{ ...tdNum, color: '#b45309' }}>{row.listenedFullyNoCta.toLocaleString('en-US')}</td>
-                  <td style={{ ...tdNum, color: '#15803d' }}>{row.clickedCta.toLocaleString('en-US')}</td>
-                </tr>
+                <Fragment key={row.key}>
+                  {/* Last 24h row — rolling window */}
+                  <tr style={{ borderBottom: '1px solid #f8fafc' }}>
+                    <td rowSpan={2} style={{ padding: '14px 16px', fontSize: 18, fontWeight: 850, color: '#111827', verticalAlign: 'top' }}>
+                      {labelFor ? labelFor(row.key) : row.key}
+                      <div style={{ fontSize: 13, color: '#9ca3af', fontWeight: 600 }}>
+                        {row.h24.totalSessions} session{row.h24.totalSessions === 1 ? '' : 's'} (24h) · {row.total.totalSessions} all-time
+                      </div>
+                    </td>
+                    <td style={{ padding: '14px 16px', fontSize: 15, fontWeight: 800, color: '#334155', whiteSpace: 'nowrap' }}>Last 24h</td>
+                    <MetricCells stats={row.h24} />
+                  </tr>
+                  {/* All-time row */}
+                  <tr style={{ borderBottom: '1px solid #f1f5f9' }}>
+                    <td style={{ padding: '14px 16px', fontSize: 15, fontWeight: 800, color: '#334155', whiteSpace: 'nowrap' }}>All-time</td>
+                    <MetricCells stats={row.total} />
+                  </tr>
+                </Fragment>
               ))}
             </tbody>
           </table>
@@ -166,7 +201,7 @@ export default function ListenReportPage() {
           {generatedLabel && (
             <p style={{ margin: '4px 0 0', fontSize: 15, color: '#6b7280' }}>
               Report generated {generatedLabel}
-              {data ? ` · ${data.totalSessions.toLocaleString('en-US')} sessions · ${data.totalEvents.toLocaleString('en-US')} events` : ''}
+              {data ? ` · ${data.totalSessions24h.toLocaleString('en-US')} sessions in last 24h · ${data.totalSessions.toLocaleString('en-US')} all-time · ${data.totalEvents.toLocaleString('en-US')} events` : ''}
             </p>
           )}
         </div>
@@ -221,7 +256,9 @@ export default function ListenReportPage() {
       )}
 
       <p style={{ marginTop: 18, fontSize: 14, color: '#6b7280', lineHeight: 1.6 }}>
-        A session is one /go page visit (random client UUID, no PII, not persisted across days). Sample starts =
+        Every metric shows two windows per group row: <strong>Last 24h</strong> = sessions that started (first event)
+        within the rolling past 24 hours; <strong>All-time</strong> = everything recorded. A session is one /go page
+        visit (random client UUID, no PII, not persisted across days). Sample starts =
         sessions that pressed play. Median listen = median of the furthest audio position reached per started session
         (sampled at milestone events, so it reads &ldquo;at least this far&rdquo;). Milestone columns = started sessions that
         crossed 25/50/75% or finished the sample. CTA click rate = sessions that clicked a Start-free-trial CTA ÷
