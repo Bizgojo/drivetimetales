@@ -212,6 +212,37 @@ export function normalizeSpokenNumberPhrases(text: string): string {
   // ORION-QC-UNIDASH-001: fold Unicode dashes → ASCII so [-\s] separator classes
   // in the spoken-number regexes match regardless of source-text dash style.
   text = text.replace(/[\u2010\u2011\u2012\u2013\u2014\u2015\u2212]/g, '-')
+  // ── ATL-QC-FP-005: percent-symbol ↔ percent-word folding ──────────────────
+  // Scripts spell "twelve percent"; Whisper renders "12%".  Under the old
+  // code '%' was stripped to nothing by the final token strip (so the
+  // expected token "percent" could never match → coverage cursor stall +
+  // tail fail) while it SURVIVED normalizeForQC (whose punctuation class
+  // does not include '%') → similarity deficit.  On a 4-word line that
+  // combination cratered to 74.2% (Consciousness Protocol ep3 seg70,
+  // "Why only twelve percent?" ↔ "Why only 12%?") and to 38.5% on Ep6's
+  // 2-word countdown lines ("Twenty-nine percent." ↔ "29%.").  Fold the
+  // symbol to the canonical WORD form (digit-adjacent only) so both sides
+  // converge in BOTH pipelines; the digits stay in the numericTokenSequence
+  // veto stream, so "twelve percent" vs "15%" still hard-fails.  "per cent"
+  // (rare ASR/British rendering) collapses to the same canonical word.
+  // Idempotent: after one pass no '%' remains adjacent to the number.
+  text = text.replace(/\bper\s+cent\b/gi, 'percent')
+  text = text.replace(/(\d(?:[\d.,]*\d)?)\s*%/g, '$1 percent')
+  // ── ATL-QC-FP-005: o'clock ↔ N:00 folding ───────────────────────────
+  // Scripts write "two o'clock"; Whisper may render "2:00" (no meridiem).
+  // Two latent problems: (1) the lone "o" in "o'clock" is a spoken-digit
+  // word (NUMBER_WORDS o→'0'), so the phrase parser injected a phantom "0"
+  // into the veto stream (["2","0"] vs detected "2:00" → ["2","00"] →
+  // length-equal value mismatch → HARD VETO at 97%+ similarity); (2) the
+  // token streams diverge ("0 clock" vs "00").  Fold "o'clock" to the
+  // compound "oclock" BEFORE the phrase parser can see the bare "o", and
+  // fold the bare colon-form round hour to the same canonical shape.  The
+  // meridiem lookahead keeps "2:00 p.m./pm/a.m." with the existing
+  // clock-meridiem rules (round-hour equivalence, PIPE-era) — those paths
+  // are untouched.  Non-round times ("6:47") are untouched.  Genuine hour
+  // changes ("two o'clock" vs "3:00") still hard-fail on the veto.
+  text = text.replace(/\bo['\u2018\u2019\u02BC]?clock\b/gi, 'oclock')
+  text = text.replace(/\b(1[0-2]|[1-9]):00\b(?!\s*[ap]\.?\s*m)/gi, '$1 oclock')
   // ── ATL-QC-FP-004: indefinite-article scale numbers ──────────────────────
   // Scripts write the spoken article form ("a hundred times") while Whisper
   // folds it to digits ("100 times").  No prior rule covered the article form
