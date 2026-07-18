@@ -16,7 +16,18 @@ import {
   evaluatePremiseGate,
   parsePremiseOverride,
   formatPremiseCollisionMessage,
+  formatPremiseAdjacentWarning,
+  clusterHookVariants,
+  clusterHookScore,
+  runPremiseGate,
+  PremiseGateUnavailableError,
+  HOOK_COLLISION_THRESHOLD,
+  SITUATION_COLLISION_THRESHOLD,
+  ADJACENT_CLUSTER_HOOK_THRESHOLD,
+  ADJACENT_MEMBER_HOOK_THRESHOLD,
+  ADJACENT_MEMBER_SITUATION_THRESHOLD,
   type PremiseIndexEntry,
+  type AdjacentCluster,
 } from '@/lib/premiseGate'
 import { premiseIndexRowForStory, syncPremiseIndexForTransition } from '@/lib/premiseIndex'
 
@@ -385,5 +396,231 @@ describe('backfill-premise-index.js parity with lib/premiseGate.ts', () => {
     // No premise text at all → null (skipped by backfill and sync alike).
     expect(backfill.premiseIndexRowForStory({ id: 'x', brief_json: null, description: '' })).toBeNull()
     expect(premiseIndexRowForStory({ id: 'x', brief_json: null, description: '' })).toBeNull()
+  })
+})
+
+// ── Known-adjacent clusters (amendment, Marc ruling 2026-07-18 09:47 EDT) ───
+
+type SeedCluster = AdjacentCluster & { member_story_ids: string[] }
+const SEEDED_CLUSTERS: SeedCluster[] = backfill.KNOWN_ADJACENT_CLUSTERS
+const GATE_CLUSTERS: AdjacentCluster[] = SEEDED_CLUSTERS.map(({ slug, label, hook, ruling }) => ({ slug, label, hook, ruling }))
+
+// Real stored member premises/descriptions (fetched read-only 2026-07-18;
+// short members use stories.description — same fallback the index uses).
+const DRY_RUN_PREMISE =
+  'A long-haul trucker named Cole Prest discovers his usual fuel stop has vanished — the building is gone, the lot is empty, and the county records show nothing was ever built there. ' +
+  'He drives the same stretch of highway twice and arrives at two different conclusions.'
+
+const SIGNAL_PREMISE =
+  'A lone highway patrol officer receives an emergency distress call from a stretch of road that has been officially closed for three years. ' +
+  'When she drives out to investigate, she finds a wrecked car, a still-warm engine, and a set of footprints that lead into the desert and simply stop.'
+
+function clusterMemberEntries(): PremiseIndexEntry[] {
+  const make = (overrides: Partial<PremiseIndexEntry> & { story_id: string; premise: string }): PremiseIndexEntry => ({
+    series_id: null,
+    title: null,
+    status: 'published',
+    genre: null,
+    logline: null,
+    core_hook: extractCoreHook(overrides.premise),
+    adjacent_cluster: null,
+    ...overrides,
+  })
+  return [
+    make({ story_id: '09457ef0-e32f-48e2-a1bb-3311ddd68a49', series_id: 'series-falls-park', title: 'The Wrong Quote', genre: 'Mystery', premise: 'A shopkeeper lies dead below Liberty Bridge. June says murder.', adjacent_cluster: 'staged-fall-accidental-ruling' }),
+    make({ story_id: '1c54646b-6b13-4f26-b2ba-b633cf017cc6', series_id: 'series-hardin', title: 'The Wound Pattern', genre: 'Mystery', premise: 'A state detective reviews a dead man\'s fall — and the stairs don\'t.', adjacent_cluster: 'staged-fall-accidental-ruling' }),
+    make({ story_id: '3dac7ff5-735c-428b-8be2-a58799d7f7bd', title: 'Dry Run', genre: 'Thriller', premise: DRY_RUN_PREMISE, adjacent_cluster: 'impossible-desert-highway-location' }),
+    make({ story_id: 'e7cb370a-6401-4030-9f0f-c7c1c88ebdd2', title: 'Signal at Mile Forty', genre: 'Thriller', premise: SIGNAL_PREMISE, adjacent_cluster: 'impossible-desert-highway-location' }),
+    make({ story_id: 'fe23bfd4-d6c9-4ad9-b833-37657287c0f3', series_id: 'series-commuter', title: 'The Borrowed Buick', genre: 'Comedy', premise: 'A fake commuter wins a real award and must produce the drive.', adjacent_cluster: 'staged-proof-impostor-farce' }),
+    make({ story_id: '4f2b768f-6911-45b8-bf32-cd361b111b63', title: 'Dead in the Water', genre: 'Comedy', premise: 'A man rents a pontoon boat, fakes his fishing history, and buys catfish from Piggly Wiggly to impress his future father-in-law at Lake Marion.', adjacent_cluster: 'staged-proof-impostor-farce' }),
+  ]
+}
+
+// Briefs written NEAR each seeded cluster hook (calibrated fixtures — each
+// trips only its own cluster; verified against the live catalog scan too).
+const NEAR_CLUSTER_BRIEFS: Record<string, string> = {
+  'staged-fall-accidental-ruling':
+    'A beloved high-school coach is found dead at the bottom of the bleacher stairs, ruled an accidental fall by the end of the day. ' +
+    'The new county detective reads the wound pattern as inconsistent with a fall and must reopen the case against a sheriff who wants it ruled an accident and closed.',
+  'impossible-desert-highway-location':
+    'A rideshare driver working a desert highway finds that her regular rest stop officially does not exist — county records say the exit was never built, the road closed years ago — ' +
+    'yet there is fresh physical evidence at the spot: skid marks, a warm engine, and a wreck nobody reported.',
+  'staged-proof-impostor-farce':
+    'To win over his fiancee, a city accountant who faked a hunting lifestyle must stage convincing physical proof of the fake in front of witnesses at the family lodge, ' +
+    'recruiting his neighbor as an accomplice and buying props before the lie collapses and he is exposed.',
+}
+
+describe('PREMISE gate — known-adjacent clusters (Marc ruling 2026-07-18 09:47 EDT)', () => {
+  test('seed integrity: three clusters, unique slugs, sweep member ids, variant hooks', () => {
+    expect(SEEDED_CLUSTERS).toHaveLength(3)
+    const slugs = SEEDED_CLUSTERS.map((c) => c.slug)
+    expect(new Set(slugs).size).toBe(3)
+    expect(slugs.sort()).toEqual([
+      'impossible-desert-highway-location',
+      'staged-fall-accidental-ruling',
+      'staged-proof-impostor-farce',
+    ])
+    const bySlug = Object.fromEntries(SEEDED_CLUSTERS.map((c) => [c.slug, c]))
+    expect(bySlug['staged-fall-accidental-ruling'].member_story_ids).toHaveLength(6)
+    expect(bySlug['impossible-desert-highway-location'].member_story_ids).toHaveLength(2)
+    expect(bySlug['staged-proof-impostor-farce'].member_story_ids).toHaveLength(4)
+    for (const c of SEEDED_CLUSTERS) {
+      expect(c.label.length).toBeGreaterThan(0)
+      expect(String(c.ruling)).toContain('2026-07-18 09:47')
+      const variants = clusterHookVariants(c.hook)
+      expect(variants).toHaveLength(3) // one engine phrasing + one per member pair
+      for (const v of variants) expect(contentTokens(v).length).toBeGreaterThanOrEqual(10)
+    }
+    // member → slug mapping helper
+    expect(backfill.adjacentClusterForStory('3dac7ff5-735c-428b-8be2-a58799d7f7bd')).toBe('impossible-desert-highway-location')
+    expect(backfill.adjacentClusterForStory('no-such-story')).toBeNull()
+  })
+
+  test('adjacency thresholds sit strictly below the collision bar', () => {
+    expect(ADJACENT_MEMBER_HOOK_THRESHOLD).toBeLessThan(HOOK_COLLISION_THRESHOLD)
+    expect(ADJACENT_MEMBER_SITUATION_THRESHOLD).toBeLessThan(SITUATION_COLLISION_THRESHOLD)
+    expect(ADJACENT_CLUSTER_HOOK_THRESHOLD).toBe(0.5)
+    expect(ADJACENT_MEMBER_HOOK_THRESHOLD).toBe(0.4)
+    expect(ADJACENT_MEMBER_SITUATION_THRESHOLD).toBe(0.35)
+  })
+
+  test.each(Object.keys(NEAR_CLUSTER_BRIEFS))('a brief near cluster %s → ADJACENT with cluster + member citation, no bounce', (slug) => {
+    const result = evaluatePremiseGate(
+      { storyId: 'candidate-adjacent', premise: NEAR_CLUSTER_BRIEFS[slug] },
+      clusterMemberEntries(),
+      GATE_CLUSTERS,
+    )
+    expect(result.verdict).toBe('ADJACENT')
+    expect(result.collisions).toHaveLength(0) // published precedent, not a blocker — nothing to bounce
+    expect(result.adjacencies.length).toBeGreaterThanOrEqual(1)
+    const top = result.adjacencies[0]
+    expect(top.cluster_slug).toBe(slug)
+    expect(top.score).toBeGreaterThanOrEqual(ADJACENT_CLUSTER_HOOK_THRESHOLD)
+    // Citation carries the cluster name and the member stories.
+    const cluster = SEEDED_CLUSTERS.find((c) => c.slug === slug)!
+    expect(top.cluster_label).toBe(cluster.label)
+    expect(top.members.length).toBe(2) // both sides of the published pair (series-deduped)
+    for (const member of top.members) expect(top.matched).toContain(member.title)
+    const warning = formatPremiseAdjacentWarning(result)
+    expect(warning).toContain('PREMISE ADJACENT')
+    expect(warning).toContain('Not a bounce')
+    expect(warning).toContain(cluster.label)
+  })
+
+  test('near-cluster briefs do not cross-flag other clusters', () => {
+    for (const [slug, premise] of Object.entries(NEAR_CLUSTER_BRIEFS)) {
+      const result = evaluatePremiseGate({ storyId: 'x', premise }, clusterMemberEntries(), GATE_CLUSTERS)
+      for (const adjacency of result.adjacencies) expect(adjacency.cluster_slug).toBe(slug)
+    }
+  })
+
+  test('member-proximity trigger: sub-collision closeness to one tagged member → ADJACENT, not COLLISION', () => {
+    // Shares roughly half of Dry Run's hook (0.4 ≤ hook < 0.6, sit ≥ 0.35) —
+    // clusters list intentionally empty to isolate the member trigger.
+    const midBand =
+      'A delivery courier discovers his usual overnight stop has vanished from the highway — the building gone, the lot empty — though the county says otherwise. ' +
+      'What he finds there instead changes everything about the route he thought he knew.'
+    const result = evaluatePremiseGate({ storyId: 'candidate-midband', premise: midBand }, clusterMemberEntries(), [])
+    expect(result.verdict).toBe('ADJACENT')
+    expect(result.collisions).toHaveLength(0)
+    expect(result.adjacencies).toHaveLength(1)
+    expect(result.adjacencies[0].cluster_slug).toBe('impossible-desert-highway-location')
+    expect(result.adjacencies[0].trigger).toBe('member_proximity')
+  })
+
+  test('CLEAR briefs stay CLEAR with clusters seeded (no adjacency noise)', () => {
+    for (const premise of [LIGHTHOUSE_PREMISE, SAME_SETTING_DIFFERENT_HOOK]) {
+      const result = evaluatePremiseGate(
+        { storyId: 'candidate-clear', premise },
+        [entry({ story_id: 'story-a' }), ...clusterMemberEntries()],
+        GATE_CLUSTERS,
+      )
+      expect(result.verdict).toBe('CLEAR')
+      expect(result.adjacencies).toHaveLength(0)
+      expect(result.collisions).toHaveLength(0)
+    }
+  })
+
+  test('COLLISION behavior unchanged with clusters seeded (reworded near-twin still bounces)', () => {
+    const result = evaluatePremiseGate(
+      { storyId: 'candidate-collide', premise: CONFESSION_REWORDED },
+      [entry({ story_id: 'story-a' }), ...clusterMemberEntries()],
+      GATE_CLUSTERS,
+    )
+    expect(result.verdict).toBe('COLLISION')
+    expect(result.collisions[0].story_id).toBe('story-a')
+    expect(formatPremiseCollisionMessage(result)).toContain('bounced for rework')
+  })
+
+  test('a Ground-Keeps/Limestone-grade sinkhole near-twin still COLLIDES with clusters seeded', () => {
+    // Same-hook + same-situation sinkhole pair in the HIGH-collision pattern
+    // the sweep flagged (the live Limestone episodes are cold_storage now, so
+    // this is the fixture-level regression that the adjacency amendment did
+    // not weaken the hard gate).
+    const groundKeepsEntry: PremiseIndexEntry = {
+      story_id: 'story-ground-keeps',
+      series_id: 'series-ground-keeps',
+      title: 'What the Ground Keeps',
+      status: 'published',
+      genre: 'Horror',
+      logline: 'A surveyor descends into a sinkhole and finds a chamber.',
+      core_hook: null,
+      premise:
+        'County surveyor Nora Velde descends into a record-setting South Tampa sinkhole and finds a sealed ancient chamber at the bottom. ' +
+        'Nearby residents begin exhibiting spreading behavioral changes, and she races the development company\'s concrete trucks to seal the site before they fill the hole.',
+      adjacent_cluster: null,
+    }
+    const limestoneCandidate =
+      'Geological surveyor Elena Muro descends into a record-setting South Tampa sinkhole and finds a sealed limestone chamber at the bottom. ' +
+      'Nearby residents begin exhibiting spreading behavioral changes, and she has seventy-two hours before the development company arrives to fill the hole.'
+    const result = evaluatePremiseGate(
+      { storyId: 'candidate-limestone', premise: limestoneCandidate },
+      [groundKeepsEntry, ...clusterMemberEntries()],
+      GATE_CLUSTERS,
+    )
+    expect(result.verdict).toBe('COLLISION')
+    expect(result.collisions[0].story_id).toBe('story-ground-keeps')
+    expect(result.collisions[0].hookScore).toBeGreaterThanOrEqual(HOOK_COLLISION_THRESHOLD)
+    expect(result.collisions[0].situationScore).toBeGreaterThanOrEqual(SITUATION_COLLISION_THRESHOLD)
+  })
+
+  test('an override clears the collision but never silences the adjacency warning', () => {
+    // Candidate collides with a tagged member AND is near its cluster: the
+    // override lets it proceed, but the verdict stays ADJACENT (visible).
+    const result = evaluatePremiseGate(
+      {
+        storyId: 'candidate-override',
+        premise: DRY_RUN_PREMISE,
+        briefJson: { premise_gate_override: { approved_by: 'marc', reason: 'Marc msg — intentional revisit.' } },
+      },
+      clusterMemberEntries(),
+      GATE_CLUSTERS,
+    )
+    expect(result.overrideApplied).not.toBeNull()
+    expect(result.verdict).toBe('ADJACENT')
+    expect(result.adjacencies[0].cluster_slug).toBe('impossible-desert-highway-location')
+  })
+
+  test('runPremiseGate fails closed when the clusters table is unreadable', async () => {
+    const mockSupabase = {
+      from(table: string) {
+        return {
+          select() {
+            if (table === 'premise_index') return Promise.resolve({ data: [], error: null })
+            return Promise.resolve({ data: null, error: { message: 'relation "premise_adjacent_clusters" does not exist' } })
+          },
+        }
+      },
+    }
+    await expect(
+      runPremiseGate(mockSupabase as never, { storyId: 'x', premise: LIGHTHOUSE_PREMISE }),
+    ).rejects.toThrow(PremiseGateUnavailableError)
+  })
+
+  test('clusterHookScore takes the best variant; clusterHookVariants splits on newlines', () => {
+    const hook = 'alpha bravo charlie delta echo foxtrot golf hotel india juliet\nkilo lima mike november oscar papa quebec romeo sierra tango'
+    expect(clusterHookVariants(hook)).toHaveLength(2)
+    const premiseTokens = contentTokens('kilo lima mike november oscar papa quebec romeo sierra tango')
+    expect(clusterHookScore(hook, premiseTokens)).toBe(1)
   })
 })

@@ -41,6 +41,12 @@ export type PremiseIndexSourceStory = {
  * Premise source of truth: brief_json.premise, falling back to description
  * (legacy pre-V2 stories have no brief_json). Returns null when the story has
  * no premise text at all — nothing to reserve.
+ *
+ * NOTE (known-adjacent clusters, Marc ruling 2026-07-18 09:47 EDT): this row
+ * deliberately does NOT include `adjacent_cluster`. Supabase upsert only
+ * updates the columns present in the payload, so live sync never touches the
+ * cluster tags — they are owned by scripts/backfill-premise-index.js, which
+ * re-seeds them on every run (also the recovery path if a tag is lost).
  */
 export function premiseIndexRowForStory(story: PremiseIndexSourceStory, status?: string) {
   const brief = story.brief_json && typeof story.brief_json === 'object'

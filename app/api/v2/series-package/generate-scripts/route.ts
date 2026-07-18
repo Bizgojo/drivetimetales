@@ -3,7 +3,7 @@ import { createClient } from '@supabase/supabase-js'
 import Anthropic from '@anthropic-ai/sdk'
 import { logAnthropicCall } from '@/app/lib/anthropic-logger'
 import { buildNamePalettePromptBlock } from '@/lib/story/namePalette'
-import { runPremiseGate, formatPremiseCollisionMessage } from '@/lib/premiseGate'
+import { runPremiseGate, formatPremiseCollisionMessage, formatPremiseAdjacentWarning, type PremiseAdjacency } from '@/lib/premiseGate'
 
 export const runtime = 'nodejs'
 
@@ -362,6 +362,7 @@ export async function POST(req: NextRequest) {
     // against premise_index (sibling episodes of this series are excluded by
     // the gate). Any COLLISION bounces the whole package for rework; override
     // only via Marc's recorded brief_json.premise_gate_override.
+    const premiseAdjacentWarnings: Array<{ storyId: string; episode: number; adjacencies: PremiseAdjacency[]; warning: string }> = []
     for (const episode of episodes) {
       if (episode.script) continue
       const episodeBrief = episode.brief_json as any
@@ -385,6 +386,21 @@ export async function POST(req: NextRequest) {
           approvedBy: premiseGate.overrideApplied.approved_by,
           reason: premiseGate.overrideApplied.reason,
           overriddenCollisions: premiseGate.collisions,
+        })
+      }
+      // Known-adjacent cluster warning (Marc ruling 09:47): NOT a bounce —
+      // the package proceeds; the saturation warning is logged and returned.
+      if (premiseGate.adjacencies.length > 0) {
+        const warning = formatPremiseAdjacentWarning(premiseGate)
+        console.warn(`[series-package/generate-scripts] ${warning}`, {
+          storyId: episode.id,
+          adjacencies: premiseGate.adjacencies,
+        })
+        premiseAdjacentWarnings.push({
+          storyId: episode.id,
+          episode: Number(episode.episode_number || episode.series_episode_number || 0),
+          adjacencies: premiseGate.adjacencies,
+          warning,
         })
       }
     }
@@ -648,6 +664,9 @@ export async function POST(req: NextRequest) {
         series,
         episodes: refreshedEpisodes || generatedEpisodes,
       },
+      ...(premiseAdjacentWarnings.length > 0
+        ? { premiseGate: { verdict: 'ADJACENT', adjacentWarnings: premiseAdjacentWarnings } }
+        : {}),
     })
   } catch (err) {
     return bad(err instanceof Error ? err.message : 'Unknown error', 500)

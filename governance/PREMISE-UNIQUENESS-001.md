@@ -147,3 +147,75 @@ brief_json.premise_gate_override = {
   rejected (still COLLISION).
 - **JS/TS parity** — backfill script's extraction matches `lib/premiseGate.ts`
   on fixtures.
+
+---
+
+## Amendment: known-adjacent clusters (Marc ruling, 2026-07-18 09:47 EDT)
+
+The retroactive sweep (PREMISE-SWEEP-20260718) found three MEDIUM published
+near-twin pairs. **Marc's ruling: no story action** — both sides of each pair
+stay published — **but the pairs are recorded as KNOWN-ADJACENT CLUSTERS so
+future briefs near those hooks get flagged earlier.**
+
+### The three seeded clusters
+
+| Slug | Saturated hook | Members (all published) |
+| --- | --- | --- |
+| `staged-fall-accidental-ruling` | Staged-fall ruled accidental; investigator vs resistant local authority | Murder at Falls Park + The Hardin Falls Inquiry (Mystery, sweep pair #2) |
+| `impossible-desert-highway-location` | Officially-nonexistent desert-highway location with fresh physical evidence | Dry Run + Signal at Mile Forty (Thriller, sweep pair #3) |
+| `staged-proof-impostor-farce` | Impostor must physically stage proof of a fabricated skill before live witnesses | Commuter of the Year + Dead in the Water (Comedy, sweep pair #4) |
+
+Member story ids are hardcoded in `scripts/backfill-premise-index.js`
+(`KNOWN_ADJACENT_CLUSTERS`), taken verbatim from the sweep report.
+
+### Mechanism
+
+- **Storage:** `public.premise_adjacent_clusters` (slug, label, hook, ruling)
+  holds one row per cluster; `premise_index.adjacent_cluster` tags each member
+  story row with its cluster slug. Both are seeded by
+  `scripts/backfill-premise-index.js --apply` (idempotent; re-running repairs
+  lost tags). Live workflow sync never writes the tag column.
+- **Hook text = matchable variants, not display prose.** Each cluster's `hook`
+  holds newline-separated variants: one abstract engine phrasing plus one
+  concrete phrasing per member pair. The gate scores a candidate premise
+  against each variant and keeps the best (`clusterHookScore`).
+- **ADJACENT verdict (warning — NEVER a bounce).** At every Stage 2 entrance
+  the gate now returns `CLEAR | ADJACENT | COLLISION`. ADJACENT fires when
+  either trigger trips, at thresholds strictly below the collision bar:
+  1. **Cluster-hook trigger:** max variant containment vs the candidate
+     premise **≥ 0.5** (`ADJACENT_CLUSTER_HOOK_THRESHOLD`).
+  2. **Member-proximity trigger** (the sub-collision band): vs any
+     cluster-tagged index entry, hookScore **≥ 0.4** AND situationScore
+     **≥ 0.35** (`ADJACENT_MEMBER_HOOK_THRESHOLD`,
+     `ADJACENT_MEMBER_SITUATION_THRESHOLD`) — closer to one member than the
+     published pair are to each other, yet below COLLISION's 0.6/0.5.
+- **Behavior on ADJACENT:** the brief **proceeds**. The pairs are published
+  precedent, not blockers. The warning (cluster label + member story
+  citations + score) is logged loudly at all four Stage 2 entrances and
+  returned in the v2 route payloads (`premiseGate.adjacencies`), so Orion and
+  Marc see hook saturation before a third near-twin is written. No job fails,
+  no 409, no `needs_attention`, no retry-classification change.
+- **Precedence:** COLLISION > ADJACENT > CLEAR. Collision behavior is
+  unchanged — anything at/above 0.6 hook + 0.5 situation still bounces. An
+  override clears a COLLISION but never silences an ADJACENT warning.
+
+### Calibration evidence (2026-07-18, read-only scan)
+
+Against all live protected premises (148 stories → 40 premise units at scan
+time): the six member stories flag **only their own cluster** (best-variant
+scores 0.75–1.0); every non-member unit scores ≤ 0.318 on the cluster-hook
+trigger and below 0.29/0.35 on member proximity — **zero false ADJACENT
+flags** at the chosen thresholds, with a wide margin either side of 0.5.
+Note: the sweep's HIGH sinkhole pair does not deterministically collide on its
+real stored ep-1 premises (0.5 hook / 0.28 situation — the sweep's HIGH call
+was semantic); that pair was resolved by Marc cold-storaging the Limestone
+series, and the fixture-level regression test keeps a same-hook/same-situation
+sinkhole near-twin colliding at 0.73/0.76.
+
+### Adding or retiring a cluster
+
+Only on Marc's word. Add/edit the entry in `KNOWN_ADJACENT_CLUSTERS`
+(backfill script), re-run the backfill with `--apply`, and record the ruling
+citation in the `ruling` column. Retiring = deleting the
+`premise_adjacent_clusters` row and clearing the member tags (then re-run the
+backfill to verify).

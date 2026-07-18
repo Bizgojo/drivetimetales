@@ -3,7 +3,7 @@ import { createClient } from '@supabase/supabase-js'
 import Anthropic from '@anthropic-ai/sdk'
 import { logAnthropicCall } from '@/app/lib/anthropic-logger'
 import { buildNamePalettePromptBlock } from '@/lib/story/namePalette'
-import { runPremiseGate, formatPremiseCollisionMessage } from '@/lib/premiseGate'
+import { runPremiseGate, formatPremiseCollisionMessage, formatPremiseAdjacentWarning } from '@/lib/premiseGate'
 
 export const runtime = 'nodejs'
 
@@ -177,6 +177,15 @@ export async function POST(req: NextRequest) {
         approvedBy: premiseGate.overrideApplied.approved_by,
         reason: premiseGate.overrideApplied.reason,
         overriddenCollisions: premiseGate.collisions,
+      })
+    }
+    // Known-adjacent cluster warning (Marc ruling 09:47): NOT a bounce — the
+    // brief proceeds, but the saturation warning is logged and returned so
+    // Orion/Marc see it early.
+    if (premiseGate.adjacencies.length > 0) {
+      console.warn(`[generate-script] ${formatPremiseAdjacentWarning(premiseGate)}`, {
+        storyId: story.id,
+        adjacencies: premiseGate.adjacencies,
       })
     }
     const target = runtimeTarget(brief.runtime || '')
@@ -392,7 +401,13 @@ ${JSON.stringify(brief, null, 2)}
       metadata: { is_v2: true },
     }).catch(() => {})
 
-    return NextResponse.json({ success: true, story: updated })
+    return NextResponse.json({
+      success: true,
+      story: updated,
+      ...(premiseGate.adjacencies.length > 0
+        ? { premiseGate: { verdict: premiseGate.verdict, adjacencies: premiseGate.adjacencies, warning: formatPremiseAdjacentWarning(premiseGate) } }
+        : {}),
+    })
   } catch (err) {
     return bad(err instanceof Error ? err.message : 'Unknown error', 500)
   }

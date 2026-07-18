@@ -12,7 +12,7 @@ import { classifyTrueState } from '@/lib/pipelineTruth'
 import { getPlaybookByKind } from '@/lib/repairPlaybooks'
 import { loadActiveMission } from '@/lib/missionContext'
 import { ownedJobFence, isLockLostError, lockLostMessage } from '@/lib/jobLockGuard'
-import { runPremiseGate, formatPremiseCollisionMessage, type PremiseGateResult } from '@/lib/premiseGate'
+import { runPremiseGate, formatPremiseCollisionMessage, formatPremiseAdjacentWarning, type PremiseGateResult } from '@/lib/premiseGate'
 import { syncPremiseIndexForTransition } from '@/lib/premiseIndex'
 
 export const runtime = 'nodejs'
@@ -3067,6 +3067,15 @@ async function enforcePremiseGateBeforeStage2(params: {
       approvedBy: premiseGate.overrideApplied.approved_by,
       reason: premiseGate.overrideApplied.reason,
       overriddenCollisions: premiseGate.collisions,
+    })
+  }
+  // Known-adjacent cluster warning (Marc ruling 2026-07-18 09:47 EDT): NOT a
+  // bounce — the job proceeds; the saturation warning is logged loudly so
+  // Orion/Marc see it in the runner logs.
+  if (premiseGate.adjacencies.length > 0) {
+    console.warn(`[run-next] ${formatPremiseAdjacentWarning(premiseGate)} (at ${params.label})`, {
+      storyId: params.storyId,
+      adjacencies: premiseGate.adjacencies,
     })
   }
   return premiseGate

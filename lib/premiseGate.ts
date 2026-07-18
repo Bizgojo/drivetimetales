@@ -31,6 +31,30 @@
  * restatement of the same story. Genre/setting-only overlap stays far below
  * both thresholds because setting nouns are a small fraction of content tokens.
  *
+ * KNOWN-ADJACENT CLUSTERS (amendment, Marc ruling 2026-07-18 09:47 EDT):
+ * The retroactive sweep found three MEDIUM published near-twin pairs. Marc
+ * ruled no story action, but the pairs are recorded as known-adjacent
+ * clusters (premise_adjacent_clusters + premise_index.adjacent_cluster tags)
+ * so future briefs near those hooks are flagged EARLIER:
+ *   - ADJACENT (warning) iff either trigger fires, at thresholds strictly
+ *     below the COLLISION bar:
+ *       A. cluster-hook trigger: the cluster's hook text holds one or more
+ *          newline-separated VARIANTS (one abstract engine phrasing + one
+ *          concrete phrasing per member pair — matchable surfaces, not
+ *          display prose). Score = max over variants of the containment of
+ *          the variant's content tokens vs the candidate premise tokens;
+ *          ADJACENT at >= 0.5 (ADJACENT_CLUSTER_HOOK_THRESHOLD).
+ *       B. member-proximity trigger: vs any cluster-tagged index entry,
+ *          hookScore >= 0.4 AND situationScore >= 0.35
+ *          (ADJACENT_MEMBER_HOOK_THRESHOLD / ADJACENT_MEMBER_SITUATION_THRESHOLD)
+ *          — the “sub-collision band”: closer to one member than the pair are
+ *          to each other, but below the 0.6/0.5 collision bar.
+ *   - ADJACENT NEVER bounces the brief — the pairs are published precedent,
+ *     not blockers. It surfaces a saturation warning (cluster label + member
+ *     story citations) in gate output/logs so Orion/Marc see it early.
+ *   - COLLISION still wins: anything at or above 0.6/0.5 vs a member entry
+ *     collides exactly as before.
+ *
  * OVERRIDE: only by Marc's explicit word. The override must be a recorded
  * object at brief_json.premise_gate_override with non-empty approved_by and
  * reason. There is no boolean shortcut and no silent path — an override
@@ -137,12 +161,36 @@ export function extractCoreHook(premise: string): string {
 export const HOOK_COLLISION_THRESHOLD = 0.6
 export const SITUATION_COLLISION_THRESHOLD = 0.5
 
+// Known-adjacent cluster (saturation warning) thresholds — strictly below
+// the COLLISION bar. Marc ruling 2026-07-18 09:47 EDT.
+export const ADJACENT_CLUSTER_HOOK_THRESHOLD = 0.5
+export const ADJACENT_MEMBER_HOOK_THRESHOLD = 0.4
+export const ADJACENT_MEMBER_SITUATION_THRESHOLD = 0.35
+
 export function containmentScore(a: string[], b: string[]): number {
   if (a.length === 0 || b.length === 0) return 0
   const setB = new Set(b)
   let overlap = 0
   for (const token of a) if (setB.has(token)) overlap += 1
   return overlap / Math.min(a.length, b.length)
+}
+
+/** Newline-separated matchable variants of a known-adjacent cluster hook. */
+export function clusterHookVariants(hook: string): string[] {
+  return String(hook || '')
+    .split(/\n+/)
+    .map((s) => s.trim())
+    .filter(Boolean)
+}
+
+/** Max containment of any hook variant's tokens vs the candidate premise tokens. */
+export function clusterHookScore(hook: string, premiseTokens: string[]): number {
+  let best = 0
+  for (const variant of clusterHookVariants(hook)) {
+    const score = containmentScore(contentTokens(variant), premiseTokens)
+    if (score > best) best = score
+  }
+  return best
 }
 
 export type PremiseIndexEntry = {
@@ -154,6 +202,29 @@ export type PremiseIndexEntry = {
   logline?: string | null
   core_hook: string | null
   premise: string | null
+  /** Known-adjacent cluster slug when this row is a member of one (amendment 09:47). */
+  adjacent_cluster?: string | null
+}
+
+/** A known-adjacent cluster row (premise_adjacent_clusters). */
+export type AdjacentCluster = {
+  slug: string
+  label: string
+  /** Matchable hook text — the shared premise engine in concrete vocabulary. */
+  hook: string
+  ruling?: string | null
+}
+
+export type PremiseAdjacency = {
+  cluster_slug: string
+  cluster_label: string
+  /** Which trigger fired (highest-scoring one is reported). */
+  trigger: 'cluster_hook' | 'member_proximity'
+  score: number
+  /** Cluster member stories (deduped by series) for the citation. */
+  members: Array<{ story_id: string; title: string; status: string | null }>
+  /** Human-readable citation of what matched. */
+  matched: string
 }
 
 export type PremiseCollision = {
@@ -172,13 +243,19 @@ export type PremiseOverrideRecord = {
   approved_at?: string | null
 }
 
-export type PremiseGateVerdict = 'CLEAR' | 'COLLISION'
+export type PremiseGateVerdict = 'CLEAR' | 'ADJACENT' | 'COLLISION'
 
 export type PremiseGateResult = {
   verdict: PremiseGateVerdict
   /** Core hook extracted from the candidate premise (for logging + index). */
   coreHook: string
   collisions: PremiseCollision[]
+  /**
+   * Known-adjacent cluster warnings (amendment 09:47) — informational, never
+   * a bounce. Populated regardless of verdict; verdict is ADJACENT only when
+   * there is no standing COLLISION.
+   */
+  adjacencies: PremiseAdjacency[]
   /** Set when a COLLISION was overridden by Marc's recorded word. Never silent. */
   overrideApplied: PremiseOverrideRecord | null
   checkedCount: number
@@ -230,17 +307,26 @@ export type PremiseGateCandidate = {
 }
 
 /**
- * Pure gate evaluation against a set of premise_index entries.
- * Entries for the candidate's own story/series are skipped (a series must not
- * collide with its own sibling episodes).
+ * Pure gate evaluation against a set of premise_index entries plus the
+ * known-adjacent clusters (amendment 09:47). Entries for the candidate's own
+ * story/series are skipped (a series must not collide with its own sibling
+ * episodes).
+ *
+ * Verdict precedence: COLLISION (bounce) > ADJACENT (warning, proceeds) >
+ * CLEAR. An override clears a COLLISION but never suppresses an ADJACENT
+ * warning — saturation stays visible.
  */
 export function evaluatePremiseGate(
   candidate: PremiseGateCandidate,
   entries: PremiseIndexEntry[],
+  clusters: AdjacentCluster[] = [],
 ): PremiseGateResult {
   const premise = String(candidate.premise || '').trim()
   const coreHook = extractCoreHook(premise)
+  const premiseTokens = contentTokens(premise)
   const collisions: PremiseCollision[] = []
+  // slug → best adjacency evidence seen so far
+  const adjacencyBySlug = new Map<string, { trigger: PremiseAdjacency['trigger']; score: number }>()
   let checkedCount = 0
 
   for (const entry of entries) {
@@ -259,22 +345,101 @@ export function evaluatePremiseGate(
         matched: `core hook ${(score.hookScore * 100).toFixed(0)}% + central situation ${(score.situationScore * 100).toFixed(0)}% overlap with "${entry.title || entry.story_id}" (${entry.status || 'unknown state'})`,
       })
     }
+    // Member-proximity adjacency trigger (below the collision bar).
+    const slug = String(entry.adjacent_cluster || '').trim()
+    if (
+      slug &&
+      score.hookScore >= ADJACENT_MEMBER_HOOK_THRESHOLD &&
+      score.situationScore >= ADJACENT_MEMBER_SITUATION_THRESHOLD
+    ) {
+      const memberScore = Number(Math.min(score.hookScore, 1).toFixed(3))
+      const prev = adjacencyBySlug.get(slug)
+      if (!prev || memberScore > prev.score) {
+        adjacencyBySlug.set(slug, { trigger: 'member_proximity', score: memberScore })
+      }
+    }
   }
+
+  // Cluster-hook adjacency trigger: does the candidate premise contain the
+  // cluster's engine vocabulary? Hook text holds newline-separated variants;
+  // the best-matching variant decides.
+  for (const cluster of clusters) {
+    if (!cluster || !cluster.slug || !cluster.hook) continue
+    const clusterScore = clusterHookScore(cluster.hook, premiseTokens)
+    if (clusterScore >= ADJACENT_CLUSTER_HOOK_THRESHOLD) {
+      const rounded = Number(clusterScore.toFixed(3))
+      const prev = adjacencyBySlug.get(cluster.slug)
+      if (!prev || rounded > prev.score) {
+        adjacencyBySlug.set(cluster.slug, { trigger: 'cluster_hook', score: rounded })
+      }
+    }
+  }
+
+  // Build adjacency citations (cluster label + member stories, deduped by series).
+  const adjacencies: PremiseAdjacency[] = []
+  for (const [slug, hit] of Array.from(adjacencyBySlug.entries())) {
+    const cluster = clusters.find((c) => c && c.slug === slug)
+    const members: PremiseAdjacency['members'] = []
+    const seenSeries = new Set<string>()
+    for (const entry of entries) {
+      if (!entry || String(entry.adjacent_cluster || '').trim() !== slug) continue
+      const seriesKey = String(entry.series_id || entry.story_id)
+      if (seenSeries.has(seriesKey)) continue
+      seenSeries.add(seriesKey)
+      members.push({ story_id: entry.story_id, title: entry.title || '(untitled)', status: entry.status ?? null })
+    }
+    const label = cluster?.label || slug
+    const memberCite = members.map((m) => `"${m.title}" (${m.story_id}, ${m.status || 'unknown state'})`).join(', ')
+    adjacencies.push({
+      cluster_slug: slug,
+      cluster_label: label,
+      trigger: hit.trigger,
+      score: hit.score,
+      members,
+      matched: `known-adjacent cluster "${label}" [${slug}] via ${hit.trigger === 'cluster_hook' ? `cluster-hook overlap ${(hit.score * 100).toFixed(0)}%` : `member proximity ${(hit.score * 100).toFixed(0)}% hook overlap`}${memberCite ? `; members: ${memberCite}` : ''}`,
+    })
+  }
+  adjacencies.sort((a, b) => b.score - a.score)
 
   collisions.sort((a, b) => (b.hookScore + b.situationScore) - (a.hookScore + a.situationScore))
 
   if (collisions.length === 0) {
-    return { verdict: 'CLEAR', coreHook, collisions, overrideApplied: null, checkedCount }
+    return {
+      verdict: adjacencies.length > 0 ? 'ADJACENT' : 'CLEAR',
+      coreHook,
+      collisions,
+      adjacencies,
+      overrideApplied: null,
+      checkedCount,
+    }
   }
 
   const override = parsePremiseOverride(candidate.briefJson)
   if (override) {
     // Marc's recorded word — proceed, but the result still carries the
-    // collision citations so every caller logs what was overridden.
-    return { verdict: 'CLEAR', coreHook, collisions, overrideApplied: override, checkedCount }
+    // collision citations so every caller logs what was overridden. An
+    // adjacency warning (if any) stays visible.
+    return {
+      verdict: adjacencies.length > 0 ? 'ADJACENT' : 'CLEAR',
+      coreHook,
+      collisions,
+      adjacencies,
+      overrideApplied: override,
+      checkedCount,
+    }
   }
 
-  return { verdict: 'COLLISION', coreHook, collisions, overrideApplied: null, checkedCount }
+  return { verdict: 'COLLISION', coreHook, collisions, adjacencies, overrideApplied: null, checkedCount }
+}
+
+/**
+ * Format the ADJACENT warning (never a bounce — published precedent, not a
+ * blocker). Cited so Orion/Marc see hook saturation early.
+ */
+export function formatPremiseAdjacentWarning(result: PremiseGateResult): string {
+  const top = result.adjacencies[0]
+  const cite = top ? top.matched : 'unknown adjacency'
+  return `PREMISE ADJACENT (PREMISE-UNIQUENESS-001, known-adjacent clusters — Marc ruling 2026-07-18 09:47 EDT): brief premise is near a saturated published hook — ${cite}. Not a bounce; brief proceeds. Consider a materially different hook before adding more stories to this cluster.`
 }
 
 /** Format the bounce message with citation (colliding story_id + title + match). */
@@ -306,9 +471,21 @@ export async function runPremiseGate(
 ): Promise<PremiseGateResult> {
   const { data, error } = await supabase
     .from('premise_index')
-    .select('story_id,series_id,title,status,genre,logline,core_hook,premise')
+    .select('story_id,series_id,title,status,genre,logline,core_hook,premise,adjacent_cluster')
 
   if (error) throw new PremiseGateUnavailableError(error.message)
 
-  return evaluatePremiseGate(candidate, (data || []) as PremiseIndexEntry[])
+  // Known-adjacent clusters (amendment 09:47) — same migration file creates
+  // both tables, so this read fails closed alongside premise_index.
+  const { data: clusters, error: clustersError } = await supabase
+    .from('premise_adjacent_clusters')
+    .select('slug,label,hook,ruling')
+
+  if (clustersError) throw new PremiseGateUnavailableError(clustersError.message)
+
+  return evaluatePremiseGate(
+    candidate,
+    (data || []) as PremiseIndexEntry[],
+    (clusters || []) as AdjacentCluster[],
+  )
 }
