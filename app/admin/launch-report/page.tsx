@@ -15,7 +15,7 @@ type ReportRow = {
   key: string
   label: string
   kind: 'live' | 'fetched' | 'computed'
-  format: 'int' | 'usd'
+  format: 'int' | 'usd' | 'pct'
   windows: WindowValues
   asOf: string | null
   note?: string
@@ -30,11 +30,12 @@ type ReportPayload = {
 
 const ET = 'America/New_York'
 
-function fmtValue(value: number | null, format: 'int' | 'usd', awaiting: boolean) {
+function fmtValue(value: number | null, format: 'int' | 'usd' | 'pct', awaiting: boolean) {
   if (value === null) return awaiting ? 'awaiting data' : '—'
   if (format === 'usd') {
     return value.toLocaleString('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2, maximumFractionDigits: 2 })
   }
+  if (format === 'pct') return `${value.toFixed(1)}%` // one decimal, e.g. "4.8%" (ATL-LAUNCH-REPORT-004)
   return Math.round(value).toLocaleString('en-US')
 }
 
@@ -169,7 +170,9 @@ export default function LaunchReportPage() {
       <p style={{ marginTop: 18, fontSize: 14, color: '#6b7280', lineHeight: 1.6 }}>
         Live rows (Sign ups, Cancelations, Total trials, Total subs, Sub Rev. Added) are computed from the users table
         in real time. Fetched rows come from the launch_metrics table, upserted by Marc&rsquo;s local script — each shows
-        its own &ldquo;as of&rdquo; freshness. Cost per Trial = (Meta + TikTok spend to date) ÷ trials to date;
+        its own &ldquo;as of&rdquo; freshness. CTR = Clicks to Landing Page ÷ Impressions × 100 and Signup Rate = Sign ups ÷
+        Clicks × 100, per column (&ldquo;—&rdquo; where an input is missing; Signup Rate shows a true 0.0% when clicks exist
+        but signups are 0). Cost per Trial = (Meta + TikTok spend to date) ÷ trials to date;
         True CAC (paid) = (Meta + TikTok spend to date) ÷ paid conversions to date (same count as Total subs) —
         both total column only. TikTok expenses default to $0 until TikTok launch. Sub Rev. Added = monthly conversions × $7.99 +
         annual conversions × $59.99 (unknown billing cycle counted as monthly) &mdash; an approximation; Stripe is
