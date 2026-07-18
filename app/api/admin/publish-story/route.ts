@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { personalizationPublishBlockers } from '@/lib/personalization/publishGuard'
+import { syncPremiseIndexForTransition } from '@/lib/premiseIndex'
 
 export const runtime = 'nodejs'
 
@@ -120,6 +121,12 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ success: false, error: error.message }, { status: 500 })
       }
 
+      // PREMISE-UNIQUENESS-001: published is a protected state — reserve premises (best-effort).
+      await syncPremiseIndexForTransition(supabase, {
+        storyIds: (data || []).map((row: { id: string }) => row.id),
+        toState: 'published',
+      })
+
       const updatedCount = data?.length || 0
       if (updatedCount !== episodes.length) {
         return NextResponse.json({
@@ -224,6 +231,9 @@ export async function POST(req: NextRequest) {
     if (error) {
       return NextResponse.json({ success: false, error: error.message }, { status: 500 })
     }
+
+    // PREMISE-UNIQUENESS-001: published is a protected state — reserve premise (best-effort).
+    await syncPremiseIndexForTransition(supabase, { storyIds: [storyId], toState: 'published' })
 
     if (queueId) {
       const { error: queueError } = await supabase

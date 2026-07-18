@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js'
 import Anthropic from '@anthropic-ai/sdk'
 import { logAnthropicCall } from '@/app/lib/anthropic-logger'
 import { buildNamePalettePromptBlock } from '@/lib/story/namePalette'
+import { runPremiseGate, formatPremiseCollisionMessage, formatPremiseAdjacentWarning, type PremiseAdjacency } from '@/lib/premiseGate'
 
 export const runtime = 'nodejs'
 
@@ -356,6 +357,54 @@ export async function POST(req: NextRequest) {
     if (episodesError) return bad(episodesError.message, 500)
     if (!episodes || episodes.length === 0) return bad('No child episodes found for series package', 404)
 
+    // PREMISE-UNIQUENESS-001: mandatory premise check at the brief gate
+    // before Stage 2 — every episode brief that still needs a script is gated
+    // against premise_index (sibling episodes of this series are excluded by
+    // the gate). Any COLLISION bounces the whole package for rework; override
+    // only via Marc's recorded brief_json.premise_gate_override.
+    const premiseAdjacentWarnings: Array<{ storyId: string; episode: number; adjacencies: PremiseAdjacency[]; warning: string }> = []
+    for (const episode of episodes) {
+      if (episode.script) continue
+      const episodeBrief = episode.brief_json as any
+      if (!episodeBrief) continue // per-episode brief_json errors are handled in the loop below
+      const premiseGate = await runPremiseGate(supabase, {
+        storyId: episode.id,
+        seriesId: cleanSeriesId,
+        premise: String(episodeBrief.premise || ''),
+        briefJson: episodeBrief,
+      })
+      if (premiseGate.verdict === 'COLLISION') {
+        return bad(formatPremiseCollisionMessage(premiseGate), 409, {
+          failedEpisode: Number(episode.episode_number || episode.series_episode_number || 0),
+          failedStoryId: episode.id,
+          premiseGate: { verdict: premiseGate.verdict, collisions: premiseGate.collisions },
+        })
+      }
+      if (premiseGate.overrideApplied) {
+        console.warn('[series-package/generate-scripts] PREMISE-UNIQUENESS-001 override applied', {
+          storyId: episode.id,
+          approvedBy: premiseGate.overrideApplied.approved_by,
+          reason: premiseGate.overrideApplied.reason,
+          overriddenCollisions: premiseGate.collisions,
+        })
+      }
+      // Known-adjacent cluster warning (Marc ruling 09:47): NOT a bounce —
+      // the package proceeds; the saturation warning is logged and returned.
+      if (premiseGate.adjacencies.length > 0) {
+        const warning = formatPremiseAdjacentWarning(premiseGate)
+        console.warn(`[series-package/generate-scripts] ${warning}`, {
+          storyId: episode.id,
+          adjacencies: premiseGate.adjacencies,
+        })
+        premiseAdjacentWarnings.push({
+          storyId: episode.id,
+          episode: Number(episode.episode_number || episode.series_episode_number || 0),
+          adjacencies: premiseGate.adjacencies,
+          warning,
+        })
+      }
+    }
+
     const priorGenerated: Array<{ episode: any; script: string; scriptJson: any }> = []
     const generatedEpisodes = []
     const recentStoryTexts = await loadRecentStoryTexts(cleanSeriesId)
@@ -615,6 +664,9 @@ export async function POST(req: NextRequest) {
         series,
         episodes: refreshedEpisodes || generatedEpisodes,
       },
+      ...(premiseAdjacentWarnings.length > 0
+        ? { premiseGate: { verdict: 'ADJACENT', adjacentWarnings: premiseAdjacentWarnings } }
+        : {}),
     })
   } catch (err) {
     return bad(err instanceof Error ? err.message : 'Unknown error', 500)

@@ -122,6 +122,23 @@ export function classifyFailure(
   // is too broad (accumulated logs contain words like "detected"/"expected"
   // from unrelated prior steps, causing false positives).
 
+  // PREMISE-UNIQUENESS-001: premise collision is pinned by error_json.kind —
+  // never retryable, always Marc. The brief is bounced for rework; only
+  // Marc's recorded brief_json.premise_gate_override lets it proceed.
+  const pinnedErrorKind = String(
+    ((payload?.error_json ?? job?.error_json ?? {}) as Record<string, unknown>).kind ?? ''
+  )
+  if (pinnedErrorKind === 'premise_collision') {
+    return {
+      kind: 'story_quality',
+      retryable: false,
+      needsMarc: true,
+      reason: 'PREMISE-UNIQUENESS-001: brief premise is substantially similar to a published/protected story (see error_json detail.collisions for the citation).',
+      recommendedAction: 'Rework the brief premise, or Marc may record an explicit premise_gate_override { approved_by, reason } in brief_json. Never override silently.',
+      context,
+    }
+  }
+
   if (step === 'validate_belle_assets') {
     // Text-rule violation caught by validateBelleText() — not a transcript QC issue.
     // Transcript QC is not run at this step; there is no expected/actual diff.
