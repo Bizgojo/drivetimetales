@@ -39,6 +39,25 @@
 //                     ONLY in "Total to date" — same ruling as the original CAC.
 //                     Absent tiktok_expenses counts as $0 in the shared spend
 //                     numerator (Meta spend alone is enough for a value).
+//   CTR             = Clicks to Landing Page ÷ Impressions × 100
+//                     (ATL-LAUNCH-REPORT-004). Computed PER WINDOW wherever
+//                     both inputs exist for that window (live Meta overrides
+//                     included, since it reads the same row objects); '—'
+//                     where either input is missing or impressions = 0.
+//                     as_of per computed cell inherits the OLDER of the two
+//                     input cells' as_of stamps; the row-level as_of (the row
+//                     model has one stamp) is the oldest across computed
+//                     cells — same "oldest input wins" convention as Total
+//                     Expenses.
+//   Signup Rate     = Sign ups ÷ Clicks to Landing Page × 100
+//                     (ATL-LAUNCH-REPORT-004). Per window. Sign ups is the
+//                     live-DB count (never null), so 0 signups with clicks > 0
+//                     is a TRUE 0.0% — only clicks missing-or-zero renders
+//                     '—'. as_of: the live-DB input is "now" by definition, so
+//                     the older stamp is always the clicks cell's as_of — same
+//                     rule as Cost per Trial, which mixes a live-DB
+//                     denominator with fetched spend and stamps the row with
+//                     the fetched input's freshness.
 //   Total Expenses  = sum of the six expense rows per window. Renders only
 //                     when at least one REAL expense row exists in
 //                     launch_metrics for that window; the TikTok $0 default
@@ -83,7 +102,7 @@ type ReportRow = {
   key: string
   label: string
   kind: 'live' | 'fetched' | 'computed'
-  format: 'int' | 'usd'
+  format: 'int' | 'usd' | 'pct'
   windows: WindowValues
   asOf: string | null // fetched rows only: source freshness ("as of [time]")
   note?: string
@@ -281,7 +300,7 @@ function fetchedRow(
   metrics: MetricMap | null,
   key: string,
   label: string,
-  format: 'int' | 'usd',
+  format: 'int' | 'usd' | 'pct',
   opts: { defaultZero?: boolean; totalOnly?: boolean; note?: string } = {},
 ): ReportRow {
   const entry = metrics?.[key]
@@ -432,10 +451,52 @@ export async function GET(req: NextRequest) {
     const paidConversionsTotal = paidSubs.total ?? 0
     const trueCacTotal = adSpendTotal !== null && paidConversionsTotal > 0 ? adSpendTotal / paidConversionsTotal : null
 
+    // ── COMPUTED: CTR + Signup Rate (ATL-LAUNCH-REPORT-004) ─────────────────
+    // Both rows read the SAME row objects that render their input rows
+    // (impressions / lpClicks / signups), so they can never disagree with
+    // what's displayed — including 002's live Meta overrides, which are
+    // already baked into those rows' totals by the time we get here.
+    // as_of per computed cell = the OLDER of the two input stamps (live-DB
+    // inputs count as "now", so a fetched stamp always wins); the single
+    // row-level as_of is the oldest across computed cells. See header.
+    const ctrWindows: WindowValues = { h4: null, h24: null, total: null }
+    let ctrAsOf: string | null = null
+    const signupRateWindows: WindowValues = { h4: null, h24: null, total: null }
+    let signupRateAsOf: string | null = null
+    for (const wk of ['h4', 'h24', 'total'] as WindowKey[]) {
+      const imp = impressions.windows[wk]
+      const clicks = lpClicks.windows[wk]
+      // CTR: needs BOTH inputs; impressions = 0 would divide by zero → '—'.
+      if (imp !== null && clicks !== null && imp > 0) {
+        ctrWindows[wk] = (clicks / imp) * 100
+        for (const stamp of [metrics?.['impressions']?.[wk]?.asOf, metrics?.['lp_clicks']?.[wk]?.asOf]) {
+          if (stamp && (!ctrAsOf || stamp < ctrAsOf)) ctrAsOf = stamp
+        }
+      }
+      // Signup Rate: signups is live-DB (never null) — 0 signups over real
+      // clicks is a TRUE 0.0%, not missing data. Clicks 0/missing → '—'.
+      const su = signups[wk]
+      if (clicks !== null && clicks > 0 && su !== null) {
+        signupRateWindows[wk] = (su / clicks) * 100
+        const stamp = metrics?.['lp_clicks']?.[wk]?.asOf
+        if (stamp && (!signupRateAsOf || stamp < signupRateAsOf)) signupRateAsOf = stamp
+      }
+    }
+
     const rows: ReportRow[] = [
       impressions,
       lpClicks,
+      {
+        key: 'ctr', label: 'CTR (Clicks \u00f7 Impressions)', kind: 'computed', format: 'pct',
+        windows: ctrWindows, asOf: ctrAsOf,
+        note: 'Ad effectiveness \u2014 Meta traffic benchmark ~1\u20131.5%',
+      },
       { key: 'signups', label: 'Sign ups', kind: 'live', format: 'int', windows: signups, asOf: null },
+      {
+        key: 'signup_rate', label: 'Signup Rate (Sign ups \u00f7 Clicks)', kind: 'computed', format: 'pct',
+        windows: signupRateWindows, asOf: signupRateAsOf,
+        note: 'Landing page effectiveness \u2014 card-required trial benchmark ~2\u20135%',
+      },
       { key: 'cancelations', label: 'Cancelations', kind: 'live', format: 'int', windows: cancelations, asOf: null },
       {
         key: 'cost_per_trial', label: 'Cost per Trial', kind: 'computed', format: 'usd',
