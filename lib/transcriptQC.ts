@@ -212,6 +212,18 @@ export function normalizeSpokenNumberPhrases(text: string): string {
   // ORION-QC-UNIDASH-001: fold Unicode dashes → ASCII so [-\s] separator classes
   // in the spoken-number regexes match regardless of source-text dash style.
   text = text.replace(/[\u2010\u2011\u2012\u2013\u2014\u2015\u2212]/g, '-')
+  // ── ATL-QC-FP-004: indefinite-article scale numbers ──────────────────────
+  // Scripts write the spoken article form ("a hundred times") while Whisper
+  // folds it to digits ("100 times").  No prior rule covered the article form
+  // (all "X hundred/thousand" rules require a leading NUMBER word), so the
+  // expected side kept the words while the detected side's "100" was split by
+  // the clock-time rule into ["1","00"] — numeric sequences [] vs ["1","00"]
+  // tripped the numericTokenSequenceMismatch HARD VETO at similarity 98.8%
+  // (Consciousness Protocol ep3 seg55).  Rewrite "a/an" → "one" ONLY when
+  // directly followed by a scale word, so the existing spoken-number parser
+  // consumes the phrase canonically on BOTH sides ("a hundred" ≡ "one
+  // hundred" ≡ "100").  Ordinary articles ("a house") are never touched.
+  text = text.replace(/\b(?:a|an)(\s+(?:hundred|thousand|million|billion|dozen))\b/gi, 'one$1')
   return text
     .replace(SPOKEN_DECIMAL_RE, (match, integerWords, fractionWords) => {
       const integerValue = parseSpokenCardinal(tokenizeSpokenNumberPhrase(integerWords))
@@ -242,6 +254,23 @@ export function normalizeSpokenNumberPhrases(text: string): string {
     .replace(SPOKEN_NUMBER_PHRASE_RE, (match) => {
       const value = parseSpokenCardinal(tokenizeSpokenNumberPhrase(match))
       return value === null ? match : String(value)
+    })
+    // ── ATL-QC-FP-004: scale words the cardinal parser does not model ──────
+    // parseSpokenCardinal handles hundred/thousand but NOT million/billion/
+    // dozen, so after the phrase pass above, "one million" has become
+    // "1 million".  Fold digit+scale to the full digit string so all surface
+    // forms ("a million" / "one million" / Whisper's "1 million" / "1000000")
+    // converge to one canonical token.  The lookbehind blocks decimals
+    // ("1.5 million" stays — already canonical on both sides; folding would
+    // corrupt the mantissa).  Digit-only forms ("1000000") are untouched
+    // (no trailing scale word), keeping the fold idempotent.
+    .replace(/(?<![\d.,])\b(\d{1,3})\s+(million|billion)\b/gi, (match, lead, scale) => {
+      const value = Number(lead) * (String(scale).toLowerCase() === 'million' ? 1_000_000 : 1_000_000_000)
+      return Number.isFinite(value) ? String(value) : match
+    })
+    .replace(/(?<![\d.,])\b(\d{1,2})\s+dozen\b/gi, (match, lead) => {
+      const value = Number(lead) * 12
+      return Number.isFinite(value) ? String(value) : match
     })
 }
 
