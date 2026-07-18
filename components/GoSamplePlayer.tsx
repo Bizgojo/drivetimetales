@@ -48,6 +48,13 @@ interface GoSamplePlayerProps {
   coverUrl: string
   title: string
   onListenedSeconds?: (cumulativeSeconds: number) => void
+  // ATL-GO-LISTEN-001: raw playback hooks for the page-owned listen tracker
+  // (lib/goListen.ts). All three are OPTIONAL and invoked inside try/catch —
+  // analytics must never degrade playback (hard rule, Marc msg 2848). The
+  // player itself knows nothing about sessions, variants, or transport.
+  onPlaybackStart?: (positionSeconds: number) => void
+  onPlaybackProgress?: (positionSeconds: number, durationSeconds: number) => void
+  onPlaybackEnded?: (positionSeconds: number) => void
 }
 
 export default function GoSamplePlayer({
@@ -56,6 +63,9 @@ export default function GoSamplePlayer({
   coverUrl,
   title,
   onListenedSeconds,
+  onPlaybackStart,
+  onPlaybackProgress,
+  onPlaybackEnded,
 }: GoSamplePlayerProps) {
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const lastSavedRef = useRef<number | null>(null)
@@ -123,6 +133,8 @@ export default function GoSamplePlayer({
       }
       lastTickRef.current = el.currentTime
       persist(el.currentTime)
+      // ATL-GO-LISTEN-001: milestone hook — only while actually playing.
+      try { onPlaybackProgress?.(el.currentTime, el.duration) } catch { /* analytics never break playback */ }
     }
   }
 
@@ -151,6 +163,8 @@ export default function GoSamplePlayer({
     setHasStarted(true)
     const el = audioRef.current
     if (el) lastTickRef.current = el.currentTime
+    // ATL-GO-LISTEN-001: play hook (tracker latches play_start to once).
+    try { onPlaybackStart?.(el ? el.currentTime : 0) } catch { /* analytics never break playback */ }
   }
 
   const handlePauseLike = () => {
@@ -158,6 +172,13 @@ export default function GoSamplePlayer({
     lastTickRef.current = null
     const el = audioRef.current
     if (el && el.currentTime > 0) persist(el.currentTime, true)
+  }
+
+  const handleEnded = () => {
+    // ATL-GO-LISTEN-001: complete hook, then the existing pause bookkeeping.
+    const el = audioRef.current
+    try { onPlaybackEnded?.(el ? el.currentTime : 0) } catch { /* analytics never break playback */ }
+    handlePauseLike()
   }
 
   return (
@@ -170,7 +191,7 @@ export default function GoSamplePlayer({
         onTimeUpdate={onTimeUpdate}
         onPlay={handlePlay}
         onPause={handlePauseLike}
-        onEnded={handlePauseLike}
+        onEnded={handleEnded}
       />
 
       {/* ===== HERO: cover art with overlays ===== */}

@@ -58,6 +58,7 @@ import {
 import GoSamplePlayer from '@/components/GoSamplePlayer'
 import { trackClientEvent } from '@/lib/tracking/client'
 import { randomEventId } from '@/lib/tracking/events'
+import { createGoListenTracker, resolveGoVariant, GoListenTracker } from '@/lib/goListen'
 
 function LoadingFallback() {
   return (
@@ -85,6 +86,40 @@ function GoLandingContent() {
   // A/B story selection — gated by GO_AB_LIVE in lib/landing.ts (currently
   // OFF: the default Grave story always renders regardless of ?v=).
   const story = resolveGoStory(searchParams.toString())
+
+  // ===== ATL-GO-LISTEN-001: first-party listen analytics =====
+  // One tracker per page visit (lazy ref — session_id = crypto.randomUUID(),
+  // never persisted). The tracker latches every event to at-most-once and is
+  // swallow-all: no failure in here can reach the audio element. The variant
+  // recorded is what's actually SERVED (unknown/gated ?v= → 'bare').
+  const listenTrackerRef = useRef<GoListenTracker | null>(null)
+  const lastAudioPositionRef = useRef(0)
+  if (listenTrackerRef.current === null) {
+    listenTrackerRef.current = createGoListenTracker({
+      variant: resolveGoVariant(searchParams.toString()),
+      utmSource: searchParams.get('utm_source'),
+      utmCampaign: searchParams.get('utm_campaign'),
+    })
+  }
+  const listenTracker = listenTrackerRef.current
+  const handlePlaybackStart = useCallback((pos: number) => {
+    lastAudioPositionRef.current = pos
+    listenTracker.onPlayStart(pos)
+  }, [listenTracker])
+  const handlePlaybackProgress = useCallback((pos: number, dur: number) => {
+    lastAudioPositionRef.current = pos
+    listenTracker.onTimeUpdate(pos, dur)
+  }, [listenTracker])
+  const handlePlaybackEnded = useCallback((pos: number) => {
+    lastAudioPositionRef.current = pos
+    listenTracker.onEnded(pos)
+  }, [listenTracker])
+  // cta_click: fired from BOTH CTAs (bottom sheet + static footer) — latched
+  // to once per session by the tracker. Never preventDefault / never blocks
+  // the navigation (sendBeacon survives the page exit by design).
+  const handleCtaClick = useCallback(() => {
+    listenTracker.onCtaClick(lastAudioPositionRef.current)
+  }, [listenTracker])
 
   // WALK-BUG-0713 #1: per-story reveal threshold — the CTA appears only once
   // this sample's hook has landed (GoStory.ctaRevealSeconds), not a fixed 45s.
@@ -180,6 +215,9 @@ function GoLandingContent() {
           coverUrl={story.coverUrl}
           title={story.title}
           onListenedSeconds={handleListenedSeconds}
+          onPlaybackStart={handlePlaybackStart}
+          onPlaybackProgress={handlePlaybackProgress}
+          onPlaybackEnded={handlePlaybackEnded}
         />
 
         {/* ===== BELOW-ART STACK (rev C): title → hook → genre line =====
@@ -227,6 +265,7 @@ function GoLandingContent() {
         <div style={{ marginTop: 'auto', width: '100%', padding: '3rem 1.5rem 0' }}>
           <Link
             href={ctaHref}
+            onClick={handleCtaClick}
             style={{
               display: 'block',
               width: '100%',
@@ -301,6 +340,7 @@ function GoLandingContent() {
           {/* THE one CTA */}
           <Link
             href={ctaHref}
+            onClick={handleCtaClick}
             style={{
               display: 'block',
               width: '100%',
