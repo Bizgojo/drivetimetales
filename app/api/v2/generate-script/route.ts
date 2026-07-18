@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js'
 import Anthropic from '@anthropic-ai/sdk'
 import { logAnthropicCall } from '@/app/lib/anthropic-logger'
 import { buildNamePalettePromptBlock } from '@/lib/story/namePalette'
+import { runPremiseGate, formatPremiseCollisionMessage } from '@/lib/premiseGate'
 
 export const runtime = 'nodejs'
 
@@ -145,7 +146,7 @@ export async function POST(req: NextRequest) {
 
     const { data: story, error } = await supabase
       .from('stories')
-      .select('id,title,author,author_style,genre,narrative_voice,brief_json,status,script_version')
+      .select('id,title,author,author_style,genre,narrative_voice,brief_json,status,script_version,series_id')
       .eq('id', storyId)
       .single()
 
@@ -153,6 +154,31 @@ export async function POST(req: NextRequest) {
     if (!story.brief_json) return bad('brief_json missing')
 
     const brief = story.brief_json as any
+
+    // PREMISE-UNIQUENESS-001: mandatory premise check at the brief gate
+    // before Stage 2. COLLISION bounces the brief for rework; override only
+    // via Marc's recorded brief_json.premise_gate_override — never silent.
+    const premiseGate = await runPremiseGate(supabase, {
+      storyId: story.id,
+      seriesId: story.series_id || null,
+      premise: String(brief.premise || ''),
+      briefJson: brief,
+    })
+    if (premiseGate.verdict === 'COLLISION') {
+      return NextResponse.json({
+        success: false,
+        error: formatPremiseCollisionMessage(premiseGate),
+        premiseGate: { verdict: premiseGate.verdict, collisions: premiseGate.collisions },
+      }, { status: 409 })
+    }
+    if (premiseGate.overrideApplied) {
+      console.warn('[generate-script] PREMISE-UNIQUENESS-001 override applied', {
+        storyId: story.id,
+        approvedBy: premiseGate.overrideApplied.approved_by,
+        reason: premiseGate.overrideApplied.reason,
+        overriddenCollisions: premiseGate.collisions,
+      })
+    }
     const target = runtimeTarget(brief.runtime || '')
     const recentStoryTexts = await loadRecentStoryTexts()
     const namePaletteBlock = buildNamePalettePromptBlock({

@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js'
 import Anthropic from '@anthropic-ai/sdk'
 import { logAnthropicCall } from '@/app/lib/anthropic-logger'
 import { buildNamePalettePromptBlock } from '@/lib/story/namePalette'
+import { runPremiseGate, formatPremiseCollisionMessage } from '@/lib/premiseGate'
 
 export const runtime = 'nodejs'
 
@@ -355,6 +356,38 @@ export async function POST(req: NextRequest) {
 
     if (episodesError) return bad(episodesError.message, 500)
     if (!episodes || episodes.length === 0) return bad('No child episodes found for series package', 404)
+
+    // PREMISE-UNIQUENESS-001: mandatory premise check at the brief gate
+    // before Stage 2 — every episode brief that still needs a script is gated
+    // against premise_index (sibling episodes of this series are excluded by
+    // the gate). Any COLLISION bounces the whole package for rework; override
+    // only via Marc's recorded brief_json.premise_gate_override.
+    for (const episode of episodes) {
+      if (episode.script) continue
+      const episodeBrief = episode.brief_json as any
+      if (!episodeBrief) continue // per-episode brief_json errors are handled in the loop below
+      const premiseGate = await runPremiseGate(supabase, {
+        storyId: episode.id,
+        seriesId: cleanSeriesId,
+        premise: String(episodeBrief.premise || ''),
+        briefJson: episodeBrief,
+      })
+      if (premiseGate.verdict === 'COLLISION') {
+        return bad(formatPremiseCollisionMessage(premiseGate), 409, {
+          failedEpisode: Number(episode.episode_number || episode.series_episode_number || 0),
+          failedStoryId: episode.id,
+          premiseGate: { verdict: premiseGate.verdict, collisions: premiseGate.collisions },
+        })
+      }
+      if (premiseGate.overrideApplied) {
+        console.warn('[series-package/generate-scripts] PREMISE-UNIQUENESS-001 override applied', {
+          storyId: episode.id,
+          approvedBy: premiseGate.overrideApplied.approved_by,
+          reason: premiseGate.overrideApplied.reason,
+          overriddenCollisions: premiseGate.collisions,
+        })
+      }
+    }
 
     const priorGenerated: Array<{ episode: any; script: string; scriptJson: any }> = []
     const generatedEpisodes = []

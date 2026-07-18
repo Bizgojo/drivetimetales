@@ -11,6 +11,7 @@ import {
 } from '@/lib/dispatchGuards'
 import { findQueueDuplicates, type QueueDedupRow } from '@/lib/dispatchDedup'
 import { failureDestinationForStory, ONE_REPAIR_PASS_REASON } from '@/lib/workflowTransitions'
+import { syncPremiseIndexForTransition } from '@/lib/premiseIndex'
 
 export const runtime = 'nodejs'
 export const maxDuration = 60
@@ -337,6 +338,9 @@ async function handleDispatchQueue(request: NextRequest) {
 
           if (repairMoveError) {
             console.error('[dispatch-queue] Failed to move failing series to repair_queue:', seriesId, repairMoveError)
+          } else {
+            // PREMISE-UNIQUENESS-001: repair_queue is a protected state — reserve premises (best-effort).
+            await syncPremiseIndexForTransition(supabase, { storyIds: repairQueueIds, toState: 'repair_queue' })
           }
         }
 
@@ -356,6 +360,9 @@ async function handleDispatchQueue(request: NextRequest) {
 
           if (coldMoveError) {
             console.error('[dispatch-queue] Failed to move repeat-failure episodes to cold_storage:', seriesId, coldMoveError)
+          } else {
+            // PREMISE-UNIQUENESS-001: cold storage frees the premise for reuse (best-effort).
+            await syncPremiseIndexForTransition(supabase, { storyIds: coldStorageIds, toState: 'cold_storage' })
           }
           console.warn('[dispatch-queue] One-repair-pass doctrine — episodes moved to cold_storage:', seriesId, coldStorageIds)
         }

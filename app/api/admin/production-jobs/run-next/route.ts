@@ -12,6 +12,8 @@ import { classifyTrueState } from '@/lib/pipelineTruth'
 import { getPlaybookByKind } from '@/lib/repairPlaybooks'
 import { loadActiveMission } from '@/lib/missionContext'
 import { ownedJobFence, isLockLostError, lockLostMessage } from '@/lib/jobLockGuard'
+import { runPremiseGate, formatPremiseCollisionMessage, type PremiseGateResult } from '@/lib/premiseGate'
+import { syncPremiseIndexForTransition } from '@/lib/premiseIndex'
 
 export const runtime = 'nodejs'
 // maxDuration governed by vercel.json (800s) — do not override here
@@ -2287,10 +2289,15 @@ async function failJob(job: ProductionJob, error: unknown) {
   const structuredErrorDetail = error && typeof error === 'object' && 'structuredErrorDetail' in error
     ? (error as { structuredErrorDetail?: unknown }).structuredErrorDetail
     : undefined
+  // PREMISE-UNIQUENESS-001: throwers may pin a canonical error kind (e.g.
+  // 'premise_collision') so classification does not depend on text matching.
+  const structuredErrorKind = error && typeof error === 'object' && 'structuredErrorKind' in error
+    ? String((error as { structuredErrorKind?: unknown }).structuredErrorKind || '')
+    : ''
   
   // Build structured error_json to ensure classification is always possible
   const errorJson = buildStructuredError(
-    'unknown_step',
+    (structuredErrorKind || 'unknown_step') as StructuredErrorJsonKind,
     message,
     normalizeStep(job.current_step),
     {
@@ -3024,6 +3031,47 @@ ${JSON.stringify({
 `
 }
 
+// PREMISE-UNIQUENESS-001: mandatory premise check at the brief gate before
+// Stage 2 script generation. COLLISION throws a typed error that failJob
+// records as kind 'premise_collision' (marc_required — bounced for rework).
+// Override only via Marc's recorded brief_json.premise_gate_override; an
+// applied override is logged with its citations, never silent.
+async function enforcePremiseGateBeforeStage2(params: {
+  storyId: string
+  seriesId?: string | null
+  brief: any
+  label: string
+}): Promise<PremiseGateResult> {
+  const premiseGate = await runPremiseGate(supabase, {
+    storyId: params.storyId,
+    seriesId: params.seriesId || null,
+    premise: String(params.brief?.premise || ''),
+    briefJson: params.brief,
+  })
+  if (premiseGate.verdict === 'COLLISION') {
+    const collisionError = new Error(formatPremiseCollisionMessage(premiseGate)) as Error & {
+      structuredErrorKind?: string
+      structuredErrorDetail?: unknown
+    }
+    collisionError.structuredErrorKind = 'premise_collision'
+    collisionError.structuredErrorDetail = {
+      canon: 'PREMISE-UNIQUENESS-001',
+      storyId: params.storyId,
+      collisions: premiseGate.collisions,
+    }
+    throw collisionError
+  }
+  if (premiseGate.overrideApplied) {
+    console.warn(`[run-next] PREMISE-UNIQUENESS-001 override applied at ${params.label}`, {
+      storyId: params.storyId,
+      approvedBy: premiseGate.overrideApplied.approved_by,
+      reason: premiseGate.overrideApplied.reason,
+      overriddenCollisions: premiseGate.collisions,
+    })
+  }
+  return premiseGate
+}
+
 async function generateStandaloneScript(job: ProductionJob, model: string) {
   const state = job.state_json && typeof job.state_json === 'object' ? job.state_json : {}
   const storyId = job.story_id || state.storyId
@@ -3061,6 +3109,13 @@ async function generateStandaloneScript(job: ProductionJob, model: string) {
       },
     }
   }
+
+  await enforcePremiseGateBeforeStage2({
+    storyId: String(story.id),
+    seriesId: null,
+    brief,
+    label: 'generate_script',
+  })
 
   const narratorContext = await resolveStandaloneNarratorForPrompt(story, brief)
   if (narratorContext.mode === 'assigned') {
@@ -5222,6 +5277,14 @@ async function generateOneSeriesEpisodeScript(job: ProductionJob, model: string)
     .filter((episode: any) => episodeNumber(episode, 0) < targetEpisodeNumber && episode.script)
   const continuityBundle = buildContinuityBundle(priorEpisodes)
   const brief = targetEpisode.brief_json || {}
+
+  await enforcePremiseGateBeforeStage2({
+    storyId: String(targetEpisode.id),
+    seriesId: String(seriesId),
+    brief,
+    label: 'generate_episode_script',
+  })
+
   const authorVoiceProfile = await resolveAuthorStyleProfileForStory(targetEpisode, brief)
   const authorVoiceBlock = buildAuthorVoicePromptBlock(authorVoiceProfile)
   const recentStoryTexts = await loadRecentStoryTexts(String(seriesId))
@@ -9195,6 +9258,8 @@ export async function POST(req: NextRequest) {
           if (episodeWorkflowUpdateError) {
             throw new Error(`Failed to mark series episodes ready_for_review: ${episodeWorkflowUpdateError.message}`)
           }
+          // PREMISE-UNIQUENESS-001: entering a protected state reserves the premise (best-effort).
+          await syncPremiseIndexForTransition(supabase, { storyIds: episodeIdsToPromote, toState: 'ready_for_review' })
         }
 
         const completedLogs = appendLog(lockedJob, 'Series package complete — auto-finalized to Ready for Review', {
@@ -9503,6 +9568,8 @@ export async function POST(req: NextRequest) {
           storyPromotionStatus = 'error'
         } else {
           storyPromotionStatus = 'ok'
+          // PREMISE-UNIQUENESS-001: entering a protected state reserves the premise (best-effort).
+          await syncPremiseIndexForTransition(supabase, { storyIds: [String(result.storyId)], toState: 'ready_for_review' })
           // Write ORION-GOV-006 audit row (best-effort — do not fail RFR if this errors)
           await supabase
             .from('story_workflow_audit')

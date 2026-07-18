@@ -113,6 +113,8 @@ export type StructuredErrorJsonKind =
   | 'transcript_numeric_equivalence'     // Whisper returned digit/currency form of a spoken number — accepted after normalization
   // ATL-PIPE-013: transcript QC hyphenated two-digit numeric equivalence
   | 'transcript_hyphenated_numeric'      // Whisper returned digit form of a hyphenated two-digit word-number — accepted after normalization
+  // PREMISE-UNIQUENESS-001: brief premise substantially similar to a protected story
+  | 'premise_collision'                  // brief bounced for rework; override only by Marc's recorded word (marc_required, not retryable)
   // ATL-PIPE-010: Belle intro/outro validation and repair failure kinds
   | 'belle_quality_hook_missing'         // standalone intro lacks concrete narrative hook (auto-repairable)
   | 'belle_quality_title_missing'        // standalone intro/outro missing story title (auto-repairable)

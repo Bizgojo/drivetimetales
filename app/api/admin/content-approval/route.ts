@@ -4,6 +4,7 @@ import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import { evaluateStoryGate, evaluateSeriesGate, groupBySeriesForApproval } from '@/lib/story-gates'
 import { transitionAllowed, shouldIncrementRepairCount } from '@/lib/workflowTransitions'
+import { syncPremiseIndexForTransition } from '@/lib/premiseIndex'
 import { personalizationPublishBlockers } from '@/lib/personalization/publishGuard'
 
 export const runtime = 'nodejs'
@@ -1102,6 +1103,11 @@ export async function POST(req: NextRequest) {
         .select('id,status,is_hidden,review_status,workflow_state,published_on')
 
       if (error) return json({ success: false, error: error.message }, 500)
+      // PREMISE-UNIQUENESS-001: entering a protected state reserves the premise (best-effort).
+      await syncPremiseIndexForTransition(supabase, {
+        storyIds: (data || []).map((row: { id: string }) => row.id),
+        toState: 'ready_for_review',
+      })
       return json({
         success: true,
         seriesId,
@@ -1172,6 +1178,13 @@ export async function POST(req: NextRequest) {
         .select('id,status,is_hidden,review_status,workflow_state')
 
       if (error) return json({ success: false, error: error.message }, 500)
+
+      // PREMISE-UNIQUENESS-001: protected-state entry upserts the premise
+      // reservation; cold_storage entry frees it (best-effort, never blocks).
+      await syncPremiseIndexForTransition(supabase, {
+        storyIds: (data || []).map((row: { id: string }) => row.id),
+        toState: state,
+      })
 
       // ATL-FOLLOWUP-002: consume the repair pass for episodes that left the
       // production-holds bucket after a technical repair (per-row — each
@@ -1360,6 +1373,9 @@ export async function POST(req: NextRequest) {
       .maybeSingle()
 
     if (error) return json({ success: false, error: error.message }, 500)
+    // PREMISE-UNIQUENESS-001: protected-state entry upserts the premise
+    // reservation; cold_storage entry frees it (best-effort, never blocks).
+    await syncPremiseIndexForTransition(supabase, { storyIds: [storyId], toState: state })
     return json({ success: true, story: data })
   } catch (err: any) {
     console.error('[content-approval] POST failed:', err)
