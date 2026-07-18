@@ -293,6 +293,26 @@ export function normalizeCompoundNumbers(text: string): string {
       }
     )
 
+    // ── Step 1.5 (ATL-QC-FP-003): fold hyphen/space digit-group separators ──
+    // Whisper renders thousands-grouped numerals with a hyphen or space where
+    // the script uses a comma: "2,714" → "2-714" / "2 714".  Without folding,
+    // the detected side tokenizes to ["2","7","14"] (the clock-time split
+    // fires on the 3-digit group), stalling the sequential coverage cursor at
+    // the expected token "2714" AND tripping the numericTokenSequenceMismatch
+    // hard veto at 100.0% similarity (Consciousness Protocol ep3 seg45).
+    //   "2-714"      → "2714"   |   "2 714" → "2714"
+    //   "12-345-678" → "12345678"
+    // NARROW by design — fires only on a 1–2 digit leading group followed by
+    // exactly-3-digit groups, so it does NOT touch:
+    //   "100-200"  (digit range — 3-digit leading group)
+    //   "9-1-1"    (spoken digit sequence — 1-digit groups)
+    //   "7 14"     (clock time — 2-digit trailing group)
+    //   "4.7"      (decimal — '.' is not a separator; the lookbehind also
+    //               blocks folding a group that trails a decimal: "4.2 714")
+    // Comma-grouped forms (any leading width) stay with Step 2 below.
+    .replace(/(?<![\d.,])\b(\d{1,2})((?:[- ]\d{3})+)\b/g,
+      (_, lead, rest) => lead + String(rest).replace(/[- ]/g, ''))
+
     // ── Step 2: strip commas in digit strings ────────────────────────────
     // "340,000" → "340000"  |  "1,234,567" → "1234567"
     .replace(/\b(\d{1,3}(?:,\d{3})+)\b/g, m => m.replace(/,/g, ''))
