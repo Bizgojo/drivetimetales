@@ -3,8 +3,9 @@
 //   1. buildCampaignSignupHref — promo + full utm_* set carried to /signup,
 //      ?code= alias precedence, no params → plain /signup.
 //   2. middleware.ts — '/go' present in PUBLIC_ROUTES (source assertion).
-//   3. getTrialDisplay — valid 14-day promo copy + applied badge;
-//      invalid/missing → 7-day default, no badge.
+//   3. getTrialDisplay — valid promo copy + applied badge; invalid/missing
+//      → 14-day default (GO_BASE_TRIAL_DAYS — the /go ad funnel's Stripe
+//      checkout grants 14 days; Marc msg 2868), no badge.
 //   4. (rev A/C) sample player — GO_SAMPLE_STORY story shape, player wired
 //      into app/go/page.tsx via resolveGoStory only (source pins; jest here
 //      is node-env with a ts-only transform, so .tsx cannot be imported).
@@ -17,6 +18,7 @@ import path from 'path'
 import { buildCampaignSignupHref, buildSignupCtaHref, UTM_PARAM_KEYS } from '@/lib/utm'
 import {
   getTrialDisplay,
+  GO_BASE_TRIAL_DAYS,
   GO_SAMPLE_STORY,
   SAMPLE_PROGRESS_KEY,
   SAMPLE_PROGRESS_MAX_AGE_MS,
@@ -113,6 +115,10 @@ describe('SUS/ATL-LANDING-001: middleware PUBLIC_ROUTES', () => {
 })
 
 describe('SUS/ATL-LANDING-001: getTrialDisplay', () => {
+  test('/go base trial is 14 days (Marc msg 2868 — ad-funnel Stripe grant)', () => {
+    expect(GO_BASE_TRIAL_DAYS).toBe(14)
+  })
+
   test('valid promo with 14 days → 14-day copy + applied badge', () => {
     const d = getTrialDisplay('GVLMETA', 'valid', 14)
     expect(d.days).toBe(14)
@@ -123,17 +129,19 @@ describe('SUS/ATL-LANDING-001: getTrialDisplay', () => {
     expect(d.appliedBadge).not.toContain('GVLMETA')
   })
 
-  test('no promo → 7-day default, no badge', () => {
+  // Marc msg 2868: the /go ad funnel's Stripe checkout grants 14 days, so
+  // the fail-quiet default (no promo / invalid / validate down) is 14-day.
+  test('no promo → 14-day default, no badge', () => {
     const d = getTrialDisplay(null, 'none', null)
-    expect(d.days).toBe(7)
-    expect(d.ctaLabel).toBe('Start Your 7-Day Free Trial')
+    expect(d.days).toBe(14)
+    expect(d.ctaLabel).toBe('Start Your 14-Day Free Trial')
     expect(d.appliedBadge).toBeNull()
   })
 
-  test('invalid promo → quiet 7-day default, no badge', () => {
+  test('invalid promo → quiet 14-day default, no badge', () => {
     const d = getTrialDisplay('BOGUS', 'invalid', null)
-    expect(d.days).toBe(7)
-    expect(d.ctaLabel).toBe('Start Your 7-Day Free Trial')
+    expect(d.days).toBe(14)
+    expect(d.ctaLabel).toBe('Start Your 14-Day Free Trial')
     expect(d.appliedBadge).toBeNull()
   })
 
@@ -144,12 +152,12 @@ describe('SUS/ATL-LANDING-001: getTrialDisplay', () => {
     expect(d.appliedBadge).toBe('Special offer applied — 14-day free trial ✓')
   })
 
-  test('valid promo with days below base → base 7 wins (max math)', () => {
+  test('valid promo with days below base → base 14 wins (max math)', () => {
     const d = getTrialDisplay('SHORT3', 'valid', 3)
-    expect(d.days).toBe(7)
-    expect(d.ctaLabel).toBe('Start Your 7-Day Free Trial')
+    expect(d.days).toBe(14)
+    expect(d.ctaLabel).toBe('Start Your 14-Day Free Trial')
     // Still validated → badge shows even though days clamp to base.
-    expect(d.appliedBadge).toBe('Special offer applied — 7-day free trial ✓')
+    expect(d.appliedBadge).toBe('Special offer applied — 14-day free trial ✓')
     expect(d.appliedBadge).not.toContain('SHORT3')
   })
 })

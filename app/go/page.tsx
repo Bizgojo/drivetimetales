@@ -35,9 +35,11 @@ HARD RULES:
   app/layout.tsx), which fires captureUtmFromUrl() on this route too. The
   CTA href additionally carries the full utm_* set directly, so attribution
   survives even if localStorage capture fails.
-- Promo trial display mirrors app/signup/page.tsx (ATL-PROMO-UI-001):
-  server-truth via GET /api/promo/validate, fail-quiet to 7-day default.
-  Raw promo codes never shown (ORION-GO-OFFER-COPY-001).
+- Promo trial display mirrors app/signup/page.tsx's ATL-PROMO-UI-001
+  pattern: server-truth via GET /api/promo/validate, fail-quiet to the
+  14-day default (GO_BASE_TRIAL_DAYS — the ad funnel's Stripe checkout
+  grants 14 days; Marc msg 2868). Raw promo codes never shown
+  (ORION-GO-OFFER-COPY-001).
 ================================================================================
 */
 
@@ -58,6 +60,7 @@ import {
 import GoSamplePlayer from '@/components/GoSamplePlayer'
 import { trackClientEvent } from '@/lib/tracking/client'
 import { randomEventId } from '@/lib/tracking/events'
+import { createGoListenTracker, resolveGoVariant, GoListenTracker } from '@/lib/goListen'
 
 function LoadingFallback() {
   return (
@@ -85,6 +88,40 @@ function GoLandingContent() {
   // A/B story selection — gated by GO_AB_LIVE in lib/landing.ts (currently
   // OFF: the default Grave story always renders regardless of ?v=).
   const story = resolveGoStory(searchParams.toString())
+
+  // ===== ATL-GO-LISTEN-001: first-party listen analytics =====
+  // One tracker per page visit (lazy ref — session_id = crypto.randomUUID(),
+  // never persisted). The tracker latches every event to at-most-once and is
+  // swallow-all: no failure in here can reach the audio element. The variant
+  // recorded is what's actually SERVED (unknown/gated ?v= → 'bare').
+  const listenTrackerRef = useRef<GoListenTracker | null>(null)
+  const lastAudioPositionRef = useRef(0)
+  if (listenTrackerRef.current === null) {
+    listenTrackerRef.current = createGoListenTracker({
+      variant: resolveGoVariant(searchParams.toString()),
+      utmSource: searchParams.get('utm_source'),
+      utmCampaign: searchParams.get('utm_campaign'),
+    })
+  }
+  const listenTracker = listenTrackerRef.current
+  const handlePlaybackStart = useCallback((pos: number) => {
+    lastAudioPositionRef.current = pos
+    listenTracker.onPlayStart(pos)
+  }, [listenTracker])
+  const handlePlaybackProgress = useCallback((pos: number, dur: number) => {
+    lastAudioPositionRef.current = pos
+    listenTracker.onTimeUpdate(pos, dur)
+  }, [listenTracker])
+  const handlePlaybackEnded = useCallback((pos: number) => {
+    lastAudioPositionRef.current = pos
+    listenTracker.onEnded(pos)
+  }, [listenTracker])
+  // cta_click: fired from BOTH CTAs (bottom sheet + static footer) — latched
+  // to once per session by the tracker. Never preventDefault / never blocks
+  // the navigation (sendBeacon survives the page exit by design).
+  const handleCtaClick = useCallback(() => {
+    listenTracker.onCtaClick(lastAudioPositionRef.current)
+  }, [listenTracker])
 
   // WALK-BUG-0713 #1: per-story reveal threshold — the CTA appears only once
   // this sample's hook has landed (GoStory.ctaRevealSeconds), not a fixed 45s.
@@ -119,7 +156,8 @@ function GoLandingContent() {
 
   // ATL-PROMO-UI-001 pattern: server-truth promo validation for honest trial
   // display. Valid → real trial length + "applied" badge. Invalid, missing,
-  // or endpoint down/slow → quietly keep the 7-day default. Never blocking.
+  // or endpoint down/slow → quietly keep the 14-day default (this funnel's
+  // Stripe checkout grants 14 days — Marc msg 2868). Never blocking.
   useEffect(() => {
     if (!promoCode) { setPromoStatus('none'); return }
     let cancelled = false
@@ -136,7 +174,7 @@ function GoLandingContent() {
           setPromoStatus('invalid')
         }
       })
-      .catch(() => { /* fail quiet — default 7-day display */ })
+      .catch(() => { /* fail quiet — default 14-day display */ })
       .finally(() => clearTimeout(timer))
     return () => { cancelled = true; controller.abort(); clearTimeout(timer) }
   }, [promoCode])
@@ -180,6 +218,9 @@ function GoLandingContent() {
           coverUrl={story.coverUrl}
           title={story.title}
           onListenedSeconds={handleListenedSeconds}
+          onPlaybackStart={handlePlaybackStart}
+          onPlaybackProgress={handlePlaybackProgress}
+          onPlaybackEnded={handlePlaybackEnded}
         />
 
         {/* ===== BELOW-ART STACK (rev C): title → hook → genre line =====
@@ -227,6 +268,7 @@ function GoLandingContent() {
         <div style={{ marginTop: 'auto', width: '100%', padding: '3rem 1.5rem 0' }}>
           <Link
             href={ctaHref}
+            onClick={handleCtaClick}
             style={{
               display: 'block',
               width: '100%',
@@ -301,6 +343,7 @@ function GoLandingContent() {
           {/* THE one CTA */}
           <Link
             href={ctaHref}
+            onClick={handleCtaClick}
             style={{
               display: 'block',
               width: '100%',

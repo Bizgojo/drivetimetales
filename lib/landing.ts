@@ -5,9 +5,17 @@
 // Mirrors the signup page's ATL-PROMO-UI-001 pattern: a promo only changes
 // the DISPLAYED trial length after server-truth validation via
 // GET /api/promo/validate. Missing/invalid/endpoint-error all fall back to
-// the default 7-day copy — quietly, never blocking the page.
+// the default 14-day copy (GO_BASE_TRIAL_DAYS) — quietly, never blocking
+// the page.
 
-import { BASE_TRIAL_DAYS, applyPromoTrialDays } from './promo'
+import { applyPromoTrialDays } from './promo'
+
+// ATL-GO-LISTEN-001 final rev (Marc msg 2868): the /go ad funnel's Stripe
+// checkout grants a 14-day trial (verified in smoke tests), so ALL trial
+// copy on /go — including the fail-quiet default when /api/promo/validate
+// is slow or down — must say 14-day. /go-ONLY base: signup/subscribe keep
+// BASE_TRIAL_DAYS (7) from lib/promo.ts; do not point them here.
+export const GO_BASE_TRIAL_DAYS = 14
 
 // ============================================================================
 // SUS/ATL-LANDING-002 rev C: /go story variants (Greenville A/B test).
@@ -271,11 +279,12 @@ export function getTrialDisplay(
   promoStatus: PromoStatus,
   validatedDays: number | null | undefined
 ): TrialDisplay {
-  // Same max(base, promoDays) math as checkout (lib/promo.ts), so the number
-  // shown matches what Stripe will actually grant at signup.
+  // Same max(base, promoDays) math as checkout (lib/promo.ts), against the
+  // /go ad-funnel base of 14 days (GO_BASE_TRIAL_DAYS, Marc msg 2868), so
+  // the number shown matches what Stripe actually grants on this funnel.
   const days = promoStatus === 'valid'
-    ? applyPromoTrialDays(BASE_TRIAL_DAYS, validatedDays)
-    : BASE_TRIAL_DAYS
+    ? applyPromoTrialDays(GO_BASE_TRIAL_DAYS, validatedDays)
+    : GO_BASE_TRIAL_DAYS
   return {
     days,
     ctaLabel: `Start Your ${days}-Day Free Trial`,
