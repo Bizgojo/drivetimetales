@@ -101,8 +101,8 @@ describe('createGoListenTracker', () => {
     const t = tracker(sent)
     t.onTimeUpdate(26, 100)
     t.onTimeUpdate(27, 100) // same milestone again — latched
-    t.onTimeUpdate(80, 100) // jumps two milestones at once
-    expect(sent.map(p => p.event)).toEqual(['pct_25', 'pct_50', 'pct_75'])
+    t.onTimeUpdate(80, 100) // jumps two milestones at once (+ sec_30 depth, INSTRUM-001)
+    expect(sent.map(p => p.event)).toEqual(['pct_25', 'sec_30', 'pct_50', 'pct_75'])
   })
 
   it('fires complete and cta_click once each', () => {

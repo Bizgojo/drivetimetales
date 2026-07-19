@@ -10,7 +10,7 @@
 //   ≤120 chars, oversized bodies (>2 KB) rejected before JSON.parse.
 //
 //   RATE LIMIT — simple in-memory per-IP window: 60 events/min/IP
-//   (a full legit session emits ≤6 events; 60/min tolerates NAT'd
+//   (a full legit session emits ≤7 events; 60/min tolerates NAT'd
 //   coffee-shop traffic while stopping dumb floods). BEST-EFFORT on Vercel
 //   serverless: each lambda instance has its own module scope, so the real
 //   ceiling is 60/min × concurrent instances — acceptable for this scale
@@ -25,6 +25,13 @@
 // can't even read them). 204 stored · 202 accepted-but-table-missing
 // (pre-migration: don't fill logs with 5xx before Marc applies the DDL) ·
 // 4xx invalid/flood · 500 unexpected.
+//
+// INSTRUM-001 (UX-GO-001, 2026-07-19): 'sec_30' depth event added to the
+// whitelist. Until Marc applies the sec_30 migration, the LIVE table's
+// CHECK constraint / RLS insert policy still rejects it — that pre-DDL
+// window is handled below as a quiet 202 (constraint/policy rejection is
+// expected, not an error), so sec_30 emission can never 5xx-spam logs or
+// affect the existing events (each event is its own request).
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
@@ -39,7 +46,7 @@ const RATE_LIMIT_WINDOW_MS = 60_000
 const RATE_LIMIT_MAX_EVENTS = 60
 const RATE_LIMIT_MAX_IPS = 10_000
 
-const VALID_EVENTS = new Set(['play_start', 'pct_25', 'pct_50', 'pct_75', 'complete', 'cta_click'])
+const VALID_EVENTS = new Set(['play_start', 'sec_30', 'pct_25', 'pct_50', 'pct_75', 'complete', 'cta_click'])
 const VALID_VARIANTS = new Set(['a', 'b', 'bare'])
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 
@@ -153,6 +160,13 @@ export async function POST(req: NextRequest) {
       // the unique-index backstop doing its job. Treat as stored.
       if (/duplicate key|23505/i.test(msg)) {
         return new NextResponse(null, { status: 204 })
+      }
+      // INSTRUM-001 pre-DDL window: the live CHECK constraint / RLS insert
+      // policy predates a newly whitelisted event (sec_30 today) and rejects
+      // the row. Expected until Marc applies the migration — accept quietly
+      // (client is fire-and-forget; no log spam, no 5xx).
+      if (/violates check constraint|23514|row-level security|42501/i.test(msg)) {
+        return new NextResponse(null, { status: 202 })
       }
       console.error('[go-listen] insert failed:', msg.slice(0, 300))
       return NextResponse.json({ error: 'Insert failed' }, { status: 500 })
