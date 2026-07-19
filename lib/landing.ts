@@ -172,6 +172,53 @@ export function shouldRevealTrialCta(input: CtaRevealInput): boolean {
 }
 
 // ============================================================================
+// UX-GO-001 / CTA-002 (Marc approval, msg 2942, 2026-07-19): completion-
+// triggered CTA state. When the sample's <audio> fires 'ended', the bottom
+// sheet transitions ONCE into a distinct completion state: the heading and
+// button pivot to what-happens-next copy and the "keeps playing" footnote is
+// REMOVED (it is false once the audio has ended — CTA-004). The pre-
+// completion copy is unchanged. Pure + exported so the byte-exact strings
+// and the latch are unit-testable without a DOM (__tests__/ux-go-001).
+// ============================================================================
+
+export interface GoCtaCopy {
+  heading: string
+  buttonLabel: string
+  /** Footnote under the button; null = render nothing (completion state — CTA-004). */
+  footnote: string | null
+}
+
+/** Pre-completion sheet copy (unchanged from rev C except the trial line,
+ *  which now renders TrialDisplay.subtext — see getTrialDisplay). */
+export const GO_CTA_COPY_DEFAULT: GoCtaCopy = {
+  heading: 'Keep the story going',
+  buttonLabel: 'Start free trial',
+  footnote: 'Your story keeps playing while you sign up.',
+}
+
+/** Completion-state sheet copy (CTA-002, Marc-approved strings). */
+export const GO_CTA_COPY_COMPLETED: GoCtaCopy = {
+  heading: "That's where Episode 1 ends — for now.",
+  buttonLabel: 'Hear what happens next →',
+  // CTA-004: no footnote — "keeps playing while you sign up" is false once
+  // the sample has ended.
+  footnote: null,
+}
+
+export function getGoCtaCopy(completed: boolean): GoCtaCopy {
+  return completed ? GO_CTA_COPY_COMPLETED : GO_CTA_COPY_DEFAULT
+}
+
+/**
+ * Completion latch: once the sample has ended, the sheet stays in its
+ * completion state (a replay reaching 'ended' again must NOT re-transition
+ * or re-run the attention pulse). Pure — mirrors the alreadyRevealed latch.
+ */
+export function nextCompletedState(alreadyCompleted: boolean, endedFired: boolean): boolean {
+  return alreadyCompleted === true || endedFired === true
+}
+
+// ============================================================================
 // SUS/ATL-LANDING-001 rev B (localStorage variant): anonymous listening
 // position for the /go sample. Written throttled while playing; read back on
 // /go mount so the story resumes where the visitor left off — including
@@ -288,7 +335,14 @@ export function getTrialDisplay(
   return {
     days,
     ctaLabel: `Start Your ${days}-Day Free Trial`,
-    subtext: `Free for ${days} days. Cancel anytime — you won't be charged before your trial ends.`,
+    // UX-GO-001 / CTA-001 Option A (Marc approval, msg 2942, 2026-07-19):
+    // honest card-required copy, reconciled with the old reassurance subtext
+    // so ONE line carries card honesty + no-charge reassurance + cancel —
+    // no duplication. Verbatim basis (Marc): "card required — you won't be
+    // charged before your 14-day trial ends, cancel anytime". Days come
+    // from the same fail-quiet GO_BASE_TRIAL_DAYS/promo math as `days` —
+    // never hardcoded. Rendered on BOTH /go CTA surfaces (sheet + footer).
+    subtext: `Card required — you won't be charged before your ${days}-day free trial ends. Cancel anytime.`,
     // ORION-GO-OFFER-COPY-001 (Marc, 2026-07-12): never show raw promo codes
     // in customer-facing copy — generic offer language only.
     appliedBadge: promoStatus === 'valid' && promoCode ? `Special offer applied — ${days}-day free trial ✓` : null,
