@@ -13,6 +13,9 @@ import { resolveNarratorVoiceId } from '@/lib/preflight/narrator-check'
 import { runPreflightChecks } from '@/lib/preflight/validator'
 import type { VoiceCodeAssignment } from '@/lib/preflight/voice-code-check'
 import { getVoiceProvider } from '@/lib/voice-providers'
+// ATL-VOICE-SETTINGS-001: per-voice ElevenLabs settings overrides (exact
+// voice_id match → override; otherwise global EL_SETTINGS, unchanged).
+import { resolveVoiceSettings } from '@/lib/voiceSettingsOverrides'
 import { EL_VOICE_CODE_LABEL } from '@/lib/voice-providers/elevenlabs/constants'
 // ATL-FOLLOWUP-002: transcript QC normalization + comparison extracted to a
 // shared, testable module. Both sides (script text and Whisper STT output)
@@ -1715,7 +1718,7 @@ async function generateVoiceLine(rawText: string, voiceId: string, storyId: stri
     const res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
       method: 'POST',
       headers: { 'xi-api-key': EL_API_KEY, 'Content-Type': 'application/json', 'Accept': 'audio/mpeg' },
-      body: JSON.stringify({ text: inputText, model_id: 'eleven_multilingual_v2', voice_settings: EL_SETTINGS })
+      body: JSON.stringify({ text: inputText, model_id: 'eleven_multilingual_v2', voice_settings: resolveVoiceSettings(voiceId, EL_SETTINGS) })
     })
     if (!res.ok) throw new Error(`ElevenLabs error ${res.status}: ${(await res.text()).slice(0, 200)}`)
     const rawBuf = Buffer.from(await res.arrayBuffer())
