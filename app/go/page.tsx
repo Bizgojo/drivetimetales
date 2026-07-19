@@ -40,15 +40,20 @@ HARD RULES:
   14-day default (GO_BASE_TRIAL_DAYS — the ad funnel's Stripe checkout
   grants 14 days; Marc msg 2868). Raw promo codes never shown
   (ORION-GO-OFFER-COPY-001).
-- UX-GO-001 (Marc approval, msg 2942, 2026-07-19):
+- UX-GO-001 (Marc approval msg 2942; copy revised per Marc verdict
+  msg 3015, 2026-07-19):
   · CTA-001 Option A — both CTA surfaces render the honest card-required
     line via getTrialDisplay().subtext (card required · no charge before
-    trial ends · cancel anytime); days stay on the fail-quiet
-    GO_BASE_TRIAL_DAYS/promo path, never hardcoded.
+    trial ends · then just $7.99/month · cancel anytime); days stay on the
+    fail-quiet GO_BASE_TRIAL_DAYS/promo path, never hardcoded; price from
+    lib/landing GO_MONTHLY_PRICE_DISPLAY.
   · CTA-002 — on the sample's 'ended' (existing onPlaybackEnded hook) the
     bottom sheet latches ONCE into a completion state (getGoCtaCopy):
-    heading/button pivot, footnote removed (CTA-004), one-time ~300ms
-    scale/glow attention pulse. No audio-element interaction; cta_click
+    heading/button pivot — heading is VARIANT-AWARE (msg 3015): series
+    openers (a/b) get the episode heading via GoStory.completedHeading,
+    the standalone default (bare /go) gets the hundreds-more heading —
+    footnote removed (CTA-004), one-time ~300ms scale/glow attention
+    pulse. No audio-element interaction; cta_click
     event unchanged. Completion also shows the CTAs even if the 45s+
     listen latch never fired (seek-to-end) — the sheet must not be a
     dead end at the highest-intent moment.
@@ -206,7 +211,8 @@ function GoLandingContent() {
   // UX-GO-001 CTA-002: state-dependent sheet copy + visibility. The 45s+
   // listen reveal latch (shouldRevealTrialCta → ctaRevealed) is UNCHANGED;
   // completion additionally shows the CTAs (seek-to-end must not dead-end).
-  const ctaCopy = getGoCtaCopy(completed)
+  // msg 3015: the served story picks the variant-aware completion heading.
+  const ctaCopy = getGoCtaCopy(completed, story)
   const sheetVisible = ctaRevealed || completed
 
   return (

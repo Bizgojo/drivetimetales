@@ -124,7 +124,7 @@ describe('SUS/ATL-LANDING-001: getTrialDisplay', () => {
     expect(d.days).toBe(14)
     expect(d.ctaLabel).toBe('Start Your 14-Day Free Trial')
     // UX-GO-001 CTA-001 Option A (Marc msg 2942): honest card-required line.
-    expect(d.subtext).toBe("Card required — you won't be charged before your 14-day free trial ends. Cancel anytime.")
+    expect(d.subtext).toBe("Card required — you won't be charged before your 14-day free trial ends. Then just $7.99/month. Cancel anytime.")
     // ORION-GO-OFFER-COPY-001: raw promo codes must never appear in copy.
     expect(d.appliedBadge).toBe('Special offer applied — 14-day free trial ✓')
     expect(d.appliedBadge).not.toContain('GVLMETA')
