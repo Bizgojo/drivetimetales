@@ -40,6 +40,23 @@ HARD RULES:
   14-day default (GO_BASE_TRIAL_DAYS — the ad funnel's Stripe checkout
   grants 14 days; Marc msg 2868). Raw promo codes never shown
   (ORION-GO-OFFER-COPY-001).
+- UX-GO-001 (Marc approval msg 2942; copy revised per Marc verdict
+  msg 3015, 2026-07-19):
+  · CTA-001 Option A — both CTA surfaces render the honest card-required
+    line via getTrialDisplay().subtext (card required · no charge before
+    trial ends · then just $7.99/month · cancel anytime); days stay on the
+    fail-quiet GO_BASE_TRIAL_DAYS/promo path, never hardcoded; price from
+    lib/landing GO_MONTHLY_PRICE_DISPLAY.
+  · CTA-002 — on the sample's 'ended' (existing onPlaybackEnded hook) the
+    bottom sheet latches ONCE into a completion state (getGoCtaCopy):
+    heading/button pivot — heading is VARIANT-AWARE (msg 3015): series
+    openers (a/b) get the episode heading via GoStory.completedHeading,
+    the standalone default (bare /go) gets the hundreds-more heading —
+    footnote removed (CTA-004), one-time ~300ms scale/glow attention
+    pulse. No audio-element interaction; cta_click
+    event unchanged. Completion also shows the CTAs even if the 45s+
+    listen latch never fired (seek-to-end) — the sheet must not be a
+    dead end at the highest-intent moment.
 ================================================================================
 */
 
@@ -52,6 +69,8 @@ import { useSearchParams } from 'next/navigation'
 import { buildCampaignSignupHref, normalizePromoCode } from '@/lib/utm'
 import {
   getTrialDisplay,
+  getGoCtaCopy,
+  nextCompletedState,
   PromoStatus,
   resolveGoStory,
   shouldRevealTrialCta,
@@ -85,6 +104,12 @@ function GoLandingContent() {
   // latch (once shown, stays shown) lives here.
   const [ctaRevealed, setCtaRevealed] = useState(false)
 
+  // UX-GO-001 CTA-002: completion latch — flips true ONCE on the sample's
+  // 'ended' and never unsets (nextCompletedState), so the sheet transitions
+  // to its completion state exactly once (a replay can't re-trigger the
+  // pulse). Render-only state: the <audio> element is never touched.
+  const [completed, setCompleted] = useState(false)
+
   // A/B story selection — gated by GO_AB_LIVE in lib/landing.ts (currently
   // OFF: the default Grave story always renders regardless of ?v=).
   const story = resolveGoStory(searchParams.toString())
@@ -115,6 +140,8 @@ function GoLandingContent() {
   const handlePlaybackEnded = useCallback((pos: number) => {
     lastAudioPositionRef.current = pos
     listenTracker.onEnded(pos)
+    // UX-GO-001 CTA-002: latch the completion CTA state (once, render-only).
+    setCompleted(prev => nextCompletedState(prev, true))
   }, [listenTracker])
   // cta_click: fired from BOTH CTAs (bottom sheet + static footer) — latched
   // to once per session by the tracker. Never preventDefault / never blocks
@@ -181,6 +208,13 @@ function GoLandingContent() {
 
   const trial = getTrialDisplay(promoCode, promoStatus, promoDays)
 
+  // UX-GO-001 CTA-002: state-dependent sheet copy + visibility. The 45s+
+  // listen reveal latch (shouldRevealTrialCta → ctaRevealed) is UNCHANGED;
+  // completion additionally shows the CTAs (seek-to-end must not dead-end).
+  // msg 3015: the served story picks the variant-aware completion heading.
+  const ctaCopy = getGoCtaCopy(completed, story)
+  const sheetVisible = ctaRevealed || completed
+
   return (
     <div style={{
       minHeight: '100vh',
@@ -206,7 +240,7 @@ function GoLandingContent() {
         alignItems: 'center',
         flex: 1,
         // Room so the fixed CTA sheet never covers the legal links when open.
-        paddingBottom: ctaRevealed ? '230px' : '0',
+        paddingBottom: sheetVisible ? '230px' : '0',
       }}>
 
         {/* ===== HERO: cover art + big play + pill =====
@@ -264,7 +298,7 @@ function GoLandingContent() {
             NO trial CTA of any kind before the hook lands. This block now
             renders only after the same per-story reveal latch as the sheet
             (was: always present from arrival — that was the walk bug). */}
-        {ctaRevealed && (
+        {sheetVisible && (
         <div style={{ marginTop: 'auto', width: '100%', padding: '3rem 1.5rem 0' }}>
           <Link
             href={ctaHref}
@@ -283,8 +317,9 @@ function GoLandingContent() {
           >
             Start free trial
           </Link>
+          {/* UX-GO-001 CTA-001 Option A: honest card-required trial line. */}
           <div style={{ fontSize: '0.8rem', color: '#9ca3af', marginTop: '0.55rem' }}>
-            {trial.days}-day free trial · cancel anytime
+            {trial.subtext}
           </div>
         </div>
         )}
@@ -301,7 +336,7 @@ function GoLandingContent() {
           Slides up via translateY once shouldRevealTrialCta fires; the audio
           element lives outside this overlay and is never interrupted. */}
       <div
-        aria-hidden={!ctaRevealed}
+        aria-hidden={!sheetVisible}
         style={{
           position: 'fixed',
           left: 0,
@@ -310,11 +345,15 @@ function GoLandingContent() {
           zIndex: 20,
           display: 'flex',
           justifyContent: 'center',
-          transform: ctaRevealed ? 'translateY(0)' : 'translateY(110%)',
+          transform: sheetVisible ? 'translateY(0)' : 'translateY(110%)',
           transition: 'transform 420ms cubic-bezier(0.22, 1, 0.36, 1)',
-          pointerEvents: ctaRevealed ? 'auto' : 'none',
+          pointerEvents: sheetVisible ? 'auto' : 'none',
         }}
       >
+        {/* UX-GO-001 CTA-002: one-time ~300ms attention pulse when the sheet
+            enters its completion state. iteration-count 1 + the completed
+            latch = it can never replay. Pure CSS — no audio interaction. */}
+        <style dangerouslySetInnerHTML={{ __html: '@keyframes goCtaCompletionPulse { 0% { transform: scale(1); } 50% { transform: scale(1.02); box-shadow: 0 -12px 48px rgba(249,115,22,0.45); } 100% { transform: scale(1); } }' }} />
         <div style={{
           width: '100%',
           maxWidth: '480px',
@@ -324,9 +363,10 @@ function GoLandingContent() {
           boxShadow: '0 -12px 40px rgba(0,0,0,0.55)',
           padding: '1.25rem 1.5rem calc(1.25rem + env(safe-area-inset-bottom, 0px))',
           textAlign: 'center',
+          animation: completed ? 'goCtaCompletionPulse 300ms ease-out 1' : 'none',
         }}>
           <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#ffffff', marginBottom: '0.35rem' }}>
-            Keep the story going
+            {ctaCopy.heading}
           </div>
 
           {/* Promo applied badge (only after server-truth validation; never raw codes) */}
@@ -336,11 +376,13 @@ function GoLandingContent() {
             </div>
           )}
 
+          {/* UX-GO-001 CTA-001 Option A: honest card-required trial line
+              (getTrialDisplay().subtext — replaces the bare days-line). */}
           <div style={{ fontSize: '0.9rem', color: '#ffffff', marginBottom: '0.85rem' }}>
-            {trial.days}-day free trial · cancel anytime
+            {trial.subtext}
           </div>
 
-          {/* THE one CTA */}
+          {/* THE one CTA — same href/promo/utm in both states; cta_click unchanged */}
           <Link
             href={ctaHref}
             onClick={handleCtaClick}
@@ -357,12 +399,15 @@ function GoLandingContent() {
               boxShadow: '0 8px 30px rgba(249,115,22,0.35)',
             }}
           >
-            Start free trial
+            {ctaCopy.buttonLabel}
           </Link>
 
-          <p style={{ fontSize: '0.8rem', color: '#ffffff', margin: '0.7rem 0 0', lineHeight: 1.45 }}>
-            Your story keeps playing while you sign up.
-          </p>
+          {/* CTA-004: footnote only while the claim is true (pre-completion). */}
+          {ctaCopy.footnote && (
+            <p style={{ fontSize: '0.8rem', color: '#ffffff', margin: '0.7rem 0 0', lineHeight: 1.45 }}>
+              {ctaCopy.footnote}
+            </p>
+          )}
         </div>
       </div>
     </div>

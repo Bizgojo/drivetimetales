@@ -17,6 +17,16 @@ import { applyPromoTrialDays } from './promo'
 // BASE_TRIAL_DAYS (7) from lib/promo.ts; do not point them here.
 export const GO_BASE_TRIAL_DAYS = 14
 
+// UX-GO-001 revision (Marc verdict, msg 3015, 2026-07-19): the card line now
+// states the post-trial price. FLAG: no dollar-amount plan config exists in
+// this codebase — subscription prices are Stripe env price IDs only
+// (lib/stripe.ts PRODUCTS.subscriptions carries no amounts; the dollar figure
+// lives in the Stripe dashboard) and every other surface hardcodes "$7.99"
+// (signup, subscribe, manage-subscription fallback, retention emails). So
+// this is a HARDCODE (accepted by Marc), centralized + test-pinned here as
+// /go's single source.
+export const GO_MONTHLY_PRICE_DISPLAY = '$7.99'
+
 // ============================================================================
 // SUS/ATL-LANDING-002 rev C: /go story variants (Greenville A/B test).
 // The DEFAULT story (Grave — live today) always renders while GO_AB_LIVE is
@@ -38,6 +48,15 @@ export const GO_BASE_TRIAL_DAYS = 14
  * is the fallback. Declared above the story literals — they reference it.
  */
 export const CTA_REVEAL_LISTEN_SEC = 45
+
+/**
+ * UX-GO-001 revision (Marc verdict, msg 3015): variant-aware completion
+ * heading for SERIES-OPENER samples (variants a/b — both play an Episode 1).
+ * Declared above the GoStory literals — they reference it. Stories without
+ * a completedHeading fall back to the standalone-safe default
+ * (GO_CTA_COPY_COMPLETED.heading below).
+ */
+export const GO_COMPLETED_HEADING_SERIES = "That's where Episode 1 ends — for now."
 
 export interface GoStory {
   /** landing_stories.id (default) or synthetic variant id. */
@@ -61,6 +80,12 @@ export interface GoStory {
    * the sample's hook lands. No CTA of any kind renders before this.
    */
   ctaRevealSeconds: number
+  /**
+   * UX-GO-001 revision (Marc msg 3015): per-variant completion-state sheet
+   * heading. Set on series-opener samples (GO_COMPLETED_HEADING_SERIES);
+   * absent/undefined → getGoCtaCopy renders the standalone-safe default.
+   */
+  completedHeading?: string
 }
 
 /** DEFAULT — live today. Always renders while GO_AB_LIVE is false. */
@@ -92,6 +117,8 @@ export const GO_STORY_VARIANTS: Record<string, GoStory> = {
     // Whisper transcript timing: fraud clear at 0:41, plaque read completes
     // 1:09 → CTA at 70s (Marc confirmed 2026-07-14, WALK-BUG-0713 #1).
     ctaRevealSeconds: 70,
+    // Series opener (Commuter of the Year ep1) — episode-aware completion copy.
+    completedHeading: GO_COMPLETED_HEADING_SERIES,
     coverUrl: 'https://vmyhlfeouzslixtkmddy.supabase.co/storage/v1/object/public/Covers/landing/go-variant-a/cover.jpg',
     audioUrl: 'https://vmyhlfeouzslixtkmddy.supabase.co/storage/v1/object/public/audio/landing/go-variant-a/final_mix.mp3',
   },
@@ -106,6 +133,8 @@ export const GO_STORY_VARIANTS: Record<string, GoStory> = {
     // Falls Park hook lands at 1:36 in the sample — CTA at ~100s (Marc,
     // 2026-07-13, WALK-BUG-0713 #1 amendment).
     ctaRevealSeconds: 100,
+    // Series opener (Murder at Falls Park ep1) — episode-aware completion copy.
+    completedHeading: GO_COMPLETED_HEADING_SERIES,
     // Liberty Bridge corrected art (Marc redo directive 2026-07-12): curved
     // single-side-cable pedestrian suspension bridge, vision-QA PASS.
     coverUrl: 'https://vmyhlfeouzslixtkmddy.supabase.co/storage/v1/object/public/Covers/landing/go-variant-b/cover_20260712_liberty.jpg',
@@ -169,6 +198,67 @@ export function shouldRevealTrialCta(input: CtaRevealInput): boolean {
       ? (input.revealAfterSec as number)
       : CTA_REVEAL_LISTEN_SEC
   return Number.isFinite(input.listenedSec) && input.listenedSec >= threshold
+}
+
+// ============================================================================
+// UX-GO-001 / CTA-002 (Marc approval, msg 2942, 2026-07-19): completion-
+// triggered CTA state. When the sample's <audio> fires 'ended', the bottom
+// sheet transitions ONCE into a distinct completion state: the heading and
+// button pivot to what-happens-next copy and the "keeps playing" footnote is
+// REMOVED (it is false once the audio has ended — CTA-004). The pre-
+// completion copy is unchanged. Pure + exported so the byte-exact strings
+// and the latch are unit-testable without a DOM (__tests__/ux-go-001).
+// ============================================================================
+
+export interface GoCtaCopy {
+  heading: string
+  buttonLabel: string
+  /** Footnote under the button; null = render nothing (completion state — CTA-004). */
+  footnote: string | null
+}
+
+/** Pre-completion sheet copy (unchanged from rev C except the trial line,
+ *  which now renders TrialDisplay.subtext — see getTrialDisplay). */
+export const GO_CTA_COPY_DEFAULT: GoCtaCopy = {
+  heading: 'Keep the story going',
+  buttonLabel: 'Start free trial',
+  footnote: 'Your story keeps playing while you sign up.',
+}
+
+/** Completion-state sheet copy (CTA-002; strings revised per Marc verdict,
+ *  msg 3015, 2026-07-19). The heading here is the STANDALONE-safe default
+ *  (bare /go — The Grave He Dug Himself, plus any unknown/fallback story);
+ *  series-opener variants override it via GoStory.completedHeading. The
+ *  button ("Hear what's next →", Marc verbatim — replaces the earlier build's
+ *  "Hear what happens next →") is identical in BOTH cases. */
+export const GO_CTA_COPY_COMPLETED: GoCtaCopy = {
+  heading: "And that's the story — there are hundreds more.",
+  buttonLabel: "Hear what's next →",
+  // CTA-004: no footnote — "keeps playing while you sign up" is false once
+  // the sample has ended.
+  footnote: null,
+}
+
+/**
+ * State + variant → sheet copy. Pre-completion copy is story-independent;
+ * completion copy uses the story's per-variant heading when configured
+ * (series openers) and the standalone-safe default otherwise. Button and
+ * footnote never vary by story.
+ */
+export function getGoCtaCopy(completed: boolean, story?: Pick<GoStory, 'completedHeading'>): GoCtaCopy {
+  if (!completed) return GO_CTA_COPY_DEFAULT
+  return story?.completedHeading
+    ? { ...GO_CTA_COPY_COMPLETED, heading: story.completedHeading }
+    : GO_CTA_COPY_COMPLETED
+}
+
+/**
+ * Completion latch: once the sample has ended, the sheet stays in its
+ * completion state (a replay reaching 'ended' again must NOT re-transition
+ * or re-run the attention pulse). Pure — mirrors the alreadyRevealed latch.
+ */
+export function nextCompletedState(alreadyCompleted: boolean, endedFired: boolean): boolean {
+  return alreadyCompleted === true || endedFired === true
 }
 
 // ============================================================================
@@ -288,7 +378,13 @@ export function getTrialDisplay(
   return {
     days,
     ctaLabel: `Start Your ${days}-Day Free Trial`,
-    subtext: `Free for ${days} days. Cancel anytime — you won't be charged before your trial ends.`,
+    // UX-GO-001 / CTA-001 Option A, revised per Marc verdict (msg 3015,
+    // 2026-07-19) — Marc verbatim FINAL for BOTH /go CTA surfaces (sheet +
+    // static footer): "Card required — you won't be charged before your
+    // 14-day free trial ends. Then just $7.99/month. Cancel anytime." Days
+    // come from the same fail-quiet GO_BASE_TRIAL_DAYS/promo math as `days`
+    // — never hardcoded; price from GO_MONTHLY_PRICE_DISPLAY (see its flag).
+    subtext: `Card required — you won't be charged before your ${days}-day free trial ends. Then just ${GO_MONTHLY_PRICE_DISPLAY}/month. Cancel anytime.`,
     // ORION-GO-OFFER-COPY-001 (Marc, 2026-07-12): never show raw promo codes
     // in customer-facing copy — generic offer language only.
     appliedBadge: promoStatus === 'valid' && promoCode ? `Special offer applied — ${days}-day free trial ✓` : null,

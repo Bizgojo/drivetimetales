@@ -211,11 +211,16 @@ describe('SUS/ATL-LANDING-002 rev C: layout + copy pins', () => {
     expect(pageSrc).not.toMatch(/<ul/)
   })
 
-  test('CTA sheet copy unchanged: heading, subline, button, microcopy', () => {
-    expect(pageSrc).toContain('Keep the story going')
-    expect(pageSrc).toContain('-day free trial · cancel anytime')
-    expect(pageSrc).toContain('Start free trial')
-    expect(pageSrc).toContain('Your story keeps playing while you sign up.')
+  test('CTA sheet copy (UX-GO-001): state copy via getGoCtaCopy, card-honest trial line rendered', () => {
+    // Heading/button/footnote now come from lib/landing.ts getGoCtaCopy so
+    // the completion state (CTA-002) can pivot them — byte-exact strings are
+    // pinned in __tests__/ux-go-001.test.ts.
+    expect(pageSrc).toContain('{ctaCopy.heading}')
+    expect(pageSrc).toContain('{ctaCopy.buttonLabel}')
+    expect(pageSrc).toContain('{ctaCopy.footnote}')
+    // CTA-001 Option A: the bare days-line was replaced by trial.subtext.
+    expect(pageSrc).toContain('{trial.subtext}')
+    expect(pageSrc).not.toContain('-day free trial · cancel anytime')
   })
 
   test('CTA sheet is a translateY slide-up, hidden until revealed', () => {
@@ -224,22 +229,26 @@ describe('SUS/ATL-LANDING-002 rev C: layout + copy pins', () => {
     expect(pageSrc).toContain('shouldRevealTrialCta')
   })
 
-  test('STATIC BOTTOM CTA: in-flow block with button + trial subline (WALK-BUG-0713: reveal-gated)', () => {
+  test('STATIC BOTTOM CTA: in-flow block with button + card-honest subline (WALK-BUG-0713: reveal-gated)', () => {
     expect(pageSrc).toContain('STATIC BOTTOM CTA')
-    // Two 'Start free trial' buttons: the sheet + the static block.
-    expect((pageSrc.match(/Start free trial/g) || []).length).toBe(2)
-    // Both carry the same campaign href.
+    // The static block keeps its literal 'Start free trial' button (the
+    // sheet button is now state-driven via ctaCopy.buttonLabel — CTA-002).
+    expect((pageSrc.match(/Start free trial/g) || []).length).toBe(1)
+    // Both surfaces carry the same campaign href.
     expect((pageSrc.match(/href=\{ctaHref\}/g) || []).length).toBe(2)
-    // The subline appears in the sheet AND the static block.
-    expect((pageSrc.match(/-day free trial · cancel anytime/g) || []).length).toBe(2)
+    // The card-honest trial line (UX-GO-001 CTA-001) appears in the sheet
+    // AND the static block.
+    expect((pageSrc.match(/\{trial\.subtext\}/g) || []).length).toBe(2)
   })
 
-  test('static CTA never animates (no transform/transition) but IS gated on ctaRevealed (WALK-BUG-0713 #1)', () => {
+  test('static CTA never animates (no transform/transition) but IS gated on sheetVisible (WALK-BUG-0713 #1 + CTA-002)', () => {
     const staticBlock = pageSrc.slice(pageSrc.indexOf('STATIC BOTTOM CTA'), pageSrc.indexOf('Legal — small, bottom'))
     expect(staticBlock.length).toBeGreaterThan(0)
     expect(staticBlock).not.toMatch(/transform|transition/)
     // Marc 2026-07-13: NO trial CTA of any kind before the hook lands.
-    expect(staticBlock).toMatch(/\{ctaRevealed && \(/)
+    // UX-GO-001: sheetVisible = ctaRevealed || completed (completion may
+    // show the CTAs even when the listen latch never fired — seek-to-end).
+    expect(staticBlock).toMatch(/\{sheetVisible && \(/)
   })
 
   test('promo badge copy unchanged (never raw codes)', () => {
@@ -287,10 +296,13 @@ describe('WALK-BUG-0713 #1: per-story CTA reveal', () => {
     expect(GO_SAMPLE_STORY.ctaRevealSeconds).toBe(CTA_REVEAL_LISTEN_SEC)
   })
 
-  test('page gates the static bottom CTA behind the reveal latch (no pre-hook CTA)', () => {
-    // The static footer CTA must render ONLY inside a {ctaRevealed && ...}
-    // block, and the page must pass the per-story threshold into the check.
-    expect(pageSrc).toMatch(/\{ctaRevealed && \(/)
+  test('page gates the static bottom CTA behind the reveal/completion gate (no pre-hook CTA)', () => {
+    // The static footer CTA must render ONLY inside a {sheetVisible && ...}
+    // block (UX-GO-001: sheetVisible = ctaRevealed || completed — the listen
+    // latch is unchanged; completion additionally shows the CTAs), and the
+    // page must pass the per-story threshold into the check.
+    expect(pageSrc).toMatch(/\{sheetVisible && \(/)
+    expect(pageSrc).toContain('const sheetVisible = ctaRevealed || completed')
     expect(pageSrc).toMatch(/revealAfterSec/)
     expect(pageSrc).not.toMatch(/Always present from arrival/)
   })

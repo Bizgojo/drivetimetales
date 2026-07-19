@@ -14,6 +14,13 @@
 // Event model (each fired AT MOST ONCE per session, latched here; the DB
 // unique index (session_id, event) backstops):
 //   play_start — first 'play' from the audio element
+//   sec_30     — playback position crossed 30s (INSTRUM-001: closes the
+//                0–189s blind spot between play_start and pct_25 on a
+//                ~12.6-min sample). PRE-DDL SAFE: until Marc applies the
+//                sec_30 migration, the live CHECK constraint/RLS policy
+//                rejects the row — the ingest API 202s it quietly and the
+//                client is fire-and-forget, so emission can never break
+//                playback or the existing events.
 //   pct_25/50/75 — playback crossed 25/50/75% of the sample (timeupdate)
 //   complete   — 'ended'
 //   cta_click  — visitor clicked a Start-free-trial CTA
@@ -26,6 +33,7 @@ import { GO_LIVE_VARIANTS, GO_STORY_VARIANTS } from './landing'
 export type GoListenVariant = 'a' | 'b' | 'bare'
 export type GoListenEventName =
   | 'play_start'
+  | 'sec_30'
   | 'pct_25'
   | 'pct_50'
   | 'pct_75'
@@ -39,6 +47,12 @@ export const GO_LISTEN_MILESTONES: ReadonlyArray<{ event: GoListenEventName; fra
   { event: 'pct_25', fraction: 0.25 },
   { event: 'pct_50', fraction: 0.5 },
   { event: 'pct_75', fraction: 0.75 },
+]
+
+/** INSTRUM-001: absolute-seconds depth thresholds, ascending (duration-
+ *  independent — fire even before metadata/duration is known). */
+export const GO_LISTEN_DEPTH_SECONDS: ReadonlyArray<{ event: GoListenEventName; seconds: number }> = [
+  { event: 'sec_30', seconds: 30 },
 ]
 
 /** Server-side clamp mirror — keep in sync with the migration CHECK. */
@@ -104,6 +118,25 @@ export function milestonesCrossed(
   const out: GoListenEventName[] = []
   for (const m of GO_LISTEN_MILESTONES) {
     if (fraction >= m.fraction && !alreadyFired.has(m.event)) out.push(m.event)
+  }
+  return out
+}
+
+/**
+ * INSTRUM-001: absolute-seconds depth events newly crossed at `position`,
+ * excluding ones in `alreadyFired`. Pure; duration-independent (works before
+ * loadedmetadata). Returns [] for junk positions. Same resume caveat as
+ * milestonesCrossed: a localStorage-resumed session past 30s reports sec_30
+ * on its first timeupdate — accepted; position_seconds disambiguates.
+ */
+export function depthEventsCrossed(
+  position: number,
+  alreadyFired: ReadonlySet<string>
+): GoListenEventName[] {
+  if (!Number.isFinite(position) || position <= 0) return []
+  const out: GoListenEventName[] = []
+  for (const d of GO_LISTEN_DEPTH_SECONDS) {
+    if (position >= d.seconds && !alreadyFired.has(d.event)) out.push(d.event)
   }
   return out
 }
@@ -205,6 +238,12 @@ export function createGoListenTracker(init: GoListenTrackerInit): GoListenTracke
     },
     onTimeUpdate(positionSeconds: number, durationSeconds: number) {
       try {
+        // INSTRUM-001: absolute-depth events first (duration-independent),
+        // then percentage milestones. Each latched independently by fireOnce
+        // — a sec_30 send can never affect the existing events.
+        for (const event of depthEventsCrossed(positionSeconds, fired)) {
+          fireOnce(event, positionSeconds)
+        }
         for (const event of milestonesCrossed(positionSeconds, durationSeconds, fired)) {
           fireOnce(event, positionSeconds)
         }
