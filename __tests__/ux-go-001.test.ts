@@ -3,7 +3,7 @@
 // reassurance subtext). REVISED per Marc review verdict (msg 3015,
 // 2026-07-19 15:26 EDT): card line adds "Then just $7.99/month.";
 // completion heading is variant-aware (series openers a/b vs standalone
-// bare default); completion button is now "Hear what's next →".
+// bare default); completion button is now "Hear what happens next →".
 //
 // Covers (commit 1 / UX):
 //   1. CTA-001 Option A — honest card-required trial copy, byte-exact, on
@@ -105,7 +105,7 @@ describe('UX-GO-001 CTA-002: completion state copy (byte-exact)', () => {
     expect(GO_CTA_COPY_COMPLETED.heading).toBe("And that's the story — there are hundreds more.")
     // Marc verbatim (msg 3015) — replaces the earlier build's
     // 'Hear what happens next →'.
-    expect(GO_CTA_COPY_COMPLETED.buttonLabel).toBe("Hear what's next →")
+    expect(GO_CTA_COPY_COMPLETED.buttonLabel).toBe("Hear what happens next →")
     expect(GO_CTA_COPY_COMPLETED.footnote).toBeNull()
   })
 
@@ -121,7 +121,7 @@ describe('UX-GO-001 CTA-002: completion state copy (byte-exact)', () => {
       const copy = getGoCtaCopy(true, GO_STORY_VARIANTS[v])
       expect(copy.heading).toBe("That's where Episode 1 ends — for now.")
       // Button + footnote identical to the standalone case.
-      expect(copy.buttonLabel).toBe("Hear what's next →")
+      expect(copy.buttonLabel).toBe("Hear what happens next →")
       expect(copy.footnote).toBeNull()
     }
   })

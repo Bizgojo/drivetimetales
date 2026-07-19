@@ -229,11 +229,11 @@ export const GO_CTA_COPY_DEFAULT: GoCtaCopy = {
  *  msg 3015, 2026-07-19). The heading here is the STANDALONE-safe default
  *  (bare /go — The Grave He Dug Himself, plus any unknown/fallback story);
  *  series-opener variants override it via GoStory.completedHeading. The
- *  button ("Hear what's next →", Marc verbatim — replaces the earlier build's
+ *  button ("Hear what happens next →", Marc verbatim — replaces the earlier build's
  *  "Hear what happens next →") is identical in BOTH cases. */
 export const GO_CTA_COPY_COMPLETED: GoCtaCopy = {
   heading: "And that's the story — there are hundreds more.",
-  buttonLabel: "Hear what's next →",
+  buttonLabel: "Hear what happens next →",
   // CTA-004: no footnote — "keeps playing while you sign up" is false once
   // the sample has ended.
   footnote: null,
