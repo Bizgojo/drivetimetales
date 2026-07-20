@@ -71,13 +71,37 @@ describe('ATL-VOICE-SETTINGS-001 (a): override lookup returns seeded values', ()
     })
   })
 
-  test('override map contains exactly the three Sunset Ep1 voice_ids (v1)', () => {
+  test('Miriam Hale / Cass (gOZRcEzY40chlRuMDmLV) — Marc-approved msg 3177', () => {
+    expect(resolveVoiceSettings('gOZRcEzY40chlRuMDmLV', GLOBAL_EL_SETTINGS)).toEqual({
+      stability: 0.58,
+      similarity_boost: 0.8,
+      style: 0.18,
+      use_speaker_boost: true,
+      speed: 0.94,
+    })
+  })
+
+  test('Lena Cho / Ophelia (1nFfPv6rPB37Tt2950M0) — Marc-approved msg 3177', () => {
+    expect(resolveVoiceSettings('1nFfPv6rPB37Tt2950M0', GLOBAL_EL_SETTINGS)).toEqual({
+      stability: 0.7,
+      similarity_boost: 0.8,
+      style: 0.06,
+      use_speaker_boost: true,
+      speed: 0.98,
+    })
+  })
+
+  test('override map contains exactly the five Sunset cast voice_ids (Ep1 v1 + Eps 2-4 msg 3177)', () => {
     expect(Object.keys(VOICE_SETTINGS_OVERRIDES).sort()).toEqual([
+      '1nFfPv6rPB37Tt2950M0',
       'AXOPpokL7lng4OPc1L0P',
       'ecF3arP2KBwcy3FM5xRC',
+      'gOZRcEzY40chlRuMDmLV',
       'xRMpxegKwxAenIn6K3Hn',
     ])
   })
+
+
 })
 
 describe('ATL-VOICE-SETTINGS-001 (b): unknown voice_id falls back byte-identically', () => {

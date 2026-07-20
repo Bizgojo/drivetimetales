@@ -33,6 +33,12 @@ export const VOICE_SETTINGS_OVERRIDES: Record<string, ElVoiceSettings> = {
   // Dana 1 — dry, direct, crisp, unhurried; a measurement, not a performance.
   // [Orion proposal v1, subject to Marc's after-listen adjustment]
   xRMpxegKwxAenIn6K3Hn: { stability: 0.68, similarity_boost: 0.80, style: 0.08, use_speaker_boost: true, speed: 1.00 },
+  // Miriam Hale (Cass) — dry, husked, clinical restraint; tender underneath.
+  // [Marc-approved full-sheet msg 3177, 2026-07-20 — Sunset Eps 2-4 casting]
+  gOZRcEzY40chlRuMDmLV: { stability: 0.58, similarity_boost: 0.80, style: 0.18, use_speaker_boost: true, speed: 0.94 },
+  // Lena Cho (Ophelia) — matte-flat, even, precise; discipline not coldness.
+  // [Marc-approved full-sheet msg 3177, 2026-07-20 — Sunset Eps 2-4 casting]
+  '1nFfPv6rPB37Tt2950M0': { stability: 0.70, similarity_boost: 0.80, style: 0.06, use_speaker_boost: true, speed: 0.98 },
 }
 
 /**
