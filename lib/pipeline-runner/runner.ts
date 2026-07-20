@@ -30,6 +30,30 @@ const HEARTBEAT_ZOMBIE_MS = 15 * 60 * 1000 // 15 min
 // on the same step, set needs_attention=true and stop retrying (circuit open).
 const CIRCUIT_BREAKER_THRESHOLD = 5
 
+// ── Per-step run-next abort timeouts (ATL-RUNNER-TIMEOUT-001) ──────────────
+// Most steps respond well within 90s. The final-mix render steps legitimately
+// run longer on long episodes (segment download + ffmpeg concat + two-pass
+// loudnorm + upload), so a flat 90s AbortSignal killed healthy renders
+// mid-flight. The aborted fetch left the job running+locked; the runner's
+// zombie cleanup then reset it, the next invocation re-rendered from scratch,
+// and the cycle repeated (zombie lock thrash). Fix: give final-mix steps a
+// 600s budget — still inside RUNNER_DEADLINE_MS (740s) — and keep 90s for
+// everything else. Add steps to the map if another long-running step appears.
+// NOTE: This is the per-step fetch abort only. It deliberately does NOT touch
+// LOCK_STALE_MS, LEASE_DURATION_MS, or the heartbeat/zombie thresholds.
+export const RUN_NEXT_TIMEOUT_DEFAULT_MS = 90_000
+export const RUN_NEXT_TIMEOUT_MS_BY_STEP: Record<string, number> = {
+  render_final_mix: 600_000,
+  series_render_final_mix: 600_000,
+}
+
+export function runNextTimeoutMs(step: string | null | undefined): number {
+  if (step && Object.prototype.hasOwnProperty.call(RUN_NEXT_TIMEOUT_MS_BY_STEP, step)) {
+    return RUN_NEXT_TIMEOUT_MS_BY_STEP[step]
+  }
+  return RUN_NEXT_TIMEOUT_DEFAULT_MS
+}
+
 function nowIso(): string {
   return new Date().toISOString()
 }
@@ -421,7 +445,11 @@ type RunNextResult = {
   payload: Record<string, unknown>
 }
 
-async function callRunNext(jobId: string, holderId: string): Promise<RunNextResult> {
+async function callRunNext(
+  jobId: string,
+  holderId: string,
+  currentStep: string | null,
+): Promise<RunNextResult> {
   const url = `${baseUrl()}/api/admin/production-jobs/run-next`
 
   let response: Response
@@ -430,7 +458,9 @@ async function callRunNext(jobId: string, holderId: string): Promise<RunNextResu
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ jobId, holderId }),
-      signal: AbortSignal.timeout(90_000),
+      // ATL-RUNNER-TIMEOUT-001: per-step abort budget (600s for final-mix
+      // renders, 90s default). See runNextTimeoutMs above.
+      signal: AbortSignal.timeout(runNextTimeoutMs(currentStep)),
     })
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err)
@@ -617,7 +647,7 @@ export async function runPipelineLoop(
         // Call run-next
         let result: RunNextResult
         try {
-          result = await callRunNext(jobId, holderId)
+          result = await callRunNext(jobId, holderId, currentStep)
         } catch (err: unknown) {
           exitReason = 'error'
           exitMessage = err instanceof Error ? err.message : String(err)
