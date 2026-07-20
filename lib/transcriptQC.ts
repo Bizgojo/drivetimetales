@@ -303,6 +303,26 @@ export function normalizeSpokenNumberPhrases(text: string): string {
       const value = Number(lead) * 12
       return Number.isFinite(value) ? String(value) : match
     })
+    // ── ATL-QC-FP-006: "too" ↔ "two" homophone folding ─────────────────────
+    // Sunset Ep4 "The Shell" segment_0019 (TOM, 2026-07-20 21:05Z): script
+    // "running two under" was transcribed by Whisper as "running too under" —
+    // identical audio, wrong homophone spelling.  The phrase parser above had
+    // already folded the expected side's "two" → "2", so numericTokenSequence
+    // saw ["2","1"] (expected) vs ["1"] (detected) → numericTokenSequenceMismatch
+    // HARD VETO at similarity 98.4% (the ≥0.85 normalized fallback could not
+    // rescue it).  Fold the standalone word "too" to the same canonical digit
+    // "2" on BOTH sides of BOTH pipelines.  Placement matters: this runs at
+    // the END of the chain, AFTER SPOKEN_NUMBER_PHRASE_RE, so the injected
+    // token can never join an adjacent genuine number phrase ("five too many"
+    // → "5 2 many", never a fused "fifty-two").  Both directions converge
+    // (script "too" ↔ Whisper "two" is the mirror FP), and genuine value
+    // changes still hard-fail: "two" vs "three" → "2" vs "3" in the veto
+    // stream.  "to" is deliberately EXCLUDED: it reduces to /tə/ in speech,
+    // Whisper drops it at clip boundaries (it is in
+    // SAFE_TERMINAL_FUNCTION_WORDS and the isSafeTerminalTailDrop rescue keys
+    // on the literal token), and folding it to a digit would convert those
+    // documented soft drops into numeric hard vetoes.
+    .replace(/\btoo\b/gi, '2')
 }
 
 // ATL-PIPE-011: normalise compound spoken numbers and currency forms before token comparison.
@@ -981,6 +1001,19 @@ export function commonSurnameVariantMatches(expected: string, detected: string):
  *   brake  ↔  break     (car brake vs. to break)
  *   brakes ↔  breaks    (plural / third-person)
  *   braking ↔ breaking  (gerund)
+ *
+ * NOT in this table (already handled elsewhere — do not duplicate):
+ *   two ↔ too           — folded to the canonical digit "2" in
+ *                         normalizeSpokenNumberPhrases (ATL-QC-FP-006);
+ *                         a pair here could not clear the
+ *                         numericTokenSequenceMismatch hard veto.
+ *   its ↔ it's          — the possessive-strip step in transcriptTokens
+ *                         normalises both to "its".
+ *   their ↔ there        — covered by the ATL-PIPE-008/A8 fuzzy short-token
+ *                         rule (same first letter, distance ≤ 2); "they're"
+ *                         tokenizes to ['they','re'] and rides the same fuzzy
+ *                         rule / normalized fallback.  Locked by
+ *                         qc-homophone-fp-006.test.ts.
  */
 const HOMOPHONE_PAIRS: ReadonlyArray<readonly [string, string]> = [
   // Automotive — Whisper transcribes the car-part noun as the common verb homophone
