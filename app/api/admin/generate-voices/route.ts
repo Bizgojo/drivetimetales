@@ -2395,7 +2395,12 @@ async function generateBelleIntroWithName(introText: string, storyId: string, li
 }> {
   const parts = introText.split('[LISTENER_NAME]')
   const beforeText = (parts[0] || '').trim()
-  const afterText = (parts[1] || '').trim()
+  // SUNSET-INTRO-FIX (Marc merge word msg 3099, 2026-07-19): when [LISTENER_NAME] leads
+  // the intro, parts[1] starts with the punctuation that followed the placeholder
+  // (", …"). trim() only removes whitespace, so the leading comma reached TTS and
+  // Belle vocalized it as a glottal artifact ("Kha,") baked into the final mix.
+  // Strip leading punctuation/dashes from the after-name text before rendering.
+  const afterText = (parts[1] || '').trim().replace(/^[\s,;:.!?\u2026\u2014\u2013-]+/, '')
   // Treat beforeText as unusable if it is empty or too short to produce audible audio.
   const usableBeforeText = beforeText.length >= MIN_BEFORE_TEXT_CHARS ? beforeText : ''
 
