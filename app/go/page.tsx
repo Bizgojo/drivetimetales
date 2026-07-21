@@ -57,6 +57,21 @@ HARD RULES:
     event unchanged. Completion also shows the CTAs even if the 45s+
     listen latch never fired (seek-to-end) — the sheet must not be a
     dead end at the highest-intent moment.
+- CTA-HEADING-002 (Marc approval, 2026-07-21):
+  · Progress-aware CTA heading: the bottom sheet heading advances with
+    the listener at pct_50 and pct_75, replacing the static
+    'Keep the story going' that normalizes into background noise after
+    8+ minutes on screen.
+  · Series openers (a/b): pct_50 → 'You’re halfway through Episode 1.',
+    pct_75 → 'The ending is 2 minutes away.'
+  · Standalone (bare): pct_50 → 'Halfway through.', pct_75 → 'Almost
+    at the ending.'
+  · Heading div uses key=activeHeading to re-mount on each change,
+    replaying the existing goCtaCompletionPulse animation once per
+    transition. Animation gated on any milestone reached (never fires
+    on initial reveal). No new events, no new beacons, no auth calls.
+    Measurement: existing cta_click.position_seconds disambiguates
+    which heading state converted.
 ================================================================================
 */
 
@@ -70,6 +85,7 @@ import { buildCampaignSignupHref, normalizePromoCode } from '@/lib/utm'
 import {
   getTrialDisplay,
   getGoCtaCopy,
+  getGoMidHeading,
   nextCompletedState,
   PromoStatus,
   resolveGoStory,
@@ -110,6 +126,14 @@ function GoLandingContent() {
   // pulse). Render-only state: the <audio> element is never touched.
   const [completed, setCompleted] = useState(false)
 
+  // CTA-HEADING-002: mid-listen pct milestone state. Refs guard the set calls
+  // against stale-closure double-fires inside the progress callback; the
+  // booleans drive the heading render. Both latch once (never reset).
+  const pct50FiredRef = useRef(false)
+  const pct75FiredRef = useRef(false)
+  const [pct50Reached, setPct50Reached] = useState(false)
+  const [pct75Reached, setPct75Reached] = useState(false)
+
   // A/B story selection — gated by GO_AB_LIVE in lib/landing.ts (currently
   // OFF: the default Grave story always renders regardless of ?v=).
   const story = resolveGoStory(searchParams.toString())
@@ -136,6 +160,20 @@ function GoLandingContent() {
   const handlePlaybackProgress = useCallback((pos: number, dur: number) => {
     lastAudioPositionRef.current = pos
     listenTracker.onTimeUpdate(pos, dur)
+    // CTA-HEADING-002: detect pct_50 / pct_75 position milestones to update
+    // the mid-listen CTA heading. Refs guard against stale-closure double-fire;
+    // setState is stable and safe to call inside useCallback. Position-based
+    // (pos/dur) mirrors how the tracker fires pct events internally.
+    if (dur > 0) {
+      if (!pct50FiredRef.current && pos / dur >= 0.5) {
+        pct50FiredRef.current = true
+        setPct50Reached(true)
+      }
+      if (!pct75FiredRef.current && pos / dur >= 0.75) {
+        pct75FiredRef.current = true
+        setPct75Reached(true)
+      }
+    }
   }, [listenTracker])
   const handlePlaybackEnded = useCallback((pos: number) => {
     lastAudioPositionRef.current = pos
@@ -214,6 +252,13 @@ function GoLandingContent() {
   // msg 3015: the served story picks the variant-aware completion heading.
   const ctaCopy = getGoCtaCopy(completed, story)
   const sheetVisible = ctaRevealed || completed
+
+  // CTA-HEADING-002: progress-aware heading. Pre-completion: heading advances
+  // with the listener (pct75 > pct50 > default). Completion: ctaCopy.heading
+  // takes over (variant-aware episode/standalone copy from getGoCtaCopy).
+  // The key on the heading div re-mounts it on each change, replaying the
+  // attention pulse animation exactly once per transition.
+  const activeHeading = completed ? ctaCopy.heading : getGoMidHeading(pct50Reached, pct75Reached, story)
 
   return (
     <div style={{
@@ -365,8 +410,24 @@ function GoLandingContent() {
           textAlign: 'center',
           animation: completed ? 'goCtaCompletionPulse 300ms ease-out 1' : 'none',
         }}>
-          <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#ffffff', marginBottom: '0.35rem' }}>
-            {ctaCopy.heading}
+          {/* CTA-HEADING-002: key on heading text forces a fresh DOM node on
+              each milestone transition (pct50 → pct75 → completion), replaying
+              the attention pulse animation exactly once per heading change.
+              Animation gated on any milestone reached so it never fires on
+              the initial reveal (before any milestone). */}
+          <div
+            key={activeHeading}
+            style={{
+              fontSize: '1.25rem',
+              fontWeight: 800,
+              color: '#ffffff',
+              marginBottom: '0.35rem',
+              animation: (pct50Reached || pct75Reached || completed)
+                ? 'goCtaCompletionPulse 300ms ease-out 1'
+                : 'none',
+            }}
+          >
+            {activeHeading}
           </div>
 
           {/* Promo applied badge (only after server-truth validation; never raw codes) */}

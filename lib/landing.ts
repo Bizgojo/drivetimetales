@@ -262,6 +262,45 @@ export function nextCompletedState(alreadyCompleted: boolean, endedFired: boolea
 }
 
 // ============================================================================
+// CTA-HEADING-002 (Marc approval, 2026-07-21): progress-aware mid-listen CTA
+// heading. At pct_50 and pct_75 the bottom sheet heading updates to reflect
+// the listener's actual position — breaking temporal normalization and
+// creating genuine urgency before completion. Static copy per Marc decision.
+// Series openers (variants a/b, completedHeading set) get episode-framed copy;
+// standalone bare /go gets simpler copy. Pure + exported for unit testing
+// (__tests__/cta-heading-002.test.ts).
+// ============================================================================
+
+/** Series-opener mid-listen headings (variants a/b — both Episode 1 openers). */
+export const GO_MID_HEADING_PCT50_SERIES = "You're halfway through Episode 1."
+export const GO_MID_HEADING_PCT75_SERIES = "The ending is 2 minutes away."
+
+/** Standalone mid-listen headings (bare /go — The Grave He Dug Himself, fallback). */
+export const GO_MID_HEADING_PCT50_STANDALONE = 'Halfway through.'
+export const GO_MID_HEADING_PCT75_STANDALONE = 'Almost at the ending.'
+
+/**
+ * Active CTA heading for the pre-completion sheet, keyed to the listener's
+ * pct milestone state. Returns the appropriate static copy based on progress
+ * and whether the story is a series opener (identified by completedHeading
+ * being set — all series-opener variants define one).
+ *
+ * Priority: pct75 > pct50 > default ("Keep the story going").
+ * Caller is responsible for gating behind !completed (completion heading is
+ * managed separately by getGoCtaCopy).
+ */
+export function getGoMidHeading(
+  pct50Reached: boolean,
+  pct75Reached: boolean,
+  story?: Pick<GoStory, 'completedHeading'>,
+): string {
+  const isSeries = Boolean(story?.completedHeading)
+  if (pct75Reached) return isSeries ? GO_MID_HEADING_PCT75_SERIES : GO_MID_HEADING_PCT75_STANDALONE
+  if (pct50Reached) return isSeries ? GO_MID_HEADING_PCT50_SERIES : GO_MID_HEADING_PCT50_STANDALONE
+  return GO_CTA_COPY_DEFAULT.heading
+}
+
+// ============================================================================
 // SUS/ATL-LANDING-001 rev B (localStorage variant): anonymous listening
 // position for the /go sample. Written throttled while playing; read back on
 // /go mount so the story resumes where the visitor left off — including
