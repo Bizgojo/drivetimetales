@@ -7,6 +7,8 @@ import path from 'path'
 import os from 'os'
 import { createHash } from 'crypto'
 import { CANONICAL_BELLE_B_VOICE_ID, RESERVED_BELLE_B_VOICE_IDS, isBelleBVoiceId } from '@/lib/voiceConstants'
+// CASTING-ALIAS-001: structured error builder for character_description_missing gate
+import { buildStructuredError } from '@/lib/pipeline-runner/types'
 import { buildProductionLearningFeedback } from '@/lib/productionLearning'
 import { classifySegmentInventory } from '@/lib/artifactGate'
 import { resolveNarratorVoiceId } from '@/lib/preflight/narrator-check'
@@ -802,7 +804,19 @@ function inferFallbackCharacterMeta(speakerName: string): { gender: string; age:
 function scoreVoice(voice: CharacterVoiceRow, meta: { gender: string; age: string; accent: string; tones: string[]; regionalTags: string[] }): number {
   const labels = characterVoiceLabels(voice)
   let score = 0
-  // Gender - hard requirement, massive penalty for mismatch
+  // Gender - hard requirement, massive penalty for mismatch.
+  // CASTING-ALIAS-001 (c): The `if (meta.gender && labels.gender)` guard is intentional
+  // but has a dangerous bypass: when meta.gender is empty string ('') — which happens
+  // when inferFallbackCharacterMeta() finds no gender signal in the speaker name (e.g.
+  // 'Gray', 'Kendrick', 'Drew') — the entire gender check is skipped and any voice
+  // can be selected, including one with the wrong gender. This was the mechanism behind
+  // Gray's wrong-gender assignment: no CHARACTER GUIDE description →
+  // inferFallbackCharacterMeta('Gray') → gender='' → guard bypassed ('Gray' carries no
+  // title-prefix signal) → male voice scored equally against female voices → wrong
+  // gender assigned. The hard gate in autoCastMissingSpeakers() eliminates this path:
+  // a speaker with no description and no established series/story voice now halts
+  // generation before ever reaching scoreVoice(), making the bypass unreachable for
+  // uncast orphan speakers.
   if (meta.gender && labels.gender) {
     if (labels.gender.toLowerCase() === meta.gender.toLowerCase()) score += 100
     else return -999 // Wrong gender - never use
@@ -2995,39 +3009,60 @@ export async function POST(req: NextRequest) {
     const characterSpeakers = Array.from(new Set(storyLines
       .filter(l => l.type === 'character' && !nonDialogueSpeakers.has(l.speaker.toUpperCase()))
       .map(l => l.speaker.toUpperCase())))
+    // CASTING-ALIAS-001: Hard gate — speakers reaching this function have no character
+    // description in the CHARACTER GUIDE and are therefore uncastable by the pipeline.
+    // The ONLY legitimate path through is if the character has an established voice in
+    // the series roster or story assignments (reuse only — never assign a guessed voice).
+    // Any speaker with no established voice halts generation with marc_required=true.
+    // Previously, this function called inferFallbackCharacterMeta() to guess a voice
+    // from the speaker name. That path silently produced wrong casts when the name
+    // carried no gender signal (see scoreVoice() gender-guard bypass comment, item c).
     const autoCastMissingSpeakers = async (speakers: string[]) => {
       const unresolved: string[] = []
 
       for (const speaker of speakers) {
         if (voiceMap[speaker]) continue
 
+        // Escape valve: check for an established series/story voice first.
+        // A character cast in a prior episode can be reused even without a description.
+        let establishedAssignment: { voice_id: string; voice_name?: string | null } | null = null
         try {
-          const meta = inferFallbackCharacterMeta(speaker)
-          const selection = await findVoiceForCharacter(
-            speaker,
-            meta,
-            characterVoicePool,
-            usedVoiceIds,
-            resolvedNarratorVoiceId,
-            characterVoiceContext
-          )
-          assignCharacterVoice(voiceMap, speaker, selection.voiceId)
-          usedVoiceIds.add(selection.voiceId)
-          const warning = `Auto-assigned fallback voice for unmapped speaker ${speaker}`
-          warnings.push(warning)
-          console.warn(`  ⚠️ ${warning}: ${selection.voiceName || selection.voiceId}`)
-          if (selection.reusedVoice) {
-            reusedVoices.push({
-              character: speaker,
-              voiceId: selection.voiceId,
-              voiceName: selection.voiceName,
-              score: selection.score,
-            })
+          const storyAssignment = await findStoryCharacterAssignment(characterVoiceContext.storyId, speaker)
+          if (storyAssignment?.voice_id) {
+            establishedAssignment = storyAssignment
+          } else {
+            const seriesAssignment = await findSeriesCharacterAssignment(characterVoiceContext.seriesId, speaker)
+            if (seriesAssignment?.voice_id) {
+              establishedAssignment = seriesAssignment
+            }
           }
         } catch (e) {
-          console.warn(`  ⚠️ Auto-cast failed for unmapped speaker ${speaker}:`, e)
-          unresolved.push(speaker)
+          console.warn(`  ⚠️ Roster lookup failed for unmapped speaker ${speaker}:`, e)
         }
+
+        if (establishedAssignment?.voice_id) {
+          // Reuse established voice — safe path, no guessing
+          assignCharacterVoice(voiceMap, speaker, establishedAssignment.voice_id)
+          usedVoiceIds.add(establishedAssignment.voice_id)
+          const note = `Reused established series/story voice for speaker ${speaker} (alias or prior assignment)`
+          warnings.push(note)
+          console.log(`  ✓ ${note}: ${establishedAssignment.voice_name || establishedAssignment.voice_id}`)
+          reusedVoices.push({
+            character: speaker,
+            voiceId: establishedAssignment.voice_id,
+            voiceName: establishedAssignment.voice_name || undefined,
+            score: 0,
+          })
+          continue
+        }
+
+        // No established voice AND no character description — HARD GATE.
+        // Never call inferFallbackCharacterMeta() here. Never guess. Halt.
+        console.error(
+          `  ❌ CAST BLOCKED: "${speaker}" has no character description in the CHARACTER GUIDE ` +
+          `and no established series/story voice. Generation halted. marc_required=true.`
+        )
+        unresolved.push(speaker)
       }
 
       return unresolved
@@ -3035,13 +3070,28 @@ export async function POST(req: NextRequest) {
 
     const missingVoiceMap = characterSpeakers.filter(speaker => !resolveVoiceForSpeaker(voiceMap, speaker))
     if (missingVoiceMap.length > 0) {
-      console.warn(`  ⚠️ Missing character voice assignments; attempting fallback auto-cast: ${missingVoiceMap.join(', ')}`)
+      console.warn(`  ⚠️ Missing character voice assignments; checking series roster for established voices: ${missingVoiceMap.join(', ')}`)
       const stillMissingVoiceMap = await autoCastMissingSpeakers(missingVoiceMap)
       if (stillMissingVoiceMap.length > 0) {
-        console.error(`  ❌ Missing character voice assignments: ${stillMissingVoiceMap.join(', ')}`)
+        const availableGuideCharacters = characterGuide.map(c => c.name)
+        console.error(`  ❌ Cast blocked — characters with no description and no series voice: ${stillMissingVoiceMap.join(', ')}`)
         return NextResponse.json({
           success: false,
-          error: 'Missing character voice assignments',
+          error_json: buildStructuredError(
+            'character_description_missing',
+            `${stillMissingVoiceMap.length} character(s) appear in the script but have no character description available for casting: ${stillMissingVoiceMap.join(', ')}. Add each to the CHARACTER GUIDE with gender, age, and description, OR add as an alias of an existing character in series_character_roster.`,
+            'generate_voices',
+            {
+              marc_required: true,
+              detail: {
+                unmappedSpeakers: stillMissingVoiceMap,
+                availableGuideCharacters,
+                storyId,
+                seriesId: characterVoiceContext.seriesId,
+              },
+              fixRecommendation: `For each blocked character: (1) add to CHARACTER GUIDE with gender, age, and description, OR (2) add as alias of an existing series_character_roster entry.`,
+            }
+          ),
           missingCharacters: stillMissingVoiceMap,
         }, { status: 422 })
       }

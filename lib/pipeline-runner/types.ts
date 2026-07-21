@@ -115,6 +115,8 @@ export type StructuredErrorJsonKind =
   | 'transcript_hyphenated_numeric'      // Whisper returned digit form of a hyphenated two-digit word-number — accepted after normalization
   // PREMISE-UNIQUENESS-001: brief premise substantially similar to a protected story
   | 'premise_collision'                  // brief bounced for rework; override only by Marc's recorded word (marc_required, not retryable)
+  // CASTING-ALIAS-001: speaker in script has no character description for casting
+  | 'character_description_missing'      // speaker appears in script body but has no CHARACTER GUIDE entry and no established series/story voice (marc_required, never auto-retryable)
   // ATL-PIPE-010: Belle intro/outro validation and repair failure kinds
   | 'belle_quality_hook_missing'         // standalone intro lacks concrete narrative hook (auto-repairable)
   | 'belle_quality_title_missing'        // standalone intro/outro missing story title (auto-repairable)
