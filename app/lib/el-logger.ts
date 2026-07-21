@@ -53,7 +53,7 @@ export async function elevenLabsTTS(opts: {
   modelId?: string
 }): Promise<Buffer> {
   const EL_KEY = process.env.ELEVENLABS_API_KEY!
-  const model = opts.modelId || 'eleven_monolingual_v1'
+  const model = opts.modelId || 'eleven_multilingual_v2'
   const body = JSON.stringify({
     text: opts.text,
     model_id: model,

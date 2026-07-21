@@ -654,6 +654,33 @@ function examples(items: any[]) {
   }
 }
 
+// ── story_workflow_audit helper ─────────────────────────────────────────────
+// Best-effort: logs errors but never throws so the main response isn't blocked.
+async function insertAuditRows(
+  rows: Array<{
+    storyId: string
+    fromState: string | null
+    toState: string
+    changedBy: string
+    reason: string | null
+  }>
+): Promise<void> {
+  if (rows.length === 0) return
+  const records = rows.map((r) => ({
+    story_id:        r.storyId,
+    from_state:      r.fromState,
+    to_state:        r.toState,
+    changed_by:      r.changedBy || 'console',
+    changed_at:      new Date().toISOString(),
+    reason:          r.reason,
+    session_context: 'production-console',
+  }))
+  const { error } = await supabase.from('story_workflow_audit').insert(records)
+  if (error) {
+    console.error('[content-approval] story_workflow_audit insert failed:', error.message)
+  }
+}
+
 function reviewStatusForWorkflowState(state: WorkflowState) {
   if (state === 'approved_ready' || state === 'published') return 'approved'
   if (state === 'ready_for_review' || state === 'stories_in_queue' || state === 'scripts_ready') return 'pending'
@@ -1108,6 +1135,16 @@ export async function POST(req: NextRequest) {
         storyIds: (data || []).map((row: { id: string }) => row.id),
         toState: 'ready_for_review',
       })
+      // ATL-CONSOLE-AUDIT-001: write story_workflow_audit rows for every episode
+      await insertAuditRows(
+        (data || []).map((row: { id: string }) => ({
+          storyId:   row.id,
+          fromState: null, // set_series_ready_for_review forces state without reading current
+          toState:   'ready_for_review',
+          changedBy: changedBy || 'console',
+          reason:    changeReason,
+        }))
+      )
       return json({
         success: true,
         seriesId,
@@ -1212,6 +1249,19 @@ export async function POST(req: NextRequest) {
         }, 500)
       }
 
+      // ATL-CONSOLE-AUDIT-001: write story_workflow_audit rows for every episode
+      await insertAuditRows(
+        (data || []).map((row: { id: string }) => {
+          const seriesRow = seriesRows.find((r: any) => r.id === row.id)
+          return {
+            storyId:   row.id,
+            fromState: seriesRow ? effectiveWorkflowState({ ...seriesRow as StoryRow, repair_checklist: null, repair_notes: null }) : null,
+            toState:   state,
+            changedBy: changedBy || 'console',
+            reason:    changeReason,
+          }
+        })
+      )
       return json({ success: true, seriesId, updatedCount, stories: data || [] })
     }
 
@@ -1241,6 +1291,16 @@ export async function POST(req: NextRequest) {
           .eq("series_id", seriesId)
           .select("id,workflow_state,review_notes")
         if (error) return json({ success: false, error: error.message }, 500)
+        // ATL-CONSOLE-AUDIT-001: series recover — from_state is cold_storage by definition
+        await insertAuditRows(
+          (data || []).map((row: { id: string }) => ({
+            storyId:   row.id,
+            fromState: 'cold_storage',
+            toState:   'stories_in_queue',
+            changedBy: changedBy || 'console',
+            reason:    changeReason,
+          }))
+        )
         return json({ success: true, seriesId, updatedCount: data?.length || 0 })
       }
 
@@ -1262,6 +1322,16 @@ export async function POST(req: NextRequest) {
         .select("id,workflow_state,review_notes")
         .maybeSingle()
       if (error) return json({ success: false, error: error.message }, 500)
+      // ATL-CONSOLE-AUDIT-001: single story recover
+      if (data) {
+        await insertAuditRows([{
+          storyId:   singleStoryId,
+          fromState: 'cold_storage',
+          toState:   'stories_in_queue',
+          changedBy: changedBy || 'console',
+          reason:    changeReason,
+        }])
+      }
       return json({ success: true, story: data })
     }
 
@@ -1376,6 +1446,14 @@ export async function POST(req: NextRequest) {
     // PREMISE-UNIQUENESS-001: protected-state entry upserts the premise
     // reservation; cold_storage entry frees it (best-effort, never blocks).
     await syncPremiseIndexForTransition(supabase, { storyIds: [storyId], toState: state })
+    // ATL-CONSOLE-AUDIT-001: single story workflow state change
+    await insertAuditRows([{
+      storyId:   storyId,
+      fromState: from,
+      toState:   state,
+      changedBy: changedBy || 'console',
+      reason:    changeReason,
+    }])
     return json({ success: true, story: data })
   } catch (err: any) {
     console.error('[content-approval] POST failed:', err)
