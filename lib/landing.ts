@@ -301,6 +301,27 @@ export function getGoMidHeading(
 }
 
 // ============================================================================
+// TRUST-SIGNALS-001 (Marc approval, 2026-07-21): social proof + trial
+// reminder copy for /go. Exported as constants so strings are byte-exact
+// testable (__tests__/trust-signals-001.test.ts) and can be updated from
+// one place.
+// ============================================================================
+
+/**
+ * Catalog depth social proof — displayed in the page body below the
+ * brand mark. Marc-approved phrasing (2026-07-21).
+ */
+export const GO_SOCIAL_PROOF_LINE = '1,000+ stories across 12 genres'
+
+/**
+ * Trial reminder reassurance — displayed below the CTA button and in the
+ * static footer. Accurate to the actual email cadence (Day 3, Day 10,
+ * Day 13 — see app/api/cron/trial-emails/route.ts). Does NOT promise a
+ * specific day-count so it stays accurate if the cadence changes.
+ */
+export const GO_TRIAL_REMINDER_LINE = "We'll email you a heads-up before your trial ends."
+
+// ============================================================================
 // SUS/ATL-LANDING-001 rev B (localStorage variant): anonymous listening
 // position for the /go sample. Written throttled while playing; read back on
 // /go mount so the story resumes where the visitor left off — including
