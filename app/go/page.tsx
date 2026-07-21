@@ -62,6 +62,16 @@ HARD RULES:
     the listener at pct_50 and pct_75, replacing the static
     'Keep the story going' that normalizes into background noise after
     8+ minutes on screen.
+- TRUST-SIGNALS-001 (Marc approval, 2026-07-21):
+  · Social proof: '1,000+ stories across 12 genres' displayed in the
+    page body, always visible (no reveal gate). Signals catalog depth
+    before the listener commits.
+  · Trial reminder: 'We’ll email you a heads-up before your trial ends.'
+    displayed in the bottom sheet (both states) and static footer.
+    Accurate to the real email cadence (Day 3 / Day 10 / Day 13 —
+    see app/api/cron/trial-emails/route.ts). Addresses the
+    'I’ll forget and get charged' fear without overpromising a specific
+    day. No auth calls; no new beacons; copy-only addition.
   · Series openers (a/b): pct_50 → 'You’re halfway through Episode 1.',
     pct_75 → 'The ending is 2 minutes away.'
   · Standalone (bare): pct_50 → 'Halfway through.', pct_75 → 'Almost
@@ -91,6 +101,8 @@ import {
   resolveGoStory,
   shouldRevealTrialCta,
   CTA_REVEAL_LISTEN_SEC,
+  GO_SOCIAL_PROOF_LINE,
+  GO_TRIAL_REMINDER_LINE,
 } from '@/lib/landing'
 import GoSamplePlayer from '@/components/GoSamplePlayer'
 import { trackClientEvent } from '@/lib/tracking/client'
@@ -339,6 +351,19 @@ function GoLandingContent() {
           </span>
         </div>
 
+        {/* TRUST-SIGNALS-001: catalog depth social proof — displayed in the
+            page body, always visible once the page loads (no reveal gate).
+            Signals product substance before the listener commits. */}
+        <div style={{
+          fontSize: '12px',
+          color: '#9ca3af',
+          textAlign: 'center',
+          marginBottom: '0.75rem',
+          letterSpacing: '0.01em',
+        }}>
+          {GO_SOCIAL_PROOF_LINE}
+        </div>
+
         {/* ===== STATIC BOTTOM CTA — WALK-BUG-0713 #1 (Marc, 2026-07-13):
             NO trial CTA of any kind before the hook lands. This block now
             renders only after the same per-story reveal latch as the sheet
@@ -365,6 +390,11 @@ function GoLandingContent() {
           {/* UX-GO-001 CTA-001 Option A: honest card-required trial line. */}
           <div style={{ fontSize: '0.8rem', color: '#9ca3af', marginTop: '0.55rem' }}>
             {trial.subtext}
+          </div>
+          {/* TRUST-SIGNALS-001: trial reminder reassurance. Accurate to the
+              actual email cadence (Day 3 / Day 10 / Day 13). */}
+          <div style={{ fontSize: '0.75rem', color: '#6b7280', marginTop: '0.3rem' }}>
+            {GO_TRIAL_REMINDER_LINE}
           </div>
         </div>
         )}
@@ -469,6 +499,13 @@ function GoLandingContent() {
               {ctaCopy.footnote}
             </p>
           )}
+
+          {/* TRUST-SIGNALS-001: trial reminder reassurance — always shown in
+              the sheet (both pre-completion and completion states). Accurate
+              to the actual email cadence (Day 3 / Day 10 / Day 13). */}
+          <p style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.45)', margin: '0.5rem 0 0', lineHeight: 1.4 }}>
+            {GO_TRIAL_REMINDER_LINE}
+          </p>
         </div>
       </div>
     </div>
