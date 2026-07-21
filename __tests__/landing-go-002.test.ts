@@ -211,11 +211,12 @@ describe('SUS/ATL-LANDING-002 rev C: layout + copy pins', () => {
     expect(pageSrc).not.toMatch(/<ul/)
   })
 
-  test('CTA sheet copy (UX-GO-001): state copy via getGoCtaCopy, card-honest trial line rendered', () => {
-    // Heading/button/footnote now come from lib/landing.ts getGoCtaCopy so
-    // the completion state (CTA-002) can pivot them — byte-exact strings are
-    // pinned in __tests__/ux-go-001.test.ts.
-    expect(pageSrc).toContain('{ctaCopy.heading}')
+  test('CTA sheet copy (UX-GO-001 + CTA-HEADING-002): state copy via getGoCtaCopy/getGoMidHeading, card-honest trial line rendered', () => {
+    // CTA-HEADING-002: heading is now activeHeading (pre-completion: getGoMidHeading;
+    // completion: ctaCopy.heading). Button/footnote still come from ctaCopy.
+    // Byte-exact heading strings pinned in __tests__/cta-heading-002.test.ts.
+    expect(pageSrc).toContain('{activeHeading}')
+    expect(pageSrc).not.toContain('{ctaCopy.heading}') // replaced by activeHeading
     expect(pageSrc).toContain('{ctaCopy.buttonLabel}')
     expect(pageSrc).toContain('{ctaCopy.footnote}')
     // CTA-001 Option A: the bare days-line was replaced by trial.subtext.
