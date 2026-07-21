@@ -310,8 +310,11 @@ function titleFromQueue(queueItem: any) {
   return title
 }
 
+// ATL-SFX-INCR-001: match both segment_NNNN.mp3 (voice lines) and sfx_NNNN.mp3
+// (SFX cues) so that missingSegments arrays containing sfx file names correctly
+// drive nextSegmentNumber lookup in the incremental voice-generation runner.
 function segmentNumberFromName(name: string): number | null {
-  const match = String(name || '').match(/^segment_(\d{4})\.mp3$/)
+  const match = String(name || '').match(/^(?:segment|sfx)_(\d{4})\.mp3$/)
   if (!match) return null
   const value = Number(match[1])
   return Number.isInteger(value) ? value : null

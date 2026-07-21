@@ -3049,9 +3049,15 @@ export async function POST(req: NextRequest) {
     warnings.forEach(w => console.warn(`  ⚠️ ${w}`))
     const segmentFilePattern = /^segment_\d{4}\.mp3$/
     const storyAudioFolder = `asc3/${storyId}`
+    // ATL-SFX-INCR-001: include sfx-type lines so the incremental path tracks
+    // sfx_NNNN.mp3 files as expected artifacts alongside segment_NNNN.mp3 files.
+    // Without this, missingSegments never contained SFX file names and the runner
+    // considered voice generation complete without ever requesting SFX generation.
     const expectedSegmentNames = storyLines
-      .filter(line => line.type === 'narrator' || line.type === 'character' || line.type === 'beat' || line.type === 'pause')
-      .map(line => `segment_${line.index.toString().padStart(4, '0')}.mp3`)
+      .filter(line => line.type === 'narrator' || line.type === 'character' || line.type === 'beat' || line.type === 'pause' || line.type === 'sfx')
+      .map(line => line.type === 'sfx'
+        ? `sfx_${line.index.toString().padStart(4, '0')}.mp3`
+        : `segment_${line.index.toString().padStart(4, '0')}.mp3`)
     const buildInventoryReport = (presentSegmentNames: Set<string>, failures: VoiceInventoryFailure[] = []) => {
       const missingSegments = expectedSegmentNames.filter(name => !presentSegmentNames.has(name))
       return {
@@ -3068,7 +3074,9 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ success: false, error: 'retryMissingOnly requires a valid segmentNumber' }, { status: 400 })
       }
 
-      const targetableStoryLines = storyLines.filter(line => line.type === 'narrator' || line.type === 'character' || line.type === 'beat' || line.type === 'pause')
+      // ATL-SFX-INCR-001: sfx lines are targetable in the incremental path;
+      // include them so parsedSegmentNumbers and lastTargetableSegmentNumber are accurate.
+      const targetableStoryLines = storyLines.filter(line => line.type === 'narrator' || line.type === 'character' || line.type === 'beat' || line.type === 'pause' || line.type === 'sfx')
       const targetLine = storyLines.find(line => line.index === requestedSegmentNumber)
       if (!targetLine) {
         const parsedSegmentNumbers = targetableStoryLines.map(line => line.index).sort((a, b) => a - b)
@@ -3116,7 +3124,16 @@ export async function POST(req: NextRequest) {
       for (const name of gateResult.staleWarnNames) {
         console.log(`Segment ${name}: warn range (5KB–20KB) — treating as valid short-line segment (INC-006)`)
       }
-      const targetFileName = `segment_${requestedSegmentNumber.toString().padStart(4, '0')}.mp3`
+      // ATL-SFX-INCR-001: also include sfx_NNNN.mp3 files present in storage so the
+      // "already exists" check and missingSegments diff account for SFX artifacts.
+      const sfxFilePattern = /^sfx_\d{4}\.mp3$/
+      for (const sfxFile of (existingAudioFiles || []).filter(f => sfxFilePattern.test(f.name))) {
+        existingSegmentNames.add(sfxFile.name)
+      }
+      // ATL-SFX-INCR-001: SFX lines use sfx_NNNN.mp3 naming; all other lines use segment_NNNN.mp3
+      const targetFileName = targetLine.type === 'sfx'
+        ? `sfx_${requestedSegmentNumber.toString().padStart(4, '0')}.mp3`
+        : `segment_${requestedSegmentNumber.toString().padStart(4, '0')}.mp3`
       if (existingSegmentNames.has(targetFileName)) {
         const inventory = buildInventoryReport(existingSegmentNames)
         return NextResponse.json({
@@ -3152,6 +3169,14 @@ export async function POST(req: NextRequest) {
           }
           const url = await generateVoiceLine(targetLine.text, voiceId, storyId, targetLine.index, 'segment', true, targetLine.speaker, 8, qcSkippedSegments)
           generatedSegments.push({ index: targetLine.index, speaker: targetLine.speaker, type: targetLine.type, url })
+        } else if (targetLine.type === 'sfx') {
+          // ATL-SFX-INCR-001: generate SFX audio for [SFX:] cues in the incremental path.
+          // The full render path generates these in its main loop; the incremental path
+          // previously threw here, leaving sfx_NNNN.mp3 files absent from storage.
+          // generateSFX() writes sfx_NNNN.mp3; render-final-mix picks it up via sfxPattern.
+          const sfxUrl = await generateSFX(targetLine.text, storyId, targetLine.index)
+          if (!sfxUrl) throw new Error(`SFX generation returned null for cue "${targetLine.text}" (index ${targetLine.index}) — ElevenLabs SFX API may be unavailable`)
+          generatedSegments.push({ index: targetLine.index, speaker: 'SFX', type: 'sfx', url: sfxUrl })
         } else {
           throw new Error(`Targeted retry does not support ${targetLine.type} lines`)
         }
@@ -3185,6 +3210,11 @@ export async function POST(req: NextRequest) {
       // ATL-LEARN-001: Use Artifact Validity Gate for updated inventory (same thresholds as above)
       const updatedGate = classifySegmentInventory(updatedAudioFiles || [], segmentFilePattern)
       const updatedSegmentNames = updatedGate.validSegmentNames
+      // ATL-SFX-INCR-001: also collect sfx_NNNN.mp3 files in the post-generation inventory
+      // so buildInventoryReport sees them and missingSegments is accurate for SFX lines.
+      for (const sfxFile of (updatedAudioFiles || []).filter(f => sfxFilePattern.test(f.name))) {
+        updatedSegmentNames.add(sfxFile.name)
+      }
       const inventory = buildInventoryReport(updatedSegmentNames, failures)
 
       return NextResponse.json({
