@@ -81,10 +81,11 @@ describe('UX-GO-001 CTA-001 Option A: card-required trial copy', () => {
     expect(landingSrc).toContain("Card required — you won't be charged before your ${days}-day free trial ends. Then just ${GO_MONTHLY_PRICE_DISPLAY}/month. Cancel anytime.")
   })
 
-  test('BOTH surfaces render trial.subtext (sheet + static footer)', () => {
-    expect((pageSrc.match(/\{trial\.subtext\}/g) || []).length).toBe(2)
-    // The old bare days-line is gone from both surfaces.
-    expect(pageSrc).not.toContain('-day free trial · cancel anytime')
+  test('bottom sheet renders trial.subtext (feat/funnel-fixes-001: static footer removed)', () => {
+    // Static CTA removed — trial.subtext now appears exactly once (bottom sheet only).
+    expect((pageSrc.match(/\{trial\.subtext\}/g) || []).length).toBe(1)
+    // The old bare days-line is gone.
+    expect(pageSrc).not.toContain('-day free trial \u00b7 cancel anytime')
     // And the old unreconciled subtext copy no longer exists anywhere.
     const landingSrc = fs.readFileSync(path.join(__dirname, '..', 'lib', 'landing.ts'), 'utf8')
     expect(landingSrc).not.toContain('Free for ${days} days.')
@@ -197,11 +198,16 @@ describe('UX-GO-001 CTA-002: completion latch — transitions exactly once', () 
     expect(pageSrc).toContain('onPlaybackEnded={handlePlaybackEnded}')
   })
 
-  test('cta_click unchanged: same handler + same href on both buttons in both states', () => {
-    expect((pageSrc.match(/onClick=\{handleCtaClick\}/g) || []).length).toBe(2)
-    expect((pageSrc.match(/href=\{ctaHref\}/g) || []).length).toBe(2)
-    // The href is still the promo+utm campaign builder — no new params.
+  test('cta_click wired to the single bottom sheet button (feat/funnel-fixes-001 rev 2)', () => {
+    // Static CTA removed — exactly one onClick + one href (bottom sheet).
+    expect((pageSrc.match(/onClick=\{handleCtaClick\}/g) || []).length).toBe(1)
+    expect((pageSrc.match(/href=\{ctaHref\}/g) || []).length).toBe(1)
+    // SECURITY FIX rev 2 (Marc msg 3732, 2026-07-22): href now passes source=go
+    // (NOT trialDays=14) so the checkout SERVER determines trial days. A user who
+    // crafts ?trialDays=3650 in the URL no longer gets a 10-year trial.
     expect(pageSrc).toContain('buildCampaignSignupHref(searchParams)')
+    expect(pageSrc).toContain('source=go')
+    expect(pageSrc).not.toContain('trialDays=${GO_BASE_TRIAL_DAYS}')
   })
 
   test('completion also shows the CTA surfaces (sheetVisible = ctaRevealed || completed)', () => {
