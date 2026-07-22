@@ -34,7 +34,7 @@ const trialEmailsSrc = fs.readFileSync(
 // ============================================================================
 describe('TRUST-SIGNALS-001: copy byte-exact pins', () => {
   test('social proof line — Marc-approved phrasing', () => {
-    expect(GO_SOCIAL_PROOF_LINE).toBe('Nearly 100 stories for your ears')
+    expect(GO_SOCIAL_PROOF_LINE).toBe('60+ stories for your ears')
   })
 
   test('trial reminder line — accurate to real email cadence', () => {
@@ -129,7 +129,7 @@ describe('TRUST-SIGNALS-001: placement constraints', () => {
 // ============================================================================
 describe('TRUST-SIGNALS-001: no fabricated claims', () => {
   test('social proof uses "+" modifier (60+) — not a hard claim', () => {
-    expect(GO_SOCIAL_PROOF_LINE).toContain('Nearly 100')
+    expect(GO_SOCIAL_PROOF_LINE).toContain('60+')
     expect(GO_SOCIAL_PROOF_LINE).not.toMatch(/^exactly \d/)
   })
 

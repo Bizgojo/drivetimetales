@@ -343,7 +343,7 @@ export function getGoMidHeading(
  * Catalog depth social proof — displayed in the page body below the
  * brand mark. Marc-approved phrasing (2026-07-21).
  */
-export const GO_SOCIAL_PROOF_LINE = 'Nearly 100 stories for your ears'
+export const GO_SOCIAL_PROOF_LINE = '60+ stories for your ears'
 
 /**
  * Trial reminder reassurance — displayed below the CTA button and in the
