@@ -266,7 +266,7 @@ function isAmbiguousTranscriptFailure(failure: SegmentTranscriptCheck): boolean 
 }
 
 function hasMultipleSentenceOrClauseBoundaries(value: string): boolean {
-  const matches = String(value || '').match(/[.!?;:]|[,--]\s+|\s+(?:and|but|so|then|because|while|when|after|before)\s+/gi)
+  const matches = String(value || '').match(/[.!?;:]|[,\u2014\u2013]\s+|\s+(?:and|but|so|then|because|while|when|after|before)\s+/gi)
   return (matches || []).length >= 2
 }
 
@@ -287,13 +287,13 @@ function splitTextForSegmentRescue(value: string): string[] {
   if (!source) return []
 
   const sentenceChunks = source
-    .match(/[^.!?]+[.!?]+["'"']?|[^.!?]+$/g)
+    .match(/[^.!?]+[.!?]+["'\u201D\u2019]?|[^.!?]+$/g)
     ?.map(chunk => chunk.trim())
     .filter(Boolean) || []
   const chunks = sentenceChunks.length >= 2
     ? sentenceChunks
     : source
-      .split(/(?<=[,;:-])\s+|\s+(?=(?:and|but|so|then|because|while|when|after|before)\b)/i)
+      .split(/(?<=[,;:\u2014\u2013])\s+|\s+(?=(?:and|but|so|then|because|while|when|after|before)\b)/i)
       .map(chunk => chunk.trim())
       .filter(Boolean)
 
@@ -1324,7 +1324,7 @@ type BelleValidationContext = {
 
 function cleanBelleText(value: string): string {
   return String(value || '')
-    .replace(/^["'""]+|["'""]+$/g, '')
+    .replace(/^["'\u201C\u201D]+|["'\u201C\u201D]+$/g, '')
     .replace(/^(ANNOUNCER|BELLE B|SANDY|Belle B|Belle)\s*:\s*/i, '')
     .replace(/\s+/g, ' ')
     .trim()
@@ -1388,7 +1388,7 @@ function validateBelleLine(kind: 'intro' | 'outro', text: string, ctx: BelleVali
   // [LISTENER_NAME] is a valid personalization placeholder in the script — do not reject it
   // ATL-BELLE-QC-BUG-002: strip quoted substrings before greeting check to allow series names like "The Welcome Committee".
   const cleanedForGreetingCheck = cleaned.replace(/"[^"]*"/g, ' ');
-  if (kind === 'intro' && /\b(welcome|settle in|let['']?s begin)\b/i.test(cleanedForGreetingCheck)) errors.push('announcement must not include greeting/opener language')
+  if (kind === 'intro' && /\b(welcome|settle in|let['\u2019]?s begin)\b/i.test(cleanedForGreetingCheck)) errors.push('announcement must not include greeting/opener language')
 
   if (kind === 'outro' && ctx.episodeState === 'series_non_final') {
     if (!/\b(next time|next episode|in the next episode|when episode|episode \d+|continues|will have to|will need to|pulls? us)\b/i.test(cleaned)) {
@@ -1495,7 +1495,7 @@ function parseCharacterGuide(script: string): CharacterInfo[] {
   if (!guideMatch) return chars
   const guideLines = guideMatch[1].split('\n').filter(l => l.trim())
   for (const line of guideLines) {
-    const nameMatch = line.match(/^([A-Za-zÀ-ÖØ-öø-ÿ][A-Za-zÀ-ÖØ-öø-ÿ\s'.()/]+?)\s*(?:[---]|:)/)
+    const nameMatch = line.match(/^([A-Za-z\u00C0-\u00D6\u00D8-\u00F6\u00F8-\u00FF][A-Za-z\u00C0-\u00D6\u00D8-\u00F6\u00F8-\u00FF\s'.()/]+?)\s*(?:[\u2014\u2013-]|:)/)
     if (!nameMatch) continue
     const name = nameMatch[1].trim()
     const lower = line.toLowerCase()
