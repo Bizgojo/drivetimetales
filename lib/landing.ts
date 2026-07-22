@@ -108,9 +108,10 @@ export interface GoStory {
    * extracted from. Used to offer 'continue from preview' vs 'start from
    * beginning' once Marc decides on the post-preview start position.
    * OPEN DECISION (logged to Marc, 2026-07-22): after preview completes, full
-   * episode starts at 0:00 or at previewStartSec (2:02). Currently 0:00.
+   * Marc ruling 2026-07-22 13:14: episode continues at previewContinueSec (138 = 2:18,
+   * end of the preview clip). Secondary "Start from the beginning" control also present.
    */
-  previewStartSec?: number
+  previewContinueSec?: number
 }
 
 /** DEFAULT — live today. Always renders while GO_AB_LIVE is false. */
@@ -169,7 +170,7 @@ export const GO_STORY_VARIANTS: Record<string, GoStory> = {
     // Clip extracted from position 122s (2:02) in the full episode.
     previewClipUrl: 'https://vmyhlfeouzslixtkmddy.supabase.co/storage/v1/object/public/audio/landing/preview/falls-park-he-didnt-fall/clip.mp3',
     previewCaptionsUrl: 'https://vmyhlfeouzslixtkmddy.supabase.co/storage/v1/object/public/audio/landing/preview/falls-park-he-didnt-fall/captions.vtt',
-    previewStartSec: 122,  // 2:02 in the full episode
+    previewContinueSec: 138,  // 2:18 = end of preview clip (Marc ruling msg 3666 + 3670)
   },
 }
 

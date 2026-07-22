@@ -46,10 +46,10 @@ ALTER TABLE go_variant_config
 -- Position (seconds) in the FULL episode audio where the preview was extracted
 -- from. Used to offer "continue from preview" vs "start from beginning".
 -- OPEN DECISION (logged to Marc, 2026-07-22): after preview completes, does
--- the full episode begin at 0:00 or at preview_start_sec (2:02)?
+-- Marc ruling 2026-07-22: full episode continues at preview_continue_sec (138 = 2:18, end of clip)
 -- Currently defaulting to 0:00 in app/go/page.tsx until Marc decides.
 ALTER TABLE go_variant_config
-  ADD COLUMN IF NOT EXISTS preview_start_sec INTEGER;
+  ADD COLUMN IF NOT EXISTS preview_continue_sec INTEGER;
 
 -- ============================================================================
 -- 3. Seed preview config for variant 'b' (Murder at Falls Park)
@@ -68,7 +68,7 @@ INSERT INTO go_variant_config (
   is_live,
   preview_clip_url,
   preview_captions_url,
-  preview_start_sec
+  preview_continue_sec
 ) VALUES (
   'b',
   'go-variant-b',
@@ -81,9 +81,9 @@ INSERT INTO go_variant_config (
   true,
   'https://vmyhlfeouzslixtkmddy.supabase.co/storage/v1/object/public/audio/landing/preview/falls-park-he-didnt-fall/clip.mp3',
   'https://vmyhlfeouzslixtkmddy.supabase.co/storage/v1/object/public/audio/landing/preview/falls-park-he-didnt-fall/captions.vtt',
-  122  -- 2:02 in the full episode
+  138  -- 2:18 = end of clip (Marc ruling msg 3666+3670)
 ) ON CONFLICT (id) DO UPDATE SET
   preview_clip_url     = EXCLUDED.preview_clip_url,
   preview_captions_url = EXCLUDED.preview_captions_url,
-  preview_start_sec    = EXCLUDED.preview_start_sec,
+  preview_continue_sec    = EXCLUDED.preview_continue_sec,
   updated_at           = NOW();

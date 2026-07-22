@@ -255,18 +255,15 @@ function GoLandingContent() {
   // (The preview continues playing — the muted state lives inside the overlay.)
 
   const handlePreviewEnded = useCallback(() => {
-    // OPEN DECISION (logged to Marc, 2026-07-22):
-    // After preview completes, should the full episode start at:
-    //   (a) 0:00 — "start from the beginning" (CURRENT DEFAULT)
-    //   (b) story.previewStartSec (2:02) — "continue from preview"
-    // Marc has not yet ruled. Defaulting to 0:00 until decision is received.
-    // The GoSamplePlayer's startPosition prop can accept the resume offset
-    // once Marc decides. The previewStartSec value (122) is available on
-    // the story object: story.previewStartSec
+    // Marc ruling 2026-07-22 13:14 (msg 3666): full episode continues at
+    // story.previewContinueSec (138 = 2:18, end of clip). Do NOT restart at
+    // 0:00 — that replays a confirmed NO-HOOK opener (HOOK-REWORK-001).
+    // Secondary "Start from the beginning" control is in GoPreviewOverlay.
     setPreviewActive(false)
-    // GoSamplePlayer will auto-play from 0:00 when it appears.
+    tracker?.fireOnce('preview_to_play', story.previewContinueSec ?? 138)
+    // GoSamplePlayer will auto-play from previewContinueSec when it appears.
     // The existing play_start event fires through handlePlaybackStart.
-  }, [])
+  }, [tracker, story.previewContinueSec])
 
   const handlePreviewLoadError = useCallback(() => {
     // Graceful fallback: audio failed to load. Remove preview UI; normal page.
@@ -277,10 +274,11 @@ function GoLandingContent() {
   // User tapped main play during preview: stop preview, start full episode.
   const handleMainPlayDuringPreview = useCallback(() => {
     if (!previewActive) return
+    tracker?.fireOnce('preview_skipped', 0)
     setShouldStopPreview(true)
     // Small delay to let the overlay's cleanup run before unmounting.
     setTimeout(() => setPreviewActive(false), 80)
-  }, [previewActive])
+  }, [previewActive, tracker])
 
   // ATL-PIXEL-001: ViewContent on landing view (both GVL variants), carrying
   // UTM params so ad platforms attribute the view. Client-only event — random

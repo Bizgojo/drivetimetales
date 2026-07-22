@@ -47,6 +47,8 @@ export type GoListenEventName =
   | 'preview_started'    // muted autoplay begins (position_seconds=0)
   | 'preview_completed'  // 15s clip ends naturally (position_seconds=15)
   | 'preview_unmuted'    // user taps "Tap for sound" (position_seconds=current preview pos)
+  | 'preview_to_play'    // auto-continue from preview end → full episode (position_seconds=previewContinueSec)
+  | 'preview_skipped'    // user tapped main play during preview, skipping to full episode (position_seconds=0)
 
 export const GO_LISTEN_ENDPOINT = '/api/go-listen'
 
