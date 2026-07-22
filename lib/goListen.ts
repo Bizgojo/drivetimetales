@@ -42,13 +42,14 @@ export type GoListenEventName =
   // GO-PREVIEW-001 (Marc authorization, msg 3662, 2026-07-22)
   // Preview lifecycle events — PRE-DDL SAFE: the go_listen_events CHECK
   // constraint on 'event' will reject unknown values until the CHECK is updated.
-  // The API 202s them quietly; client is fire-and-forget. Clients emit these
-  // events regardless of whether the DB constraint has been updated yet.
+  // The API 202s them quietly; client is fire-and-forget.
   | 'preview_started'    // muted autoplay begins (position_seconds=0)
   | 'preview_completed'  // 15s clip ends naturally (position_seconds=15)
   | 'preview_unmuted'    // user taps "Tap for sound" (position_seconds=current preview pos)
   | 'preview_to_play'    // auto-continue from preview end → full episode (position_seconds=previewContinueSec)
   | 'preview_skipped'    // user tapped main play during preview, skipping to full episode (position_seconds=0)
+  // CTA-INSTRUMENTATION-001 (Marc authorization, msg 3616, 2026-07-22)
+  | 'cta_rendered'
 
 export const GO_LISTEN_ENDPOINT = '/api/go-listen'
 
@@ -210,6 +211,10 @@ export interface GoListenTracker {
   onPreviewCompleted(): void
   /** Fires when user taps "Tap for sound" (position_seconds=current preview position). */
   onPreviewUnmuted(positionSeconds: number): void
+  /** CTA-INSTRUMENTATION-001: fired once when the bottom sheet first becomes
+   *  visible (ctaRevealed transitions false→true via the 45s listen latch).
+   *  Does NOT fire on completion-pulse or heading changes — only initial reveal. */
+  onCtaRendered(positionSeconds: number): void
   /** Exposed for tests/debugging only. */
   readonly sessionId: string
 }
@@ -281,6 +286,10 @@ export function createGoListenTracker(init: GoListenTrackerInit): GoListenTracke
     },
     onPreviewUnmuted(positionSeconds: number) {
       fireOnce('preview_unmuted', positionSeconds)
+    },
+    // CTA-INSTRUMENTATION-001
+    onCtaRendered(positionSeconds: number) {
+      fireOnce('cta_rendered', positionSeconds)
     },
   }
 }

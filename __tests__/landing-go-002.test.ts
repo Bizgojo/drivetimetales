@@ -27,7 +27,9 @@ import {
   getTrialDisplay,
 } from '@/lib/landing'
 
-const pageSrc = fs.readFileSync(path.join(__dirname, '..', 'app', 'go', 'page.tsx'), 'utf8')
+// CTA-INSTRUMENTATION-001 (2026-07-22): client logic extracted to GoLandingContent.tsx;
+// page.tsx is now a server component shell. Source pins read from the client file.
+const pageSrc = fs.readFileSync(path.join(__dirname, '..', 'app', 'go', 'GoLandingContent.tsx'), 'utf8')
 const playerSrc = fs.readFileSync(path.join(__dirname, '..', 'components', 'GoSamplePlayer.tsx'), 'utf8')
 const landingSrc = fs.readFileSync(path.join(__dirname, '..', 'lib', 'landing.ts'), 'utf8')
 
@@ -217,7 +219,10 @@ describe('SUS/ATL-LANDING-002 rev C: layout + copy pins', () => {
     // Byte-exact heading strings pinned in __tests__/cta-heading-002.test.ts.
     expect(pageSrc).toContain('{activeHeading}')
     expect(pageSrc).not.toContain('{ctaCopy.heading}') // replaced by activeHeading
-    expect(pageSrc).toContain('{ctaCopy.buttonLabel}')
+    // CTA-INSTRUMENTATION-001 BUILD 2: button label routed via sheetButtonLabel
+    // (config override pre-completion, ctaCopy.buttonLabel for completion/fallback).
+    expect(pageSrc).toContain('{sheetButtonLabel}')
+    expect(pageSrc).toContain('ctaCopy.buttonLabel') // still referenced inside sheetButtonLabel
     expect(pageSrc).toContain('{ctaCopy.footnote}')
     // CTA-001 Option A: the bare days-line was replaced by trial.subtext.
     expect(pageSrc).toContain('{trial.subtext}')

@@ -34,7 +34,9 @@ import {
   CTA_REVEAL_LISTEN_SEC,
 } from '@/lib/landing'
 
-const pageSrc = fs.readFileSync(path.join(__dirname, '..', 'app', 'go', 'page.tsx'), 'utf8')
+// CTA-INSTRUMENTATION-001 (2026-07-22): client logic extracted to GoLandingContent.tsx;
+// page.tsx is now a server component shell. Source pins read from the client file.
+const pageSrc = fs.readFileSync(path.join(__dirname, '..', 'app', 'go', 'GoLandingContent.tsx'), 'utf8')
 
 // ============================================================================
 // CTA-001 Option A — honest card-required copy (Marc verbatim basis:
@@ -233,7 +235,9 @@ describe('UX-GO-001: 45s+ listen reveal latch UNCHANGED', () => {
 
   test('page still owns ctaRevealed via shouldRevealTrialCta with the per-story threshold', () => {
     expect(pageSrc).toContain('shouldRevealTrialCta({ listenedSec: cum, alreadyRevealed: prev, revealAfterSec })')
-    expect(pageSrc).toContain('const revealAfterSec = story.ctaRevealSeconds')
+    // CTA-INSTRUMENTATION-001 BUILD 2: revealAfterSec now uses config override with
+    // story.ctaRevealSeconds as fallback (Marc-gated reveal_sec field in go_variant_config).
+    expect(pageSrc).toContain('story.ctaRevealSeconds') // still referenced as fallback
     // Completion must NOT write the reveal latch (they are independent).
     const endedHandler = pageSrc.slice(
       pageSrc.indexOf('const handlePlaybackEnded'),

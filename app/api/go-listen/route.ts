@@ -46,7 +46,7 @@ const RATE_LIMIT_WINDOW_MS = 60_000
 const RATE_LIMIT_MAX_EVENTS = 60
 const RATE_LIMIT_MAX_IPS = 10_000
 
-const VALID_EVENTS = new Set(['play_start', 'sec_30', 'pct_25', 'pct_50', 'pct_75', 'complete', 'cta_click'])
+const VALID_EVENTS = new Set(['play_start', 'sec_30', 'pct_25', 'pct_50', 'pct_75', 'complete', 'cta_click', 'cta_rendered'])
 const VALID_VARIANTS = new Set(['a', 'b', 'bare'])
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 

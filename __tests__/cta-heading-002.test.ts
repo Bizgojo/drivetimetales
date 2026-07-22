@@ -24,7 +24,9 @@ import {
   GO_STORY_VARIANTS,
 } from '@/lib/landing'
 
-const pageSrc = fs.readFileSync(path.join(__dirname, '..', 'app', 'go', 'page.tsx'), 'utf8')
+// CTA-INSTRUMENTATION-001 (2026-07-22): client logic extracted to GoLandingContent.tsx;
+// page.tsx is now a server component shell. Source pins read from the client file.
+const pageSrc = fs.readFileSync(path.join(__dirname, '..', 'app', 'go', 'GoLandingContent.tsx'), 'utf8')
 const landingSrc = fs.readFileSync(path.join(__dirname, '..', 'lib', 'landing.ts'), 'utf8')
 
 // ============================================================================
