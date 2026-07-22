@@ -81,7 +81,7 @@ INSERT INTO go_variant_config (
   true,
   'https://vmyhlfeouzslixtkmddy.supabase.co/storage/v1/object/public/audio/landing/preview/falls-park-he-didnt-fall/clip.mp3',
   'https://vmyhlfeouzslixtkmddy.supabase.co/storage/v1/object/public/audio/landing/preview/falls-park-he-didnt-fall/captions.vtt',
-  138  -- 2:18 = end of clip (Marc ruling msg 3666+3670)
+  0    -- episode now opens at hook; preview clip timestamp updated post-HOOK-REWORK-001
 ) ON CONFLICT (id) DO UPDATE SET
   preview_clip_url     = EXCLUDED.preview_clip_url,
   preview_captions_url = EXCLUDED.preview_captions_url,
