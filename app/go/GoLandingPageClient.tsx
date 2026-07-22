@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback, useRef, Suspense } from 'react'
+import { useState, useEffect, useCallback, useRef, Suspense, Component } from 'react'
 import Link from 'next/link'
 import Image from 'next/image'
 import { useSearchParams } from 'next/navigation'
@@ -149,10 +149,10 @@ function GoLandingContent() {
     // 0:00 — that replays a confirmed NO-HOOK opener (HOOK-REWORK-001).
     // Secondary "Start from the beginning" control is in GoPreviewOverlay.
     setPreviewActive(false)
-    tracker?.fireOnce('preview_to_play', story.previewContinueSec ?? 138)
+    listenTracker?.fireOnce('preview_to_play', story.previewContinueSec ?? 138)
     // GoSamplePlayer will auto-play from previewContinueSec when it appears.
     // The existing play_start event fires through handlePlaybackStart.
-  }, [tracker, story.previewContinueSec])
+  }, [listenTracker, story.previewContinueSec])
 
   const handlePreviewLoadError = useCallback(() => {
     // Graceful fallback: audio failed to load. Remove preview UI; normal page.
@@ -163,11 +163,11 @@ function GoLandingContent() {
   // User tapped main play during preview: stop preview, start full episode.
   const handleMainPlayDuringPreview = useCallback(() => {
     if (!previewActive) return
-    tracker?.fireOnce('preview_skipped', 0)
+    listenTracker?.fireOnce('preview_skipped', 0)
     setShouldStopPreview(true)
     // Small delay to let the overlay's cleanup run before unmounting.
     setTimeout(() => setPreviewActive(false), 80)
-  }, [previewActive, tracker])
+  }, [previewActive, listenTracker])
 
   // ATL-PIXEL-001: ViewContent on landing view (both GVL variants), carrying
   // UTM params so ad platforms attribute the view. Client-only event — random
@@ -491,10 +491,58 @@ function GoLandingContent() {
   )
 }
 
+// =============================================================================
+// DEBUG-BOUNDARY-001: temporary client error boundary — surfaces error.message
+// and stack on-screen so iOS FBAV crashes can be diagnosed without Vercel logs.
+// REMOVE once the root cause is confirmed and fixed.
+// =============================================================================
+interface GoErrorBoundaryState { error: Error | null }
+class GoErrorBoundary extends Component<{ children: React.ReactNode }, GoErrorBoundaryState> {
+  constructor(props: { children: React.ReactNode }) {
+    super(props)
+    this.state = { error: null }
+  }
+  static getDerivedStateFromError(error: Error): GoErrorBoundaryState {
+    return { error }
+  }
+  render() {
+    const { error } = this.state
+    if (error) {
+      return (
+        <div style={{
+          minHeight: '100vh',
+          backgroundColor: '#0f0f1a',
+          color: '#ffffff',
+          padding: '1.5rem',
+          fontFamily: 'monospace',
+          fontSize: '13px',
+          wordBreak: 'break-all',
+          overflowY: 'auto',
+        }}>
+          <div style={{ fontWeight: 'bold', marginBottom: '0.75rem', color: '#f97316', fontSize: '15px' }}>
+            ⚙️ DEBUG — client error (screenshot this)
+          </div>
+          <div style={{ marginBottom: '1rem', color: '#ff6b6b', fontSize: '14px', fontWeight: 700 }}>
+            {error.message || '(no message)'}
+          </div>
+          <div style={{ color: '#9ca3af', fontSize: '11px', lineHeight: 1.5 }}>
+            <pre style={{ whiteSpace: 'pre-wrap', margin: 0 }}>
+              {error.stack || '(no stack)'}
+            </pre>
+          </div>
+        </div>
+      )
+    }
+    return this.props.children
+  }
+}
+
 export default function GoLandingPage() {
   return (
-    <Suspense fallback={<LoadingFallback />}>
-      <GoLandingContent />
-    </Suspense>
+    <GoErrorBoundary>
+      <Suspense fallback={<LoadingFallback />}>
+        <GoLandingContent />
+      </Suspense>
+    </GoErrorBoundary>
   )
 }
