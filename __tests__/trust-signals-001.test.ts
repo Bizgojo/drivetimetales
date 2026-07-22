@@ -19,6 +19,10 @@ import {
 } from '@/lib/landing'
 
 const pageSrc = fs.readFileSync(path.join(__dirname, '..', 'app', 'go', 'page.tsx'), 'utf8')
+// GO-ACCURACY-001: client component extracted to GoLandingPageClient.tsx so
+// generateMetadata can live in the server-component page.tsx. Wiring and
+// placement tests must check the client file for JSX constants.
+const clientSrc = fs.readFileSync(path.join(__dirname, '..', 'app', 'go', 'GoLandingPageClient.tsx'), 'utf8')
 const landingSrc = fs.readFileSync(path.join(__dirname, '..', 'lib', 'landing.ts'), 'utf8')
 const trialEmailsSrc = fs.readFileSync(
   path.join(__dirname, '..', 'app', 'api', 'cron', 'trial-emails', 'route.ts'),
@@ -30,7 +34,7 @@ const trialEmailsSrc = fs.readFileSync(
 // ============================================================================
 describe('TRUST-SIGNALS-001: copy byte-exact pins', () => {
   test('social proof line — Marc-approved phrasing', () => {
-    expect(GO_SOCIAL_PROOF_LINE).toBe('1,000+ stories across 12 genres')
+    expect(GO_SOCIAL_PROOF_LINE).toBe('60+ stories for your ears')
   })
 
   test('trial reminder line — accurate to real email cadence', () => {
@@ -68,16 +72,16 @@ describe('TRUST-SIGNALS-001: reminder accuracy constraints', () => {
 // 3. Page wiring — both constants imported and rendered
 // ============================================================================
 describe('TRUST-SIGNALS-001: page wiring source pins', () => {
-  test('GO_SOCIAL_PROOF_LINE imported in page.tsx', () => {
-    expect(pageSrc).toContain('GO_SOCIAL_PROOF_LINE')
+  test('GO_SOCIAL_PROOF_LINE imported in GoLandingPageClient.tsx', () => {
+    expect(clientSrc).toContain('GO_SOCIAL_PROOF_LINE')
   })
 
-  test('GO_TRIAL_REMINDER_LINE imported in page.tsx', () => {
-    expect(pageSrc).toContain('GO_TRIAL_REMINDER_LINE')
+  test('GO_TRIAL_REMINDER_LINE imported in GoLandingPageClient.tsx', () => {
+    expect(clientSrc).toContain('GO_TRIAL_REMINDER_LINE')
   })
 
   test('social proof rendered via {GO_SOCIAL_PROOF_LINE}', () => {
-    expect(pageSrc).toContain('{GO_SOCIAL_PROOF_LINE}')
+    expect(clientSrc).toContain('{GO_SOCIAL_PROOF_LINE}')
   })
 
   test('trial reminder rendered via {GO_TRIAL_REMINDER_LINE}', () => {
@@ -117,8 +121,8 @@ describe('TRUST-SIGNALS-001: placement constraints', () => {
   })
 
   test('reminder appears in bottom sheet section (after TRIAL CTA comment)', () => {
-    const sheetIdx = pageSrc.indexOf('TRIAL CTA — bottom sheet')
-    const reminderOccurrences = Array.from(pageSrc.matchAll(/\{GO_TRIAL_REMINDER_LINE\}/g))
+    const sheetIdx = clientSrc.indexOf('TRIAL CTA — bottom sheet')
+    const reminderOccurrences = Array.from(clientSrc.matchAll(/\{GO_TRIAL_REMINDER_LINE\}/g))
     const hasOneAfterSheet = reminderOccurrences.some(m => (m.index ?? 0) > sheetIdx)
     expect(hasOneAfterSheet).toBe(true)
   })
@@ -128,8 +132,8 @@ describe('TRUST-SIGNALS-001: placement constraints', () => {
 // 5. No new fabricated claims
 // ============================================================================
 describe('TRUST-SIGNALS-001: no fabricated claims', () => {
-  test('social proof uses "+" modifier (1,000+) — not a hard claim', () => {
-    expect(GO_SOCIAL_PROOF_LINE).toContain('1,000+')
+  test('social proof uses "+" modifier (60+) — not a hard claim', () => {
+    expect(GO_SOCIAL_PROOF_LINE).toContain('60+')
     expect(GO_SOCIAL_PROOF_LINE).not.toMatch(/^exactly \d/)
   })
 
@@ -160,9 +164,13 @@ describe('TRUST-SIGNALS-001: hard rules unchanged', () => {
   })
 
   test('no new beacon/tracking calls for trust signals', () => {
-    // The social proof and reminder are pure render — no new fetch/beacon
+    // The social proof and reminder are pure render — no new fetch/beacon.
+    // Check both the server entry point and the client component.
     expect(pageSrc).not.toContain("'trust_signal_view'")
     expect(pageSrc).not.toContain("'social_proof_view'")
     expect(pageSrc).not.toContain("'reminder_view'")
+    expect(clientSrc).not.toContain("'trust_signal_view'")
+    expect(clientSrc).not.toContain("'social_proof_view'")
+    expect(clientSrc).not.toContain("'reminder_view'")
   })
 })

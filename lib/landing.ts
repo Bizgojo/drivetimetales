@@ -86,6 +86,32 @@ export interface GoStory {
    * absent/undefined → getGoCtaCopy renders the standalone-safe default.
    */
   completedHeading?: string
+  // -------------------------------------------------------------------------
+  // GO-PREVIEW-001 (Marc authorization, msg 3662, 2026-07-22)
+  // Preview fields — all optional. When preview_clip_url is set, /go begins
+  // muted autoplay of the clip on page load before transitioning to the full
+  // episode. Null/absent = no preview; page renders identically to pre-preview
+  // behavior (backward compatible).
+  // -------------------------------------------------------------------------
+  /**
+   * Public URL to the 15-second muted-autoplay preview MP3 (Supabase Storage).
+   * Null/absent = no preview configured; page renders as normal.
+   */
+  previewClipUrl?: string
+  /**
+   * Public URL to the WebVTT captions file for the preview clip.
+   * Rendered via a custom overlay (not <track>) for Meta in-app browser compat.
+   */
+  previewCaptionsUrl?: string
+  /**
+   * Position (seconds) in the FULL episode audio where the preview clip was
+   * extracted from. Used to offer 'continue from preview' vs 'start from
+   * beginning' once Marc decides on the post-preview start position.
+   * OPEN DECISION (logged to Marc, 2026-07-22): after preview completes, full
+   * Marc ruling 2026-07-22 13:14: episode continues at previewContinueSec (138 = 2:18,
+   * end of the preview clip). Secondary "Start from the beginning" control also present.
+   */
+  previewContinueSec?: number
 }
 
 /** DEFAULT — live today. Always renders while GO_AB_LIVE is false. */
@@ -139,6 +165,12 @@ export const GO_STORY_VARIANTS: Record<string, GoStory> = {
     // single-side-cable pedestrian suspension bridge, vision-QA PASS.
     coverUrl: 'https://vmyhlfeouzslixtkmddy.supabase.co/storage/v1/object/public/Covers/landing/go-variant-b/cover_20260712_liberty.jpg',
     audioUrl: 'https://vmyhlfeouzslixtkmddy.supabase.co/storage/v1/object/public/audio/landing/go-variant-b/final_mix.mp3',
+    // GO-PREVIEW-001 (Marc authorization, msg 3662, 2026-07-22):
+    // Murder at Falls Park Ep1, 2:02–2:18, hard cut after "Pardon?"
+    // Clip extracted from position 122s (2:02) in the full episode.
+    previewClipUrl: 'https://vmyhlfeouzslixtkmddy.supabase.co/storage/v1/object/public/audio/landing/preview/falls-park-he-didnt-fall/clip.mp3',
+    previewCaptionsUrl: 'https://vmyhlfeouzslixtkmddy.supabase.co/storage/v1/object/public/audio/landing/preview/falls-park-he-didnt-fall/captions.vtt',
+    previewContinueSec: 138,  // 2:18 = end of preview clip (Marc ruling msg 3666 + 3670)
   },
 }
 
@@ -311,7 +343,7 @@ export function getGoMidHeading(
  * Catalog depth social proof — displayed in the page body below the
  * brand mark. Marc-approved phrasing (2026-07-21).
  */
-export const GO_SOCIAL_PROOF_LINE = '1,000+ stories across 12 genres'
+export const GO_SOCIAL_PROOF_LINE = '60+ stories for your ears'
 
 /**
  * Trial reminder reassurance — displayed below the CTA button and in the
