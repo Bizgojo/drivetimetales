@@ -12,6 +12,11 @@
  *   date_preset    - e.g. last_7d, last_14d, last_30d, last_month, this_month (default: last_7d)
  *   fields         - comma-separated (default: impressions,clicks,spend,reach,ctr,cpc,cpm,conversions,roas)
  *   ad_account_id  - optional override; falls back to META_AD_ACCOUNT_ID env var
+ *   breakdowns     - optional comma-separated breakdown dimensions
+ *                    allowed: publisher_platform, placement, device_platform, impression_device,
+ *                             country, region, age, gender
+ *   level          - optional Meta insights level override: account, campaign, adset, ad
+ *                    (default: campaign)
  *
  * READ-ONLY. No write/create/delete. Returns sanitized performance data only.
  */
@@ -99,13 +104,34 @@ export async function GET(req: NextRequest) {
     .filter((f) => !BLOCKED_FIELDS.has(f))
     .join(',')
 
-  // 5. Call Meta Graph API — campaign-level insights
+  // 5. Parse and validate optional breakdown / level params
+  const breakdowns = searchParams.get('breakdowns')
+  const levelOverride = searchParams.get('level')
+
+  const ALLOWED_BREAKDOWNS = new Set([
+    'publisher_platform', 'placement', 'device_platform', 'impression_device',
+    'country', 'region', 'age', 'gender',
+  ])
+  const ALLOWED_LEVELS = new Set(['account', 'campaign', 'adset', 'ad'])
+
+  const validBreakdowns: string[] = breakdowns
+    ? breakdowns.split(',').map((b) => b.trim()).filter((b) => ALLOWED_BREAKDOWNS.has(b))
+    : []
+
+  const effectiveLevel =
+    levelOverride && ALLOWED_LEVELS.has(levelOverride) ? levelOverride : 'campaign'
+
+  // 6. Call Meta Graph API — campaign-level insights
   // Docs: https://developers.facebook.com/docs/marketing-api/insights
   const metaUrl = new URL(`${META_GRAPH_BASE}/${campaignId}/insights`)
   metaUrl.searchParams.set('access_token', accessToken!)
   metaUrl.searchParams.set('date_preset', datePreset)
   metaUrl.searchParams.set('fields', requestedFields)
-  metaUrl.searchParams.set('level', 'campaign')
+  metaUrl.searchParams.set('level', effectiveLevel)
+
+  if (validBreakdowns.length > 0) {
+    metaUrl.searchParams.set('breakdowns', validBreakdowns.join(','))
+  }
 
   let metaRes: Response
   try {
@@ -133,12 +159,14 @@ export async function GET(req: NextRequest) {
     )
   }
 
-  // 6. Return sanitized response (strip access_token echoes if any)
+  // 7. Return sanitized response (strip access_token echoes if any)
   return NextResponse.json({
     source: 'meta',
     campaign_id: campaignId,
     date_preset: datePreset,
     fields: requestedFields,
+    ...(validBreakdowns.length > 0 ? { breakdowns: validBreakdowns } : {}),
+    level: effectiveLevel,
     data: raw.data ?? [],
     paging: raw.paging ?? null,
     fetched_at: new Date().toISOString(),
