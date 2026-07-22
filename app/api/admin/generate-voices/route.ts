@@ -293,7 +293,7 @@ function splitTextForSegmentRescue(value: string): string[] {
   const chunks = sentenceChunks.length >= 2
     ? sentenceChunks
     : source
-      .split(/(?<=[,;:--])\s+|\s+(?=(?:and|but|so|then|because|while|when|after|before)\b)/i)
+      .split(/(?<=[,;:-])\s+|\s+(?=(?:and|but|so|then|because|while|when|after|before)\b)/i)
       .map(chunk => chunk.trim())
       .filter(Boolean)
 
