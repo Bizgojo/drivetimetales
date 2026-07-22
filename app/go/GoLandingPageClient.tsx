@@ -149,10 +149,10 @@ function GoLandingContent() {
     // 0:00 — that replays a confirmed NO-HOOK opener (HOOK-REWORK-001).
     // Secondary "Start from the beginning" control is in GoPreviewOverlay.
     setPreviewActive(false)
-    tracker?.fireOnce('preview_to_play', story.previewContinueSec ?? 138)
+    listenTracker?.fireOnce('preview_to_play', story.previewContinueSec ?? 138)
     // GoSamplePlayer will auto-play from previewContinueSec when it appears.
     // The existing play_start event fires through handlePlaybackStart.
-  }, [tracker, story.previewContinueSec])
+  }, [listenTracker, story.previewContinueSec])
 
   const handlePreviewLoadError = useCallback(() => {
     // Graceful fallback: audio failed to load. Remove preview UI; normal page.
@@ -163,11 +163,11 @@ function GoLandingContent() {
   // User tapped main play during preview: stop preview, start full episode.
   const handleMainPlayDuringPreview = useCallback(() => {
     if (!previewActive) return
-    tracker?.fireOnce('preview_skipped', 0)
+    listenTracker?.fireOnce('preview_skipped', 0)
     setShouldStopPreview(true)
     // Small delay to let the overlay's cleanup run before unmounting.
     setTimeout(() => setPreviewActive(false), 80)
-  }, [previewActive, tracker])
+  }, [previewActive, listenTracker])
 
   // ATL-PIXEL-001: ViewContent on landing view (both GVL variants), carrying
   // UTM params so ad platforms attribute the view. Client-only event — random
