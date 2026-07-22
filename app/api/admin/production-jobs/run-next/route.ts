@@ -975,6 +975,9 @@ type PositionValidationResult = {
 
 /** True when the outro contains language that teases forward continuation. */
 function hasNextEpisodeTeaseLang(text: string): boolean {
+  // ATL-BELLE-QC-BUG-001: also recognize word-form episode references (e.g. "Episode Three — The Street")
+  // and common series tease patterns like "Episode [N]" (digit or word) or "Episode [ordinal]".
+  if (/\bepisode\s+(\d+|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth)\b/i.test(text)) return true
   return /\b(next episode|next time|continue|continues|continuing|keep listening|what happens next|find out|to be continued|coming up|pick up|picks up|what comes next|leads to|leads us|uncover|discover|tune in|join us|listen (in|on)|coming soon|coming back|wait to see|ahead for|what awaits|what['']s next)\b/i.test(text)
 }
 
@@ -1222,15 +1225,15 @@ Hard rules:
 - Belle is warm, direct, and specific. No host/DJ/trailer voice.
 - No time-of-day reference.
 - No speaker labels.
-- Announcement must not include [LISTENER_NAME] or any listener name; the shared name opener handles greeting/personalization.
+- ATL-BELLE-QC-BUG-001: [LISTENER_NAME] at the start of the intro IS the required series personalization format ("[LISTENER_NAME], \"Series Name,\" Episode N: \"Episode Title.\" <hook>") — preserve it exactly, do NOT remove it.
 - Announcement must not include a greeting/opener such as "welcome" or "settle in".
 - Announcement must name the exact series title, episode number, and episode title.
 - Announcement must include a concrete narrative hook: event, danger, secret, conflict, mystery, or story mechanism.
-- Outro must never include [LISTENER_NAME].
+- Outro must not include [LISTENER_NAME].
 - Non-finale outro must tease or point toward the next episode.
 - Non-finale outro must not include author/narrator credits or "Endless Tales original".
 - Finale outro may close the series and include credits.
-- Keep each line one or two short sentences.
+- Intros must be one or two short sentences. Series outros (especially non-finale with next-ep tease) may be longer — up to five sentences for emotional landing plus tease structure.
 
 VALIDATION ISSUES TO FIX:
 ${target.issues.map(issue => `- ${stripEpisodeIssuePrefix(issue)}`).join('\n')}
@@ -1561,8 +1564,10 @@ async function validateBelleText(kind: 'intro' | 'outro', text: string, options:
     issues.push('standalone intro is too atmospheric; it must name the concrete story mechanism, object, event, or conflict.')
   }
   if (kind === 'outro') {
-    if (wordCount > 42) issues.push('outro must be 42 words or fewer.')
-    if (sentenceCount > 2) issues.push('outro must be one or two short sentences.')
+    // ATL-BELLE-QC-BUG-001: word-count and sentence-count limits apply to standalone outros only.
+    // Series outros (non-finale with next-ep tease or finale with emotional landing) may be longer.
+    if (options.standalone && wordCount > 42) issues.push('outro must be 42 words or fewer.')
+    if (options.standalone && sentenceCount > 2) issues.push('outro must be one or two short sentences.')
     if (/^\s*that was\b/i.test(text)) issues.push('outro must not use a flat "That was..." structure.')
     if (/\b(and|or|but|with|to|of|for|from|by|into|before|after|while|when|where|under|beneath|inside|outside|near|below|above|through|around|across|behind|beyond|against|among|within|between|onto|upon|over|in|on|at|the|a|an)$/i.test(withoutPunctuation)) {
       issues.push('outro appears cut off or incomplete.')
@@ -1693,7 +1698,7 @@ Intro requirements:
 - Standalone intros must name or imply the actual mechanism that drives the story, such as who is in trouble, what strange event happens, what object/list/record drives the plot, or why the listener should care.
 - Vague phrases like "something waiting", "in the fog", "on that river", "your name written down", "secrets", "ink", or "twenty years ago" do not count unless paired with the concrete story mechanism.
 - Must not use generic host language such as "Welcome", "settle in", "begins now", "only on Endless Tales", "tonight", or promotional copy.
-- Must not include [LISTENER_NAME] or any listener name; this line is the story announcement only.
+- ATL-BELLE-QC-BUG-001: For standalone stories, must not include [LISTENER_NAME] or any listener name; the shared name opener handles personalization. For series episodes, [LISTENER_NAME] at the start of the intro is the CORRECT personalization format ("[LISTENER_NAME], \"Series Name,\" Episode N: \"Episode Title.\" <hook>") and must NOT be flagged as a violation.
 
 Outro requirements:
 - Emotionally lands and feels companion-like, as if Belle is still beside the listener after the story.
@@ -1725,10 +1730,10 @@ Required JSON shape:
 
 Hard format rules:
 - Return valid JSON only. Do not include markdown, comments, explanation, or extra keys.
-- Before returning, self-check that each requested line has no more than two sentences.
+- Before returning, self-check sentence count: standalone outros must not exceed two sentences. Series outros (non-finale or finale) may be longer for tease or emotional landing structures.
 - Each requested value must be one line of spoken text.
 - Intro: one line, maximum two short sentences.
-- Outro: one line, maximum two short sentences.
+- Outro: one line. Standalone: maximum two short sentences. Series non-finale or finale: up to five sentences allowed for next-episode tease or emotional landing.
 - Do not use semicolons.
 - Do not use stacked clauses that read like three or more thoughts joined together.
 
@@ -1741,7 +1746,7 @@ Content rules:
 - No "Welcome", "begins now", "only on Endless Tales", "tonight", "stay tuned", "next time", or "what happens next" for standalone stories.
 
 MANDATORY FIELD REQUIREMENTS - you will be rejected if these are missing:
-1. NO LISTENER NAME: The intro/announcement MUST NOT include [LISTENER_NAME] or any listener name. The shared name opener handles greeting/personalization.
+1. LISTENER NAME RULE: For standalone stories, the intro/announcement MUST NOT include [LISTENER_NAME]; the shared name opener handles personalization. For series episodes, [LISTENER_NAME] at the start of the intro IS the correct personalization format (e.g. "[LISTENER_NAME], \"Series Name,\" Episode N: \"Episode Title.\" <hook>") and MUST NOT be flagged as a violation — it is required and expected. Do not remove it.
 2. NO GREETING: The intro/announcement MUST NOT use greeting/opener language such as "welcome", "settle in", or "let's begin".
 3. STORY TITLE: Standalone intro/announcement and outro MUST include the exact story title as provided in TITLE above. Do not paraphrase, shorten, or omit it.
 4. CONCRETE HOOK: Standalone intro/announcement MUST include a concrete narrative hook - a specific conflict, crime, mystery mechanism, secret, danger, cover-up, wrongdoing, or story object. "Something waiting" or "a story about trust" is NOT a hook. "Paper trail breaks, someone broke it on purpose" IS a hook. "A forged deed" IS a hook. Name the specific thing that creates danger or mystery.
@@ -1755,7 +1760,7 @@ Additional content rules:
 - Standalone outro must include the story title, author name, narrator name (if provided), and the exact phrase "Endless Tales original".
 - Standalone outro must emotionally close around the actual resolution, choice, reveal, or final consequence of the story.
 - Outro may include brief credits only if the emotional landing remains the main point.
-- Keep outro under 42 words.
+- Keep standalone outro under 42 words. Series outros may be longer for tease structure.
 `
 
 function parseJsonObject(text: string): any {
