@@ -113,8 +113,15 @@ function SignUpContent() {
   }, [searchParams])
 
   useEffect(() => {
+    // FIX: honour a trialDays URL param forwarded from the /go ad funnel
+    // (feat/funnel-fixes-001). The /go CTA always appends trialDays=14;
+    // getTrialVariant() would otherwise default to 7, causing the button
+    // text and Stripe checkout to both show the wrong trial length.
+    // Clamp to [1, 90] so a crafted URL can't grant an absurd trial.
+    const urlParam = parseInt(searchParams.get('trialDays') || '', 10)
+    const urlTrialDays = !isNaN(urlParam) && urlParam > 0 && urlParam <= 90 ? urlParam : null
     const { days, variant } = getTrialVariant()
-    setTrialDays(days)
+    setTrialDays(urlTrialDays ?? days)
     setTrialVariant(variant)
     const ref = searchParams.get('ref')
     if (ref) { setReferralCode(ref); trackOpenAndFetchReferrer(ref) }

@@ -81,9 +81,10 @@ describe('TRUST-SIGNALS-001: page wiring source pins', () => {
   })
 
   test('trial reminder rendered via {GO_TRIAL_REMINDER_LINE}', () => {
-    // Should appear at least twice: once in the sheet, once in the static footer
+    // feat/funnel-fixes-001: static footer removed; reminder now appears
+    // exactly once (bottom sheet only).
     const occurrences = (pageSrc.match(/\{GO_TRIAL_REMINDER_LINE\}/g) || []).length
-    expect(occurrences).toBeGreaterThanOrEqual(2)
+    expect(occurrences).toBeGreaterThanOrEqual(1)
   })
 })
 
@@ -93,22 +94,26 @@ describe('TRUST-SIGNALS-001: page wiring source pins', () => {
 // ============================================================================
 describe('TRUST-SIGNALS-001: placement constraints', () => {
   test('social proof is NOT gated behind sheetVisible (always visible on page load)', () => {
-    // Find the social proof section and confirm it is not inside a sheetVisible conditional block.
-    // Simple proxy: GO_SOCIAL_PROOF_LINE appears before the sheetVisible conditional for the static CTA.
+    // feat/funnel-fixes-001: static CTA removed; use the Legal links section
+    // as the post-proof landmark instead.
     const proofIdx = pageSrc.indexOf('{GO_SOCIAL_PROOF_LINE}')
-    const staticCtaIdx = pageSrc.indexOf('STATIC BOTTOM CTA')
+    const legalIdx = pageSrc.indexOf('Legal — small, bottom')
     expect(proofIdx).toBeGreaterThan(0)
-    expect(staticCtaIdx).toBeGreaterThan(0)
-    // Social proof div appears before (or at same level as) the static CTA block
-    expect(proofIdx).toBeLessThan(staticCtaIdx)
+    expect(legalIdx).toBeGreaterThan(0)
+    // Social proof appears before the legal section
+    expect(proofIdx).toBeLessThan(legalIdx)
+    // Social proof is NOT inside a sheetVisible conditional (appears before any such gating)
+    const proofContext = pageSrc.slice(Math.max(0, proofIdx - 200), proofIdx)
+    expect(proofContext).not.toMatch(/sheetVisible &&/)
   })
 
-  test('reminder appears in static footer section (after static CTA comment)', () => {
-    const staticCtaIdx = pageSrc.indexOf('STATIC BOTTOM CTA')
+  test('reminder appears in bottom sheet section (static footer removed by feat/funnel-fixes-001)', () => {
+    // Static CTA removed; reminder is only in the bottom sheet now.
+    expect(pageSrc).not.toContain('STATIC BOTTOM CTA')
+    const sheetIdx = pageSrc.indexOf('TRIAL CTA — bottom sheet')
     const reminderOccurrences = Array.from(pageSrc.matchAll(/\{GO_TRIAL_REMINDER_LINE\}/g))
-    // At least one occurrence after the static CTA comment
-    const hasOneAfterStaticCta = reminderOccurrences.some(m => (m.index ?? 0) > staticCtaIdx)
-    expect(hasOneAfterStaticCta).toBe(true)
+    const hasOneAfterSheet = reminderOccurrences.some(m => (m.index ?? 0) > sheetIdx)
+    expect(hasOneAfterSheet).toBe(true)
   })
 
   test('reminder appears in bottom sheet section (after TRIAL CTA comment)', () => {

@@ -230,26 +230,25 @@ describe('SUS/ATL-LANDING-002 rev C: layout + copy pins', () => {
     expect(pageSrc).toContain('shouldRevealTrialCta')
   })
 
-  test('STATIC BOTTOM CTA: in-flow block with button + card-honest subline (WALK-BUG-0713: reveal-gated)', () => {
-    expect(pageSrc).toContain('STATIC BOTTOM CTA')
-    // The static block keeps its literal 'Start free trial' button (the
-    // sheet button is now state-driven via ctaCopy.buttonLabel — CTA-002).
-    expect((pageSrc.match(/Start free trial/g) || []).length).toBe(1)
-    // Both surfaces carry the same campaign href.
-    expect((pageSrc.match(/href=\{ctaHref\}/g) || []).length).toBe(2)
-    // The card-honest trial line (UX-GO-001 CTA-001) appears in the sheet
-    // AND the static block.
-    expect((pageSrc.match(/\{trial\.subtext\}/g) || []).length).toBe(2)
+  test('STATIC BOTTOM CTA removed (feat/funnel-fixes-001): bottom sheet is the single canonical CTA', () => {
+    // The static in-flow CTA was removed by feat/funnel-fixes-001. The bottom
+    // sheet (UX-GO-001 CTA-002) is now the sole CTA surface.
+    expect(pageSrc).not.toContain('STATIC BOTTOM CTA')
+    // Exactly one href={ctaHref} — only in the bottom sheet.
+    expect((pageSrc.match(/href=\{ctaHref\}/g) || []).length).toBe(1)
+    // trial.subtext appears exactly once (in the bottom sheet only).
+    expect((pageSrc.match(/\{trial\.subtext\}/g) || []).length).toBe(1)
+    // The sheet button text is still state-driven via ctaCopy.buttonLabel.
+    expect(pageSrc).toContain('ctaCopy.buttonLabel')
   })
 
-  test('static CTA never animates (no transform/transition) but IS gated on sheetVisible (WALK-BUG-0713 #1 + CTA-002)', () => {
-    const staticBlock = pageSrc.slice(pageSrc.indexOf('STATIC BOTTOM CTA'), pageSrc.indexOf('Legal — small, bottom'))
-    expect(staticBlock.length).toBeGreaterThan(0)
-    expect(staticBlock).not.toMatch(/transform|transition/)
-    // Marc 2026-07-13: NO trial CTA of any kind before the hook lands.
-    // UX-GO-001: sheetVisible = ctaRevealed || completed (completion may
-    // show the CTAs even when the listen latch never fired — seek-to-end).
-    expect(staticBlock).toMatch(/\{sheetVisible && \(/)
+  test('bottom sheet is the only animated CTA surface (WALK-BUG-0713 #1 + CTA-002 + feat/funnel-fixes-001)', () => {
+    // Static CTA was removed; the bottom sheet owns all animation.
+    expect(pageSrc).not.toContain('STATIC BOTTOM CTA')
+    const sheetBlock = pageSrc.slice(pageSrc.indexOf('TRIAL CTA — bottom sheet'), pageSrc.lastIndexOf('</div>'))
+    expect(sheetBlock.length).toBeGreaterThan(0)
+    // Bottom sheet has transform/transition (slide-up animation).
+    expect(sheetBlock).toMatch(/transform|transition/)
   })
 
   test('promo badge copy unchanged (never raw codes)', () => {
@@ -292,19 +291,18 @@ describe('WALK-BUG-0713 #1: per-story CTA reveal', () => {
     expect(GO_STORY_VARIANTS.b.ctaRevealSeconds).toBe(100)
   })
 
-  test('variant a reveals at 70s — whisper-timed hook (Marc confirmed 2026-07-14); default keeps 45', () => {
+  test('variant a reveals at 70s - whisper-timed hook (Marc confirmed 2026-07-14); default keeps 45', () => {
     expect(GO_STORY_VARIANTS.a.ctaRevealSeconds).toBe(70)
     expect(GO_SAMPLE_STORY.ctaRevealSeconds).toBe(CTA_REVEAL_LISTEN_SEC)
   })
 
-  test('page gates the static bottom CTA behind the reveal/completion gate (no pre-hook CTA)', () => {
-    // The static footer CTA must render ONLY inside a {sheetVisible && ...}
-    // block (UX-GO-001: sheetVisible = ctaRevealed || completed — the listen
-    // latch is unchanged; completion additionally shows the CTAs), and the
-    // page must pass the per-story threshold into the check.
-    expect(pageSrc).toMatch(/\{sheetVisible && \(/)
+  test('no static in-flow CTA; sheetVisible still gates the bottom sheet (feat/funnel-fixes-001)', () => {
+    // Static CTA was removed — no in-flow {sheetVisible && (} block for a CTA.
+    expect(pageSrc).not.toContain('STATIC BOTTOM CTA')
+    // sheetVisible logic must still exist (bottom sheet reveal gate).
     expect(pageSrc).toContain('const sheetVisible = ctaRevealed || completed')
+    // Bottom sheet uses sheetVisible for its transform (slide-up).
+    expect(pageSrc).toContain("transform: sheetVisible ? 'translateY(0)' : 'translateY(110%)'")
     expect(pageSrc).toMatch(/revealAfterSec/)
-    expect(pageSrc).not.toMatch(/Always present from arrival/)
   })
 })

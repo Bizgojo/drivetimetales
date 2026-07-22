@@ -101,6 +101,7 @@ import {
   resolveGoStory,
   shouldRevealTrialCta,
   CTA_REVEAL_LISTEN_SEC,
+  GO_BASE_TRIAL_DAYS,
   GO_SOCIAL_PROOF_LINE,
   GO_TRIAL_REMINDER_LINE,
 } from '@/lib/landing'
@@ -193,9 +194,9 @@ function GoLandingContent() {
     // UX-GO-001 CTA-002: latch the completion CTA state (once, render-only).
     setCompleted(prev => nextCompletedState(prev, true))
   }, [listenTracker])
-  // cta_click: fired from BOTH CTAs (bottom sheet + static footer) — latched
-  // to once per session by the tracker. Never preventDefault / never blocks
-  // the navigation (sendBeacon survives the page exit by design).
+  // cta_click: fired from the bottom sheet CTA — latched to once per session
+  // by the tracker. Never preventDefault / never blocks the navigation
+  // (sendBeacon survives the page exit by design).
   const handleCtaClick = useCallback(() => {
     listenTracker.onCtaClick(lastAudioPositionRef.current)
   }, [listenTracker])
@@ -209,7 +210,14 @@ function GoLandingContent() {
   }, [revealAfterSec])
 
   // CTA href: promo + full utm_* set from the current URL → /signup.
-  const ctaHref = buildCampaignSignupHref(searchParams)
+  // GO_BASE_TRIAL_DAYS=14 is always appended so /signup receives the correct
+  // trial length for this ad funnel (Marc approval msg 2868). Without this
+  // param, /signup's getTrialVariant() would default to 7 days and the
+  // button copy + Stripe checkout would both be wrong.
+  const _baseHref = buildCampaignSignupHref(searchParams)
+  const ctaHref = _baseHref.includes('?')
+    ? `${_baseHref}&trialDays=${GO_BASE_TRIAL_DAYS}`
+    : `${_baseHref}?trialDays=${GO_BASE_TRIAL_DAYS}`
 
   // ATL-PIXEL-001: ViewContent on landing view (both GVL variants), carrying
   // UTM params so ad platforms attribute the view. Client-only event — random
@@ -364,40 +372,10 @@ function GoLandingContent() {
           {GO_SOCIAL_PROOF_LINE}
         </div>
 
-        {/* ===== STATIC BOTTOM CTA — WALK-BUG-0713 #1 (Marc, 2026-07-13):
-            NO trial CTA of any kind before the hook lands. This block now
-            renders only after the same per-story reveal latch as the sheet
-            (was: always present from arrival — that was the walk bug). */}
-        {sheetVisible && (
-        <div style={{ marginTop: 'auto', width: '100%', padding: '3rem 1.5rem 0' }}>
-          <Link
-            href={ctaHref}
-            onClick={handleCtaClick}
-            style={{
-              display: 'block',
-              width: '100%',
-              padding: '0.85rem 1.25rem',
-              borderRadius: '12px',
-              backgroundColor: '#f97316',
-              color: '#ffffff',
-              fontSize: '1rem',
-              fontWeight: 700,
-              textDecoration: 'none',
-            }}
-          >
-            Start free trial
-          </Link>
-          {/* UX-GO-001 CTA-001 Option A: honest card-required trial line. */}
-          <div style={{ fontSize: '0.8rem', color: '#9ca3af', marginTop: '0.55rem' }}>
-            {trial.subtext}
-          </div>
-          {/* TRUST-SIGNALS-001: trial reminder reassurance. Accurate to the
-              actual email cadence (Day 3 / Day 10 / Day 13). */}
-          <div style={{ fontSize: '0.75rem', color: '#6b7280', marginTop: '0.3rem' }}>
-            {GO_TRIAL_REMINDER_LINE}
-          </div>
-        </div>
-        )}
+        {/* Static duplicate CTA removed (feat/funnel-fixes-001): the
+            bottom sheet (UX-GO-001 CTA-002) is the single canonical CTA.
+            Having two Links to /signup caused ambiguous cta_click attribution
+            and contradictory button copy when trialDays differed. */}
 
         {/* Legal — small, bottom */}
         <div style={{ paddingTop: '1.6rem', fontSize: '0.75rem', color: '#ffffff' }}>
