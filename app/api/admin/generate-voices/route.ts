@@ -177,7 +177,7 @@ async function validateSegmentTranscript(buf: Buffer, expectedText: string, file
     detectedText = await transcribeSegmentBuffer(buf, fileName)
   } catch (e) {
     const msg = String(e)
-    // OpenAI Whisper endpoint unavailable (404 / account restriction) — infrastructure
+    // OpenAI Whisper endpoint unavailable (404 / account restriction) - infrastructure
     // issue, not an audio quality issue. Skip ASR check and treat as passed so that
     // generation can proceed. Will auto-recover once the endpoint is accessible.
     if (msg.includes('OpenAI 404') || msg.includes('OpenAI 503') || msg.includes('Invalid URL (POST /v1/audio/transcriptions)')) {
@@ -185,7 +185,7 @@ async function validateSegmentTranscript(buf: Buffer, expectedText: string, file
         passed: true,
         qcSkipped: true as const,
         expectedText,
-        detectedText: '(skipped — OpenAI Whisper unavailable)',
+        detectedText: '(skipped - OpenAI Whisper unavailable)',
         coverage: 1.0,
         similarity: 1.0,
         tailMatches: true,
@@ -204,7 +204,7 @@ async function validateSegmentTranscript(buf: Buffer, expectedText: string, file
   const qc = evaluateTranscriptQC(expectedText, detectedText)
 
   if (qc.normalizedFallbackUsed) {
-    console.warn(`[QC WARNING] Segment ${fileName}: similarity ${(qc.normalizedSimilarity * 100).toFixed(1)}% — expected "${expectedText}" detected "${detectedText}"`)
+    console.warn(`[QC WARNING] Segment ${fileName}: similarity ${(qc.normalizedSimilarity * 100).toFixed(1)}% - expected "${expectedText}" detected "${detectedText}"`)
   }
 
   return {
@@ -266,7 +266,7 @@ function isAmbiguousTranscriptFailure(failure: SegmentTranscriptCheck): boolean 
 }
 
 function hasMultipleSentenceOrClauseBoundaries(value: string): boolean {
-  const matches = String(value || '').match(/[.!?;:]|[,—–]\s+|\s+(?:and|but|so|then|because|while|when|after|before)\s+/gi)
+  const matches = String(value || '').match(/[.!?;:]|[,--]\s+|\s+(?:and|but|so|then|because|while|when|after|before)\s+/gi)
   return (matches || []).length >= 2
 }
 
@@ -287,13 +287,13 @@ function splitTextForSegmentRescue(value: string): string[] {
   if (!source) return []
 
   const sentenceChunks = source
-    .match(/[^.!?]+[.!?]+["'”’]?|[^.!?]+$/g)
+    .match(/[^.!?]+[.!?]+["'"']?|[^.!?]+$/g)
     ?.map(chunk => chunk.trim())
     .filter(Boolean) || []
   const chunks = sentenceChunks.length >= 2
     ? sentenceChunks
     : source
-      .split(/(?<=[,;:—–])\s+|\s+(?=(?:and|but|so|then|because|while|when|after|before)\b)/i)
+      .split(/(?<=[,;:--])\s+|\s+(?=(?:and|but|so|then|because|while|when|after|before)\b)/i)
       .map(chunk => chunk.trim())
       .filter(Boolean)
 
@@ -538,7 +538,7 @@ function classifySegmentFailure(error: string, scriptText: string): SegmentFailu
   if (e.includes('transcript qc') || e.includes('coverage') || e.includes('expected') && e.includes('detected')) {
     return 'mechanical_qc'
   }
-  // ATL-PIPE-001: Silence buffer is retriable — may be transient ElevenLabs placeholder
+  // ATL-PIPE-001: Silence buffer is retriable - may be transient ElevenLabs placeholder
   if (e.includes('silence_buffer')) {
     return 'voice_generation'
   }
@@ -556,7 +556,7 @@ function classifySegmentFailure(error: string, scriptText: string): SegmentFailu
   const words = scriptText.split(/\s+/)
   const hasCapsChunk = words.filter(w => w === w.toUpperCase() && w.length > 2).length > 3
   if (hasDoublePunct || hasCapsChunk) return 'script_issue'
-  return 'mechanical_qc' // default — most common non-infra failure
+  return 'mechanical_qc' // default - most common non-infra failure
 }
 
 function extractTranscriptFromError(error: string): string | null {
@@ -579,12 +579,12 @@ function buildEscalationReport(
   )
   const recommendedFix =
     failureKind === 'mechanical_qc'
-      ? `Manual QC override safe — audio likely correct, transcript normalization mismatch on: "${seg.text}"`
+      ? `Manual QC override safe - audio likely correct, transcript normalization mismatch on: "${seg.text}"`
       : failureKind === 'voice_generation'
-        ? `Retry voice generation — ElevenLabs or network issue, not a content problem`
+        ? `Retry voice generation - ElevenLabs or network issue, not a content problem`
         : failureKind === 'script_issue'
-          ? `Review script text — possible awkward wording or broken sentence: "${seg.text.slice(0, 80)}"`
-          : `Check pipeline — upload, DB, or render error: ${lastError.slice(0, 80)}`
+          ? `Review script text - possible awkward wording or broken sentence: "${seg.text.slice(0, 80)}"`
+          : `Check pipeline - upload, DB, or render error: ${lastError.slice(0, 80)}`
 
   return {
     segment: seg.segment,
@@ -605,7 +605,7 @@ function buildEscalationReport(
 
 function logEscalation(report: SegmentEscalation): void {
   console.warn(`\n🚨 ESCALATION REPORT`)
-  console.warn(`  Series:   ${report.seriesTitle || 'unknown'} Ep${report.episodeNumber || '?'} — ${report.episodeTitle || ''}`)
+  console.warn(`  Series:   ${report.seriesTitle || 'unknown'} Ep${report.episodeNumber || '?'} - ${report.episodeTitle || ''}`)
   console.warn(`  Segment:  ${report.segment} (index ${report.index})`)
   console.warn(`  Speaker:  ${report.speaker}`)
   console.warn(`  Script:   "${report.scriptText}"`)
@@ -806,9 +806,9 @@ function scoreVoice(voice: CharacterVoiceRow, meta: { gender: string; age: strin
   let score = 0
   // Gender - hard requirement, massive penalty for mismatch.
   // CASTING-ALIAS-001 (c): The `if (meta.gender && labels.gender)` guard is intentional
-  // but has a dangerous bypass: when meta.gender is empty string ('') — which happens
+  // but has a dangerous bypass: when meta.gender is empty string ('') - which happens
   // when inferFallbackCharacterMeta() finds no gender signal in the speaker name (e.g.
-  // 'Gray', 'Kendrick', 'Drew') — the entire gender check is skipped and any voice
+  // 'Gray', 'Kendrick', 'Drew') - the entire gender check is skipped and any voice
   // can be selected, including one with the wrong gender. This was the mechanism behind
   // Gray's wrong-gender assignment: no CHARACTER GUIDE description →
   // inferFallbackCharacterMeta('Gray') → gender='' → guard bypassed ('Gray' carries no
@@ -950,7 +950,7 @@ function pickRotatedCandidate(
     : []
   const band = regionalMatches.length > 0 ? regionalMatches : baseBand
 
-  // Sort by last_used_at (oldest first) within the band — secondary to hard exclusion
+  // Sort by last_used_at (oldest first) within the band - secondary to hard exclusion
   band.sort((a, b) => {
     if (!a.voice.last_used_at && b.voice.last_used_at) return -1
     if (a.voice.last_used_at && !b.voice.last_used_at) return 1
@@ -1189,7 +1189,7 @@ async function findVoiceForCharacter(
   }
 
   // Hard rotation exclusion: also block voices used in the last 20 completed stories.
-  // This is a hard exclusion — not a soft down-weight. Falls back to full pool if needed.
+  // This is a hard exclusion - not a soft down-weight. Falls back to full pool if needed.
   const recentlyUsedVoiceIds = await getRecentlyUsedVoiceIds(context.storyId)
   const blockedVoiceIds = new Set<string>([
     ...usedVoiceIds,
@@ -1199,9 +1199,9 @@ async function findVoiceForCharacter(
   ])
   let scored = scoreCharacterVoiceCandidates(meta, characterVoices, blockedVoiceIds)
   if (scored.length === 0 && recentlyUsedVoiceIds.size > 0) {
-    // Hard exclusion removed all candidates — fall back to pool without recent exclusion
+    // Hard exclusion removed all candidates - fall back to pool without recent exclusion
     // (grace mode: avoid infinite voice starvation on small pools)
-    console.log(`  ${characterName}: hard rotation exclusion left 0 candidates — falling back to soft exclusion`)
+    console.log(`  ${characterName}: hard rotation exclusion left 0 candidates - falling back to soft exclusion`)
     const blockedWithoutRecent = new Set<string>([...usedVoiceIds, narratorVoiceId, ...RESERVED_BELLE_B_VOICE_IDS])
     scored = scoreCharacterVoiceCandidates(meta, characterVoices, blockedWithoutRecent)
   }
@@ -1324,7 +1324,7 @@ type BelleValidationContext = {
 
 function cleanBelleText(value: string): string {
   return String(value || '')
-    .replace(/^["'“”]+|["'“”]+$/g, '')
+    .replace(/^["'""]+|["'""]+$/g, '')
     .replace(/^(ANNOUNCER|BELLE B|SANDY|Belle B|Belle)\s*:\s*/i, '')
     .replace(/\s+/g, ' ')
     .trim()
@@ -1386,7 +1386,9 @@ function validateBelleLine(kind: 'intro' | 'outro', text: string, ctx: BelleVali
   if (kind === 'intro' && words > 38) errors.push('announcement is too long for a clean handoff')
   if (kind === 'outro' && words > 55) errors.push('outro is too long for Belle')
   // [LISTENER_NAME] is a valid personalization placeholder in the script — do not reject it
-  if (kind === 'intro' && /\b(welcome|settle in|let['’]?s begin)\b/i.test(cleaned)) errors.push('announcement must not include greeting/opener language')
+  // ATL-BELLE-QC-BUG-002: strip quoted substrings before greeting check to allow series names like "The Welcome Committee".
+  const cleanedForGreetingCheck = cleaned.replace(/"[^"]*"/g, ' ');
+  if (kind === 'intro' && /\b(welcome|settle in|let['']?s begin)\b/i.test(cleanedForGreetingCheck)) errors.push('announcement must not include greeting/opener language')
 
   if (kind === 'outro' && ctx.episodeState === 'series_non_final') {
     if (!/\b(next time|next episode|in the next episode|when episode|episode \d+|continues|will have to|will need to|pulls? us)\b/i.test(cleaned)) {
@@ -1408,18 +1410,18 @@ function validateBelleLine(kind: 'intro' | 'outro', text: string, ctx: BelleVali
   // NEW PRODUCTION-STANDARD VALIDATION (Marc 2026-05-25)
   // ──────────────────────────────────────────────────────────────────────────
 
-  // RULE A — Title in intro (all episodes)
+  // RULE A - Title in intro (all episodes)
   if (kind === 'intro' && (ctx.title || ctx.seriesName)) {
     const titleSource = ctx.seriesName || ctx.title || ''
     const stopwords = new Set(['the', 'and', 'for', 'with', 'from', 'into', 'that', 'this', 'have', 'been', 'they', 'their', 'when', 'where', 'what', 'a', 'an', 'or'])
     const titleWords = titleSource.toLowerCase().split(/\s+/).filter(w => w.length >= 4 && !stopwords.has(w))
     const foundTitleWord = titleWords.some(tw => cleaned.toLowerCase().includes(tw))
     if (!foundTitleWord && titleWords.length > 0) {
-      errors.push(`intro does not reference the story or series title — expected to contain at least one of: ${titleWords.join(', ')}`)
+      errors.push(`intro does not reference the story or series title - expected to contain at least one of: ${titleWords.join(', ')}`)
     }
   }
 
-  // RULE B — Episode number in series intros
+  // RULE B - Episode number in series intros
   if (kind === 'intro' && ctx.episodeState !== 'standalone' && ctx.episodeNumber !== null && ctx.episodeNumber !== undefined) {
     const hasEpisodeNumber = /\b(episode|ep\.?|part)\s*(one|two|three|four|five|six|seven|eight|nine|ten|\d+)\b/i.test(cleaned)
     if (!hasEpisodeNumber) {
@@ -1427,13 +1429,13 @@ function validateBelleLine(kind: 'intro' | 'outro', text: string, ctx: BelleVali
     }
   }
 
-  // RULE C & D — Author and "Endless Tales" credits in standalone/finale outros
+  // RULE C & D - Author and "Endless Tales" credits in standalone/finale outros
   if (kind === 'outro' && (ctx.episodeState === 'standalone' || ctx.episodeState === 'series_finale')) {
     if (ctx.author) {
       const authorLastName = ctx.author.trim().split(/\s+/).pop()?.toLowerCase() || ''
       const hasAuthorCredit = authorLastName && cleaned.toLowerCase().includes(authorLastName)
       if (!hasAuthorCredit) {
-        errors.push(`outro must credit the author — missing author name (expected "${ctx.author}")`)
+        errors.push(`outro must credit the author - missing author name (expected "${ctx.author}")`)
       }
     }
     const hasEndlessTalesCredit = /endless\s+tales/i.test(cleaned)
@@ -1493,7 +1495,7 @@ function parseCharacterGuide(script: string): CharacterInfo[] {
   if (!guideMatch) return chars
   const guideLines = guideMatch[1].split('\n').filter(l => l.trim())
   for (const line of guideLines) {
-    const nameMatch = line.match(/^([A-Za-zÀ-ÖØ-öø-ÿ][A-Za-zÀ-ÖØ-öø-ÿ\s'.()/]+?)\s*(?:[—–-]|:)/)
+    const nameMatch = line.match(/^([A-Za-zÀ-ÖØ-öø-ÿ][A-Za-zÀ-ÖØ-öø-ÿ\s'.()/]+?)\s*(?:[---]|:)/)
     if (!nameMatch) continue
     const name = nameMatch[1].trim()
     const lower = line.toLowerCase()
@@ -1719,7 +1721,7 @@ async function generateVoiceLine(rawText: string, voiceId: string, storyId: stri
     .trim()
     // Round-hour TTS preprocessing: EL is unstable vocalising ":00" in time expressions
     // (produces "ten hours p.m." or "ten nineteen p.m." instead of "ten p.m.").
-    // Strip the ":00" before sending to EL — meaning is identical.
+    // Strip the ":00" before sending to EL - meaning is identical.
     // Only fires when immediately followed by a meridiem marker (a.m./p.m./am/pm).
     // Does NOT affect non-meridiem times or partial-hour times (e.g. "10:15 p.m." untouched).
     .replace(/\b(\d{1,2}):00(\s*(?:a\.?m\.?|p\.?m\.?|am|pm)\b)/gi, '$1$2')
@@ -1745,11 +1747,11 @@ async function generateVoiceLine(rawText: string, voiceId: string, storyId: stri
       const thresholdLabel = isShortSegment
         ? `${effectiveThreshold} short-segment threshold, ${segmentWordCount} words`
         : `${effectiveThreshold} standard threshold, ${segmentWordCount} words`
-      throw new Error(`SILENCE_BUFFER: ${fileName} rejected — ElevenLabs returned ${rawBuf.length} bytes (≤ ${thresholdLabel})`)
+      throw new Error(`SILENCE_BUFFER: ${fileName} rejected - ElevenLabs returned ${rawBuf.length} bytes (≤ ${thresholdLabel})`)
     }
     const rawBufMd5 = createHash('md5').update(rawBuf).digest('hex')
     if (rawBufMd5 === SILENCE_BUFFER_KNOWN_ETAG) {
-      throw new Error(`SILENCE_BUFFER: ${fileName} rejected — matches known silence eTag ${SILENCE_BUFFER_KNOWN_ETAG}`)
+      throw new Error(`SILENCE_BUFFER: ${fileName} rejected - matches known silence eTag ${SILENCE_BUFFER_KNOWN_ETAG}`)
     }
     return normalizeSpokenBuffer(rawBuf, inputText, prefix)
   }
@@ -1966,7 +1968,7 @@ async function generateVoiceLine(rawText: string, voiceId: string, storyId: stri
         && hitAdaptiveGainCap
         && extremelyQuietBeforeGain
       if (canAttemptExtendedShortRescue) {
-        // ATL-PIPE-017: mirror the normal isPassingAction path — save the loudness-passing
+        // ATL-PIPE-017: mirror the normal isPassingAction path - save the loudness-passing
         // buffer BEFORE running transcript QC so that the REPEATED_IDENTICAL_TRUNCATION
         // prefix rescue (isPrefixAcceptable) can use it even when ALL candidates went
         // through this extended-gain path and lastLoudnessPassedBuf was never set elsewhere.
@@ -1988,7 +1990,7 @@ async function generateVoiceLine(rawText: string, voiceId: string, storyId: stri
               segment: fileName,
               story_id: storyId,
               speaker,
-              reason: 'OpenAI Whisper returned HTTP 404 — endpoint unavailable or restricted',
+              reason: 'OpenAI Whisper returned HTTP 404 - endpoint unavailable or restricted',
               skipped_at: new Date().toISOString(),
               note: 'Audio generation succeeded via ElevenLabs. Transcript accuracy not verified by ASR. Manual review recommended before publishing.',
             })),
@@ -2045,7 +2047,7 @@ async function generateVoiceLine(rawText: string, voiceId: string, storyId: stri
               segment: fileName,
               story_id: storyId,
               speaker,
-              reason: 'OpenAI Whisper returned HTTP 404 — endpoint unavailable or restricted',
+              reason: 'OpenAI Whisper returned HTTP 404 - endpoint unavailable or restricted',
               skipped_at: new Date().toISOString(),
               note: 'Audio generation succeeded via ElevenLabs. Transcript accuracy not verified by ASR. Manual review recommended before publishing.',
             })),
@@ -2061,7 +2063,7 @@ async function generateVoiceLine(rawText: string, voiceId: string, storyId: stri
       if (transcriptFailure) {
         // ── Repeated-identical-truncation guardrail (Marc 2026-05-21) ──────────
         //
-        // Case A — Low-coverage truncation (original rule):
+        // Case A - Low-coverage truncation (original rule):
         //   Coverage < 0.50 AND all retry candidates produced the same partial
         //   detected text.  Whisper's VAD stalled at an inter-sentence pause.
         //   Retrying ElevenLabs will not help; the segment must be split.
@@ -2070,15 +2072,15 @@ async function generateVoiceLine(rawText: string, voiceId: string, storyId: stri
         //   (e.g. "two-thousand-eleven" → "2011", coverage ~0.67): those differ
         //   in token form but are not VAD truncations.
         //
-        // Case B — Clean-prefix VAD truncation (Marc 2026-05-21, surgical rule):
-        //   Coverage 0.50–0.65 AND detected is a CLEAN sequential prefix of
+        // Case B - Clean-prefix VAD truncation (Marc 2026-05-21, surgical rule):
+        //   Coverage 0.50-0.65 AND detected is a CLEAN sequential prefix of
         //   expected (no insertions, no substitutions, no cursor stalls) AND
         //   all retry candidates are identical or near-identical AND the tail
         //   starts at a natural pause point (sentence end, comma, dash, or
         //   coordinating conjunction) AND the segment is multi-clause.
         //   Example: "I've had three weeks with a vandalized shop and no
         //   customers. I've had time." → Whisper stops at "shop" (comma pause).
-        //   Coverage = 8/14 = 0.57 — too high for Case A, still a VAD clip.
+        //   Coverage = 8/14 = 0.57 - too high for Case A, still a VAD clip.
         //
         // Both cases throw [REPEATED_IDENTICAL_TRUNCATION] so the auto-split
         // monitor can handle them identically.
@@ -2088,7 +2090,7 @@ async function generateVoiceLine(rawText: string, voiceId: string, storyId: stri
         // "Nearly identical" detected texts: normalise away capitalisation and
         // punctuation before comparing.  Handles the case where Whisper returns
         // "on the third evening." on one retry and "On the third evening." on
-        // another — strict equality fails but they are the same VAD clip.
+        // another - strict equality fails but they are the same VAD clip.
         const normaliseDetected = (t: string) =>
           t.toLowerCase().replace(/[^\w\s]/g, '').replace(/\s+/g, ' ').trim()
         const allNearlyIdenticalDetected = transcriptDetectedTexts.length >= 2
@@ -2105,7 +2107,7 @@ async function generateVoiceLine(rawText: string, voiceId: string, storyId: stri
           const detTok = transcriptTokens(transcriptFailure.detectedText)
           if (detTok.length === 0 || expTok.length === 0) return false
           // 1. Clean sequential prefix: every detected token matches
-          //    expected[i] exactly — no insertions, no cursor stalls.
+          //    expected[i] exactly - no insertions, no cursor stalls.
           for (let i = 0; i < detTok.length; i++) {
             if (i >= expTok.length || !transcriptTokenMatches(expTok[i], detTok[i])) return false
           }
@@ -2137,21 +2139,21 @@ async function generateVoiceLine(rawText: string, voiceId: string, storyId: stri
           return true
         })()
 
-        // Case C — Short clean-prefix VAD truncation (Marc 2026-05-21):
+        // Case C - Short clean-prefix VAD truncation (Marc 2026-05-21):
         //   Complements Case B for short segments where coverage < 0.50 (Case A
         //   range) but allSameDetected fails due to capitalisation / punctuation
         //   variation across retry candidates (e.g. "on the third evening." vs
         //   "On the third evening.").  Uses the normalised near-identical check
         //   plus the clean-prefix and pause-point guards from Case B, but does
-        //   NOT require multi-clause structure — a single comma-delimited phrase
+        //   NOT require multi-clause structure - a single comma-delimited phrase
         //   ("On the third evening,") is sufficient.
         const isShortCleanPrefixTruncation = (() => {
           const cov = transcriptFailure.coverage ?? 1
-          if (cov < 0.20 || cov > 0.65) return false   // broader range covers <0.50 and 0.50–0.65
+          if (cov < 0.20 || cov > 0.65) return false   // broader range covers <0.50 and 0.50-0.65
           const expTok = transcriptTokens(transcriptFailure.expectedText)
           const detTok = transcriptTokens(transcriptFailure.detectedText)
           if (detTok.length === 0 || expTok.length === 0) return false
-          // 1. Clean sequential prefix — no insertions, no substitutions.
+          // 1. Clean sequential prefix - no insertions, no substitutions.
           for (let i = 0; i < detTok.length; i++) {
             if (i >= expTok.length || !transcriptTokenMatches(expTok[i], detTok[i])) return false
           }
@@ -2159,7 +2161,7 @@ async function generateVoiceLine(rawText: string, voiceId: string, storyId: stri
           if (expTok.length - detTok.length < 3) return false
           // 3. Cutoff at a natural pause point (comma, period, semicolon, dash,
           //    or next word is a clause-starting conjunction).
-          //    No multi-clause requirement unlike Case B — a comma-delimited
+          //    No multi-clause requirement unlike Case B - a comma-delimited
           //    opener such as "On the third evening," qualifies.
           const origWords = transcriptFailure.expectedText.split(/\s+/)
           let tokensSeen = 0; let lastIdx = -1
@@ -2193,7 +2195,7 @@ async function generateVoiceLine(rawText: string, voiceId: string, storyId: stri
           // Rationale: Whisper's VAD stops at natural inter-sentence pauses. When
           // detected is a prefix of expected (e.g. "I'll come with you." detected vs
           // "I'll come with you. I want to see what you see." expected), the ElevenLabs
-          // audio almost certainly contains the full text — Whisper just couldn't hear
+          // audio almost certainly contains the full text - Whisper just couldn't hear
           // past the pause. The render-final-mix uses the audio directly, not the
           // transcript. Blocking production here is a QC false negative.
           //
@@ -2203,14 +2205,14 @@ async function generateVoiceLine(rawText: string, voiceId: string, storyId: stri
           // (normalizeCompoundNumbers + standalone cardinal words 0-19 → digits)
           // before the startsWith prefix comparison. This handles cases where
           // Whisper returns digit forms ($2,800 / 11) while the script was written
-          // in word form ("two thousand eight hundred" / "eleven") — both sides
+          // in word form ("two thousand eight hundred" / "eleven") - both sides
           // normalize to the same token sequence before comparison.
           // ATL-PIPE-019: Comprehensive normalizeForTranscriptQC
           // Extends ATL-PIPE-016 normForPrefixCheck with the full class-level
           // normalization needed to make qc-normalization an immune defect class.
           // Added in this commit:
           //   Step B2: person title abbreviations (Dr.→doctor, Mr.→mister, etc.)
-          //   Step B3: apostrophe stripping — makes it's/its, Purnell's/Purnells equivalent
+          //   Step B3: apostrophe stripping - makes it's/its, Purnell's/Purnells equivalent
           //   (Ordinals and numeric ordinal suffixes already handled by
           //    normalizeOrdinalDateForms + normalizeCompoundNumbers upstream of this fn)
           const normForPrefixCheck = (t: string): string => {
@@ -2243,7 +2245,7 @@ async function generateVoiceLine(rawText: string, voiceId: string, storyId: stri
               .replace(/\bst\.?\b/gi, 'saint')  // saint (names only; streets are "st" not abbreviated in scripts)
               .replace(/\bave\.?\b/gi, 'avenue')
 
-            // Step B3: apostrophe stripping — makes contractions and possessives equivalent
+            // Step B3: apostrophe stripping - makes contractions and possessives equivalent
             // "it's" → "its"  |  "Purnell's" → "Purnells"  |  "don't" → "dont"
             // Both expected and detected sides go through this, so:
             // script: "It's open." → "its open"
@@ -2259,7 +2261,7 @@ async function generateVoiceLine(rawText: string, voiceId: string, storyId: stri
           // responses like "Yes." (norm "yes" = 3 chars) and "No." (2 chars) that
           // are valid clean prefixes of longer lines. A 1-char guard prevents
           // single-letter false positives (e.g. Whisper returning bare "I" or "A").
-          // ATL-PIPE-017: diagnostic log — surfaces null-buf cause in server logs
+          // ATL-PIPE-017: diagnostic log - surfaces null-buf cause in server logs
           console.log(
             `  [ATL-PIPE-017] ${fileName} prefix-rescue check: detectedNorm.length=${detectedNorm.length}` +
             ` startsWithPrefix=${expectedNorm.startsWith(detectedNorm)}` +
@@ -2273,7 +2275,7 @@ async function generateVoiceLine(rawText: string, voiceId: string, storyId: stri
 
           // ATL-PIPE-017: Short-line suffix/substring acceptance.
           // Very short dialogue lines (< ~4 words) are prone to Whisper dropping
-          // the opening word(s) — especially contractions ("It's", "That's").
+          // the opening word(s) - especially contractions ("It's", "That's").
           // Detected "Open." (norm "open") is NOT a prefix of "It's open." (norm "its open")
           // but IS contained within it. Accept when:
           //   (a) detectedNorm appears as substring of expectedNorm, AND
@@ -2291,7 +2293,7 @@ async function generateVoiceLine(rawText: string, voiceId: string, storyId: stri
             const acceptRule = isPrefixAcceptable ? 'ATL-PIPE-007 prefix' : 'ATL-PIPE-017 suffix'
             console.warn(
               `  ⚠️ REPEATED_IDENTICAL_TRUNCATION [${ruleCase}] ${fileName} speaker="${speaker}" ` +
-              `— detected "${truncatedAt}" ${isPrefixAcceptable ? 'is a clean prefix of' : 'appears within'} expected. ` +
+              `- detected "${truncatedAt}" ${isPrefixAcceptable ? 'is a clean prefix of' : 'appears within'} expected. ` +
               `Whisper VAD truncated; audio almost certainly correct. ` +
               `Accepting with warning (${acceptRule}). coverage=${transcriptFailure.coverage?.toFixed(2)}`
             )
@@ -2312,7 +2314,7 @@ async function generateVoiceLine(rawText: string, voiceId: string, storyId: stri
             if (normSimilarity >= 0.95 && normExpTok.length > 0) {
               console.warn(
                 `  ✅ NUMERIC_EQUIVALENCE_ACCEPT [ATL-PIPE-011] ${fileName} speaker="${speaker}" ` +
-                `— Whisper returned a numeric/currency equivalent of the expected text. ` +
+                `- Whisper returned a numeric/currency equivalent of the expected text. ` +
                 `normalizedSimilarity=${normSimilarity.toFixed(3)} ` +
                 `expected="${transcriptFailure.expectedText}" detected="${truncatedAt}". ` +
                 `Accepting segment (no split needed).`
@@ -2331,7 +2333,7 @@ async function generateVoiceLine(rawText: string, voiceId: string, storyId: stri
             `  ⚠️ REPEATED_IDENTICAL_TRUNCATION [${ruleCase}] ${fileName} speaker="${speaker}" ` +
             `candidates=${transcriptDetectedTexts.length} coverage=${transcriptFailure.coverage?.toFixed(2)} ` +
             `all-detected="${truncatedAt}" ` +
-            `— Whisper VAD is stopping at a natural pause on every retry. ` +
+            `- Whisper VAD is stopping at a natural pause on every retry. ` +
             `Split this segment into shorter sub-segments and re-run.`
           )
           const splitRescueUrl = await trySplitTruncationRescue()
@@ -2357,12 +2359,12 @@ async function generateVoiceLine(rawText: string, voiceId: string, storyId: stri
           }
         }
         // INC-005: if Whisper returned exactly "?" (or empty), this is not a normalizable
-        // mismatch — Whisper was confused by the audio. Classify immediately as
+        // mismatch - Whisper was confused by the audio. Classify immediately as
         // transcript_question_mark to prevent silent retry loops.
         const detectedText = String(transcriptFailure.detectedText || '').trim()
         if (detectedText === '?' || detectedText === '??' || detectedText === '') {
           throw new Error(
-            `TRANSCRIPT_AMBIGUOUS: Segment ${fileName} — Whisper returned "${detectedText || '(empty)'}". ` +
+            `TRANSCRIPT_AMBIGUOUS: Segment ${fileName} - Whisper returned "${detectedText || '(empty)'}". ` +
             `This is not a QC normalisation case. Whisper was confused by the audio. ` +
             `expected "${transcriptFailure.expectedText}". ` +
             `Inspect the audio artifact: check byte size, LUFS, and duration. ` +
@@ -2396,7 +2398,7 @@ async function generateVoiceLine(rawText: string, voiceId: string, storyId: stri
 }
 
 // MIN_BEFORE_TEXT_CHARS: beforeText shorter than this is treated as empty/unusable.
-// When [LISTENER_NAME] appears near the start (e.g. "[LISTENER_NAME], a dead man…"),
+// When [LISTENER_NAME] appears near the start (e.g. "[LISTENER_NAME], a dead man..."),
 // the resulting beforeText ("" or "Hi,") would cause ElevenLabs to return ~10KB of
 // silence, which validate_belle_assets rejects as SILENCE_BUFFER.  The series path
 // (series_generate_belle_assets) hits this same code via generateBelleOnly:true.
@@ -2411,7 +2413,7 @@ async function generateBelleIntroWithName(introText: string, storyId: string, li
   const beforeText = (parts[0] || '').trim()
   // SUNSET-INTRO-FIX (Marc merge word msg 3099, 2026-07-19): when [LISTENER_NAME] leads
   // the intro, parts[1] starts with the punctuation that followed the placeholder
-  // (", …"). trim() only removes whitespace, so the leading comma reached TTS and
+  // (", ..."). trim() only removes whitespace, so the leading comma reached TTS and
   // Belle vocalized it as a glottal artifact ("Kha,") baked into the final mix.
   // Strip leading punctuation/dashes from the after-name text before rendering.
   const afterText = (parts[1] || '').trim().replace(/^[\s,;:.!?\u2026\u2014\u2013-]+/, '')
@@ -2427,18 +2429,18 @@ async function generateBelleIntroWithName(introText: string, storyId: string, li
   let primaryUrl: string
 
   if (usableBeforeText && afterText) {
-    // [LISTENER_NAME] in the middle — generate a matched before/after pair.
+    // [LISTENER_NAME] in the middle - generate a matched before/after pair.
     beforeUrl = await generateVoiceLine(usableBeforeText, CANONICAL_BELLE_B_VOICE_ID, storyId, lineIndex, 'intro_before')
     afterUrl = await generateVoiceLine(afterText, CANONICAL_BELLE_B_VOICE_ID, storyId, lineIndex + 0.1, 'intro_after')
     primaryUrl = beforeUrl
   } else if (afterText) {
-    // [LISTENER_NAME] at start (or short beforeText skipped) — use afterText as standalone intro.
+    // [LISTENER_NAME] at start (or short beforeText skipped) - use afterText as standalone intro.
     // Use 'intro' prefix (not 'intro_after') so render_final_mix can locate it as a
     // standard intro asset without requiring a paired beforeUrl.
     primaryUrl = await generateVoiceLine(afterText, CANONICAL_BELLE_B_VOICE_ID, storyId, lineIndex + 0.1, 'intro')
-    // afterUrl stays null — no paired intro_after file is created
+    // afterUrl stays null - no paired intro_after file is created
   } else {
-    // [LISTENER_NAME] at end (no afterText) — use beforeText as standalone intro.
+    // [LISTENER_NAME] at end (no afterText) - use beforeText as standalone intro.
     primaryUrl = await generateVoiceLine(usableBeforeText, CANONICAL_BELLE_B_VOICE_ID, storyId, lineIndex, 'intro')
   }
 
@@ -2659,7 +2661,7 @@ export async function POST(req: NextRequest) {
     let resolvedNarratorVoiceName = narratorVoiceName
 
     // Allow explicit request override (narratorVoiceId / narratorVoiceName) to bypass
-    // the registry lookup — used for manual admin overrides only
+    // the registry lookup - used for manual admin overrides only
     if (!resolvedNarratorVoiceId && narratorVoiceName) {
       resolvedNarratorVoiceId = voiceByName[narratorVoiceName]
     }
@@ -2681,7 +2683,7 @@ export async function POST(req: NextRequest) {
     // ── Character voice_code preflight gate ──────────────────────────────────────────
     // Validate character voice_codes (if any) before generation begins.
     // Malformed codes block immediately; missing registry entries are noted (will create).
-    // Narrator is NOT included — it has a raw EL voice ID, no registry involvement.
+    // Narrator is NOT included - it has a raw EL voice ID, no registry involvement.
     if (!preflightOnly && characterVoiceCodes.length > 0) {
       const _introMatch = script.match(/BELLE B INTRO[\s\S]*?BELLE B:\s*(.+?)(?:\n---|\n\n)/i)
       const _outroMatch = script.match(/BELLE B OUTRO[\s\S]*?BELLE B:\s*(.+?)(?:\n[A-Z]:|$)/i)
@@ -2705,7 +2707,7 @@ export async function POST(req: NextRequest) {
       if (!vcReport.safeToGenerateVoices) {
         return NextResponse.json({
           success: false,
-          error: 'Voice code preflight failed — fix character voice_codes before generating',
+          error: 'Voice code preflight failed - fix character voice_codes before generating',
           code: 'VOICE_CODE_PREFLIGHT_FAILED',
           blockers: vcReport.blockers,
           voiceCodeCheck: vcReport.checks.voiceCodeCheck,
@@ -2748,7 +2750,7 @@ export async function POST(req: NextRequest) {
           }
           try {
             const result = await provider.createOrFetchVoice(assignment.voice_code, spec, false)
-            // result is VoiceMeta — has voice_id, name, category, labels
+            // result is VoiceMeta - has voice_id, name, category, labels
             const source = result.labels?.[EL_VOICE_CODE_LABEL]
               ? (result.category === 'generated' ? 'found_in_el_labels' : 'created')
               : 'created'
@@ -3009,10 +3011,10 @@ export async function POST(req: NextRequest) {
     const characterSpeakers = Array.from(new Set(storyLines
       .filter(l => l.type === 'character' && !nonDialogueSpeakers.has(l.speaker.toUpperCase()))
       .map(l => l.speaker.toUpperCase())))
-    // CASTING-ALIAS-001: Hard gate — speakers reaching this function have no character
+    // CASTING-ALIAS-001: Hard gate - speakers reaching this function have no character
     // description in the CHARACTER GUIDE and are therefore uncastable by the pipeline.
     // The ONLY legitimate path through is if the character has an established voice in
-    // the series roster or story assignments (reuse only — never assign a guessed voice).
+    // the series roster or story assignments (reuse only - never assign a guessed voice).
     // Any speaker with no established voice halts generation with marc_required=true.
     // Previously, this function called inferFallbackCharacterMeta() to guess a voice
     // from the speaker name. That path silently produced wrong casts when the name
@@ -3041,7 +3043,7 @@ export async function POST(req: NextRequest) {
         }
 
         if (establishedAssignment?.voice_id) {
-          // Reuse established voice — safe path, no guessing
+          // Reuse established voice - safe path, no guessing
           assignCharacterVoice(voiceMap, speaker, establishedAssignment.voice_id)
           usedVoiceIds.add(establishedAssignment.voice_id)
           const note = `Reused established series/story voice for speaker ${speaker} (alias or prior assignment)`
@@ -3056,7 +3058,7 @@ export async function POST(req: NextRequest) {
           continue
         }
 
-        // No established voice AND no character description — HARD GATE.
+        // No established voice AND no character description - HARD GATE.
         // Never call inferFallbackCharacterMeta() here. Never guess. Halt.
         console.error(
           `  ❌ CAST BLOCKED: "${speaker}" has no character description in the CHARACTER GUIDE ` +
@@ -3074,7 +3076,7 @@ export async function POST(req: NextRequest) {
       const stillMissingVoiceMap = await autoCastMissingSpeakers(missingVoiceMap)
       if (stillMissingVoiceMap.length > 0) {
         const availableGuideCharacters = characterGuide.map(c => c.name)
-        console.error(`  ❌ Cast blocked — characters with no description and no series voice: ${stillMissingVoiceMap.join(', ')}`)
+        console.error(`  ❌ Cast blocked - characters with no description and no series voice: ${stillMissingVoiceMap.join(', ')}`)
         return NextResponse.json({
           success: false,
           error_json: buildStructuredError(
@@ -3169,10 +3171,10 @@ export async function POST(req: NextRequest) {
       const existingSegmentNames = gateResult.validSegmentNames
       // Log hard-fails and warns for diagnostics
       for (const name of gateResult.staleHardFailNames) {
-        console.log(`Segment ${name}: hard-fail (≤5KB) — treating as stale/silence, will regenerate`)
+        console.log(`Segment ${name}: hard-fail (≤5KB) - treating as stale/silence, will regenerate`)
       }
       for (const name of gateResult.staleWarnNames) {
-        console.log(`Segment ${name}: warn range (5KB–20KB) — treating as valid short-line segment (INC-006)`)
+        console.log(`Segment ${name}: warn range (5KB-20KB) - treating as valid short-line segment (INC-006)`)
       }
       // ATL-SFX-INCR-001: also include sfx_NNNN.mp3 files present in storage so the
       // "already exists" check and missingSegments diff account for SFX artifacts.
@@ -3225,7 +3227,7 @@ export async function POST(req: NextRequest) {
           // previously threw here, leaving sfx_NNNN.mp3 files absent from storage.
           // generateSFX() writes sfx_NNNN.mp3; render-final-mix picks it up via sfxPattern.
           const sfxUrl = await generateSFX(targetLine.text, storyId, targetLine.index)
-          if (!sfxUrl) throw new Error(`SFX generation returned null for cue "${targetLine.text}" (index ${targetLine.index}) — ElevenLabs SFX API may be unavailable`)
+          if (!sfxUrl) throw new Error(`SFX generation returned null for cue "${targetLine.text}" (index ${targetLine.index}) - ElevenLabs SFX API may be unavailable`)
           generatedSegments.push({ index: targetLine.index, speaker: 'SFX', type: 'sfx', url: sfxUrl })
         } else {
           throw new Error(`Targeted retry does not support ${targetLine.type} lines`)
@@ -3242,7 +3244,7 @@ export async function POST(req: NextRequest) {
         })
       }
 
-      // ATL-PIPE-006: retry storage list up to 3x — Supabase CDN occasionally returns HTML
+      // ATL-PIPE-006: retry storage list up to 3x - Supabase CDN occasionally returns HTML
       // (5xx) for list operations on long-running functions, causing false job failures.
       let updatedAudioFiles = null
       let updatedListError = null
@@ -3365,7 +3367,7 @@ export async function POST(req: NextRequest) {
             const kind = classifySegmentFailure(lastError, line.text)
             console.warn(`  ⚠️ Segment retry ${segment} attempt=${attempt}/${MAX_SEGMENT_ATTEMPTS} kind=${kind}`)
             if (kind === 'voice_generation' && attempt <= 4) await new Promise(r => setTimeout(r, 2000))
-            if (kind === 'script_issue') break // nothing code can do — stop immediately
+            if (kind === 'script_issue') break // nothing code can do - stop immediately
           }
           try {
             const url = await generateVoiceLine(line.text, voiceId, storyId, line.index, 'segment', forceRegen, line.speaker, candidateCount, qcSkippedSegments)
@@ -3412,7 +3414,7 @@ export async function POST(req: NextRequest) {
     const inventory = buildInventoryReport(finalSegmentNames, failures)
     console.log(`  Inventory: missing=${inventory.missingSegments.length}, lowLoudness=${inventory.lowLoudnessSegments.length}, transcriptFailed=${inventory.transcriptFailedSegments.length}, reusedVoices=${inventory.reusedVoices.length}, escalated=${escalations.length}`)
     if (escalations.length > 0) {
-      console.warn(`\n🚨 ${escalations.length} segment(s) escalated — copy to Marc/ChatGPT for review:`)
+      console.warn(`\n🚨 ${escalations.length} segment(s) escalated - copy to Marc/ChatGPT for review:`)
       escalations.forEach(r => console.warn(`  ${r.segment} | ${r.failureKind} | manualOK=${r.manualOverrideSafe} | "${r.scriptText.slice(0,60)}" | fix: ${r.recommendedFix.slice(0,80)}`))
     }
     return NextResponse.json({

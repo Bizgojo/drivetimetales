@@ -16,7 +16,7 @@ import { runPremiseGate, formatPremiseCollisionMessage, formatPremiseAdjacentWar
 import { syncPremiseIndexForTransition } from '@/lib/premiseIndex'
 
 export const runtime = 'nodejs'
-// maxDuration governed by vercel.json (800s) — do not override here
+// maxDuration governed by vercel.json (800s) - do not override here
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -53,7 +53,7 @@ const NEXT_STEP_AFTER_SERIES_RENDER = 'complete_story_package'
 const MAX_SERIES_DESCRIPTION_RETRIES = 2
 const MAX_SERIES_BELLE_RETRIES = 3
 const NARRATIVE_HOOK_FALLBACK_MODEL = 'claude-haiku-4-5'
-// ATL-PIPE-MODEL-001: per-step model routing. Prose is the product — script
+// ATL-PIPE-MODEL-001: per-step model routing. Prose is the product - script
 // GENERATION and prose repair/regeneration stay on Opus; VALIDATION/QC steps
 // run on Sonnet. body.model / body.validationModel override for canaries.
 const STEP_MODELS = {
@@ -92,7 +92,7 @@ function findShortDialogueLines(script: string): Array<{speaker: string, text: s
     const match = trimmed.match(/^([A-Z][A-Z0-9 _]{0,30}):\s*(.+)$/)
     if (!match) continue
     const speaker = match[1].trim()
-    // Skip narrators and Belle B — they have different length expectations
+    // Skip narrators and Belle B - they have different length expectations
     if (/^NARRATOR$|^BELLE\s*B?$|^BELLE$/i.test(speaker)) continue
     const text = match[2].trim()
     // Skip stage directions in parentheses
@@ -158,7 +158,7 @@ function classifyValidateScriptFailure(
     }
   }
 
-  // Unknown — cannot auto-retry safely
+  // Unknown - cannot auto-retry safely
   return {
     kind: 'script_validator_unknown',
     isAutonomousRetryable: false,
@@ -547,7 +547,7 @@ function sanitizeDescription(description: string): string {
   const clean = String(description || '')
     .replace(/\s+/g, ' ')
     .replace(/^["']|["']$/g, '')
-    .replace(/[.]{2,}|…/g, '')
+    .replace(/[.]{2,}|.../g, '')
     .trim()
   const fallback = 'A dangerous secret pulls every choice toward the truth.'
   const source = clean || fallback
@@ -602,7 +602,7 @@ function isInvalidStandaloneDescription(description: string): boolean {
 
   if (!clean) return true
   if (clean.length > 65) return true
-  if (/[.]{2,}|…/.test(clean)) return true
+  if (/[.]{2,}|.../.test(clean)) return true
   if (!/[.!?]$/.test(clean)) return true
 
   const withoutPunctuation = clean.replace(/[.!?]+$/g, '').trim()
@@ -702,8 +702,8 @@ function replaceBelleSection(script: string, kind: 'intro' | 'outro', text: stri
 function normalizeBelleRequiredText(text: string) {
   return String(text || '')
     .toLowerCase()
-    .replace(/[“”]/g, '"')
-    .replace(/[‘’]/g, "'")
+    .replace(/[""]/g, '"')
+    .replace(/['']/g, "'")
     .replace(/[^a-z0-9]+/g, ' ')
     .trim()
 }
@@ -720,20 +720,20 @@ function belleTextIncludes(text: string, required: string) {
 // Writing to satisfy a keyword list is a validator defect, not a story defect.
 //
 // The nine categories (per Marc's classification):
-//   1. suspicious_discrepancy — numbers/data/records that tell an unintended story
-//   2. unexplained_event      — something happened without explanation
-//   3. hidden_evidence        — something concealed or suppressed
-//   4. secret                 — information deliberately withheld
-//   5. fraud_wrongdoing       — explicit criminal or deceptive action
-//   6. betrayal               — breach of trust
-//   7. conspiracy             — organised deception or plot
-//   8. impossible_fact        — something that should not be possible
-//   9. missing_person         — someone absent, disappeared, or unaccounted for
-//   10. concrete_threat       — a specific danger, warning, or lurking presence
+//   1. suspicious_discrepancy - numbers/data/records that tell an unintended story
+//   2. unexplained_event      - something happened without explanation
+//   3. hidden_evidence        - something concealed or suppressed
+//   4. secret                 - information deliberately withheld
+//   5. fraud_wrongdoing       - explicit criminal or deceptive action
+//   6. betrayal               - breach of trust
+//   7. conspiracy             - organised deception or plot
+//   8. impossible_fact        - something that should not be possible
+//   9. missing_person         - someone absent, disappeared, or unaccounted for
+//   10. concrete_threat       - a specific danger, warning, or lurking presence
 //
 // Ledger intro: "numbers tell a story they were never meant to tell"
 //   → matches suspicious_discrepancy (pattern: numbers.{0,50}story.{0,30}meant)
-//   → PASS — intro unchanged, validator updated.
+//   → PASS - intro unchanged, validator updated.
 //
 // LEARN-001 classification: Validation-Model Defect (not story defect, not validator bug).
 // Root cause: keyword matching approximates hook detection but cannot recognise
@@ -781,7 +781,7 @@ function detectNarrativeHookCategory(text: string): NarrativeHookCategory | null
     .replace(/\bwill not\b/g, "won't")
   const t = `${raw}\n${normalized}\n${contracted}`
 
-  // 1. Suspicious discrepancy — numbers/data/records that don't add up,
+  // 1. Suspicious discrepancy - numbers/data/records that don't add up,
   //    things that communicate an unintended truth, anomalies in records.
   //    Covers: "numbers tell a story they were never meant to tell",
   //    "the entry doesn't reconcile", "entries refuse to match",
@@ -796,47 +796,47 @@ function detectNarrativeHookCategory(text: string): NarrativeHookCategory | null
     /\b(wrong|off|false|missing|extra|unexplained).{0,40}(ledger|account|entry|invoice|payment|transaction|column|figure|balance|books?)\b/i.test(t)
   ) return 'suspicious_discrepancy'
 
-  // 2. Unexplained event — something happened with no apparent reason.
+  // 2. Unexplained event - something happened with no apparent reason.
   if (
     /\b(unexplained|no explanation|no one knows why|never explained|without warning|out of nowhere|for no reason|reasons? unclear|nobody.?s sure|mysterious circumstances|can.?t explain|nobody can explain)\b/i.test(t)
   ) return 'unexplained_event'
 
-  // 3. Hidden evidence — something concealed, suppressed, or not meant to surface.
+  // 3. Hidden evidence - something concealed, suppressed, or not meant to surface.
   if (
     /\b(hidden|concealed|buried|covered up|cover.?up|suppressed|sealed|locked away|kept secret|kept quiet|wasn.t meant to be found|never meant to be found|shouldn.t have surfaced|didn.t want found|didn.t want anyone to find)\b/i.test(t)
   ) return 'hidden_evidence'
 
-  // 4. Secret — information deliberately withheld from someone.
+  // 4. Secret - information deliberately withheld from someone.
   if (
     /\b(secret|no one knew|nobody knew|didn.t tell|never told|withheld|confidential|classified|kept from|wasn.t supposed to know|not supposed to know)\b/i.test(t)
   ) return 'secret'
 
-  // 5. Fraud / wrongdoing — explicit criminal or deceptive act.
+  // 5. Fraud / wrongdoing - explicit criminal or deceptive act.
   if (
     /\b(fraud|fraudulent|scheme|scam|theft|stolen|embezzl|forgery|falsif|tamper|manipulat|corrupt|brib|crime|criminal|illegal|illicit|wrongdoing|cover.?up|decei|on purpose|paper trail)\b/i.test(t)
   ) return 'fraud_wrongdoing'
 
-  // 6. Betrayal — breach of trust between people.
+  // 6. Betrayal - breach of trust between people.
   if (
     /\b(betrayal|betrayed|betrays|trust.{0,20}broken|broken.{0,20}trust|backstab|double.?cross|sold.{0,10}out|turned.{0,10}against|let.{0,10}down by someone)\b/i.test(t)
   ) return 'betrayal'
 
-  // 7. Conspiracy — organised deception, plot, or coordinated wrongdoing.
+  // 7. Conspiracy - organised deception, plot, or coordinated wrongdoing.
   if (
     /\b(conspiracy|conspired|conspiring|plot|orchestrated|coordinated|web of|network of|scheme involving|working together to|they planned|planned together)\b/i.test(t)
   ) return 'conspiracy'
 
-  // 8. Impossible fact — something that defies logic or should not exist.
+  // 8. Impossible fact - something that defies logic or should not exist.
   if (
     /\b(impossible|can.?t be right|can.?t be true|makes no sense|doesn.?t make sense|defies|against all (odds|logic|reason)|shouldn.?t (exist|be possible|have happened)|never should have|no way that|how is it possible)\b/i.test(t)
   ) return 'impossible_fact'
 
-  // 9. Missing person — someone absent, disappeared, or unaccounted for.
+  // 9. Missing person - someone absent, disappeared, or unaccounted for.
   if (
     /\b(missing|disappeared|vanished|gone without|unaccounted|never came back|never returned|last seen|never found|no trace)\b/i.test(t)
   ) return 'missing_person'
 
-  // 10. Concrete threat / danger / menace — a specific danger, warning, or
+  // 10. Concrete threat / danger / menace - a specific danger, warning, or
   //     lurking presence tied to a subject/place/action, not just mood.
   if (
     /\b(something|someone|somebody|a man|a woman|a figure|a shadow|a voice|footsteps?|a presence).{0,50}(moving|watching|following|waiting|hiding|lurking|standing|breathing|scratching|knocking|whispering|coming|approaching)\b/i.test(t) ||
@@ -864,7 +864,7 @@ async function hasConcreteNarrativeHook(text: string): Promise<boolean> {
         temperature: 0,
         messages: [{
           role: 'user',
-          content: `Given this intro line, does it contain a concrete narrative hook — a specific event, danger, secret, conflict, mystery, threat, or story mechanism that creates a reason to keep listening?
+          content: `Given this intro line, does it contain a concrete narrative hook - a specific event, danger, secret, conflict, mystery, threat, or story mechanism that creates a reason to keep listening?
 
 Answer strictly "YES" or "NO" and nothing else.
 
@@ -925,7 +925,7 @@ function classifyBelleRepairError(message: string): StructuredErrorJsonKind {
   return 'belle_quality_unknown'
 }
 
-// RFR Reliability Sprint — advisory vs severe defect classification.
+// RFR Reliability Sprint - advisory vs severe defect classification.
 // Marc's rule: LLM quality validators are advisory unless they detect a severe defect.
 // Severe defects block the pipeline. Advisory defects are logged but do not block.
 //
@@ -938,9 +938,9 @@ function classifyBelleRepairError(message: string): StructuredErrorJsonKind {
 //   intro scoring below threshold when audio is intact and text is coherent
 function isBelleSevereDefect(kind: string, issues: string[]): boolean {
   // Severe by kind
-  if (kind === 'belle_quality_title_missing') return true      // Missing story title — listener won't know what they heard
-  if (kind === 'belle_quality_listener_missing') return true   // Missing [LISTENER_NAME] — personalization broken
-  // Hook quality is not severe — advisory only
+  if (kind === 'belle_quality_title_missing') return true      // Missing story title - listener won't know what they heard
+  if (kind === 'belle_quality_listener_missing') return true   // Missing [LISTENER_NAME] - personalization broken
+  // Hook quality is not severe - advisory only
   if (kind === 'belle_quality_hook_missing') return false
   // Unknown kinds: check issues text for severe signals
   const text = issues.join(' ').toLowerCase()
@@ -1048,7 +1048,7 @@ async function validateIntroOutroPositionRules(
   if (!intro) {
     issues.push('intro text is missing')
   } else {
-    // [LISTENER_NAME] is a valid split-point placeholder in the script — do NOT reject it.
+    // [LISTENER_NAME] is a valid split-point placeholder in the script - do NOT reject it.
     // generate_belle_assets splits around it; we strip it here for quality checks only.
     const introForChecks = intro.replace(/\[LISTENER_NAME\]/g, '').replace(/\s{2,}/g, ' ').trim()
     // Concrete narrative hook (event, danger, secret, conflict, mystery, mechanism)
@@ -1122,7 +1122,7 @@ async function validateIntroOutroPositionRules(
   // ── Outro: finale series episode ──────────────────────────────────────────
 
   if (episodeType === 'series_finale') {
-    // Must name the title — accept series name or episode title
+    // Must name the title - accept series name or episode title
     const namesTitle = (seriesName && belleTextIncludes(outro, seriesName)) ||
       (title && belleTextIncludes(outro, title))
     if (!namesTitle && (seriesName || title)) {
@@ -1344,7 +1344,7 @@ async function fetchAllNarratorVoices(): Promise<Array<{ name: string; elevenlab
  *  6. story.narrator_voice_id (if set) must match the resolved voice ID
  *
  * Null narrator_voice_name + null narrator_voice_id passes if the script narrator
- * resolves cleanly — the link will be written later by complete-story-package.
+ * resolves cleanly - the link will be written later by complete-story-package.
  *
  * @param story   Must include script, narrator_voice_id, narrator_voice_name
  * @param voices  All narrator_voices rows from fetchAllNarratorVoices()
@@ -1382,7 +1382,7 @@ function validateNarratorAssignmentSync(
     issues.push(`${px}NARRATOR "${scriptNarratorName}" not found in narrator_voices`)
     issues.push(`  Script NARRATOR header: "${scriptNarratorName}"`)
     issues.push(`  DB narrator_voice_name: "${dbVoiceNameForMsg || '(not set)'}"`)
-    issues.push(`  NARRATOR_IS_CHARACTER: ${narratorIsCharacter || '(not set)'} — if true, the script uses a character as narrator; the NARRATOR header must still be a valid narrator voice name`)
+    issues.push(`  NARRATOR_IS_CHARACTER: ${narratorIsCharacter || '(not set)'} - if true, the script uses a character as narrator; the NARRATOR header must still be a valid narrator voice name`)
     issues.push(`  Valid narrator voice names: ${sortedVoiceNames.join(', ')}`)
     issues.push(`  Fix: Update NARRATOR header to a valid narrator voice name, e.g. '${voices[0]?.name}'`)
     return { passed: false, narratorIssues: issues, resolvedVoiceId: null, resolvedVoiceName: null }
@@ -1536,15 +1536,18 @@ async function validateBelleText(kind: 'intro' | 'outro', text: string, options:
   const lower = text.toLowerCase()
   const wordCount = countWords(text)
   const sentenceCount = (text.match(/[.!?]+/g) || []).length
-  const withoutPunctuation = text.replace(/[.!?]["'”’)]*$/g, '').trim()
+  const withoutPunctuation = text.replace(/[.!?]["'"')]*$/g, '').trim()
   const title = String(options.title || '').trim()
   const author = String(options.author || '').trim()
 
   if (!text) issues.push(`${kind} text is required.`)
   if (text && wordCount < 4) issues.push(`${kind} text is too short.`)
-  if (text && !/[.!?]["'”’)]*$/.test(text)) issues.push(`${kind} text appears incomplete; it must end with punctuation.`)
+  if (text && !/[.!?]["'"')]*$/.test(text)) issues.push(`${kind} text appears incomplete; it must end with punctuation.`)
   // [LISTENER_NAME] is a valid personalization placeholder — do not reject it
-  if (/\b(welcome|settle in|let['’]?s begin|begins now|only on endless tales|sponsored by|stay tuned)\b/i.test(text)) {
+  // ATL-BELLE-QC-BUG-002: strip quoted substrings before forbidden-word check so series/episode
+  // names containing banned words (e.g. "The Welcome Committee") are not incorrectly rejected.
+  const textForBannedWordCheck = text.replace(/"[^"]*"/g, ' ');
+  if (/\b(welcome|settle in|let['']?s begin|begins now|only on endless tales|sponsored by|stay tuned)\b/i.test(textForBannedWordCheck)) {
     issues.push(`${kind} uses forbidden host or promotional language.`)
   }
   if (/\bbelle b\b/i.test(text)) issues.push(`${kind} must say Belle, not Belle B.`)
@@ -1604,18 +1607,18 @@ Use the CURRENT rules:
 - Difficult Solution Rule: the main problem must feel genuinely difficult at the beginning, the middle must reveal leverage and escalating consequences that make the solution possible, and the ending must feel emotionally and logically earned.
 - Fail endings where the climax happens offscreen, the protagonist does not affect the outcome, the ending resolves through exposition instead of dramatic action, the emotional arc is unresolved, or the final solution is passive, too easy, or a "villain already dead" anticlimax.
 
-SECTION 8C — EARLY INVESTMENT & ORIENTATION CHECK (v1.3):
+SECTION 8C - EARLY INVESTMENT & ORIENTATION CHECK (v1.3):
 Read the first ~400 words of the script body (after the Belle B intro block, approximately 3 minutes at 130 wpm).
 Run the Five-Question Test. By minute 3, a first-time listener must be able to answer all five:
-1. Who am I emotionally following? (protagonist or emotional anchor clear within 60–90 seconds)
+1. Who am I emotionally following? (protagonist or emotional anchor clear within 60-90 seconds)
 2. What is happening right now? (immediate situation understandable within 2 minutes)
 3. What does this person want, fear, or need? (visible pressure, need, wound, danger, obligation, or desire present)
 4. Why does it matter? (personal stakes established)
 5. What question am I listening to answer? (one clear listening question is open)
-Also check: does the opening create at least one of sympathy, admiration, urgency, fear, curiosity, concern, or emotional identification? If none — FAIL.
+Also check: does the opening create at least one of sympathy, admiration, urgency, fear, curiosity, concern, or emotional identification? If none - FAIL.
 Failure on any question = FAIL. Quote the specific lines that failed. State which questions cannot be answered.
 The fix is not "explain more." The fix is "anchor the listener earlier."
-Series Episode 1 is held to extra strictness — marginal pass on any single question = FAIL for Episode 1.
+Series Episode 1 is held to extra strictness - marginal pass on any single question = FAIL for Episode 1.
 Do not advance to audio generation if this check fails.
 
 When the script fails, identify the SPECIFIC issue. If DESCRIPTION does not match the protagonist's role, state what the DESCRIPTION says and what the protagonist's actual role is.
@@ -1737,12 +1740,12 @@ Content rules:
 - Belle sounds like a trusted friend, not a host, announcer, DJ, trailer, ad, or promo voice.
 - No "Welcome", "begins now", "only on Endless Tales", "tonight", "stay tuned", "next time", or "what happens next" for standalone stories.
 
-MANDATORY FIELD REQUIREMENTS — you will be rejected if these are missing:
+MANDATORY FIELD REQUIREMENTS - you will be rejected if these are missing:
 1. NO LISTENER NAME: The intro/announcement MUST NOT include [LISTENER_NAME] or any listener name. The shared name opener handles greeting/personalization.
 2. NO GREETING: The intro/announcement MUST NOT use greeting/opener language such as "welcome", "settle in", or "let's begin".
 3. STORY TITLE: Standalone intro/announcement and outro MUST include the exact story title as provided in TITLE above. Do not paraphrase, shorten, or omit it.
-4. CONCRETE HOOK: Standalone intro/announcement MUST include a concrete narrative hook — a specific conflict, crime, mystery mechanism, secret, danger, cover-up, wrongdoing, or story object. "Something waiting" or "a story about trust" is NOT a hook. "Paper trail breaks, someone broke it on purpose" IS a hook. "A forged deed" IS a hook. Name the specific thing that creates danger or mystery.
-5. NO SYNOPSIS: NEVER write a third-person synopsis, story description, or plot summary (e.g., "In this story...", "follows a driver...", "a man discovers..."). The listener already chose this story — do not describe it to them.
+4. CONCRETE HOOK: Standalone intro/announcement MUST include a concrete narrative hook - a specific conflict, crime, mystery mechanism, secret, danger, cover-up, wrongdoing, or story object. "Something waiting" or "a story about trust" is NOT a hook. "Paper trail breaks, someone broke it on purpose" IS a hook. "A forged deed" IS a hook. Name the specific thing that creates danger or mystery.
+5. NO SYNOPSIS: NEVER write a third-person synopsis, story description, or plot summary (e.g., "In this story...", "follows a driver...", "a man discovers..."). The listener already chose this story - do not describe it to them.
 6. NARRATOR CREDIT (ATL-PIPE-012): Standalone outro MUST include the narrator voice talent name if provided. The narrator name is given in the NARRATOR field below. The exact phrase can vary ("Narrated by [NARRATOR]", "Voices by [NARRATOR]", or incorporated into the outro sentence), but the narrator name MUST appear verbatim in the outro.
 
 Additional content rules:
@@ -1870,7 +1873,7 @@ function buildAuthorVoicePromptBlock(profile: any): string {
   if (!profile) return ''
 
   const lines = [
-    'AUTHOR VOICE — write the ENTIRE story in this author\'s distinct voice. Do not fall back on a generic or default narrator style.',
+    'AUTHOR VOICE - write the ENTIRE story in this author\'s distinct voice. Do not fall back on a generic or default narrator style.',
   ]
 
   const authorName = cleanAuthorStyleValue(profile.name)
@@ -1896,7 +1899,7 @@ function buildAuthorVoicePromptBlock(profile: any): string {
 
   const exampleLine = cleanAuthorStyleValue(profile.example_line)
   if (exampleLine) {
-    lines.push('A line that exemplifies this author\'s voice — match its rhythm and texture:')
+    lines.push('A line that exemplifies this author\'s voice - match its rhythm and texture:')
     lines.push(`"${exampleLine}"`)
   }
 
@@ -1994,7 +1997,7 @@ async function saveSeriesParent(payload: Record<string, any>, seriesId?: string)
 }
 
 /**
- * Zombie guard — run once per POST request before selecting a new candidate.
+ * Zombie guard - run once per POST request before selecting a new candidate.
  *
  * A zombie job is one where:
  *   - status = 'running'
@@ -2002,7 +2005,7 @@ async function saveSeriesParent(payload: Record<string, any>, seriesId?: string)
  *   - locked_by IS NULL
  *   - current_step is beyond the initial queued/create step (i.e. a step was
  *     started, the runner vanished, and nobody ever resumed it)
- *   - updated_at is older than ZOMBIE_STALE_MS (30 min) — guards against the
+ *   - updated_at is older than ZOMBIE_STALE_MS (30 min) - guards against the
  *     legitimate gap between two consecutive run-next calls in autopilot
  *
  * Matched jobs are marked status='failed' with error_json.kind='zombie_stalled'
@@ -2010,7 +2013,7 @@ async function saveSeriesParent(payload: Record<string, any>, seriesId?: string)
  * silently clogging the queue forever.
  *
  * Recovery: call production-autopilot.js reactivateJob() against the job ID,
- * or POST to run-next with the job ID — the job can be safely resumed from
+ * or POST to run-next with the job ID - the job can be safely resumed from
  * whatever current_step it was frozen at.
  */
 /**
@@ -2037,7 +2040,7 @@ async function detectAndMarkZombieJobs(excludeJobId?: string): Promise<string[]>
   const zombies = candidates.filter(
     (job: any) =>
       !SAFE_ZOMBIE_EXEMPT_STEPS.includes(String(job.current_step || '')) &&
-      // Never mark the job the caller is explicitly requesting — that's a
+      // Never mark the job the caller is explicitly requesting - that's a
       // targeted recovery attempt and should be allowed to proceed normally.
       job.id !== excludeJobId
   )
@@ -2193,7 +2196,7 @@ async function lockJob(job: ProductionJob, lockHolderId: string) {
 }
 
 async function clearLock(jobId: string, lockHolderId: string, lockedAt?: string | null) {
-  // ATL-RENDER-STATE-INDEX-001: fence on locked_at too — a zombie invocation's
+  // ATL-RENDER-STATE-INDEX-001: fence on locked_at too - a zombie invocation's
   // finally-block must not clear a NEWER lock taken by the same worker id.
   let query = supabase
     .from('production_jobs')
@@ -2297,7 +2300,7 @@ async function failJob(job: ProductionJob, error: unknown) {
   const structuredErrorKind = error && typeof error === 'object' && 'structuredErrorKind' in error
     ? String((error as { structuredErrorKind?: unknown }).structuredErrorKind || '')
     : ''
-  
+
   // Build structured error_json to ensure classification is always possible
   const errorJson = buildStructuredError(
     (structuredErrorKind || 'unknown_step') as StructuredErrorJsonKind,
@@ -2310,8 +2313,8 @@ async function failJob(job: ProductionJob, error: unknown) {
       ...(structuredErrorDetail !== undefined ? { detail: structuredErrorDetail } : {}),
     }
   )
-  
-  // ATL-RENDER-STATE-INDEX-001: fenced — only mark failed if this invocation
+
+  // ATL-RENDER-STATE-INDEX-001: fenced - only mark failed if this invocation
   // still owns the lock. A zombie invocation must not fail a job that was
   // reclaimed by another worker or already superseded.
   const { data: failedRows } = await supabase
@@ -2464,7 +2467,7 @@ async function loadSeriesEpisodes(seriesId: string) {
     .select('id,title,author,author_style,genre,narrative_voice,description,brief_json,status,script,script_json,script_version,series_id,series_name,episode_number,series_episode_number,series_total_episodes,series_is_finale,story_type,validator_result,validator_report,validator_passed_at,narrator_voice_id,narrator_voice_name,audio_url,story_audio_url')
     .eq('series_id', seriesId)
     // Rule-1 doctrine (Marc 2026-07-09): cold_storage episodes are retired from
-    // production and must not contaminate series validation/production — a
+    // production and must not contaminate series validation/production - a
     // recommissioned replacement occupies the slot (dispatch-queue applies the
     // same exclusion). Without this, a retired row makes the validator see
     // duplicate/extra episodes (Limestone canary failure 22:06Z).
@@ -2651,7 +2654,7 @@ function parseSeriesCharacterGuide(script: string) {
   if (!guideMatch) return chars
   const guideLines = guideMatch[1].split('\n').map(line => line.trim()).filter(Boolean)
   for (const line of guideLines) {
-    const nameMatch = line.match(/^([A-Za-zÀ-ÖØ-öø-ÿ][A-Za-zÀ-ÖØ-öø-ÿ\s'.()/]+?)\s*(?:[—–-]|:)/)
+    const nameMatch = line.match(/^([A-Za-zÀ-ÖØ-öø-ÿ][A-Za-zÀ-ÖØ-öø-ÿ\s'.()/]+?)\s*(?:[---]|:)/)
     if (!nameMatch) continue
     const name = nameMatch[1].trim()
     const detail = line.slice(nameMatch[0].length).trim()
@@ -2692,11 +2695,11 @@ async function loadSeriesCharacterRoster(seriesId: string) {
 
 function buildSeriesCharacterRosterPromptBlock(roster: any[]) {
   if (!Array.isArray(roster) || roster.length === 0) {
-    return `LOCKED SERIES CHARACTER ROSTER — NONE YET
+    return `LOCKED SERIES CHARACTER ROSTER - NONE YET
 This is the first episode or no recurring characters have been established yet. Any speaking character you introduce in this episode may become locked for later episodes.`
   }
 
-  return `LOCKED SERIES CHARACTER ROSTER — NON-NEGOTIABLE
+  return `LOCKED SERIES CHARACTER ROSTER - NON-NEGOTIABLE
 These characters are already established in this series. This roster overrides the bible, episode brief, and any tempting reinvention.
 
 HARD CHARACTER CONTINUITY RULES:
@@ -2821,7 +2824,7 @@ function buildStandaloneScriptPrompt(
 
   return `You are the Endless Tales Stage 2 script writer.
 
-🎯 ENTERTAINMENT FIRST RULE — NON-NEGOTIABLE
+🎯 ENTERTAINMENT FIRST RULE - NON-NEGOTIABLE
 
 The primary purpose of every Endless Tales story is to entertain.
 Listeners come for suspense, curiosity, emotion, mystery, wonder, humor, fear, connection, and the desire to know what happens next.
@@ -2831,19 +2834,19 @@ NEVER have the narrator explain the meaning of the story.
 NEVER include speeches whose primary purpose is to educate, persuade, moralize, lecture, or preach.
 NEVER allow a character to become the author's mouthpiece.
 
-If a story contains a lesson, theme, or insight — it must emerge naturally through character choices, consequences, conflict, sacrifice, failure, success, and events. The listener discovers meaning. You do not explain it.
+If a story contains a lesson, theme, or insight - it must emerge naturally through character choices, consequences, conflict, sacrifice, failure, success, and events. The listener discovers meaning. You do not explain it.
 
 Story first. Theme second. Lesson last.
 The story is the meal. The lesson is seasoning.
 
-🎯 EARLY INVESTMENT RULE (v2.4) — NON-NEGOTIABLE
+🎯 EARLY INVESTMENT RULE (v2.4) - NON-NEGOTIABLE
 
 By the three-minute mark (~400 words of script body after the Belle B intro), the listener must be able to answer all five orientation questions:
-1. Who am I following? — protagonist or emotional anchor clearly established within 60–90 seconds.
-2. What is happening? — immediate situation understandable within 2 minutes.
-3. What do they want, fear, or need? — visible pressure present before minute 3.
-4. Why does it matter? — personal stakes established at a human level.
-5. What am I listening to find out? — one clear listening question is open.
+1. Who am I following? - protagonist or emotional anchor clearly established within 60-90 seconds.
+2. What is happening? - immediate situation understandable within 2 minutes.
+3. What do they want, fear, or need? - visible pressure present before minute 3.
+4. Why does it matter? - personal stakes established at a human level.
+5. What am I listening to find out? - one clear listening question is open.
 
 The opening must also create at least one of: sympathy, admiration, urgency, fear, curiosity, concern, or emotional identification.
 
@@ -2854,7 +2857,7 @@ Mystery of cause is allowed and encouraged. Mystery of situation is never accept
 Do not send a script forward if the opening relies mainly on "it makes sense later."
 The fix for a weak opening is not "explain more." It is "anchor the listener to a person and a pressure earlier."
 
-Write or revise the opening AFTER the rest of the episode is drafted when possible — it is easier to write a perfect entry point when you know what you are entering.
+Write or revise the opening AFTER the rest of the episode is drafted when possible - it is easier to write a perfect entry point when you know what you are entering.
 
 ${authorVoiceBlock}
 
@@ -2921,7 +2924,7 @@ CHARACTER GUIDE
 
 BELLE B ANNOUNCEMENT
 ---
-BELLE B: [one or two short sentences, warm, specific, sensory. Includes the story title in quotes and references something specific from the story. NO [LISTENER_NAME]. NO greeting/opener (e.g. no "settle in", "welcome") — the name opener handles that. NO author credit, NO narrator credit, no time-of-day, no "Endless Tales original".]
+BELLE B: [one or two short sentences, warm, specific, sensory. Includes the story title in quotes and references something specific from the story. NO [LISTENER_NAME]. NO greeting/opener (e.g. no "settle in", "welcome") - the name opener handles that. NO author credit, NO narrator credit, no time-of-day, no "Endless Tales original".]
 
 [START AUDIO DRAMA SCRIPT]
 NARRATOR: ...
@@ -2981,7 +2984,7 @@ Do NOT write a character dialogue line that begins with a standalone one-word se
 BAD:  ROSA: Yes. He retired eight months ago.
 BAD:  GARRITY: No. The file was stamped last week.
 BAD:  DOLAN: Sure. I can check the register.
-GOOD: ROSA: He retired eight months ago—she nodded and confirmed it.
+GOOD: ROSA: He retired eight months ago-she nodded and confirmed it.
 GOOD: GARRITY: He said no; the file was stamped last week.
 GOOD: ROSA: Yes, he retired eight months ago.
 REASON: Whisper voice activity detection stops after the first short sentence ("Yes.") because the natural period pause reads as segment end. Combining into a single flowing sentence prevents false QC truncation.
@@ -2989,7 +2992,7 @@ If an affirmation/negation is necessary, write it as a separate ROSA: line befor
 
 HAL-SCRIPT-007: SHORT DIALOGUE LINE MINIMUM LENGTH
 Dialogue lines MUST be at least 5 words. Lines shorter than 5 words cause Whisper to drop
-the opening word(s) — e.g. "It's open." → Whisper returns "Open." (contraction dropped).
+the opening word(s) - e.g. "It's open." → Whisper returns "Open." (contraction dropped).
 BAD:  LEN: It's open.
 BAD:  ROSA: Come in.
 BAD:  WARD: Too late.
@@ -3036,7 +3039,7 @@ ${JSON.stringify({
 
 // PREMISE-UNIQUENESS-001: mandatory premise check at the brief gate before
 // Stage 2 script generation. COLLISION throws a typed error that failJob
-// records as kind 'premise_collision' (marc_required — bounced for rework).
+// records as kind 'premise_collision' (marc_required - bounced for rework).
 // Override only via Marc's recorded brief_json.premise_gate_override; an
 // applied override is logged with its citations, never silent.
 async function enforcePremiseGateBeforeStage2(params: {
@@ -3073,7 +3076,7 @@ async function enforcePremiseGateBeforeStage2(params: {
     })
   }
   // Known-adjacent cluster warning (Marc ruling 2026-07-18 09:47 EDT): NOT a
-  // bounce — the job proceeds; the saturation warning is logged loudly so
+  // bounce - the job proceeds; the saturation warning is logged loudly so
   // Orion/Marc see it in the runner logs.
   if (premiseGate.adjacencies.length > 0) {
     console.warn(`[run-next] ${formatPremiseAdjacentWarning(premiseGate)} (at ${params.label})`, {
@@ -3216,7 +3219,7 @@ async function generateStandaloneScript(job: ProductionJob, model: string) {
       const belleMatch = belleAnnouncementSection.match(/BELLE\s+B:\s*(.+?)(?:\n|$)/i)
       if (belleMatch) {
         announcementText = belleMatch[1].trim()
-        const isGeneric = /^(settle\s+in|welcome|let['’]?s\s+begin)/i.test(announcementText) && announcementText.length < 100
+        const isGeneric = /^(settle\s+in|welcome|let['']?s\s+begin)/i.test(announcementText) && announcementText.length < 100
         if (isGeneric) {
           briefWarnings.push(`Warning: Belle B announcement appears generic; expected specific story references without a greeting or listener name`)
         }
@@ -3578,7 +3581,7 @@ async function runStandaloneVoicePreflight(job: ProductionJob, origin: string) {
     }
   }
 
-  // ── Narrator validation — must pass before any ElevenLabs call ──────────────
+  // ── Narrator validation - must pass before any ElevenLabs call ──────────────
   const { data: storyForNarrator, error: narratorFetchError } = await supabase
     .from('stories')
     .select('id,script,narrator_voice_id,narrator_voice_name')
@@ -4044,7 +4047,7 @@ REPAIR REQUEST:
 Repair intro: ${shouldRepairIntro ? 'yes' : 'no'}
 Repair outro: ${shouldRepairOutro ? 'yes' : 'no'}
 Intro/announcement must include [LISTENER_NAME]: no (never; shared name opener handles personalization)
-${narratorForRepair ? `Outro must include narrator name: ${narratorForRepair} (required — e.g. "Narrated by ${narratorForRepair}.")` : ''}
+${narratorForRepair ? `Outro must include narrator name: ${narratorForRepair} (required - e.g. "Narrated by ${narratorForRepair}.")` : ''}
 
 DECLARED METADATA:
 ${declaredStoryType}
@@ -4055,7 +4058,7 @@ ${story.title || 'Untitled'}
 GENRE:
 ${story.genre || 'Unknown'}
 
-${narratorForRepair ? `NARRATOR (voice talent — must appear verbatim in outro credit):
+${narratorForRepair ? `NARRATOR (voice talent - must appear verbatim in outro credit):
 ${narratorForRepair}
 
 ` : ''}CURRENT BELLE INTRO:
@@ -4196,7 +4199,7 @@ async function runStandaloneMusicGeneration(job: ProductionJob, origin: string) 
   const existingUrl = String(story.background_music_url || '').trim()
   if (existingUrl && !existingUrl.startsWith('pending:')) {
     // HAL-PIPE-002 fix: verify background_music.mp3 actually exists in storage before reusing.
-    // Same class of bug as render_final_mix — DB URL can be set even if file was not persisted.
+    // Same class of bug as render_final_mix - DB URL can be set even if file was not persisted.
     const { data: musicFiles } = await supabase.storage.from('audio').list(`asc3/${storyId}`, { limit: 500 })
     const musicFileNames = (musicFiles || []).map((f: any) => f.name)
     const musicExists = musicFileNames.includes('background_music.mp3')
@@ -4226,8 +4229,8 @@ async function runStandaloneMusicGeneration(job: ProductionJob, origin: string) 
         },
       }
     }
-    // File missing from storage despite DB URL — fall through to regenerate
-    console.warn(`[generate_music] background_music.mp3 missing from storage despite DB url — regenerating`)
+    // File missing from storage despite DB URL - fall through to regenerate
+    console.warn(`[generate_music] background_music.mp3 missing from storage despite DB url - regenerating`)
   }
 
   const response = await fetch(`${origin}/api/asc3/generate-music`, {
@@ -4335,15 +4338,15 @@ async function runStandaloneRenderFinalMix(job: ProductionJob, origin: string) {
       }
     }
 
-    // Stale DB URL — file missing from storage. Clear DB columns and fall through to render.
-    console.warn(`[runStandaloneRenderFinalMix] final_mix.mp3 absent from storage despite DB url set — clearing stale urls and re-rendering for ${storyId}`)
+    // Stale DB URL - file missing from storage. Clear DB columns and fall through to render.
+    console.warn(`[runStandaloneRenderFinalMix] final_mix.mp3 absent from storage despite DB url set - clearing stale urls and re-rendering for ${storyId}`)
     await supabase.from('stories').update({ audio_url: null, story_audio_url: null }).eq('id', storyId)
   }
 
-  // ATL-PIPE-003: Pre-Assembly Silence Gate — validate all segments before render_final_mix.
+  // ATL-PIPE-003: Pre-Assembly Silence Gate - validate all segments before render_final_mix.
   // Threshold split (revised):
   //   ≤ 5KB  → hard fail (truly empty / ElevenLabs error response)
-  //   5KB–20KB → warn in logs, continue render (legitimately short dialog lines)
+  //   5KB-20KB → warn in logs, continue render (legitimately short dialog lines)
   //   > 20KB → always valid
   const renderAttempts = (state.renderFinalMix?.attempts ?? 0) + 1
   const storyAudioFolder = `asc3/${storyId}`
@@ -4354,8 +4357,8 @@ async function runStandaloneRenderFinalMix(job: ProductionJob, origin: string) {
     const segmentPattern = /^segment_\d{4}\.mp3$/
     const audioSegments = (audioFiles || []).filter(f => segmentPattern.test(f.name))
 
-    const HARD_FAIL_SIZE = 5 * 1024    // 5KB — truly empty / corrupted
-    const WARN_SIZE      = 20 * 1024   // 20KB — possibly short but may be valid
+    const HARD_FAIL_SIZE = 5 * 1024    // 5KB - truly empty / corrupted
+    const WARN_SIZE      = 20 * 1024   // 20KB - possibly short but may be valid
 
     const hardFailSegments: string[] = []
     const warnSegments: string[] = []
@@ -4364,10 +4367,10 @@ async function runStandaloneRenderFinalMix(job: ProductionJob, origin: string) {
       const size = file.metadata?.size ?? 0
       if (size <= HARD_FAIL_SIZE) {
         hardFailSegments.push(file.name)
-        console.warn(`[ATL-PIPE-003] HARD FAIL segment ${file.name}: size=${size}B ≤ ${HARD_FAIL_SIZE}B — truly empty/corrupted`)
+        console.warn(`[ATL-PIPE-003] HARD FAIL segment ${file.name}: size=${size}B ≤ ${HARD_FAIL_SIZE}B - truly empty/corrupted`)
       } else if (size <= WARN_SIZE) {
         warnSegments.push(file.name)
-        console.warn(`[ATL-PIPE-003] WARN segment ${file.name}: size=${size}B ≤ ${WARN_SIZE}B — short but may be valid short dialog, continuing`)
+        console.warn(`[ATL-PIPE-003] WARN segment ${file.name}: size=${size}B ≤ ${WARN_SIZE}B - short but may be valid short dialog, continuing`)
       }
     }
 
@@ -4378,8 +4381,8 @@ async function runStandaloneRenderFinalMix(job: ProductionJob, origin: string) {
         error: 'NULL_LUFS_PRE_ASSEMBLY_GATE_FAILED',
         affectedSegments: hardFailSegments,
         warnSegments,
-        message: `Pre-assembly gate: ${hardFailSegments.length} segment(s) are truly empty (≤5KB). Reset job to generate_voices — stale segments will auto-regenerate.`,
-        remediation: 'Reset job to generate_voices step — stale segments will auto-regenerate (no manual deletion needed)',
+        message: `Pre-assembly gate: ${hardFailSegments.length} segment(s) are truly empty (≤5KB). Reset job to generate_voices - stale segments will auto-regenerate.`,
+        remediation: 'Reset job to generate_voices step - stale segments will auto-regenerate (no manual deletion needed)',
       }
       // Allow max 2 render attempts before marking as terminal failure
       if (renderAttempts >= 2) {
@@ -4408,7 +4411,7 @@ async function runStandaloneRenderFinalMix(job: ProductionJob, origin: string) {
           },
         }
       }
-      // Under retry limit — fail this attempt but allow orchestrator to retry
+      // Under retry limit - fail this attempt but allow orchestrator to retry
       return {
         success: false,
         skippedExisting: false,
@@ -4434,13 +4437,13 @@ async function runStandaloneRenderFinalMix(job: ProductionJob, origin: string) {
         },
       }
     }
-    // warnSegments are logged above but do NOT block render — short dialog lines are legitimate
+    // warnSegments are logged above but do NOT block render - short dialog lines are legitimate
   } catch (e) {
     // If segment validation itself fails, log warning but continue to render attempt
     console.warn(`[ATL-PIPE-003] Segment pre-flight validation error: ${String(e).slice(0, 200)}`)
   }
 
-  // Direct module call — eliminates HTTP hop and Vercel edge network timeout risk (ATL P1-B)
+  // Direct module call - eliminates HTTP hop and Vercel edge network timeout risk (ATL P1-B)
   console.log(`[runStandaloneRenderFinalMix] Calling runRenderFinalMix directly for ${storyId}`)
   const report = await runRenderFinalMix(String(storyId))
   const finalAudioUrl = String(report?.finalAudioUrl || '').trim()
@@ -4799,7 +4802,7 @@ function classifyRfrIssues(contentIssues: string[]): { kind: StructuredErrorJson
   if (!Array.isArray(contentIssues) || contentIssues.length === 0) {
     return { kind: 'rfr_gate_unknown' }
   }
-  
+
   // Check for narrator missing issue (e.g. 'standalone outro must name the narrator "Nora Ashby"')
   const narratorMatch = contentIssues
     .find(issue => /standalone outro must name the narrator/.test(issue))
@@ -4832,7 +4835,7 @@ async function verifyStandaloneReadyForReview(job: ProductionJob) {
   const missingFields = missingReadyForReviewFields(story)
   const structuralOk = missingFields.length === 0
 
-  // ── HAL-PIPE-002: Hard Audio Gate — final_mix.mp3 must exist in storage ──
+  // ── HAL-PIPE-002: Hard Audio Gate - final_mix.mp3 must exist in storage ──
   // The DB audio_url field can be set even if the file was never actually uploaded.
   // Verify the file physically exists in storage before allowing RFR promotion.
   const audioGateIssues: string[] = []
@@ -4898,7 +4901,7 @@ Write exactly one production-ready audio drama script for Episode ${currentEpiso
 Use the saved series package as the source of truth. Do not invent a new series premise.
 Output ONLY the script. No commentary.
 
-🎯 ENTERTAINMENT FIRST RULE — NON-NEGOTIABLE
+🎯 ENTERTAINMENT FIRST RULE - NON-NEGOTIABLE
 
 The primary purpose of every Endless Tales story is to entertain.
 Listeners come for suspense, curiosity, emotion, mystery, wonder, humor, fear, connection, and the desire to know what happens next.
@@ -4908,19 +4911,19 @@ NEVER have the narrator explain the meaning of the story.
 NEVER include speeches whose primary purpose is to educate, persuade, moralize, lecture, or preach.
 NEVER allow a character to become the author's mouthpiece.
 
-If a story contains a lesson, theme, or insight — it must emerge naturally through character choices, consequences, conflict, sacrifice, failure, success, and events. The listener discovers meaning. You do not explain it.
+If a story contains a lesson, theme, or insight - it must emerge naturally through character choices, consequences, conflict, sacrifice, failure, success, and events. The listener discovers meaning. You do not explain it.
 
 Story first. Theme second. Lesson last.
 The story is the meal. The lesson is seasoning.
 
-🎯 EARLY INVESTMENT RULE (v2.4) — NON-NEGOTIABLE
+🎯 EARLY INVESTMENT RULE (v2.4) - NON-NEGOTIABLE
 
 By the three-minute mark (~400 words of script body after the Belle B intro), the listener must be able to answer all five orientation questions:
-1. Who am I following? — protagonist or emotional anchor clearly established within 60–90 seconds.
-2. What is happening? — immediate situation understandable within 2 minutes.
-3. What do they want, fear, or need? — visible pressure present before minute 3.
-4. Why does it matter? — personal stakes established at a human level.
-5. What am I listening to find out? — one clear listening question is open.
+1. Who am I following? - protagonist or emotional anchor clearly established within 60-90 seconds.
+2. What is happening? - immediate situation understandable within 2 minutes.
+3. What do they want, fear, or need? - visible pressure present before minute 3.
+4. Why does it matter? - personal stakes established at a human level.
+5. What am I listening to find out? - one clear listening question is open.
 
 The opening must also create at least one of: sympathy, admiration, urgency, fear, curiosity, concern, or emotional identification.
 
@@ -5002,7 +5005,7 @@ CHARACTER GUIDE
 
 BELLE B ANNOUNCEMENT
 ---
-BELLE B: [one or two short sentences, warm, specific, sensory. Includes the episode title in quotes and references something specific from the episode. NO [LISTENER_NAME]. NO greeting/opener (e.g. no "settle in", "welcome") — the name opener handles that. NO author credit, NO narrator credit, no time-of-day, no "Endless Tales original".]
+BELLE B: [one or two short sentences, warm, specific, sensory. Includes the episode title in quotes and references something specific from the episode. NO [LISTENER_NAME]. NO greeting/opener (e.g. no "settle in", "welcome") - the name opener handles that. NO author credit, NO narrator credit, no time-of-day, no "Endless Tales original".]
 
 [START AUDIO DRAMA SCRIPT]
 NARRATOR: ...
@@ -5983,7 +5986,7 @@ async function runSeriesVoicePreflight(job: ProductionJob, origin: string) {
       && !failedEpisodes.some((failed: any) => String(failed.storyId) === String(episode.id))
   )
 
-  // All episodes checked — validate cross-episode narrator consistency before returning success
+  // All episodes checked - validate cross-episode narrator consistency before returning success
   if (!nextEpisode) {
     const narratorIssues: string[] = []
     // Only look at numeric episode-number keys (not the "_name" sibling keys)
@@ -6042,7 +6045,7 @@ async function runSeriesVoicePreflight(job: ProductionJob, origin: string) {
   const number = episodeNumber(nextEpisode, 0)
   const epLabel = `EP${number}`
 
-  // ── Narrator validation — before generate-voices call ─────────────────────
+  // ── Narrator validation - before generate-voices call ─────────────────────
   const allVoices = await fetchAllNarratorVoices()
   const narratorResult = validateNarratorAssignmentSync(nextEpisode, allVoices, epLabel)
 
@@ -6519,7 +6522,7 @@ async function runSeriesRenderFinalMix(job: ProductionJob, origin: string) {
       finalMixUrlByEp[key] = null
     }
 
-    // Direct module call — eliminates HTTP hop and Vercel edge network timeout risk (ATL P1-B)
+    // Direct module call - eliminates HTTP hop and Vercel edge network timeout risk (ATL P1-B)
     const report = await runRenderFinalMix(storyId)
     const afterRender = await storyFinalMixStatus(storyId)
     const ok = report?.success === true && afterRender.complete
@@ -6538,7 +6541,7 @@ async function runSeriesRenderFinalMix(job: ProductionJob, origin: string) {
         seriesRenderFinalMix: { doneByEp, finalMixUrlByEp, allDone: allDoneNow, lastUpdatedAt: nowIso() },
       }
 
-      // ATL-RENDER-STATE-INDEX-001: fenced checkpoint — only write if this
+      // ATL-RENDER-STATE-INDEX-001: fenced checkpoint - only write if this
       // invocation still owns the lock. Lock columns are NOT touched here;
       // the single release-to-queued happens once, in the step handler.
       const { data: checkpointRows, error: stateError } = await supabase
@@ -6550,7 +6553,7 @@ async function runSeriesRenderFinalMix(job: ProductionJob, origin: string) {
       if (!checkpointRows || checkpointRows.length === 0) {
         // Lock lost mid-render: this invocation was superseded (job failed by
         // the runner watchdog and possibly re-dispatched as a new row). Do NOT
-        // resurrect the row — that is exactly the write the
+        // resurrect the row - that is exactly the write the
         // production_jobs_one_active_per_series index rejects. The rendered
         // final_mix.mp3 is already in storage; the replacement job's
         // storyFinalMixStatus() check will reuse it.
@@ -6623,9 +6626,9 @@ export async function POST(req: NextRequest) {
         .limit(1)
         .maybeSingle()
       if (existingJob) {
-        // Worker already has a running job — use it instead of picking a new one
+        // Worker already has a running job - use it instead of picking a new one
         lockedJob = existingJob as ProductionJob
-        console.log(`[run-next] ONE-JOB-GUARD: ${lockHolderId} already holds job ${lockedJob.id.slice(0,8)} at step ${lockedJob.current_step} — redirecting`)
+        console.log(`[run-next] ONE-JOB-GUARD: ${lockHolderId} already holds job ${lockedJob.id.slice(0,8)} at step ${lockedJob.current_step} - redirecting`)
       }
     }
     // ─────────────────────────────────────────────────────────────────────
@@ -7199,7 +7202,7 @@ export async function POST(req: NextRequest) {
             storyId: result.storyId,
             learningIncidentId: learningIncident?.id || null,
             playbookId: playbook?.id || null,
-            message: `Script validation failed (${classification.kind}). Autonomous retry ${nextRetryCount}/${MAX_RETRIES} — re-queuing to generate_script.`,
+            message: `Script validation failed (${classification.kind}). Autonomous retry ${nextRetryCount}/${MAX_RETRIES} - re-queuing to generate_script.`,
             logs: retryLogs,
           })
         }
@@ -7210,7 +7213,7 @@ export async function POST(req: NextRequest) {
           `Standalone validation needs attention: ${classification.kind}. ${classification.recommendedAction}`
         )
 
-        const failedLogs = appendLog({ ...lockedJob, logs }, `validate_script retries exhausted (${retryCount}/${MAX_RETRIES}) — failing, Marc required`, {
+        const failedLogs = appendLog({ ...lockedJob, logs }, `validate_script retries exhausted (${retryCount}/${MAX_RETRIES}) - failing, Marc required`, {
           source: 'autonomous-runner',
           storyId: result.storyId,
           failureKind: classification.kind,
@@ -7428,17 +7431,17 @@ export async function POST(req: NextRequest) {
       // ATL-PIPE-009: voice_preflight failure classification with autonomous retry
       if (!result.passed) {
         const MAX_RETRIES = 2
-        
+
         // Classify failure type: narrator mismatch, unlabeled lines, or unknown
         const hasNarratorIssue = result.narratorIssues && result.narratorIssues.length > 0
         const hasUnlabeledLines = blockingReasons.some(r => /unlabeled.*line/i.test(r)) || (result.report as any)?.unlabeledLineCount > 0
         const unlabeledLineCount = (result.report as any)?.unlabeledLineCount || 0
         const unlabeledExamples = (result.report as any)?.examples || []
-        
+
         let failureKind: StructuredErrorJsonKind = 'unknown_qc'
         let isAutonomousRetryable = false
         let recommendedAction = ''
-        
+
         if (hasNarratorIssue) {
           failureKind = 'narrator_mismatch'
           isAutonomousRetryable = false  // narrator mismatch requires DB/manual fix, not retry
@@ -7448,11 +7451,11 @@ export async function POST(req: NextRequest) {
           isAutonomousRetryable = true   // unlabeled lines are repairable via generate_script retry
           recommendedAction = `${unlabeledLineCount} unlabeled story body lines found. Re-generate script with HAL-SCRIPT-002 enforced: every line must start with NARRATOR: or CHARACTER NAME:.`
         }
-        
+
         const retryCount = Number((lockedJob.state_json as any)?.voicePreflightScriptRetryCount ?? 0)
         const canAutoRetry = isAutonomousRetryable && retryCount < MAX_RETRIES
         const firstBlocker = blockingReasons[0] || 'Voice preflight failed'
-        
+
         // Always record learning incident
         const { data: learningIncident } = await supabase
           .from('production_learning_events')
@@ -7479,11 +7482,11 @@ export async function POST(req: NextRequest) {
           })
           .select('id')
           .single()
-        
+
         // If unlabeled lines and retries available: autonomous retry
         if (canAutoRetry) {
           const nextRetryCount = retryCount + 1
-          
+
           // Clear script so generate_script regenerates
           await supabase
             .from('stories')
@@ -7495,7 +7498,7 @@ export async function POST(req: NextRequest) {
               status: 'draft',
             })
             .eq('id', result.storyId)
-          
+
           const retryLogs = appendLog(lockedJob, `Auto-retry ${nextRetryCount}/${MAX_RETRIES}: unlabeled lines detected, re-queuing to generate_script`, {
             source: 'autonomous-runner',
             storyId: result.storyId,
@@ -7504,7 +7507,7 @@ export async function POST(req: NextRequest) {
             retryCount: nextRetryCount,
             learningIncidentId: learningIncident?.id || null,
           })
-          
+
           const { data: resetJob, error: updateError } = await supabase
             .from('production_jobs')
             .update({
@@ -7542,9 +7545,9 @@ export async function POST(req: NextRequest) {
             .match(ownedJobFence(lockedJob, lockHolderId))
             .select('*')
             .single()
-          
+
           if (updateError) throw new Error(`Failed to reset voice_preflight job for retry: ${updateError.message}`)
-          
+
           return NextResponse.json({
             success: true,
             action: 'autonomous_retry',
@@ -7560,7 +7563,7 @@ export async function POST(req: NextRequest) {
             logs: retryLogs,
           })
         }
-        
+
         // No auto-retry: fail with structured error_json
         const errorJsonPayload = buildStructuredError(
           failureKind,
@@ -7733,7 +7736,7 @@ export async function POST(req: NextRequest) {
           failed_segment_path:  segName ? `asc3/${result.storyId}/${segName}` : null,
           failed_speaker:       firstFailure.speaker || null,
           failed_segment_type:  firstFailure.type   || null,
-          // Text comparison — makes root cause visible without reading 3-level detail
+          // Text comparison - makes root cause visible without reading 3-level detail
           expected_text_excerpt: extractExpected(firstFailure.error || failureMsg || ''),
           detected_text_excerpt: extractDetected(firstFailure.error || failureMsg || ''),
           // Retry guidance
@@ -8065,7 +8068,7 @@ export async function POST(req: NextRequest) {
 
           // Advisory bypass: non-severe defects advance to next step with a warning log.
           if (!isBelleSevereDefect(failureKind, issues)) {
-            const advisoryLogs = appendLog(lockedJob, `Belle quality advisory (non-blocking): ${failureKind} — ${issues.join('; ')}`, {
+            const advisoryLogs = appendLog(lockedJob, `Belle quality advisory (non-blocking): ${failureKind} - ${issues.join('; ')}`, {
               storyId: result.storyId,
               advisoryOnly: true,
               failureKind,
@@ -8202,7 +8205,7 @@ export async function POST(req: NextRequest) {
             })
           }
 
-          // Repair retries exhausted — fail terminally
+          // Repair retries exhausted - fail terminally
           const exhaustedErrorJson = buildStructuredError(failureKind, `Belle asset repair exhausted (${belleAssetRepairCount}/${MAX_BELLE_RETRIES}): ${issues.join('; ')}`, step, {
             storyId: result.storyId,
             marc_required: true,
@@ -8266,7 +8269,7 @@ export async function POST(req: NextRequest) {
           storyId: result.storyId,
           marc_required: true,
           autonomous_repair: false,
-          rootCause: result.report.issues?.join('; ') || 'Audio/transcript QC failure — cannot auto-repair',
+          rootCause: result.report.issues?.join('; ') || 'Audio/transcript QC failure - cannot auto-repair',
           fixRecommendation: issuesByField.intro.length > 0 || issuesByField.outro.length > 0
             ? 'Text-rule violation: route to repair_belle_quality to rewrite the offending Belle line(s).'
             : 'Asset missing or unknown issue: regenerate Belle assets via generate_belle_assets.',
@@ -8368,7 +8371,7 @@ export async function POST(req: NextRequest) {
 
         // Advisory bypass: non-severe LLM issues log and advance without repair cycle.
         if (!isLlmSevere) {
-          const advisoryLogs = appendLog(lockedJob, `Belle quality advisory (non-blocking): LLM score ${result.report.introScore ?? '?'}/10 — ${llmIssues.join('; ')}`, {
+          const advisoryLogs = appendLog(lockedJob, `Belle quality advisory (non-blocking): LLM score ${result.report.introScore ?? '?'}/10 - ${llmIssues.join('; ')}`, {
             storyId: result.storyId,
             advisoryOnly: true,
             llmKind,
@@ -9274,7 +9277,7 @@ export async function POST(req: NextRequest) {
           await syncPremiseIndexForTransition(supabase, { storyIds: episodeIdsToPromote, toState: 'ready_for_review' })
         }
 
-        const completedLogs = appendLog(lockedJob, 'Series package complete — auto-finalized to Ready for Review', {
+        const completedLogs = appendLog(lockedJob, 'Series package complete - auto-finalized to Ready for Review', {
           seriesId: result.seriesId || lockedJob.series_id,
           episodeCount: episodeStoryIds.length,
           promotedEpisodeCount: episodeIdsToPromote.length,
@@ -9501,7 +9504,7 @@ export async function POST(req: NextRequest) {
           }, { status: 422 })
         }
 
-        // Not retryable — fail with structured error
+        // Not retryable - fail with structured error
         const failureKind = issueClassification.kind === 'rfr_outro_narrator_missing'
           ? 'rfr_outro_narrator_missing'
           : issueClassification.kind
@@ -9558,7 +9561,7 @@ export async function POST(req: NextRequest) {
 
       // ── ATL-PIPE-014: Auto-promote story on RFR success ───────────────────
       // The Review tab queries workflow_state, so a review-ready story is
-      // is_hidden=true — hidden from the public app, visible to Marc in the
+      // is_hidden=true - hidden from the public app, visible to Marc in the
       // admin Review tab.
       // This satisfies Marc's M-1 rule: no manual visibility correction allowed.
       // ORION-GOV-006 compliant: audit fields set, audit row written.
@@ -9582,7 +9585,7 @@ export async function POST(req: NextRequest) {
           storyPromotionStatus = 'ok'
           // PREMISE-UNIQUENESS-001: entering a protected state reserves the premise (best-effort).
           await syncPremiseIndexForTransition(supabase, { storyIds: [String(result.storyId)], toState: 'ready_for_review' })
-          // Write ORION-GOV-006 audit row (best-effort — do not fail RFR if this errors)
+          // Write ORION-GOV-006 audit row (best-effort - do not fail RFR if this errors)
           await supabase
             .from('story_workflow_audit')
             .insert({
@@ -9675,7 +9678,7 @@ export async function POST(req: NextRequest) {
       const result = await runSeriesRenderFinalMix(lockedJob, origin)
       const nextStep = result.allDone ? NEXT_STEP_AFTER_SERIES_RENDER : NEXT_STEP_AFTER_SERIES_MUSIC
 
-      // Bounded retry cap for series render failures — prevent infinite zombie loops
+      // Bounded retry cap for series render failures - prevent infinite zombie loops
       const MAX_SERIES_RENDER_ATTEMPTS = 5
       const renderState = (lockedJob.state_json && typeof lockedJob.state_json === 'object'
         ? lockedJob.state_json as Record<string, unknown> : {})
@@ -9718,7 +9721,7 @@ export async function POST(req: NextRequest) {
           })
           .match(ownedJobFence(lockedJob, lockHolderId)).select('*').single()
         if (updateError) throw new Error(`Failed to save series render exhaustion state: ${updateError.message}`)
-        console.error(`[series_render_final_mix] RETRY EXHAUSTED after ${MAX_SERIES_RENDER_ATTEMPTS} attempts — job ${lockedJob.id} marked needs_attention`)
+        console.error(`[series_render_final_mix] RETRY EXHAUSTED after ${MAX_SERIES_RENDER_ATTEMPTS} attempts - job ${lockedJob.id} marked needs_attention`)
         return NextResponse.json({ success: false, jobId: updatedJob?.id, currentStep: step, retryExhausted: true, error: result.lastError, logs })
       }
 
@@ -9840,7 +9843,7 @@ export async function POST(req: NextRequest) {
       // ATL-RENDER-STATE-INDEX-001: a fenced write that matched 0 rows means
       // this invocation lost the lock / was superseded (runner watchdog failed
       // the job and dispatch may have created a replacement). Don't write a
-      // 'failed' status over someone else's row — report 409 so the runner
+      // 'failed' status over someone else's row - report 409 so the runner
       // backs off like any other lock contention.
       const rawMessage = error instanceof Error ? error.message : String(error)
       if (isLockLostError({ message: rawMessage }) || rawMessage.includes('[job-lock-guard]')) {
