@@ -19,6 +19,10 @@ import {
 } from '@/lib/landing'
 
 const pageSrc = fs.readFileSync(path.join(__dirname, '..', 'app', 'go', 'page.tsx'), 'utf8')
+// GO-ACCURACY-001: client component extracted to GoLandingPageClient.tsx so
+// generateMetadata can live in the server-component page.tsx. Wiring and
+// placement tests must check the client file for JSX constants.
+const clientSrc = fs.readFileSync(path.join(__dirname, '..', 'app', 'go', 'GoLandingPageClient.tsx'), 'utf8')
 const landingSrc = fs.readFileSync(path.join(__dirname, '..', 'lib', 'landing.ts'), 'utf8')
 const trialEmailsSrc = fs.readFileSync(
   path.join(__dirname, '..', 'app', 'api', 'cron', 'trial-emails', 'route.ts'),
@@ -30,7 +34,7 @@ const trialEmailsSrc = fs.readFileSync(
 // ============================================================================
 describe('TRUST-SIGNALS-001: copy byte-exact pins', () => {
   test('social proof line — Marc-approved phrasing', () => {
-    expect(GO_SOCIAL_PROOF_LINE).toBe('1,000+ stories across 12 genres')
+    expect(GO_SOCIAL_PROOF_LINE).toBe('60+ original stories across 10 genres')
   })
 
   test('trial reminder line — accurate to real email cadence', () => {
@@ -68,21 +72,21 @@ describe('TRUST-SIGNALS-001: reminder accuracy constraints', () => {
 // 3. Page wiring — both constants imported and rendered
 // ============================================================================
 describe('TRUST-SIGNALS-001: page wiring source pins', () => {
-  test('GO_SOCIAL_PROOF_LINE imported in page.tsx', () => {
-    expect(pageSrc).toContain('GO_SOCIAL_PROOF_LINE')
+  test('GO_SOCIAL_PROOF_LINE imported in GoLandingPageClient.tsx', () => {
+    expect(clientSrc).toContain('GO_SOCIAL_PROOF_LINE')
   })
 
-  test('GO_TRIAL_REMINDER_LINE imported in page.tsx', () => {
-    expect(pageSrc).toContain('GO_TRIAL_REMINDER_LINE')
+  test('GO_TRIAL_REMINDER_LINE imported in GoLandingPageClient.tsx', () => {
+    expect(clientSrc).toContain('GO_TRIAL_REMINDER_LINE')
   })
 
   test('social proof rendered via {GO_SOCIAL_PROOF_LINE}', () => {
-    expect(pageSrc).toContain('{GO_SOCIAL_PROOF_LINE}')
+    expect(clientSrc).toContain('{GO_SOCIAL_PROOF_LINE}')
   })
 
   test('trial reminder rendered via {GO_TRIAL_REMINDER_LINE}', () => {
     // Should appear at least twice: once in the sheet, once in the static footer
-    const occurrences = (pageSrc.match(/\{GO_TRIAL_REMINDER_LINE\}/g) || []).length
+    const occurrences = (clientSrc.match(/\{GO_TRIAL_REMINDER_LINE\}/g) || []).length
     expect(occurrences).toBeGreaterThanOrEqual(2)
   })
 })
@@ -95,8 +99,9 @@ describe('TRUST-SIGNALS-001: placement constraints', () => {
   test('social proof is NOT gated behind sheetVisible (always visible on page load)', () => {
     // Find the social proof section and confirm it is not inside a sheetVisible conditional block.
     // Simple proxy: GO_SOCIAL_PROOF_LINE appears before the sheetVisible conditional for the static CTA.
-    const proofIdx = pageSrc.indexOf('{GO_SOCIAL_PROOF_LINE}')
-    const staticCtaIdx = pageSrc.indexOf('STATIC BOTTOM CTA')
+    // GO-ACCURACY-001: check clientSrc (GoLandingPageClient.tsx) where the JSX lives.
+    const proofIdx = clientSrc.indexOf('{GO_SOCIAL_PROOF_LINE}')
+    const staticCtaIdx = clientSrc.indexOf('STATIC BOTTOM CTA')
     expect(proofIdx).toBeGreaterThan(0)
     expect(staticCtaIdx).toBeGreaterThan(0)
     // Social proof div appears before (or at same level as) the static CTA block
@@ -104,16 +109,16 @@ describe('TRUST-SIGNALS-001: placement constraints', () => {
   })
 
   test('reminder appears in static footer section (after static CTA comment)', () => {
-    const staticCtaIdx = pageSrc.indexOf('STATIC BOTTOM CTA')
-    const reminderOccurrences = Array.from(pageSrc.matchAll(/\{GO_TRIAL_REMINDER_LINE\}/g))
+    const staticCtaIdx = clientSrc.indexOf('STATIC BOTTOM CTA')
+    const reminderOccurrences = Array.from(clientSrc.matchAll(/\{GO_TRIAL_REMINDER_LINE\}/g))
     // At least one occurrence after the static CTA comment
     const hasOneAfterStaticCta = reminderOccurrences.some(m => (m.index ?? 0) > staticCtaIdx)
     expect(hasOneAfterStaticCta).toBe(true)
   })
 
   test('reminder appears in bottom sheet section (after TRIAL CTA comment)', () => {
-    const sheetIdx = pageSrc.indexOf('TRIAL CTA — bottom sheet')
-    const reminderOccurrences = Array.from(pageSrc.matchAll(/\{GO_TRIAL_REMINDER_LINE\}/g))
+    const sheetIdx = clientSrc.indexOf('TRIAL CTA — bottom sheet')
+    const reminderOccurrences = Array.from(clientSrc.matchAll(/\{GO_TRIAL_REMINDER_LINE\}/g))
     const hasOneAfterSheet = reminderOccurrences.some(m => (m.index ?? 0) > sheetIdx)
     expect(hasOneAfterSheet).toBe(true)
   })
@@ -123,8 +128,8 @@ describe('TRUST-SIGNALS-001: placement constraints', () => {
 // 5. No new fabricated claims
 // ============================================================================
 describe('TRUST-SIGNALS-001: no fabricated claims', () => {
-  test('social proof uses "+" modifier (1,000+) — not a hard claim', () => {
-    expect(GO_SOCIAL_PROOF_LINE).toContain('1,000+')
+  test('social proof uses "+" modifier (60+) — not a hard claim', () => {
+    expect(GO_SOCIAL_PROOF_LINE).toContain('60+')
     expect(GO_SOCIAL_PROOF_LINE).not.toMatch(/^exactly \d/)
   })
 
@@ -155,9 +160,13 @@ describe('TRUST-SIGNALS-001: hard rules unchanged', () => {
   })
 
   test('no new beacon/tracking calls for trust signals', () => {
-    // The social proof and reminder are pure render — no new fetch/beacon
+    // The social proof and reminder are pure render — no new fetch/beacon.
+    // Check both the server entry point and the client component.
     expect(pageSrc).not.toContain("'trust_signal_view'")
     expect(pageSrc).not.toContain("'social_proof_view'")
     expect(pageSrc).not.toContain("'reminder_view'")
+    expect(clientSrc).not.toContain("'trust_signal_view'")
+    expect(clientSrc).not.toContain("'social_proof_view'")
+    expect(clientSrc).not.toContain("'reminder_view'")
   })
 })
