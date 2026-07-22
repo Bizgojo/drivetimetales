@@ -39,6 +39,14 @@ export type GoListenEventName =
   | 'pct_75'
   | 'complete'
   | 'cta_click'
+  // GO-PREVIEW-001 (Marc authorization, msg 3662, 2026-07-22)
+  // Preview lifecycle events — PRE-DDL SAFE: the go_listen_events CHECK
+  // constraint on 'event' will reject unknown values until the CHECK is updated.
+  // The API 202s them quietly; client is fire-and-forget. Clients emit these
+  // events regardless of whether the DB constraint has been updated yet.
+  | 'preview_started'    // muted autoplay begins (position_seconds=0)
+  | 'preview_completed'  // 15s clip ends naturally (position_seconds=15)
+  | 'preview_unmuted'    // user taps "Tap for sound" (position_seconds=current preview pos)
 
 export const GO_LISTEN_ENDPOINT = '/api/go-listen'
 
@@ -193,6 +201,13 @@ export interface GoListenTracker {
   onEnded(positionSeconds: number): void
   /** From CTA click handlers — fires cta_click once. */
   onCtaClick(positionSeconds: number): void
+  // GO-PREVIEW-001 preview lifecycle — each latched to fire at most once.
+  /** Fires when muted autoplay begins (position_seconds=0). */
+  onPreviewStarted(): void
+  /** Fires when the 15s preview clip ends naturally (position_seconds=15). */
+  onPreviewCompleted(): void
+  /** Fires when user taps "Tap for sound" (position_seconds=current preview position). */
+  onPreviewUnmuted(positionSeconds: number): void
   /** Exposed for tests/debugging only. */
   readonly sessionId: string
 }
@@ -254,6 +269,16 @@ export function createGoListenTracker(init: GoListenTrackerInit): GoListenTracke
     },
     onCtaClick(positionSeconds: number) {
       fireOnce('cta_click', positionSeconds)
+    },
+    // GO-PREVIEW-001 preview lifecycle events
+    onPreviewStarted() {
+      fireOnce('preview_started', 0)
+    },
+    onPreviewCompleted() {
+      fireOnce('preview_completed', 15)
+    },
+    onPreviewUnmuted(positionSeconds: number) {
+      fireOnce('preview_unmuted', positionSeconds)
     },
   }
 }

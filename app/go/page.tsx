@@ -3,6 +3,30 @@
 🚗 /go — GVL CAMPAIGN LANDING PAGE (SUS/ATL-LANDING-002 rev C — Marc final)
 Location: app/go/page.tsx
 
+GO-PREVIEW-001 (Marc authorization, msg 3662, 2026-07-22):
+Muted autoplay preview clip for variants with previewClipUrl configured.
+- Preview plays automatically (muted) on page load via an HTML5 audio element
+  (muted + autoplay attributes) — managed in components/GoPreviewOverlay.tsx
+- Captions rendered via custom overlay synchronized to audio.currentTime
+  (NOT a <track> element — Meta in-app browser doesn't render <track>)
+- Single "Tap for sound" unmute button — one tap sets audio.muted = false
+  (requires user gesture; works in Meta iOS WebKit in-app browser)
+- On preview complete (15s): transition to full episode from 0:00
+  OPEN DECISION (logged to Marc, 2026-07-22): start at 0:00 or 2:02 (previewStartSec)
+  Currently defaults to 0:00. See comment below in handlePreviewEnded.
+- If user taps main play button during preview: stop preview, start full episode
+- New go_listen_events: preview_started, preview_completed, preview_unmuted
+  (fired to GO_LISTEN_ENDPOINT alongside existing play_start / pct / complete)
+
+Meta in-app browser (FBAN/FBIOS) requirements:
+- UA: Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15
+       (KHTML, like Gecko) Mobile/15E148 [FBAN/FBIOS]
+- muted autoplay: allowed with muted+autoplay attributes, no gesture needed
+- unmute: MUST be inside a user gesture (touchend/click) — .muted=false inside
+  a React onClick handler satisfies this requirement
+- <track> captions: not reliably rendered in in-app browsers — using custom overlay
+- Audio load failures: graceful fallback to normal page (no preview UI visible)
+
 PURPOSE:
 Dedicated landing page for paid ad traffic (Greenville launch). The story's
 COVER ART is the hero with one big play button; below the art: story title,
@@ -105,6 +129,7 @@ import {
   GO_TRIAL_REMINDER_LINE,
 } from '@/lib/landing'
 import GoSamplePlayer from '@/components/GoSamplePlayer'
+import GoPreviewOverlay from '@/components/GoPreviewOverlay'
 import { trackClientEvent } from '@/lib/tracking/client'
 import { randomEventId } from '@/lib/tracking/events'
 import { createGoListenTracker, resolveGoVariant, GoListenTracker } from '@/lib/goListen'
@@ -211,6 +236,52 @@ function GoLandingContent() {
   // CTA href: promo + full utm_* set from the current URL → /signup.
   const ctaHref = buildCampaignSignupHref(searchParams)
 
+  // ===========================================================================
+  // GO-PREVIEW-001: preview state
+  // ===========================================================================
+
+  // Whether the preview is currently showing. True if the story has a
+  // previewClipUrl configured. Flips to false when:
+  //   a) Preview completes naturally (onPreviewEnded → transition to full ep)
+  //   b) User taps the main play button (handleMainPlayDuringPreview)
+  //   c) Audio load error (handlePreviewLoadError)
+  const hasPreview = Boolean(story.previewClipUrl)
+  const [previewActive, setPreviewActive] = useState(hasPreview)
+  // shouldStopPreview: signal to GoPreviewOverlay to pause/clear the audio.
+  // Separate from previewActive so the overlay can clean up before unmounting.
+  const [shouldStopPreview, setShouldStopPreview] = useState(false)
+
+  // Unmuting is tracked here for the event fire, not for gating the preview.
+  // (The preview continues playing — the muted state lives inside the overlay.)
+
+  const handlePreviewEnded = useCallback(() => {
+    // OPEN DECISION (logged to Marc, 2026-07-22):
+    // After preview completes, should the full episode start at:
+    //   (a) 0:00 — "start from the beginning" (CURRENT DEFAULT)
+    //   (b) story.previewStartSec (2:02) — "continue from preview"
+    // Marc has not yet ruled. Defaulting to 0:00 until decision is received.
+    // The GoSamplePlayer's startPosition prop can accept the resume offset
+    // once Marc decides. The previewStartSec value (122) is available on
+    // the story object: story.previewStartSec
+    setPreviewActive(false)
+    // GoSamplePlayer will auto-play from 0:00 when it appears.
+    // The existing play_start event fires through handlePlaybackStart.
+  }, [])
+
+  const handlePreviewLoadError = useCallback(() => {
+    // Graceful fallback: audio failed to load. Remove preview UI; normal page.
+    setPreviewActive(false)
+    setShouldStopPreview(false)
+  }, [])
+
+  // User tapped main play during preview: stop preview, start full episode.
+  const handleMainPlayDuringPreview = useCallback(() => {
+    if (!previewActive) return
+    setShouldStopPreview(true)
+    // Small delay to let the overlay's cleanup run before unmounting.
+    setTimeout(() => setPreviewActive(false), 80)
+  }, [previewActive])
+
   // ATL-PIXEL-001: ViewContent on landing view (both GVL variants), carrying
   // UTM params so ad platforms attribute the view. Client-only event — random
   // event_id; ref guards React 18 strict-mode double-mount in dev.
@@ -302,17 +373,38 @@ function GoLandingContent() {
 
         {/* ===== HERO: cover art + big play + pill =====
             Story resolved via resolveGoStory (lib/landing.ts) — the page
-            hardcodes NO story id / URL. */}
-        <GoSamplePlayer
-          storyId={story.id}
-          audioUrl={story.audioUrl}
-          coverUrl={story.coverUrl}
-          title={story.title}
-          onListenedSeconds={handleListenedSeconds}
-          onPlaybackStart={handlePlaybackStart}
-          onPlaybackProgress={handlePlaybackProgress}
-          onPlaybackEnded={handlePlaybackEnded}
-        />
+            hardcodes NO story id / URL.
+
+            GO-PREVIEW-001: If the story has a previewClipUrl AND the preview
+            is still active, show GoPreviewOverlay instead of GoSamplePlayer.
+            When previewActive flips false (completed/stopped/error), the
+            normal GoSamplePlayer mounts and the user can play from 0:00.
+            Backward compat: stories without previewClipUrl always render
+            GoSamplePlayer (previewActive = false from the start). */}
+        {previewActive && story.previewClipUrl ? (
+          <GoPreviewOverlay
+            coverUrl={story.coverUrl}
+            clipUrl={story.previewClipUrl}
+            captionsUrl={story.previewCaptionsUrl ?? ''}
+            onPreviewStarted={() => listenTracker.onPreviewStarted()}
+            onPreviewCompleted={() => listenTracker.onPreviewCompleted()}
+            onPreviewUnmuted={(pos) => listenTracker.onPreviewUnmuted(pos)}
+            onPreviewEnded={handlePreviewEnded}
+            onLoadError={handlePreviewLoadError}
+            shouldStop={shouldStopPreview}
+          />
+        ) : (
+          <GoSamplePlayer
+            storyId={story.id}
+            audioUrl={story.audioUrl}
+            coverUrl={story.coverUrl}
+            title={story.title}
+            onListenedSeconds={handleListenedSeconds}
+            onPlaybackStart={handlePlaybackStart}
+            onPlaybackProgress={handlePlaybackProgress}
+            onPlaybackEnded={handlePlaybackEnded}
+          />
+        )}
 
         {/* ===== BELOW-ART STACK (rev C): title → hook → genre line =====
             Replaces the rev-B headline. No duration anywhere pre-play. */}
