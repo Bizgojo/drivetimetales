@@ -198,14 +198,16 @@ describe('UX-GO-001 CTA-002: completion latch — transitions exactly once', () 
     expect(pageSrc).toContain('onPlaybackEnded={handlePlaybackEnded}')
   })
 
-  test('cta_click wired to the single bottom sheet button (feat/funnel-fixes-001)', () => {
+  test('cta_click wired to the single bottom sheet button (feat/funnel-fixes-001 rev 2)', () => {
     // Static CTA removed — exactly one onClick + one href (bottom sheet).
     expect((pageSrc.match(/onClick=\{handleCtaClick\}/g) || []).length).toBe(1)
     expect((pageSrc.match(/href=\{ctaHref\}/g) || []).length).toBe(1)
-    // The href builder is still buildCampaignSignupHref; trialDays=14 appended
-    // via GO_BASE_TRIAL_DAYS so /signup receives the correct trial length.
+    // SECURITY FIX rev 2 (Marc msg 3732, 2026-07-22): href now passes source=go
+    // (NOT trialDays=14) so the checkout SERVER determines trial days. A user who
+    // crafts ?trialDays=3650 in the URL no longer gets a 10-year trial.
     expect(pageSrc).toContain('buildCampaignSignupHref(searchParams)')
-    expect(pageSrc).toContain('GO_BASE_TRIAL_DAYS')
+    expect(pageSrc).toContain('source=go')
+    expect(pageSrc).not.toContain('trialDays=${GO_BASE_TRIAL_DAYS}')
   })
 
   test('completion also shows the CTA surfaces (sheetVisible = ctaRevealed || completed)', () => {

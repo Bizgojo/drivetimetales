@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import Stripe from 'stripe'
 import { createClient } from '@supabase/supabase-js'
 import { normalizeEmail } from '@/lib/email'
+import { GO_BASE_TRIAL_DAYS } from '@/lib/landing'
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, { apiVersion: '2023-10-16' })
 
@@ -17,6 +18,14 @@ const supabase = createClient(
 const STANDARD_PRICE_ID = process.env.STRIPE_PRICE_STANDARD!
 const ANNUAL_PRICE_ID = process.env.STRIPE_PRICE_ANNUAL!
 const DEFAULT_SUCCESS_PATH = '/home?welcome=true'
+
+// SECURITY (feat/funnel-fixes-001 rev 2, Marc msg 3732, 2026-07-22):
+// trialDays is NO LONGER trusted as the primary billing input from the client.
+// The server determines trial days via source= or its own logic. If a client
+// still passes trialDays (referral / subscribe paths with pre-validated values)
+// it MUST be within this allowlist — anything outside → 400.
+const TRIAL_DAYS_ALLOWLIST = [7, 14, 21, 30] as const
+type AllowedTrialDays = (typeof TRIAL_DAYS_ALLOWLIST)[number]
 
 type AttributionPayload = {
   utm_source?: string | null
@@ -68,7 +77,17 @@ function safeReturnTo(returnTo: unknown) {
 
 export async function POST(req: NextRequest) {
   try {
-    const { userId, email, firstName: requestFirstName, priceId: clientPriceId, referralCode, trialDays: trialDaysParam, billingCycle, returnTo, attribution, heardAbout } = await req.json()
+    const { userId, email, firstName: requestFirstName, priceId: clientPriceId, referralCode, trialDays: trialDaysParam, billingCycle, returnTo, attribution, heardAbout, source } = await req.json()
+
+    // Security: validate client-supplied trialDays against allowlist before any
+    // other logic. Reject early so we never silently use a bad value.
+    if (trialDaysParam !== undefined && trialDaysParam !== null) {
+      const asNum = Number(trialDaysParam)
+      if (!(TRIAL_DAYS_ALLOWLIST as readonly number[]).includes(asNum)) {
+        console.warn(`[checkout] SECURITY: rejected trialDays=${trialDaysParam} from client — not in allowlist ${JSON.stringify(TRIAL_DAYS_ALLOWLIST)}. userId=${userId}`)
+        return NextResponse.json({ error: 'Invalid trialDays value' }, { status: 400 })
+      }
+    }
 
     // ATL-CHECKOUT-HYGIENE-001 (defect 2): normalize before any Stripe
     // customer create/lookup — mixed-case emails were creating
@@ -148,8 +167,21 @@ export async function POST(req: NextRequest) {
       })
     }
 
-    // Use trial days from client (A/B assigned), referrals always get at least 14
-    let trialDays = trialDaysParam || 7
+    // Server-determined trial days (SECURITY: client trialDays no longer primary).
+    // Priority order:
+    //   1. source=go → GO_BASE_TRIAL_DAYS (14) server-side, regardless of client
+    //   2. Allowlisted client trialDays (referral / subscribe paths)
+    //   3. Standard default (7)
+    // Referral and promo max-logic applied on top as before.
+    let trialDays: number
+    if (source === 'go') {
+      trialDays = GO_BASE_TRIAL_DAYS // 14 — /go ad-funnel grant (Marc msg 2868)
+      console.log(`[checkout] source=go → trial days set to ${GO_BASE_TRIAL_DAYS} server-side`)
+    } else if (trialDaysParam != null && (TRIAL_DAYS_ALLOWLIST as readonly number[]).includes(Number(trialDaysParam))) {
+      trialDays = Number(trialDaysParam)
+    } else {
+      trialDays = 7 // standard default
+    }
     if (referralCode) {
       const { data: referrer } = await supabase.from('users').select('id').eq('referral_code', referralCode).single()
       if (referrer) trialDays = Math.max(trialDays, 14)

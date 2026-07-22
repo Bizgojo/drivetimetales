@@ -101,7 +101,6 @@ import {
   resolveGoStory,
   shouldRevealTrialCta,
   CTA_REVEAL_LISTEN_SEC,
-  GO_BASE_TRIAL_DAYS,
   GO_SOCIAL_PROOF_LINE,
   GO_TRIAL_REMINDER_LINE,
 } from '@/lib/landing'
@@ -210,14 +209,15 @@ function GoLandingContent() {
   }, [revealAfterSec])
 
   // CTA href: promo + full utm_* set from the current URL → /signup.
-  // GO_BASE_TRIAL_DAYS=14 is always appended so /signup receives the correct
-  // trial length for this ad funnel (Marc approval msg 2868). Without this
-  // param, /signup's getTrialVariant() would default to 7 days and the
-  // button copy + Stripe checkout would both be wrong.
+  // SECURITY FIX (feat/funnel-fixes-001 rev 2, Marc msg 3732, 2026-07-22):
+  // Pass source=go so the CHECKOUT SERVER determines trial days (14 via
+  // GO_BASE_TRIAL_DAYS). Never pass trialDays= as a client URL param —
+  // client-controlled billing input is the same class as the May entitlement
+  // regression (attacker could set ?trialDays=3650 for a 10-year trial).
   const _baseHref = buildCampaignSignupHref(searchParams)
   const ctaHref = _baseHref.includes('?')
-    ? `${_baseHref}&trialDays=${GO_BASE_TRIAL_DAYS}`
-    : `${_baseHref}?trialDays=${GO_BASE_TRIAL_DAYS}`
+    ? `${_baseHref}&source=go`
+    : `${_baseHref}?source=go`
 
   // ATL-PIXEL-001: ViewContent on landing view (both GVL variants), carrying
   // UTM params so ad platforms attribute the view. Client-only event — random

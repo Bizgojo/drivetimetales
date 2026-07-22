@@ -7,6 +7,7 @@ import { supabase } from '@/lib/supabase'
 import { buildAttributionUpdatePayload, hasUtmAttribution, normalizePromoCode, readSignupAttribution, readStoredUtm } from '@/lib/utm'
 import { normalizeEmail } from '@/lib/email'
 import { applyPromoTrialDays } from '@/lib/promo'
+import { GO_BASE_TRIAL_DAYS } from '@/lib/landing'
 import { isEntitledUser } from '@/lib/entitlement'
 import { carryQueryString, AUTHED_REDIRECT_EXCLUDED_PARAMS } from '@/lib/subscribeFunnel'
 import { trackClientEvent } from '@/lib/tracking/client'
@@ -113,15 +114,13 @@ function SignUpContent() {
   }, [searchParams])
 
   useEffect(() => {
-    // FIX: honour a trialDays URL param forwarded from the /go ad funnel
-    // (feat/funnel-fixes-001). The /go CTA always appends trialDays=14;
-    // getTrialVariant() would otherwise default to 7, causing the button
-    // text and Stripe checkout to both show the wrong trial length.
-    // Clamp to [1, 90] so a crafted URL can't grant an absurd trial.
-    const urlParam = parseInt(searchParams.get('trialDays') || '', 10)
-    const urlTrialDays = !isNaN(urlParam) && urlParam > 0 && urlParam <= 90 ? urlParam : null
+    // SECURITY FIX (feat/funnel-fixes-001 rev 2, Marc msg 3732, 2026-07-22):
+    // Read source=go instead of trialDays= from URL. The /go CTA now passes
+    // source=go; the checkout SERVER maps source=go → GO_BASE_TRIAL_DAYS (14).
+    // Never trust trialDays from the URL — client-controlled billing input.
+    const urlSource = searchParams.get('source')
     const { days, variant } = getTrialVariant()
-    setTrialDays(urlTrialDays ?? days)
+    setTrialDays(urlSource === 'go' ? GO_BASE_TRIAL_DAYS : days)
     setTrialVariant(variant)
     const ref = searchParams.get('ref')
     if (ref) { setReferralCode(ref); trackOpenAndFetchReferrer(ref) }
@@ -239,7 +238,11 @@ function SignUpContent() {
     }
 
     try {
-      // Referral overrides A/B trial (give them the better offer)
+      // Referral overrides A/B trial (give them the better offer).
+      // SECURITY: the checkout server now determines trial days from source=
+      // (or validated trialDays). Pass source=go for /go traffic; otherwise
+      // trialDays (which must be in the server allowlist [7,14,21,30]).
+      const urlSource = searchParams.get('source')
       const finalTrialDays = referralCode ? Math.max(trialDays, 14) : trialDays
       const response = await fetch('/api/checkout', {
         method: 'POST',
@@ -250,7 +253,7 @@ function SignUpContent() {
           firstName,
           referralCode: referralCode || undefined,
           offerId: offer?.id || undefined,
-          trialDays: finalTrialDays,
+          ...(urlSource === 'go' ? { source: 'go' } : { trialDays: finalTrialDays }),
           billingCycle,
           returnTo: returnTo || undefined,
           attribution,
