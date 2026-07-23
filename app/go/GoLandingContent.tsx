@@ -155,7 +155,12 @@ export default function GoLandingContent({ variantConfig }: GoLandingContentProp
   }, [revealAfterSec])
 
   // CTA href: promo + full utm_* set from the current URL → /signup.
-  const ctaHref = buildCampaignSignupHref(searchParams)
+  // source=go tells /signup to display + grant a 14-day trial for this funnel
+  // (server-side; DO NOT pass trialDays= client-side — billing injection vector).
+  const ctaHref = (() => {
+    const base = buildCampaignSignupHref(searchParams)
+    return base.includes('?') ? `${base}&source=go` : `${base}?source=go`
+  })()
 
   // ATL-PIXEL-001: ViewContent on landing view (both GVL variants), carrying
   // UTM params so ad platforms attribute the view. Client-only event — random
@@ -323,40 +328,11 @@ export default function GoLandingContent({ variantConfig }: GoLandingContentProp
           {GO_SOCIAL_PROOF_LINE}
         </div>
 
-        {/* ===== STATIC BOTTOM CTA — WALK-BUG-0713 #1 (Marc, 2026-07-13):
-            NO trial CTA of any kind before the hook lands. This block now
-            renders only after the same per-story reveal latch as the sheet
-            (was: always present from arrival — that was the walk bug). */}
-        {sheetVisible && (
-        <div style={{ marginTop: 'auto', width: '100%', padding: '3rem 1.5rem 0' }}>
-          <Link
-            href={ctaHref}
-            onClick={handleCtaClick}
-            style={{
-              display: 'block',
-              width: '100%',
-              padding: '0.85rem 1.25rem',
-              borderRadius: '12px',
-              backgroundColor: '#f97316',
-              color: '#ffffff',
-              fontSize: '1rem',
-              fontWeight: 700,
-              textDecoration: 'none',
-            }}
-          >
-            {footerCtaLabel}
-          </Link>
-          {/* UX-GO-001 CTA-001 Option A: honest card-required trial line. */}
-          <div style={{ fontSize: '0.8rem', color: '#9ca3af', marginTop: '0.55rem' }}>
-            {trial.subtext}
-          </div>
-          {/* TRUST-SIGNALS-001: trial reminder reassurance. Accurate to the
-              actual email cadence (Day 3 / Day 10 / Day 13). */}
-          <div style={{ fontSize: '0.75rem', color: '#6b7280', marginTop: '0.3rem' }}>
-            {GO_TRIAL_REMINDER_LINE}
-          </div>
-        </div>
-        )}
+        {/* STATIC BOTTOM CTA REMOVED — Marc ruling 2026-07-22 18:27 EDT (msg 3866).
+            Duplicate of bottom sheet CTA. One CTA only: the bottom sheet below.
+            Removal re-applied to GoLandingContent in fix/go-landing-content-source-and-cta
+            (originally fixed in GoLandingPageClient but GoLandingContent was written before
+            that fix existed — regression caught 2026-07-23). */}
 
         {/* Legal — small, bottom */}
         <div style={{ paddingTop: '1.6rem', fontSize: '0.75rem', color: '#ffffff' }}>
