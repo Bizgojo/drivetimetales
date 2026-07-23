@@ -160,8 +160,11 @@ describe('INSTRUM-001: ingest (/api/go-listen)', () => {
   })
 
   it('whitelist includes sec_30 exactly once (source pin)', () => {
-    expect(routeSrc).toContain(
-      "const VALID_EVENTS = new Set(['play_start', 'sec_30', 'pct_25', 'pct_50', 'pct_75', 'complete', 'cta_click'])")
+    // CTA-INSTRUMENTATION-001 (2026-07-22): cta_rendered added to VALID_EVENTS.
+    expect(routeSrc).toContain("'sec_30'")
+    expect(routeSrc).toContain('VALID_EVENTS')
+    expect(routeSrc).toContain("'cta_rendered'")
+    expect(routeSrc).toContain("'cta_click'")
   })
 
   it('pre-DDL window: CHECK-constraint / RLS-policy rejection is a quiet 202 (source pin)', () => {

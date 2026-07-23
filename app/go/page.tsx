@@ -3,31 +3,42 @@
   /go — Ad Landing Page (server component entry point)
 ================================================================================
 
-  GO-PREVIEW-001 (Marc authorization 13:11 EDT, 2026-07-22):
-  Muted autoplay preview clip (Murder at Falls Park, 2:02–2:18).
-  GoPreviewOverlay component lives in components/GoPreviewOverlay.tsx.
-  Preview variant gated by go_variant_config.preview_clip_url (NULL = no preview).
-  CTA slides at 45s (GO_CTA_REVEAL_LISTEN_SEC). preview_continue_sec=138 (2:18).
+GO-ACCURACY-001 (Marc authorization, msg 3691, 2026-07-22):
+· Social proof corrected to '60+ stories for your ears'
+· generateMetadata added: story-specific OG/Twitter tags per ?v= param.
 
-  GO-ACCURACY-001 (Marc authorization, msg 3691, 2026-07-22):
-  · Social proof corrected to '60+ stories for your ears'
-  · generateMetadata added: story-specific OG/Twitter tags per ?v= param.
-    Client component extracted to GoLandingPageClient.tsx; this file is
-    now a server component so Next.js can call generateMetadata at request
-    time. Page render behaviour is identical.
+CTA-INSTRUMENTATION-001 (2026-07-22): converted to a server component shell
+so that GoVariantConfig can be fetched from Supabase at render time (server-
+side, before the client component hydrates). Client logic lives in
+GoLandingContent.tsx.
+
+HARD RULES (unchanged):
+- NO auth calls of any kind. '/go' is in PUBLIC_ROUTES (middleware.ts).
+- fetchGoVariantConfig never throws; null → GoLandingContent uses hardcoded
+  fallbacks. The page will never crash because the table isn't migrated yet.
 ================================================================================
 */
 
+import { Suspense } from 'react'
 import type { Metadata } from 'next'
 import { resolveGoStory, GO_LIVE_VARIANTS } from '@/lib/landing'
-import GoLandingPage from './GoLandingPageClient'
+import GoLandingContent from './GoLandingContent'
+import { fetchGoVariantConfig } from '@/lib/goVariantConfig'
 
-// GO-ACCURACY-001 (Marc authorization, msg 3691, 2026-07-22):
-// Story-specific OG + Twitter card meta tags for /go. resolveGoStory is called
-// server-side with the same logic the client component uses at runtime, so the
-// crawler always sees the correct story for a given ?v= variant. The default
-// (bare /go or unknown v=) resolves to GO_SAMPLE_STORY ("The Grave He Dug
-// Himself"). coverUrl drives the social card image (1200×630 crop target).
+function LoadingFallback() {
+  return (
+    <div style={{ minHeight: '100vh', backgroundColor: '#0f0f1a', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <div style={{ width: '40px', height: '40px', border: '4px solid #f97316', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
+      <style dangerouslySetInnerHTML={{ __html: '@keyframes spin { to { transform: rotate(360deg); } }' }} />
+    </div>
+  )
+}
+
+// GO-ACCURACY-001: Story-specific OG + Twitter card meta tags for /go.
+// resolveGoStory is called server-side with the same logic the client
+// component uses at runtime, so the crawler always sees the correct story
+// for a given ?v= variant. The default (bare /go or unknown v=) resolves
+// to GO_SAMPLE_STORY. coverUrl drives the social card image (1200×630 crop).
 export async function generateMetadata({
   searchParams,
 }: {
@@ -59,4 +70,18 @@ export async function generateMetadata({
   }
 }
 
-export default GoLandingPage
+export default async function GoLandingPage({
+  searchParams,
+}: {
+  searchParams: { v?: string }
+}) {
+  // BUILD 2: fetch variant config server-side. Never throws (lib guarantees).
+  // null = table pre-migration or no row → GoLandingContent uses hardcoded fallbacks.
+  const variantConfig = await fetchGoVariantConfig(searchParams?.v ?? null)
+
+  return (
+    <Suspense fallback={<LoadingFallback />}>
+      <GoLandingContent variantConfig={variantConfig} />
+    </Suspense>
+  )
+}

@@ -164,7 +164,8 @@ describe('SUS/ATL-LANDING-001: getTrialDisplay', () => {
 })
 
 describe('SUS/ATL-LANDING-001 rev A/C: sample player', () => {
-  const pageSrc = fs.readFileSync(path.join(__dirname, '..', 'app', 'go', 'page.tsx'), 'utf8')
+  // CTA-INSTRUMENTATION-001 (2026-07-22): client logic moved to GoLandingContent.tsx.
+  const pageSrc = fs.readFileSync(path.join(__dirname, '..', 'app', 'go', 'GoLandingContent.tsx'), 'utf8')
   const playerSrc = fs.readFileSync(path.join(__dirname, '..', 'components', 'GoSamplePlayer.tsx'), 'utf8')
 
   test('GO_SAMPLE_STORY const has a valid, complete story shape (rev C)', () => {

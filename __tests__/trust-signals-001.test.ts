@@ -18,11 +18,10 @@ import {
   GO_TRIAL_REMINDER_LINE,
 } from '@/lib/landing'
 
-const pageSrc = fs.readFileSync(path.join(__dirname, '..', 'app', 'go', 'page.tsx'), 'utf8')
-// GO-ACCURACY-001: client component extracted to GoLandingPageClient.tsx so
-// generateMetadata can live in the server-component page.tsx. Wiring and
-// placement tests must check the client file for JSX constants.
-const clientSrc = fs.readFileSync(path.join(__dirname, '..', 'app', 'go', 'GoLandingPageClient.tsx'), 'utf8')
+// CTA-INSTRUMENTATION-001 (2026-07-22): client logic extracted to GoLandingContent.tsx;
+// page.tsx is now a server component shell. Wiring and placement tests check GoLandingContent.
+const pageSrc = fs.readFileSync(path.join(__dirname, '..', 'app', 'go', 'GoLandingContent.tsx'), 'utf8')
+const clientSrc = pageSrc // alias: both point to GoLandingContent (replaces GoLandingPageClient)
 const landingSrc = fs.readFileSync(path.join(__dirname, '..', 'lib', 'landing.ts'), 'utf8')
 const trialEmailsSrc = fs.readFileSync(
   path.join(__dirname, '..', 'app', 'api', 'cron', 'trial-emails', 'route.ts'),
