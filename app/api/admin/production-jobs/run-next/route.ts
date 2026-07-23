@@ -15,6 +15,7 @@ import { ownedJobFence, isLockLostError, lockLostMessage } from '@/lib/jobLockGu
 import { runPremiseGate, formatPremiseCollisionMessage, formatPremiseAdjacentWarning, type PremiseGateResult } from '@/lib/premiseGate'
 import { syncPremiseIndexForTransition } from '@/lib/premiseIndex'
 import { verifyArtifactHttp } from '@/lib/artifactGate'
+import { runHookGateForStory, detectBelleQualityRepairEmpty } from '@/lib/hookGate'
 
 export const runtime = 'nodejs'
 // maxDuration governed by vercel.json (800s) - do not override here
@@ -9463,6 +9464,114 @@ export async function POST(req: NextRequest) {
         }
       }
       // ── END ARTIFACT-GATE-002 ─────────────────────────────────────────────
+
+      // ── HOOK-GATE-001: pre-flight production spec gate ────────────────────
+      // Runs immediately before complete_story_package advances to ready_for_review.
+      // Six deterministic checks: hook timing, anchor SFX, genre music mapping,
+      // Belle intro/outro structure, audio artifact, cover artifact.
+      // Also catches belle_quality_repair_empty (AWIDKnow EP1 pattern).
+      {
+        // Belle quality repair empty check runs against state_json (no DB call needed)
+        const stateForBelleCheck = result.state && typeof result.state === 'object'
+          ? result.state as Record<string, unknown>
+          : {}
+        const belleRepairEmptyError = detectBelleQualityRepairEmpty(stateForBelleCheck)
+        if (belleRepairEmptyError) {
+          const hookGateErrorJson = {
+            kind: 'belle_quality_repair_empty',
+            gate: 'HOOK-GATE-001',
+            step: 'complete_story_package',
+            storyId: result.storyId,
+            message: `HOOK-GATE-001: ${belleRepairEmptyError}`,
+            at: nowIso(),
+          }
+          const hookGateLogs = appendLog(lockedJob, `HOOK-GATE-001: belle_quality_repair_empty — blocking advance to ready_for_review`, {
+            storyId: result.storyId,
+            gate: 'HOOK-GATE-001',
+            reason: belleRepairEmptyError,
+          })
+          await supabase
+            .from('production_jobs')
+            .update({
+              story_id: result.storyId,
+              status: 'failed',
+              current_step: 'hook_gate_failed',
+              state_json: result.state,
+              error_json: hookGateErrorJson,
+              logs: hookGateLogs,
+              locked_at: null,
+              locked_by: null,
+            })
+            .match(ownedJobFence(lockedJob, lockHolderId))
+          return NextResponse.json({
+            success: false,
+            jobId: lockedJob.id,
+            currentStep: step,
+            currentStep_after: 'hook_gate_failed',
+            status: 'failed',
+            storyId: result.storyId,
+            hookGate: 'HOOK-GATE-001',
+            error: hookGateErrorJson.message,
+          }, { status: 422 })
+        }
+
+        // Run all six checks
+        const hookGateResult = await runHookGateForStory(
+          String(result.storyId),
+          stateForBelleCheck,
+        )
+
+        if (hookGateResult.warnings.length > 0) {
+          console.warn(`[HOOK-GATE-001] story=${result.storyId} warnings: ${hookGateResult.warnings.join(' | ')}`)
+        }
+
+        if (!hookGateResult.pass) {
+          const hookGateErrorJson = {
+            kind: 'hook_gate_failed',
+            gate: 'HOOK-GATE-001',
+            step: 'complete_story_package',
+            storyId: result.storyId,
+            failures: hookGateResult.failures,
+            warnings: hookGateResult.warnings,
+            checks: hookGateResult.checks,
+            message: `HOOK-GATE-001 failed: ${hookGateResult.failures.join('; ')}`,
+            at: nowIso(),
+          }
+          const hookGateLogs = appendLog(lockedJob, `HOOK-GATE-001: gate failed — blocking advance to ready_for_review`, {
+            storyId: result.storyId,
+            gate: 'HOOK-GATE-001',
+            failures: hookGateResult.failures,
+            warnings: hookGateResult.warnings,
+          })
+          await supabase
+            .from('production_jobs')
+            .update({
+              story_id: result.storyId,
+              status: 'failed',
+              current_step: 'hook_gate_failed',
+              state_json: result.state,
+              error_json: hookGateErrorJson,
+              logs: hookGateLogs,
+              locked_at: null,
+              locked_by: null,
+            })
+            .match(ownedJobFence(lockedJob, lockHolderId))
+          return NextResponse.json({
+            success: false,
+            jobId: lockedJob.id,
+            currentStep: step,
+            currentStep_after: 'hook_gate_failed',
+            status: 'failed',
+            storyId: result.storyId,
+            hookGate: 'HOOK-GATE-001',
+            failures: hookGateResult.failures,
+            warnings: hookGateResult.warnings,
+            checks: hookGateResult.checks,
+            error: hookGateErrorJson.message,
+          }, { status: 422 })
+        }
+      }
+      // ── END HOOK-GATE-001 ─────────────────────────────────────────────────
 
       const { data: updatedJob, error: updateError } = await supabase
         .from('production_jobs')
