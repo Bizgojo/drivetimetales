@@ -547,7 +547,7 @@ function sanitizeDescription(description: string): string {
   const clean = String(description || '')
     .replace(/\s+/g, ' ')
     .replace(/^["']|["']$/g, '')
-    .replace(/[.]{2,}|.../g, '')
+    .replace(/[.]{2,}|\u2026/g, '')
     .trim()
   const fallback = 'A dangerous secret pulls every choice toward the truth.'
   const source = clean || fallback
@@ -602,7 +602,7 @@ function isInvalidStandaloneDescription(description: string): boolean {
 
   if (!clean) return true
   if (clean.length > 65) return true
-  if (/[.]{2,}|.../.test(clean)) return true
+  if (/[.]{2,}|\u2026/.test(clean)) return true
   if (!/[.!?]$/.test(clean)) return true
 
   const withoutPunctuation = clean.replace(/[.!?]+$/g, '').trim()
@@ -702,8 +702,8 @@ function replaceBelleSection(script: string, kind: 'intro' | 'outro', text: stri
 function normalizeBelleRequiredText(text: string) {
   return String(text || '')
     .toLowerCase()
-    .replace(/[""]/g, '"')
-    .replace(/['']/g, "'")
+    .replace(/[\u201C\u201D]/g, '"')
+    .replace(/[\u2018\u2019]/g, "'")
     .replace(/[^a-z0-9]+/g, ' ')
     .trim()
 }
@@ -1539,18 +1539,18 @@ async function validateBelleText(kind: 'intro' | 'outro', text: string, options:
   const lower = text.toLowerCase()
   const wordCount = countWords(text)
   const sentenceCount = (text.match(/[.!?]+/g) || []).length
-  const withoutPunctuation = text.replace(/[.!?]["'"')]*$/g, '').trim()
+  const withoutPunctuation = text.replace(/[.!?]["'\u201D\u2019)]*$/g, '').trim()
   const title = String(options.title || '').trim()
   const author = String(options.author || '').trim()
 
   if (!text) issues.push(`${kind} text is required.`)
   if (text && wordCount < 4) issues.push(`${kind} text is too short.`)
-  if (text && !/[.!?]["'"')]*$/.test(text)) issues.push(`${kind} text appears incomplete; it must end with punctuation.`)
+  if (text && !/[.!?]["'\u201D\u2019)]*$/.test(text)) issues.push(`${kind} text appears incomplete; it must end with punctuation.`)
   // [LISTENER_NAME] is a valid personalization placeholder — do not reject it
   // ATL-BELLE-QC-BUG-002: strip quoted substrings before forbidden-word check so series/episode
   // names containing banned words (e.g. "The Welcome Committee") are not incorrectly rejected.
   const textForBannedWordCheck = text.replace(/"[^"]*"/g, ' ');
-  if (/\b(welcome|settle in|let['']?s begin|begins now|only on endless tales|sponsored by|stay tuned)\b/i.test(textForBannedWordCheck)) {
+  if (/\b(welcome|settle in|let['\u2019]?s begin|begins now|only on endless tales|sponsored by|stay tuned)\b/i.test(textForBannedWordCheck)) {
     issues.push(`${kind} uses forbidden host or promotional language.`)
   }
   if (/\bbelle b\b/i.test(text)) issues.push(`${kind} must say Belle, not Belle B.`)
@@ -2659,7 +2659,7 @@ function parseSeriesCharacterGuide(script: string) {
   if (!guideMatch) return chars
   const guideLines = guideMatch[1].split('\n').map(line => line.trim()).filter(Boolean)
   for (const line of guideLines) {
-    const nameMatch = line.match(/^([A-Za-zÀ-ÖØ-öø-ÿ][A-Za-zÀ-ÖØ-öø-ÿ\s'.()/]+?)\s*(?:[---]|:)/)
+    const nameMatch = line.match(/^([A-Za-z\u00C0-\u00D6\u00D8-\u00F6\u00F8-\u00FF][A-Za-z\u00C0-\u00D6\u00D8-\u00F6\u00F8-\u00FF\s'.()/]+?)\s*(?:[\u2014\u2013-]|:)/)
     if (!nameMatch) continue
     const name = nameMatch[1].trim()
     const detail = line.slice(nameMatch[0].length).trim()
@@ -3224,7 +3224,7 @@ async function generateStandaloneScript(job: ProductionJob, model: string) {
       const belleMatch = belleAnnouncementSection.match(/BELLE\s+B:\s*(.+?)(?:\n|$)/i)
       if (belleMatch) {
         announcementText = belleMatch[1].trim()
-        const isGeneric = /^(settle\s+in|welcome|let['']?s\s+begin)/i.test(announcementText) && announcementText.length < 100
+        const isGeneric = /^(settle\s+in|welcome|let['\u2019]?s\s+begin)/i.test(announcementText) && announcementText.length < 100
         if (isGeneric) {
           briefWarnings.push(`Warning: Belle B announcement appears generic; expected specific story references without a greeting or listener name`)
         }
