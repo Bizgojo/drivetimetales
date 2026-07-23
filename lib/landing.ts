@@ -165,12 +165,12 @@ export const GO_STORY_VARIANTS: Record<string, GoStory> = {
     // single-side-cable pedestrian suspension bridge, vision-QA PASS.
     coverUrl: 'https://vmyhlfeouzslixtkmddy.supabase.co/storage/v1/object/public/Covers/landing/go-variant-b/cover_20260712_liberty.jpg',
     audioUrl: 'https://vmyhlfeouzslixtkmddy.supabase.co/storage/v1/object/public/audio/landing/go-variant-b/final_mix.mp3',
-    // GO-PREVIEW-001 (Marc authorization, msg 3662, 2026-07-22):
-    // Murder at Falls Park Ep1, 2:02–2:18, hard cut after "Pardon?"
-    // Clip extracted from position 122s (2:02) in the full episode.
-    previewClipUrl: 'https://vmyhlfeouzslixtkmddy.supabase.co/storage/v1/object/public/audio/landing/preview/falls-park-he-didnt-fall/clip.mp3',
-    previewCaptionsUrl: 'https://vmyhlfeouzslixtkmddy.supabase.co/storage/v1/object/public/audio/landing/preview/falls-park-he-didnt-fall/captions.vtt',
-    previewContinueSec: 138,  // 2:18 = end of preview clip (Marc ruling msg 3666 + 3670)
+    // GO-PREVIEW-DISABLED (Marc ruling 2026-07-22): preview was playing
+    // mid-story scene-setting from the old (pre-hook-cut) audio. Disabled
+    // until: (1) landing audio hook cut applied, (2) new preview clip
+    // extracted from t=0 of corrected landing audio, (3) Marc signs off.
+    // previewClipUrl, previewCaptionsUrl, previewContinueSec intentionally
+    // omitted — page renders as normal (no preview) per GoStory interface.
   },
 }
 

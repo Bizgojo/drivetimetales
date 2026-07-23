@@ -123,7 +123,13 @@ function GoLandingContent() {
   }, [revealAfterSec])
 
   // CTA href: promo + full utm_* set from the current URL → /signup.
-  const ctaHref = buildCampaignSignupHref(searchParams)
+  // source=go tells the /signup page to display + grant a 14-day trial for
+  // this funnel (PR #9 server-side fix — DO NOT pass trialDays= client-side,
+  // that is a billing injection vector fixed in app/api/checkout/route.ts).
+  const ctaHref = (() => {
+    const base = buildCampaignSignupHref(searchParams)
+    return base.includes('?') ? `${base}&source=go` : `${base}?source=go`
+  })()
 
   // ===========================================================================
   // GO-PREVIEW-001: preview state
@@ -343,40 +349,10 @@ function GoLandingContent() {
           {GO_SOCIAL_PROOF_LINE}
         </div>
 
-        {/* ===== STATIC BOTTOM CTA — WALK-BUG-0713 #1 (Marc, 2026-07-13):
-            NO trial CTA of any kind before the hook lands. This block now
-            renders only after the same per-story reveal latch as the sheet
-            (was: always present from arrival — that was the walk bug). */}
-        {sheetVisible && (
-        <div style={{ marginTop: 'auto', width: '100%', padding: '3rem 1.5rem 0' }}>
-          <Link
-            href={ctaHref}
-            onClick={handleCtaClick}
-            style={{
-              display: 'block',
-              width: '100%',
-              padding: '0.85rem 1.25rem',
-              borderRadius: '12px',
-              backgroundColor: '#f97316',
-              color: '#ffffff',
-              fontSize: '1rem',
-              fontWeight: 700,
-              textDecoration: 'none',
-            }}
-          >
-            Start free trial
-          </Link>
-          {/* UX-GO-001 CTA-001 Option A: honest card-required trial line. */}
-          <div style={{ fontSize: '0.8rem', color: '#9ca3af', marginTop: '0.55rem' }}>
-            {trial.subtext}
-          </div>
-          {/* TRUST-SIGNALS-001: trial reminder reassurance. Accurate to the
-              actual email cadence (Day 3 / Day 10 / Day 13). */}
-          <div style={{ fontSize: '0.75rem', color: '#6b7280', marginTop: '0.3rem' }}>
-            {GO_TRIAL_REMINDER_LINE}
-          </div>
-        </div>
-        )}
+        {/* DUPLICATE-CTA-REMOVED (Marc ruling 2026-07-22): static in-flow
+            'Start free trial' block removed. The fixed bottom sheet is the
+            single canonical CTA. Two identical buttons produced split
+            cta_click attribution and UI confusion. */}
 
         {/* Legal — small, bottom */}
         <div style={{ paddingTop: '1.6rem', fontSize: '0.75rem', color: '#ffffff' }}>
