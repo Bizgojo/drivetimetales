@@ -201,6 +201,80 @@ export type SegmentInventoryResult = {
   unknownNames: string[]
 }
 
+// ---------------------------------------------------------------------------
+// HTTP reachability check
+// ---------------------------------------------------------------------------
+
+export type ArtifactHttpCheckResult = {
+  url: string
+  reachable: boolean
+  httpStatus: number | null
+  error: string | null
+}
+
+/**
+ * Verify an artifact URL is reachable and returns HTTP 2xx.
+ *
+ * Uses HEAD to avoid downloading file content. Falls back gracefully:
+ * if the server rejects HEAD (405), retries with GET + Range: bytes=0-0
+ * so we only pull a single byte.
+ *
+ * Always resolves — never throws. Callers decide whether to hard-block or warn.
+ *
+ * @param url        Full URL of the artifact (audio, cover, etc.)
+ * @param timeoutMs  Per-attempt timeout. Default 10 000 ms.
+ */
+export async function verifyArtifactHttp(
+  url: string,
+  timeoutMs = 10_000,
+): Promise<ArtifactHttpCheckResult> {
+  if (!url || typeof url !== 'string' || !url.trim()) {
+    return { url, reachable: false, httpStatus: null, error: 'URL is empty or invalid' }
+  }
+
+  const tryFetch = async (method: 'HEAD' | 'GET', headers: Record<string, string> = {}) => {
+    const controller = new AbortController()
+    const handle = setTimeout(() => controller.abort(), timeoutMs)
+    try {
+      const response = await fetch(url, { method, headers, signal: controller.signal })
+      clearTimeout(handle)
+      return response
+    } catch (err) {
+      clearTimeout(handle)
+      throw err
+    }
+  }
+
+  try {
+    let response = await tryFetch('HEAD')
+
+    // Some object-storage endpoints reject HEAD with 403/405 — retry as GET with Range
+    if (response.status === 403 || response.status === 405) {
+      response = await tryFetch('GET', { Range: 'bytes=0-0' })
+    }
+
+    const ok = response.status >= 200 && response.status < 300
+    return {
+      url,
+      reachable: ok,
+      httpStatus: response.status,
+      error: ok ? null : `HTTP ${response.status}`,
+    }
+  } catch (err: unknown) {
+    const aborted = err instanceof Error && err.name === 'AbortError'
+    return {
+      url,
+      reachable: false,
+      httpStatus: null,
+      error: aborted
+        ? `Request timed out after ${timeoutMs}ms`
+        : err instanceof Error
+          ? err.message
+          : String(err),
+    }
+  }
+}
+
 export function classifySegmentInventory(
   files: InventorySegment[],
   segmentFilePattern = /^segment_\d{4}\.mp3$/,

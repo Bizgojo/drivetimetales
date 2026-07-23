@@ -14,6 +14,7 @@ import { loadActiveMission } from '@/lib/missionContext'
 import { ownedJobFence, isLockLostError, lockLostMessage } from '@/lib/jobLockGuard'
 import { runPremiseGate, formatPremiseCollisionMessage, formatPremiseAdjacentWarning, type PremiseGateResult } from '@/lib/premiseGate'
 import { syncPremiseIndexForTransition } from '@/lib/premiseIndex'
+import { verifyArtifactHttp } from '@/lib/artifactGate'
 
 export const runtime = 'nodejs'
 // maxDuration governed by vercel.json (800s) - do not override here
@@ -9378,6 +9379,90 @@ export async function POST(req: NextRequest) {
           logs,
         }, { status: 422 })
       }
+
+      // ── ARTIFACT-GATE-002: verify final_mix.mp3 + cover before advancing ────
+      // Root cause of Keenan Notch / Deep Arch EP1 / Sunset Ep5 defects:
+      // audio_url was written to DB without confirming the file was uploaded.
+      // Gate checks HTTP 200 on the actual URL — DB presence alone is not enough.
+      {
+        const { data: storyForGate } = await supabase
+          .from('stories')
+          .select('id,audio_url,cover_url')
+          .eq('id', result.storyId)
+          .single()
+
+        const audioUrl = String(storyForGate?.audio_url || '').trim()
+        const coverUrl = String(storyForGate?.cover_url || '').trim()
+
+        // Hard gate: audio must be set in DB and return HTTP 200
+        let artifactMissing = false
+        let artifactMissingReason = ''
+
+        if (!audioUrl) {
+          artifactMissing = true
+          artifactMissingReason = 'audio_url is not set in DB after complete_story_package — render step must be re-run'
+        } else {
+          const audioCheck = await verifyArtifactHttp(audioUrl)
+          if (!audioCheck.reachable) {
+            artifactMissing = true
+            artifactMissingReason = `final_mix.mp3 at audio_url returned HTTP ${audioCheck.httpStatus ?? 'error'} (${audioCheck.error}) — file does not exist in storage. Render step must be re-run.`
+          }
+        }
+
+        // Soft gate: cover warning only (covers are less critical than audio)
+        if (!coverUrl) {
+          console.warn(`[ARTIFACT-GATE-002] story=${result.storyId} cover_url not set in DB — advancing with warning`)
+        } else {
+          const coverCheck = await verifyArtifactHttp(coverUrl)
+          if (!coverCheck.reachable) {
+            console.warn(`[ARTIFACT-GATE-002] story=${result.storyId} cover_url returned HTTP ${coverCheck.httpStatus ?? 'error'} (${coverCheck.error}) — cover may be missing from storage`)
+          }
+        }
+
+        if (artifactMissing) {
+          const gateErrorJson = {
+            kind: 'artifact_missing',
+            gate: 'ARTIFACT-GATE-002',
+            step: 'complete_story_package',
+            storyId: result.storyId,
+            message: `ARTIFACT-GATE-002: ${artifactMissingReason}`,
+            audioUrl: audioUrl || null,
+            at: nowIso(),
+          }
+
+          const gateLogs = appendLog(lockedJob, `ARTIFACT-GATE-002: audio artifact missing — blocking advance to ready_for_review`, {
+            storyId: result.storyId,
+            gate: 'ARTIFACT-GATE-002',
+            reason: artifactMissingReason,
+          })
+
+          await supabase
+            .from('production_jobs')
+            .update({
+              story_id: result.storyId,
+              status: 'failed',
+              current_step: 'artifact_missing',
+              state_json: result.state,
+              error_json: gateErrorJson,
+              logs: gateLogs,
+              locked_at: null,
+              locked_by: null,
+            })
+            .match(ownedJobFence(lockedJob, lockHolderId))
+
+          return NextResponse.json({
+            success: false,
+            jobId: lockedJob.id,
+            currentStep: step,
+            currentStep_after: 'artifact_missing',
+            status: 'failed',
+            storyId: result.storyId,
+            artifactGate: 'ARTIFACT-GATE-002',
+            error: gateErrorJson.message,
+          }, { status: 422 })
+        }
+      }
+      // ── END ARTIFACT-GATE-002 ─────────────────────────────────────────────
 
       const { data: updatedJob, error: updateError } = await supabase
         .from('production_jobs')
