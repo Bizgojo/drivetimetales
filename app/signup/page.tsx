@@ -21,15 +21,6 @@ declare global {
   }
 }
 
-const HEARD_ABOUT_OPTIONS = [
-  'Facebook/Instagram',
-  'TikTok',
-  'Reddit',
-  'A local group',
-  // ORION-FUNNEL-POLISH-001: referral-program option for organic arrivals.
-  'A friend told me',
-  'Other',
-]
 
 // Base trial is locked at 7 days for all users. A valid promo code in the
 // URL can raise the DISPLAYED (and checkout-granted) trial via the
@@ -76,11 +67,9 @@ function SignUpContent() {
   const [promoCode, setPromoCode] = useState<string | null>(null)
   // 'none' = no code or validation unavailable (fail quiet → default display)
   const [promoStatus, setPromoStatus] = useState<'none' | 'valid' | 'invalid'>('none')
-  const [heardAbout, setHeardAbout] = useState('')
   // ORION-FUNNEL-POLISH-001: UTM arrivals already tell us the source — hide
   // the heard-about question for them (fewer fields → higher conversion).
   // Determined client-side only (localStorage + URL) to stay SSR-safe.
-  const [showHeardAbout, setShowHeardAbout] = useState(false)
   const returnTo = safeInternalPath(searchParams.get('returnTo'))
 
   // ATL-POST-SUB-LOOP-001: authenticated users must never see the signup form.
@@ -110,7 +99,6 @@ function SignUpContent() {
       medium: searchParams.get('utm_medium'),
       campaign: searchParams.get('utm_campaign'),
     }
-    setShowHeardAbout(!hasUtmAttribution(stored) && !hasUtmAttribution(urlUtm))
   }, [searchParams])
 
   useEffect(() => {
@@ -181,9 +169,7 @@ function SignUpContent() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault(); setError(''); setLoading(true)
-    // ORION-FUNNEL-POLISH-001: when the question is hidden (UTM arrival) we
-    // record nothing — attribution columns carry the real source.
-    const selectedHeardAbout = showHeardAbout ? (heardAbout || 'Other') : ''
+    const selectedHeardAbout = ''
     const attribution = readSignupAttribution(promoCode)
     // ATL-CHECKOUT-HYGIENE-001 (defect 2): normalize once, use everywhere below.
     const normalizedEmail = normalizeEmail(email)
@@ -341,34 +327,7 @@ function SignUpContent() {
             </div>
           </div>
 
-          {showHeardAbout && (
-          <div style={{ marginBottom: '1.5rem' }}>
-            <label style={{ color: '#e2e8f0', fontSize: '14px', display: 'block', marginBottom: '0.65rem', fontWeight: 700 }}>Where did you hear about us?</label>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '8px' }}>
-              {HEARD_ABOUT_OPTIONS.map(option => (
-                <button
-                  key={option}
-                  type="button"
-                  onClick={() => setHeardAbout(option)}
-                  style={{
-                    width: '100%',
-                    padding: '10px 12px',
-                    borderRadius: '8px',
-                    border: heardAbout === option ? '1px solid #f97316' : '1px solid #334155',
-                    backgroundColor: heardAbout === option ? 'rgba(249,115,22,0.16)' : '#0f172a',
-                    color: heardAbout === option ? '#fed7aa' : '#cbd5e1',
-                    fontSize: '14px',
-                    fontWeight: 700,
-                    textAlign: 'left',
-                    cursor: 'pointer',
-                  }}
-                >
-                  {option}
-                </button>
-              ))}
-            </div>
-          </div>
-          )}
+
 
           {/* Billing cycle toggle */}
           <div style={{ marginBottom: '1.5rem' }}>
