@@ -6,6 +6,7 @@ import { evaluateStoryGate, evaluateSeriesGate, groupBySeriesForApproval } from 
 import { transitionAllowed, shouldIncrementRepairCount } from '@/lib/workflowTransitions'
 import { syncPremiseIndexForTransition } from '@/lib/premiseIndex'
 import { personalizationPublishBlockers } from '@/lib/personalization/publishGuard'
+import { verifyArtifactHttp } from '@/lib/artifactGate'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -1162,7 +1163,7 @@ export async function POST(req: NextRequest) {
 
       const { data: seriesRows, error: seriesError } = await supabase
         .from('stories')
-        .select('id,title,episode_number,series_number,status,is_hidden,review_status,workflow_state,production_repair_count,announcement_url,announcement_text,script')
+        .select('id,title,episode_number,series_number,status,is_hidden,review_status,workflow_state,production_repair_count,announcement_url,announcement_text,script,audio_url')
         .eq('series_id', seriesId)
 
       if (seriesError) return json({ success: false, error: seriesError.message }, 500)
@@ -1201,6 +1202,36 @@ export async function POST(req: NextRequest) {
           seriesId,
           blocked,
         }, 400)
+      }
+
+      // ARTIFACT-GATE-002: verify every episode has accessible audio before
+      // allowing approved_ready. Runs in parallel across all episodes.
+      if (state === 'approved_ready') {
+        const audioChecks = await Promise.all(
+          (seriesRows as StoryRow[]).map(async (ep) => {
+            const audioUrl = String((ep as any).audio_url || '').trim()
+            const epLabel = `EP${storyEpisodeNumber(ep) ?? '?'} (${ep.id})`
+            if (!audioUrl) {
+              return { epLabel, ok: false, reason: 'audio_url not set in DB' }
+            }
+            const check = await verifyArtifactHttp(audioUrl)
+            return {
+              epLabel,
+              ok: check.reachable,
+              reason: check.reachable ? null : `HTTP ${check.httpStatus ?? 'error'}: ${check.error}`,
+              audioUrl,
+            }
+          })
+        )
+        const failingEpisodes = audioChecks.filter(c => !c.ok)
+        if (failingEpisodes.length > 0) {
+          return json({
+            success: false,
+            error: `ARTIFACT-GATE-002: ${failingEpisodes.length} episode(s) have missing or inaccessible audio. Re-run the render step for each before approving.`,
+            artifactGate: 'ARTIFACT-GATE-002',
+            failingEpisodes: failingEpisodes.map(c => ({ episode: c.epLabel, reason: c.reason })),
+          }, 422)
+        }
       }
 
       const update = workflowUpdateForState(state, body)
@@ -1391,7 +1422,7 @@ export async function POST(req: NextRequest) {
 
     const { data: storyData, error: storyError } = await supabase
       .from('stories')
-      .select('id,status,is_hidden,review_status,workflow_state,production_repair_count,announcement_url,announcement_text,script')
+      .select('id,status,is_hidden,review_status,workflow_state,production_repair_count,announcement_url,announcement_text,script,audio_url')
       .eq('id', storyId)
       .maybeSingle()
 
@@ -1418,6 +1449,32 @@ export async function POST(req: NextRequest) {
           error: `Personalization publish guard: ${personalizationBlockers.join('; ')}`,
           personalizationBlockers,
         }, 400)
+      }
+    }
+
+    // ARTIFACT-GATE-002: verify audio artifact is accessible before approving.
+    // Closes the gap where review_status='approved' was set without confirming
+    // the actual file exists in storage (Keenan Notch / Deep Arch EP1 pattern).
+    if (state === 'approved_ready') {
+      const audioUrl = String((storyData as any).audio_url || '').trim()
+      if (!audioUrl) {
+        return json({
+          success: false,
+          error: 'ARTIFACT-GATE-002: audio_url is not set. Story cannot be marked Approved until the final audio file exists.',
+          artifactGate: 'ARTIFACT-GATE-002',
+          missingArtifact: 'audio_url',
+        }, 422)
+      }
+      const audioCheck = await verifyArtifactHttp(audioUrl)
+      if (!audioCheck.reachable) {
+        return json({
+          success: false,
+          error: `ARTIFACT-GATE-002: Audio file is not accessible (HTTP ${audioCheck.httpStatus ?? 'error'}: ${audioCheck.error}). The file at audio_url does not exist in storage. Story cannot be marked Approved — re-run the render step first.`,
+          artifactGate: 'ARTIFACT-GATE-002',
+          missingArtifact: 'audio_file',
+          audioUrl,
+          httpStatus: audioCheck.httpStatus,
+        }, 422)
       }
     }
 
