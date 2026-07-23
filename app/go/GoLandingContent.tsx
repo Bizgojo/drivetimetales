@@ -84,13 +84,28 @@ export default function GoLandingContent({ variantConfig }: GoLandingContentProp
   // never persisted). The tracker latches every event to at-most-once and is
   // swallow-all: no failure in here can reach the audio element. The variant
   // recorded is what's actually SERVED (unknown/gated ?v= → 'bare').
+  //
+  // TRACKER-TIMING-001 (2026-07-23): Use window.location.search instead of
+  // useSearchParams() for tracker init. In Next.js App Router concurrent
+  // rendering, useSearchParams() can return an empty ReadonlyURLSearchParams
+  // on the first render before the router fully hydrates — causing variant to
+  // close over 'bare' and utm_source to close over null even when the URL has
+  // v=b&utm_source=meta. window.location.search is always the real browser URL
+  // and is available synchronously on the client. The lazy ref still initializes
+  // only once per mount; we just read from the authoritative source.
+  // Bug evidence: 5 sessions with variant=bare, utm_source=meta since Jul 20 —
+  // the URL carried both params but the tracker closed over the wrong values.
   const listenTrackerRef = useRef<GoListenTracker | null>(null)
   const lastAudioPositionRef = useRef(0)
   if (listenTrackerRef.current === null) {
+    // Prefer window.location.search (actual browser URL, always correct) over
+    // useSearchParams() (may be empty during first concurrent render).
+    const rawSearch =
+      typeof window !== 'undefined' ? window.location.search : searchParams.toString()
     listenTrackerRef.current = createGoListenTracker({
-      variant: resolveGoVariant(searchParams.toString()),
-      utmSource: searchParams.get('utm_source'),
-      utmCampaign: searchParams.get('utm_campaign'),
+      variant: resolveGoVariant(rawSearch),
+      utmSource: new URLSearchParams(rawSearch).get('utm_source'),
+      utmCampaign: new URLSearchParams(rawSearch).get('utm_campaign'),
     })
   }
   const listenTracker = listenTrackerRef.current

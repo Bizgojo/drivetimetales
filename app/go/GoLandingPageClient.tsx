@@ -69,13 +69,18 @@ function GoLandingContent() {
   // never persisted). The tracker latches every event to at-most-once and is
   // swallow-all: no failure in here can reach the audio element. The variant
   // recorded is what's actually SERVED (unknown/gated ?v= → 'bare').
+  //
+  // TRACKER-TIMING-001 (2026-07-23): Use window.location.search instead of
+  // useSearchParams() for tracker init. See GoLandingContent.tsx for details.
   const listenTrackerRef = useRef<GoListenTracker | null>(null)
   const lastAudioPositionRef = useRef(0)
   if (listenTrackerRef.current === null) {
+    const rawSearch =
+      typeof window !== 'undefined' ? window.location.search : searchParams.toString()
     listenTrackerRef.current = createGoListenTracker({
-      variant: resolveGoVariant(searchParams.toString()),
-      utmSource: searchParams.get('utm_source'),
-      utmCampaign: searchParams.get('utm_campaign'),
+      variant: resolveGoVariant(rawSearch),
+      utmSource: new URLSearchParams(rawSearch).get('utm_source'),
+      utmCampaign: new URLSearchParams(rawSearch).get('utm_campaign'),
     })
   }
   const listenTracker = listenTrackerRef.current
