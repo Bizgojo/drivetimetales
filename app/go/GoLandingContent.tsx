@@ -80,27 +80,46 @@ export default function GoLandingContent({ variantConfig }: GoLandingContentProp
   const story = resolveGoStory(searchParams.toString())
 
   // ===== ATL-GO-LISTEN-001: first-party listen analytics =====
-  // One tracker per page visit (lazy ref — session_id = crypto.randomUUID(),
-  // never persisted). The tracker latches every event to at-most-once and is
-  // swallow-all: no failure in here can reach the audio element. The variant
-  // recorded is what's actually SERVED (unknown/gated ?v= → 'bare').
+  // One tracker per page visit. The tracker latches every event to at-most-once
+  // and is swallow-all — no failure here can reach the audio element.
+  //
+  // TRACKER-TIMING-001 + PAGE-VIEW-001 (Marc, 2026-07-23):
+  // Tracker init moved to useEffect so it always runs on the client after mount,
+  // guaranteeing window.location.search reflects the real browser URL with no
+  // React concurrent-render timing race. useSearchParams() can return empty params
+  // on the first render before the router hydrates — the lazy-ref pattern baked
+  // those empty values in permanently (5 bare+meta sessions since Jul 20 confirmed
+  // this: URL had v=b&utm_source=meta but tracker closed over variant='bare').
+  //
+  // page_view fires on the same mount, so play rate = play_start ÷ page_view
+  // is measurable first-party from go_listen_events alone (PLAY-RATE-001).
+  // PRE-DDL SAFE: API 202s page_view until the event CHECK constraint is updated.
+  //
+  // All event callbacks null-guard the ref (?.) — the window between first paint
+  // and useEffect is effectively zero and audio requires user interaction.
   const listenTrackerRef = useRef<GoListenTracker | null>(null)
   const lastAudioPositionRef = useRef(0)
-  if (listenTrackerRef.current === null) {
-    listenTrackerRef.current = createGoListenTracker({
-      variant: resolveGoVariant(searchParams.toString()),
-      utmSource: searchParams.get('utm_source'),
-      utmCampaign: searchParams.get('utm_campaign'),
+  useEffect(() => {
+    if (listenTrackerRef.current !== null) return
+    const rawSearch = window.location.search
+    const tracker = createGoListenTracker({
+      variant: resolveGoVariant(rawSearch),
+      utmSource: new URLSearchParams(rawSearch).get('utm_source'),
+      utmCampaign: new URLSearchParams(rawSearch).get('utm_campaign'),
     })
-  }
-  const listenTracker = listenTrackerRef.current
+    listenTrackerRef.current = tracker
+    tracker.onPageView()
+  }, [])
+  // All callbacks null-guard listenTrackerRef.current (?.) — the tracker is
+  // initialized in useEffect above; the window between first paint and that
+  // effect is sub-millisecond and audio requires user interaction.
   const handlePlaybackStart = useCallback((pos: number) => {
     lastAudioPositionRef.current = pos
-    listenTracker.onPlayStart(pos)
-  }, [listenTracker])
+    listenTrackerRef.current?.onPlayStart(pos)
+  }, [])
   const handlePlaybackProgress = useCallback((pos: number, dur: number) => {
     lastAudioPositionRef.current = pos
-    listenTracker.onTimeUpdate(pos, dur)
+    listenTrackerRef.current?.onTimeUpdate(pos, dur)
     // CTA-HEADING-002: detect pct_50 / pct_75 position milestones to update
     // the mid-listen CTA heading. Refs guard against stale-closure double-fire;
     // setState is stable and safe to call inside useCallback. Position-based
@@ -115,32 +134,29 @@ export default function GoLandingContent({ variantConfig }: GoLandingContentProp
         setPct75Reached(true)
       }
     }
-  }, [listenTracker])
+  }, [])
   const handlePlaybackEnded = useCallback((pos: number) => {
     lastAudioPositionRef.current = pos
-    listenTracker.onEnded(pos)
+    listenTrackerRef.current?.onEnded(pos)
     // UX-GO-001 CTA-002: latch the completion CTA state (once, render-only).
     setCompleted(prev => nextCompletedState(prev, true))
-  }, [listenTracker])
-  // cta_click: fired from BOTH CTAs (bottom sheet + static footer) — latched
-  // to once per session by the tracker. Never preventDefault / never blocks
-  // the navigation (sendBeacon survives the page exit by design).
+  }, [])
+  // cta_click: fired from BOTH CTAs — latched to once per session by the tracker.
+  // Never preventDefault / never blocks navigation (sendBeacon survives page exit).
   const handleCtaClick = useCallback(() => {
-    listenTracker.onCtaClick(lastAudioPositionRef.current)
-  }, [listenTracker])
+    listenTrackerRef.current?.onCtaClick(lastAudioPositionRef.current)
+  }, [])
 
   // ===== BUILD 1: cta_rendered one-shot event =====
   // Fires exactly once per session when the bottom sheet first becomes visible
   // (ctaRevealed transitions false→true via the 45s listen latch).
   // The ref guard prevents double-fire in React 18 strict-mode double-mount.
-  // Does NOT fire on completed (seek-to-end without meeting the listen latch)
-  // — that's a different signal (completion without reveal).
   const ctaRenderedFiredRef = useRef(false)
   useEffect(() => {
     if (!ctaRevealed || ctaRenderedFiredRef.current) return
     ctaRenderedFiredRef.current = true
-    listenTracker.onCtaRendered(lastAudioPositionRef.current)
-  }, [ctaRevealed, listenTracker])
+    listenTrackerRef.current?.onCtaRendered(lastAudioPositionRef.current)
+  }, [ctaRevealed])
 
   // WALK-BUG-0713 #1: per-story reveal threshold — the CTA appears only once
   // this sample's hook has landed (GoStory.ctaRevealSeconds), not a fixed 45s.

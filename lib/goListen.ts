@@ -50,6 +50,12 @@ export type GoListenEventName =
   | 'preview_skipped'    // user tapped main play during preview, skipping to full episode (position_seconds=0)
   // CTA-INSTRUMENTATION-001 (Marc authorization, msg 3616, 2026-07-22)
   | 'cta_rendered'
+  // PAGE-VIEW-001 (Marc, 2026-07-23): fired on component mount so play rate
+  // can be measured first-party. play rate = play_start ÷ page_view, both
+  // from go_listen_events, same session_id, same definition. Prerequisite for
+  // PLAY-RATE-001 / preview A-B testing. PRE-DDL SAFE: API 202s this until
+  // the go_listen_events event CHECK constraint is updated to include 'page_view'.
+  | 'page_view'
 
 export const GO_LISTEN_ENDPOINT = '/api/go-listen'
 
@@ -215,6 +221,10 @@ export interface GoListenTracker {
    *  visible (ctaRevealed transitions false→true via the 45s listen latch).
    *  Does NOT fire on completion-pulse or heading changes — only initial reveal. */
   onCtaRendered(positionSeconds: number): void
+  /** PAGE-VIEW-001: fired once on component mount (position_seconds=0).
+   *  Prerequisite for first-party play-rate measurement (PLAY-RATE-001).
+   *  PRE-DDL SAFE until event CHECK updated. */
+  onPageView(): void
   /** Exposed for tests/debugging only. */
   readonly sessionId: string
 }
@@ -290,6 +300,10 @@ export function createGoListenTracker(init: GoListenTrackerInit): GoListenTracke
     // CTA-INSTRUMENTATION-001
     onCtaRendered(positionSeconds: number) {
       fireOnce('cta_rendered', positionSeconds)
+    },
+    // PAGE-VIEW-001
+    onPageView() {
+      fireOnce('page_view', 0)
     },
   }
 }
