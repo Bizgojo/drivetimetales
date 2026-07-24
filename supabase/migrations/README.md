@@ -1,3 +1,4 @@
+<!-- CI smoke test trigger: 2026-07-24 -->
 # go_listen_events migration rules
 
 **RULE: Any migration that touches the `event` CHECK constraint MUST update the RLS INSERT policy in the same file.**

@@ -157,13 +157,34 @@ function detectHookWordOffset(dramaSectionText: string): number | null {
   let wordOffset = 0
 
   // Patterns that signal a narrative hook
+  // HOOK-GATE-FIX-001 (2026-07-24): Tightened from original over-broad patterns.
+  //
+  // Removed patterns that triggered false positives on normal prose:
+  //   - Negation pattern (/\b(no|not|stop|wait|don't|won't)\b/) — fired on "no exceptions",
+  //     "didn't", "not yet", etc. in virtually every narrator line.
+  //   - "found", "truth", "hiding", "hid", "lie", "lying" from reveal pattern — too common
+  //     in non-hook contexts ("never once revealed anything worse than...").
+  //   - "never", "only", "last", "final" from urgency pattern — fired on atmospheric prose.
+  //
+  // Kept: unambiguous alarm signals — physical violence/death words, explicit
+  //   narrative tension words (conspiracy, betrayal, discovered, uncovered),
+  //   and strong urgency terms (impossible, desperate, urgent, too late, cannot).
+  //
+  // False positive test cases that now correctly return null (no hook):
+  //   "Claire Ashby had a system for hotel rooms. Four minutes, every time, no exceptions."
+  //   "The rain hit the windows at a hard diagonal, streaking the glass in lines that
+  //    looked like claw marks."
+  //   "She had never once revealed anything worse than a retainer case."
   const HOOK_PATTERNS = [
-    /\?/,                                             // Question
-    /!/,                                              // Exclamation
-    /\b(dead|died|died|murder|kill|killed|death|blood|scream|scream|danger|fire|shot|shots|stabbed|bleeding|missing|vanished|disappeared|trapped|crash|explosion|warning|alarm|emergency|call|help|run|threat|afraid|fear|terrified|panic|shocking|stunning|surprising|unexpected|suddenly|suddenly|suddenly|gasp|froze|froze|froze)\b/i,
-    /\b(secret|betrayed|betrayal|lied|lie|lying|hiding|hid|discovered|found|uncovered|revelation|revealed|conspiracy|truth|realized|realized|realized)\b/i,
-    /\b(can't|cannot|never|impossible|too late|only|last|final|desperate|urgent|now or never)\b/i,
-    /\b(wait|stop|no|not|don't|won't|can't|watch out|careful|look out)\b/i,
+    /\?/,                           // Question — always a tension signal in narration
+    /!/,                            // Exclamation — alarm or urgency
+    // Physical danger, death, or violence words — unambiguous hooks
+    /\b(dead|died|murder|kill|killed|death|blood|scream|stabbed|bleeding|missing|vanished|disappeared|trapped|crash|explosion|shot|shots|threat|terrified|panic|gasp)\b/i,
+    // Explicit narrative revelation — must be strong/specific; "revealed" and "revelation"
+    // removed (fire on "never once revealed anything worse than..." and similar non-hook prose)
+    /\b(betrayed|betrayal|conspiracy|discovered|uncovered)\b/i,
+    // Urgency — only unambiguous high-stakes terms
+    /\b(cannot|impossible|too late|desperate|urgent)\b/i,
   ]
 
   for (const line of lines) {
