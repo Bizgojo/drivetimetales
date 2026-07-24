@@ -26,12 +26,10 @@
 // (pre-migration: don't fill logs with 5xx before Marc applies the DDL) ·
 // 4xx invalid/flood · 500 unexpected.
 //
-// INSTRUM-001 (UX-GO-001, 2026-07-19): 'sec_30' depth event added to the
-// whitelist. Until Marc applies the sec_30 migration, the LIVE table's
-// CHECK constraint / RLS insert policy still rejects it — that pre-DDL
-// window is handled below as a quiet 202 (constraint/policy rejection is
-// expected, not an error), so sec_30 emission can never 5xx-spam logs or
-// affect the existing events (each event is its own request).
+// INSTRUM-001 (UX-GO-001, 2026-07-19): 'sec_30' depth event added.
+// RLS-FIX-001 (2026-07-24): RLS policy synced with full event list.
+// All events are now in both CHECK constraint and RLS INSERT policy.
+// RLS/constraint rejections are logged as errors (not swallowed as 202).
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
@@ -162,12 +160,18 @@ export async function POST(req: NextRequest) {
       if (/duplicate key|23505/i.test(msg)) {
         return new NextResponse(null, { status: 204 })
       }
-      // INSTRUM-001 pre-DDL window: the live CHECK constraint / RLS insert
-      // policy predates a newly whitelisted event (sec_30 today) and rejects
-      // the row. Expected until Marc applies the migration — accept quietly
-      // (client is fire-and-forget; no log spam, no 5xx).
+      // RLS or CHECK rejection: this is a real error now that RLS-FIX-001 is
+      // applied (2026-07-24). A 42501/23514 here means a validated event was
+      // blocked by a policy mismatch — must log, not swallow. The measurement
+      // chain was broken for a full day by the silent 202 pattern; never again.
       if (/violates check constraint|23514|row-level security|42501/i.test(msg)) {
-        return new NextResponse(null, { status: 202 })
+        console.error('[go-listen] RLS/constraint rejection — event blocked after validation:', {
+          code: error.code,
+          msg: msg.slice(0, 300),
+          event: event.event,
+          variant: event.variant,
+        })
+        return NextResponse.json({ error: 'Insert rejected by policy' }, { status: 500 })
       }
       console.error('[go-listen] insert failed:', msg.slice(0, 300))
       return NextResponse.json({ error: 'Insert failed' }, { status: 500 })
