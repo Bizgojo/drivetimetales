@@ -43,11 +43,13 @@ const supabase = createClient(
 /** Words-per-second assumed for spoken audio drama (3 wps is industry standard). */
 const WORDS_PER_SECOND = 3
 
-/** Hook must land before this word count (30 spoken seconds ≈ 90 words). */
-const HOOK_PASS_WORD_LIMIT = 90
+/** Hook must land before this word count — matches HOOK-FIRST-001 canon: 15 spoken words.
+ * Marc ruling 2026-07-24: start at canon, loosen only if data forces it.
+ * Previous value was 90 (30 seconds), which let Night Train slip through at word 86. */
+const HOOK_PASS_WORD_LIMIT = 15
 
-/** Words before which a hook landing is a warn (91–150 words). */
-const HOOK_WARN_WORD_LIMIT = 150
+/** Words before which a hook landing is a warn (16–30 words ≈ 5–10 seconds). */
+const HOOK_WARN_WORD_LIMIT = 30
 
 /** For SFX check: scripts pre-dating the [SFX:...] template are legacy. */
 // A script is "new" (non-legacy) if it contains at least one [SFX:...] marker
