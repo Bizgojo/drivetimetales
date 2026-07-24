@@ -348,6 +348,23 @@ export async function POST(req: NextRequest) {
 
     if (seriesError || !series) return bad(seriesError?.message || 'Series package not found', 404)
 
+    // ── SERIES-BIBLE-GATE-001: series bible required for episode generation ──
+    // series.description IS the series bible injected into every script prompt.
+    // An empty description means episodes are generated without character context,
+    // which is the root cause of identity collisions (two Devs in WC, two Helen
+    // surnames in AWIDKnow, two GRAYs in Deep Arch). Hard block: not optional.
+    const _seriesBible = (series.description || '').trim()
+    if (!_seriesBible) {
+      return bad(
+        `SERIES-BIBLE-GATE-001: Series bible required before generating scripts for "${series.title}". ` +
+        `Set series.description with character roster, timeline, and canonical facts before proceeding. ` +
+        `Episodes generated without shared context produce character identity collisions across the series.`,
+        422,
+        { gate: 'SERIES-BIBLE-GATE-001', seriesId: cleanSeriesId, seriesTitle: series.title }
+      )
+    }
+    // ── END SERIES-BIBLE-GATE-001 ──────────────────────────────────────────
+
     const { data: episodes, error: episodesError } = await supabase
       .from('stories')
       .select('id,title,author,author_style,genre,narrative_voice,description,brief_json,status,script,script_json,script_version,series_id,series_name,episode_number,series_episode_number,series_total_episodes,series_is_finale,story_type')
