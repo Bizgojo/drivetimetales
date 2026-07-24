@@ -29,6 +29,28 @@ const fs = require('fs')
 const path = require('path')
 const os = require('os')
 
+// ── VOICE-FALLBACK-001 gate ────────────────────────────────────────────────────
+// Loaded lazily after TypeScript compile; if the compiled JS is not present we
+// use the TypeScript source via ts-node/register so the gate always runs.
+let _voiceGate = null
+function loadVoiceGate() {
+  if (_voiceGate) return _voiceGate
+  try {
+    // Attempt compiled output first (next build produces .js in same location)
+    _voiceGate = require('../lib/voiceFallbackGate')
+  } catch (_) {
+    // Fallback: run via ts-node so gate is never silently skipped
+    try {
+      require('ts-node').register({ transpileOnly: true })
+      _voiceGate = require('../lib/voiceFallbackGate')
+    } catch (e2) {
+      console.error('⚠ VOICE-FALLBACK-001: could not load voiceFallbackGate — assignment BLOCKED as precaution:', e2.message)
+      process.exit(1)
+    }
+  }
+  return _voiceGate
+}
+
 // ── Config ─────────────────────────────────────────────────────────────────────
 const SUPABASE_URL  = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://vmyhlfeouzslixtkmddy.supabase.co'
 const SERVICE_KEY   = process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -165,10 +187,66 @@ async function main() {
     .select('voice_id,voice_name').eq('story_id', storyId)
     .eq('character_name_normalized', normChar).maybeSingle()
 
+  // ── VOICE-FALLBACK-001: Run three-gate validation before any write ──────────
+  // Fetch character gender + accent from series_character_roster (if series story)
+  let characterGender = null
+  let characterAccent = null
+  if (story.series_id) {
+    const { data: rosterRow } = await sb.from('series_character_roster')
+      .select('gender,accent')
+      .eq('series_id', story.series_id)
+      .eq('canonical_name_normalized', normChar)
+      .maybeSingle()
+    if (rosterRow) {
+      characterGender = rosterRow.gender || null
+      characterAccent = rosterRow.accent || null
+    }
+  }
+
+  console.log(`   voice validation: running three-gate check (VOICE-FALLBACK-001)`)
+  const { validateVoiceAssignment } = loadVoiceGate()
+
+  // Build a minimal supabase-compatible client for the gate
+  const gateClient = {
+    from(table) {
+      return {
+        select(cols) {
+          return {
+            eq(col, val) {
+              return sb.from(table).select(cols).eq(col, val)
+            },
+          }
+        },
+      }
+    },
+  }
+
+  const gateResult = await validateVoiceAssignment({
+    characterGender,
+    characterAccent,
+    elevenlabsVoiceId: newVoiceId,
+    supabaseClient: gateClient,
+  })
+
+  if (!gateResult.valid) {
+    console.error(`\n❌ VOICE-FALLBACK-001 gate blocked recast:`)
+    console.error(`   ${gateResult.error}`)
+    if (!dryRun) {
+      audit.gateBlocked = { gate: gateResult.gate, error: gateResult.error }
+      writeAuditLog(audit)
+      process.exit(1)
+    } else {
+      console.log('   [DRY RUN] Would have been blocked by gate above.')
+    }
+  } else {
+    console.log(`   ✓ All three gates passed — voice assignment permitted`)
+  }
+
   // Look up new voice name
   const { data: newVoiceRow } = await sb.from('character_voices')
     .select('name').eq('voice_id', newVoiceId).maybeSingle()
-  const newVoiceName = newVoiceRow?.name || newVoiceId
+  // Also fall back to narrator_voices.name if character_voices has no entry
+  const newVoiceName = newVoiceRow?.name || gateResult.voice?.name || newVoiceId
 
   console.log(`   segments to re-render: ${charLines.length} (indices: ${charLines.map(l=>l.index).join(', ')})`)
   console.log(`   current voice: ${curAssign?.voice_name || curAssign?.voice_id || '(none)'}`)
