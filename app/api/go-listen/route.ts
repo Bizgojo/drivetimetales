@@ -33,6 +33,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { GO_LISTEN_EVENTS } from '@/lib/goListenEventList'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -44,8 +45,9 @@ const RATE_LIMIT_WINDOW_MS = 60_000
 const RATE_LIMIT_MAX_EVENTS = 60
 const RATE_LIMIT_MAX_IPS = 10_000
 
-// PAGE-VIEW-001: page_view added 2026-07-23 — fires on mount, measures play rate denominator.
-const VALID_EVENTS = new Set(['page_view', 'play_start', 'sec_30', 'pct_25', 'pct_50', 'pct_75', 'complete', 'cta_click', 'cta_rendered'])
+// Single source of truth for allowed events (lib/goListenEventList.ts).
+// When adding an event: update that file, write a migration (CHECK + RLS in same file), run smoke test.
+const VALID_EVENTS = new Set(GO_LISTEN_EVENTS)
 const VALID_VARIANTS = new Set(['a', 'b', 'bare'])
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 
