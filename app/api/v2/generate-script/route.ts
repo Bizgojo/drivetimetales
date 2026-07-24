@@ -155,6 +155,28 @@ export async function POST(req: NextRequest) {
 
     const brief = story.brief_json as any
 
+    // ── SERIES-BIBLE-GATE-001: series bible required for series episode generation ──
+    // If this story belongs to a series, the series.description must be non-empty
+    // before script generation proceeds. Empty = character identity collisions.
+    if (story.series_id) {
+      const { data: seriesForGate, error: seriesGateError } = await supabase
+        .from('series')
+        .select('id, title, description')
+        .eq('id', story.series_id)
+        .single()
+      if (!seriesGateError && seriesForGate) {
+        const _bibleFull = (seriesForGate.description || '').trim()
+        if (!_bibleFull) {
+          return bad(
+            `SERIES-BIBLE-GATE-001: Series bible required before generating script for "${story.title}". ` +
+            `Set series.description on series "${seriesForGate.title}" with character roster and canonical facts.`,
+            422
+          )
+        }
+      }
+    }
+    // ── END SERIES-BIBLE-GATE-001 ──────────────────────────────────────────
+
     // PREMISE-UNIQUENESS-001: mandatory premise check at the brief gate
     // before Stage 2. COLLISION bounces the brief for rework; override only
     // via Marc's recorded brief_json.premise_gate_override — never silent.
