@@ -5531,13 +5531,20 @@ ${cardCopyIssues.map((issue) => `- ${issue}`).join('\n')}`
     }
   }
 
+  // LANDING-STORY-001 is a Belle-exempt variant — skip Belle B requirement check only
+  const variant = extractHeader(script, 'VARIANT')
+  const isBelleExempt = /LANDING-STORY-001|No Belle B/i.test(variant)
+  const validatorPromptToUse = isBelleExempt
+    ? VALIDATOR_PROMPT.replace(/^- The script must include BELLE B [^\n]+blocks\.\n/m, '')
+    : VALIDATOR_PROMPT
+
   const response = await anthropic.messages.create({
     model,
     max_tokens: 4000,
     temperature: 0,
     messages: [{
       role: 'user',
-      content: `${VALIDATOR_PROMPT}
+      content: `${validatorPromptToUse}
 
 Series-specific validation:
 - This is Episode ${number} of ${episode.series_total_episodes}.
