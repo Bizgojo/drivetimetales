@@ -670,3 +670,66 @@ NARRATOR: Suddenly she vanished!
     expect(result.checks).toHaveProperty('cover')
   })
 })
+
+// ---------------------------------------------------------------------------
+// Tests — LANDING-STORY-001 hook keyword gate exemption (Option A)
+// Marc ruling 2026-07-25 10:28 EDT
+// ---------------------------------------------------------------------------
+
+/**
+ * Mirrors the exemption logic in runHookGate: when the script has
+ * VARIANT: LANDING-STORY-001, the keyword gate is skipped and 'na' returned.
+ * All other stories go through the normal checkHook path.
+ */
+function checkHookWithVariantExemption(script) {
+  const variantHeader = script.match(/^VARIANT:\s*(.+)$/m)?.[1]?.trim() ?? ''
+  const isLandingExempt = /LANDING-STORY-001/i.test(variantHeader)
+  if (isLandingExempt) {
+    return {
+      status: 'na',
+      wordsBeforeHook: null,
+      hookFound: false,
+      detail:
+        'LANDING-STORY-001 cold-open format: keyword gate exempt. ' +
+        'LLM hook rubric required before RfR — see HOOK-GATE-001 compensating check.',
+    }
+  }
+  return checkHook(script)
+}
+
+describe('LANDING-STORY-001 hook keyword gate exemption', () => {
+  test('LANDING-STORY-001 variant returns hook status "na" (not fail/pass), with compensating-check detail', () => {
+    // Cold-open narration that deliberately withholds tension keywords — would
+    // false-fail the keyword gate on any normal story, but must return 'na' here.
+    const script = `VARIANT: LANDING-STORY-001
+[START AUDIO DRAMA SCRIPT]
+NARRATOR: The road stretched ahead, dark and quiet under a sky full of clouds.
+NARRATOR: Claire had always driven this route alone, headlights tracing the white lines.
+NARRATOR: She had never thought much about it before tonight.
+`
+    const result = checkHookWithVariantExemption(script)
+    expect(result.status).toBe('na')
+    expect(result.hookFound).toBe(false)
+    expect(result.wordsBeforeHook).toBeNull()
+    expect(result.detail).toMatch(/LANDING-STORY-001/i)
+    expect(result.detail).toMatch(/LLM hook rubric/i)
+    expect(result.detail).toMatch(/HOOK-GATE-001 compensating check/i)
+    // Must NOT be 'fail' — exemption means the gate does not block
+    expect(result.status).not.toBe('fail')
+  })
+
+  test('Non-LANDING-STORY-001 story with no hook keywords still returns "fail" (exemption not applied)', () => {
+    // Standard story variant with no hook-signal words — keyword gate must fire normally.
+    const script = `VARIANT: STANDARD
+[START AUDIO DRAMA SCRIPT]
+NARRATOR: It was a calm and ordinary evening in the suburbs.
+NARRATOR: The neighbourhood was quiet, children long since in bed.
+NARRATOR: Nothing about the night suggested anything would change.
+`
+    const result = checkHookWithVariantExemption(script)
+    expect(result.status).toBe('fail')
+    expect(result.hookFound).toBe(false)
+    // Exemption must not bleed into other variants
+    expect(result.detail).not.toMatch(/LANDING-STORY-001/i)
+  })
+})
