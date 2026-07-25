@@ -72,7 +72,16 @@ const SFX_MAX = 6
 // ---------------------------------------------------------------------------
 
 export interface HookCheckResult {
-  status: 'pass' | 'warn' | 'fail'
+  /**
+   * 'pass' — hook detected within HOOK_PASS_WORD_LIMIT
+   * 'warn' — hook detected but later than ideal
+   * 'fail' — no hook or hook too late
+   * 'na'   — keyword gate skipped for exempt variant (LANDING-STORY-001);
+   *          LLM hook rubric MUST be run on the final-mix transcript before
+   *          the story advances to RfR — this is a MANUAL compensating check
+   *          until a future PR automates it (HOOK-GATE-001 compensating check).
+   */
+  status: 'pass' | 'warn' | 'fail' | 'na'
   wordsBeforeHook: number | null
   hookFound: boolean
   detail: string
@@ -729,8 +738,29 @@ export async function runHookGate(input: RunHookGateInput): Promise<HookGateResu
   const variantHeader = script.match(/^VARIANT:\s*(.+)$/m)?.[1]?.trim() ?? ''
   const isBelleExempt = /LANDING-STORY-001|No Belle B/i.test(variantHeader)
 
-  const hookCheck = checkHook(script)
-  const sfxCheck  = checkSfx(script)
+  // LANDING-STORY-001 hook keyword gate exemption (Option A — Marc ruling 2026-07-25 10:28 EDT):
+  // Scoped STRICTLY to LANDING-STORY-001 — does NOT apply to other "No Belle B" variants.
+  // isBelleExempt (above) matches both LANDING-STORY-001 and bare "No Belle B" variants;
+  // the hook exemption uses a narrower check so that a non-landing "No Belle B" story
+  // with no hook keywords still returns 'fail' from the keyword gate.
+  //
+  // COMPENSATING CHECK (manual, until automated in a future PR):
+  //   Before EP1 or EP2 advances to Ready for Review, an operator MUST run an LLM hook
+  //   rubric score against the final-mix transcript and record it. The rubric replaces
+  //   keyword detection for this variant.
+  //   Option B (extending exemption to dialogue lines) is a tracked follow-up, NOT this change.
+  const isLandingHookExempt = /LANDING-STORY-001/i.test(variantHeader)
+  const hookCheck: HookCheckResult = isLandingHookExempt
+    ? {
+        status: 'na',
+        wordsBeforeHook: null,
+        hookFound: false,
+        detail:
+          'LANDING-STORY-001 cold-open format: keyword gate exempt. ' +
+          'LLM hook rubric required before RfR — see HOOK-GATE-001 compensating check.',
+      }
+    : checkHook(script)
+  const sfxCheck = checkSfx(script)
   // Belle check: skip for LANDING-STORY-001 (no Belle B by design)
   const belleCheck: BelleCheckResult = isBelleExempt
     ? {
@@ -758,7 +788,7 @@ export async function runHookGate(input: RunHookGateInput): Promise<HookGateResu
   const failures: string[] = []
   const warnings: string[] = []
 
-  // Check 1: Hook
+  // Check 1: Hook ('na' = keyword gate exempt for LANDING-STORY-001; not a failure or warning)
   if (hookCheck.status === 'fail') failures.push(`[hook] ${hookCheck.detail}`)
   else if (hookCheck.status === 'warn') warnings.push(`[hook] ${hookCheck.detail}`)
 
