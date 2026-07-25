@@ -559,9 +559,24 @@ export async function runHookGate(input: RunHookGateInput): Promise<HookGateResu
     checkCoverArtifact(coverUrl),
   ])
 
+  // LANDING-STORY-001: cold open, no Belle B by design — exempt from belle structure check.
+  // Same exemption pattern as PRs #29-37 (generate_belle_assets, validate_belle_assets,
+  // validate_belle_quality, score_validate_package, series_generate_belle_assets).
+  // Extracts VARIANT header from script; matches 'LANDING-STORY-001' or 'No Belle B'.
+  const variantHeader = script.match(/^VARIANT:\s*(.+)$/m)?.[1]?.trim() ?? ''
+  const isBelleExempt = /LANDING-STORY-001|No Belle B/i.test(variantHeader)
+
   const hookCheck = checkHook(script)
   const sfxCheck = checkSfx(script)
-  const belleCheck = checkBelle(script)
+  // Belle check: skip for LANDING-STORY-001 (no Belle B by design)
+  const belleCheck: BelleCheckResult = isBelleExempt
+    ? {
+        status: 'pass',
+        hasAnnouncement: false,
+        hasOutro: false,
+        detail: `LANDING-STORY-001 variant (VARIANT: ${variantHeader}) — Belle B blocks exempt by design. Check skipped.`,
+      }
+    : checkBelle(script)
 
   // ── Belle quality repair empty check ────────────────────────────────────
   const belleRepairEmptyError = detectBelleQualityRepairEmpty(stateJson)
