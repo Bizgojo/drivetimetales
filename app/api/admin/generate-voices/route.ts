@@ -2478,6 +2478,13 @@ export async function POST(req: NextRequest) {
       retryMissingOnly,
       segmentNumber,
       generateBelleOnly,
+      // HOOK-GATE-STALE-001: when true and retryMissingOnly is also true, purge
+      // ALL existing segment files before the inventory check so that stale segments
+      // from a prior script version are removed before new generation begins.
+      // Set by run-next on the first generate_voices invocation of a fresh job
+      // (empty voiceGeneration state). Safe to send with segmentNumber=0 — the
+      // subsequent retryMissingOnly inventory will see all segments as missing.
+      purgeExisting = false,
     } = await req.json()
     if (!storyId) return NextResponse.json({ success: false, error: 'storyId required' }, { status: 400 })
     let script = scriptParam
@@ -3164,6 +3171,37 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ success: false, error: `Failed to list existing story segments: ${listAudioError.message}` }, { status: 500 })
       }
 
+      // HOOK-GATE-STALE-001: purgeExisting=true means the caller (run-next on a fresh
+      // job dispatch) wants ALL existing segments deleted before this generation run.
+      // This ensures stale segments from a prior script version never survive into
+      // a new production job.  After purge, the inventory sees all segments as
+      // missing and the retryMissingOnly loop will regenerate them one-by-one.
+      if (purgeExisting === true) {
+        const existingSegmentPaths = (existingAudioFiles || [])
+          .filter(file => segmentFilePattern.test(file.name))
+          .map(file => `${storyAudioFolder}/${file.name}`)
+        if (existingSegmentPaths.length > 0) {
+          const { error: purgeError } = await supabase.storage.from('audio').remove(existingSegmentPaths)
+          if (purgeError) {
+            console.error(`  ❌ [HOOK-GATE-STALE-001] Failed to purge ${existingSegmentPaths.length} stale segments:`, purgeError)
+            return NextResponse.json(
+              { success: false, error: `HOOK-GATE-STALE-001 purge failed: ${purgeError.message}` },
+              { status: 500 },
+            )
+          }
+          console.log(`  🧹 [HOOK-GATE-STALE-001] Purged ${existingSegmentPaths.length} stale segments before fresh generation: ${existingSegmentPaths.map(p => p.split('/').pop()).join(', ')}`)
+        } else {
+          console.log('  🧹 [HOOK-GATE-STALE-001] purgeExisting=true but no existing segments to purge')
+        }
+        // Refresh the file list after purge so classifySegmentInventory sees clean state
+        const { data: refreshedFiles, error: refreshError } = await supabase.storage.from('audio').list(storyAudioFolder, { limit: 500 })
+        if (!refreshError) {
+          // Replace existingAudioFiles with the refreshed list for the inventory below
+          ;(existingAudioFiles as unknown as any[]).length = 0
+          for (const f of (refreshedFiles || [])) (existingAudioFiles as unknown as any[]).push(f)
+        }
+      }
+
       // FIX (AC-1, AC-2): reject stale segments whose stored size is ≤ stale threshold.
       // UPDATED (ATL-PIPE-006): changed from 20KB to 5KB to match run-next hard-fail floor
       // ATL-PIPE-006 + ATL-LEARN-001: Use Artifact Validity Gate for segment inventory.
@@ -3273,8 +3311,24 @@ export async function POST(req: NextRequest) {
       }
       const inventory = buildInventoryReport(updatedSegmentNames, failures)
 
+      // HOOK-GATE-STALE-001: stamp segments_generated_at when the retryMissingOnly
+      // pass reports a fully-complete inventory (no missing, no failures).
+      // This is the final segment of a multi-cycle generation run.
+      const retrySuccess = failures.length === 0 && inventory.missingSegments.length === 0
+      if (retrySuccess) {
+        const { error: stampErr } = await supabase
+          .from('stories')
+          .update({ segments_generated_at: new Date().toISOString() })
+          .eq('id', storyId)
+        if (stampErr) {
+          console.warn(`[HOOK-GATE-STALE-001] retryMissingOnly stamp failed for story ${storyId}: ${stampErr.message}`)
+        } else {
+          console.log(`[HOOK-GATE-STALE-001] Stamped segments_generated_at (retryMissingOnly complete) for story ${storyId}`)
+        }
+      }
+
       return NextResponse.json({
-        success: failures.length === 0 && inventory.missingSegments.length === 0,
+        success: retrySuccess,
         retryMissingOnly: true,
         generatedSegments,
         failures,
@@ -3282,7 +3336,7 @@ export async function POST(req: NextRequest) {
         missingSegments: inventory.missingSegments,
         inventory,
         transcriptQcSkippedSegments: qcSkippedSegments,
-      }, { status: failures.length === 0 ? 200 : 500 })
+      }, { status: retrySuccess ? 200 : 500 })
     }
 
     const results: { intro?: string; outro?: string; segments: any[] } = { segments: [] }
@@ -3421,8 +3475,25 @@ export async function POST(req: NextRequest) {
       console.warn(`\n🚨 ${escalations.length} segment(s) escalated - copy to Marc/ChatGPT for review:`)
       escalations.forEach(r => console.warn(`  ${r.segment} | ${r.failureKind} | manualOK=${r.manualOverrideSafe} | "${r.scriptText.slice(0,60)}" | fix: ${r.recommendedFix.slice(0,80)}`))
     }
+    // HOOK-GATE-STALE-001: stamp segments_generated_at when full generation
+    // completes clean (no missing, no escalations). The audio-consistency gate
+    // compares this against script_updated_at to detect stale audio.
+    const fullGenSuccess = failed === 0 && inventory.missingSegments.length === 0 && escalations.length === 0
+    if (fullGenSuccess) {
+      const { error: stampError } = await supabase
+        .from('stories')
+        .update({ segments_generated_at: new Date().toISOString() })
+        .eq('id', storyId)
+      if (stampError) {
+        // Non-fatal — warn but do not fail generation. Gate will warn on null timestamp.
+        console.warn(`[HOOK-GATE-STALE-001] Failed to stamp segments_generated_at for story ${storyId}: ${stampError.message}`)
+      } else {
+        console.log(`[HOOK-GATE-STALE-001] Stamped segments_generated_at for story ${storyId}`)
+      }
+    }
+
     return NextResponse.json({
-      success: failed === 0 && inventory.missingSegments.length === 0 && escalations.length === 0,
+      success: fullGenSuccess,
       intro: results.intro,
       outro: results.outro,
       segments: results.segments,
