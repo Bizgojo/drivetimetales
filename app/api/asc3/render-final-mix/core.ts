@@ -441,7 +441,7 @@ export async function runRenderFinalMix(storyId: string): Promise<{
     const isLandingStory001 = variantValue.includes('LANDING-STORY-001') || variantValue.includes('No Belle B')
     if (!isLandingStory001 && !isSplitIntro && !introFile) return { success: false, error: 'No announcement audio found (expected announcement_*.mp3; legacy intro fallback accepts intro.mp3, intro_*.mp3, or intro_before_* + intro_after_* pair)' }
     if (!isLandingStory001 && isSplitIntro && (!introBeforeFile || !introAfterFile)) return { success: false, error: 'Split intro incomplete: both intro_before_* and intro_after_* are required' }
-    if (!outroFile) return { success: false, error: 'No outro audio found' }
+    if (!isLandingStory001 && !outroFile) return { success: false, error: 'No outro audio found' }
     if (segmentFiles.length === 0) return { success: false, error: 'No story segments found' }
     if (!musicFile) {
       return {
