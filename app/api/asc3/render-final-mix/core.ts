@@ -480,9 +480,10 @@ export async function runRenderFinalMix(storyId: string): Promise<{
       await execFileAsync(FFMPEG_PATH, ['-f', 'concat', '-safe', '0', '-i', splitConcatFile, '-ar', '44100', '-ac', '2', '-b:a', '192k', '-y', introPath])
       const splitIntroDur = await getAudioDuration(introPath)
       console.log(`  Assembled split intro: ${introBeforeFile!.name} + ${introAfterFile!.name} → ${splitIntroDur.toFixed(2)}s`)
-    } else {
+    } else if (!isLandingStory001) {
       await download(`${BASE_STORAGE}/asc3/${storyId}/${introFile!.name}`, introPath)
     }
+    // LANDING-STORY-001: no Belle B intro — no intro file to download (cold open)
     await download(`${BASE_STORAGE}/asc3/${storyId}/${outroFile.name}`, outroPath)
     await download(`${BASE_STORAGE}/asc3/${storyId}/${musicFile.name}`, musicPath)
 
