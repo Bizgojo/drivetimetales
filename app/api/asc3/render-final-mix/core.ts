@@ -432,8 +432,13 @@ export async function runRenderFinalMix(storyId: string): Promise<{
     }
     const musicFile = files.find(f => f.name === 'background_music.mp3')
 
-    if (!isSplitIntro && !introFile) return { success: false, error: 'No announcement audio found (expected announcement_*.mp3; legacy intro fallback accepts intro.mp3, intro_*.mp3, or intro_before_* + intro_after_* pair)' }
-    if (isSplitIntro && (!introBeforeFile || !introAfterFile)) return { success: false, error: 'Split intro incomplete: both intro_before_* and intro_after_* are required' }
+    // LANDING-STORY-001 variant: no Belle B intro/outro by design. Skip announcement check.
+    const scriptText = storyRow?.script || ''
+    const variantMatch = scriptText.match(/^VARIANT:\s*(.+)$/m)
+    const variantValue = variantMatch ? variantMatch[1].trim() : ''
+    const isLandingStory001 = variantValue.includes('LANDING-STORY-001') || variantValue.includes('No Belle B')
+    if (!isLandingStory001 && !isSplitIntro && !introFile) return { success: false, error: 'No announcement audio found (expected announcement_*.mp3; legacy intro fallback accepts intro.mp3, intro_*.mp3, or intro_before_* + intro_after_* pair)' }
+    if (!isLandingStory001 && isSplitIntro && (!introBeforeFile || !introAfterFile)) return { success: false, error: 'Split intro incomplete: both intro_before_* and intro_after_* are required' }
     if (!outroFile) return { success: false, error: 'No outro audio found' }
     if (segmentFiles.length === 0) return { success: false, error: 'No story segments found' }
     if (!musicFile) {
@@ -654,9 +659,14 @@ export async function runRenderFinalMix(storyId: string): Promise<{
     // Fix: reformat to 44100 Hz / stereo / 192k only. Volume is preserved as recorded.
     const normalizedIntroPath = path.join(tmpDir, 'norm_intro.mp3')
     const normalizedOutroPath = path.join(tmpDir, 'norm_outro.mp3')
-    await execFileAsync(FFMPEG_PATH, ['-i', introPath, '-ar', '44100', '-ac', '2', '-b:a', '192k', '-y', normalizedIntroPath])
+    // LANDING-STORY-001: no Belle B intro — skip intro processing
+    if (!isLandingStory001) {
+      await execFileAsync(FFMPEG_PATH, ['-i', introPath, '-ar', '44100', '-ac', '2', '-b:a', '192k', '-y', normalizedIntroPath])
+      await logLoudnessDiagnostics('resampled intro', normalizedIntroPath)
+    } else {
+      console.log('  LANDING-STORY-001: skipping Belle B intro normalization')
+    }
     await execFileAsync(FFMPEG_PATH, ['-i', outroPath, '-ar', '44100', '-ac', '2', '-b:a', '192k', '-y', normalizedOutroPath])
-    await logLoudnessDiagnostics('resampled intro', normalizedIntroPath)
     await logLoudnessDiagnostics('resampled outro', normalizedOutroPath)
     
     // ── SFX clips (anchor sound effects) ───────────────────────────────────
@@ -800,17 +810,22 @@ export async function runRenderFinalMix(storyId: string): Promise<{
     await logLoudnessDiagnostics('story_body.mp3', storyBodyPath)
 
     // Sting→announcement: Belle enters at 1.5s while the sting fades underneath.
+    // LANDING-STORY-001: no Belle B intro — skip sting+announcement assembly.
     const stingIntroPath = path.join(tmpDir, 'sting_announcement.mp3')
-    const belleDelayMs = Math.round(BELLE_ENTER_SEC * 1000)
-    await execFileAsync(FFMPEG_PATH, [
-      '-i', stingPath, '-i', normalizedIntroPath,
-      '-filter_complex',
-      `[0:a]afade=t=out:st=${BELLE_ENTER_SEC}:d=${STING_FADE_DUR},aformat=sample_rates=44100:channel_layouts=stereo[s];` +
-      `[1:a]adelay=${belleDelayMs}|${belleDelayMs},aformat=sample_rates=44100:channel_layouts=stereo[v];` +
-      `[s][v]amix=inputs=2:duration=longest[out]`,
-      '-map', '[out]',
-      '-ar', '44100', '-ac', '2', '-b:a', '192k', '-y', stingIntroPath
-    ])
+    if (!isLandingStory001) {
+      const belleDelayMs = Math.round(BELLE_ENTER_SEC * 1000)
+      await execFileAsync(FFMPEG_PATH, [
+        '-i', stingPath, '-i', normalizedIntroPath,
+        '-filter_complex',
+        `[0:a]afade=t=out:st=${BELLE_ENTER_SEC}:d=${STING_FADE_DUR},aformat=sample_rates=44100:channel_layouts=stereo[s];` +
+        `[1:a]adelay=${belleDelayMs}|${belleDelayMs},aformat=sample_rates=44100:channel_layouts=stereo[v];` +
+        `[s][v]amix=inputs=2:duration=longest[out]`,
+        '-map', '[out]',
+        '-ar', '44100', '-ac', '2', '-b:a', '192k', '-y', stingIntroPath
+      ])
+    } else {
+      console.log('  LANDING-STORY-001: skipping sting+announcement assembly')
+    }
 
     // ── Final assembly ────────────────────────────────────────────────────────
     // v2 path: sting+announcement → 0.75s silence → story_body (pre+bed+swell) → outro_with_music
@@ -877,9 +892,15 @@ export async function runRenderFinalMix(storyId: string): Promise<{
         ` under ${outroDurSecs.toFixed(1)}s Belle + ${V2_TAIL_FADE}s fade to silence (total ${outroBed.toFixed(1)}s music)`
       )
       // story_body = pre+bed+swell; outro_with_music bridges directly (music seamless at 0.85)
-      finalParts = [stingIntroPath, sil075Path, storyBodyPath, outroWithMusicPath]
+      // LANDING-STORY-001: cold open — story_body first, then outro_with_music
+      finalParts = isLandingStory001
+        ? [storyBodyPath, outroWithMusicPath]
+        : [stingIntroPath, sil075Path, storyBodyPath, outroWithMusicPath]
     } else {
-      finalParts = [stingIntroPath, sil075Path, storyBodyPath, sil025Path, normalizedOutroPath]
+      // LANDING-STORY-001: cold open — story_body first, then dry outro
+      finalParts = isLandingStory001
+        ? [storyBodyPath, sil025Path, normalizedOutroPath]
+        : [stingIntroPath, sil075Path, storyBodyPath, sil025Path, normalizedOutroPath]
     }
 
     await fs.writeFile(finalConcatFile, finalParts.map(p => `file '${p}'`).join('\n'))
