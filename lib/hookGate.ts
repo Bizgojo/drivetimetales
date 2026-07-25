@@ -2,12 +2,19 @@
  * HOOK-GATE-001 — Pre-flight production spec gate
  *
  * Runs immediately BEFORE a story advances from complete_story_package to
- * ready_for_review. Six deterministic checks verify that the story meets the
+ * ready_for_review. Seven deterministic checks verify that the story meets the
  * Endless Tales production spec before it reaches the human review queue.
  *
  * Also exposes a runHookGate() function for the standalone API endpoint
  * (app/api/admin/hook-gate/route.ts) so operators can trigger the check
  * manually without triggering a pipeline step.
+ *
+ * HOOK-GATE-STALE-001 (2026-07-25):
+ * Check 7 (audioConsistency) compares stories.script_updated_at against
+ * stories.segments_generated_at. If the script was edited AFTER the voice
+ * segments were generated, the gate fails with STALE_AUDIO.  Requires
+ * migration 20260725000000_script_audio_timestamps to hard-fail; gracefully
+ * warns when timestamps are absent (schema gap, legacy stories).
  *
  * Return shape:
  *   {
@@ -15,12 +22,13 @@
  *     warnings: string[],
  *     failures: string[],
  *     checks: {
- *       hook:  HookCheckResult,
- *       sfx:   SfxCheckResult,
- *       genre: GenreCheckResult,
- *       belle: BelleCheckResult,
- *       audio: ArtifactCheckResult,
- *       cover: ArtifactCheckResult,
+ *       hook:             HookCheckResult,
+ *       sfx:              SfxCheckResult,
+ *       genre:            GenreCheckResult,
+ *       belle:            BelleCheckResult,
+ *       audio:            ArtifactCheckResult,
+ *       cover:            ArtifactCheckResult,
+ *       audioConsistency: AudioConsistencyCheckResult,   // HOOK-GATE-STALE-001
  *     }
  *   }
  */
@@ -99,6 +107,27 @@ export interface ArtifactCheckResult {
   detail: string
 }
 
+/**
+ * HOOK-GATE-STALE-001: Audio consistency check result.
+ *
+ * Compares script_updated_at against segments_generated_at to detect cases
+ * where voice segments were generated from an older version of the script.
+ *
+ * status:
+ *   'pass'      — segments_generated_at >= script_updated_at (audio is current)
+ *   'fail'      — script_updated_at > segments_generated_at (STALE AUDIO detected)
+ *   'warn'      — timestamps missing; cannot verify consistency (schema gap or
+ *                 segments never generated)
+ *   'na'        — story has no script yet; check not applicable
+ */
+export interface AudioConsistencyCheckResult {
+  status: 'pass' | 'fail' | 'warn' | 'na'
+  scriptUpdatedAt: string | null
+  segmentsGeneratedAt: string | null
+  staleByMs: number | null     // positive = segments are older than script by this many ms
+  detail: string
+}
+
 export interface HookGateResult {
   pass: boolean
   warnings: string[]
@@ -110,6 +139,7 @@ export interface HookGateResult {
     belle: BelleCheckResult
     audio: ArtifactCheckResult
     cover: ArtifactCheckResult
+    audioConsistency: AudioConsistencyCheckResult
   }
 }
 
@@ -534,6 +564,130 @@ export function detectBelleQualityRepairEmpty(stateJson: Record<string, unknown>
 // Main gate function
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Check 7: Script-audio consistency (HOOK-GATE-STALE-001)
+// ---------------------------------------------------------------------------
+
+/**
+ * Compare script_updated_at against segments_generated_at.
+ *
+ * Both timestamps must be populated (via the 20260725000000_script_audio_timestamps
+ * migration) for a hard-fail verdict. When either is absent the check warns
+ * rather than fails so legacy stories are not incorrectly blocked.
+ *
+ * @param scriptUpdatedAt   ISO string from stories.script_updated_at, or null
+ * @param segmentsGeneratedAt  ISO string from stories.segments_generated_at, or null
+ * @param hasScript         true when stories.script is non-empty
+ */
+/** @internal Exported for unit tests (HOOK-GATE-STALE-001) */
+export function checkAudioConsistency(
+  scriptUpdatedAt: string | null | undefined,
+  segmentsGeneratedAt: string | null | undefined,
+  hasScript: boolean,
+): AudioConsistencyCheckResult {
+  const scriptTs = scriptUpdatedAt ? scriptUpdatedAt.trim() : null
+  const segTs    = segmentsGeneratedAt ? segmentsGeneratedAt.trim() : null
+
+  if (!hasScript) {
+    return {
+      status: 'na',
+      scriptUpdatedAt: scriptTs,
+      segmentsGeneratedAt: segTs,
+      staleByMs: null,
+      detail: 'Story has no script — audio consistency check not applicable (N/A)',
+    }
+  }
+
+  // Schema gap: migration not yet applied or story pre-dates tracking
+  if (!scriptTs && !segTs) {
+    return {
+      status: 'warn',
+      scriptUpdatedAt: null,
+      segmentsGeneratedAt: null,
+      staleByMs: null,
+      detail:
+        'script_updated_at and segments_generated_at are both NULL — ' +
+        'migration 20260725000000_script_audio_timestamps not yet applied. ' +
+        'Cannot verify audio-script consistency (WARN, schema gap)',
+    }
+  }
+
+  if (!scriptTs) {
+    return {
+      status: 'warn',
+      scriptUpdatedAt: null,
+      segmentsGeneratedAt: segTs,
+      staleByMs: null,
+      detail:
+        'script_updated_at is NULL — cannot determine when script was last edited. ' +
+        'Apply migration 20260725000000_script_audio_timestamps (WARN, schema gap)',
+    }
+  }
+
+  if (!segTs) {
+    // Script exists but no segments have been generated through the new path yet.
+    // This is expected for stories where voice generation hasn't completed, or for
+    // stories processed before the migration was applied.
+    return {
+      status: 'warn',
+      scriptUpdatedAt: scriptTs,
+      segmentsGeneratedAt: null,
+      staleByMs: null,
+      detail:
+        'segments_generated_at is NULL — voice segments were not generated through ' +
+        'the tracked path (pre-migration audio, or generation not yet complete). ' +
+        'Audio consistency cannot be verified (WARN)',
+    }
+  }
+
+  const scriptTime = new Date(scriptTs).getTime()
+  const segTime    = new Date(segTs).getTime()
+
+  if (Number.isNaN(scriptTime) || Number.isNaN(segTime)) {
+    return {
+      status: 'warn',
+      scriptUpdatedAt: scriptTs,
+      segmentsGeneratedAt: segTs,
+      staleByMs: null,
+      detail:
+        `Unparseable timestamp — scriptUpdatedAt="${scriptTs}" segmentsGeneratedAt="${segTs}" ` +
+        '(WARN, cannot compare)',
+    }
+  }
+
+  const staleByMs = scriptTime - segTime
+
+  if (staleByMs > 0) {
+    // script_updated_at is NEWER than segments_generated_at → stale audio
+    const staleBySeconds = Math.round(staleByMs / 1000)
+    const staleByMinutes = Math.round(staleByMs / 60_000)
+    const staleLabel =
+      staleByMinutes < 2 ? `${staleBySeconds}s`
+      : staleByMinutes < 120 ? `${staleByMinutes}m`
+      : `${Math.round(staleByMinutes / 60)}h`
+
+    return {
+      status: 'fail',
+      scriptUpdatedAt: scriptTs,
+      segmentsGeneratedAt: segTs,
+      staleByMs,
+      detail:
+        `STALE AUDIO: script was edited ${staleLabel} AFTER voice segments were generated. ` +
+        `script_updated_at=${scriptTs} > segments_generated_at=${segTs}. ` +
+        'Audio does not match the current script. Re-run generate_voices to purge and regenerate. — FAIL',
+    }
+  }
+
+  return {
+    status: 'pass',
+    scriptUpdatedAt: scriptTs,
+    segmentsGeneratedAt: segTs,
+    staleByMs: 0,
+    detail:
+      `Audio is consistent with script: segments_generated_at=${segTs} \u2265 script_updated_at=${scriptTs} — PASS`,
+  }
+}
+
 export interface RunHookGateInput {
   storyId: string
   script: string
@@ -541,6 +695,10 @@ export interface RunHookGateInput {
   audioUrl: string | null | undefined
   coverUrl: string | null | undefined
   stateJson?: Record<string, unknown>
+  /** Populated by stories.script_updated_at (migration 20260725000000_script_audio_timestamps) */
+  scriptUpdatedAt?: string | null
+  /** Populated by stories.segments_generated_at (set by generate-voices on completion) */
+  segmentsGeneratedAt?: string | null
 }
 
 /**
@@ -550,7 +708,12 @@ export interface RunHookGateInput {
  * @returns      Structured gate result with pass/warn/fail per check.
  */
 export async function runHookGate(input: RunHookGateInput): Promise<HookGateResult> {
-  const { storyId, script, genre, audioUrl, coverUrl, stateJson = {} } = input
+  const {
+    storyId, script, genre, audioUrl, coverUrl,
+    stateJson = {},
+    scriptUpdatedAt,
+    segmentsGeneratedAt,
+  } = input
 
   // ── Run all checks in parallel where possible ───────────────────────────
   const [genreCheck, audioCheck, coverCheck] = await Promise.all([
@@ -567,7 +730,7 @@ export async function runHookGate(input: RunHookGateInput): Promise<HookGateResu
   const isBelleExempt = /LANDING-STORY-001|No Belle B/i.test(variantHeader)
 
   const hookCheck = checkHook(script)
-  const sfxCheck = checkSfx(script)
+  const sfxCheck  = checkSfx(script)
   // Belle check: skip for LANDING-STORY-001 (no Belle B by design)
   const belleCheck: BelleCheckResult = isBelleExempt
     ? {
@@ -577,6 +740,16 @@ export async function runHookGate(input: RunHookGateInput): Promise<HookGateResu
         detail: `LANDING-STORY-001 variant (VARIANT: ${variantHeader}) — Belle B blocks exempt by design. Check skipped.`,
       }
     : checkBelle(script)
+
+  // ── Check 7: Script-audio consistency (HOOK-GATE-STALE-001) ─────────────
+  // Compares script_updated_at against segments_generated_at.
+  // Requires migration 20260725000000_script_audio_timestamps to hard-fail.
+  // Without the migration both timestamps are null and this check warns.
+  const audioConsistencyCheck = checkAudioConsistency(
+    scriptUpdatedAt ?? null,
+    segmentsGeneratedAt ?? null,
+    Boolean(script?.trim()),
+  )
 
   // ── Belle quality repair empty check ────────────────────────────────────
   const belleRepairEmptyError = detectBelleQualityRepairEmpty(stateJson)
@@ -598,12 +771,19 @@ export async function runHookGate(input: RunHookGateInput): Promise<HookGateResu
   // Check 4: Belle structure
   if (belleCheck.status === 'fail') failures.push(`[belle] ${belleCheck.detail}`)
 
-  // Check 5: Audio (hard gate)
+  // Check 5: Audio artifact (hard gate)
   if (audioCheck.status === 'fail') failures.push(`[audio] ${audioCheck.detail}`)
 
   // Check 6: Cover (soft gate — warn only)
   if (coverCheck.status === 'fail' || coverCheck.status === 'warn') {
     warnings.push(`[cover] ${coverCheck.detail}`)
+  }
+
+  // Check 7: Audio consistency — hard fail on stale, warn on schema gap
+  if (audioConsistencyCheck.status === 'fail') {
+    failures.push(`[audio_consistency] ${audioConsistencyCheck.detail}`)
+  } else if (audioConsistencyCheck.status === 'warn') {
+    warnings.push(`[audio_consistency] ${audioConsistencyCheck.detail}`)
   }
 
   // Belle quality repair empty → hard fail
@@ -618,12 +798,13 @@ export async function runHookGate(input: RunHookGateInput): Promise<HookGateResu
     warnings,
     failures,
     checks: {
-      hook: hookCheck,
-      sfx: sfxCheck,
-      genre: genreCheck,
-      belle: belleCheck,
-      audio: audioCheck,
-      cover: coverCheck,
+      hook:             hookCheck,
+      sfx:              sfxCheck,
+      genre:            genreCheck,
+      belle:            belleCheck,
+      audio:            audioCheck,
+      cover:            coverCheck,
+      audioConsistency: audioConsistencyCheck,
     },
   }
 }
@@ -636,9 +817,13 @@ export async function runHookGateForStory(
   storyId: string,
   stateJson: Record<string, unknown> = {},
 ): Promise<HookGateResult> {
+  // HOOK-GATE-STALE-001: also fetch script_updated_at and segments_generated_at.
+  // These columns exist after migration 20260725000000_script_audio_timestamps is applied.
+  // If the migration has not been applied, Supabase returns the row without those fields
+  // (or with null), which the gate handles gracefully with a warn instead of fail.
   const { data: story, error } = await supabase
     .from('stories')
-    .select('id, script, genre, audio_url, cover_url')
+    .select('id, script, genre, audio_url, cover_url, script_updated_at, segments_generated_at')
     .eq('id', storyId)
     .single()
 
@@ -653,5 +838,7 @@ export async function runHookGateForStory(
     audioUrl: story.audio_url,
     coverUrl: story.cover_url,
     stateJson,
+    scriptUpdatedAt:    (story as any).script_updated_at    ?? null,
+    segmentsGeneratedAt:(story as any).segments_generated_at ?? null,
   })
 }

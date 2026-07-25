@@ -3679,6 +3679,20 @@ async function runStandaloneVoiceSegment(job: ProductionJob, origin: string): Pr
   const segmentNumber = Math.max(0, fallbackSegmentNumber)
   const endpoint = `${origin}/api/admin/generate-voices`
 
+  // HOOK-GATE-STALE-001: on the very first invocation of generate_voices for a
+  // job (empty voiceGeneration state = no prior progress recorded), request a
+  // full segment purge before the retryMissingOnly inventory run.
+  //
+  // This ensures that voice segments from a previous production run are deleted
+  // before new generation begins, so a story that had its script edited after
+  // audio was generated never ships the old audio.
+  //
+  // Detection: previous.lastUpdatedAt is null/undefined on a fresh job. If it
+  // is set the job is resuming a partial run (e.g. after a transient failure)
+  // and we must NOT purge — the existing segments are good.
+  const isFirstVoiceGenInvocation = !previous.lastUpdatedAt && !previous.presentCount
+  const purgeExisting = isFirstVoiceGenInvocation
+
   const response = await fetch(endpoint, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -3686,6 +3700,7 @@ async function runStandaloneVoiceSegment(job: ProductionJob, origin: string): Pr
       storyId,
       retryMissingOnly: true,
       segmentNumber,
+      purgeExisting,  // HOOK-GATE-STALE-001: purge stale segments on first invocation
     }),
   })
   const report = await readJsonOrDiagnostic(response, '/api/admin/generate-voices')
@@ -6281,6 +6296,12 @@ async function runSeriesVoiceSegment(job: ProductionJob, origin: string): Promis
     : firstMissingSegmentNumber(episodeProgress.missingSegments, 0)
   const segmentNumber = Math.max(0, fallbackSegmentNumber)
 
+  // HOOK-GATE-STALE-001: purge stale segments on the first invocation for
+  // each episode (empty episodeProgress = no prior progress for this episode).
+  // Prevents old segments from surviving into a re-dispatched job.
+  const isFirstEpisodeInvocation = !episodeProgress.lastUpdatedAt && !episodeProgress.presentCount
+  const purgeExisting = isFirstEpisodeInvocation
+
   const response = await fetch(`${origin}/api/admin/generate-voices`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -6288,6 +6309,7 @@ async function runSeriesVoiceSegment(job: ProductionJob, origin: string): Promis
       storyId,
       retryMissingOnly: true,
       segmentNumber,
+      purgeExisting,  // HOOK-GATE-STALE-001
     }),
   })
   const report = await readJsonOrDiagnostic(response, '/api/admin/generate-voices')
