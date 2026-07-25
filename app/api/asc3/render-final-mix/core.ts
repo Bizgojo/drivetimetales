@@ -370,8 +370,10 @@ export async function runRenderFinalMix(storyId: string): Promise<{
 
     tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'et-mix-'))
 
-    const { data: files } = await supabase.storage.from('audio').list(`asc3/${storyId}`, { limit: 500 })
-    if (!files || files.length === 0) return { success: false, error: 'No audio files found' }
+    const { data: filesRaw } = await supabase.storage.from('audio').list(`asc3/${storyId}`, { limit: 500 })
+    // Supabase .list() can include null entries in the array — filter them before any .find()/.map() call
+    const files = (filesRaw || []).filter((f): f is NonNullable<typeof filesRaw>[number] => f !== null)
+    if (files.length === 0) return { success: false, error: 'No audio files found' }
     const { data: storyRow } = await supabase
       .from('stories')
       .select('script')
@@ -981,7 +983,7 @@ export async function runRenderFinalMix(storyId: string): Promise<{
 
     // 3. Outro file must exist in storage
     const { data: storageFiles } = await supabase.storage.from('audio').list(`asc3/${storyId}`, { limit: 200 })
-    const storageNames = (storageFiles || []).map((f: any) => f.name)
+    const storageNames = (storageFiles || []).filter((f: any) => f !== null).map((f: any) => f.name)
     const hasOutro = storageNames.some((n: string) => n.startsWith('outro_'))
     if (!hasOutro) {
       renderValidationIssues.push('No outro_*.mp3 found in storage — outro may not have been generated before render')
@@ -1034,7 +1036,7 @@ export async function runRenderFinalMix(storyId: string): Promise<{
       .from('audio')
       .list(`asc3/${storyId}`, { limit: 500 })
     if (verifyErr) throw new Error(`Post-upload storage verification failed: ${verifyErr.message}`)
-    const uploadedNames = (verifyFiles || []).map((f: any) => f.name)
+    const uploadedNames = (verifyFiles || []).filter((f: any) => f !== null).map((f: any) => f.name)
     if (!uploadedNames.includes('final_mix.mp3')) {
       throw new Error(`final_mix.mp3 upload silently failed — file not present in storage after upload (found: ${uploadedNames.filter((n: string) => !n.startsWith('segment_')).join(', ')})`)
     }
