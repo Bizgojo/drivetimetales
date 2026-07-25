@@ -5531,12 +5531,22 @@ ${cardCopyIssues.map((issue) => `- ${issue}`).join('\n')}`
     }
   }
 
-  // LANDING-STORY-001 is a Belle-exempt variant — skip Belle B requirement check only
+  // LANDING-STORY-001 is a Belle-exempt variant — skip Belle B requirement and finale arc-closure rule
+  // Reason: this is a 2-episode preview package for a longer series. The final episode may end on
+  // a continuation hook because listeners will hear more episodes. Marc ruling 2026-07-24 19:38.
   const variant = extractHeader(script, 'VARIANT')
   const isBelleExempt = /LANDING-STORY-001|No Belle B/i.test(variant)
   const validatorPromptToUse = isBelleExempt
     ? VALIDATOR_PROMPT.replace(/^- The script must include BELLE B [^\n]+blocks\.\n/m, '')
     : VALIDATOR_PROMPT
+  const seriesSpecificRules = isBelleExempt
+    ? `Series-specific validation:
+- This is Episode ${number} of ${episode.series_total_episodes}.
+- LANDING-STORY-001 VARIANT: This is a 2-episode preview package for a longer series. The final episode MUST end on a compelling continuation hook (not close the series arc). The story arc for this package is an escalating mystery; each episode deepens the question. A cliffhanger ending is required, not a resolution.`
+    : `Series-specific validation:
+- This is Episode ${number} of ${episode.series_total_episodes}.
+- Non-final series episodes must end on a specific continuation hook.
+- Final series episodes must close the series arc and must not tease a next episode.`
 
   const response = await anthropic.messages.create({
     model,
@@ -5546,10 +5556,7 @@ ${cardCopyIssues.map((issue) => `- ${issue}`).join('\n')}`
       role: 'user',
       content: `${validatorPromptToUse}
 
-Series-specific validation:
-- This is Episode ${number} of ${episode.series_total_episodes}.
-- Non-final series episodes must end on a specific continuation hook.
-- Final series episodes must close the series arc and must not tease a next episode.
+${seriesSpecificRules}
 
 SCRIPT:
 ${script}`,
