@@ -2529,7 +2529,11 @@ export async function POST(req: NextRequest) {
       ...(!introValidation.line ? introValidation.errors : []),
       ...(!outroValidation.line ? outroValidation.errors : []),
     ]
-    if (belleBlockingErrors.length > 0) {
+    // LANDING-STORY-001: skip Belle B check for this variant — cold open by design.
+    // Marc ruling 2026-07-24 19:38: Discharge Papers has no Belle B announcement/outro.
+    const scriptVariant = script.match(/^VARIANT:\s*(.+)$/m)?.[1]?.trim() || ''
+    const isBelleVariantExempt = /LANDING-STORY-001|No Belle B/i.test(scriptVariant)
+    if (!isBelleVariantExempt && belleBlockingErrors.length > 0) {
       return NextResponse.json({
         success: false,
         error: 'Belle intro/outro validation failed',
