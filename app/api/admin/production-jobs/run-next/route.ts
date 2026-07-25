@@ -6443,6 +6443,17 @@ async function runSeriesBelleAssets(job: ProductionJob, origin: string) {
     const key = String(num)
     if (doneByEp[key]) continue
 
+    // LANDING-STORY-001: no Belle B by design — skip asset generation for this episode.
+    // Marc ruling 2026-07-24 19:38: Discharge Papers is a cold-open variant, no announcer.
+    const epVariant = extractHeader(String(ep.script || ''), 'VARIANT')
+    if (/LANDING-STORY-001|No Belle B/i.test(epVariant)) {
+      doneByEp[key] = true
+      processedEp = num
+      introUrl = null
+      outroUrl = null
+      break // one episode per call; skip Belle generation for this episode
+    }
+
     const storyId = String(ep.id)
     const r = await fetch(`${origin}/api/admin/generate-voices`, {
       method: 'POST',
