@@ -739,15 +739,15 @@ export async function runHookGate(input: RunHookGateInput): Promise<HookGateResu
   const isBelleExempt = /LANDING-STORY-001|No Belle B/i.test(variantHeader)
 
   // LANDING-STORY-001 hook keyword gate exemption (Option A — Marc ruling 2026-07-25 10:28 EDT):
-  // LANDING-STORY-001 uses a cold-open format where the opening narration is atmospheric
-  // and deliberately withholds tension keywords. Keyword-pattern detection (detectHookWordOffset
-  // + HOOK_PASS_WORD_LIMIT=15) produces a false-fail on this format.
+  // Scoped STRICTLY to LANDING-STORY-001 — does NOT apply to other "No Belle B" variants.
+  // isBelleExempt (above) matches both LANDING-STORY-001 and bare "No Belle B" variants;
+  // the hook exemption uses a narrower check so that a non-landing "No Belle B" story
+  // with no hook keywords still returns 'fail' from the keyword gate.
   //
   // COMPENSATING CHECK (manual, until automated in a future PR):
   //   Before EP1 or EP2 advances to Ready for Review, an operator MUST run an LLM hook
   //   rubric score against the final-mix transcript and record it. The rubric replaces
-  //   keyword detection for this variant. Exemption is scoped strictly to LANDING-STORY-001;
-  //   all other stories run the keyword gate unchanged.
+  //   keyword detection for this variant.
   //   Option B (extending exemption to dialogue lines) is a tracked follow-up, NOT this change.
   const isLandingHookExempt = /LANDING-STORY-001/i.test(variantHeader)
   const hookCheck: HookCheckResult = isLandingHookExempt

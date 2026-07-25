@@ -531,10 +531,19 @@ async function runHookGateLocal({ script, genre, audioUrl, coverUrl, stateJson =
     [coverUrl]: 200,
   })
 
+  // Mirror runHookGate variant logic exactly (including the isBelleExempt / isLandingHookExempt split)
+  const variantHeader = script.match(/^VARIANT:\s*(.+)$/m)?.[1]?.trim() ?? ''
+  const isBelleExempt = /LANDING-STORY-001|No Belle B/i.test(variantHeader)
+  const isLandingHookExempt = /LANDING-STORY-001/i.test(variantHeader)
+
   const genreCheck = { status: genre ? 'pass' : 'warn', genre, soundProfile: genre ? 'test-profile' : null, detail: genre ? 'Genre has sound_profile — PASS' : 'No genre — WARN' }
-  const hookCheck = checkHook(script)
+  const hookCheck = isLandingHookExempt
+    ? { status: 'na', wordsBeforeHook: null, hookFound: false, detail: 'LANDING-STORY-001 cold-open format: keyword gate exempt. LLM hook rubric required before RfR — see HOOK-GATE-001 compensating check.' }
+    : checkHook(script)
   const sfxCheck = checkSfx(script)
-  const belleCheck = checkBelle(script)
+  const belleCheck = isBelleExempt
+    ? { status: 'pass', hasAnnouncement: false, hasOutro: false, detail: `LANDING-STORY-001 variant (VARIANT: ${variantHeader}) — Belle B blocks exempt by design. Check skipped.` }
+    : checkBelle(script)
   const audioCheck = await checkAudioArtifact(audioUrl, verify)
   const coverCheck = await checkCoverArtifact(coverUrl, verify)
 
@@ -674,62 +683,72 @@ NARRATOR: Suddenly she vanished!
 // ---------------------------------------------------------------------------
 // Tests — LANDING-STORY-001 hook keyword gate exemption (Option A)
 // Marc ruling 2026-07-25 10:28 EDT
+// These tests use runHookGateLocal (not a local reimplementation) so they exercise
+// the same isBelleExempt / isLandingHookExempt split that runHookGate uses.
 // ---------------------------------------------------------------------------
 
-/**
- * Mirrors the exemption logic in runHookGate: when the script has
- * VARIANT: LANDING-STORY-001, the keyword gate is skipped and 'na' returned.
- * All other stories go through the normal checkHook path.
- */
-function checkHookWithVariantExemption(script) {
-  const variantHeader = script.match(/^VARIANT:\s*(.+)$/m)?.[1]?.trim() ?? ''
-  const isLandingExempt = /LANDING-STORY-001/i.test(variantHeader)
-  if (isLandingExempt) {
-    return {
-      status: 'na',
-      wordsBeforeHook: null,
-      hookFound: false,
-      detail:
-        'LANDING-STORY-001 cold-open format: keyword gate exempt. ' +
-        'LLM hook rubric required before RfR — see HOOK-GATE-001 compensating check.',
-    }
-  }
-  return checkHook(script)
-}
-
 describe('LANDING-STORY-001 hook keyword gate exemption', () => {
-  test('LANDING-STORY-001 variant returns hook status "na" (not fail/pass), with compensating-check detail', () => {
-    // Cold-open narration that deliberately withholds tension keywords — would
-    // false-fail the keyword gate on any normal story, but must return 'na' here.
+  const GOOD_AUDIO_LANDING = 'https://cdn.example.com/landing_mix.mp3'
+  const GOOD_COVER_LANDING = 'https://cdn.example.com/landing_cover.jpg'
+  const GENRE_LANDING = 'Mystery'
+
+  test('LANDING-STORY-001 variant: hook check returns "na", gate passes (no keyword fail)', async () => {
+    // Cold-open narration without tension keywords — would false-fail on any normal story.
+    // Exemption must return 'na', not 'fail', and the gate must pass overall.
     const script = `VARIANT: LANDING-STORY-001
+NARRATOR: Iris Calloway
+GENRE: Mystery
 [START AUDIO DRAMA SCRIPT]
 NARRATOR: The road stretched ahead, dark and quiet under a sky full of clouds.
 NARRATOR: Claire had always driven this route alone, headlights tracing the white lines.
 NARRATOR: She had never thought much about it before tonight.
+BELLE B OUTRO
+BELLE B: Thanks for listening.
 `
-    const result = checkHookWithVariantExemption(script)
-    expect(result.status).toBe('na')
-    expect(result.hookFound).toBe(false)
-    expect(result.wordsBeforeHook).toBeNull()
-    expect(result.detail).toMatch(/LANDING-STORY-001/i)
-    expect(result.detail).toMatch(/LLM hook rubric/i)
-    expect(result.detail).toMatch(/HOOK-GATE-001 compensating check/i)
-    // Must NOT be 'fail' — exemption means the gate does not block
-    expect(result.status).not.toBe('fail')
+    const result = await runHookGateLocal({
+      script,
+      genre: GENRE_LANDING,
+      audioUrl: GOOD_AUDIO_LANDING,
+      coverUrl: GOOD_COVER_LANDING,
+      verifyFn: makeVerifyArtifactHttp({
+        [GOOD_AUDIO_LANDING]: 200,
+        [GOOD_COVER_LANDING]: 200,
+      }),
+    })
+    expect(result.checks.hook.status).toBe('na')
+    expect(result.checks.hook.detail).toMatch(/LANDING-STORY-001/i)
+    expect(result.checks.hook.detail).toMatch(/LLM hook rubric/i)
+    // hook 'na' must not appear in failures
+    expect(result.failures.some(f => f.includes('[hook]'))).toBe(false)
   })
 
-  test('Non-LANDING-STORY-001 story with no hook keywords still returns "fail" (exemption not applied)', () => {
-    // Standard story variant with no hook-signal words — keyword gate must fire normally.
-    const script = `VARIANT: STANDARD
+  test('"No Belle B" variant (non-LANDING-STORY-001) with no hook keywords still returns hook "fail"', async () => {
+    // A story that sets "VARIANT: No Belle B" but is NOT LANDING-STORY-001.
+    // The hook exemption is scoped to LANDING-STORY-001 only.
+    // Hook gate must fire normally → no hook keywords → 'fail'.
+    const script = `VARIANT: No Belle B
+NARRATOR: Clara Voss
+GENRE: Drama
 [START AUDIO DRAMA SCRIPT]
 NARRATOR: It was a calm and ordinary evening in the suburbs.
 NARRATOR: The neighbourhood was quiet, children long since in bed.
 NARRATOR: Nothing about the night suggested anything would change.
 `
-    const result = checkHookWithVariantExemption(script)
-    expect(result.status).toBe('fail')
-    expect(result.hookFound).toBe(false)
-    // Exemption must not bleed into other variants
-    expect(result.detail).not.toMatch(/LANDING-STORY-001/i)
+    const result = await runHookGateLocal({
+      script,
+      genre: 'Drama',
+      audioUrl: GOOD_AUDIO_LANDING,
+      coverUrl: GOOD_COVER_LANDING,
+      verifyFn: makeVerifyArtifactHttp({
+        [GOOD_AUDIO_LANDING]: 200,
+        [GOOD_COVER_LANDING]: 200,
+      }),
+    })
+    // hook must fail — "No Belle B" does not grant hook exemption
+    expect(result.checks.hook.status).toBe('fail')
+    expect(result.checks.hook.detail).not.toMatch(/LANDING-STORY-001/i)
+    expect(result.failures.some(f => f.includes('[hook]'))).toBe(true)
+    // Belle should be exempt ("No Belle B" still grants Belle exemption)
+    expect(result.checks.belle.status).toBe('pass')
   })
 })
