@@ -174,12 +174,48 @@ export const GO_STORY_VARIANTS: Record<string, GoStory> = {
   },
 }
 
+// ============================================================================
+// LANDING-STORY-001 variant — Discharge Papers EP1 (staged dark)
+// Marc authorization required to add 'dp' to GO_LIVE_VARIANTS.
+// Preview: /go?v=dp&preview=1 (server resolves staged variants when preview=1)
+//
+// HOOK COPY (SUSAN-PASS): placeholder — Susan owns final hook line.
+// ctaRevealSeconds: 158 = ~2s before EP1 ends (164s total, ffprobe-confirmed).
+// audioUrl: stories.audio_url directly (no landing_stories render needed;
+//   LANDING-STORY-001 cold-open has no Belle B intro/outro wrapping).
+// storyId: EP1 stories.id — enables home-page resume via /player/<id>.
+// ============================================================================
+const GO_STORY_DP: GoStory = {
+  id: '31a37408-a084-4317-8dbe-e8a65ac467ce',
+  storyId: '31a37408-a084-4317-8dbe-e8a65ac467ce', // same — EP1 is in main catalog
+  title: 'The Discharge Papers',
+  genre: 'Mystery',
+  // SUSAN-PASS: placeholder hook — Susan owns final copy.
+  hook: 'A photograph arrives at her desk. She doesn\u2019t recognize the child in it.',
+  coverUrl: 'https://vmyhlfeouzslixtkmddy.supabase.co/storage/v1/object/public/audio/asc3/31a37408-a084-4317-8dbe-e8a65ac467ce/cover_1784947320705.jpg',
+  // Direct from stories.audio_url — pipeline final_mix, no landing_stories render.
+  audioUrl: 'https://vmyhlfeouzslixtkmddy.supabase.co/storage/v1/object/public/audio/asc3/31a37408-a084-4317-8dbe-e8a65ac467ce/final_mix.mp3',
+  // CTA reveals as EP1 ends — full episode plays free, then trial CTA.
+  ctaRevealSeconds: 158,
+  completedHeading: GO_COMPLETED_HEADING_SERIES, // "That's where Episode 1 ends — for now."
+  // No preview clip — plays EP1 straight through (no previewContinueSec).
+}
+
+// Extend the variants map with 'dp'
+Object.assign(GO_STORY_VARIANTS, { dp: GO_STORY_DP })
+
+// Staged variants: in GO_STORY_VARIANTS but NOT in GO_LIVE_VARIANTS.
+// Preview via /go?v=dp&preview=1 (server merges staged into allowed set).
+// To go live: add 'dp' to GO_LIVE_VARIANTS after Marc listens + approves.
+export const GO_STAGED_VARIANTS: ReadonlyArray<string> = ['dp']
+
 // APPROVAL GATE (Marc): per-variant allowlist. A variant serves ONLY after
 // Marc has listened to the story and approved its hook line.
 //   'a' (Commuter of the Year): APPROVED — published + hook approved,
 //        Marc 2026-07-12 13:57 EDT ("Hook approved — flip variant A live").
 //   'b' (Murder at Falls Park): APPROVED — published + hook + Liberty Bridge
 //        cover PASS, Marc 2026-07-12 15:50 EDT ("flip variant B live — full A/B active").
+//   'dp' (Discharge Papers EP1): STAGED DARK — awaiting Marc listen + approval.
 // GO_AB_LIVE retained for compatibility: true = at least one variant live.
 export const GO_LIVE_VARIANTS: ReadonlyArray<string> = ['a', 'b']
 export const GO_AB_LIVE = GO_LIVE_VARIANTS.length > 0

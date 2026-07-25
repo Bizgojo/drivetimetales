@@ -21,7 +21,7 @@ HARD RULES (unchanged):
 
 import { Suspense } from 'react'
 import type { Metadata } from 'next'
-import { resolveGoStory, GO_LIVE_VARIANTS } from '@/lib/landing'
+import { resolveGoStory, GO_LIVE_VARIANTS, GO_STAGED_VARIANTS } from '@/lib/landing'
 import GoLandingContent from './GoLandingContent'
 import { fetchGoVariantConfig } from '@/lib/goVariantConfig'
 
@@ -42,11 +42,17 @@ function LoadingFallback() {
 export async function generateMetadata({
   searchParams,
 }: {
-  searchParams: { v?: string }
+  searchParams: { v?: string; preview?: string }
 }): Promise<Metadata> {
+  // preview=1 merges staged variants into the allowed set so /go?v=dp&preview=1
+  // renders without adding 'dp' to GO_LIVE_VARIANTS (which would make it live for everyone).
+  const allowedVariants =
+    searchParams.preview === '1'
+      ? [...GO_LIVE_VARIANTS, ...GO_STAGED_VARIANTS]
+      : GO_LIVE_VARIANTS
   const story = resolveGoStory(
     new URLSearchParams(searchParams as Record<string, string>).toString(),
-    GO_LIVE_VARIANTS,
+    allowedVariants,
   )
 
   return {
@@ -73,7 +79,7 @@ export async function generateMetadata({
 export default async function GoLandingPage({
   searchParams,
 }: {
-  searchParams: { v?: string }
+  searchParams: { v?: string; preview?: string }
 }) {
   // BUILD 2: fetch variant config server-side. Never throws (lib guarantees).
   // null = table pre-migration or no row → GoLandingContent uses hardcoded fallbacks.
