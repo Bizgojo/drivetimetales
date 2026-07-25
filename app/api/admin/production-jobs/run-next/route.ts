@@ -5536,8 +5536,15 @@ ${cardCopyIssues.map((issue) => `- ${issue}`).join('\n')}`
   // a continuation hook because listeners will hear more episodes. Marc ruling 2026-07-24 19:38.
   const variant = extractHeader(script, 'VARIANT')
   const isBelleExempt = /LANDING-STORY-001|No Belle B/i.test(variant)
+  // For LANDING-STORY-001: strip all Belle B rules from the prompt
+  // (announcer rule, role rule, and block requirement) and replace the
+  // script-body orientation note to not reference a Belle B intro block.
   const validatorPromptToUse = isBelleExempt
-    ? VALIDATOR_PROMPT.replace(/^- The script must include BELLE B [^\n]+blocks\.\n/m, '')
+    ? VALIDATOR_PROMPT
+        .replace(/^- Belle B is the announcer\.\n/m, '')
+        .replace(/^- Belle B is never narrator or character\.\n/m, '')
+        .replace(/^- The script must include BELLE B [^\n]+blocks\.\n/m, '')
+        .replace('after the Belle B intro block, approximately 3 minutes at 130 wpm', 'from the first line of the script body (approximately 3 minutes at 130 wpm)')
     : VALIDATOR_PROMPT
   const seriesSpecificRules = isBelleExempt
     ? `Series-specific validation:
