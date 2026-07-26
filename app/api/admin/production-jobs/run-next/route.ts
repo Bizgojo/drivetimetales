@@ -1608,7 +1608,7 @@ Use the CURRENT rules:
 - DESCRIPTION SPOILER RULE: DESCRIPTION is a story-card teaser, not a plot summary. It must raise a question, not answer it. HARD FAIL if DESCRIPTION reveals: the survivor, the culprit, the missing person's status, a hidden person alive or dead, the final discovery, or the resolution payoff. Examples of failing DESCRIPTION phrases: "to a survivor", "to the killer", "reveals who did it", "the missing child is alive".
 - The script must include the required header fields.
 - The script must include a CHARACTER GUIDE.
-- The script must include BELLE B ANNOUNCEMENT and BELLE B OUTRO blocks.
+- The script must include a BELLE B ANNOUNCEMENT block. BELLE B OUTRO is pipeline-generated at a later production step and must not be required to be present in the script at this validation stage — do not fail a script for a missing BELLE B OUTRO.
 - Standalone stories must end conclusively.
 - Series non-finales must end on a specific cliffhanger. A question-form cliffhanger qualifies if it is specific and propelling — it must name a character, invert the situation, or open a precise dread that the next episode answers. A vague "what happens next" question does not qualify. Do not require an action beat when a sharp, specific question directly names the next episode's central mystery.
 - Difficult Solution Rule: the main problem must feel genuinely difficult at the beginning, the middle must reveal leverage and escalating consequences that make the solution possible, and the ending must feel emotionally and logically earned.
