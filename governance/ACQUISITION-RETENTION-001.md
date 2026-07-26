@@ -138,6 +138,7 @@ No story renders until it passes this checklist and the **filled-in result is sh
 - [ ] Hook within first **15 spoken words**. *(quote words 1–15)*
 - [ ] Belle personalized intro (uses name) + outro re-emphasizes cliffhanger. *(quote both)*
 - [ ] First post-signup episode only: **Belle "welcome to Endless Tales" by name** is present. *(quote it)*
+- [ ] First post-signup episode: a **bridge opening exists for each test arm's entry point** (from Ep1 / Ep2 / Ep3), each catching up the skipped ramp beats with no continuity gap and hook inside 15 words. *(confirm all arms)*
 - [ ] Correct ending: **cliffhanger** if non-final series episode; **full resolution** if standalone/finale. *(state which + why)*
 - [ ] Length 12–15 min. *(state actual duration)*
 - [ ] **Audio matches approved script** — transcript vs script. *(paste first 15 transcript words)*
