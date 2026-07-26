@@ -30,11 +30,11 @@ type Props = {
   promo: string | null
 }
 
-// Fallback hook text if description is null
-const FALLBACK_HOOK = 'Something in Greenville is wearing a familiar face.'
+// Hook line confirmed by Marc (2026-07-26 5:22 PM)
+const EP1_HOOK = "She's wearing my face \u2014 right here in Greenville, under Liberty Bridge"
 
-function getHookText(ep1: EpisodeData | undefined): string {
-  return ep1?.description ?? FALLBACK_HOOK
+function getHookText(_ep1: EpisodeData | undefined): string {
+  return EP1_HOOK
 }
 
 // How many pre-wall episodes to play per arm
