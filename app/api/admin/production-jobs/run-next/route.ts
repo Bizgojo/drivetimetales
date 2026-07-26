@@ -1640,7 +1640,7 @@ or
 Do not send to production. Fix the following before resubmitting:
 - [specific issue]
 
-Be specific.
+MANDATORY: For every issue listed in a FAIL, you must quote the exact sentence from the rules above that the script violates. Do not invent, paraphrase, or extend rule language. If you cannot quote the exact written rule that an element fails, the element passes. A FAIL that cites invented or inferred criteria — not present verbatim in this prompt — is invalid.
 `
 
 const STORY_RESOLUTION_VALIDATOR_PROMPT = `You are an Endless Tales senior story editor validating whether a production script's ending matches its declared format.
