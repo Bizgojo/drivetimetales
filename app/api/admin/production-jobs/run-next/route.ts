@@ -1610,7 +1610,7 @@ Use the CURRENT rules:
 - The script must include a CHARACTER GUIDE.
 - The script must include BELLE B ANNOUNCEMENT and BELLE B OUTRO blocks.
 - Standalone stories must end conclusively.
-- Series non-finales must end on a specific cliffhanger.
+- Series non-finales must end on a specific cliffhanger. A question-form cliffhanger qualifies if it is specific and propelling — it must name a character, invert the situation, or open a precise dread that the next episode answers. A vague "what happens next" question does not qualify. Do not require an action beat when a sharp, specific question directly names the next episode's central mystery.
 - Difficult Solution Rule: the main problem must feel genuinely difficult at the beginning, the middle must reveal leverage and escalating consequences that make the solution possible, and the ending must feel emotionally and logically earned.
 - Fail endings where the climax happens offscreen, the protagonist does not affect the outcome, the ending resolves through exposition instead of dramatic action, the emotional arc is unresolved, or the final solution is passive, too easy, or a "villain already dead" anticlimax.
 
@@ -2972,7 +2972,7 @@ Additional rules:
 - If NARRATOR_IS_CHARACTER is false, NARRATOR must not be a story character name and must not include "(character)".
 - If the narrator is a story character, NARRATOR_IS_CHARACTER must be true and the script must use consistent first-person narration.
 - Standalone stories must end conclusively.
-- Series non-finales must end on a specific cliffhanger.
+- Series non-finales must end on a specific cliffhanger. A question-form cliffhanger qualifies if it is specific and propelling — it must name a character, invert the situation, or open a precise dread that the next episode answers. A vague "what happens next" question does not qualify. Do not require an action beat when a sharp, specific question directly names the next episode's central mystery.
 - Keep narrator voice consistent.
 - Do not include markdown fences.
 
