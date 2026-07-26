@@ -385,3 +385,57 @@ The ground does not move. The crickets do not stop. The warm air does not change
 She hears it too. Her eyes move past me to the lot. And for the first time since she stepped out of that storage unit, the steadiness in her face breaks.
 
 "Run," she says.
+
+---
+
+## EP4 ALTERNATE OPENINGS — Adaptive Bridge (A3b)
+
+*Per ACQUISITION-RETENTION-001 v1.5 A3b. The from-Ep3 opening (Test 3) = Ep4 as written above. Only the first ~60–90 sec changes per arm. All three arms merge into the existing Ep4 body at Ward's "Do you know how you were made?"*
+
+---
+
+### TEST 2 OPENING — from Ep2 (listener heard Ep1 + Ep2)
+*Bridges skipped Ep3 beats: planted photograph, DNA came back edited, dead woman = Cassidy Reyes.*
+
+The fingerprints matched. Ward told me at 2 AM, on the phone, his voice doing the thing voices do when the speaker is choosing each word very carefully.
+
+After that, I didn't sleep. I went through my apartment instead — inventorying, making sure I still existed. Around four in the morning I found something that wasn't mine.
+
+In my desk drawer, under takeout menus and a lease I keep forgetting to file: a photograph. A woman with my face, sitting in a kitchen I'd never been in, laughing at a man I'd never seen. On the back, in handwriting that was almost but not quite mine: *Cass and Theo, 2019.* Two years before I moved to Greenville.
+
+I named my cat Theo. The name had felt right when I got him. I'd never asked myself why.
+
+Ward came by at eight. He had coffee. He had a missing persons report — a family in Spartanburg, their daughter missing eight years, her photograph my face. Her name was Cassidy Reyes. He had a genetic analysis that used words like *edited template* and *derived from a common source*, and he set his coffee down and looked at me the way a man looks at a person when he doesn't know what category to put them in.
+
+"Ms. Boone," he said. "I need to ask you something."
+
+He set his phone on the table between us.
+
+"Do you know how you were made?"
+
+*[MERGE INTO EP4 BODY]*
+
+---
+
+### TEST 1 OPENING — from Ep1 (listener heard Ep1 only)
+*Bridges skipped Ep2 + Ep3 beats: fingerprints matched, intruder spoke in her voice, DNA says she was made.*
+
+They matched. Ward wouldn't say it at the scene, but the fingerprints — mine and hers, pressed side by side — were identical.
+
+That was Tuesday night. By Wednesday morning, the rest of it had happened.
+
+Someone was in my apartment while I stood on that riverbank in Greenville looking at my own dead face. They knew which mug I use. They had a key, or something better than a key. And when I called Ward from my kitchen, standing over a still-warm coffee cup, my phone rang back. My number. My voice on the other end — low pitch, flat vowels, the exact catch at the back of my throat I've always hated. *Don't call Ward again, Cass. We have a lot to talk about.*
+
+I found a photograph in my desk drawer at four in the morning — a woman with my face laughing with a man named Theo, 2019, two years before I moved here. I named my cat Theo. I never wondered why.
+
+Ward came back at eight. He had a missing persons file — a Spartanburg family, their daughter missing eight years, her face mine. Her name was Cassidy Reyes. He had a genetics lab report that used words like *edited template* and *derived from common source*, and he set down his coffee and looked at me the way a man looks when the facts have cleared his desk of every reasonable explanation he had left.
+
+"Ms. Boone." He put his phone on the table. "I need to ask you something."
+
+"Do you know how you were made?"
+
+*[MERGE INTO EP4 BODY]*
+
+---
+
+*Build note: doppelganger's 9 lines in Ep4 body = Cass's voice (Sarah), lightly processed. Platform serves correct opening per test arm — same injection mechanism as Belle-welcome. Render held pending Marc approval of both bridge openings.*
