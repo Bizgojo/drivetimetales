@@ -17,6 +17,7 @@
  *   2026-07-22 — CTA-INSTRUMENTATION-001: + cta_rendered
  *   2026-07-23 — PAGE-VIEW-001: + page_view, preview_started/completed/unmuted/to_play/skipped
  *   2026-07-24 — RLS-FIX-001: RLS policy synced with full list
+   2026-07-26 — GVL-EAVESDROP-001: + eavesdrop_pressed, ep_complete, wall_shown, wall_submit
  */
 export const GO_LISTEN_EVENTS = [
   'play_start',
@@ -33,6 +34,11 @@ export const GO_LISTEN_EVENTS = [
   'preview_skipped',
   'cta_rendered',
   'page_view',
+  // GVL-EAVESDROP-001 (2026-07-26): eavesdrop landing page events
+  'eavesdrop_pressed',  // user pressed the eavesdrop button
+  'ep_complete',        // an episode ended naturally
+  'wall_shown',         // name+email wall became visible
+  'wall_submit',        // user submitted the signup form
 ] as const
 
 export type GoListenEvent = (typeof GO_LISTEN_EVENTS)[number]
