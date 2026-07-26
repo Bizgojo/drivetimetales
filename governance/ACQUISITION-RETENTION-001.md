@@ -1,4 +1,4 @@
-# ACQUISITION-RETENTION-001 (v1.4 — ready to commit)
+# ACQUISITION-RETENTION-001 (v1.5 — ready to commit)
 
 **Status:** Canon. Source of truth for the acquisition serial and the retention library.
 **Owner:** Marc. No agent may override, reinterpret, or "improve" these rules.
@@ -36,6 +36,7 @@ The listener is eased in — each episode asks a little more as they get more ho
 - **Belle's first appearance:** that first post-signup episode **opens with Belle warmly welcoming the listener to Endless Tales by name**, then flows into the personalized intro and the episode. This is the anonymous→known handoff.
 - **One-time welcome:** the "welcome to Endless Tales" plays **only on this first post-signup episode**. Every episode after gets Belle's standard personalized intro, not the welcome again. *(Confirm with Marc if he wants it every session instead.)*
 - **Full app unlocks:** at signup the listener has full catalog access. Auto-continue is the default, but they can pause and play anything else.
+- **Adaptive bridge opening (REQUIRED):** because the wall falls after a different ramp episode in each test arm (A/B/C), the listener enters the first post-signup episode having **skipped** the ramp episodes that came after their wall. That episode MUST therefore provide a **distinct bridge opening for each entry point** (from Ep1 / from Ep2 / from Ep3) that catches the listener up on the skipped beats in-character, then merges into a **common episode body** (identical across arms — only the first ~60–90 sec adapts). The from-latest-episode arm (e.g. Test C entering from Ep3) opens as written; earlier entry points get progressively longer catch-up bridges. The platform serves the correct opening per test arm — same mechanism as the Belle-welcome injection. Each bridge must still: hook inside 15 words, name Greenville, and leave no continuity gap.
 
 ### A4. The trial
 - Free week = **7 days to start** — deliberately shorter than the time to finish the series, so the conversion moment lands mid-story. Extend to 2 or 4 weeks later, once we've proven we can convert.
