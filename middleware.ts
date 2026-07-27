@@ -18,6 +18,7 @@ const PUBLIC_ROUTES = new Set([
   // no subscription checks, no redirects (the '/' signed-in bounce below does
   // NOT apply here because pathname === '/go', not '/').
   '/go',
+  '/listen', // GVL-EAVESDROP-001: acquisition landing page, anonymous visitors only
   '/terms', '/privacy',
   '/sw.js',
 ])
