@@ -2161,6 +2161,12 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
           <div style={{ border:'1px solid rgba(148,163,184,0.24)', background:'rgba(148,163,184,0.08)', borderRadius:'14px', padding:'12px', textAlign:'center' }}>
             <p style={{ color:'white', fontSize:'13px', fontWeight:800, margin:'0 0 4px' }}>{(story as any)?.series_id ? 'Series complete' : 'Catalog exhausted'}</p>
             <p style={{ color:'rgba(255,255,255,0.7)', fontSize:'12px', margin:0 }}>{(story as any)?.series_id ? 'You have reached the final episode.' : 'No untouched story is ready to play next.'}</p>
+            <button
+              onClick={() => { disableAutoAdvanceForSession('navigation'); returnToSource('/library') }}
+              style={{ marginTop: 12, padding: '10px 20px', background: 'transparent', border: '1px solid rgba(249,115,22,0.5)', borderRadius: 10, color: '#f97316', fontSize: 14, fontWeight: 700, cursor: 'pointer', width: '100%' }}
+            >
+              Back to Library
+            </button>
           </div>
         )}
         {audioErrorMessage && (

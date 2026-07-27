@@ -104,6 +104,7 @@ export async function POST(req: NextRequest) {
           signup_source: 'gvl-listen',
           utm_source: utmSource ?? null,
           utm_campaign: utmCampaign ?? null,
+          listen_arm: armNum,
           updated_at: new Date().toISOString(),
         }, { onConflict: 'id' })
 
@@ -137,6 +138,7 @@ export async function POST(req: NextRequest) {
       signup_source: 'gvl-listen',
       utm_source: utmSource ?? null,
       utm_campaign: utmCampaign ?? null,
+      listen_arm: armNum,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     }, { onConflict: 'id' })
