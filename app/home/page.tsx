@@ -360,11 +360,12 @@ function HomeContent() {
     return () => window.clearTimeout(timer)
   }, [loading])
 
+  // MUST be before the early return — hook order must be identical on every render
+  const searchInputRef = useRef<HTMLInputElement>(null)
+
   if (loading && !authWaitExpired) return <HomeSkeleton />
 
   const firstName = (user as any)?.user_metadata?.first_name || ''
-  // Ref to focus the search input when the welcome toggle is dismissed
-  const searchInputRef = useRef<HTMLInputElement>(null)
 
   return (
     <div className="min-h-screen bg-slate-950">
