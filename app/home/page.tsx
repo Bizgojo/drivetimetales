@@ -380,6 +380,13 @@ function HomeContent() {
                 setTimeout(() => searchInputRef.current?.focus(), 0)
                 // Persist dismissal to user_metadata — survives reloads and new sessions
                 void supabase.auth.updateUser({ data: { welcome_dismissed: true } })
+                // #2 BUG FIX: strip ?welcome=true from browser history so Back navigation
+                // doesn't re-trigger the welcome (user_metadata is async, URL is synchronous)
+                if (typeof window !== 'undefined') {
+                  const u = new URL(window.location.href)
+                  u.searchParams.delete('welcome')
+                  window.history.replaceState({}, '', u.toString())
+                }
               }}
               style={{
                 width: '100%',
@@ -422,8 +429,13 @@ function HomeContent() {
             </>
           )}
         </div>
-        {/* Now Playing — visible above everything when user arrives from /listen with audio in-progress */}
-        {nowPlaying && (
+        {homeSearch.trim() ? (
+          <HomeSearchResults query={homeSearch} />
+        ) : (
+          <>
+            {/* #3 FIX: Now Playing is the FIRST child of the content section so it renders
+                at the top on initial paint — no pop-in below catalog sections. */}
+            {nowPlaying && (
           <div style={{
             margin: '1rem 1rem 0.5rem',
             background: 'linear-gradient(135deg, rgba(249,115,22,0.12), rgba(15,15,26,0.9))',
@@ -483,12 +495,7 @@ function HomeContent() {
               ✕
             </button>
           </div>
-        )}
-
-        {homeSearch.trim() ? (
-          <HomeSearchResults query={homeSearch} />
-        ) : (
-          <>
+            )}
             {/* ORION-HOME-WALK-001: /go sample continue hero LEADS the page (Marc walk, 2026-07-12). */}
             {/* WALK-BUG-0713 #5 (Marc, 2026-07-13): the hero's story must not repeat
                 in the Continue Listening list below — heroStoryId feeds its exclude. */}
