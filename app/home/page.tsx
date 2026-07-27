@@ -291,7 +291,9 @@ function HomeContent() {
   // Now Playing — audio handed off from /listen via sessionStorage
   // Type defined here (not inside render) so it is stable across renders
   const [nowPlaying, setNowPlaying] = useState<{ storyId: string; storyAudioUrl: string; currentTime: number; episodeTitle: string; seriesTitle: string } | null>(null)
-  const [nowPlayingPaused, setNowPlayingPaused] = useState(false)
+  // true = showing ▶ (not playing). iOS blocks autoplay on arrival, so default is ▶.
+  // State is driven purely by onPlay/onPause events — never assumed from code.
+  const [nowPlayingPaused, setNowPlayingPaused] = useState(true)
   const nowPlayingAudioRef = useRef<HTMLAudioElement | null>(null)
 
   useEffect(() => {
