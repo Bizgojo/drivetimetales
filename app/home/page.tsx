@@ -311,9 +311,9 @@ function HomeContent() {
         localStorage.setItem(eventKey, String(Date.now()))
       }
     }
-    if (welcome) {
+    if (welcome && !user?.user_metadata?.welcome_dismissed) {
       setShowWelcome(true)
-      // No auto-dismiss: welcome text stays until the user taps the search area
+      // No auto-dismiss — persisted via user_metadata.welcome_dismissed on tap
     }
   }, [searchParams, user?.id])
 
@@ -348,6 +348,8 @@ function HomeContent() {
               onClick={() => {
                 setShowWelcome(false)
                 setTimeout(() => searchInputRef.current?.focus(), 0)
+                // Persist dismissal to user_metadata — survives reloads and new sessions
+                void supabase.auth.updateUser({ data: { welcome_dismissed: true } })
               }}
               style={{
                 width: '100%',
