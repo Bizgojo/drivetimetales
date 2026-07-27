@@ -205,6 +205,20 @@ export default function EavesdropClient({ episodes, arm, utmSource, utmCampaign 
     setSubmitError(null)
 
     try {
+      // Fire wall_submit before calling signup (client-side, same session)
+      void fetch('/api/go-listen', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          session_id: sessionIdRef.current,
+          variant: `listen-arm${arm}`,
+          utm_source: utmSource ?? null,
+          utm_campaign: utmCampaign ?? null,
+          event: 'wall_submit',
+          position_seconds: Math.floor(audioRef.current?.currentTime ?? 0),
+        }),
+      })
+
       const res = await fetch('/api/listen/signup', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
