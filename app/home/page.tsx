@@ -1,6 +1,6 @@
 'use client'
 
-import { Suspense, useState, useEffect } from 'react'
+import { Suspense, useState, useEffect, useRef } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
 import { supabase } from '@/lib/supabase'
@@ -311,10 +311,9 @@ function HomeContent() {
         localStorage.setItem(eventKey, String(Date.now()))
       }
     }
-    if (welcome) {
+    if (welcome && !user?.user_metadata?.welcome_dismissed) {
       setShowWelcome(true)
-      const t = setTimeout(() => setShowWelcome(false), 6000)
-      return () => clearTimeout(t)
+      // No auto-dismiss — persisted via user_metadata.welcome_dismissed on tap
     }
   }, [searchParams, user?.id])
 
@@ -335,44 +334,64 @@ function HomeContent() {
   if (loading && !authWaitExpired) return <HomeSkeleton />
 
   const firstName = (user as any)?.user_metadata?.first_name || ''
+  // Ref to focus the search input when the welcome toggle is dismissed
+  const searchInputRef = useRef<HTMLInputElement>(null)
 
   return (
     <div className="min-h-screen bg-slate-950">
       <main className="pb-20">
         <div style={{ padding: '1rem 1rem 0' }}>
-          <label htmlFor="home-story-search" style={{ display: 'block', color: 'white', fontSize: '12px', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: '0.5rem' }}>
-            Search stories
-          </label>
-          <input
-            id="home-story-search"
-            value={homeSearch}
-            onChange={(e) => setHomeSearch(e.target.value)}
-            placeholder="Search by title or author"
-            style={{
-              width: '100%',
-              background: '#111827',
-              border: '1px solid rgba(148,163,184,0.28)',
-              borderRadius: '12px',
-              color: 'white',
-              fontSize: '16px',
-              padding: '12px 14px',
-              outline: 'none',
-            }}
-          />
+          {showWelcome ? (
+            /* Welcome text sits exactly where the search field lives.
+               Tap it → showWelcome=false, search reveals and focuses. */
+            <button
+              onClick={() => {
+                setShowWelcome(false)
+                setTimeout(() => searchInputRef.current?.focus(), 0)
+                // Persist dismissal to user_metadata — survives reloads and new sessions
+                void supabase.auth.updateUser({ data: { welcome_dismissed: true } })
+              }}
+              style={{
+                width: '100%',
+                background: '#111827',
+                border: '1px solid rgba(148,163,184,0.28)',
+                borderRadius: '12px',
+                color: 'white',
+                fontSize: '16px',
+                padding: '12px 14px',
+                textAlign: 'left',
+                cursor: 'text',
+                fontFamily: 'inherit',
+                WebkitTapHighlightColor: 'transparent',
+              }}
+            >
+              Welcome{firstName ? `, ${firstName}` : ''} 👋
+            </button>
+          ) : (
+            <>
+              <label htmlFor="home-story-search" style={{ display: 'block', color: 'white', fontSize: '12px', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: '0.5rem' }}>
+                Search stories
+              </label>
+              <input
+                ref={searchInputRef}
+                id="home-story-search"
+                value={homeSearch}
+                onChange={(e) => setHomeSearch(e.target.value)}
+                placeholder="Search by title or author"
+                style={{
+                  width: '100%',
+                  background: '#111827',
+                  border: '1px solid rgba(148,163,184,0.28)',
+                  borderRadius: '12px',
+                  color: 'white',
+                  fontSize: '16px',
+                  padding: '12px 14px',
+                  outline: 'none',
+                }}
+              />
+            </>
+          )}
         </div>
-        {showWelcome && (
-          <div style={{ margin: '1rem', padding: '1rem 1.25rem', background: 'linear-gradient(135deg, rgba(249,115,22,0.2), rgba(249,115,22,0.05))', border: '1px solid rgba(249,115,22,0.4)', borderRadius: '14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem' }}>
-            <div>
-              <div style={{ color: '#f97316', fontWeight: 800, fontSize: '15px', marginBottom: '2px' }}>
-                🎉 Welcome{firstName ? `, ${firstName}` : ''}!
-              </div>
-              <div style={{ color: 'white', fontSize: '13px' }}>
-                Your 14-day free trial has started. Pick a story and press play.
-              </div>
-            </div>
-            <button onClick={() => setShowWelcome(false)} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.4)', fontSize: '18px', cursor: 'pointer', flexShrink: 0 }}>✕</button>
-          </div>
-        )}
         {homeSearch.trim() ? (
           <HomeSearchResults query={homeSearch} />
         ) : (
