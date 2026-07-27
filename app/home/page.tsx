@@ -335,15 +335,14 @@ function HomeContent() {
     } catch {}
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Start audio when nowPlaying is set; pause + cleanup on unmount or clear
+  // Attempt autoplay when nowPlaying is set; src is set declaratively in JSX below.
+  // iOS blocks autoplay — the user taps ▶ which IS a user gesture and will work.
   useEffect(() => {
     if (!nowPlaying) return
     const audio = nowPlayingAudioRef.current
-    if (!audio) return
-    audio.src = nowPlaying.storyAudioUrl
-    audio.currentTime = nowPlaying.currentTime
-    audio.play().catch(() => setNowPlayingPaused(true)) // iOS may block autoplay — shows paused
-    return () => { audio.pause() }
+    // Autoplay attempt: will fail on iOS (expected). src is set via JSX so button tap works.
+    audio?.play().catch(() => setNowPlayingPaused(true))
+    return () => { audio?.pause() }
   }, [nowPlaying])
 
   useEffect(() => {
@@ -435,9 +434,15 @@ function HomeContent() {
             alignItems: 'center',
             gap: 12,
           }}>
-            {/* Hidden audio element — ref set here, used by the useEffect above */}
+            {/* src set DECLARATIVELY so it is always present regardless of effect timing.
+                 currentTime applied via onLoadedMetadata once the browser has seeked. */}
             <audio
               ref={nowPlayingAudioRef}
+              src={nowPlaying.storyAudioUrl}
+              onLoadedMetadata={() => {
+                const audio = nowPlayingAudioRef.current
+                if (audio && nowPlaying.currentTime > 0) audio.currentTime = nowPlaying.currentTime
+              }}
               onPlay={() => setNowPlayingPaused(false)}
               onPause={() => setNowPlayingPaused(true)}
               onEnded={() => setNowPlaying(null)}
@@ -459,7 +464,7 @@ function HomeContent() {
                 flexShrink: 0, WebkitTapHighlightColor: 'transparent',
               }}
             >
-              {nowPlayingPaused ? '▶️' : '⏸'}
+              {nowPlayingPaused ? '▶' : '⏸'}
             </button>
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ color: '#f97316', fontSize: 10, letterSpacing: '0.12em', textTransform: 'uppercase', fontFamily: 'sans-serif', marginBottom: 3, fontWeight: 700 }}>
