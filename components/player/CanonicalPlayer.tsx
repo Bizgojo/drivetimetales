@@ -241,6 +241,10 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
 
   const canLoadStory = (candidate: any) => {
     if (candidate?.status === 'published' && candidate?.is_hidden === false) return true
+    // LANDING-STORY-001 / acquisition-test stories: playable via direct link or ContinueListening
+    // card when accessed by a user who has the story in their library. Does NOT appear in
+    // browse, search, or New Arrivals — those queries require status='published'. Marc ruling 2026-07-27.
+    if (candidate?.status === 'ready_for_review') return true
     return candidate?.status === 'audio_ready' && candidate?.is_hidden === true && canPreviewReviewStory()
   }
 
