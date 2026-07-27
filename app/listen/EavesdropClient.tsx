@@ -19,8 +19,9 @@ type Phase =
   | 'hook'        // initial hook card, before button press
   | 'playing'     // audio playing, cover art visible
   | 'wall'        // name+email wall
+  | 'confirmed'   // 2.5s confirmation beat post-signup before Ep4 starts
   | 'continuing'  // post-submit, Ep4 loading/playing
-  | 'done'        // Ep4 ended or user dismissed
+  | 'done'        // Ep4 ended — show one-tap login CTA
 
 type Props = {
   episodes: EpisodeData[]  // [ep1, ep2, ep3, ep4]
@@ -57,6 +58,9 @@ export default function EavesdropClient({ episodes, arm, utmSource, utmCampaign 
   // Audio playback state (kept in sync via onPlay/onPause events)
   const [isPlaying, setIsPlaying] = useState(false)
 
+  // One-tap login token returned by signup API (hashed OTP for /auth/callback)
+  const [magicToken, setMagicToken] = useState<string | null>(null)
+
   // Refs
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const trackerRef = useRef<GoListenTracker | null>(null)
@@ -64,6 +68,12 @@ export default function EavesdropClient({ episodes, arm, utmSource, utmCampaign 
   const wallFiredRef = useRef(false)
   const epCompleteFiredRef = useRef(new Set<number>())
   const morphTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // Ep4 audio URL stored in a ref so the confirmed-phase timer always sees the latest value
+  const continueAudioUrlRef = useRef<string | null>(null)
+  // True once Ep4 is playing — used by handleAudioEnded to detect Ep4-ended vs pre-wall-ended
+  const isContinuingRef = useRef(false)
+  // Timer ref for the 2.5s confirmed beat
+  const confirmedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // Variant string for tracking
   const variant = `listen-arm${arm}` as const
@@ -112,6 +122,23 @@ export default function EavesdropClient({ episodes, arm, utmSource, utmCampaign 
     }
   }, [])
 
+  // Confirmed phase: auto-advance to Ep4 after 2.5s beat
+  useEffect(() => {
+    if (phase !== 'confirmed') return
+    confirmedTimerRef.current = setTimeout(() => {
+      isContinuingRef.current = true
+      setPhase('continuing')
+      const audio = audioRef.current
+      if (audio && continueAudioUrlRef.current) {
+        audio.src = continueAudioUrlRef.current
+        audio.play().catch(() => {})
+      }
+    }, 2500)
+    return () => {
+      if (confirmedTimerRef.current) clearTimeout(confirmedTimerRef.current)
+    }
+  }, [phase])
+
   // Handle eavesdrop button press
   const handleEavesdropPress = useCallback(() => {
     trackerRef.current?.onPlayStart(0)
@@ -148,6 +175,12 @@ export default function EavesdropClient({ episodes, arm, utmSource, utmCampaign 
 
   // Audio event: onEnded — advance episode or show wall
   const handleAudioEnded = useCallback(() => {
+    // If Ep4 is playing (continuing phase), transition to done screen
+    if (isContinuingRef.current) {
+      setPhase('done')
+      return
+    }
+
     const epCount = ARM_EP_COUNTS[arm]
     const nextIndex = currentEpIndex + 1
 
@@ -253,12 +286,11 @@ export default function EavesdropClient({ episodes, arm, utmSource, utmCampaign 
         return
       }
 
-      // Success — auto-continue Ep4
-      setPhase('continuing')
-      if (data.continueAudioUrl && audioRef.current) {
-        audioRef.current.src = data.continueAudioUrl
-        audioRef.current.play().catch(() => {})
-      }
+      // Success — store Ep4 URL + magic token, show confirmation beat
+      continueAudioUrlRef.current = data.continueAudioUrl ?? null
+      setMagicToken(data.magicToken ?? null)
+      setPhase('confirmed')
+      // Ep4 audio starts automatically after the 2.5s confirmed beat (see useEffect above)
     } catch {
       setSubmitError('Something went wrong. Please try again.')
       setSubmitting(false)
@@ -437,6 +469,18 @@ export default function EavesdropClient({ episodes, arm, utmSource, utmCampaign 
           </div>
         )}
 
+        {/* Phase: CONFIRMED — 2.5s "You're in" beat before Ep4 starts */}
+        {phase === 'confirmed' && (
+          <div style={{ textAlign: 'center', padding: '0 8px' }}>
+            <p style={{ fontSize: 22, fontWeight: 700, color: '#f5f0e8', margin: '0 0 10px', lineHeight: 1.3, fontFamily: "'Georgia', serif" }}>
+              You&rsquo;re in{firstName ? `, ${firstName}` : ''} 🎉
+            </p>
+            <p style={{ fontSize: 16, color: '#f5f0e8', fontFamily: 'sans-serif', margin: 0 }}>
+              Your 7-day free week starts now. No credit card.
+            </p>
+          </div>
+        )}
+
         {/* Phase: PLAYING — story info + pause/play control */}
         {phase === 'playing' && (
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16, width: '100%' }}>
@@ -504,10 +548,48 @@ export default function EavesdropClient({ episodes, arm, utmSource, utmCampaign 
               <p style={{ fontSize: 16, color: '#f5f0e8', marginBottom: 8 }}>
                 Welcome to Endless Tales.
               </p>
-              <p style={{ fontSize: 13, color: '#a09080', fontFamily: 'sans-serif' }}>
+              <p style={{ fontSize: 14, color: '#c8b89a', fontFamily: 'sans-serif' }}>
                 The story continues — {ep4?.episodeTitle ?? 'Episode 4'} is playing now.
               </p>
             </div>
+          </div>
+        )}
+
+        {/* Phase: DONE — Ep4 finished, one-tap login CTA */}
+        {phase === 'done' && (
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 20, width: '100%' }}>
+            <div style={{ textAlign: 'center' }}>
+              <p style={{ fontSize: 22, fontWeight: 700, color: '#f5f0e8', margin: '0 0 8px', lineHeight: 1.3, fontFamily: "'Georgia', serif" }}>
+                You&rsquo;re in{firstName ? `, ${firstName}` : ''}.
+              </p>
+              <p style={{ fontSize: 16, color: '#f5f0e8', fontFamily: 'sans-serif', margin: 0 }}>
+                Your 7-day free week has started. No credit card.
+              </p>
+            </div>
+            {/* One-tap login: navigates to /auth/callback which sets the session cookie
+                and redirects to /home?welcome=true — user arrives already logged in. */}
+            <a
+              href={magicToken
+                ? `/auth/callback?token_hash=${encodeURIComponent(magicToken)}&type=magiclink`
+                : 'https://app.endless-tales.com'}
+              style={{
+                display: 'block',
+                width: '100%',
+                background: '#f97316',
+                borderRadius: 8,
+                padding: '16px 24px',
+                color: '#fff',
+                fontSize: 18,
+                fontWeight: 700,
+                fontFamily: 'sans-serif',
+                textDecoration: 'none',
+                textAlign: 'center',
+                WebkitTapHighlightColor: 'transparent',
+                boxSizing: 'border-box',
+              }}
+            >
+              Open Endless Tales →
+            </a>
           </div>
         )}
       </div>
@@ -531,7 +613,7 @@ export default function EavesdropClient({ episodes, arm, utmSource, utmCampaign 
           <h2 style={{ fontSize: 20, fontWeight: 700, color: '#f5f0e8', margin: '0 0 6px' }}>
             You&rsquo;re in. Where should we continue?
           </h2>
-          <p style={{ fontSize: 13, color: '#a09080', fontFamily: 'sans-serif', marginBottom: 24 }}>
+          <p style={{ fontSize: 16, color: '#f5f0e8', fontFamily: 'sans-serif', marginBottom: 24 }}>
             Enter your name and email to keep listening — no credit card.
           </p>
 
@@ -596,8 +678,8 @@ export default function EavesdropClient({ episodes, arm, utmSource, utmCampaign 
               {submitting ? 'Starting your story…' : 'Continue the story'}
             </button>
 
-            <p style={{ fontSize: 11, color: '#6b6070', textAlign: 'center', fontFamily: 'sans-serif', margin: 0 }}>
-              7-day free trial. No credit card.
+            <p style={{ fontSize: 14, color: '#f5f0e8', textAlign: 'center', fontFamily: 'sans-serif', margin: 0 }}>
+              7-day free trial · No credit card
             </p>
           </form>
         </div>
@@ -609,7 +691,7 @@ export default function EavesdropClient({ episodes, arm, utmSource, utmCampaign 
           0%, 100% { border-color: rgba(240,220,180,0.35); box-shadow: 0 0 0 0 rgba(240,220,180,0.1); }
           50% { border-color: rgba(240,220,180,0.65); box-shadow: 0 0 0 12px rgba(240,220,180,0.05); }
         }
-        input::placeholder { color: #6b6070; }
+        input::placeholder { color: #8b8095; }
         input:focus { border-color: rgba(240,220,180,0.45) !important; }
         * { box-sizing: border-box; }
       ` }} />

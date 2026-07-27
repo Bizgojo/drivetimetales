@@ -1,7 +1,9 @@
 // app/api/listen/signup/route.ts — GVL-EAVESDROP-001
 // Free-week account creation for the /listen eavesdrop landing page.
 //
-// No Stripe. No email sending. User gets immediate access via subscription_ends_at.
+// No Stripe. User gets immediate access via subscription_ends_at.
+// Returns a magicToken (hashed OTP) so the client can navigate to /auth/callback
+// and receive a real browser session without an email round-trip.
 // Name + email only. service role key used — never shipped client-side.
 
 import { NextRequest, NextResponse } from 'next/server'
@@ -15,6 +17,28 @@ const TRIAL_DAYS = 7
 
 // Episode 4 — the first post-signup episode (GVL Wearing My Face series)
 const EP4_ID = 'eac2b1ef-6456-46b1-8c17-bbdf32d8ff5d'
+const APP_URL = process.env.NEXT_PUBLIC_APP_URL || process.env.NEXT_PUBLIC_SITE_URL || 'https://app.endless-tales.com'
+
+/** Generate a one-tap login token for the browser session handoff.
+ * Non-fatal — if it fails the client falls back to the plain app URL. */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function generateMagicToken(supabaseAdmin: any, email: string): Promise<string | null> {
+  try {
+    const { data, error } = await supabaseAdmin.auth.admin.generateLink({
+      type: 'magiclink',
+      email,
+      options: { redirectTo: `${APP_URL}/home` },
+    })
+    if (error || !data?.properties?.hashed_token) {
+      console.warn('[listen/signup] generateMagicToken failed (non-fatal):', error?.message)
+      return null
+    }
+    return data.properties.hashed_token as string
+  } catch (e) {
+    console.warn('[listen/signup] generateMagicToken error (non-fatal):', e)
+    return null
+  }
+}
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -83,18 +107,18 @@ export async function POST(req: NextRequest) {
           updated_at: new Date().toISOString(),
         }, { onConflict: 'id' })
 
-        // Fetch Ep4 audio_url for the continue experience
-        const { data: ep4 } = await supabase
-          .from('stories')
-          .select('story_audio_url')
-          .eq('id', EP4_ID)
-          .single()
+        // Fetch Ep4 audio_url + generate one-tap login token
+        const [ep4Result, magicToken] = await Promise.all([
+          supabase.from('stories').select('story_audio_url').eq('id', EP4_ID).single(),
+          generateMagicToken(supabase, email),
+        ])
 
         return NextResponse.json({
           ok: true,
           userId: existing.id,
           continueEpisodeId: EP4_ID,
-          continueAudioUrl: ep4?.story_audio_url ?? null,
+          continueAudioUrl: ep4Result.data?.story_audio_url ?? null,
+          magicToken,
           note: 'existing user updated',
         })
       }
@@ -150,18 +174,18 @@ export async function POST(req: NextRequest) {
       }).catch(() => { /* silent — tracking never blocks */ })
     }
 
-    // 4. Fetch Ep4 audio_url for the continue experience
-    const { data: ep4 } = await supabase
-      .from('stories')
-      .select('story_audio_url')
-      .eq('id', EP4_ID)
-      .single()
+    // 4. Fetch Ep4 audio_url + generate one-tap login token (parallel)
+    const [ep4Result, magicToken] = await Promise.all([
+      supabase.from('stories').select('story_audio_url').eq('id', EP4_ID).single(),
+      generateMagicToken(supabase, email),
+    ])
 
     return NextResponse.json({
       ok: true,
       userId,
       continueEpisodeId: EP4_ID,
-      continueAudioUrl: ep4?.story_audio_url ?? null,
+      continueAudioUrl: ep4Result.data?.story_audio_url ?? null,
+      magicToken,
     })
   } catch (err) {
     console.error('[listen/signup] unexpected error:', err)
