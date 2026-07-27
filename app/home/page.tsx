@@ -288,6 +288,12 @@ function HomeContent() {
   const [authWaitExpired, setAuthWaitExpired] = useState(false)
   const [homeSearch, setHomeSearch] = useState('')
 
+  // Now Playing — audio handed off from /listen via sessionStorage
+  type NowPlayingPayload = { storyId: string; storyAudioUrl: string; currentTime: number; episodeTitle: string; seriesTitle: string }
+  const [nowPlaying, setNowPlaying] = useState<NowPlayingPayload | null>(null)
+  const [nowPlayingPaused, setNowPlayingPaused] = useState(false)
+  const nowPlayingAudioRef = useRef<HTMLAudioElement | null>(null)
+
   useEffect(() => {
     // ATL-PIXEL-001 (walk finding, 2026-07-13): StartTrial keys on the ?cs=
     // param — Stripe's success redirect is the ONLY thing that appends
@@ -316,6 +322,29 @@ function HomeContent() {
       // No auto-dismiss — persisted via user_metadata.welcome_dismissed on tap
     }
   }, [searchParams, user?.id])
+
+  // Read sessionStorage once on mount — picks up in-progress audio from /listen
+  useEffect(() => {
+    try {
+      const raw = sessionStorage.getItem('gvl_nowplaying')
+      if (raw) {
+        sessionStorage.removeItem('gvl_nowplaying') // consume once — no re-show on reload
+        const payload = JSON.parse(raw) as NowPlayingPayload
+        if (payload?.storyAudioUrl) setNowPlaying(payload)
+      }
+    } catch {}
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Start audio when nowPlaying is set; pause + cleanup on unmount or clear
+  useEffect(() => {
+    if (!nowPlaying) return
+    const audio = nowPlayingAudioRef.current
+    if (!audio) return
+    audio.src = nowPlaying.storyAudioUrl
+    audio.currentTime = nowPlaying.currentTime
+    audio.play().catch(() => setNowPlayingPaused(true)) // iOS may block autoplay — shows paused
+    return () => { audio.pause() }
+  }, [nowPlaying])
 
   useEffect(() => {
     if (!loading) {
@@ -365,7 +394,7 @@ function HomeContent() {
                 WebkitTapHighlightColor: 'transparent',
               }}
             >
-              Welcome{firstName ? `, ${firstName}` : ''} 👋
+              Welcome{firstName ? ` ${firstName}` : ''} to your free 7 day trial
             </button>
           ) : (
             <>
@@ -392,6 +421,63 @@ function HomeContent() {
             </>
           )}
         </div>
+        {/* Now Playing — visible above everything when user arrives from /listen with audio in-progress */}
+        {nowPlaying && (
+          <div style={{
+            margin: '1rem 1rem 0.5rem',
+            background: 'linear-gradient(135deg, rgba(249,115,22,0.12), rgba(15,15,26,0.9))',
+            border: '1px solid rgba(249,115,22,0.25)',
+            borderRadius: 14,
+            padding: '14px 16px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 12,
+          }}>
+            {/* Hidden audio element — ref set here, used by the useEffect above */}
+            <audio
+              ref={nowPlayingAudioRef}
+              onPlay={() => setNowPlayingPaused(false)}
+              onPause={() => setNowPlayingPaused(true)}
+              onEnded={() => setNowPlaying(null)}
+              style={{ display: 'none' }}
+            />
+            {/* Pause / play — large tap target */}
+            <button
+              onClick={() => {
+                const audio = nowPlayingAudioRef.current
+                if (!audio) return
+                if (audio.paused) { audio.play().catch(() => {}) } else { audio.pause() }
+              }}
+              aria-label={nowPlayingPaused ? 'Play' : 'Pause'}
+              style={{
+                width: 52, height: 52, borderRadius: '50%',
+                background: '#f97316', border: 'none',
+                color: '#fff', fontSize: 22, cursor: 'pointer',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                flexShrink: 0, WebkitTapHighlightColor: 'transparent',
+              }}
+            >
+              {nowPlayingPaused ? '▶️' : '⏸'}
+            </button>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ color: '#f97316', fontSize: 10, letterSpacing: '0.12em', textTransform: 'uppercase', fontFamily: 'sans-serif', marginBottom: 3, fontWeight: 700 }}>
+                Now Playing
+              </div>
+              <div style={{ color: 'white', fontSize: 15, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {nowPlaying.seriesTitle} — {nowPlaying.episodeTitle}
+              </div>
+            </div>
+            {/* Stop — clears nowPlaying; audio stops via useEffect cleanup */}
+            <button
+              onClick={() => { nowPlayingAudioRef.current?.pause(); setNowPlaying(null) }}
+              aria-label="Stop"
+              style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.35)', fontSize: 22, cursor: 'pointer', padding: 4, flexShrink: 0, WebkitTapHighlightColor: 'transparent' }}
+            >
+              ✕
+            </button>
+          </div>
+        )}
+
         {homeSearch.trim() ? (
           <HomeSearchResults query={homeSearch} />
         ) : (
