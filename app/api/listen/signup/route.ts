@@ -72,6 +72,7 @@ export async function POST(req: NextRequest) {
         await supabase.from('users').upsert({
           id: existing.id,
           email,
+          display_name: firstName.trim(),
           first_name: firstName.trim(),
           plan: 'subscriber',
           subscription_ends_at: trialEndsAt,
@@ -108,6 +109,7 @@ export async function POST(req: NextRequest) {
     const { error: userError } = await supabase.from('users').upsert({
       id: userId,
       email,
+      display_name: firstName.trim(),
       first_name: firstName.trim(),
       plan: 'subscriber',
       subscription_ends_at: trialEndsAt,
@@ -129,7 +131,11 @@ export async function POST(req: NextRequest) {
     // (fire-and-forget — tracking never blocks signup response)
     if (sessionId && typeof sessionId === 'string') {
       const variant = `listen-arm${armNum}` as const
-      void fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL ? '' : 'http://localhost:3001'}/api/go-listen`, {
+      // Server-side fire: use the app's own base URL (localhost in dev, VERCEL_URL in prod)
+      const appBase = process.env.VERCEL_URL
+        ? `https://${process.env.VERCEL_URL}`
+        : 'http://localhost:3001'
+      void fetch(`${appBase}/api/go-listen`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
