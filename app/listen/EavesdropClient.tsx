@@ -19,8 +19,8 @@ type Phase =
   | 'hook'        // initial hook card, before button press
   | 'playing'     // audio playing, cover art visible
   | 'wall'        // name+email wall
-  | 'confirmed'   // 2.5s confirmation beat post-signup before Ep4 starts
-  | 'continuing'  // post-submit, Ep4 loading/playing
+  | 'confirmed'   // stays until user taps "Go to Endless Tales"; Ep4 plays during this phase
+  | 'continuing'  // reserved (unused in current flow)
   | 'done'        // Ep4 ended — show one-tap login CTA
 
 type Props = {
@@ -72,8 +72,7 @@ export default function EavesdropClient({ episodes, arm, utmSource, utmCampaign 
   const continueAudioUrlRef = useRef<string | null>(null)
   // True once Ep4 is playing — used by handleAudioEnded to detect Ep4-ended vs pre-wall-ended
   const isContinuingRef = useRef(false)
-  // Timer ref for the 2.5s confirmed beat
-  const confirmedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // (confirmedTimerRef removed — confirmed phase no longer auto-advances)
 
   // Variant string for tracking
   const variant = `listen-arm${arm}` as const
@@ -111,7 +110,28 @@ export default function EavesdropClient({ episodes, arm, utmSource, utmCampaign 
     requestAnimationFrame(tick)
   }, [])
 
-  // Pause/play toggle — usable in both 'playing' and 'continuing' phases
+  // "Go to Endless Tales" — saves playback position to sessionStorage for /home to resume,
+  // then navigates via auth callback to set the browser session.
+  const handleGoToApp = useCallback(() => {
+    const audio = audioRef.current
+    const ep4 = episodes[3]
+    if (ep4?.id && continueAudioUrlRef.current) {
+      try {
+        sessionStorage.setItem('gvl_nowplaying', JSON.stringify({
+          storyId: ep4.id,
+          storyAudioUrl: continueAudioUrlRef.current,
+          currentTime: Math.floor(audio?.currentTime ?? 0),
+          episodeTitle: ep4.episodeTitle ?? ep4.title ?? 'Episode 4',
+          seriesTitle: 'Wearing My Face',
+        }))
+      } catch {}
+    }
+    window.location.href = magicToken
+      ? `/auth/callback?token_hash=${encodeURIComponent(magicToken)}&type=magiclink`
+      : 'https://app.endless-tales.com'
+  }, [episodes, magicToken])
+
+  // Pause/play toggle — usable in 'playing', 'confirmed', and 'done' phases
   const handlePausePlay = useCallback(() => {
     const audio = audioRef.current
     if (!audio) return
@@ -121,23 +141,6 @@ export default function EavesdropClient({ episodes, arm, utmSource, utmCampaign 
       audio.pause()
     }
   }, [])
-
-  // Confirmed phase: auto-advance to Ep4 after 2.5s beat
-  useEffect(() => {
-    if (phase !== 'confirmed') return
-    confirmedTimerRef.current = setTimeout(() => {
-      isContinuingRef.current = true
-      setPhase('continuing')
-      const audio = audioRef.current
-      if (audio && continueAudioUrlRef.current) {
-        audio.src = continueAudioUrlRef.current
-        audio.play().catch(() => {})
-      }
-    }, 2500)
-    return () => {
-      if (confirmedTimerRef.current) clearTimeout(confirmedTimerRef.current)
-    }
-  }, [phase])
 
   // Handle eavesdrop button press
   const handleEavesdropPress = useCallback(() => {
@@ -286,11 +289,16 @@ export default function EavesdropClient({ episodes, arm, utmSource, utmCampaign 
         return
       }
 
-      // Success — store Ep4 URL + magic token, show confirmation beat
+      // Success — start Ep4 immediately, show confirmed screen (stays until user taps)
       continueAudioUrlRef.current = data.continueAudioUrl ?? null
       setMagicToken(data.magicToken ?? null)
+      isContinuingRef.current = true  // Ep4 is now the active audio
       setPhase('confirmed')
-      // Ep4 audio starts automatically after the 2.5s confirmed beat (see useEffect above)
+      const ep4Audio = audioRef.current
+      if (ep4Audio && data.continueAudioUrl) {
+        ep4Audio.src = data.continueAudioUrl
+        ep4Audio.play().catch(() => {})
+      }
     } catch {
       setSubmitError('Something went wrong. Please try again.')
       setSubmitting(false)
@@ -422,7 +430,7 @@ export default function EavesdropClient({ episodes, arm, utmSource, utmCampaign 
           )}
 
           {/* Now playing / paused indicator */}
-          {(phase === 'playing' || phase === 'continuing') && morphProgress >= 1 && (
+          {(phase === 'playing' || phase === 'continuing' || phase === 'confirmed') && morphProgress >= 1 && (
             <div style={{
               position: 'absolute',
               bottom: 12,
@@ -469,15 +477,43 @@ export default function EavesdropClient({ episodes, arm, utmSource, utmCampaign 
           </div>
         )}
 
-        {/* Phase: CONFIRMED — 2.5s "You're in" beat before Ep4 starts */}
+        {/* Phase: CONFIRMED — Ep4 plays here; screen stays until user taps "Go to Endless Tales" */}
         {phase === 'confirmed' && (
-          <div style={{ textAlign: 'center', padding: '0 8px' }}>
-            <p style={{ fontSize: 22, fontWeight: 700, color: '#f5f0e8', margin: '0 0 10px', lineHeight: 1.3, fontFamily: "'Georgia', serif" }}>
-              You&rsquo;re in{firstName ? `, ${firstName}` : ''} 🎉
-            </p>
-            <p style={{ fontSize: 16, color: '#f5f0e8', fontFamily: 'sans-serif', margin: 0 }}>
-              Your 7-day free week starts now. No credit card.
-            </p>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 20, width: '100%' }}>
+            <button
+              onClick={handlePausePlay}
+              aria-label={isPlaying ? 'Pause' : 'Play'}
+              style={{
+                width: 64, height: 64, borderRadius: '50%',
+                background: 'rgba(240,220,180,0.1)',
+                border: '2px solid rgba(240,220,180,0.3)',
+                color: '#f5f0e8', fontSize: 26, cursor: 'pointer',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                flexShrink: 0, WebkitTapHighlightColor: 'transparent',
+              }}
+            >
+              {isPlaying ? '⏸' : '▶'}
+            </button>
+            <div style={{ textAlign: 'center' }}>
+              <p style={{ fontSize: 22, fontWeight: 700, color: '#f5f0e8', margin: '0 0 8px', lineHeight: 1.3, fontFamily: "'Georgia', serif" }}>
+                You&rsquo;re in{firstName ? `, ${firstName}` : ''}.
+              </p>
+              <p style={{ fontSize: 16, color: '#f5f0e8', fontFamily: 'sans-serif', margin: 0 }}>
+                Your 7-day free week has started. No credit card.
+              </p>
+            </div>
+            <button
+              onClick={handleGoToApp}
+              style={{
+                width: '100%', background: '#f97316', border: 'none',
+                borderRadius: 8, padding: '16px 24px',
+                color: '#fff', fontSize: 18, fontWeight: 700,
+                fontFamily: 'sans-serif', cursor: 'pointer',
+                WebkitTapHighlightColor: 'transparent',
+              }}
+            >
+              Go to Endless Tales →
+            </button>
           </div>
         )}
 
@@ -519,41 +555,7 @@ export default function EavesdropClient({ episodes, arm, utmSource, utmCampaign 
           </div>
         )}
 
-        {/* Phase: CONTINUING — Ep4 auto-playing, with pause/play control */}
-        {phase === 'continuing' && (
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16, width: '100%' }}>
-            {/* Pause / play button — large tap target for mobile */}
-            <button
-              onClick={handlePausePlay}
-              aria-label={isPlaying ? 'Pause' : 'Play'}
-              style={{
-                width: 64,
-                height: 64,
-                borderRadius: '50%',
-                background: 'rgba(240,220,180,0.1)',
-                border: '2px solid rgba(240,220,180,0.3)',
-                color: '#f5f0e8',
-                fontSize: 26,
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                flexShrink: 0,
-                WebkitTapHighlightColor: 'transparent',
-              }}
-            >
-              {isPlaying ? '⏸' : '▶'}
-            </button>
-            <div style={{ textAlign: 'center' }}>
-              <p style={{ fontSize: 16, color: '#f5f0e8', marginBottom: 8 }}>
-                Welcome to Endless Tales.
-              </p>
-              <p style={{ fontSize: 14, color: '#c8b89a', fontFamily: 'sans-serif' }}>
-                The story continues — {ep4?.episodeTitle ?? 'Episode 4'} is playing now.
-              </p>
-            </div>
-          </div>
-        )}
+        {/* 'continuing' phase intentionally unused — Ep4 now plays during 'confirmed' */}
 
         {/* Phase: DONE — Ep4 finished, one-tap login CTA */}
         {phase === 'done' && (
