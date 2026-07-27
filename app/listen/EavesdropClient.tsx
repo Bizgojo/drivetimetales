@@ -59,8 +59,7 @@ export default function EavesdropClient({ episodes, arm, utmSource, utmCampaign 
   // Audio playback state (kept in sync via onPlay/onPause events)
   const [isPlaying, setIsPlaying] = useState(false)
 
-  // One-tap login token returned by signup API (hashed OTP for /auth/callback)
-  const [magicToken, setMagicToken] = useState<string | null>(null)
+  // magicToken removed — token is now generated fresh at tap time in handleGoToApp
 
   // Refs
   const audioRef = useRef<HTMLAudioElement | null>(null)
@@ -111,9 +110,10 @@ export default function EavesdropClient({ episodes, arm, utmSource, utmCampaign 
     requestAnimationFrame(tick)
   }, [])
 
-  // "Go to Endless Tales" — saves playback position to sessionStorage for /home to resume,
-  // then navigates via auth callback to set the browser session.
-  const handleGoToApp = useCallback(() => {
+  // "Go to Endless Tales" — generates a FRESH magic token at tap time (not at signup time),
+  // saves playback position to sessionStorage, then navigates via auth callback.
+  // Lazy generation avoids OTP expiry during the listen session and any race with createUser.
+  const handleGoToApp = useCallback(async () => {
     const audio = audioRef.current
     const ep4 = episodes[3]
     if (ep4?.id && continueAudioUrlRef.current) {
@@ -127,10 +127,23 @@ export default function EavesdropClient({ episodes, arm, utmSource, utmCampaign 
         }))
       } catch {}
     }
-    window.location.href = magicToken
-      ? `/auth/callback?token_hash=${encodeURIComponent(magicToken)}&type=magiclink`
+    // Generate a fresh token at tap time (token is seconds old when consumed — no expiry risk)
+    let freshToken: string | null = null
+    try {
+      const res = await fetch('/api/listen/auth-link', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email }),
+      })
+      if (res.ok) {
+        const data = await res.json()
+        freshToken = data.magicToken ?? null
+      }
+    } catch {}
+    window.location.href = freshToken
+      ? `/auth/callback?token_hash=${encodeURIComponent(freshToken)}&type=magiclink`
       : 'https://app.endless-tales.com'
-  }, [episodes, magicToken])
+  }, [email, episodes])
 
   // Pause/play toggle — usable in 'playing', 'confirmed', and 'done' phases
   const handlePausePlay = useCallback(() => {
@@ -302,7 +315,6 @@ export default function EavesdropClient({ episodes, arm, utmSource, utmCampaign 
 
       // Success — start Ep4 immediately, show confirmed screen (stays until user taps)
       continueAudioUrlRef.current = data.continueAudioUrl ?? null
-      setMagicToken(data.magicToken ?? null)
       isContinuingRef.current = true  // Ep4 is now the active audio
       setPhase('confirmed')
       const ep4Audio = audioRef.current
@@ -580,12 +592,10 @@ export default function EavesdropClient({ episodes, arm, utmSource, utmCampaign 
                 Your 7-day free week has started. No credit card.
               </p>
             </div>
-            {/* One-tap login: navigates to /auth/callback which sets the session cookie
-                and redirects to /home?welcome=true — user arrives already logged in. */}
+            {/* One-tap login: handleGoToApp generates a fresh token at tap time and navigates. */}
             <a
-              href={magicToken
-                ? `/auth/callback?token_hash=${encodeURIComponent(magicToken)}&type=magiclink`
-                : 'https://app.endless-tales.com'}
+              href="#"
+              onClick={(e) => { e.preventDefault(); void handleGoToApp() }}
               style={{
                 display: 'block',
                 width: '100%',
