@@ -288,11 +288,8 @@ function HomeContent() {
   const [authWaitExpired, setAuthWaitExpired] = useState(false)
   const [homeSearch, setHomeSearch] = useState('')
 
-  // Now Playing — audio handed off from /listen via sessionStorage
-  // Type defined here (not inside render) so it is stable across renders
-  const [nowPlaying, setNowPlaying] = useState<{ storyId: string; storyAudioUrl: string; currentTime: number; episodeTitle: string; seriesTitle: string } | null>(null)
-  const [nowPlayingPaused, setNowPlayingPaused] = useState(false)
-  const nowPlayingAudioRef = useRef<HTMLAudioElement | null>(null)
+  // Key to force ContinueListening remount after updating user_library from /listen handoff
+  const [clKey, setClKey] = useState(0)
 
   useEffect(() => {
     // ATL-PIXEL-001 (walk finding, 2026-07-13): StartTrial keys on the ?cs=
@@ -323,27 +320,29 @@ function HomeContent() {
     }
   }, [searchParams, user?.id])
 
-  // Read sessionStorage once on mount — picks up in-progress audio from /listen
+  // On mount with authenticated user: read gvl_nowplaying from sessionStorage (written by
+  // /listen's handleGoToApp), update user_library to the real Ep4 position, then force
+  // ContinueListening to remount so it queries fresh and picks up the Cass record.
+  // The signup API already seeded progress=61; this updates to the accurate currentTime.
   useEffect(() => {
+    if (!user?.id) return
     try {
       const raw = sessionStorage.getItem('gvl_nowplaying')
-      if (raw) {
-        sessionStorage.removeItem('gvl_nowplaying') // consume once — no re-show on reload
-        const payload = JSON.parse(raw)
-        if (payload?.storyAudioUrl) setNowPlaying(payload)
-      }
+      if (!raw) return
+      sessionStorage.removeItem('gvl_nowplaying')
+      const payload = JSON.parse(raw)
+      const storyId = payload?.storyId
+      const currentTime = Number(payload?.currentTime) || 0
+      if (!storyId) return
+      void fetch('/api/user/save-progress', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ storyId, progress: currentTime }),
+      }).catch(() => {})
+      // Force ContinueListening remount so it re-queries and picks up the seeded record
+      setClKey(k => k + 1)
     } catch {}
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Attempt autoplay when nowPlaying is set; src is set declaratively in JSX below.
-  // iOS blocks autoplay — the user taps ▶ which IS a user gesture and will work.
-  useEffect(() => {
-    if (!nowPlaying) return
-    const audio = nowPlayingAudioRef.current
-    // Autoplay attempt: will fail on iOS (expected). src is set via JSX so button tap works.
-    audio?.play().catch(() => setNowPlayingPaused(true))
-    return () => { audio?.pause() }
-  }, [nowPlaying])
+  }, [user?.id])
 
   useEffect(() => {
     if (!loading) {
@@ -433,74 +432,12 @@ function HomeContent() {
           <HomeSearchResults query={homeSearch} />
         ) : (
           <>
-            {/* #3 FIX: Now Playing is the FIRST child of the content section so it renders
-                at the top on initial paint — no pop-in below catalog sections. */}
-            {nowPlaying && (
-          <div style={{
-            margin: '1rem 1rem 0.5rem',
-            background: 'linear-gradient(135deg, rgba(249,115,22,0.12), rgba(15,15,26,0.9))',
-            border: '1px solid rgba(249,115,22,0.25)',
-            borderRadius: 14,
-            padding: '14px 16px',
-            display: 'flex',
-            alignItems: 'center',
-            gap: 12,
-          }}>
-            {/* src set DECLARATIVELY so it is always present regardless of effect timing.
-                 currentTime applied via onLoadedMetadata once the browser has seeked. */}
-            <audio
-              ref={nowPlayingAudioRef}
-              src={nowPlaying.storyAudioUrl}
-              onLoadedMetadata={() => {
-                const audio = nowPlayingAudioRef.current
-                if (audio && nowPlaying.currentTime > 0) audio.currentTime = nowPlaying.currentTime
-              }}
-              onPlay={() => setNowPlayingPaused(false)}
-              onPause={() => setNowPlayingPaused(true)}
-              onEnded={() => setNowPlaying(null)}
-              style={{ display: 'none' }}
-            />
-            {/* Pause / play — large tap target */}
-            <button
-              onClick={() => {
-                const audio = nowPlayingAudioRef.current
-                if (!audio) return
-                if (audio.paused) { audio.play().catch(() => {}) } else { audio.pause() }
-              }}
-              aria-label={nowPlayingPaused ? 'Play' : 'Pause'}
-              style={{
-                width: 52, height: 52, borderRadius: '50%',
-                background: '#f97316', border: 'none',
-                color: '#fff', fontSize: 22, cursor: 'pointer',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                flexShrink: 0, WebkitTapHighlightColor: 'transparent',
-              }}
-            >
-              {nowPlayingPaused ? '▶' : '⏸'}
-            </button>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ color: '#f97316', fontSize: 10, letterSpacing: '0.12em', textTransform: 'uppercase', fontFamily: 'sans-serif', marginBottom: 3, fontWeight: 700 }}>
-                Now Playing
-              </div>
-              <div style={{ color: 'white', fontSize: 15, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                {nowPlaying.seriesTitle} — {nowPlaying.episodeTitle}
-              </div>
-            </div>
-            {/* Stop — clears nowPlaying; audio stops via useEffect cleanup */}
-            <button
-              onClick={() => { nowPlayingAudioRef.current?.pause(); setNowPlaying(null) }}
-              aria-label="Stop"
-              style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.35)', fontSize: 22, cursor: 'pointer', padding: 4, flexShrink: 0, WebkitTapHighlightColor: 'transparent' }}
-            >
-              ✕
-            </button>
-          </div>
-            )}
             {/* ORION-HOME-WALK-001: /go sample continue hero LEADS the page (Marc walk, 2026-07-12). */}
             {/* WALK-BUG-0713 #5 (Marc, 2026-07-13): the hero's story must not repeat
                 in the Continue Listening list below — heroStoryId feeds its exclude. */}
             <ContinueSampleHero onStoryId={(id) => { setHeroStoryId(id); setContinueIds(prev => Array.from(new Set([id, ...prev]))); setAllExcludeIds(prev => Array.from(new Set([id, ...prev]))) }} />
-            <ContinueListening excludeStoryId={heroStoryId} onIdsLoaded={(ids) => { setContinueIds(prev => Array.from(new Set([...prev, ...ids]))); setAllExcludeIds(prev => Array.from(new Set([...prev, ...ids, ...playlistIds]))) }} />
+            {/* key=clKey forces remount after /listen progress is written to user_library */}
+            <ContinueListening key={clKey} excludeStoryId={heroStoryId} onIdsLoaded={(ids) => { setContinueIds(prev => Array.from(new Set([...prev, ...ids]))); setAllExcludeIds(prev => Array.from(new Set([...prev, ...ids, ...playlistIds]))) }} />
             <YourPlaylist onIdsLoaded={(ids) => { setPlaylistIds(ids); setAllExcludeIds(prev => [...new Set([...prev, ...ids])]) }} />
             <NewReleases
               excludeIds={[...new Set([...continueIds, ...playlistIds])]}

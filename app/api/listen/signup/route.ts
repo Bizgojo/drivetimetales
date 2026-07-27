@@ -174,10 +174,26 @@ export async function POST(req: NextRequest) {
       }).catch(() => { /* silent — tracking never blocks */ })
     }
 
-    // 4. Fetch Ep4 audio_url + generate one-tap login token (parallel)
+    // 4. Fetch Ep4 audio_url + generate magic token + seed user_library (all parallel)
+    // Seed user_library with progress=61 so ContinueListening picks up Cass on /home.
+    // Non-fatal: if it fails the card just won't appear pre-loaded; save-progress on /home will retry.
     const [ep4Result, magicToken] = await Promise.all([
       supabase.from('stories').select('story_audio_url').eq('id', EP4_ID).single(),
       generateMagicToken(supabase, email),
+(async () => {
+        try {
+          const { error } = await supabase.from('user_library').upsert({
+            user_id: userId,
+            story_id: EP4_ID,
+            progress: 61, // Just above the ContinueListening >60s threshold; updated to real position on /home
+            completed: false,
+            hide_from_home: false,
+            not_for_me: false,
+            last_played: new Date().toISOString(),
+          }, { onConflict: 'user_id,story_id' })
+          if (error) console.warn('[listen/signup] user_library seed failed (non-fatal):', error.message)
+        } catch (e) { console.warn('[listen/signup] user_library seed error (non-fatal):', e) }
+      })(),
     ])
 
     return NextResponse.json({
