@@ -107,18 +107,14 @@ export async function POST(req: NextRequest) {
           updated_at: new Date().toISOString(),
         }, { onConflict: 'id' })
 
-        // Fetch Ep4 audio_url + generate one-tap login token
-        const [ep4Result, magicToken] = await Promise.all([
-          supabase.from('stories').select('story_audio_url').eq('id', EP4_ID).single(),
-          generateMagicToken(supabase, email),
-        ])
+        // Fetch Ep4 audio_url (token generated at tap time via /api/listen/auth-link now)
+        const { data: ep4 } = await supabase.from('stories').select('story_audio_url').eq('id', EP4_ID).single()
 
         return NextResponse.json({
           ok: true,
           userId: existing.id,
           continueEpisodeId: EP4_ID,
-          continueAudioUrl: ep4Result.data?.story_audio_url ?? null,
-          magicToken,
+          continueAudioUrl: ep4?.story_audio_url ?? null,
           note: 'existing user updated',
         })
       }
@@ -174,18 +170,16 @@ export async function POST(req: NextRequest) {
       }).catch(() => { /* silent — tracking never blocks */ })
     }
 
-    // 4. Fetch Ep4 audio_url + generate magic token + seed user_library (all parallel)
-    // Seed user_library with progress=61 so ContinueListening picks up Cass on /home.
-    // Non-fatal: if it fails the card just won't appear pre-loaded; save-progress on /home will retry.
-    const [ep4Result, magicToken] = await Promise.all([
+    // 4. Fetch Ep4 audio_url + seed user_library in parallel
+    // Token is generated at tap time via /api/listen/auth-link (not here)
+    const [ep4Result] = await Promise.all([
       supabase.from('stories').select('story_audio_url').eq('id', EP4_ID).single(),
-      generateMagicToken(supabase, email),
-(async () => {
+      (async () => {
         try {
           const { error } = await supabase.from('user_library').upsert({
             user_id: userId,
             story_id: EP4_ID,
-            progress: 61, // Just above the ContinueListening >60s threshold; updated to real position on /home
+            progress: 61, // Just above ContinueListening >60s threshold; updated to real position on /home
             completed: false,
             hide_from_home: false,
             not_for_me: false,
@@ -201,7 +195,6 @@ export async function POST(req: NextRequest) {
       userId,
       continueEpisodeId: EP4_ID,
       continueAudioUrl: ep4Result.data?.story_audio_url ?? null,
-      magicToken,
     })
   } catch (err) {
     console.error('[listen/signup] unexpected error:', err)
