@@ -54,6 +54,9 @@ export default function EavesdropClient({ episodes, arm, utmSource, utmCampaign 
   const [submitting, setSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
 
+  // Audio playback state (kept in sync via onPlay/onPause events)
+  const [isPlaying, setIsPlaying] = useState(false)
+
   // Refs
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const trackerRef = useRef<GoListenTracker | null>(null)
@@ -96,6 +99,17 @@ export default function EavesdropClient({ episodes, arm, utmSource, utmCampaign 
       }
     }
     requestAnimationFrame(tick)
+  }, [])
+
+  // Pause/play toggle — usable in both 'playing' and 'continuing' phases
+  const handlePausePlay = useCallback(() => {
+    const audio = audioRef.current
+    if (!audio) return
+    if (audio.paused) {
+      audio.play().catch(() => {})
+    } else {
+      audio.pause()
+    }
   }, [])
 
   // Handle eavesdrop button press
@@ -283,6 +297,8 @@ export default function EavesdropClient({ episodes, arm, utmSource, utmCampaign 
         ref={audioRef}
         onEnded={handleAudioEnded}
         onTimeUpdate={handleTimeUpdate}
+        onPlay={() => setIsPlaying(true)}
+        onPause={() => setIsPlaying(false)}
         style={{ display: 'none' }}
       />
 
@@ -373,8 +389,8 @@ export default function EavesdropClient({ episodes, arm, utmSource, utmCampaign 
             </div>
           )}
 
-          {/* Now playing indicator */}
-          {phase === 'playing' && morphProgress >= 1 && (
+          {/* Now playing / paused indicator */}
+          {(phase === 'playing' || phase === 'continuing') && morphProgress >= 1 && (
             <div style={{
               position: 'absolute',
               bottom: 12,
@@ -386,8 +402,8 @@ export default function EavesdropClient({ episodes, arm, utmSource, utmCampaign 
               borderRadius: 20,
               padding: '4px 12px',
             }}>
-              <span style={{ fontSize: 10, color: '#f97316', letterSpacing: '0.1em', fontFamily: 'sans-serif', textTransform: 'uppercase' }}>
-                ▶ Listening
+              <span style={{ fontSize: 10, color: isPlaying ? '#f97316' : '#a09080', letterSpacing: '0.1em', fontFamily: 'sans-serif', textTransform: 'uppercase' }}>
+                {isPlaying ? '▶ Listening' : '⏸ Paused'}
               </span>
             </div>
           )}
@@ -421,29 +437,77 @@ export default function EavesdropClient({ episodes, arm, utmSource, utmCampaign 
           </div>
         )}
 
-        {/* Phase: PLAYING — story info + progress hint */}
+        {/* Phase: PLAYING — story info + pause/play control */}
         {phase === 'playing' && (
-          <div style={{ textAlign: 'center' }}>
-            <p style={{ fontSize: 15, color: '#c8b89a', margin: 0 }}>
-              {currentEp?.episodeTitle ?? currentEp?.title ?? 'Wearing My Face'}
-            </p>
-            <p style={{ fontSize: 12, color: '#6b6070', fontFamily: 'sans-serif', marginTop: 6 }}>
-              {arm > 1
-                ? `Episode ${currentEpIndex + 1} of ${ARM_EP_COUNTS[arm]} before the story continues`
-                : 'The story continues after this episode'}
-            </p>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16, width: '100%' }}>
+            {/* Pause / play button — large tap target for mobile */}
+            <button
+              onClick={handlePausePlay}
+              aria-label={isPlaying ? 'Pause' : 'Play'}
+              style={{
+                width: 64,
+                height: 64,
+                borderRadius: '50%',
+                background: 'rgba(240,220,180,0.1)',
+                border: '2px solid rgba(240,220,180,0.3)',
+                color: '#f5f0e8',
+                fontSize: 26,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                flexShrink: 0,
+                WebkitTapHighlightColor: 'transparent',
+              }}
+            >
+              {isPlaying ? '⏸' : '▶'}
+            </button>
+            <div style={{ textAlign: 'center' }}>
+              <p style={{ fontSize: 15, color: '#c8b89a', margin: 0 }}>
+                {currentEp?.episodeTitle ?? currentEp?.title ?? 'Wearing My Face'}
+              </p>
+              <p style={{ fontSize: 12, color: '#6b6070', fontFamily: 'sans-serif', marginTop: 6 }}>
+                {arm > 1
+                  ? `Episode ${currentEpIndex + 1} of ${ARM_EP_COUNTS[arm]} before the story continues`
+                  : 'The story continues after this episode'}
+              </p>
+            </div>
           </div>
         )}
 
-        {/* Phase: CONTINUING — Ep4 auto-playing */}
+        {/* Phase: CONTINUING — Ep4 auto-playing, with pause/play control */}
         {phase === 'continuing' && (
-          <div style={{ textAlign: 'center' }}>
-            <p style={{ fontSize: 16, color: '#f5f0e8', marginBottom: 8 }}>
-              Welcome to Endless Tales.
-            </p>
-            <p style={{ fontSize: 13, color: '#a09080', fontFamily: 'sans-serif' }}>
-              The story continues — {ep4?.episodeTitle ?? 'Episode 4'} is playing now.
-            </p>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16, width: '100%' }}>
+            {/* Pause / play button — large tap target for mobile */}
+            <button
+              onClick={handlePausePlay}
+              aria-label={isPlaying ? 'Pause' : 'Play'}
+              style={{
+                width: 64,
+                height: 64,
+                borderRadius: '50%',
+                background: 'rgba(240,220,180,0.1)',
+                border: '2px solid rgba(240,220,180,0.3)',
+                color: '#f5f0e8',
+                fontSize: 26,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                flexShrink: 0,
+                WebkitTapHighlightColor: 'transparent',
+              }}
+            >
+              {isPlaying ? '⏸' : '▶'}
+            </button>
+            <div style={{ textAlign: 'center' }}>
+              <p style={{ fontSize: 16, color: '#f5f0e8', marginBottom: 8 }}>
+                Welcome to Endless Tales.
+              </p>
+              <p style={{ fontSize: 13, color: '#a09080', fontFamily: 'sans-serif' }}>
+                The story continues — {ep4?.episodeTitle ?? 'Episode 4'} is playing now.
+              </p>
+            </div>
           </div>
         )}
       </div>
