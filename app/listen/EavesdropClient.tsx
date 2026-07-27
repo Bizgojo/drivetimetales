@@ -54,6 +54,7 @@ export default function EavesdropClient({ episodes, arm, utmSource, utmCampaign 
   const [email, setEmail] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
+  const [fieldErrors, setFieldErrors] = useState<{ name?: boolean; email?: boolean }>({})
 
   // Audio playback state (kept in sync via onPlay/onPause events)
   const [isPlaying, setIsPlaying] = useState(false)
@@ -251,6 +252,16 @@ export default function EavesdropClient({ episodes, arm, utmSource, utmCampaign 
   const handleSubmit = useCallback(async (e: React.FormEvent) => {
     e.preventDefault()
     if (submitting) return
+
+    // #7 Client-side validation — block and highlight empty fields
+    const nameEmpty = !firstName.trim()
+    const emailEmpty = !email.trim()
+    if (nameEmpty || emailEmpty) {
+      setFieldErrors({ name: nameEmpty, email: emailEmpty })
+      return
+    }
+    setFieldErrors({})
+
     setSubmitting(true)
     setSubmitError(null)
 
@@ -382,17 +393,17 @@ export default function EavesdropClient({ episodes, arm, utmSource, utmCampaign 
               </svg>
             </div>
             <p style={{
-              fontSize: 20,
-              fontWeight: 700,
-              lineHeight: 1.4,
+              fontSize: 22,
+              fontWeight: 800,
+              lineHeight: 1.35,
               textAlign: 'center',
-              color: '#f5f0e8',
+              color: '#ffffff',
               margin: 0,
-              textShadow: '0 1px 3px rgba(0,0,0,0.4)',
+              textShadow: '0 1px 4px rgba(0,0,0,0.5)',
             }}>
               {hookText}
             </p>
-            <p style={{ marginTop: 16, fontSize: 13, color: '#a09080', textAlign: 'center', fontFamily: 'sans-serif' }}>
+            <p style={{ marginTop: 14, fontSize: 15, color: '#f5f0e8', textAlign: 'center', fontFamily: 'sans-serif', fontWeight: 500 }}>
               Greenville, SC · Mystery · Episode 1
             </p>
           </div>
@@ -455,23 +466,24 @@ export default function EavesdropClient({ episodes, arm, utmSource, utmCampaign 
             <button
               onClick={handleEavesdropPress}
               style={{
-                background: 'transparent',
-                border: '2px solid rgba(240,220,180,0.35)',
+                background: 'rgba(249,115,22,0.85)',
+                border: '2px solid rgba(249,115,22,0.6)',
                 borderRadius: 40,
                 padding: '16px 40px',
-                color: '#f5f0e8',
-                fontSize: 18,
+                color: '#fff',
+                fontSize: 19,
                 fontFamily: "'Georgia', serif",
+                fontWeight: 700,
                 cursor: 'pointer',
                 letterSpacing: '0.04em',
                 position: 'relative',
                 overflow: 'hidden',
-                animation: 'pulse-border 2.4s ease-in-out infinite',
+                WebkitTapHighlightColor: 'transparent',
               }}
             >
               Listen in…
             </button>
-            <p style={{ fontSize: 12, color: '#6b6070', fontFamily: 'sans-serif', textAlign: 'center' }}>
+            <p style={{ fontSize: 13, color: '#f5f0e8', fontFamily: 'sans-serif', textAlign: 'center' }}>
               No account needed · Just press and hear what happened
             </p>
           </div>
@@ -612,11 +624,11 @@ export default function EavesdropClient({ episodes, arm, utmSource, utmCampaign 
         boxShadow: '0 -8px 40px rgba(0,0,0,0.6)',
       }}>
         <div style={{ maxWidth: 400, margin: '0 auto' }}>
-          <h2 style={{ fontSize: 20, fontWeight: 700, color: '#f5f0e8', margin: '0 0 6px' }}>
-            You&rsquo;re in. Where should we continue?
+          <h2 style={{ fontSize: 20, fontWeight: 700, color: '#f5f0e8', margin: '0 0 10px' }}>
+            Want to keep listening?
           </h2>
           <p style={{ fontSize: 16, color: '#f5f0e8', fontFamily: 'sans-serif', marginBottom: 24 }}>
-            Enter your name and email to keep listening — no credit card.
+            Enter your name and email to get a 7-day free trial — no credit card needed.
           </p>
 
           <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -624,11 +636,10 @@ export default function EavesdropClient({ episodes, arm, utmSource, utmCampaign 
               type="text"
               placeholder="First name"
               value={firstName}
-              onChange={e => setFirstName(e.target.value)}
-              required
+              onChange={e => { setFirstName(e.target.value); if (fieldErrors.name) setFieldErrors(p => ({ ...p, name: false })) }}
               style={{
                 background: 'rgba(255,255,255,0.06)',
-                border: '1px solid rgba(240,220,180,0.2)',
+                border: `1px solid ${fieldErrors.name ? '#ef4444' : 'rgba(240,220,180,0.2)'}`,
                 borderRadius: 8,
                 padding: '12px 16px',
                 color: '#f5f0e8',
@@ -637,15 +648,15 @@ export default function EavesdropClient({ episodes, arm, utmSource, utmCampaign 
                 outline: 'none',
               }}
             />
+            {fieldErrors.name && <p style={{ color: '#ef4444', fontSize: 13, fontFamily: 'sans-serif', margin: '-4px 0 0' }}>Please enter your first name.</p>}
             <input
               type="email"
               placeholder="Email address"
               value={email}
-              onChange={e => setEmail(e.target.value)}
-              required
+              onChange={e => { setEmail(e.target.value); if (fieldErrors.email) setFieldErrors(p => ({ ...p, email: false })) }}
               style={{
                 background: 'rgba(255,255,255,0.06)',
-                border: '1px solid rgba(240,220,180,0.2)',
+                border: `1px solid ${fieldErrors.email ? '#ef4444' : 'rgba(240,220,180,0.2)'}`,
                 borderRadius: 8,
                 padding: '12px 16px',
                 color: '#f5f0e8',
@@ -654,6 +665,7 @@ export default function EavesdropClient({ episodes, arm, utmSource, utmCampaign 
                 outline: 'none',
               }}
             />
+            {fieldErrors.email && <p style={{ color: '#ef4444', fontSize: 13, fontFamily: 'sans-serif', margin: '-4px 0 0' }}>Please enter your email.</p>}
 
             {submitError && (
               <p style={{ color: '#f97316', fontSize: 13, fontFamily: 'sans-serif', margin: 0 }}>
@@ -680,9 +692,7 @@ export default function EavesdropClient({ episodes, arm, utmSource, utmCampaign 
               {submitting ? 'Starting your story…' : 'Continue the story'}
             </button>
 
-            <p style={{ fontSize: 14, color: '#f5f0e8', textAlign: 'center', fontFamily: 'sans-serif', margin: 0 }}>
-              7-day free trial · No credit card
-            </p>
+            {/* #6: duplicate 'no credit card' line removed — it's already in the wall subheading */}
           </form>
         </div>
       </div>
