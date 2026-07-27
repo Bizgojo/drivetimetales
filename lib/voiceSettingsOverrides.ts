@@ -39,6 +39,13 @@ export const VOICE_SETTINGS_OVERRIDES: Record<string, ElVoiceSettings> = {
   // Lena Cho (Ophelia) — matte-flat, even, precise; discipline not coldness.
   // [Marc-approved full-sheet msg 3177, 2026-07-20 — Sunset Eps 2-4 casting]
   '1nFfPv6rPB37Tt2950M0': { stability: 0.70, similarity_boost: 0.80, style: 0.06, use_speaker_boost: true, speed: 0.98 },
+  // Sage Wilder (Cass Boone / Narrator) — Cass voice for Wearing My Face.
+  // Marc-approved 2026-07-26: Clip A at 0.9 speed.
+  // Note: DOPPELGANGER uses the same voice_id; "processed" effect via different
+  // settings is out of scope for this render (pipeline resolves settings by voice_id
+  // only — no per-character settings path exists). Both Cass and DOPPELGANGER will
+  // render with these settings.
+  cgSgspJ2msm6clMCkdW9: { stability: 0.49, similarity_boost: 0.51, style: 0.0, use_speaker_boost: true, speed: 0.9 },
 }
 
 /**

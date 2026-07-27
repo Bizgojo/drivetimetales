@@ -4746,9 +4746,16 @@ async function runSeriesPackageCompletion(job: ProductionJob, origin: string) {
       .maybeSingle()
 
     if (epStory?.script) {
+      const epVariant = extractHeader(String(epStory.script || ''), 'VARIANT')
+      const isBelleExemptEpisode = /LANDING-STORY-001|No Belle B/i.test(epVariant)
       const introText = extractBelleSection(epStory.script, 'intro')
       const outroText = extractBelleSection(epStory.script, 'outro')
-      const positionResult = await validateIntroOutroPositionRules(epStory, introText, outroText)
+      if (isBelleExemptEpisode) {
+        console.log(`[complete_story_package] Skipping Belle position validation for Belle-exempt episode: ${episode.storyId} (variant=${epVariant})`)
+      }
+      const positionResult = isBelleExemptEpisode
+        ? { passed: true as const, issues: [] as string[], requireLlmJudgment: false }
+        : await validateIntroOutroPositionRules(epStory, introText, outroText)
       if (!positionResult.passed) {
         const epLabel = `EP${episode.episodeNumber ?? episode.storyId}`
         const prefixedIssues = positionResult.issues.map(i => `${epLabel}: ${i}`)

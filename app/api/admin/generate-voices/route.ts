@@ -3327,6 +3327,12 @@ export async function POST(req: NextRequest) {
         }
       }
 
+      // GVL-EAVESDROP-001 fix: Return HTTP 200 even when there are still missing
+      // segments (retrySuccess=false). The run-next pipeline calls generate-voices
+      // incrementally — one segment per call — and relies on HTTP 200 to continue.
+      // HTTP 500 here causes hardFailure=true in run-next, which marks the job as
+      // failed after the very first segment. Only return 500 for actual errors
+      // (list/upload/purge failures), never for "more segments to generate".
       return NextResponse.json({
         success: retrySuccess,
         retryMissingOnly: true,
@@ -3336,7 +3342,7 @@ export async function POST(req: NextRequest) {
         missingSegments: inventory.missingSegments,
         inventory,
         transcriptQcSkippedSegments: qcSkippedSegments,
-      }, { status: retrySuccess ? 200 : 500 })
+      }, { status: failures.length > 0 ? 422 : 200 })
     }
 
     const results: { intro?: string; outro?: string; segments: any[] } = { segments: [] }

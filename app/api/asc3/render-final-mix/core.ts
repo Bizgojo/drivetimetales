@@ -486,7 +486,12 @@ export async function runRenderFinalMix(storyId: string): Promise<{
       await download(`${BASE_STORAGE}/asc3/${storyId}/${introFile!.name}`, introPath)
     }
     // LANDING-STORY-001: no Belle B intro — no intro file to download (cold open)
-    await download(`${BASE_STORAGE}/asc3/${storyId}/${outroFile.name}`, outroPath)
+    // Also, LANDING-STORY-001 episodes may have no outro file (Eps 1-3 of preview package)
+    if (outroFile) {
+      await download(`${BASE_STORAGE}/asc3/${storyId}/${outroFile.name}`, outroPath)
+    } else {
+      console.log('  No outro file found — skipping outro download (LANDING-STORY-001 preview episode)')
+    }
     await download(`${BASE_STORAGE}/asc3/${storyId}/${musicFile.name}`, musicPath)
 
     const selectedSegmentNames = segmentFiles.map(seg => seg.name)
@@ -669,8 +674,12 @@ export async function runRenderFinalMix(storyId: string): Promise<{
     } else {
       console.log('  LANDING-STORY-001: skipping Belle B intro normalization')
     }
-    await execFileAsync(FFMPEG_PATH, ['-i', outroPath, '-ar', '44100', '-ac', '2', '-b:a', '192k', '-y', normalizedOutroPath])
-    await logLoudnessDiagnostics('resampled outro', normalizedOutroPath)
+    if (outroFile) {
+      await execFileAsync(FFMPEG_PATH, ['-i', outroPath, '-ar', '44100', '-ac', '2', '-b:a', '192k', '-y', normalizedOutroPath])
+      await logLoudnessDiagnostics('resampled outro', normalizedOutroPath)
+    } else {
+      console.log('  LANDING-STORY-001: skipping Belle B outro normalization (no outro file)')
+    }
     
     // ── SFX clips (anchor sound effects) ───────────────────────────────────
     // generate-voices emits each [SFX:] cue as sfx_NNNN.mp3, where NNNN is the
@@ -752,7 +761,7 @@ export async function runRenderFinalMix(storyId: string): Promise<{
     console.log('  Full mix with background music')
     const segsOnlyPath = normalizedConcatPath
     const segsDur = await getAudioDuration(segsOnlyPath)
-    const outroDurForShape = V2_MUSIC_SWELL ? await getAudioDuration(normalizedOutroPath) : 0
+    const outroDurForShape = (V2_MUSIC_SWELL && outroFile) ? await getAudioDuration(normalizedOutroPath) : 0
     const musicOffset = await findStrongMusicOffset(musicPath)
     const shapedMusicPath = path.join(tmpDir, 'music_shaped.mp3')
     const preRollSeconds = 2.5
@@ -839,7 +848,7 @@ export async function runRenderFinalMix(storyId: string): Promise<{
     let outroWithMusicPath: string | null = null
     let outroWithMusicStorageUrl: string | null = null
 
-    if (V2_MUSIC_SWELL) {
+    if (V2_MUSIC_SWELL && outroFile) {
       // ── Outro Standard v2 (ATL-PIPE-007: 2026-06-10) ───────────────────────
       // story_body swell peaks at postStoryVolume (0.85). Outro music three-phase behavior:
       //   Phase 1 (swell→duck):  t=0 .. DUCK_RAMP (0.5s)    music ducks 0.85 → DUCK_VOL
@@ -897,13 +906,19 @@ export async function runRenderFinalMix(storyId: string): Promise<{
       // story_body = pre+bed+swell; outro_with_music bridges directly (music seamless at 0.85)
       // LANDING-STORY-001: cold open — story_body first, then outro_with_music
       finalParts = isLandingStory001
-        ? [storyBodyPath, outroWithMusicPath]
-        : [stingIntroPath, sil075Path, storyBodyPath, outroWithMusicPath]
-    } else {
-      // LANDING-STORY-001: cold open — story_body first, then dry outro
+        ? [storyBodyPath, outroWithMusicPath!]
+        : [stingIntroPath, sil075Path, storyBodyPath, outroWithMusicPath!]
+    } else if (!V2_MUSIC_SWELL && outroFile) {
+      // Legacy path: sting+intro → silence → story_body → silence → dry outro
       finalParts = isLandingStory001
         ? [storyBodyPath, sil025Path, normalizedOutroPath]
         : [stingIntroPath, sil075Path, storyBodyPath, sil025Path, normalizedOutroPath]
+    } else {
+      // No outro file (LANDING-STORY-001 preview episodes 1-3): story body only
+      console.log('  LANDING-STORY-001: no outro file — assembling story body only (cold open + no trailing Belle)')
+      finalParts = isLandingStory001
+        ? [storyBodyPath]
+        : [stingIntroPath, sil075Path, storyBodyPath]
     }
 
     await fs.writeFile(finalConcatFile, finalParts.map(p => `file '${p}'`).join('\n'))
@@ -952,7 +967,8 @@ export async function runRenderFinalMix(storyId: string): Promise<{
     // through the final credits line. Checks the last (outroDur - 1s) of the final mix
     // to confirm RMS is above -35 dB (inaudible threshold at normal listening levels).
     // This catches single-pass loudnorm gain-pumping artifacts and premature master fades.
-    try {
+    // LANDING-STORY-001 preview episodes without outro: skip this check.
+    if (outroFile) try {
       const outroDur = await getAudioDuration(normalizedOutroPath)
       const outroBodyStart = Math.max(0, durationSecs - outroDur + 1) // skip leading second of outro
       const outroBodyEnd = Math.max(0, durationSecs - 1.5)            // stop 1.5s before file end (trailing silence)
@@ -981,12 +997,14 @@ export async function runRenderFinalMix(storyId: string): Promise<{
       console.warn('  Post-render outro vocal check failed (non-blocking):', outroValErr)
     }
 
-    // 3. Outro file must exist in storage
+    // 3. Outro file must exist in storage (skip for LANDING-STORY-001 preview episodes without outro)
     const { data: storageFiles } = await supabase.storage.from('audio').list(`asc3/${storyId}`, { limit: 200 })
     const storageNames = (storageFiles || []).filter((f: any) => f !== null).map((f: any) => f.name)
     const hasOutro = storageNames.some((n: string) => n.startsWith('outro_'))
-    if (!hasOutro) {
+    if (!hasOutro && !isLandingStory001) {
       renderValidationIssues.push('No outro_*.mp3 found in storage — outro may not have been generated before render')
+    } else if (!hasOutro && isLandingStory001) {
+      console.log('  LANDING-STORY-001 preview episode: no outro file required — skipping outro storage check')
     }
 
     // 4. Duration must be within ±180s of story's DB duration_mins (catch major mismatches only)

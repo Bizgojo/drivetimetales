@@ -56,6 +56,11 @@ export type GoListenEventName =
   // PLAY-RATE-001 / preview A-B testing. PRE-DDL SAFE: API 202s this until
   // the go_listen_events event CHECK constraint is updated to include 'page_view'.
   | 'page_view'
+  // GVL-EAVESDROP-001 (2026-07-26)
+  | 'eavesdrop_pressed'
+  | 'ep_complete'
+  | 'wall_shown'
+  | 'wall_submit'
 
 export const GO_LISTEN_ENDPOINT = '/api/go-listen'
 
