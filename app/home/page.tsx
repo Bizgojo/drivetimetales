@@ -289,8 +289,8 @@ function HomeContent() {
   const [homeSearch, setHomeSearch] = useState('')
 
   // Now Playing — audio handed off from /listen via sessionStorage
-  type NowPlayingPayload = { storyId: string; storyAudioUrl: string; currentTime: number; episodeTitle: string; seriesTitle: string }
-  const [nowPlaying, setNowPlaying] = useState<NowPlayingPayload | null>(null)
+  // Type defined here (not inside render) so it is stable across renders
+  const [nowPlaying, setNowPlaying] = useState<{ storyId: string; storyAudioUrl: string; currentTime: number; episodeTitle: string; seriesTitle: string } | null>(null)
   const [nowPlayingPaused, setNowPlayingPaused] = useState(false)
   const nowPlayingAudioRef = useRef<HTMLAudioElement | null>(null)
 
@@ -329,7 +329,7 @@ function HomeContent() {
       const raw = sessionStorage.getItem('gvl_nowplaying')
       if (raw) {
         sessionStorage.removeItem('gvl_nowplaying') // consume once — no re-show on reload
-        const payload = JSON.parse(raw) as NowPlayingPayload
+        const payload = JSON.parse(raw)
         if (payload?.storyAudioUrl) setNowPlaying(payload)
       }
     } catch {}
@@ -360,11 +360,13 @@ function HomeContent() {
     return () => window.clearTimeout(timer)
   }, [loading])
 
+  // HOOKS RULE: searchInputRef must be before the early return so hook order
+  // is identical on every render (loading=true and loading=false both call it)
+  const searchInputRef = useRef<HTMLInputElement>(null)
+
   if (loading && !authWaitExpired) return <HomeSkeleton />
 
   const firstName = (user as any)?.user_metadata?.first_name || ''
-  // Ref to focus the search input when the welcome toggle is dismissed
-  const searchInputRef = useRef<HTMLInputElement>(null)
 
   return (
     <div className="min-h-screen bg-slate-950">
