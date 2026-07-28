@@ -257,8 +257,6 @@ When scripts are locked, update these documents to reflect Fourth Woman:
 | Ep7 resolution | Claire broadcasts evidence; FBI acts; women freed; Merritt network arrested; Diana emerges on Liberty Bridge | Hal→Marc | 2026-07-28 |
 | Claire voice approved | BELLA (`hpp4J3VqNfWAUOO0d1Us`) — bright-warm journalist | Marc | 2026-07-28 |
 | Diana voice approved | ERYN (`wa4sQVgbDDzUDEzJwch3`) — deep-tactical, confirmed distinct from Claire | Marc | 2026-07-28 |
-<<<<<<< Updated upstream
-=======
 | Renata voice approved | CHLOE CROFT (`g0IbRtKD9udkTNA4RqEN`) — civic weight, bridge women set confirmed distinct | Marc | 2026-07-28 |
 | Mina voice approved | OPHELIA (`1nFfPv6rPB37Tt2950M0`) — younger quiet precision, Mina→Diana exchange confirmed | Marc | 2026-07-28 |
 
@@ -272,7 +270,6 @@ Approved scripts: EP1-PROMO, EP1-LIBRARY, EP2, EP3, EP4, EP5, EP6, EP7-FINALE (i
 Revisions incorporated: Mina Cho rename (from Diane Cho), EP7 bridge rework (max 2 women per dialogue beat, narrator naming before each speaker), Belle EP7 finale outro added.
 
 Next gate: Voice casting — Claire and Diana first, then EP7 bridge women, then small roles. No renders until Marc approves each voice by ear on real script lines.
->>>>>>> Stashed changes
 
 ---
 
