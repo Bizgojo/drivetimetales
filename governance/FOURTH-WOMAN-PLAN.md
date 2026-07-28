@@ -195,3 +195,13 @@ When scripts are locked, update these documents to reflect Fourth Woman:
 | Landing page = Greenville Herald fake article | Yes | Marc | 2026-07-27 |
 | listen_arm = launch blocker | Yes | Marc | 2026-07-27 |
 | Ep7 = full resolution, no cliffhanger | Yes (per ENDING-RULES-001) | Marc | 2026-07-27 |
+| Arc approved (7-episode) | Yes | Marc | 2026-07-28 |
+| Antagonist / engine | Councilman Dale Merritt / Reedy River rezoning fraud | Hal→Marc | 2026-07-28 |
+| Fourth woman identity | Diana Voss — forensic accountant, alive in hiding (SEPARATE person, never Claire's double) | Hal→Marc | 2026-07-28 |
+| Ep7 resolution | Claire broadcasts evidence; FBI acts; women freed; Merritt network arrested; Diana emerges on Liberty Bridge | Hal→Marc | 2026-07-28 |
+
+---
+
+### Arc Approval Note (2026-07-28)
+
+The 7-episode arc (governance/drafts/FOURTH-WOMAN-ARC.md, commit 34718c82) is APPROVED. Hal may proceed to scripts. Two clarifications MUST hold: (1) Ep1 is TWO separate recordings — PROMO Ep1 (3 lengths, ~90s/3m/5m, cold open) and LIBRARY Ep1 (full 12–15 min, Belle intro) — same events, same cliffhanger, different episodes; the "promo + library" shorthand must not collapse into a single 90-second episode for the library. (2) Ep2 opens from the shared Ep1 cliffhanger and must make sense to both a promo listener (short cut) and a library listener (full Ep1).
