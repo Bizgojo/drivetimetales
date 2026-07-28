@@ -77,6 +77,20 @@ Both doors converge at Ep2. Ep2 must work as a cold entry for promo converts who
 
 ## 4. Landing Page — "The Greenville Herald"
 
+> **Atlas dispatch timing:** After promo episode is approved AND rendered. Not before. Building before assets exist = placeholder work + a second pass. Do it once with the real content.
+>
+> **WIP branch:** `wip/fourth-woman-herald-shell` (SHA 9b6991e0) — news-card shell with correct hook text and masthead is saved. Atlas starts from this branch, not from scratch.
+>
+> **Landing-page scope for Atlas (locked 2026-07-28):**
+> 1. Reuse the existing Greenville Herald shell from `wip/fourth-woman-herald-shell`
+> 2. Hook text is already correct: "Police say suitcase found beneath Liberty Bridge may be linked to three missing Greenville women." — do not change it
+> 3. **CRITICAL — arm semantics must change:** current arm=1/2/3 means "episodes before wall" (Cass model). Must be reworked to mean **promo length** (arm=1 → 90s, arm=2 → 3min, arm=3 → 5min). The promo episode will have three audio files; the correct one must play for the correct arm.
+> 4. **CRITICAL — listen_arm tracking:** the `listen_arm` column on the `users` table records which LENGTH variant the user came from. This must flow correctly end-to-end: ad URL (?arm=N) → landing page reads arm → correct audio plays → signup writes listen_arm=N to users table. Verify the chain before shipping.
+> 5. Wire in the real promo audio URLs and cover art once rendered (placeholders in the WIP branch)
+> 6. Localhost-only until Atlas ships a clean PR for Marc's merge
+
+
+
 **Concept:** Fake newspaper article as the landing/share page for the series.
 
 **Design requirements:**
