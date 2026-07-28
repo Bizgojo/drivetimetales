@@ -56,7 +56,7 @@ CLAIRE: The suitcase changed that. A salvage diver found it Thursday morning, ta
 
 [SFX: Evidence bag rustling — plastic and latex]
 
-CLAIRE: Inside: a city planning map — Reedy River corridor, full basin. A Falls Park trail log, handwritten, last entry cut off mid-sentence. A camera memory card — Diane Cho's name on the sleeve in black marker. And the phone. One contact. No name.
+CLAIRE: Inside: a city planning map — Reedy River corridor, full basin. A Falls Park trail log, handwritten, last entry cut off mid-sentence. A camera memory card — Mina Cho's name on the sleeve in black marker. And the phone. One contact. No name.
 
 [BEAT]
 
@@ -92,7 +92,7 @@ DIANA (through headphones): We didn't.
 
 [SFX: Low ambient music — tense, slow, minimal — fades under narration]
 
-CLAIRE: Their names were Renata Osei, Mara Fields, and Diane Cho. Three women. Three different lives. Renata was a city planner, forty-six years old, last seen leaving City Hall at eight-fourteen on a Tuesday. Her car found two days later at the municipal garage — keys in the ignition, phone in the cup holder, Renata gone. Mara was a Falls Park ranger. Thirty-eight. Her truck left at the Falls overlook overnight, radio still on, gear still inside. Diane Cho was a freelance photographer. Thirty-one. Her studio unlocked, a half-finished cup of coffee on the counter. Her phone last pinged a tower two blocks from this train terminal ninety-one days ago.
+CLAIRE: Their names were Renata Osei, Mara Fields, and Mina Cho. Three women. Three different lives. Renata was a city planner, forty-six years old, last seen leaving City Hall at eight-fourteen on a Tuesday. Her car found two days later at the municipal garage — keys in the ignition, phone in the cup holder, Renata gone. Mara was a Falls Park ranger. Thirty-eight. Her truck left at the Falls overlook overnight, radio still on, gear still inside. Mina Cho was a freelance photographer. Thirty-one. Her studio unlocked, a half-finished cup of coffee on the counter. Her phone last pinged a tower two blocks from this train terminal ninety-one days ago.
 
 [BEAT]
 
@@ -100,7 +100,7 @@ CLAIRE: I covered all three cases. The police treated them as separate. I treate
 
 [SFX: River — faint, distant — water moving under a bridge]
 
-CLAIRE: The suitcase had all three of them in it. Renata's map. Mara's field notes. Diane's memory card. And a burner phone with one contact and no name — which led me here, to an unlocked locker in a half-dark terminal, wearing a stranger's headphones in the pitch black.
+CLAIRE: The suitcase had all three of them in it. Renata's map. Mara's field notes. Mina's memory card. And a burner phone with one contact and no name — which led me here, to an unlocked locker in a half-dark terminal, wearing a stranger's headphones in the pitch black.
 
 [PAUSE:2]
 

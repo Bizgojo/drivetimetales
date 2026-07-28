@@ -30,7 +30,7 @@ EDITOR: Talk to me.
 
 [SFX: Office - door closing - the two of them alone]
 
-CLAIRE: I have documentation - financial records, internal communications, a list of fourteen compromised municipal and law enforcement officials - all connected to a scheme by Councilman Dale Merritt and a private security firm called Vantage Group. The scheme held three women - Renata Osei, Mara Fields, and Diane Cho - in a converted facility on the south Reedy bank in order to suppress evidence of pre-vote development fraud. The vote is in fourteen hours. I need to go on air.
+CLAIRE: I have documentation - financial records, internal communications, a list of fourteen compromised municipal and law enforcement officials - all connected to a scheme by Councilman Dale Merritt and a private security firm called Vantage Group. The scheme held three women - Renata Osei, Mara Fields, and Mina Cho - in a converted facility on the south Reedy bank in order to suppress evidence of pre-vote development fraud. The vote is in fourteen hours. I need to go on air.
 
 [BEAT]
 
@@ -62,7 +62,7 @@ CLAIRE: This is Claire Bennett, WGVL News Radio. What I'm about to tell you has 
 
 [BEAT]
 
-CLAIRE: Renata Osei, city planner. Mara Fields, Falls Park ranger. Diane Cho, photographer. Each of these women possessed evidence that could have stopped a billion-dollar Reedy River development vote before it reached the city council. Each was coerced into silence by a private security firm - Vantage Group of Charlotte, North Carolina - working under contract to Councilman Dale Merritt, who stands to benefit financially from the vote's passage through a series of linked LLC entities.
+CLAIRE: Renata Osei, city planner. Mara Fields, Falls Park ranger. Mina Cho, photographer. Each of these women possessed evidence that could have stopped a billion-dollar Reedy River development vote before it reached the city council. Each was coerced into silence by a private security firm - Vantage Group of Charlotte, North Carolina - working under contract to Councilman Dale Merritt, who stands to benefit financially from the vote's passage through a series of linked LLC entities.
 
 [SFX: Studio ambient - the slight hum of live broadcast, a producer visible through glass]
 
@@ -98,7 +98,7 @@ NARRATOR: At nine-oh-two a.m., federal agents and Greenville police units - not 
 
 [SFX: River ambient - the sound of the Reedy, a morning in May, unhurried water]
 
-NARRATOR: Renata Osei, Mara Fields, and Diane Cho walked out of that building on their own. Under their own power. That's the detail that matters. Nobody carried them. Nobody opened a locked door. They walked out when the people outside the door became, for the first time in weeks, safe.
+NARRATOR: Renata Osei, Mara Fields, and Mina Cho walked out of that building on their own. Under their own power. That's the detail that matters. Nobody carried them. Nobody opened a locked door. They walked out when the people outside the door became, for the first time in weeks, safe.
 
 [BEAT]
 
@@ -168,13 +168,15 @@ NARRATOR: At ten-seventeen a.m., a car pulled onto the bridge approach - stopped
 
 [SFX: Car door - footsteps on bridge walkway - three sets, approaching]
 
-NARRATOR: Renata Osei walked with her shoulders back in the way of someone re-remembering how to take up space. Mara Fields had her hands in her jacket pockets and her eyes moving across everything - the water, the sky, the treeline - like someone reacquainting themselves with the world's geography. Diane Cho was the last one out of the car. She stopped at the pedestrian gate, looked at the bridge, and then looked at Diana.
+NARRATOR: Renata Osei walked with her shoulders back in the way of someone re-remembering how to take up space. Mara Fields had her hands in her jacket pockets and her eyes moving across everything - the water, the sky, the treeline - like someone reacquainting themselves with the world's geography. Mina Cho was the last one out of the car. She stopped at the pedestrian gate, looked at the bridge, and then looked at Diana.
 
 [SFX: Footsteps stopping]
 
 [PAUSE:2]
 
-DIANE: Ninety days.
+NARRATOR: Mina Cho looked at Diana.
+
+MINA: Ninety days.
 
 DIANA: Ninety-one.
 
@@ -206,19 +208,19 @@ NARRATOR: Mara Fields said only: the GPS coordinates in my field notes will matc
 
 [BEAT]
 
-NARRATOR: Diane Cho was quiet. When she finally spoke, she wasn't looking at any of us. She was looking at the river.
+NARRATOR: Mina Cho was quiet. When she finally spoke, she wasn't looking at any of us. She was looking at the river.
 
-DIANE: I got the memory card back?
+MINA: I got the memory card back?
 
 [BEAT]
 
 CLAIRE: It was recovered with the suitcase. It's in federal custody now, but it'll be returned.
 
-DIANE: Good. There are photographs on there I've been thinking about for three months. I want them back.
+MINA: Good. There are photographs on there I've been thinking about for three months. I want them back.
 
 [BEAT]
 
-NARRATOR: There was a moment - brief, unrepeatable - when all four of us were standing on Liberty Bridge looking at the same river. The same water that runs under this bridge every day of every year, moving through the heart of this city, indifferent to everything above it. Renata on my left. Mara and Diane to my right. Diana Voss across from me, hands in her jacket pockets, watching the water.
+NARRATOR: There was a moment - brief, unrepeatable - when all four of us were standing on Liberty Bridge looking at the same river. The same water that runs under this bridge every day of every year, moving through the heart of this city, indifferent to everything above it. Renata on my left. Mara and Mina to my right. Diana Voss across from me, hands in her jacket pockets, watching the water.
 
 [PAUSE:3]
 

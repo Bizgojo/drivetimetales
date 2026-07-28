@@ -106,7 +106,7 @@ DIANA (through phone): Her sister's family lives in Taylors - about eight miles 
 
 [BEAT]
 
-DIANA (through phone): Renata's daughter had a graduate fellowship rescinded - a foundation that had never rescinded a fellowship in its history sent a form letter saying her application was no longer competitive. Diane Cho's brother had two of his freelance contracts - he's a sound engineer - cancelled in the same week. Small demonstrations. Clear enough to communicate: we know your family's vulnerabilities, and we will use them.
+DIANA (through phone): Renata's daughter had a graduate fellowship rescinded - a foundation that had never rescinded a fellowship in its history sent a form letter saying her application was no longer competitive. Mina Cho's brother had two of his freelance contracts - he's a sound engineer - cancelled in the same week. Small demonstrations. Clear enough to communicate: we know your family's vulnerabilities, and we will use them.
 
 CLAIRE: And what stops Merritt from using those vulnerabilities the moment the women are free?
 

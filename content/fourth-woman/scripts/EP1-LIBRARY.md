@@ -34,7 +34,7 @@ NARRATOR: Detective Ana Reyes had worked the Osei disappearance from week one. S
 
 [SFX: Evidence tent — zipper, tarp laid flat, plastic shuffling]
 
-NARRATOR: Three items, laid on a blue tarp in the white light of a work lamp. First: a laminated city planning map. Greenville municipality. Reedy River corridor, full basin. Stamped across the top in red: Proposed Development Overlay — Revision 7. A document I recognized — I'd requested a copy four months earlier as part of a routine council coverage story and been told it wasn't final yet. Second: a spiral-bound trail log from Falls Park. Handwritten, two different hands — one careful and precise, one looser, more hurried. Dated entries running across eight weeks. The last entry, three lines into a page, stopped mid-sentence. Third: a camera memory card in a static-protection sleeve. Sealed in its own plastic evidence bag. Diane Cho's name written on the sleeve in black marker — her own handwriting. I knew it because I'd read her signed statement three weeks earlier.
+NARRATOR: Three items, laid on a blue tarp in the white light of a work lamp. First: a laminated city planning map. Greenville municipality. Reedy River corridor, full basin. Stamped across the top in red: Proposed Development Overlay — Revision 7. A document I recognized — I'd requested a copy four months earlier as part of a routine council coverage story and been told it wasn't final yet. Second: a spiral-bound trail log from Falls Park. Handwritten, two different hands — one careful and precise, one looser, more hurried. Dated entries running across eight weeks. The last entry, three lines into a page, stopped mid-sentence. Third: a camera memory card in a static-protection sleeve. Sealed in its own plastic evidence bag. Mina Cho's name written on the sleeve in black marker — her own handwriting. I knew it because I'd read her signed statement three weeks earlier.
 
 [SFX: Paper handling — slight rustle]
 
@@ -58,7 +58,7 @@ NARRATOR: Mara Fields. Falls Park ranger. Thirty-eight. She'd been with the park
 
 [BEAT]
 
-NARRATOR: Diane Cho. Freelance photographer. Thirty-one. She'd been building a name for herself — nature photography, some commercial work, a magazine spread in the works. Her studio on North Main was unlocked when her assistant arrived the morning after she disappeared. A half-finished cup of coffee still on the worktable. Her camera on its tripod, set up mid-shoot. Her phone last pinged a cell tower two blocks from Greenville's old train terminal, ninety-one days before Thursday morning. Then: nothing.
+NARRATOR: Mina Cho. Freelance photographer. Thirty-one. She'd been building a name for herself — nature photography, some commercial work, a magazine spread in the works. Her studio on North Main was unlocked when her assistant arrived the morning after she disappeared. A half-finished cup of coffee still on the worktable. Her camera on its tripod, set up mid-shoot. Her phone last pinged a cell tower two blocks from Greenville's old train terminal, ninety-one days before Thursday morning. Then: nothing.
 
 [BEAT]
 
@@ -94,7 +94,7 @@ NARRATOR: The key fob on the burner phone's lanyard. I'd assumed it was for the 
 
 [SFX: LED beep — soft — metallic click — locker swinging open slowly, a slight creak]
 
-NARRATOR: Inside: one pair of over-ear headphones. Black. Consumer model — nothing special, a brand you'd find at any electronics store. The battery indicator on the left cup read full. The cord was wound neatly, secured with a cable tie. A strip of white tape on the left cup had three words printed on it in the same black marker as Diane Cho's memory card sleeve.
+NARRATOR: Inside: one pair of over-ear headphones. Black. Consumer model — nothing special, a brand you'd find at any electronics store. The battery indicator on the left cup read full. The cord was wound neatly, secured with a cable tie. A strip of white tape on the left cup had three words printed on it in the same black marker as Mina Cho's memory card sleeve.
 
 [BEAT]
 

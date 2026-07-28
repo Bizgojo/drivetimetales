@@ -72,13 +72,13 @@ DIANA (through headphones): She was approached first. A private security firm �
 
 DIANA (through headphones): When Vantage realized she wasn't stopping, they took her somewhere quiet. A converted property on the river. Legally permitted — as a private event facility — under a variance attached to Merritt's rezoning package. His own language. His own approval. She has been there for eleven weeks.
 
-CLAIRE: And the other two? Mara Fields and Diane Cho?
+CLAIRE: And the other two? Mara Fields and Mina Cho?
 
 DIANA (through headphones): Mara discovered unauthorized land-clearing activity inside Falls Park — survey stakes and soil prep on protected land adjacent to the park boundary. She documented it. Trail log entries, GPS markers. She was going to file a formal report with the state park authority. Vantage intercepted her before she could. Mara has been held at the same property for nine weeks.
 
 [BEAT]
 
-DIANA (through headphones): Diane Cho. She was photographing the river corridor for a magazine piece — natural landscape documentation. She caught the land-clearing activity on camera. She also photographed a meeting between two Vantage representatives and a senior municipal official at the construction site. She didn't know what she had at the time. She brought the memory card to Renata. And then she disappeared.
+DIANA (through headphones): Mina Cho. She was photographing the river corridor for a magazine piece — natural landscape documentation. She caught the land-clearing activity on camera. She also photographed a meeting between two Vantage representatives and a senior municipal official at the construction site. She didn't know what she had at the time. She brought the memory card to Renata. And then she disappeared.
 
 [BEAT]
 
