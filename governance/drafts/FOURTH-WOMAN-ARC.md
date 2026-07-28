@@ -3,7 +3,7 @@
 **Delivered by:** Hal  
 **Delivered to:** Marc Postlewaite (Telegram message 5755)  
 **Date:** 2026-07-27 ~19:33 EDT  
-**Status:** Pending Marc approval — no episode scripting until approved
+**Status:** APPROVED — Marc Postlewaite, 2026-07-28 08:28 EDT. Hal may proceed to scripts.
 
 ---
 
@@ -31,6 +31,22 @@
 - **Mara Fields** — Falls Park ranger (one of the three coerced women)
 - **Diane Cho** — photographer (one of the three coerced women)
 - **Dale Merritt** — City Councilman, antagonist, orchestrating the rezoning fraud
+
+## Marc Clarifications (approved 2026-07-28 08:28 EDT — must hold)
+
+**1. Ep1 is TWO separate recordings, not one shared file.**
+- PROMO Ep1: Three lengths (90s / 3 min / 5 min). Cold open — no Belle intro. The acquisition cut. All three lengths tell the same events and end on the identical cliffhanger.
+- LIBRARY Ep1: Full 12–15 min. Belle intro included. Proper pacing for a subscriber starting from browse.
+- Both recordings end on the SAME beat: Locker 214 / lights dark / Diana's voice.
+- The arc label "Ep1 (promo + library)" does NOT mean one 90-second episode serves the library. Library listeners get the full Ep1. Promo listeners get the short cut and land at Ep2.
+
+**2. Ep2 must work for both entry paths.**
+- Opens from the shared cliffhanger (Locker 214 / Diana's voice).
+- Must make complete sense to a listener who heard ONLY the promo (90s/3min/5min).
+- Cannot assume any detail that exists only in the full Library Ep1.
+- Does not re-explain shared content — assumes the cliffhanger moment is common ground.
+
+---
 
 ## Hard Guardrails (all must hold through Ep7)
 
