@@ -255,6 +255,8 @@ When scripts are locked, update these documents to reflect Fourth Woman:
 | Antagonist / engine | Councilman Dale Merritt / Reedy River rezoning fraud | Hal→Marc | 2026-07-28 |
 | Fourth woman identity | Diana Voss — forensic accountant, alive in hiding (SEPARATE person, never Claire's double) | Hal→Marc | 2026-07-28 |
 | Ep7 resolution | Claire broadcasts evidence; FBI acts; women freed; Merritt network arrested; Diana emerges on Liberty Bridge | Hal→Marc | 2026-07-28 |
+| Claire voice approved | BELLA (`hpp4J3VqNfWAUOO0d1Us`) — bright-warm journalist | Marc | 2026-07-28 |
+| Diana voice approved | ERYN (`wa4sQVgbDDzUDEzJwch3`) — deep-tactical, confirmed distinct from Claire | Marc | 2026-07-28 |
 
 ---
 
