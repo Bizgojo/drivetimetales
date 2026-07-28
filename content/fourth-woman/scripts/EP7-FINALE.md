@@ -270,4 +270,6 @@ NARRATOR: Then I turned around and walked out into the May morning air on West W
 
 [MUSIC: OUT]
 
+BELLE: That's the end of The Fourth Woman, [LISTENER_NAME]. Claire followed the chain all the way to the bridge — I hope you're glad you followed it with her. There's more waiting whenever you're ready. Thanks for listening.
+
 [END]

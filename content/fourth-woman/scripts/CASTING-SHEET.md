@@ -18,7 +18,7 @@
 |-----------|-------|-------|-----|-----|-----|-----|-----|-----|-----------|
 | CLAIRE / NARRATOR | 15 | 32 | 24 | 30 | 37 | 36 | 37 | 54 | **265** |
 | DIANA VOSS | 9\* | 3 | 27 | — | 20 | 14 | — | 6 | **79** |
-| BELLE | — | 1 | 1 | 1 | 1 | 1 | 1 | 1 | **7** |
+| BELLE | — | 1 | 1 | 1 | 1 | 1 | 1 | 2 | **8** |
 | ANCHOR | 1 | — | — | — | — | — | — | — | **1** |
 | DETECTIVE REYES | — | — | — | 2 | — | — | — | — | **2** |
 | EDITOR (MARK) | — | — | — | — | — | 2 | — | 5 | **7** |
@@ -143,7 +143,7 @@ Consistent across all 7 episodes. Belle does not shift — she delivers a hook a
 **6 · Line Count Per Episode / Total**  
 EP1-PROMO: **—** | EP1-LIBRARY: **1** | EP2: **1** | EP3: **1** | EP4: **1** | EP5: **1** | EP6: **1** | EP7: **1**  
 **TOTAL: 7**  
-_(One line per episode, always the episode's first spoken word. EP1-PROMO has no Belle — it opens directly with the news anchor broadcast.)_
+_(EP1-PROMO: no Belle — cold open with news anchor. EP1-LIBRARY through EP6: one hook line each. EP7: two lines — opening hook + finale outro [LISTENER_NAME] close after Claire's last narration and music out.)_
 
 **7 · Speaks Adjacent To**  
 No character in-scene. Belle's line is always pre-scene, before any other character speaks. However, her line immediately precedes Claire/Narrator — listeners experience them as sequential voices.
