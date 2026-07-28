@@ -39,8 +39,8 @@ EP7 counts reflect the bridge-scene rework: CLAIRE/NARRATOR +1 (naming line adde
 |-----------|------------|-------------|---------|-------|
 | Claire Bennett | BELLA | hpp4J3VqNfWAUOO0d1Us | 2026-07-28 Marc | Bright-warm journalist. Wide register gap from Diana confirmed. |
 | Diana Voss | ERYN | wa4sQVgbDDzUDEzJwch3 | 2026-07-28 Marc | Deep-tactical. Not confusable with Claire on back-to-back listen. |
-| Renata Osei | — | — | Pending | EP7 bridge set — next audition |
-| Mina Cho | — | — | Pending | EP7 bridge set — next audition |
+| Renata Osei | CHLOE CROFT | g0IbRtKD9udkTNA4RqEN | 2026-07-28 Marc | Civic weight, institutional. Distinct from Diana (tactical vs civic) and Mina (older/heavier). |
+| Mina Cho | OPHELIA | 1nFfPv6rPB37Tt2950M0 | 2026-07-28 Marc | Younger quiet precision. Distinct from Diana in emotional source. Bridge exchange confirmed. |
 | Male Anchor | — | — | Pending | |
 | Belle | — | — | N/A — fixed system voice | |
 | All others | — | — | Pending | |
@@ -340,6 +340,8 @@ Claire Bennett (EP6 — train terminal confrontation).
 
 ### 9. RENATA OSEI
 
+**APPROVED VOICE:** CHLOE CROFT (`g0IbRtKD9udkTNA4RqEN`) — Marc approved 2026-07-28. Civic authority restored, institutional weight, middle-aged American narrative.
+
 **1 · Name & Role**  
 Renata Osei. City planner, Greenville municipal planning office. 46 years old. The first of the three missing women. Her discovery of the rezoning irregularity started the chain. Held at the south Reedy facility for eleven weeks. Speaks four times in EP7: once at the facility door, three times on Liberty Bridge. Her first word is "My family."
 
@@ -376,6 +378,8 @@ Claire Bennett (EP7, bridge). Diana Voss (EP7, bridge — present but not in dia
 
 ### 10. MINA CHO
 _(Formerly named Diane Cho in draft scripts; renamed 2026-07-28 to eliminate audio collision with Diana Voss.)_
+
+**APPROVED VOICE:** OPHELIA (`1nFfPv6rPB37Tt2950M0`) — Marc approved 2026-07-28. Younger quiet precision, distinct from Diana's tactical precision.
 
 **1 · Name & Role**  
 Mina Cho. Freelance photographer. 31 years old. The third of the missing women — the youngest. She captured the land-clearing activity and a meeting between Vantage and a municipal official on her memory card, unknowingly. Held at the south Reedy facility. Speaks three times in EP7, all on Liberty Bridge.
