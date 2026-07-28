@@ -112,9 +112,11 @@ This is the full story the listener is buying into after the cliffhanger.
 ```
 Arc approval
     ↓
-Script approval (per episode)
+Script approval (per episode, Marc reads)
     ↓
-Voice approval (3-voice cast confirmed, samples approved)
+Voice casting sheet + ear auditions on real script lines
+    ↓
+Voice approval (Marc approves by ear)
     ↓
 Render (final audio produced)
     ↓
@@ -124,6 +126,27 @@ Ship
 ```
 
 **Rule:** Nothing ships on verbal "done." Each gate requires explicit sign-off before the next gate opens. Arc approval is a prerequisite for scripts. Voice approval requires scripts locked. Render requires voice approved.
+
+### Voice Approval Gate — Spec (Marc, 2026-07-28)
+
+After scripts are approved, before any render:
+
+1. Identify every speaking character and their line count across all episodes.
+2. For each character, source **2–3 candidate voices** from the ElevenLabs library.
+3. Render **short audition clips on ACTUAL lines from the real scripts** — not generic samples.
+4. Deliver clips to Marc for approval by ear.
+5. **No voice renders until Marc approves by ear.** Not on "sounds good," not on written description alone.
+
+**Required characters (at minimum):**
+- Male news broadcaster — must sound like a real news anchor; clearly NOT Claire
+- Claire Bennett — primary female narrator/protagonist
+- Diana Voss — distinct female voice; she is both the headphone voice AND a major recurring character
+- Dale Merritt — antagonist
+- Renata Osei, Mara Fields, Diane Cho — if they have spoken lines
+
+**Critical constraint:** Every voice must be clearly distinguishable from the others by ear. This is the primary reason Cass was retired — identity confusion between voices. No two major characters may share a register. The register separation table (one row per character, low/mid/high) must accompany the casting sheet.
+
+**Format:** Same as VOICE-APPROVAL-GATE spec (Marc, 2026-07-14): numbered list by line count descending, proposed voice name + ID + preview link or clip, one-sentence justification, register separation table.
 
 ---
 
