@@ -33,11 +33,27 @@ EP7 counts reflect the bridge-scene rework: CLAIRE/NARRATOR +1 (naming line adde
 
 ---
 
+## VOICE APPROVAL LOG
+
+| Character | Voice Name | EL Voice ID | Approved | Notes |
+|-----------|------------|-------------|---------|-------|
+| Claire Bennett | BELLA | hpp4J3VqNfWAUOO0d1Us | 2026-07-28 Marc | Bright-warm journalist. Wide register gap from Diana confirmed. |
+| Diana Voss | ERYN | wa4sQVgbDDzUDEzJwch3 | 2026-07-28 Marc | Deep-tactical. Not confusable with Claire on back-to-back listen. |
+| Renata Osei | — | — | Pending | EP7 bridge set — next audition |
+| Mina Cho | — | — | Pending | EP7 bridge set — next audition |
+| Male Anchor | — | — | Pending | |
+| Belle | — | — | N/A — fixed system voice | |
+| All others | — | — | Pending | |
+
+---
+
 ## CHARACTER PROFILES
 
 ---
 
 ### 1. CLAIRE BENNETT / NARRATOR
+
+**APPROVED VOICE:** BELLA (`hpp4J3VqNfWAUOO0d1Us`) — Marc approved 2026-07-28
 
 **1 · Name & Role**  
 Claire Bennett. Crime reporter, WGVL News Radio, Greenville SC. Protagonist, first-person narrator, investigative engine. Every NARRATOR block is her interior voice. She is the series.
@@ -81,6 +97,8 @@ Diana Voss (all active episodes) · Detective Reyes (EP3, phone) · Editor/Mark 
 ---
 
 ### 2. DIANA VOSS
+
+**APPROVED VOICE:** ERYN (`wa4sQVgbDDzUDEzJwch3`) — Marc approved 2026-07-28
 
 **1 · Name & Role**  
 Diana Voss. Forensic accountant. The "fourth woman" — she staged her own disappearance to stay ahead of Vantage Group and build the evidentiary chain that will expose them. Deuteragonist, mastermind, architect of the entire plot. Heard primarily through headphones (EP1) and phone relay (EP2, EP4, EP5); in person only in EP7.
