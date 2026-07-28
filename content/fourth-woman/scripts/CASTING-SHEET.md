@@ -41,9 +41,15 @@ EP7 counts reflect the bridge-scene rework: CLAIRE/NARRATOR +1 (naming line adde
 | Diana Voss | ERYN | wa4sQVgbDDzUDEzJwch3 | 2026-07-28 Marc | Deep-tactical. Not confusable with Claire on back-to-back listen. |
 | Renata Osei | CHLOE CROFT | g0IbRtKD9udkTNA4RqEN | 2026-07-28 Marc | Civic weight, institutional. Distinct from Diana (tactical vs civic) and Mina (older/heavier). |
 | Mina Cho | OPHELIA | 1nFfPv6rPB37Tt2950M0 | 2026-07-28 Marc | Younger quiet precision. Distinct from Diana in emotional source. Bridge exchange confirmed. |
-| Male Anchor | — | — | Pending | |
-| Belle | — | — | N/A — fixed system voice | |
-| All others | — | — | Pending | |
+| Anchor | BOSCO | R4F3im2aotAKleEumT8O | 2026-07-28 Marc | Real broadcast news cadence. EP1-PROMO cold open. |
+| Editor Mark | BRIAN-DEEP | nPczCjzI2devNBz1zQrb | 2026-07-28 Marc | Gruff warmth, newsroom authority. EP5+EP7. |
+| Marshal Marsh | AVERY | w25dAwxibNES1hcDBvXx | 2026-07-28 Marc | Institutional/settled. Confirmed distinct from ERYN (Diana). |
+| Vantage Man | ADAM-BROODING | IRHApOXLvnW57QJPQH2P | 2026-07-28 Marc | Smooth corporate threat. EP6. |
+| Detective Reyes | ELARA | WQP7cQUF5aAS6Axh5yaa | 2026-07-28 Marc | Clipped procedural. ELARA auditioned for Renata too — Renata cast as CHLOE CROFT, no conflict. |
+| Belle | BELLE (system) | GMhgX8fCR9GUtd3kmlKC | Fixed — system voice | Announcer only. |
+| Mara Fields | (non-speaking) | — | N/A | No voice cast — narrative presence only. |
+
+> **VOICE GATE COMPLETE — 2026-07-28.** All 10 speaking characters cast. Zero duplicate voice IDs confirmed. Mara Fields: non-speaking, no voice cast.
 
 ---
 
@@ -174,6 +180,8 @@ No character in-scene. Belle's line is always pre-scene, before any other charac
 
 ### 4. ANCHOR
 
+**APPROVED VOICE:** BOSCO (`R4F3im2aotAKleEumT8O`) — Marc approved 2026-07-28
+
 **1 · Name & Role**  
 News Anchor. Unnamed. Delivers the opening WGVL breaking news broadcast at the top of EP1-PROMO — the report of the waterproof case found at Liberty Bridge. One-scene, one-turn role.
 
@@ -204,6 +212,8 @@ Claire (EP1-PROMO) — the anchor's broadcast plays through a radio, and Claire'
 ---
 
 ### 5. DETECTIVE ANA REYES
+
+**APPROVED VOICE:** ELARA (`WQP7cQUF5aAS6Axh5yaa`) — Marc approved 2026-07-28
 
 **1 · Name & Role**  
 Detective Ana Reyes, Greenville PD. Led the Renata Osei disappearance investigation from week one. Competent and sharp, but unknowingly embedded in a compromised chain of command — her lieutenant feeds her significant case calls to Vantage. She is being used without her knowledge. Two spoken turns in EP3 (phone call).
@@ -238,6 +248,8 @@ Claire Bennett (EP3, phone — a brief exchange).
 ---
 
 ### 6. EDITOR — "MARK"
+
+**APPROVED VOICE:** BRIAN-DEEP (`nPczCjzI2devNBz1zQrb`) — Marc approved 2026-07-28
 
 **1 · Name & Role**  
 Mark. Claire's editor at WGVL News Radio. Thirty years of newsroom experience. Described as trustworthy, non-intrusive, instinctively supportive — he pulls twelve years of Merritt coverage and waits in the studio at midnight without asking why. Small but pivotal role: he is the institution that backs Claire when she goes live.
@@ -274,6 +286,8 @@ Claire Bennett (EP5 phone, EP7 studio in-person).
 ### 7. MARSHAL ELLEN MARSH
 _(Script alternates spelling: MARSHAL / MARSHALL — same character)_
 
+**APPROVED VOICE:** AVERY (`w25dAwxibNES1hcDBvXx`) — Marc approved 2026-07-28. Confirmed distinct from Diana (ERYN) on Check A.
+
 **1 · Name & Role**  
 Ellen Marsh. Federal prosecutor, Western District of South Carolina. Has an existing but stalled federal contracts inquiry into Merritt (separate matter). Described as listening "like a surgeon" — methodical, unhurried, no leading questions. Her receipt of Diana's documentation and Claire's disclosure is the legal fulcrum that makes the broadcast and arrests possible.
 
@@ -307,6 +321,8 @@ Claire Bennett (EP6 — conference meeting recalled in narration, then phone cal
 ---
 
 ### 8. MAN (VANTAGE GROUP OPERATIVE)
+
+**APPROVED VOICE:** ADAM-BROODING (`IRHApOXLvnW57QJPQH2P`) — Marc approved 2026-07-28
 
 **1 · Name & Role**  
 Unnamed. Vantage Group operative — one of two men sent to intercept Claire at the old train terminal in EP6. He speaks; his partner does not. Corporate threat expressed through studied calm — polished, surface-reasonable, professionally menacing.

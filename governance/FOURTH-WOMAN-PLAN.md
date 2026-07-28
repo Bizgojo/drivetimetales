@@ -259,6 +259,18 @@ When scripts are locked, update these documents to reflect Fourth Woman:
 | Diana voice approved | ERYN (`wa4sQVgbDDzUDEzJwch3`) — deep-tactical, confirmed distinct from Claire | Marc | 2026-07-28 |
 | Renata voice approved | CHLOE CROFT (`g0IbRtKD9udkTNA4RqEN`) — civic weight, bridge women set confirmed distinct | Marc | 2026-07-28 |
 | Mina voice approved | OPHELIA (`1nFfPv6rPB37Tt2950M0`) — younger quiet precision, Mina→Diana exchange confirmed | Marc | 2026-07-28 |
+| Anchor voice approved | BOSCO (`R4F3im2aotAKleEumT8O`) | Marc | 2026-07-28 |
+| Editor Mark voice approved | BRIAN-DEEP (`nPczCjzI2devNBz1zQrb`) | Marc | 2026-07-28 |
+| Marshal Marsh voice approved | AVERY (`w25dAwxibNES1hcDBvXx`) — confirmed distinct from Diana/ERYN | Marc | 2026-07-28 |
+| Vantage Man voice approved | ADAM-BROODING (`IRHApOXLvnW57QJPQH2P`) | Marc | 2026-07-28 |
+| Detective Reyes voice approved | ELARA (`WQP7cQUF5aAS6Axh5yaa`) | Marc | 2026-07-28 |
+| Voice gate complete | All 10 characters cast, zero duplicate IDs, Mara Fields non-speaking | Marc | 2026-07-28 |
+
+---
+
+### Voice Gate Complete (2026-07-28)
+
+Full cast approved by Marc. All 10 voice IDs confirmed unique (no duplicates). Render order: PROMO EP1 (3 lengths) → LIBRARY EP1 → EP2 → EP3–EP7. Nothing publishes without Marc's final listen and approval.
 
 ---
 
