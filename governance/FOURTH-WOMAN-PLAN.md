@@ -255,6 +255,33 @@ When scripts are locked, update these documents to reflect Fourth Woman:
 | Antagonist / engine | Councilman Dale Merritt / Reedy River rezoning fraud | Hal→Marc | 2026-07-28 |
 | Fourth woman identity | Diana Voss — forensic accountant, alive in hiding (SEPARATE person, never Claire's double) | Hal→Marc | 2026-07-28 |
 | Ep7 resolution | Claire broadcasts evidence; FBI acts; women freed; Merritt network arrested; Diana emerges on Liberty Bridge | Hal→Marc | 2026-07-28 |
+| Claire voice approved | BELLA (`hpp4J3VqNfWAUOO0d1Us`) — bright-warm journalist | Marc | 2026-07-28 |
+| Diana voice approved | ERYN (`wa4sQVgbDDzUDEzJwch3`) — deep-tactical, confirmed distinct from Claire | Marc | 2026-07-28 |
+| Renata voice approved | CHLOE CROFT (`g0IbRtKD9udkTNA4RqEN`) — civic weight, bridge women set confirmed distinct | Marc | 2026-07-28 |
+| Mina voice approved | OPHELIA (`1nFfPv6rPB37Tt2950M0`) — younger quiet precision, Mina→Diana exchange confirmed | Marc | 2026-07-28 |
+| Anchor voice approved | BOSCO (`R4F3im2aotAKleEumT8O`) | Marc | 2026-07-28 |
+| Editor Mark voice approved | BRIAN-DEEP (`nPczCjzI2devNBz1zQrb`) | Marc | 2026-07-28 |
+| Marshal Marsh voice approved | AVERY (`w25dAwxibNES1hcDBvXx`) — confirmed distinct from Diana/ERYN | Marc | 2026-07-28 |
+| Vantage Man voice approved | ADAM-BROODING (`IRHApOXLvnW57QJPQH2P`) | Marc | 2026-07-28 |
+| Detective Reyes voice approved | ELARA (`WQP7cQUF5aAS6Axh5yaa`) | Marc | 2026-07-28 |
+| Voice gate complete | All 10 characters cast, zero duplicate IDs, Mara Fields non-speaking | Marc | 2026-07-28 |
+
+---
+
+### Voice Gate Complete (2026-07-28)
+
+Full cast approved by Marc. All 10 voice IDs confirmed unique (no duplicates). Render order: PROMO EP1 (3 lengths) → LIBRARY EP1 → EP2 → EP3–EP7. Nothing publishes without Marc's final listen and approval.
+
+---
+
+### Script Approval Note (2026-07-28)
+
+All 8 scripts on branch `content/fourth-woman-scripts-v1` (SHA 2a28e69a) are **APPROVED** — Marc Postlewaite, 2026-07-28 ~11:00 EDT.
+
+Approved scripts: EP1-PROMO, EP1-LIBRARY, EP2, EP3, EP4, EP5, EP6, EP7-FINALE (including Belle finale outro).
+Revisions incorporated: Mina Cho rename (from Diane Cho), EP7 bridge rework (max 2 women per dialogue beat, narrator naming before each speaker), Belle EP7 finale outro added.
+
+Next gate: Voice casting — Claire and Diana first, then EP7 bridge women, then small roles. No renders until Marc approves each voice by ear on real script lines.
 
 ---
 
