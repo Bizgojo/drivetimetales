@@ -1,4 +1,4 @@
-# ACQUISITION-RETENTION-001 (v1.6)
+# ACQUISITION-RETENTION-001 (v1.7)
 
 **Status:** Canon. Source of truth for the acquisition serial and the retention library.
 **Owner:** Marc. No agent may override, reinterpret, or "improve" these rules.
@@ -98,6 +98,9 @@ The casting sheet MUST map adjacency and flag danger pairs — any two character
 F3. Approval
 Marc approves every voice by ear, on actual lines from the real scripts — 2–3 candidate clips per role. No render proceeds until each voice is approved. ElevenLabs minor-voice rule still applies (no cloning under 18; minimum speaking-character age 14).
 
+F4. One voice per character (no-duplicate rule)
+No ElevenLabs voice ID may be assigned to more than one speaking character within the same series. A voice may be auditioned for multiple roles, but final casting must assign each character a unique voice ID. Before logging any approval, verify the proposed ID is not already assigned to another character in the production.
+
 ---
 
 ## PART C — PERMANENT FREE TIER (unconverted users)
@@ -157,6 +160,7 @@ No story renders until it passes this checklist and the **filled-in result is sh
 - [ ] Length 12–15 min. *(state actual duration)*
 - [ ] **Audio matches approved script** — transcript vs script. *(paste first 15 transcript words)*
 - [ ] Casting sheet exists for all speaking characters (age/gender/mood/accent/line-count/adjacency/distinctness), danger pairs flagged, and every voice was approved by Marc by ear on real script lines. *(confirm sheet + approvals)*
+- [ ] All approved voice IDs are unique — no voice ID appears on more than one character in this series. *(confirm no duplicates across full cast)*
 
 ### Enforcement
 1. Checklist filled and shown to Marc **before** render; audio-match line re-run **after** render, before the story reaches the review queue.
