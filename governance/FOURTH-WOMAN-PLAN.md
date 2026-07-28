@@ -258,6 +258,17 @@ When scripts are locked, update these documents to reflect Fourth Woman:
 
 ---
 
+### Script Approval Note (2026-07-28)
+
+All 8 scripts on branch `content/fourth-woman-scripts-v1` (SHA 2a28e69a) are **APPROVED** — Marc Postlewaite, 2026-07-28 ~11:00 EDT.
+
+Approved scripts: EP1-PROMO, EP1-LIBRARY, EP2, EP3, EP4, EP5, EP6, EP7-FINALE (including Belle finale outro).
+Revisions incorporated: Mina Cho rename (from Diane Cho), EP7 bridge rework (max 2 women per dialogue beat, narrator naming before each speaker), Belle EP7 finale outro added.
+
+Next gate: Voice casting — Claire and Diana first, then EP7 bridge women, then small roles. No renders until Marc approves each voice by ear on real script lines.
+
+---
+
 ### Arc Approval Note (2026-07-28)
 
 The 7-episode arc (governance/drafts/FOURTH-WOMAN-ARC.md, commit 34718c82) is APPROVED. Hal may proceed to scripts. Two clarifications MUST hold: (1) Ep1 is TWO separate recordings — PROMO Ep1 (3 lengths, ~90s/3m/5m, cold open) and LIBRARY Ep1 (full 12–15 min, Belle intro) — same events, same cliffhanger, different episodes; the "promo + library" shorthand must not collapse into a single 90-second episode for the library. (2) Ep2 opens from the shared Ep1 cliffhanger and must make sense to both a promo listener (short cut) and a library listener (full Ep1).
