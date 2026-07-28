@@ -129,6 +129,34 @@ async function normalizeSpokenBuffer(input: Buffer, rawText: string, prefix: str
   }
 }
 
+// ATL-HEADPHONE-001: Detect speaker labels that indicate phone/headphone audio.
+// Matches: "DIANA (through headphones)", "VOICE (through phone)", "CALLER (filtered)"
+// Applied BEFORE loudness normalization so filtered lines sit at correct level in mix.
+function isHeadphoneTaggedSpeaker(speaker: string): boolean {
+  return /\(through headphones\)|\(through phone\)|\(filtered\)/i.test(speaker)
+}
+
+// Phone/headphone bandpass: 300-3400 Hz + -15% volume to simulate earpiece/headset.
+// Matches audition filter used during casting (ffmpeg bandpass, 2026-07-28).
+async function applyHeadphoneFilter(input: Buffer): Promise<Buffer> {
+  const tmpBase = path.join(os.tmpdir(), `et_hpf_${Date.now()}_${Math.random().toString(16).slice(2)}`)
+  const inputPath = `${tmpBase}_in.mp3`
+  const outputPath = `${tmpBase}_out.mp3`
+  try {
+    await fs.writeFile(inputPath, input)
+    await _execFileAsync(FFMPEG_PATH, [
+      '-i', inputPath,
+      '-af', 'highpass=f=300,lowpass=f=3400,volume=0.85',
+      '-ar', '44100', '-ac', '2', '-b:a', '192k',
+      '-y', outputPath
+    ])
+    return await fs.readFile(outputPath)
+  } finally {
+    await fs.unlink(inputPath).catch(() => {})
+    await fs.unlink(outputPath).catch(() => {})
+  }
+}
+
 interface LoudnessMetrics {
   input_i: number
   input_tp: number
@@ -1753,7 +1781,10 @@ async function generateVoiceLine(rawText: string, voiceId: string, storyId: stri
     if (rawBufMd5 === SILENCE_BUFFER_KNOWN_ETAG) {
       throw new Error(`SILENCE_BUFFER: ${fileName} rejected - matches known silence eTag ${SILENCE_BUFFER_KNOWN_ETAG}`)
     }
-    return normalizeSpokenBuffer(rawBuf, inputText, prefix)
+    const preBuf = isHeadphoneTaggedSpeaker(speaker)
+      ? await applyHeadphoneFilter(rawBuf)
+      : rawBuf
+    return normalizeSpokenBuffer(preBuf, inputText, prefix)
   }
   const generateAttempt = async (): Promise<Buffer> => generateAttemptForText(text)
 

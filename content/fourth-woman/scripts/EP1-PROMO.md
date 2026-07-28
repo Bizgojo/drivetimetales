@@ -8,7 +8,7 @@ VARIANT: PROMO-EP1
 
 [SFX: Breaking news broadcast tone — three sharp electronic beats]
 
-ANCHOR: Authorities in Greenville, South Carolina confirmed this morning that a waterproof case recovered from beneath Liberty Bridge contained personal items belonging to one of three women reported missing over the past three months. No suspects have been named. Police say the investigation is ongoing.
+ANCHOR: Authorities in Greenville, South Carolina confirmed this morning that a case found beneath Liberty Bridge contained personal items belonging to one of three women reported missing over the past three months. No suspects have been named. Police say the investigation is ongoing.
 
 [SFX: Radio click — broadcast tone cutting out]
 
