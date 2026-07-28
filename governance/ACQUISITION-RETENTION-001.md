@@ -1,4 +1,4 @@
-# ACQUISITION-RETENTION-001 (v1.5 — ready to commit)
+# ACQUISITION-RETENTION-001 (v1.6)
 
 **Status:** Canon. Source of truth for the acquisition serial and the retention library.
 **Owner:** Marc. No agent may override, reinterpret, or "improve" these rules.
@@ -86,6 +86,20 @@ Meta feed ads autoplay **muted** — the spoken hook is never heard in the ad. T
 
 ---
 
+## PART F — VOICE CASTING
+No voice is auditioned or rendered until a CASTING SHEET exists and Marc has approved the voice by ear on real script lines.
+
+F1. The casting sheet (required before any audition)
+For EVERY speaking character, Hal delivers: name & role; age (specific); gender; vocal quality/mood (ElevenLabs descriptors — warm, gravelly, clipped, weary, authoritative, anxious…); accent/regional; emotional register across the arc (and whether it shifts); line count per-episode AND total; adjacency (which characters they share scenes with); and a distinctness flag ("must be clearly distinct from ___") for every character they appear alongside.
+
+F2. Distinctness is the priority (anti-doppelganger rule)
+The casting sheet MUST map adjacency and flag danger pairs — any two characters in the same scene must sound clearly different (age/register/accent). Two confusable voices in one scene is the failure that retired the Cass story. The SET must be mutually distinguishable, not just each voice good alone.
+
+F3. Approval
+Marc approves every voice by ear, on actual lines from the real scripts — 2–3 candidate clips per role. No render proceeds until each voice is approved. ElevenLabs minor-voice rule still applies (no cloning under 18; minimum speaking-character age 14).
+
+---
+
 ## PART C — PERMANENT FREE TIER (unconverted users)
 1. A non-subscriber may play **Episode 1 of any SERIES exactly once** — a one-time free sample per series.
 2. **Replaying that Episode 1, or playing anything past it, requires a subscription.**
@@ -142,6 +156,7 @@ No story renders until it passes this checklist and the **filled-in result is sh
 - [ ] Correct ending: **cliffhanger** if non-final series episode; **full resolution** if standalone/finale. *(state which + why)*
 - [ ] Length 12–15 min. *(state actual duration)*
 - [ ] **Audio matches approved script** — transcript vs script. *(paste first 15 transcript words)*
+- [ ] Casting sheet exists for all speaking characters (age/gender/mood/accent/line-count/adjacency/distinctness), danger pairs flagged, and every voice was approved by Marc by ear on real script lines. *(confirm sheet + approvals)*
 
 ### Enforcement
 1. Checklist filled and shown to Marc **before** render; audio-match line re-run **after** render, before the story reaches the review queue.
