@@ -162,6 +162,25 @@ After scripts are approved, before any render:
 
 **Format:** Same as VOICE-APPROVAL-GATE spec (Marc, 2026-07-14): numbered list by line count descending, proposed voice name + ID + preview link or clip, one-sentence justification, register separation table.
 
+### Casting Sheet Spec — Required Fields (Marc, 2026-07-28)
+
+Hal must deliver a casting sheet **alongside the scripts** (not after). For **every speaking character**, the sheet must include all of the following — no partial rows:
+
+| Field | Description |
+|-------|-------------|
+| Name & role | Character name and their function in the story |
+| Age / gender | Specific age (not a range), gender |
+| Vocal quality / mood | ElevenLabs descriptors: warm, gravelly, clipped, weary, authoritative, etc. |
+| Accent / regional | Southern, neutral American, Upstate SC, etc. |
+| Emotional register | What register they operate in, and whether it shifts across the arc |
+| Line count | Per episode AND total across all episodes |
+| Speaks adjacent to | Which characters they share scenes with |
+| Must be distinct from | Explicit danger pairs — every character pair that appears in the same scene must be called out. Flag the adjacency risk. |
+
+**The adjacency and danger-pair mapping is critical.** If two characters share a scene, their voices must be unambiguously distinguishable by ear. Call out every at-risk pair explicitly — e.g., "Claire + Diana (Ep1 climax — MUST be clearly different)."
+
+The casting sheet is not a follow-up task. It requires line counts from the finished scripts, so it is written last — but it ships with the script deliverable, not separately.
+
 ---
 
 ## 7. Launch Blocker — LISTEN_ARM Column
