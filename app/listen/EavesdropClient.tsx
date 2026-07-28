@@ -383,41 +383,68 @@ export default function EavesdropClient({ episodes, arm, utmSource, utmCampaign 
           borderRadius: 16,
           overflow: 'hidden',
         }}>
-          {/* Hook card (dark, visible when morphProgress < 1 or phase=hook) */}
+          {/* Hook card — fake news article masthead + photo (GVL-EAVESDROP-001 news format) */}
           <div style={{
             position: 'absolute',
             inset: 0,
-            background: 'linear-gradient(135deg, #1a1428 0%, #0f0f1a 100%)',
+            background: '#111118',
             border: '1px solid rgba(240,220,180,0.12)',
             display: 'flex',
             flexDirection: 'column',
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: 32,
+            alignItems: 'stretch',
+            justifyContent: 'flex-start',
+            padding: '12px 16px',
             opacity: phase === 'hook' ? 1 : Math.max(0, 1 - morphProgress),
             transition: phase === 'hook' ? 'none' : 'opacity 0.05s',
+            overflow: 'hidden',
           }}>
-            {/* Keyhole / ear aesthetic SVG */}
-            <div style={{ marginBottom: 24, opacity: 0.5 }}>
-              <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
-                <circle cx="24" cy="20" r="10" stroke="#f0dcb4" strokeWidth="2"/>
-                <path d="M18 20c0-3.31 2.69-6 6-6s6 2.69 6 6c0 2.5-1.54 4.66-3.75 5.57L28 38H20l1.75-12.43C19.54 24.66 18 22.5 18 20z" fill="#f0dcb4" opacity="0.4"/>
-              </svg>
-            </div>
-            <p style={{
-              fontSize: 22,
-              fontWeight: 800,
-              lineHeight: 1.35,
+            {/* Newspaper masthead */}
+            <div style={{
+              borderBottom: '2px solid rgba(245,240,232,0.55)',
+              paddingBottom: 6,
+              marginBottom: 4,
               textAlign: 'center',
-              color: '#ffffff',
-              margin: 0,
-              textShadow: '0 1px 4px rgba(0,0,0,0.5)',
             }}>
-              {hookText}
-            </p>
-            <p style={{ marginTop: 14, fontSize: 15, color: '#f5f0e8', textAlign: 'center', fontFamily: 'sans-serif', fontWeight: 500 }}>
-              Greenville, SC · Mystery · Episode 1
-            </p>
+              <p style={{
+                fontFamily: "'Georgia', 'Times New Roman', serif",
+                fontSize: 20,
+                fontWeight: 700,
+                color: '#f5f0e8',
+                margin: 0,
+                letterSpacing: '0.06em',
+                lineHeight: 1.2,
+              }}>The Greenville Herald</p>
+            </div>
+            {/* DISCLAIMER — visible on load, required for Meta ad review (spec: under masthead) */}
+            <p style={{
+              fontSize: 11,
+              color: '#6b6070',
+              margin: '0 0 8px',
+              fontFamily: 'sans-serif',
+              textAlign: 'center',
+              letterSpacing: '0.01em',
+            }}>A dramatized story from Endless Tales.</p>
+            {/* Photo placeholder — real photo swap later, 16:9 aspect ratio */}
+            <div style={{
+              width: '100%',
+              flex: 1,
+              minHeight: 0,
+              background: '#2a2a3c',
+              borderRadius: 3,
+              display: 'flex',
+              alignItems: 'flex-end',
+              justifyContent: 'flex-start',
+              padding: '0 6px 5px',
+              overflow: 'hidden',
+            }}>
+              <p style={{
+                fontSize: 11,
+                color: '#7a7080',
+                margin: 0,
+                fontFamily: 'sans-serif',
+                fontStyle: 'italic',
+              }}>Photo: Falls Park / Liberty Bridge</p>
+            </div>
           </div>
 
           {/* Cover art (visible after morph, when audio playing) */}
@@ -472,32 +499,53 @@ export default function EavesdropClient({ episodes, arm, utmSource, utmCampaign 
           )}
         </div>
 
-        {/* Phase: HOOK — eavesdrop button */}
+        {/* Phase: HOOK — article headline, subhead, Listen In CTA */}
         {phase === 'hook' && (
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16, width: '100%' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'stretch', gap: 12, width: '100%' }}>
+            {/* Article headline — large bold sans-serif per spec */}
+            <p style={{
+              fontSize: 24,
+              fontWeight: 800,
+              lineHeight: 1.25,
+              textAlign: 'left',
+              color: '#ffffff',
+              margin: 0,
+              fontFamily: "'Arial', 'Helvetica Neue', sans-serif",
+            }}>
+              Police say suitcase found beneath Liberty Bridge may be linked to three missing Greenville women.
+            </p>
+            {/* Subhead — muted white */}
+            <p style={{
+              fontSize: 15,
+              color: '#c8b89a',
+              fontFamily: 'sans-serif',
+              margin: 0,
+              lineHeight: 1.5,
+              textAlign: 'left',
+            }}>
+              Authorities closed part of Falls Park early this morning after a city worker discovered the suitcase near the Reedy River.
+            </p>
+            {/* Listen In button — orange, pill shape, min 52px height */}
             <button
               onClick={handleEavesdropPress}
               style={{
-                background: 'rgba(249,115,22,0.85)',
-                border: '2px solid rgba(249,115,22,0.6)',
+                width: '100%',
+                background: '#f97316',
+                border: 'none',
                 borderRadius: 40,
-                padding: '16px 40px',
+                padding: '16px 24px',
+                minHeight: 52,
                 color: '#fff',
-                fontSize: 19,
-                fontFamily: "'Georgia', serif",
+                fontSize: 18,
+                fontFamily: 'sans-serif',
                 fontWeight: 700,
                 cursor: 'pointer',
-                letterSpacing: '0.04em',
-                position: 'relative',
-                overflow: 'hidden',
+                letterSpacing: '0.01em',
                 WebkitTapHighlightColor: 'transparent',
               }}
             >
-              Listen in…
+              Listen In →
             </button>
-            <p style={{ fontSize: 13, color: '#f5f0e8', fontFamily: 'sans-serif', textAlign: 'center' }}>
-              No account needed · Just press and hear what happened
-            </p>
           </div>
         )}
 
