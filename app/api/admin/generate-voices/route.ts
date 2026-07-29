@@ -2431,22 +2431,82 @@ async function generateBelleIntroWithName(introText: string, storyId: string, li
   return { primaryUrl, beforeUrl, afterUrl }
 }
 
+// ATL-SFX-001: configurable duration — explicit hint in cue text, or type-based default.
+// Hal can write [SFX: massive iron bell strike, 8s] to pin a duration.
+// If no hint, keywords determine a sensible default; 3.0s is the final fallback.
+function parseSFXDuration(description: string): number {
+  // Explicit trailing hint: "description, 6s" or "description 1.5 seconds"
+  const hintMatch = description.match(/,?\s*(\d+(?:\.\d+)?)\s*(?:seconds?|s)\s*$/i)
+  if (hintMatch) {
+    const parsed = parseFloat(hintMatch[1])
+    if (parsed >= 0.5 && parsed <= 22.0) return parsed // EL max is 22s
+  }
+  const desc = description.toLowerCase()
+  // Long-decay / ambient cues
+  if (/bell|gong|chime|toll|clang/.test(desc)) return 6.0
+  if (/roar|rumble|thunder|wind|rain|storm|river|ocean|wave|crowd|ambient/.test(desc)) return 7.0
+  if (/siren|alarm|horn|whistle/.test(desc)) return 4.0
+  // Short sharp impacts
+  if (/slam|bang|crash|smash|shatter|break/.test(desc)) return 1.5
+  if (/click|snap|tap|knock|latch|pop/.test(desc)) return 1.0
+  if (/gunshot|shot|blast|explosion/.test(desc)) return 2.0
+  // Mid-range
+  if (/groan|creak|squeak|scrape/.test(desc)) return 2.5
+  if (/footstep|step|walk|tread/.test(desc)) return 3.0
+  return 3.0
+}
+
+// ATL-SFX-001: strip the trailing duration hint before sending to EL.
+function cleanSFXDescription(description: string): string {
+  return description.replace(/,?\s*\d+(?:\.\d+)?\s*(?:seconds?|s)\s*$/i, '').trim()
+}
+
+// ATL-SFX-001: minimum output size — below this threshold, treat as silence / total failure.
+const SFX_MIN_BYTES = 1024
+// ATL-SFX-001: max generation attempts per SFX cue.
+const SFX_MAX_ATTEMPTS = 3
+
 async function generateSFX(description: string, storyId: string, lineIndex: number): Promise<string | null> {
   const fileName = `sfx_${lineIndex.toString().padStart(4, '0')}.mp3`
   const cachePath = `asc3/${storyId}/${fileName}`
   const cacheUrl = `${BASE_STORAGE}/${cachePath}`
+
+  // Cache hit — reuse without regenerating.
   try { const r = await fetch(cacheUrl, { method: 'HEAD' }); if (r.ok) return cacheUrl } catch {}
-  try {
-    const res = await fetch('https://api.elevenlabs.io/v1/sound-generation', {
-      method: 'POST',
-      headers: { 'xi-api-key': EL_API_KEY, 'Content-Type': 'application/json', 'Accept': 'audio/mpeg' },
-      body: JSON.stringify({ text: description, duration_seconds: 3.0, prompt_influence: 0.3 })
-    })
-    if (!res.ok) { console.warn(`SFX failed: ${res.status}`); return null }
-    const buf = Buffer.from(await res.arrayBuffer())
-    await supabase.storage.from('audio').upload(cachePath, buf, { contentType: 'audio/mpeg', upsert: true })
-    return cacheUrl
-  } catch (e) { console.warn('SFX error:', e); return null }
+
+  // ATL-SFX-001: derive duration + clean description once, reuse across attempts.
+  const durationSeconds = parseSFXDuration(description)
+  const elDescription = cleanSFXDescription(description)
+
+  for (let attempt = 1; attempt <= SFX_MAX_ATTEMPTS; attempt++) {
+    try {
+      const res = await fetch('https://api.elevenlabs.io/v1/sound-generation', {
+        method: 'POST',
+        headers: { 'xi-api-key': EL_API_KEY, 'Content-Type': 'application/json', 'Accept': 'audio/mpeg' },
+        body: JSON.stringify({ text: elDescription, duration_seconds: durationSeconds, prompt_influence: 0.3 })
+      })
+      if (!res.ok) {
+        console.warn(`[ATL-SFX-001] attempt ${attempt}/${SFX_MAX_ATTEMPTS} HTTP ${res.status} for: "${elDescription}"`)
+        if (attempt < SFX_MAX_ATTEMPTS) continue
+        return null
+      }
+      const buf = Buffer.from(await res.arrayBuffer())
+      // ATL-SFX-001: QC gate — reject suspiciously small output (silence / garbled).
+      if (buf.length < SFX_MIN_BYTES) {
+        console.warn(`[ATL-SFX-001] attempt ${attempt}/${SFX_MAX_ATTEMPTS} QC fail: ${buf.length}B < ${SFX_MIN_BYTES}B min for: "${elDescription}"`)
+        if (attempt < SFX_MAX_ATTEMPTS) continue
+        console.warn(`[ATL-SFX-001] QC failed all ${SFX_MAX_ATTEMPTS} attempts — returning null`)
+        return null
+      }
+      await supabase.storage.from('audio').upload(cachePath, buf, { contentType: 'audio/mpeg', upsert: true })
+      console.log(`[ATL-SFX-001] generated ${fileName}: ${buf.length}B, ${durationSeconds}s, attempt ${attempt}`)
+      return cacheUrl
+    } catch (e) {
+      console.warn(`[ATL-SFX-001] attempt ${attempt}/${SFX_MAX_ATTEMPTS} error:`, e)
+      if (attempt >= SFX_MAX_ATTEMPTS) return null
+    }
+  }
+  return null
 }
 
 export async function POST(req: NextRequest) {

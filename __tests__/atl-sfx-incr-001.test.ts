@@ -187,6 +187,85 @@ describe('ATL-SFX-INCR-001: expectedSegmentNames includes sfx lines', () => {
   })
 })
 
+// ---------------------------------------------------------------------------
+// ATL-SFX-001: parseSFXDuration and cleanSFXDescription unit tests
+// Inline the fixed implementations for pure unit testing (same pattern as above).
+// ---------------------------------------------------------------------------
+
+function parseSFXDuration(description: string): number {
+  const hintMatch = description.match(/,?\s*(\d+(?:\.\d+)?)\s*(?:seconds?|s)\s*$/i)
+  if (hintMatch) {
+    const parsed = parseFloat(hintMatch[1])
+    if (parsed >= 0.5 && parsed <= 22.0) return parsed
+  }
+  const desc = description.toLowerCase()
+  if (/bell|gong|chime|toll|clang/.test(desc)) return 6.0
+  if (/roar|rumble|thunder|wind|rain|storm|river|ocean|wave|crowd|ambient/.test(desc)) return 7.0
+  if (/siren|alarm|horn|whistle/.test(desc)) return 4.0
+  if (/slam|bang|crash|smash|shatter|break/.test(desc)) return 1.5
+  if (/click|snap|tap|knock|latch|pop/.test(desc)) return 1.0
+  if (/gunshot|shot|blast|explosion/.test(desc)) return 2.0
+  if (/groan|creak|squeak|scrape/.test(desc)) return 2.5
+  if (/footstep|step|walk|tread/.test(desc)) return 3.0
+  return 3.0
+}
+
+function cleanSFXDescription(description: string): string {
+  return description.replace(/,?\s*\d+(?:\.\d+)?\s*(?:seconds?|s)\s*$/i, '').trim()
+}
+
+describe('ATL-SFX-001: parseSFXDuration — explicit hint parsing', () => {
+  test('integer hint with comma separator', () => {
+    expect(parseSFXDuration('massive iron bell strike, 8s')).toBe(8.0)
+  })
+  test('decimal hint without comma', () => {
+    expect(parseSFXDuration('latch snap 1.5s')).toBe(1.5)
+  })
+  test('full word "seconds" hint', () => {
+    expect(parseSFXDuration('ambient crowd noise, 12 seconds')).toBe(12.0)
+  })
+  test('out-of-range hint (> 22s) rejected — falls to keyword default', () => {
+    // 30s exceeds EL max — hint rejected; "roar" keyword fires → 7.0
+    expect(parseSFXDuration('river roar, 30s')).toBe(7.0)
+  })
+  test('below-minimum hint (< 0.5s) rejected — falls to keyword default', () => {
+    // 0.1s < 0.5 min — hint rejected; "click" keyword fires → 1.0
+    expect(parseSFXDuration('click, 0.1s')).toBe(1.0)
+  })
+})
+
+describe('ATL-SFX-001: parseSFXDuration — type-based defaults', () => {
+  test('bell → 6.0s', () => { expect(parseSFXDuration('massive iron bell strike')).toBe(6.0) })
+  test('river → 7.0s', () => { expect(parseSFXDuration('river rushing past')).toBe(7.0) })
+  test('crowd → 7.0s', () => { expect(parseSFXDuration('crowd murmur')).toBe(7.0) })
+  test('siren → 4.0s', () => { expect(parseSFXDuration('police siren')).toBe(4.0) })
+  test('door slam → 1.5s', () => { expect(parseSFXDuration('heavy door slam')).toBe(1.5) })
+  test('latch click → 1.0s', () => { expect(parseSFXDuration('latch click')).toBe(1.0) })
+  test('gunshot → 2.0s', () => { expect(parseSFXDuration('single gunshot')).toBe(2.0) })
+  test('creak → 2.5s', () => { expect(parseSFXDuration('wooden floorboard creak')).toBe(2.5) })
+  test('footsteps → 3.0s', () => { expect(parseSFXDuration('footsteps on gravel')).toBe(3.0) })
+  test('unknown description → 3.0s default', () => { expect(parseSFXDuration('something indescribable')).toBe(3.0) })
+})
+
+describe('ATL-SFX-001: cleanSFXDescription — strip duration hint', () => {
+  test('strips trailing ", Xs" comma-hint', () => {
+    expect(cleanSFXDescription('massive iron bell strike, 8s')).toBe('massive iron bell strike')
+  })
+  test('strips trailing " Xs" space-hint', () => {
+    expect(cleanSFXDescription('latch snap 1.5s')).toBe('latch snap')
+  })
+  test('strips trailing " N seconds" hint', () => {
+    expect(cleanSFXDescription('ambient crowd noise, 12 seconds')).toBe('ambient crowd noise')
+  })
+  test('no hint — description unchanged', () => {
+    expect(cleanSFXDescription('door slam')).toBe('door slam')
+  })
+  test('does not strip non-trailing numeric patterns', () => {
+    // "3-way" or "9mm" mid-description should not be stripped
+    expect(cleanSFXDescription('9mm gunshot')).toBe('9mm gunshot')
+  })
+})
+
 describe('ATL-SFX-INCR-001: runner does not skip SFX indexes', () => {
   /**
    * Simulate the runner's iteration over a script with an SFX line at index 2.
