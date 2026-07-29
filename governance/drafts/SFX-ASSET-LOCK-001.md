@@ -3,8 +3,7 @@
 **Author:** Marc Postlewaite  
 **Status:** DRAFT — not canon. Marc declares canon.  
 **Branch:** feat/sfx-asset-lock-001  
-**v1.0 → v1.1:** Extended to cover approved voice segments (Part B, Rules 9–15).
-Title now covers all approved render assets (SFX and voice). ID unchanged to preserve references.
+**Completed:** 2026-07-29 18:01 EDT — Rules 1–15 now complete (Rules 3–8 received in full; Part B confirmed via 18:01 message)
 
 ---
 
@@ -34,17 +33,39 @@ No re-prompt, no re-roll, no "improvement."
 ## RULE 3 — MISSING LOCKED FILE IS A HARD STOP
 
 If a locked file is absent or its hash does not match the
-manifest, the
+manifest, the render ABORTS and reports which cue. It
+must never fall back to generating a replacement.
 
-> ⚠️ **Rule 3 body truncated** — Marc's original message ended here
-> mid-sentence. Pending Marc's completion. Implementation hard-stops
-> on missing file and hash mismatch (intent clear from title).
+## RULE 4 — LOCKED FILES ARE IMMUTABLE
 
-## RULES 4–8 — PENDING
+No clear, reset, or re-dispatch operation may delete or
+overwrite a locked asset. Clearing segments/sfx to force
+a re-render must skip locked assets.
 
-> ⚠️ Marc's original message was truncated before Rules 4–8 could be
-> received. These rule slots are reserved. Do not fill or infer.
-> Awaiting Marc's text.
+## RULE 5 — ONLY MARC UNLOCKS
+
+No agent may unlock a cue, and no agent may regenerate a
+locked cue on its own judgment that it can do better.
+
+## RULE 6 — MANIFEST
+
+Per cue: cue id, script cue text, file path, sha256,
+locked true/false, revision at which it locked. The
+manifest is the authority, not the folder contents.
+
+## RULE 7 — SERIES SIGNATURE SOUNDS
+
+A cue may be designated series-signature (example: the
+iron bell in The Bell Beneath Falls Park). Signature cues
+promote to a series-level asset and every episode uses
+the identical file, so the sound stays recognizable
+across the series.
+
+## RULE 8 — GATE
+
+render-final-mix validates the manifest before mixing.
+Hash mismatch or missing locked file = abort with the cue
+named. Passing renders write the updated manifest.
 
 ---
 
@@ -55,86 +76,89 @@ manifest, the
 An approved ElevenLabs performance is not reproducible.
 Same line, same voice, same settings yields a different
 read. Approved voice audio is an artifact to preserve,
-identical in kind to an approved SFX file. Clearing
-segments to force a re-render permanently destroys
-performances Marc has signed off on.
+identical in kind to an approved SFX file.
 
 ## RULE 10 — LOCK KEY IS CONTENT, NOT POSITION
 
-Each voice segment is keyed by sha256 of:
-character name + exact line text + voice ID + voice
-settings (stability, similarity, style, boost, speed) +
-model.
-Index or segment number must NEVER be part of the key.
+Each segment is keyed by sha256 of: character name +
+exact line text + voice ID + voice settings (stability,
+similarity, style, boost, speed) + model. Index or
+segment number must NEVER be part of the key.
 
 ## RULE 11 — LOCK BY DEFAULT ON REVISION
 
 From the second render onward, a segment whose content
-key already exists with approved audio is LOCKED and its
-file is reused. A segment with no matching key is
-generated. Consequence: a script edit regenerates only
-the lines whose text changed, and added or cut lines
-shift nothing.
+key already has approved audio is LOCKED and reused. A
+segment with no matching key is generated. Consequence:
+a script edit regenerates only the lines whose text
+changed; added or cut lines shift nothing.
 
 ## RULE 12 — PERFORMANCE RE-ROLL IS EXPLICIT ONLY
 
 If Marc wants a different read of an UNCHANGED line, he
 names that line. It unlocks for exactly one generation.
 The prior file is archived, never overwritten, and Marc
-chooses which read survives. No agent may re-roll a
-performance on its own judgment that it can do better.
+chooses which read survives.
 
 ## RULE 13 — ARCHIVE BEFORE ANY CLEAR
 
 No clear, reset, or re-dispatch may run until the current
 approved segments and final mix are copied to an archive
 path and the copy is verified. Abort the clear if the
-archive fails. This applies to every story, not just ones
-under revision.
+archive fails. Applies to every story.
 
 ## RULE 14 — MISSING LOCKED SEGMENT IS A HARD STOP
 
 Absent file or hash mismatch aborts the render and names
-the segment. Never fall back to generating a replacement.
+the segment. Never generate a replacement.
 
 ## RULE 15 — MANIFEST
 
-The manifest records per segment: content key, character,
-line text, voice ID, settings, model, file path, sha256,
-approved true/false, and revision at which it locked. The
-manifest is the authority, not the folder.
+Per segment: content key, character, line text, voice ID,
+settings, model, file path, sha256, approved true/false,
+revision at which it locked.
 
 ---
 
 # IMPLEMENTATION NOTES (Atlas)
 
-## Manifest format — `sfx-manifest.json` per story in storage
+## Manifest schema v1.1 — `sfx-manifest.json` per story
 
 ```json
 {
   "story_id": "<uuid>",
   "schema": "sfx-asset-lock.v1.1",
   "locked_sfx": {
-    "<cue-key>": {
-      "storage_path": "asc3/<story_id>/sfx-locked/<file>.mp3",
+    "<cue-id>": {
+      "locked": true,
+      "cue_text": "<script SFX line text>",
+      "storage_path": "asc3/<story_id>/sfx-locked/<cue-id>-<rev>.mp3",
       "public_url": "https://...",
       "sha256": "<hex>",
       "size_bytes": 0,
       "locked_at": "<ISO-8601>",
-      "approved_revision": "rev4",
-      "prompt": "<EL prompt text>",
-      "duration_secs": 0
+      "locked_revision": "rev4",
+      "duration_secs": 0,
+      "series_signature": false
+    }
+  },
+  "series_signature_sfx": {
+    "<cue-id>": {
+      "series_path": "asc3/series/<series-slug>/sfx/<cue-id>.mp3",
+      "sha256": "<hex>",
+      "promoted_at": "<ISO-8601>",
+      "promoted_from_story": "<uuid>"
     }
   },
   "voice_segments": {
     "<content-key>": {
       "character": "MARA",
-      "line_text": "The water rushed beneath Greenville's Liberty Bridge.",
-      "voice_id": "ovUpRQCoNYADjai0c9kP",
-      "voice_settings": { "stability": 0.5, "similarity_boost": 0.75, "style": 0.0, "use_speaker_boost": true },
+      "line_text": "...",
+      "voice_id": "...",
+      "voice_settings": { "stability": 0.5, "similarity_boost": 0.75, "style": 0.0, "use_speaker_boost": true, "speed": 1.0 },
       "model": "eleven_multilingual_v2",
       "storage_path": "asc3/<story_id>/voice-archive/<content-key>.mp3",
-      "file_sha256": "<audio-file-sha256>",
+      "file_sha256": "<hex>",
       "size_bytes": 0,
       "approved": true,
       "locked_revision": "rev4",
@@ -144,13 +168,18 @@ manifest is the authority, not the folder.
 }
 ```
 
-## Content key formula (Rule 10)
+## Implementation items (this document)
 
-```
-sha256(JSON.stringify({ char, text, voiceId, stability, similarity_boost, style, use_speaker_boost, speed, model }))
-```
-
-Speed defaults to 1.0 when not specified.
+| # | Rule | Item | Status |
+|---|------|------|--------|
+| 1 | Rule 4 | `clearSkippingLocked()` — delete only non-locked assets | `lib/sfxAssetLock.ts` |
+| 2 | Rule 7 | `designateSeriesSignature()` — promote to series-level path | `lib/sfxAssetLock.ts` |
+| 3 | Rule 8 | `validateManifestGate()` — pre-mix hash check, abort on mismatch | `lib/sfxAssetLock.ts` |
+| 4 | Rule 13 | `archiveBeforeClear()` — timestamped archive + verify | `lib/sfxAssetLock.ts` ✅ |
+| 5 | Rule 10/11 | `resolveVoiceSegment()` / `lockVoiceSegment()` | `lib/sfxAssetLock.ts` ✅ |
+| 6 | Pipeline | Wire `resolveVoiceSegment()` into `generate-voices` route | Pending pipeline PR |
+| 7 | Pipeline | Wire `validateManifestGate()` into `render-final-mix` route | Pending pipeline PR |
+| 8 | Backfill | `scripts/sfx-lock-backfill.js` — PV1+PV2 (54 segments) | ✅ run complete |
 
 ## Archive path convention (Rule 13)
 
@@ -159,28 +188,14 @@ asc3/<story_id>/archives/<YYYYMMDD-HHMMSS>/segment_XXXX.mp3
 asc3/<story_id>/archives/<YYYYMMDD-HHMMSS>/final_mix.mp3
 ```
 
-One timestamped subdirectory per clear operation. Archive is written and all files verified (HEAD 200) before any delete proceeds.
+## Series signature path (Rule 7)
 
-## Implementation additions
+```
+asc3/series/<series-slug>/sfx/<cue-id>.mp3
+```
 
-| # | Item | Status |
-|---|------|--------|
-| 7 | Key generation in generate-voices; reuse-on-key-match before EL call | `resolveVoiceSegment()` in sfxAssetLock.ts |
-| 8 | Rule 13 in clear/reset path — archive + verify, or abort | `archiveBeforeClear()` in sfxAssetLock.ts |
-| 9 | Backfill PV1 + current PV2: content-key + mark approved | `scripts/sfx-lock-backfill.js` |
-| 10 | Archive path convention + dry-run confirmation | See archive convention above; dry-run confirmed below |
-
-### Dry-run logic (Implementation addition 10)
-
-When a script line is edited, only the lines whose content keys change regenerate:
-- Lines with matching content key → file copied from `voice-archive/<key>.mp3` to active position
-- Lines with no matching key (text changed, new line) → EL API called → new file archived under new key
-- Cut lines → key simply not referenced in new render; archive retained
-- Added lines → new key, generates once, archives
-
-A single-line edit in a 44-line script → 1 EL API call, 43 archive restores.
+Example: `asc3/series/bell-beneath-falls-park/sfx/bell-strike.mp3`
 
 ---
 
-*This document will be promoted to `governance/SFX-ASSET-LOCK-001.md`
-and declared canon by Marc Postlewaite. Until then it is a draft.*
+*Promoted to `governance/SFX-ASSET-LOCK-001.md` and declared canon by Marc Postlewaite when ready.*
