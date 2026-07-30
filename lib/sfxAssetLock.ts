@@ -86,6 +86,12 @@ export interface SfxManifest {
   locked_sfx: Record<string, SfxLockEntry>
   series_signature_sfx: Record<string, SeriesSignatureEntry>
   voice_segments: Record<string, VoiceSegmentEntry>
+  // ATL-SFX-WIRE-001: freeze flag set by Marc approval
+  frozen?: boolean
+  frozen_at?: string
+  frozen_revision?: string
+  frozen_by?: string
+  approved_final?: boolean
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -154,6 +160,12 @@ export async function loadManifest(storyId: string): Promise<SfxManifest | null>
       locked_sfx: data.locked_sfx ?? {},
       series_signature_sfx: data.series_signature_sfx ?? {},
       voice_segments: data.voice_segments ?? {},
+      // ATL-SFX-WIRE-001: pass through freeze flags so frozen guard can read them
+      frozen: (data as any).frozen ?? false,
+      frozen_at: (data as any).frozen_at,
+      frozen_revision: (data as any).frozen_revision,
+      frozen_by: (data as any).frozen_by,
+      approved_final: (data as any).approved_final,
     }
   } catch { return null }
 }
