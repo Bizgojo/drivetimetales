@@ -51,10 +51,9 @@ CREATE UNIQUE INDEX IF NOT EXISTS uix_scr_series_char
 
 
 -- ── 2. Series record — lookup-or-insert ──────────────────────
--- total_episodes = 20: the planned 20-episode arc as users see
---   it ("Episode X of 20"). 15–25 range; 20 is the committed
---   number. Not 7 — that was only the number of episodes with
---   defined spine summaries, not the series total.
+-- total_episodes = 7: The Bell Beneath Falls Park is a 7-episode
+--   complete arc. is_complete = true. (Corrected 2026-07-30 per
+--   Marc — not the first 7 of 20; 7 is the full series.)
 -- author = 'Iris Fontaine': confirmed on canonical roster,
 --   is_active = true, author_id 9ce131ea, DB since 2026-04-03.
 
@@ -70,9 +69,9 @@ ins AS (
     'The Bell Beneath Falls Park',
     'Mara Vance investigates her mother''s disappearance through a brass token, a buried cassette recording, and a tunnel network beneath Greenville''s Reedy River.',
     'Iris Fontaine',
-    20,
+    7,
     'Mystery',
-    false
+    true
   WHERE NOT EXISTS (SELECT 1 FROM existing)
   RETURNING id
 ),
