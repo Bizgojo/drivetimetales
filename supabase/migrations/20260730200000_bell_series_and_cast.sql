@@ -52,8 +52,10 @@ CREATE UNIQUE INDEX IF NOT EXISTS uix_scr_series_char
 
 -- ── 2. Series record — lookup-or-insert ──────────────────────
 -- total_episodes = 7: The Bell Beneath Falls Park is a 7-episode
---   complete arc. is_complete = true. (Corrected 2026-07-30 per
---   Marc — not the first 7 of 20; 7 is the full series.)
+--   complete arc. (Corrected 2026-07-30 per Marc — not the first
+--   7 of 20; 7 is the full series.)
+-- is_complete = false: zero episodes released. Flips to true when
+--   all 7 are published, not before.
 -- author = 'Iris Fontaine': confirmed on canonical roster,
 --   is_active = true, author_id 9ce131ea, DB since 2026-04-03.
 
@@ -71,7 +73,7 @@ ins AS (
     'Iris Fontaine',
     7,
     'Mystery',
-    true
+    false
   WHERE NOT EXISTS (SELECT 1 FROM existing)
   RETURNING id
 ),
