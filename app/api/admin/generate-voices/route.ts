@@ -18,6 +18,12 @@ import { getVoiceProvider } from '@/lib/voice-providers'
 // ATL-VOICE-SETTINGS-001: per-voice ElevenLabs settings overrides (exact
 // voice_id match → override; otherwise global EL_SETTINGS, unchanged).
 import { resolveVoiceSettings } from '@/lib/voiceSettingsOverrides'
+// ATL-SFX-WIRE-001: SFX-ASSET-LOCK-001 wiring — content-key reuse + frozen guard
+import {
+  loadManifest, resolveVoiceSegment, lockVoiceSegment, restoreLockedSfxCue,
+  validateManifestGate, makeVoiceContentKey, emptyManifest,
+  type SfxManifest, type SfxLockEntry,
+} from '@/lib/sfxAssetLock'
 import { EL_VOICE_CODE_LABEL } from '@/lib/voice-providers/elevenlabs/constants'
 // ATL-FOLLOWUP-002: transcript QC normalization + comparison extracted to a
 // shared, testable module. Both sides (script text and Whisper STT output)
@@ -2513,6 +2519,17 @@ const SFX_MIN_BYTES = 1024
 // ATL-SFX-001: max generation attempts per SFX cue.
 const SFX_MAX_ATTEMPTS = 3
 
+// ATL-SFX-WIRE-001: find locked SFX cue by normalized cue text match
+function findLockedSfxEntry(manifest: SfxManifest, sfxLineText: string): [string, SfxLockEntry] | null {
+  const normalized = sfxLineText.trim().toUpperCase().replace(/\s+/g, ' ')
+  for (const [cueId, entry] of Object.entries(manifest.locked_sfx)) {
+    if (entry.locked && entry.cue_text.trim().toUpperCase().replace(/\s+/g, ' ') === normalized) {
+      return [cueId, entry]
+    }
+  }
+  return null
+}
+
 async function generateSFX(description: string, storyId: string, lineIndex: number): Promise<string | null> {
   const fileName = `sfx_${lineIndex.toString().padStart(4, '0')}.mp3`
   const cachePath = `asc3/${storyId}/${fileName}`
@@ -3223,6 +3240,13 @@ export async function POST(req: NextRequest) {
     }
 
     if (retryMissingOnly === true) {
+      // ATL-SFX-WIRE-001: frozen guard for incremental path
+      if (purgeExisting === true) {
+        const incrManifest = await loadManifest(storyId)
+        if ((incrManifest as any)?.frozen) {
+          return NextResponse.json({ success: false, error: `SFX-ASSET-LOCK-001: story ${storyId} is frozen. purgeExisting blocked. Only Marc can unlock.` }, { status: 403 })
+        }
+      }
       const requestedSegmentNumber = Number(segmentNumber)
       if (!Number.isInteger(requestedSegmentNumber) || requestedSegmentNumber < 0) {
         return NextResponse.json({ success: false, error: 'retryMissingOnly requires a valid segmentNumber' }, { status: 400 })
@@ -3439,6 +3463,13 @@ export async function POST(req: NextRequest) {
     const results: { intro?: string; outro?: string; segments: any[] } = { segments: [] }
     let succeeded = 0; let failed = 0
 
+    // ATL-SFX-WIRE-001: load manifest for content-key reuse and frozen guard
+    let activeManifest: SfxManifest = (await loadManifest(storyId)) ?? emptyManifest(storyId)
+    if ((activeManifest as any).frozen) {
+      console.error(`[ATL-SFX-WIRE-001] Story ${storyId} is frozen — re-generation blocked. Only Marc can unlock.`)
+      return NextResponse.json({ success: false, error: `SFX-ASSET-LOCK-001: story ${storyId} is frozen. Only Marc can unlock.` }, { status: 403 })
+    }
+
     const { data: existingAudioFiles, error: listAudioError } = await supabase.storage.from('audio').list(storyAudioFolder, { limit: 500 })
     if (listAudioError) {
       console.error('  ❌ Failed to list existing story segments:', listAudioError)
@@ -3501,7 +3532,29 @@ export async function POST(req: NextRequest) {
         results.segments.push({ index: line.index, speaker: line.speaker, type: line.type, duration: String(duration), url: silUrl })
         continue
       }
-      if (line.type === 'sfx') { const sfxUrl = await generateSFX(line.text, storyId, line.index); results.segments.push({ index: line.index, speaker: 'SFX', type: 'sfx', url: sfxUrl || undefined }); continue }
+      if (line.type === 'sfx') {
+        // ATL-SFX-WIRE-001 Rule 2: check manifest locked_sfx before generating
+        const sfxLockedEntry = findLockedSfxEntry(activeManifest, line.text)
+        const sfxFileName = `sfx_${line.index.toString().padStart(4, '0')}.mp3`
+        const sfxActivePath = `${storyAudioFolder}/${sfxFileName}`
+        if (sfxLockedEntry) {
+          const [cueId, entry] = sfxLockedEntry
+          try {
+            const lockedBuf = await restoreLockedSfxCue(cueId, entry, sfxActivePath)
+            await supabase.storage.from('audio').upload(sfxActivePath, lockedBuf, { contentType: 'audio/mpeg', upsert: true })
+            console.log(`[ATL-SFX-WIRE-001] SFX reused byte-for-byte: ${cueId} → ${sfxFileName}`)
+            results.segments.push({ index: line.index, speaker: 'SFX', type: 'sfx', url: `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/audio/${sfxActivePath}`, reusedFromLocked: true })
+            continue
+          } catch (e) {
+            // Rule 3: hard stop — locked cue missing or hash mismatch
+            console.error(`[ATL-SFX-WIRE-001] Rule 3 HARD STOP for ${cueId}:`, e)
+            return NextResponse.json({ success: false, error: String(e) }, { status: 500 })
+          }
+        }
+        const sfxUrl = await generateSFX(line.text, storyId, line.index)
+        results.segments.push({ index: line.index, speaker: 'SFX', type: 'sfx', url: sfxUrl || undefined })
+        continue
+      }
       let voiceId = resolvedNarratorVoiceId
       if (line.type === 'character') {
         const characterVoiceId = resolveVoiceForSpeaker(voiceMap, line.speaker)
@@ -3525,7 +3578,40 @@ export async function POST(req: NextRequest) {
             if (kind === 'script_issue') break // nothing code can do - stop immediately
           }
           try {
+            // ATL-SFX-WIRE-001 Rule 11: content-key check before EL call (attempt 1 only)
+            if (attempt === 1) {
+              const voiceSettingsForKey = resolveVoiceSettings(voiceId, EL_SETTINGS)
+              const activeSegPath = `${storyAudioFolder}/segment_${line.index.toString().padStart(4, '0')}.mp3`
+              const { buf: reusedBuf, contentKey, isReused } = await resolveVoiceSegment(
+                storyId, line.speaker, line.text, voiceId, voiceSettingsForKey, 'eleven_multilingual_v2',
+                activeSegPath, activeManifest,
+              )
+              if (isReused && reusedBuf) {
+                const reusedUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/audio/${activeSegPath}`
+                console.log(`[ATL-SFX-WIRE-001] Voice reused from archive: seg=${line.index} key=${contentKey.slice(0,12)}…`)
+                results.segments.push({ index: line.index, speaker: line.speaker, type: line.type, url: reusedUrl, reusedFromArchive: true })
+                succeeded++
+                segSucceeded = true
+                break
+              }
+            }
             const url = await generateVoiceLine(line.text, voiceId, storyId, line.index, 'segment', forceRegen, line.speaker, candidateCount, qcSkippedSegments)
+            // ATL-SFX-WIRE-001 Rule 11: lock newly-generated segment in manifest
+            if (attempt === 1) {
+              try {
+                const voiceSettingsForKey = resolveVoiceSettings(voiceId, EL_SETTINGS)
+                const contentKey = makeVoiceContentKey(line.speaker, line.text, voiceId, voiceSettingsForKey, 'eleven_multilingual_v2')
+                const activeSegPath = `${storyAudioFolder}/segment_${line.index.toString().padStart(4, '0')}.mp3`
+                const segRes = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/audio/${activeSegPath}?t=${Date.now()}`)
+                if (segRes.ok) {
+                  const segBuf = Buffer.from(await segRes.arrayBuffer())
+                  activeManifest = await lockVoiceSegment(storyId, contentKey, line.speaker, line.text, voiceId, voiceSettingsForKey, 'eleven_multilingual_v2', segBuf, 'rev-auto', activeManifest)
+                  console.log(`[ATL-SFX-WIRE-001] Voice locked in archive: seg=${line.index} key=${contentKey.slice(0,12)}…`)
+                }
+              } catch (lockErr) {
+                console.warn(`[ATL-SFX-WIRE-001] lockVoiceSegment non-fatal: seg=${line.index}`, lockErr)
+              }
+            }
             results.segments.push({ index: line.index, speaker: line.speaker, type: line.type, url })
             succeeded++
             segSucceeded = true

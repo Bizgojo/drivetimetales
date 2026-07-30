@@ -1,4 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
+// ATL-SFX-WIRE-001: manifest gate (Rule 8)
+import { loadManifest, validateManifestGate } from '@/lib/sfxAssetLock'
 import { promises as fs, statfsSync } from 'node:fs'
 import path from 'path'
 import os from 'os'
@@ -369,6 +371,13 @@ export async function runRenderFinalMix(storyId: string): Promise<{
     }
 
     tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'et-mix-'))
+
+    // ATL-SFX-WIRE-001 Rule 8: validate locked SFX manifest before mixing
+    const renderManifest = await loadManifest(storyId)
+    if (renderManifest && Object.keys(renderManifest.locked_sfx ?? {}).length > 0) {
+      console.log(`  [ATL-SFX-WIRE-001] Running manifest gate for ${Object.keys(renderManifest.locked_sfx).length} locked cue(s)...`)
+      await validateManifestGate(renderManifest)  // throws on mismatch — Rule 3/8 hard stop
+    }
 
     const { data: filesRaw } = await supabase.storage.from('audio').list(`asc3/${storyId}`, { limit: 500 })
     // Supabase .list() can include null entries in the array — filter them before any .find()/.map() call
