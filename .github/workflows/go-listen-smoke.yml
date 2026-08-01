@@ -18,6 +18,8 @@ on:
     paths:
       - 'supabase/migrations/**'
       - 'lib/goListenEventList.ts'
+      - 'scripts/smoke-go-listen-migration.js'
+  workflow_dispatch: # Allow manual trigger (e.g. after smoke-script-only changes)
 
 jobs:
   smoke-go-listen:
