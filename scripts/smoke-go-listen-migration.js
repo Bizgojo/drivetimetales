@@ -32,35 +32,32 @@ console.log = _log
 const { createClient } = require('@supabase/supabase-js')
 
 // ── Canonical event list ─────────────────────────────────────────────────────
-// Must match lib/goListenEventList.ts exactly. If you add an event there, add it here.
-// Update this list AFTER applying the migration that adds the event to the DB.
-// History:
-//   2026-07-18 — initial 6 events
-//   2026-07-19 — + sec_30
-//   2026-07-22 — + cta_rendered
-//   2026-07-23 — + page_view + 6 preview_* events
-//   2026-07-26 — GVL-EAVESDROP-001: + eavesdrop_pressed, ep_complete, wall_shown, wall_submit
-const CANONICAL_EVENTS = [
-  'play_start',
-  'sec_30',
-  'pct_25',
-  'pct_50',
-  'pct_75',
-  'complete',
-  'cta_click',
-  'preview_started',
-  'preview_completed',
-  'preview_unmuted',
-  'preview_to_play',
-  'preview_skipped',
-  'cta_rendered',
-  'page_view',
-  // GVL-EAVESDROP-001 (2026-07-26):
-  'eavesdrop_pressed',
-  'ep_complete',
-  'wall_shown',
-  'wall_submit',
-  // LISTEN-ARM-V2-001: add arm_c_interim_click + arm_c_email_submit AFTER migration applied to prod.
+// Loaded dynamically from lib/goListenEventList.ts — the single source of truth.
+// Falls back to an inline list only when the file cannot be read.
+// DO NOT maintain a separate hardcoded list here; update goListenEventList.ts.
+function loadCanonicalEventsFromTs() {
+  try {
+    const fs = require('fs')
+    const tsPath = require('path').join(__dirname, '../lib/goListenEventList.ts')
+    const src = fs.readFileSync(tsPath, 'utf8')
+    // Extract the string literals from the GO_LISTEN_EVENTS array body.
+    const match = src.match(/GO_LISTEN_EVENTS\s*=\s*\[([\s\S]*?)\]\s*as\s+const/)
+    if (!match) return null
+    const events = match[1].match(/'([a-z_0-9]+)'/g)?.map(s => s.replace(/'/g, ''))
+    return (events && events.length > 0) ? events : null
+  } catch {
+    return null
+  }
+}
+
+const CANONICAL_EVENTS = loadCanonicalEventsFromTs() || [
+  // Fallback — keep in sync with lib/goListenEventList.ts.
+  // History: 2026-07-26 GVL-EAVESDROP-001 added eavesdrop_pressed/ep_complete/wall_shown/wall_submit.
+  'play_start', 'sec_30', 'pct_25', 'pct_50', 'pct_75',
+  'complete', 'cta_click',
+  'preview_started', 'preview_completed', 'preview_unmuted',
+  'preview_to_play', 'preview_skipped', 'cta_rendered', 'page_view',
+  'eavesdrop_pressed', 'ep_complete', 'wall_shown', 'wall_submit',
 ]
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL
