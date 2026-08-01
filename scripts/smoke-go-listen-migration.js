@@ -6,12 +6,15 @@
  * Catches CHECK/RLS drift immediately — the failure class that let page_view
  * go dark for a full day after the Jul 23 migration (PAGE-VIEW-001).
  *
- * Three checks:
- *   1. READ  — query pg_policies for current RLS event list
- *   2. DIFF  — compare RLS list to canonical GO_LISTEN_EVENTS in lib/goListenEventList.ts
- *   3. PROBE — insert one row of every canonical event via ANON key; fail on any 42501
+ * Two checks:
+ *   1. WARN  — compare RLS policy against app list (lib/goListenEventList.ts).
+ *              Events in RLS but NOT in the app list → warn-only (non-blocking).
+ *              Events in app list but missing from RLS → caught by Check 2 (probe).
+ *   2. PROBE — insert one row of every app-list event via ANON key; fail on any 42501.
+ *              This is the only CI-failing check. Every event the app writes must be
+ *              accepted by the live policy.
  *
- * Exit 0 = all pass. Exit 1 = drift or rejection detected.
+ * Exit 0 = all pass. Exit 1 = probe rejection detected.
  *
  * Usage:
  *   node scripts/smoke-go-listen-migration.js
@@ -137,28 +140,31 @@ async function run() {
   const anon = createClient(SUPABASE_URL, ANON_KEY, { auth: { persistSession: false } })
   const svc = createClient(SUPABASE_URL, SVC_KEY, { auth: { persistSession: false } })
 
-  // ── Check 1: RLS vs canonical diff ────────────────────────────────────────
-  console.log('CHECK 1 — RLS policy vs canonical event list:')
+  // ── Check 1: RLS stale-event warning (non-blocking) ──────────────────────
+  // Purpose: flag events present in the RLS policy that are no longer in the
+  // app list — likely deprecated events that should be cleaned up in a
+  // maintenance window. This check NEVER fails the build.
+  // Note: app-list events missing from RLS are caught by Check 2 (probe).
+  console.log('CHECK 1 — RLS stale-event scan (warn-only):')
   const rlsEvents = await getRlsEventList()
   if (!rlsEvents) {
     console.log('  ⚠️  Skipped (SUPABASE_MANAGEMENT_TOKEN not set or query failed)')
-    console.log('     Set the token to enable policy drift detection.')
+    console.log('     Set the token to enable stale-event detection.')
   } else {
-    const rlsSet = new Set(rlsEvents)
     const canonSet = new Set(CANONICAL_EVENTS)
-    const inCanonNotRls = CANONICAL_EVENTS.filter(e => !rlsSet.has(e))
     const inRlsNotCanon = rlsEvents.filter(e => !canonSet.has(e))
-    if (inCanonNotRls.length === 0 && inRlsNotCanon.length === 0) {
-      ok(`RLS policy matches canonical list (${CANONICAL_EVENTS.length} events)`)
+    if (inRlsNotCanon.length === 0) {
+      ok(`RLS policy contains no stale events (${rlsEvents.length} events, all in app list)`)
     } else {
-      if (inCanonNotRls.length) fail(`In canonical but MISSING from RLS: ${inCanonNotRls.join(', ')}`)
-      if (inRlsNotCanon.length) fail(`In RLS but NOT in canonical: ${inRlsNotCanon.join(', ')}`)
-      console.log('  → RLS-FIX: run DROP + CREATE on go_listen_events_insert_anon with the full canonical list.')
+      console.log(`  ⚠️  WARN (non-blocking): ${inRlsNotCanon.length} event(s) in RLS policy not in app list: ${inRlsNotCanon.join(', ')}`)
+      console.log('  → These may be deprecated events. Low-priority cleanup for a maintenance window.')
     }
   }
 
-  // ── Check 2: anon-key probe ───────────────────────────────────────────────
-  console.log('\nCHECK 2 — anon-key insert probe for all canonical events:')
+  // ── Check 2: anon-key probe (CI-failing) ─────────────────────────────────
+  // Every event the app writes must be accepted by the live RLS policy.
+  // A 42501 here means the policy is missing this event — migration needed.
+  console.log('\nCHECK 2 — anon-key insert probe for all app-list events (CI-failing):')
 
   // Cleanup first so duplicate-key collisions don't false-pass
   await svc.from('go_listen_events').delete().eq('session_id', TEST_SESSION)
@@ -197,7 +203,7 @@ async function run() {
   failed.forEach(r => fail(`${r.event}: ${r.reason}`))
 
   if (failed.length > 0) {
-    console.log('\n  DRIFT DETECTED: apply a migration that updates the RLS INSERT policy')
+    console.log('\n  PROBE FAILED: apply a migration that adds the missing event(s) to the RLS INSERT policy.')
     console.log('  (see supabase/migrations/20260724120000_go_listen_rls_sync.sql for template).')
   }
 
