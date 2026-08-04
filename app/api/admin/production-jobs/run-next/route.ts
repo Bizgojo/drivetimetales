@@ -8030,6 +8030,58 @@ export async function POST(req: NextRequest) {
         })
       }
 
+      // ATL-BELLE-PROMO-SKIP-001 (2026-08-04): skip the entire belle chain when the
+      // story's VARIANT header contains "No Belle B" or "LANDING-STORY-001".
+      // Marc ruling: PV1, PV2, PV3 B1, PV3 B2 carry no Belle intro or outro.
+      // Without this guard, generate_belle_assets fails because introUrl is null
+      // (no BELLE B ANNOUNCEMENT block in promo scripts) → every future re-render fails.
+      // Fix: detect the flag early, mark belleAssets as skipped, advance to generate_music.
+      {
+        const promoStoryId = lockedJob.story_id || (lockedJob.state_json as Record<string, unknown>)?.storyId as string
+        if (promoStoryId) {
+          const { data: promoStory } = await supabase.from('stories').select('script').eq('id', promoStoryId).single()
+          const promoVariant = promoStory?.script?.match(/^VARIANT:\s*(.+)$/m)?.[1]?.trim() || ''
+          if (/No Belle B|LANDING-STORY-001/i.test(promoVariant)) {
+            const skipState = {
+              ...(typeof lockedJob.state_json === 'object' && lockedJob.state_json !== null ? lockedJob.state_json as Record<string, unknown> : {}),
+              storyId: String(promoStoryId),
+              belleAssets: { status: 'skipped', reason: 'No Belle B variant — promo asset. ATL-BELLE-PROMO-SKIP-001.', skippedAt: nowIso() },
+            }
+            const skipLogs = appendLog(lockedJob, 'ATL-BELLE-PROMO-SKIP-001: VARIANT contains No Belle B — skipping generate_belle_assets + validate_belle_assets + validate_belle_quality, advancing directly to generate_music', {
+              storyId: String(promoStoryId),
+              variant: promoVariant,
+              nextStep: NEXT_STEP_AFTER_STANDALONE_BELLE_QUALITY,
+            })
+            const { data: skippedJob, error: skipErr } = await supabase
+              .from('production_jobs')
+              .update({
+                story_id: String(promoStoryId),
+                status: 'queued',
+                current_step: NEXT_STEP_AFTER_STANDALONE_BELLE_QUALITY,
+                step_index: Math.max(Number(lockedJob.step_index || 0), 0) + 1,
+                state_json: skipState,
+                error_json: null,
+                logs: skipLogs,
+                locked_at: null,
+                locked_by: null,
+              })
+              .match(ownedJobFence(lockedJob, lockHolderId))
+              .select('*')
+              .single()
+            if (skipErr) throw new Error(`ATL-BELLE-PROMO-SKIP-001: failed to advance No Belle B story past belle chain: ${skipErr.message}`)
+            return NextResponse.json({
+              success: true,
+              jobId: skippedJob.id,
+              currentStep: step,
+              nextStep: skippedJob.current_step,
+              storyId: String(promoStoryId),
+              belleSkipped: true,
+              belleSkipReason: 'No Belle B variant — promo asset. ATL-BELLE-PROMO-SKIP-001.',
+            })
+          }
+        }
+      }
+
       const origin = new URL(req.url).origin
       const result = await runStandaloneBelleAssets(lockedJob, origin)
       const logs = appendLog(lockedJob, result.success
