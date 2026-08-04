@@ -32,7 +32,14 @@ console.log = _log
 const { createClient } = require('@supabase/supabase-js')
 
 // ── Canonical event list ─────────────────────────────────────────────────────
-// Must match lib/goListenEventList.ts. If you add an event there, add it here.
+// Must match lib/goListenEventList.ts exactly. If you add an event there, add it here.
+// Update this list AFTER applying the migration that adds the event to the DB.
+// History:
+//   2026-07-18 — initial 6 events
+//   2026-07-19 — + sec_30
+//   2026-07-22 — + cta_rendered
+//   2026-07-23 — + page_view + 6 preview_* events
+//   2026-07-26 — GVL-EAVESDROP-001: + eavesdrop_pressed, ep_complete, wall_shown, wall_submit
 const CANONICAL_EVENTS = [
   'play_start',
   'sec_30',
@@ -48,6 +55,12 @@ const CANONICAL_EVENTS = [
   'preview_skipped',
   'cta_rendered',
   'page_view',
+  // GVL-EAVESDROP-001 (2026-07-26):
+  'eavesdrop_pressed',
+  'ep_complete',
+  'wall_shown',
+  'wall_submit',
+  // LISTEN-ARM-V2-001: add arm_c_interim_click + arm_c_email_submit AFTER migration applied to prod.
 ]
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL
