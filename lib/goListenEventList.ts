@@ -18,6 +18,7 @@
  *   2026-07-23 — PAGE-VIEW-001: + page_view, preview_started/completed/unmuted/to_play/skipped
  *   2026-07-24 — RLS-FIX-001: RLS policy synced with full list
    2026-07-26 — GVL-EAVESDROP-001: + eavesdrop_pressed, ep_complete, wall_shown, wall_submit
+ * Next: LISTEN-ARM-V2-001 — add arm_c_interim_click + arm_c_email_submit after migration applied to prod.
  */
 export const GO_LISTEN_EVENTS = [
   'play_start',
