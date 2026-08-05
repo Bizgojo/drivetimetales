@@ -12,6 +12,7 @@
 | 📖 Series Bible (7-episode arc) | [SERIES-BIBLE.md](./SERIES-BIBLE.md) | Ready for Marc review |
 | 📖 EP1 Script — "The Flood Token" | [EP1-SCRIPT.md](./EP1-SCRIPT.md) | Ready for Marc review |
 | 🎤 Gate B — Voice Casting Sheet | [CASTING-SHEET.md](./CASTING-SHEET.md) | Voice samples linked, awaiting Marc ear approval |
+| ✅ Gate B — Full Checklist (ACQ-RET-001) | [GATE-B-CHECKLIST.md](./GATE-B-CHECKLIST.md) | 4/9 clear, 3 blocked on Marc rulings, 1 in-progress, 1 post-render |
 
 ---
 
