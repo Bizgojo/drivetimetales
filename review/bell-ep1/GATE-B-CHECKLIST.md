@@ -129,7 +129,7 @@ No duplicates. ✅
 | 1 | Hook ≤ 15 words | ✅ CLEAR (13 words) |
 | 2 | Belle intro/outro | ⚠️ BLOCKED — Marc ruling on BELLE_GATE: A scope |
 | 3 | Welcome by name | ⚠️ BLOCKED — depends on item 2 ruling |
-| 4 | Bridge openings (all arms) | ⚠️ BLOCKED — Marc ruling on multi-arm bridge requirement |
+| 4 | Bridge openings (all arms) | ✅ CLEARED — Marc waiver 2026-08-05 |
 | 5 | Correct ending | ✅ CLEAR (cliffhanger, non-final) |
 | 6 | Length 12–15 min | ✅ CLEAR (~14.2 min) |
 | 7 | Audio matches script | ⏳ POST-RENDER |
