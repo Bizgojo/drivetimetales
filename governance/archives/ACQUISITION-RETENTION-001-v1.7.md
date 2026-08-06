@@ -1,15 +1,7 @@
-# ACQUISITION-RETENTION-001 (v1.8)
+# ACQUISITION-RETENTION-001 (v1.7)
 
 **Status:** Canon. Source of truth for the acquisition serial and the retention library.
 **Owner:** Marc. No agent may override, reinterpret, or "improve" these rules.
-**Supersedes:** v1.7 (archived at governance/archives/ACQUISITION-RETENTION-001-v1.7.md)
-
-### CHANGELOG
-| Version | Date | Author | Change |
-|---------|------|--------|--------|
-| v1.8 | 2026-08-06 | Marc Postlewaite (Atlas applies) | A3b Bell series architecture clarification: promos = Gate A, EP1 = Gate B member episode, EP2 = first post-signup episode. Belle welcome format documented exception: structure + no-name handling. Format updated: name moves to sentence-end per no-name safety ruling. |
-| v1.7 | prior | Marc | Previous canon version — see archives |
-
 **Why this file exists:** Rules that live only in conversation cannot be checked, so a subagent built a promo story that ignored them and cost days. Every produced story is checked against THIS file before it is built. If a story is not checked against this file, that omission is the defect — stop and fix it first.
 
 ---
@@ -45,27 +37,6 @@ The listener is eased in — each episode asks a little more as they get more ho
 - **One-time welcome:** the "welcome to Endless Tales" plays **only on this first post-signup episode**. Every episode after gets Belle's standard personalized intro, not the welcome again. *(Confirm with Marc if he wants it every session instead.)*
 - **Full app unlocks:** at signup the listener has full catalog access. Auto-continue is the default, but they can pause and play anything else.
 - **Adaptive bridge opening (REQUIRED):** because the wall falls after a different ramp episode in each test arm (A/B/C), the listener enters the first post-signup episode having **skipped** the ramp episodes that came after their wall. That episode MUST therefore provide a **distinct bridge opening for each entry point** (from Ep1 / from Ep2 / from Ep3) that catches the listener up on the skipped beats in-character, then merges into a **common episode body** (identical across arms — only the first ~60–90 sec adapts). The from-latest-episode arm (e.g. Test C entering from Ep3) opens as written; earlier entry points get progressively longer catch-up bridges. The platform serves the correct opening per test arm — same mechanism as the Belle-welcome injection. Each bridge must still: hook inside 15 words, name Greenville, and leave no continuity gap.
-
-**Belle welcome format — documented exception (v1.8):** The one-time welcome is longer than Belle’s standard one-line personalized intro. This is an approved exception. The welcome follows this four-part structure, in order:
-1. **Greeting:** `Welcome to Endless Tales, [LISTENER_NAME].` — name at a natural pause after the sentence. Must work with no name captured: if no name, renders as “Welcome to Endless Tales.” (trailing comma + token dropped cleanly by the rendering layer). Do NOT place the name at the start of the sentence.
-2. **Self-introduction:** Belle introduces herself as the host: “My name is Belle, and I’ll be your Endless Tales host.”
-3. **Episode + series title:** names the current episode and series.
-4. **Cliffhanger callback:** rephrases the cliffhanger the listener just heard (arm-specific — the content differs per promo entry point; the structure is identical).
-
-After the welcome: standard personalized intro, then the episode begins. The welcome plays **once only** on the first post-signup episode. Every episode after gets Belle’s standard one-line intro, not the welcome.
-
-**Bell series architecture note (v1.8 — applies to any series using standalone promo episodes as the acquisition ramp):** When the acquisition ramp consists of standalone promo episodes (PV1/PV2/PV3 or equivalent) rather than the series’ own first episodes:
-- Promo episodes (PV1/PV2/PV3) fall under **Gate A** (anonymous, no Belle, no personalization).
-- The series’ own **Episode 1** is a **member episode** accessed by existing subscribers from the catalog. It falls under **Gate B** (standard Belle intro + outro).
-- The series’ own **Episode 2** is the **first post-signup episode for promo converts** and therefore carries the one-time welcome per A3b.
-- Episodes 3+ fall under Gate B (standard Belle intro + outro).
-
-| Episode | Gate | Belle |
-|---------|------|-------|
-| PV1, PV2, PV3 | Gate A | No Belle (anonymous, pre-signup) |
-| EP1 | Gate B | Standard Belle intro + outro |
-| EP2 | Gate B + A3b one-time welcome | Welcome + standard Belle (promo converts); standard Belle only (existing members from EP1) |
-| EP3+ | Gate B | Standard Belle intro + outro |
 
 ### A4. The trial
 - Free week = **7 days to start** — deliberately shorter than the time to finish the series, so the conversion moment lands mid-story. Extend to 2 or 4 weeks later, once we've proven we can convert.
