@@ -47,8 +47,8 @@ BELLE_GATE: A
 - **MARA VANCE** (narrator / protagonist): `ovUpRQCoNYADjai0c9kP`
 - **ELI MERCER**: `mErDxl2A0Sa7BbP8XhMx`
 - **DETECTIVE LENA ORTIZ**: `9oUQOEEPHVmXK5XBUirv`
-- **JUNE BELL**: `s4qOXUa0rOmoEFvukAR9` *(Claire Vance voice — production note: June and Claire share casting per locked sheet; render director to confirm before audio)*
-- **UNKNOWN MAN**: voice ID to be confirmed at render — Marc approved; do not recast
+- **JUNE BELL**: `aIu5oHglU5AHNc2x0AZu` *(Jane Hackett — Marc picked 2026-07-30, ear-approved 2026-08-05)*
+- **UNKNOWN MAN**: `lKf2tqVafNW1nVb7CgwC` *(Frank — Marc picked 2026-07-30)*
 - **BELLE B** (announcer only — OPENING-B): `GMhgX8fCR9GUtd3kmlKC`
 - **JUNE HARLOW** (narrator voice, Iris Fontaine pairing): zero lines in EP2 — Mara narrates throughout in first person
 
