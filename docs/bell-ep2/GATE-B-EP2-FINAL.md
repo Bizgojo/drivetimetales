@@ -59,12 +59,12 @@ OPENING-A also merges at the same MERGE POINT. ✅ CLEAR
 ## 6. Belle one-time welcome by name — format confirmed
 
 OPENING-B1/B2/B3 each use the approved four-component format:
-1. Greeting with [LISTENER_NAME]
+1. Greeting — `Welcome to Endless Tales, [LISTENER_NAME].` (name at end; reads cleanly with no name captured)
 2. Belle introduces herself
 3. Names episode and series
 4. Rephrases the arm-specific cliffhanger callback
 
-Works with no name captured (drop [LISTENER_NAME] token — see proposals/ACQ-RET-001-BELLE-WELCOME-EXCEPTION.md). ✅ CLEAR
+Format changed 2026-08-06 (Marc ruling): `[LISTENER_NAME]` moved from sentence-initial to sentence-final position (`Welcome to Endless Tales, [LISTENER_NAME].` instead of `[LISTENER_NAME], welcome to Endless Tales.`). Renders cleanly whether or not a name is captured — rendering layer strips the trailing comma+name gracefully (see `generateBelleIntroWithName` in generate-voices/route.ts). ✅ CLEAR
 
 ---
 
@@ -110,6 +110,18 @@ OPENING-B variants use Belle B for welcome only. Not a story character. Existing
 
 ---
 
+## 11. EAR-CHECK — Merge point outdoor SFX time cut (flagged for Marc's ear)
+
+**NOT a defect. Ear-check only. Marc to judge on listen.**
+
+All four entry paths (OPENING-A, B1, B2, B3) end with Mara in the hidden room underground. The MERGE POINT opens with outdoor SFX: `[SFX: DISTANT GREENVILLE TRAFFIC — INSECTS — THE HUMID WEIGHT OF AUGUST NIGHT AIR]`, then LENA: "Nobody moves until I say so."
+
+This is a deliberate time cut — Mara exits the tunnel between the last scripted moment of each opening and the merge. No exit is shown in any path. Listeners are oriented to the underground location before the cut (all four openings establish tunnel/hidden room explicitly). Whether the outdoor audio lands naturally or needs a transitional SFX beat is Marc's call on listen.
+
+⏸️ EAR-CHECK — Marc judges at EP2 listen.
+
+---
+
 ## Gate B summary
 
 | Item | Status |
@@ -119,10 +131,12 @@ OPENING-B variants use Belle B for welcome only. Not a story character. Existing
 | 3. OPENING-A from EP1 v1 ending | ✅ CLEAR |
 | 4. Three OPENING-B variants (B1/B2/B3) | ✅ CLEAR |
 | 5. All variants merge at labeled MERGE POINT | ✅ CLEAR |
-| 6. Belle welcome format (A3b) | ✅ CLEAR |
+| 6. Belle welcome format (A3b) | ✅ CLEAR — format updated 2026-08-06 |
 | 7. Correct ending type | ✅ CLEAR |
 | 8. Runtime | ✅ CLEAR |
 | 9. Voice IDs unique, June Bell = Jane Hackett | ✅ CLEAR |
 | 10. Belle B scope | ✅ CLEAR |
+
+| 11. Merge point time cut (ear-check) | ⏸️ EAR-CHECK — Marc judges at EP2 listen |
 
 **Render gate: ALL CLEAR pending Marc approval of EP2 script and EP1 v1 final.**

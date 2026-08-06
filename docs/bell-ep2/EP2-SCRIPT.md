@@ -78,7 +78,7 @@ MARA: Whatever she'd found in the dark, she was already deciding what to tell me
 ## OPENING-B1 (from PV1)
 *(For promo converts who entered via PV1. PV1 ended on: "Mara... your mother had a flood token. Exactly like this one." Belle uses voice GMhgX8fCR9GUtd3kmlKC.)*
 
-BELLE B: [LISTENER_NAME], welcome to Endless Tales. My name is Belle, and I'll be your Endless Tales host. You're listening to Episode Two of The Bell Beneath Falls Park — The Seventh Token. You heard it: Mara's mother had a flood token — exactly like the one a dying man left in her hand. Let's continue.
+BELLE B: Welcome to Endless Tales, [LISTENER_NAME]. My name is Belle, and I'll be your Endless Tales host. You're listening to Episode Two of The Bell Beneath Falls Park — The Seventh Token. You heard it: Mara's mother had a flood token — exactly like the one a dying man left in her hand. Let's continue.
 
 [SFX: BRIEF MUSIC TRANSITION — CELLO, LOW — 2s]
 
@@ -95,7 +95,7 @@ MARA: I pressed play.
 ## OPENING-B2 (from PV2)
 *(For promo converts who entered via PV2. PV2 ended on: "Do not trust the person who brings you the bell." Belle uses voice GMhgX8fCR9GUtd3kmlKC.)*
 
-BELLE B: [LISTENER_NAME], welcome to Endless Tales. My name is Belle, and I'll be your Endless Tales host. You're listening to Episode Two of The Bell Beneath Falls Park — The Seventh Token. The warning has been given: do not trust the person who brings you the bell. Now Mara has to figure out which one it is. Let's continue.
+BELLE B: Welcome to Endless Tales, [LISTENER_NAME]. My name is Belle, and I'll be your Endless Tales host. You're listening to Episode Two of The Bell Beneath Falls Park — The Seventh Token. The warning has been given: do not trust the person who brings you the bell. Now Mara has to figure out which one it is. Let's continue.
 
 [SFX: BRIEF MUSIC TRANSITION — CELLO, LOW — 2s]
 
@@ -112,7 +112,7 @@ MARA: I looked at the two people who had brought me to this room. One of them wa
 ## OPENING-B3 (from PV3 B2)
 *(For promo converts who entered via PV3 B2. PV3 B2 ended on: "Bring Eli Mercer alone." Belle uses voice GMhgX8fCR9GUtd3kmlKC.)*
 
-BELLE B: [LISTENER_NAME], welcome to Endless Tales. My name is Belle, and I'll be your Endless Tales host. You're listening to Episode Two of The Bell Beneath Falls Park — The Seventh Token. Someone wanted Eli Mercer there — specifically, and alone. What Mara finds next explains why. Let's continue.
+BELLE B: Welcome to Endless Tales, [LISTENER_NAME]. My name is Belle, and I'll be your Endless Tales host. You're listening to Episode Two of The Bell Beneath Falls Park — The Seventh Token. Someone wanted Eli Mercer there — specifically, and alone. What Mara finds next explains why. Let's continue.
 
 [SFX: BRIEF MUSIC TRANSITION — CELLO, LOW — 2s]
 
