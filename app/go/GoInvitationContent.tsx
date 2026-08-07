@@ -4,19 +4,21 @@
 // LANDING-GATE-001 — Bell Beneath Falls Park invitation funnel
 // Route: /go?arm=1|2|3
 //
-// Arm A (arm=1): PV1 (84.96s)   → email wall → signup → Belle welcome → EP2
-// Arm B (arm=2): PV2 (188.25s)  → email wall → signup → Belle welcome → EP2
+// Campaign entry path — Belle welcome plays here. Library path (EP1→EP2)
+// does not route through this component.
+//
+// Arm A (arm=1): PV1 (84.96s)   → wall (name+email) → signup → Belle welcome → EP2
+// Arm B (arm=2): PV2 (188.25s)  → wall (name+email) → signup → Belle welcome → EP2
 // Arm C (arm=3): PV3-B1 (76.44s) → "Continue →" button → PV3-B2 (193.70s)
-//               → email wall → signup → Belle welcome → EP2
+//               → wall (name+email) → signup → Belle welcome → EP2
 //
 // EP2 BLOCKER (2026-08-07): "The Bell Beneath Falls Park — Episode 2" does
 // NOT exist in the stories table. EP2_FALLBACK_URL = '/home' until EP2 is
 // seeded. Update EP2_FALLBACK_URL to the real story URL when ready.
 //
-// Item 3 — Belle welcome:
-//   /api/name-audio requires a non-empty name; email-only capture has none.
-//   Using welcome_B.mp3 directly from Supabase storage instead.
-//   TODO: switch to a name-less welcome API if one is added later.
+// Item 3 — Belle welcome (personalized):
+//   Name provided → GET /api/name-audio?name={name} → audio_url → play it.
+//   Name blank or /api/name-audio fails → fall back to welcome_B.mp3.
 //
 // Styling: dark bg (#0f0f1a), WHITE text only, inline styles.
 // =============================================================================
@@ -135,7 +137,7 @@ export default function GoInvitationContent({ arm: armProp }: GoInvitationConten
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           email: email.trim(),
-          firstName: name.trim() || 'Listener',
+          name: name.trim() || undefined,
           arm,
           utmSource:   searchParams.get('utm_source'),
           utmCampaign: searchParams.get('utm_campaign'),
@@ -205,7 +207,7 @@ export default function GoInvitationContent({ arm: armProp }: GoInvitationConten
       setSubmitError('Something went wrong. Please try again.')
       setSubmitting(false)
     }
-  }, [email, arm, submitting, searchParams, goTo])
+  }, [email, name, arm, submitting, searchParams, goTo])
 
   const isAudioActive = phase === 'playing' || phase === 'b2_playing'
 

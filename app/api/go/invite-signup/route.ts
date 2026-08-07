@@ -31,8 +31,8 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json()
-    const { email: rawEmail, firstName: rawFirstName, arm, sessionId, utmSource, utmCampaign } = body
-    const firstName = (typeof rawFirstName === 'string' && rawFirstName.trim()) ? rawFirstName.trim() : 'Listener'
+    const { email: rawEmail, name: rawName, arm, sessionId, utmSource, utmCampaign } = body
+    const firstName = (typeof rawName === 'string' && rawName.trim()) ? rawName.trim() : 'Listener'
 
     if (!rawEmail || typeof rawEmail !== 'string') {
       return NextResponse.json({ error: 'email is required' }, { status: 400 })
