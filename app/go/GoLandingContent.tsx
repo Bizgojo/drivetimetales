@@ -55,6 +55,13 @@ export default function GoLandingContent({ variantConfig }: GoLandingContentProp
   const [promoStatus, setPromoStatus] = useState<PromoStatus>('none')
   const [promoDays, setPromoDays] = useState<number | null>(null)
 
+  // LANDING-GATE-001: name/email capture form state (Item 2)
+  const [captureName, setCaptureName] = useState('')
+  const [captureEmail, setCaptureEmail] = useState('')
+  const [captureSubmitting, setCaptureSubmitting] = useState(false)
+  const [captureSubmitted, setCaptureSubmitted] = useState(false)
+  const [captureError, setCaptureError] = useState<string | null>(null)
+
   // ===== SUS/ATL-LANDING-002 rev C: trial CTA reveal state =====
   // The sheet is hidden on arrival; the ONLY trigger is 45s of cumulative
   // real listening (player onListenedSeconds → shouldRevealTrialCta). The
@@ -146,6 +153,41 @@ export default function GoLandingContent({ variantConfig }: GoLandingContentProp
   const handleCtaClick = useCallback(() => {
     listenTrackerRef.current?.onCtaClick(lastAudioPositionRef.current)
   }, [])
+
+  // LANDING-GATE-001: submit name+email to existing /api/listen/signup endpoint.
+  // Uses arm=1 (single episode gate) as default for the /go acquisition path.
+  // No new API route — reuses the proven /listen signup endpoint.
+  const handleCaptureSubmit = useCallback(async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (captureSubmitting || !captureName.trim() || !captureEmail.trim()) return
+    setCaptureSubmitting(true)
+    setCaptureError(null)
+    try {
+      const res = await fetch('/api/listen/signup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          firstName: captureName.trim(),
+          email: captureEmail.trim(),
+          arm: 1,
+          sessionId: listenTrackerRef.current?.sessionId ?? '',
+          utmSource: searchParams.get('utm_source'),
+          utmCampaign: searchParams.get('utm_campaign'),
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok || !data.ok) {
+        setCaptureError(data.error ?? 'Something went wrong. Please try again.')
+        setCaptureSubmitting(false)
+        return
+      }
+      setCaptureSubmitted(true)
+      listenTrackerRef.current?.onCtaClick(lastAudioPositionRef.current)
+    } catch {
+      setCaptureError('Something went wrong. Please try again.')
+      setCaptureSubmitting(false)
+    }
+  }, [captureName, captureEmail, captureSubmitting, searchParams])
 
   // ===== BUILD 1: cta_rendered one-shot event =====
   // Fires exactly once per session when the bottom sheet first becomes visible
@@ -424,28 +466,114 @@ export default function GoLandingContent({ variantConfig }: GoLandingContentProp
             {trial.subtext}
           </div>
 
-          {/* THE one CTA — same href/promo/utm in both states; cta_click unchanged */}
-          <Link
-            href={ctaHref}
-            onClick={handleCtaClick}
-            style={{
-              display: 'block',
-              width: '100%',
-              padding: '1rem 1.5rem',
-              borderRadius: '12px',
-              backgroundColor: '#f97316',
-              color: '#ffffff',
-              fontSize: '1.1rem',
-              fontWeight: 800,
-              textDecoration: 'none',
-              boxShadow: '0 8px 30px rgba(249,115,22,0.35)',
-            }}
-          >
-            {sheetButtonLabel}
-          </Link>
+          {/* LANDING-GATE-001: name/email capture form (Item 2).
+              Shown when not yet submitted. On success, reveals a confirmation
+              block with a direct link to the app. Falls back to the Stripe
+              trial link as a secondary option. */}
+          {!captureSubmitted ? (
+            <form onSubmit={handleCaptureSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              <input
+                type="text"
+                placeholder="First name"
+                value={captureName}
+                onChange={e => setCaptureName(e.target.value)}
+                required
+                style={{
+                  background: 'rgba(255,255,255,0.08)',
+                  border: '1px solid rgba(255,255,255,0.18)',
+                  borderRadius: '8px',
+                  padding: '11px 14px',
+                  color: '#ffffff',
+                  fontSize: '16px',
+                  fontFamily: 'inherit',
+                  outline: 'none',
+                  width: '100%',
+                  boxSizing: 'border-box',
+                }}
+              />
+              <input
+                type="email"
+                placeholder="Email address"
+                value={captureEmail}
+                onChange={e => setCaptureEmail(e.target.value)}
+                required
+                style={{
+                  background: 'rgba(255,255,255,0.08)',
+                  border: '1px solid rgba(255,255,255,0.18)',
+                  borderRadius: '8px',
+                  padding: '11px 14px',
+                  color: '#ffffff',
+                  fontSize: '16px',
+                  fontFamily: 'inherit',
+                  outline: 'none',
+                  width: '100%',
+                  boxSizing: 'border-box',
+                }}
+              />
+              {captureError && (
+                <p style={{ color: '#f97316', fontSize: '13px', margin: '0', fontFamily: 'sans-serif' }}>
+                  {captureError}
+                </p>
+              )}
+              <button
+                type="submit"
+                disabled={captureSubmitting}
+                style={{
+                  display: 'block',
+                  width: '100%',
+                  padding: '1rem 1.5rem',
+                  borderRadius: '12px',
+                  border: 'none',
+                  backgroundColor: captureSubmitting ? '#7c3d12' : '#f97316',
+                  color: '#ffffff',
+                  fontSize: '1.1rem',
+                  fontWeight: 800,
+                  cursor: captureSubmitting ? 'not-allowed' : 'pointer',
+                  boxShadow: '0 8px 30px rgba(249,115,22,0.35)',
+                  fontFamily: 'inherit',
+                }}
+              >
+                {captureSubmitting ? 'Starting your story…' : sheetButtonLabel}
+              </button>
+              {/* Secondary: Stripe trial for users who prefer that path */}
+              <p style={{ fontSize: '0.78rem', color: 'rgba(255,255,255,0.5)', margin: '2px 0 0', textAlign: 'center' }}>
+                Or{' '}
+                <Link href={ctaHref} onClick={handleCtaClick} style={{ color: 'rgba(255,255,255,0.65)', textDecoration: 'underline' }}>
+                  start a paid trial
+                </Link>
+                {' '}instead
+              </p>
+            </form>
+          ) : (
+            /* Post-submit confirmation */
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              <p style={{ fontSize: '1rem', color: '#ffffff', fontWeight: 700, margin: 0, textAlign: 'center' }}>
+                You&rsquo;re in{captureName ? `, ${captureName}` : ''}! Your 7-day free trial has started.
+              </p>
+              <Link
+                href="https://app.endless-tales.com"
+                style={{
+                  display: 'block',
+                  width: '100%',
+                  padding: '1rem 1.5rem',
+                  borderRadius: '12px',
+                  backgroundColor: '#f97316',
+                  color: '#ffffff',
+                  fontSize: '1.1rem',
+                  fontWeight: 800,
+                  textDecoration: 'none',
+                  boxShadow: '0 8px 30px rgba(249,115,22,0.35)',
+                  textAlign: 'center',
+                  boxSizing: 'border-box',
+                }}
+              >
+                Open Endless Tales →
+              </Link>
+            </div>
+          )}
 
           {/* CTA-004: footnote only while the claim is true (pre-completion). */}
-          {ctaCopy.footnote && (
+          {ctaCopy.footnote && !captureSubmitted && (
             <p style={{ fontSize: '0.8rem', color: '#ffffff', margin: '0.7rem 0 0', lineHeight: 1.45 }}>
               {ctaCopy.footnote}
             </p>
