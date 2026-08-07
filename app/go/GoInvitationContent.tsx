@@ -22,9 +22,8 @@
 // · Mobile first — phone traffic, one-handed
 // · Hook line placeholder: Marc to confirm PV1 or PV3-B1 line
 //
-// EP2 BLOCKER (2026-08-07): "The Bell Beneath Falls Park — Episode 2" does
-// NOT exist in the stories table. EP2_FALLBACK_URL = '/home' until EP2 is
-// seeded. Update EP2_FALLBACK_URL to the real story URL when ready.
+// EP2 destination filled (2026-08-07): Story ID 759dc525-185c-450f-b249-17e4a525ba60
+// ("The Seventh Token"). EP2_FALLBACK_URL updated from '/home' to real player URL.
 //
 // Item 3 — Belle welcome (personalized):
 //   Name provided → GET /api/name-audio?name={name} → audio_url → play it.
@@ -73,7 +72,7 @@ const BELLE_WELCOME_URL =
   'https://vmyhlfeouzslixtkmddy.supabase.co/storage/v1/object/public/audio/welcome/welcome_B.mp3'
 
 // TODO EP2: replace with real EP2 player URL once Bell EP2 is in the stories table.
-const EP2_FALLBACK_URL = '/home'
+const EP2_FALLBACK_URL = '/player/759dc525-185c-450f-b249-17e4a525ba60'
 
 // ─── Phase type ───────────────────────────────────────────────────────────────
 type Phase =
