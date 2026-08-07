@@ -8,8 +8,10 @@
 //
 // This map is shared so both the single-story and series voice-generation
 // paths (both route through app/api/admin/generate-voices) resolve the same
-// settings. Belle B intro generation (generate-belle-intro) has its own
-// EL_SETTINGS constant and does NOT consult this map — her path is untouched.
+// settings. Belle B (GMhgX8fCR9GUtd3kmlKC) IS in this map so that both
+// generate-voices (announcement/outro) and any other callers use the
+// Marc-specified settings. generate-belle-intro keeps its own identical
+// EL_SETTINGS constant and does NOT consult this map — her path is unchanged.
 //
 // `speed` is included for override voices only: the generate-voices request
 // builder JSON.stringifies the settings object as `voice_settings`, and the
@@ -25,6 +27,10 @@ export interface ElVoiceSettings {
 }
 
 export const VOICE_SETTINGS_OVERRIDES: Record<string, ElVoiceSettings> = {
+  // Belle B (announcer) — Marc-specified 2026-08-07: stability 0.49, similarity 0.51,
+  // style 0.0, boost true, speed 1.0. Applied to generate-voices announcement/outro path.
+  // generate-belle-intro has its own matching EL_SETTINGS and is unaffected.
+  GMhgX8fCR9GUtd3kmlKC: { stability: 0.49, similarity_boost: 0.51, style: 0.0, use_speaker_boost: true, speed: 1.0 },
   // Eve 1 — warm, unhurried, ancient. [Marc-approved v1]
   AXOPpokL7lng4OPc1L0P: { stability: 0.62, similarity_boost: 0.80, style: 0.15, use_speaker_boost: true, speed: 0.95 },
   // Tom 1 — quiet intensity, worn, restrained; pleads better than he commands.
