@@ -328,7 +328,7 @@ function getExpectedStorySegmentNumbers(script: string): Set<number> {
     const isAnnouncer = speaker === 'ANNOUNCER' || speaker === 'BELLE B' || speaker === 'SANDY'
     const isIntro = isAnnouncer && rawIdx === firstAnnouncerIdx
     const isOutro = isAnnouncer && rawIdx === lastAnnouncerIdx
-    if (!isIntro && !isOutro) expected.add(lineIndex)
+    if (!isAnnouncer && !isIntro && !isOutro) expected.add(lineIndex)
     lineIndex += 1
   })
 
