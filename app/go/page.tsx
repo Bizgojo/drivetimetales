@@ -45,11 +45,22 @@ export async function generateMetadata({
 }: {
   searchParams: { v?: string; arm?: string }
 }): Promise<Metadata> {
-  // LANDING-GATE-001: Bell funnel meta tags
+  // LANDING-GATE-001: Bell Beneath Falls Park funnel meta tags
   if (searchParams.arm === '1' || searchParams.arm === '2' || searchParams.arm === '3') {
+    const bellTitle  = 'The Bell Beneath Falls Park — Listen Free | Endless Tales'
+    const bellDesc   = 'Something answered from under the water. And it knew her name.'
+    const bellCover  = 'https://vmyhlfeouzslixtkmddy.supabase.co/storage/v1/object/public/audio/asc3/a8c8b8d0-f717-44c4-a6a5-39c3a65d9c2e/cover_1785337095142.jpg'
     return {
-      title: 'The Bell Beneath Falls Park — Listen Free | Endless Tales',
-      description: 'Something is wrong in Greenville. Follow every clue.',
+      title: bellTitle,
+      description: bellDesc,
+      openGraph: {
+        title: bellTitle,
+        description: bellDesc,
+        url: `https://app.endless-tales.com/go?arm=${searchParams.arm}`,
+        images: [{ url: bellCover, width: 1200, height: 630, alt: 'The Bell Beneath Falls Park' }],
+        type: 'website',
+      },
+      twitter: { card: 'summary_large_image', title: bellTitle, description: bellDesc, images: [bellCover] },
     }
   }
 

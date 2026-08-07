@@ -24,7 +24,7 @@
 import { useState, useRef, useCallback } from 'react'
 import { useSearchParams } from 'next/navigation'
 
-// ─── Bell promo audio URLs (Supabase public storage, status=audio_ready) ──────
+// ─── Bell promo audio/cover URLs (Supabase public storage, status=audio_ready) ─
 const BELL_BASE =
   'https://vmyhlfeouzslixtkmddy.supabase.co/storage/v1/object/public/audio/asc3'
 
@@ -32,6 +32,14 @@ const AUDIO_PV1   = `${BELL_BASE}/a8c8b8d0-f717-44c4-a6a5-39c3a65d9c2e/story_bod
 const AUDIO_PV2   = `${BELL_BASE}/a88084ab-62e3-47f4-9b7a-5cbc32943349/story_body.mp3`
 const AUDIO_PV3B1 = `${BELL_BASE}/a37fdc46-24d0-49a7-b749-320076978c3b/story_body.mp3`
 const AUDIO_PV3B2 = `${BELL_BASE}/4784f4d6-cae4-48ce-a094-73415c700380/story_body.mp3`
+
+// Cover images — PV1 and PV2 have art; PV3 has none so we fall back to PV1
+const COVER_PV1 = `${BELL_BASE}/a8c8b8d0-f717-44c4-a6a5-39c3a65d9c2e/cover_1785337095142.jpg`
+const COVER_PV2 = `${BELL_BASE}/a88084ab-62e3-47f4-9b7a-5cbc32943349/cover_1785337196082.jpg`
+
+function getCoverUrl(arm: 1 | 2 | 3): string {
+  return arm === 2 ? COVER_PV2 : COVER_PV1  // PV3 falls back to PV1 cover
+}
 
 // Item 3: Belle B welcome clip (Supabase storage/audio/welcome/welcome_B.mp3)
 const BELLE_WELCOME_URL =
@@ -119,11 +127,11 @@ export default function GoInvitationContent({ arm: armProp }: GoInvitationConten
     setSubmitError(null)
 
     try {
-      const res = await fetch('/api/listen/signup', {
+      // LANDING-GATE-001: email-only endpoint (firstName stored as 'Listener' server-side)
+      const res = await fetch('/api/go/invite-signup', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          // firstName omitted — email-only capture (LANDING-GATE-001)
           email: email.trim(),
           arm,
           utmSource:   searchParams.get('utm_source'),
@@ -219,11 +227,26 @@ export default function GoInvitationContent({ arm: armProp }: GoInvitationConten
           backgroundColor: '#141422',
           boxShadow: '0 10px 40px rgba(0,0,0,0.5)',
         }}>
-          {/* Dark gradient backdrop (no cover art yet for Bell) */}
+          {/* Cover art (PV1/PV2 have covers; PV3 falls back to PV1 cover) */}
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={getCoverUrl(arm)}
+            alt="The Bell Beneath Falls Park cover art"
+            style={{
+              position: 'absolute',
+              inset: 0,
+              width: '100%',
+              height: '100%',
+              objectFit: 'cover',
+              display: 'block',
+            }}
+          />
+
+          {/* Gradient overlay for text/button readability */}
           <div style={{
             position: 'absolute',
             inset: 0,
-            background: 'linear-gradient(160deg, #1b1b30 0%, #0f0f1a 55%, #241627 100%)',
+            background: 'linear-gradient(to bottom, rgba(15,15,26,0.1) 0%, rgba(15,15,26,0.5) 60%, rgba(15,15,26,0.88) 100%)',
           }} />
 
           {/* Top pill */}
@@ -335,7 +358,7 @@ export default function GoInvitationContent({ arm: armProp }: GoInvitationConten
           <div style={{ fontSize: '15px', lineHeight: 1.4, color: '#ffffff', margin: '0.45rem 0 0' }}>
             Something is wrong in Greenville. Follow every clue.
           </div>
-          <div style={{ fontSize: '12.5px', color: '#9ca3af', marginTop: '0.5rem' }}>
+          <div style={{ fontSize: '12.5px', color: 'rgba(255,255,255,0.6)', marginTop: '0.5rem' }}>
             Mystery · Listen free
           </div>
         </div>
