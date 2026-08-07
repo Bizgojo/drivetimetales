@@ -266,40 +266,36 @@ export default function GoSamplePlayer({
           Free sample — no account needed
         </div>
 
-        {/* INVITATION BUTTON — replaces ▶ circle (landing-invitation-gate-001)
-            Positioned at the bottom of the cover art; full-width pill so it
-            reads as an invitation to the story, not a media control. */}
+        {/* THE big play button — only before playback has started */}
         {!hasStarted && (
           <button
             type="button"
             onClick={togglePlay}
-            aria-label="Hear the first episode"
+            aria-label="Play"
             style={{
               position: 'absolute',
-              bottom: '20px',
+              top: '50%',
               left: '50%',
-              transform: 'translateX(-50%)',
-              width: 'calc(100% - 40px)',
-              maxWidth: '340px',
-              padding: '15px 24px',
-              borderRadius: '40px',
+              transform: 'translate(-50%, -50%)',
+              width: '84px',
+              height: '84px',
+              minWidth: '64px',
+              minHeight: '64px',
+              borderRadius: '50%',
               border: 'none',
               backgroundColor: '#f97316',
               color: '#ffffff',
-              fontSize: '1.05rem',
-              fontWeight: 800,
-              lineHeight: 1.2,
+              fontSize: '2rem',
+              lineHeight: 1,
               cursor: 'pointer',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              gap: '8px',
               boxShadow: '0 10px 34px rgba(0,0,0,0.55), 0 4px 16px rgba(249,115,22,0.45)',
-              whiteSpace: 'nowrap',
-              letterSpacing: '0.01em',
+              paddingLeft: '6px', // optical centering of the ▶ glyph
             }}
           >
-            Hear the First Episode →
+            ▶
           </button>
         )}
       </div>

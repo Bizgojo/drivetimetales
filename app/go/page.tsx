@@ -23,6 +23,7 @@ import { Suspense } from 'react'
 import type { Metadata } from 'next'
 import { resolveGoStory, GO_LIVE_VARIANTS } from '@/lib/landing'
 import GoLandingContent from './GoLandingContent'
+import GoInvitationContent from './GoInvitationContent'
 import { fetchGoVariantConfig } from '@/lib/goVariantConfig'
 
 function LoadingFallback() {
@@ -42,8 +43,16 @@ function LoadingFallback() {
 export async function generateMetadata({
   searchParams,
 }: {
-  searchParams: { v?: string }
+  searchParams: { v?: string; arm?: string }
 }): Promise<Metadata> {
+  // LANDING-GATE-001: Bell funnel meta tags
+  if (searchParams.arm === '1' || searchParams.arm === '2' || searchParams.arm === '3') {
+    return {
+      title: 'The Bell Beneath Falls Park — Listen Free | Endless Tales',
+      description: 'Something is wrong in Greenville. Follow every clue.',
+    }
+  }
+
   const story = resolveGoStory(
     new URLSearchParams(searchParams as Record<string, string>).toString(),
     GO_LIVE_VARIANTS,
@@ -73,8 +82,21 @@ export async function generateMetadata({
 export default async function GoLandingPage({
   searchParams,
 }: {
-  searchParams: { v?: string }
+  searchParams: { v?: string; arm?: string }
 }) {
+  // LANDING-GATE-001: ?arm=1/2/3 → Bell Beneath Falls Park invitation-gate funnel.
+  // All three arms use GoInvitationContent (email-only capture → EP2).
+  // Existing ?v= trial flow is preserved for bare /go and ?v= variants.
+  const armParam = searchParams?.arm
+  if (armParam === '1' || armParam === '2' || armParam === '3') {
+    const arm = Number(armParam) as 1 | 2 | 3
+    return (
+      <Suspense fallback={<LoadingFallback />}>
+        <GoInvitationContent arm={arm} />
+      </Suspense>
+    )
+  }
+
   // BUILD 2: fetch variant config server-side. Never throws (lib guarantees).
   // null = table pre-migration or no row → GoLandingContent uses hardcoded fallbacks.
   const variantConfig = await fetchGoVariantConfig(searchParams?.v ?? null)
