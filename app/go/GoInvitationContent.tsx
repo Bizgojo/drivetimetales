@@ -80,6 +80,7 @@ export default function GoInvitationContent({ arm: armProp }: GoInvitationConten
     setPhase(next)
   }, [])
 
+  const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
@@ -127,12 +128,14 @@ export default function GoInvitationContent({ arm: armProp }: GoInvitationConten
     setSubmitError(null)
 
     try {
-      // LANDING-GATE-001: email-only endpoint (firstName stored as 'Listener' server-side)
+      // LANDING-GATE-001: name + email endpoint. Name fills [LISTENER_NAME] in Belle welcome
+      // and persists to user record for paywall pre-fill.
       const res = await fetch('/api/go/invite-signup', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           email: email.trim(),
+          firstName: name.trim() || 'Listener',
           arm,
           utmSource:   searchParams.get('utm_source'),
           utmCampaign: searchParams.get('utm_campaign'),
@@ -148,6 +151,7 @@ export default function GoInvitationContent({ arm: armProp }: GoInvitationConten
       // Signup OK. Play Belle welcome, then generate auth link → EP2.
       goTo('welcome')
       const capturedEmail = email.trim()
+      const capturedName = name.trim()
 
       const routeToEp2 = async () => {
         goTo('routing')
@@ -169,9 +173,26 @@ export default function GoInvitationContent({ arm: armProp }: GoInvitationConten
         window.location.href = EP2_FALLBACK_URL
       }
 
+      // Entry-path logic: /go page is always campaign path — Belle welcome plays here.
+      // Library path (EP1→EP2) does not go through this component.
+      // If name provided: call /api/name-audio for personalized greeting.
+      // Fallback: welcome_B.mp3 if name blank or name-audio call fails.
+      let welcomeUrl = BELLE_WELCOME_URL
+      if (capturedName) {
+        try {
+          const nameAudioResp = await fetch(`/api/name-audio?name=${encodeURIComponent(capturedName)}`)
+          if (nameAudioResp.ok) {
+            const nameData = await nameAudioResp.json() as { audio_url?: string }
+            if (nameData.audio_url) welcomeUrl = nameData.audio_url
+          }
+        } catch {
+          // fallback to welcome_B.mp3
+        }
+      }
+
       const wa = welcomeRef.current
       if (wa) {
-        wa.src = BELLE_WELCOME_URL
+        wa.src = welcomeUrl
         wa.load()
         wa.play().catch(() => { void routeToEp2() })
         wa.onended = () => { void routeToEp2() }
@@ -426,18 +447,38 @@ export default function GoInvitationContent({ arm: armProp }: GoInvitationConten
           padding: '1.25rem 1.5rem calc(1.25rem + env(safe-area-inset-bottom, 0px))',
           textAlign: 'center',
         }}>
-          {/* Item 2: single-field email capture */}
+          {/* Two-field form: name (friendly/first) + email */}
           <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#ffffff', marginBottom: '0.35rem' }}>
             The story continues…
           </div>
           <div style={{ fontSize: '0.9rem', color: '#ffffff', marginBottom: '0.85rem' }}>
-            Enter your email to keep listening — no credit card needed.
+            Enter your name and email to keep listening — no credit card needed.
           </div>
 
           <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            {/* Name field: friendly/first name — fills Belle B greeting via /api/name-audio */}
+            <input
+              type="text"
+              placeholder="Your first name"
+              value={name}
+              onChange={e => setName(e.target.value)}
+              autoComplete="given-name"
+              style={{
+                width: '100%',
+                padding: '14px 16px',
+                borderRadius: '12px',
+                border: 'none',
+                background: 'rgba(255,255,255,0.12)',
+                color: '#ffffff',
+                fontSize: '16px',
+                boxSizing: 'border-box',
+                fontFamily: 'inherit',
+                outline: 'none',
+              }}
+            />
             <input
               type="email"
-              placeholder="Email address"
+              placeholder="Your email"
               value={email}
               onChange={e => setEmail(e.target.value)}
               required

@@ -1,8 +1,8 @@
 // app/api/go/invite-signup/route.ts — LANDING-GATE-001
 //
-// Email-only invitation signup for the Bell Beneath Falls Park funnel.
-// Single input (email) on the UI side — firstName is stored internally as
-// 'Listener' so downstream code requiring a display name doesn't break.
+// Name + email invitation signup for the Bell Beneath Falls Park funnel.
+// firstName from the form fills [LISTENER_NAME] in Belle B's welcome audio
+// and pre-fills the paywall. Defaults to 'Listener' if blank.
 //
 // Creates a 7-day free trial account (no Stripe). Same pattern as
 // app/api/listen/signup/route.ts but simplified for the invitation gate.
@@ -31,7 +31,8 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json()
-    const { email: rawEmail, arm, sessionId, utmSource, utmCampaign } = body
+    const { email: rawEmail, firstName: rawFirstName, arm, sessionId, utmSource, utmCampaign } = body
+    const firstName = (typeof rawFirstName === 'string' && rawFirstName.trim()) ? rawFirstName.trim() : 'Listener'
 
     if (!rawEmail || typeof rawEmail !== 'string') {
       return NextResponse.json({ error: 'email is required' }, { status: 400 })
@@ -48,7 +49,7 @@ export async function POST(req: NextRequest) {
     const { data: authData, error: authError } = await supabase.auth.admin.createUser({
       email,
       email_confirm: true,
-      user_metadata: { first_name: 'Listener' },
+      user_metadata: { first_name: firstName },
     })
 
     if (authError) {
@@ -65,6 +66,8 @@ export async function POST(req: NextRequest) {
         await supabase.from('users').upsert({
           id: existing.id,
           email,
+          first_name: firstName,
+          display_name: firstName,
           plan: 'subscriber',
           subscription_ends_at: trialEndsAt,
           subscription_type: 'trial',
@@ -86,8 +89,8 @@ export async function POST(req: NextRequest) {
     const { error: userError } = await supabase.from('users').upsert({
       id: userId,
       email,
-      display_name: 'Listener',
-      first_name: 'Listener',
+      display_name: firstName,
+      first_name: firstName,
       plan: 'subscriber',
       subscription_ends_at: trialEndsAt,
       subscription_type: 'trial',
