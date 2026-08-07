@@ -51,13 +51,14 @@ const COVER_PV1 =
 const COVER_PV2 =
   `${BELL_BASE}/a88084ab-62e3-47f4-9b7a-5cbc32943349/cover_1785337196082.jpg`
 
-// Hook lines per arm
-// HOOK-CARD-001 PLACEHOLDER — Marc to confirm which line to use
-// PV1 cold open:    "The water rushed beneath Greenville's Liberty Bridge."
-// PV3-B1 cold open: "In Greenville, the Reedy River keeps its secrets beneath Falls Park, especially after dark."
+// Hook lines — first spoken line of each arm's cold open
+// Pulled 2026-08-07 from stories.script via node script; Marc to confirm pick.
+// PV1 (arm=1): stories/a8c8b8d0  — Liberty Bridge
+// PV2 (arm=2): stories/a88084ab  — Mara Vance
+// PV3-B1 (arm=3): stories/a37fdc46 — Reedy River
 const HOOK_LINES: Record<1 | 2 | 3, string> = {
   1: "\u201CThe water rushed beneath Greenville\u2019s Liberty Bridge.\u201D",
-  2: "\u201CThe water rushed beneath Greenville\u2019s Liberty Bridge.\u201D",
+  2: "\u201CMy name is Mara Vance, and a dead man whispered it after his heart had stopped.\u201D",
   3: "\u201CIn Greenville, the Reedy River keeps its secrets beneath Falls Park, especially after dark.\u201D",
 }
 
