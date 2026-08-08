@@ -293,3 +293,93 @@ See:
 **Last updated:** 2026-06-13T15:00Z  
 **Next review:** Weekly heartbeat by Orion  
 **Archive plan:** Once all backlog items resolve, move this to `INCIDENT-LOG-ARCHIVE-2026-06.md`
+
+---
+
+## INC-012: Belle B Opening-Variant Segment Mismatch
+
+**Date:** 2026-08-08  
+**Story:** The Bell Beneath Falls Park — EP2 (759dc525)  
+**Layer:** render-final-mix / getExpectedStorySegmentNumbers()  
+**Owner:** Atlas  
+
+**Root cause:** EP2 uses a 4-variant BELLE_GATE: B opening structure (three BELLE B lead-ins before the story body, each with its own following segment). `getExpectedStorySegmentNumbers()` was not excluding the non-intro / non-outro BELLE B lines — it treated them as expected segments. `generate-voices` correctly skipped them (as announcers). Result: render expected files that GV never produced.
+
+**Fix:** PR #92 — added `isAnnouncer && rawIdx !== firstAnnouncerIdx && rawIdx !== lastAnnouncerIdx` guard to `getExpectedStorySegmentNumbers()`. Merged 2026-08-08.
+
+**Permanent fix:** Rule 10 content keys (ATL-RULE8-EXT-001 / SFX-ASSET-LOCK-001) — segment identity is line content, not index, so structure changes cannot drift.
+
+---
+
+## INC-013: Bare [PAUSE] Index Drift Between generate-voices and render-final-mix
+
+**Date:** 2026-08-08  
+**Story:** The Bell Beneath Falls Park — EP2 (759dc525)  
+**Layer:** generate-voices / parseScript() vs. render-final-mix / core.ts  
+**Owner:** Atlas  
+
+**Root cause:** `generate-voices/parseScript()` hits `if (trimmed.startsWith('[')) return` for bare `[PAUSE]` lines — skips without incrementing `lineIndex`. `render-final-mix/core.ts getExpectedStorySegmentNumbers()` counts bare `[PAUSE]` as a position and increments `lineIndex`. Each bare `[PAUSE]` in the script creates a cumulative +1 offset between the two numbering schemes. EP2 had 3 bare `[PAUSE]` lines; 6 positions were mismatched.
+
+**Immediate fix (2026-08-08):** Content-verified source segments (Whisper), copied to correct render positions. Render completed.
+
+**Root cause not fully resolved:** Drift offset theory (1/2/3 from 3 [PAUSE] lines) did not match observed gaps. Full analysis deferred — does not block EP2. Investigation required before EP3-EP7 render.
+
+**Permanent fix:** Rule 10 content keys — segment resolved by content hash, not index. With content keys, GV and render-final-mix independently look up the same content regardless of line numbering. Investigation of drift root cause still required to document the edge case, but content keys eliminate the failure mode.
+
+---
+
+## INC-014: generate-music Never Ran for EP2 — Silent Skip, No Error
+
+**Date:** 2026-08-08  
+**Story:** The Bell Beneath Falls Park — EP2 (759dc525)  
+**Layer:** Production pipeline / dispatch  
+**Owner:** Atlas  
+
+**Root cause:** EP2 was seeded directly (not via normal dispatch path) on 2026-08-07. The generate-music step was never queued or executed. `background_music.mp3` was absent from storage. render-final-mix reached the music file check late in execution (after downloading all segments) and failed with a user-visible error rather than an early gate abort.
+
+**Immediate fix (2026-08-08):** Copied EP1's background_music.mp3 to EP2's storage folder (same series, same Suno aesthetic, no credit burn). Render completed.
+
+**Permanent fix:** ATL-RULE8-EXT-001 — `validateManifestGate()` extended to assert `background_music.mp3` presence before mix begins. Error now raised at gate time, not mid-mix.
+
+---
+
+## INC-015: False Completion Reports — Segment Count from Log, Not Storage
+
+**Date:** 2026-08-08  
+**Story:** The Bell Beneath Falls Park — EP2 (759dc525)  
+**Layer:** Reporting / tooling  
+**Owner:** Atlas  
+
+**Root cause:** Subagent reported "112/112 segments rendered." Count sourced from generate-voices job log, not from actual storage file count. Storage contained 127 real segments + 24 sfx files, not 112 voice-only segments. Discrepancy discovered only when render-final-mix reported missing positions. Missing count was restated three times under scrutiny before converging on truth.
+
+**Rule (permanent):** Verify segment counts against storage/DB, never against own log output. Use `storage.list()` with file count as ground truth. Report as: "N files in storage, M expected by script."
+
+---
+
+## INC-016: Landing Page Built Against Placeholder URLs Before Audio Existed
+
+**Date:** 2026-08-07 / 2026-08-08  
+**Story:** The Bell Beneath Falls Park — EP2 / landing page  
+**Layer:** Deployment sequence  
+**Owner:** Atlas  
+
+**Root cause:** Bell landing page was constructed and deployed with `BELL_EP2_DEST` and `BELLE_WELCOME_URL` as placeholder values before EP2 audio was rendered and before the Belle welcome audio existed. When real values became available, a second deployment pass was required. This created a period of time when the landing page was live but non-functional.
+
+**Permanent fix:** New Sequence Standard (see governance/ACQUISITION-SEQUENCE-STANDARD.md) — landing page is not built until PV audio is real. No placeholders.
+
+---
+
+## INC-017: /go Route Build Failure — GoInvitationContent.tsx Missing
+
+**Date:** 2026-08-08  
+**Story:** N/A — dev server  
+**Layer:** Local development environment  
+**Owner:** Atlas  
+**Status:** OPEN  
+
+**Root cause:** `app/go/page.tsx` imports `GoInvitationContent.tsx` which does not exist in the working tree. Local dev server fails to compile any route that causes Next.js to traverse the app directory graph including the /go route. All local API calls return HTML 500 error pages instead of JSON.
+
+**Workaround used (2026-08-08):** Rendered EP2 via production Vercel endpoint rather than local dev server.
+
+**Resolution required:** Create `app/go/GoInvitationContent.tsx` (stub or real implementation) to restore local dev server. Investigate whether the file was deleted accidentally or never created.
+

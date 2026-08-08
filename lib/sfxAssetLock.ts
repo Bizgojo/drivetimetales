@@ -369,7 +369,18 @@ export async function designateSeriesSignature(
  * Rule 8 — Manifest gate: validate all locked assets before render-final-mix.
  * Throws on first mismatch/missing file. Caller must invoke before mixing.
  */
-export async function validateManifestGate(manifest: SfxManifest): Promise<void> {
+/**
+ * ATL-RULE8-EXT-001: extend Rule 8 gate to assert required pipeline assets
+ * before mixing. Currently checks:
+ *   (a) every locked SFX cue — sha256 match, file present
+ *   (b) background_music.mp3 — must exist for any story with a manifest
+ *
+ * The (b) check prevents the silent failure seen in EP2 (Bell EP2, Aug 8 2026):
+ * generate-music was never run; render proceeded past the gate and failed late
+ * with a user-visible "Missing story-specific background_music.mp3" error.
+ * Rule 8 should catch this at the gate, not mid-mix.
+ */
+export async function validateManifestGate(manifest: SfxManifest, storyId?: string): Promise<void> {
   console.log(`[sfxAssetLock] Manifest gate: validating ${Object.keys(manifest.locked_sfx).length} locked SFX...`)
 
   for (const [cueId, entry] of Object.entries(manifest.locked_sfx)) {
@@ -394,6 +405,22 @@ export async function validateManifestGate(manifest: SfxManifest): Promise<void>
   }
 
   console.log(`[sfxAssetLock] Manifest gate: all locked SFX verified ✓`)
+
+  // ATL-RULE8-EXT-001 (b): background_music.mp3 presence gate
+  // storyId required to check; callers that don't yet pass storyId skip this
+  // check gracefully to remain backwards-compatible during the transition.
+  if (storyId) {
+    const musicUrl = `${BASE_STORAGE}/asc3/${storyId}/background_music.mp3`
+    const exists = await storageHead(musicUrl)
+    if (!exists) {
+      throw new Error(
+        `SFX-ASSET-LOCK-001 RULE 8 GATE ABORT\n` +
+        `background_music.mp3 not found for story ${storyId}.\n` +
+        `Run generate-music before render-final-mix.\nRender aborted.`
+      )
+    }
+    console.log(`[sfxAssetLock] Manifest gate: background_music.mp3 present ✓`)
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

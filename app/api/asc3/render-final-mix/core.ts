@@ -376,7 +376,7 @@ export async function runRenderFinalMix(storyId: string): Promise<{
     const renderManifest = await loadManifest(storyId)
     if (renderManifest && Object.keys(renderManifest.locked_sfx ?? {}).length > 0) {
       console.log(`  [ATL-SFX-WIRE-001] Running manifest gate for ${Object.keys(renderManifest.locked_sfx).length} locked cue(s)...`)
-      await validateManifestGate(renderManifest)  // throws on mismatch — Rule 3/8 hard stop
+      await validateManifestGate(renderManifest, storyId)  // ATL-RULE8-EXT-001: pass storyId for music gate
     }
 
     const { data: filesRaw } = await supabase.storage.from('audio').list(`asc3/${storyId}`, { limit: 500 })
