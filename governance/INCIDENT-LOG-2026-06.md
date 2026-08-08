@@ -369,17 +369,25 @@ See:
 
 ---
 
-## INC-017: /go Route Build Failure — GoInvitationContent.tsx Missing
+## INC-017: Local Dev Build Error — Stale .next Cache (CLOSED — environment only)
 
 **Date:** 2026-08-08  
-**Story:** N/A — dev server  
-**Layer:** Local development environment  
+**Story:** N/A — local dev environment  
+**Layer:** Local development environment only  
 **Owner:** Atlas  
-**Status:** OPEN  
+**Status:** CLOSED — environment artifact, not a code defect  
 
-**Root cause:** `app/go/page.tsx` imports `GoInvitationContent.tsx` which does not exist in the working tree. Local dev server fails to compile any route that causes Next.js to traverse the app directory graph including the /go route. All local API calls return HTML 500 error pages instead of JSON.
+**Correction (Marc, 2026-08-08):** GoInvitationContent.tsx is NOT missing from the repo. Vercel confirmed `feat/landing-invitation-gate-001` commit `91e399e8` built successfully (Ready, 51s, 19h ago) — the branch builds correctly. The error was a stale `.next` cache on the local machine.
 
-**Workaround used (2026-08-08):** Rendered EP2 via production Vercel endpoint rather than local dev server.
+**Root cause (corrected):** Stale Next.js `.next` compile cache on local machine held a reference to a file that was no longer on the active branch or working tree. The error only appeared in the local dev server; production Vercel was unaffected.
 
-**Resolution required:** Create `app/go/GoInvitationContent.tsx` (stub or real implementation) to restore local dev server. Investigate whether the file was deleted accidentally or never created.
+**Fix:** Clear `.next` directory on the local machine. No code change required.
+
+**Verification method:** Read Vercel build logs directly, not the local dev server. A successful Vercel build for the same branch is authoritative over a local build error.
+
+**What did NOT happen:** No stub file was created. No GoInvitationContent.tsx was written to disk at any point during this incident. `app/go/` contains GoLandingContent.tsx and GoLandingPageClient.tsx only.
+
+**Did it block the landing page?** No. The landing page was not blocked by this error. The local build error was a symptom of the cache state, not a code defect.
+
+**Process note:** Do not create code to work around a local environment problem. Verify against Vercel before diagnosing locally.
 

@@ -65,3 +65,25 @@ rendered-episode buffer instead of full completion.
 - Atlas owns: buffer/auto-pause/cadence checks in the publish path, pause
   telemetry, and per-series cadence declaration storage. (Ticket:
   ATL-SERIES-RELEASE-V2.)
+
+---
+
+## 6. Recorded Exceptions
+
+Exceptions to this rule must be explicit, named, and non-precedential. Each exception applies only to the specific story and circumstance named.
+
+### Exception 001 — Bell EP1 Published Before EP2
+
+**Declared by:** Marc Postlewaite  
+**Date:** Aug 8, 2026  
+**Story:** The Bell Beneath Falls Park — Episode 1 (4ab84fcd)  
+**Status:** EP1 published; EP2 in ready_for_review at time of declaration
+
+**Ruling:** EP1 (4ab84fcd) remains published while EP2 has not yet reached published status. This is a knowing, temporary exception to the Series Release Rule, made by Marc Postlewaite on Aug 8 2026. It stands until EP2 reaches published.
+
+**Conditions:**
+- No agent may take action on EP1's published status
+- This exception does not constitute a precedent
+- No agent may cite this exception as justification for publishing a series episode before the prior episode is published
+
+**Context:** EP1 was published before EP2 was complete due to the acquisition funnel sequence (EP1 = library entry; EP2 = funnel landing). The exception acknowledges this sequencing while protecting EP1's status from agent interference.
