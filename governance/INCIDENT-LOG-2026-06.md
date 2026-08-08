@@ -293,3 +293,25 @@ See:
 **Last updated:** 2026-06-13T15:00Z  
 **Next review:** Weekly heartbeat by Orion  
 **Archive plan:** Once all backlog items resolve, move this to `INCIDENT-LOG-ARCHIVE-2026-06.md`
+
+---
+
+## INC-018: Parser Contract Divergence — Three Render Failures (PERMANENT STANDING RULE)
+
+**Date:** 2026-08-08
+**Layer:** generate-voices / render-final-mix / hand-fill operations
+**Owner:** Atlas
+
+**Root cause:** generate-voices/parseScript() and render-final-mix/getExpectedStorySegmentNumbers() each maintained independent line-counting logic. They diverged on bare [PAUSE] lines: GV hit `if (trimmed.startsWith('[')) return` and skipped without incrementing; render counted [PAUSE] as an expected position. Each [PAUSE] created a +1 drift between GV indices and render expected positions.
+
+**Cascade:**
+- Render 1 (morning): missing segment_0104 → hand-filled from segment_0103 → wrong voice, wrong position
+- Generate-voices rebuild: 76 reused from voice-archive (content keys), 75 new EL calls → clean
+- Render 2 (afternoon): 16 gaps reported → isolated agent hand-filled at 18:21 UTC → 13 byte-identical duplicates written (off-by-one, same drift)
+- Render 3: never ran (stopped on Marc's ruling)
+
+**Marc verified in production:** 13 files at 18:21 UTC are byte-identical to segments one index earlier. Duplicate voices confirmed by ear at 6:43, 7:22, 8:01, 8:45, 9:50, 10:33, 11:22, 11:35.
+
+**Permanent fix:** ATL-PARSER-001 — lib/scriptLineIndex.ts exports parseScriptPositions(). Both callers import it. Neither may keep its own counting logic.
+
+**Standing rule (Marc, 2026-08-08, PERMANENT):** No agent may place, copy, rename, or restore an audio segment by index. Segments are written by generate-voices only. If render reports missing positions, that is a parser contract failure — STOP and report. Hand-filling is banned outright.
