@@ -3662,6 +3662,17 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: false, error: `Failed to list final story segment inventory: ${finalListError.message}` }, { status: 500 })
     }
     const finalSegmentNames = new Set((finalAudioFiles || []).filter(file => segmentFilePattern.test(file.name)).map(file => file.name))
+    // ATL-SFX-FULLGEN-001: also collect sfx_NNNN.mp3 files into the inventory set so
+    // buildInventoryReport sees them and missingSegments is accurate for SFX lines.
+    // Mirrors the retryMissingOnly path (ATL-SFX-INCR-001, ~lines 3432-3435); that path
+    // was fixed when ATL-SFX-INCR-001 landed (2026-07-21) but the full generation path
+    // was not updated at the same time. Production pipeline (run-next) always calls with
+    // retryMissingOnly=true, so this bug only surfaces on direct API calls — it does NOT
+    // affect normal production runs. The fix closes the gap for local/manual invocations.
+    const sfxFilePatternFull = /^sfx_\d{4}\.mp3$/
+    for (const sfxFile of (finalAudioFiles || []).filter(f => sfxFilePatternFull.test(f.name))) {
+      finalSegmentNames.add(sfxFile.name)
+    }
     const inventory = buildInventoryReport(finalSegmentNames, failures)
     console.log(`  Inventory: missing=${inventory.missingSegments.length}, lowLoudness=${inventory.lowLoudnessSegments.length}, transcriptFailed=${inventory.transcriptFailedSegments.length}, reusedVoices=${inventory.reusedVoices.length}, escalated=${escalations.length}`)
     if (escalations.length > 0) {
