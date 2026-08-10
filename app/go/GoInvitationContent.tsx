@@ -29,7 +29,7 @@
 //   Name provided → GET /api/name-audio?name={name} → audio_url → play it.
 //   Name blank or /api/name-audio fails → fall back to welcome_B.mp3.
 //
-// Styling: dark bg (#0f0f0f), WHITE text only, inline styles.
+// Styling: full-bleed cover bg + gradient overlay, WHITE text only, inline styles.
 // =============================================================================
 
 import { useState, useRef, useCallback } from 'react'
@@ -39,10 +39,10 @@ import { useSearchParams } from 'next/navigation'
 const BELL_BASE =
   'https://vmyhlfeouzslixtkmddy.supabase.co/storage/v1/object/public/audio/asc3'
 
-const AUDIO_PV1   = `${BELL_BASE}/a8c8b8d0-f717-44c4-a6a5-39c3a65d9c2e/story_body.mp3`
-const AUDIO_PV2   = `${BELL_BASE}/a88084ab-62e3-47f4-9b7a-5cbc32943349/story_body.mp3`
-const AUDIO_PV3B1 = `${BELL_BASE}/a37fdc46-24d0-49a7-b749-320076978c3b/story_body.mp3`
-const AUDIO_PV3B2 = `${BELL_BASE}/4784f4d6-cae4-48ce-a094-73415c700380/story_body.mp3`
+const AUDIO_PV1   = `${BELL_BASE}/a8c8b8d0-f717-44c4-a6a5-39c3a65d9c2e/final_mix_cta.mp3`
+const AUDIO_PV2   = `${BELL_BASE}/a88084ab-62e3-47f4-9b7a-5cbc32943349/final_mix_cta.mp3`
+const AUDIO_PV3B1 = `${BELL_BASE}/a37fdc46-24d0-49a7-b749-320076978c3b/final_mix_cta.mp3`
+const AUDIO_PV3B2 = `${BELL_BASE}/4784f4d6-cae4-48ce-a094-73415c700380/final_mix_cta.mp3`
 
 // Cover images — PV1 and PV2 have art; PV3-B1 has none (build without)
 const COVER_PV1 =
@@ -50,14 +50,18 @@ const COVER_PV1 =
 const COVER_PV2 =
   `${BELL_BASE}/a88084ab-62e3-47f4-9b7a-5cbc32943349/cover_1785337196082.jpg`
 
+// Page-level cover background (all arms) — full-bleed behind gradient overlay
+const PAGE_COVER_URL =
+  'https://vmyhlfeouzslixtkmddy.supabase.co/storage/v1/object/public/audio/covers/bell-gate-1786379576312-b.png'
+
 // Hook lines — first spoken line of each arm's cold open
 // Pulled 2026-08-07 from stories.script via node script; Marc to confirm pick.
 // PV1 (arm=1): stories/a8c8b8d0  — Liberty Bridge
-// PV2 (arm=2): stories/a88084ab  — Mara Vance
+// PV2 (arm=2): stories/a88084ab  — Mara Vance (Greenville added 2026-08-10)
 // PV3-B1 (arm=3): stories/a37fdc46 — Reedy River
 const HOOK_LINES: Record<1 | 2 | 3, string> = {
   1: "\u201CThe water rushed beneath Greenville\u2019s Liberty Bridge.\u201D",
-  2: "\u201CMy name is Mara Vance, and a dead man whispered it after his heart had stopped.\u201D",
+  2: "\u201CMy name is Mara Vance, and in Greenville, a dead man whispered it after his heart had stopped.\u201D",
   3: "\u201CIn Greenville, the Reedy River keeps its secrets beneath Falls Park, especially after dark.\u201D",
 }
 
@@ -108,6 +112,11 @@ export default function GoInvitationContent({ arm: armProp }: GoInvitationConten
   const [submitting, setSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
 
+  // Arm C: Continue button becomes visible when B1 reaches 75% of duration or ends.
+  // Button appears while the audio is still playing so listener sees it when Mara says "click continue."
+  // Beat 2 audio only starts on explicit button press — never autoplay.
+  const [armCContinueReady, setArmCContinueReady] = useState(false)
+
   const audioRef   = useRef<HTMLAudioElement | null>(null)
   const welcomeRef = useRef<HTMLAudioElement | null>(null)
 
@@ -121,11 +130,27 @@ export default function GoInvitationContent({ arm: armProp }: GoInvitationConten
     goTo('playing')
   }, [arm, goTo])
 
+  // ── Track B1 progress — show Continue button at 75% for Arm C ───────────────
+  const handleTimeUpdate = useCallback(() => {
+    if (arm !== 3) return
+    const audio = audioRef.current
+    if (!audio || phaseRef.current !== 'playing') return
+    if (audio.duration > 0 && audio.currentTime >= audio.duration * 0.75) {
+      setArmCContinueReady(true)
+    }
+  }, [arm])
+
   // ── Promo audio ended ────────────────────────────────────────────────────────
   const handleAudioEnded = useCallback(() => {
     const cur = phaseRef.current
     if (cur === 'playing') {
-      goTo(arm === 3 ? 'b1_continue' : 'wall')
+      if (arm === 3) {
+        // B1 ended — ensure Continue button is visible, then enter b1_continue
+        setArmCContinueReady(true)
+        goTo('b1_continue')
+      } else {
+        goTo('wall')
+      }
     } else if (cur === 'b2_playing') {
       goTo('wall')
     }
@@ -135,6 +160,7 @@ export default function GoInvitationContent({ arm: armProp }: GoInvitationConten
   const handleContinue = useCallback(() => {
     const audio = audioRef.current
     if (!audio) return
+    setArmCContinueReady(false) // Hide button during B2 playback
     audio.src = AUDIO_PV3B2
     audio.load()
     audio.play().catch(() => {})
@@ -227,19 +253,35 @@ export default function GoInvitationContent({ arm: armProp }: GoInvitationConten
     <div style={{
       minHeight: '100vh',
       backgroundColor: '#0f0f0f',
+      backgroundImage: `url(${PAGE_COVER_URL})`,
+      backgroundSize: 'cover',
+      backgroundPosition: 'center top',
+      backgroundRepeat: 'no-repeat',
       color: '#ffffff',
       fontFamily: "'DM Sans', 'Inter', -apple-system, BlinkMacSystemFont, sans-serif",
       WebkitFontSmoothing: 'antialiased',
+      position: 'relative',
     }}>
       {/* Hidden audio elements */}
-      <audio ref={audioRef}   onEnded={handleAudioEnded} style={{ display: 'none' }} />
-      <audio ref={welcomeRef}                            style={{ display: 'none' }} />
+      <audio ref={audioRef} onEnded={handleAudioEnded} onTimeUpdate={handleTimeUpdate} style={{ display: 'none' }} />
+      <audio ref={welcomeRef} style={{ display: 'none' }} />
+
+      {/* Full-bleed gradient overlay — sits above bg image (z:1), below all phase content (z:2+) */}
+      <div
+        aria-hidden="true"
+        style={{
+          position: 'absolute',
+          inset: 0,
+          background: 'linear-gradient(to bottom, rgba(0,0,0,0.10) 0%, rgba(0,0,0,0.40) 50%, rgba(0,0,0,0.80) 80%, rgba(0,0,0,0.92) 100%)',
+          pointerEvents: 'none',
+          zIndex: 1,
+        }}
+      />
 
       {/* ── HOOK CARD (arrival phase) ─────────────────────────────────────── */}
       {phase === 'hook' && (
         <div style={{
           minHeight: '100vh',
-          backgroundColor: '#0f0f0f',
           display: 'flex',
           flexDirection: 'column',
           alignItems: 'center',
@@ -248,6 +290,7 @@ export default function GoInvitationContent({ arm: armProp }: GoInvitationConten
           position: 'relative',
           overflow: 'hidden',
           textAlign: 'center',
+          zIndex: 2,
         }}>
           {/* Cover art — background only, dim, never competes with hook */}
           {coverUrl && (
@@ -314,7 +357,6 @@ export default function GoInvitationContent({ arm: armProp }: GoInvitationConten
       {(phase === 'playing' || phase === 'b2_playing') && (
         <div style={{
           minHeight: '100vh',
-          backgroundColor: '#0f0f0f',
           display: 'flex',
           flexDirection: 'column',
           alignItems: 'center',
@@ -323,6 +365,7 @@ export default function GoInvitationContent({ arm: armProp }: GoInvitationConten
           position: 'relative',
           overflow: 'hidden',
           textAlign: 'center',
+          zIndex: 2,
         }}>
           {/* Cover art — visible during playback, still secondary */}
           {coverUrl && (
@@ -381,20 +424,50 @@ export default function GoInvitationContent({ arm: armProp }: GoInvitationConten
               Listening…
             </span>
           </div>
+
+          {/* Arm C: Continue button — appears at 75% of B1 duration so it's visible when
+              Mara says "click continue." Only shown during B1 (phase === 'playing');
+              hidden during B2 (phase === 'b2_playing') via armCContinueReady reset. */}
+          {arm === 3 && phase === 'playing' && armCContinueReady && (
+            <button
+              type="button"
+              onClick={handleContinue}
+              style={{
+                marginTop: '32px',
+                background: '#1a1a1a',
+                border: '1.5px solid rgba(255,255,255,0.25)',
+                color: '#ffffff',
+                fontSize: '18px',
+                fontWeight: 600,
+                padding: '16px 40px',
+                borderRadius: '50px',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '10px',
+                position: 'relative',
+                zIndex: 1,
+                WebkitTapHighlightColor: 'transparent',
+              }}
+            >
+              Continue →
+            </button>
+          )}
         </div>
       )}
 
-      {/* ── ARM C: CONTINUE (B1 ended) ────────────────────────────────────── */}
+      {/* ── ARM C: CONTINUE (B1 ended, button already visible) ──────────── */}
       {phase === 'b1_continue' && (
         <div style={{
           minHeight: '100vh',
-          backgroundColor: '#0f0f0f',
           display: 'flex',
           flexDirection: 'column',
           alignItems: 'center',
           justifyContent: 'center',
           padding: '24px 20px',
           textAlign: 'center',
+          position: 'relative',
+          zIndex: 2,
         }}>
           <p style={{
             fontSize: 'clamp(20px, 4.5vw, 30px)',
@@ -439,13 +512,14 @@ export default function GoInvitationContent({ arm: armProp }: GoInvitationConten
       {(phase === 'welcome' || phase === 'routing') && (
         <div style={{
           minHeight: '100vh',
-          backgroundColor: '#0f0f0f',
           display: 'flex',
           flexDirection: 'column',
           alignItems: 'center',
           justifyContent: 'center',
           padding: '24px 20px',
           textAlign: 'center',
+          position: 'relative',
+          zIndex: 2,
         }}>
           <p style={{ fontSize: '1.4rem', fontWeight: 800, color: '#ffffff', margin: '0 0 10px' }}>
             You&rsquo;re in! 🎧
@@ -461,12 +535,13 @@ export default function GoInvitationContent({ arm: armProp }: GoInvitationConten
       {phase === 'wall' && (
         <div style={{
           minHeight: '100vh',
-          backgroundColor: '#0f0f0f',
           display: 'flex',
           flexDirection: 'column',
           alignItems: 'center',
           justifyContent: 'flex-end',
           padding: '0',
+          position: 'relative',
+          zIndex: 2,
         }}>
           {/* Blurred hook text background */}
           <div style={{
