@@ -258,6 +258,14 @@ export default function GoInvitationContent({ arm: armProp }: GoInvitationConten
       WebkitFontSmoothing: 'antialiased',
       position: 'relative',
     }}>
+      {/* CSS keyframe for sound wave bars */}
+      <style>{`
+        @keyframes soundBar {
+          0%, 100% { transform: scaleY(0.3); }
+          50% { transform: scaleY(0.9); }
+        }
+      `}</style>
+
       {/* Background image layer — CSS brightness/contrast filter lifts luminance before overlay is applied.
           brightness(1.55) contrast(0.90) = medium lift chosen as best balance:
           · 1.25/0.95 = mild (figure still murky at phone width)
@@ -333,14 +341,47 @@ export default function GoInvitationContent({ arm: armProp }: GoInvitationConten
             textAlign: 'center',
             lineHeight: 1.3,
             maxWidth: '600px',
-            margin: '0 0 40px 0',
+            margin: '0 0 4px 0',
             position: 'relative',
             zIndex: 1,
           }}>
             {hookLine}
           </p>
 
-          {/* "Listen in…" button — ear cue, no triangle, no scrubber */}
+          {/* Sound wave — idle state (before Listen in is pressed)
+               Container is exactly 32px tall with 4px margin-bottom.
+               Total spacing: 4px (headline mb) + 32px (wave) + 4px (wave mb) = 40px — same as original 40px headline margin.
+               Button position is preserved. */}
+          <div
+            aria-hidden="true"
+            style={{
+              height: '32px',
+              flexShrink: 0,
+              display: 'flex',
+              alignItems: 'flex-end',
+              justifyContent: 'center',
+              gap: '4px',
+              margin: '0 0 4px 0',
+              position: 'relative',
+              zIndex: 1,
+            }}
+          >
+            {[0, 1, 2, 3, 4].map((i) => (
+              <div
+                key={i}
+                style={{
+                  width: '3px',
+                  height: '100%',
+                  backgroundColor: 'rgba(255,255,255,0.45)',
+                  borderRadius: '2px',
+                  transformOrigin: 'bottom center',
+                  animation: `soundBar 2.4s ease-in-out ${i * 0.15}s infinite`,
+                }}
+              />
+            ))}
+          </div>
+
+          {/* "Listen in…" button — ear cue, no triangle, no scrubber */
           <button
             type="button"
             onClick={handleStart}
@@ -425,6 +466,36 @@ export default function GoInvitationContent({ arm: armProp }: GoInvitationConten
           }}>
             {hookLine}
           </p>
+
+          {/* Sound wave — playing state (audio is active) */}
+          <div
+            aria-hidden="true"
+            style={{
+              height: '32px',
+              flexShrink: 0,
+              display: 'flex',
+              alignItems: 'flex-end',
+              justifyContent: 'center',
+              gap: '4px',
+              margin: '0 0 8px 0',
+              position: 'relative',
+              zIndex: 1,
+            }}
+          >
+            {[0, 1, 2, 3, 4].map((i) => (
+              <div
+                key={i}
+                style={{
+                  width: '3px',
+                  height: '100%',
+                  backgroundColor: '#ffffff',
+                  borderRadius: '2px',
+                  transformOrigin: 'bottom center',
+                  animation: `soundBar 0.8s ease-in-out ${i * 0.15}s infinite`,
+                }}
+              />
+            ))}
+          </div>
 
           {/* Minimal listening cue — no scrubber, no controls */}
           <div style={{
@@ -562,6 +633,7 @@ export default function GoInvitationContent({ arm: armProp }: GoInvitationConten
           <div style={{
             flex: 1,
             display: 'flex',
+            flexDirection: 'column',
             alignItems: 'center',
             justifyContent: 'center',
             padding: '24px 20px',
@@ -574,10 +646,37 @@ export default function GoInvitationContent({ arm: armProp }: GoInvitationConten
               textAlign: 'center',
               lineHeight: 1.3,
               maxWidth: '560px',
-              margin: 0,
+              margin: '0 0 16px 0',
             }}>
               {hookLine}
             </p>
+
+            {/* Sound wave — playing state (user has already pressed Listen In) */}
+            <div
+              aria-hidden="true"
+              style={{
+                height: '32px',
+                flexShrink: 0,
+                display: 'flex',
+                alignItems: 'flex-end',
+                justifyContent: 'center',
+                gap: '4px',
+              }}
+            >
+              {[0, 1, 2, 3, 4].map((i) => (
+                <div
+                  key={i}
+                  style={{
+                    width: '3px',
+                    height: '100%',
+                    backgroundColor: '#ffffff',
+                    borderRadius: '2px',
+                    transformOrigin: 'bottom center',
+                    animation: `soundBar 0.8s ease-in-out ${i * 0.15}s infinite`,
+                  }}
+                />
+              ))}
+            </div>
           </div>
         </div>
       )}
