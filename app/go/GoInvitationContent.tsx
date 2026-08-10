@@ -255,7 +255,7 @@ export default function GoInvitationContent({ arm: armProp }: GoInvitationConten
       backgroundColor: '#0f0f0f',
       backgroundImage: `url(${PAGE_COVER_URL})`,
       backgroundSize: 'cover',
-      backgroundPosition: 'center top',
+      backgroundPosition: 'center 40%', // OPTION-B (best Mara visibility)
       backgroundRepeat: 'no-repeat',
       color: '#ffffff',
       fontFamily: "'DM Sans', 'Inter', -apple-system, BlinkMacSystemFont, sans-serif",
@@ -272,7 +272,7 @@ export default function GoInvitationContent({ arm: armProp }: GoInvitationConten
         style={{
           position: 'absolute',
           inset: 0,
-          background: 'linear-gradient(to bottom, rgba(0,0,0,0.10) 0%, rgba(0,0,0,0.40) 50%, rgba(0,0,0,0.80) 80%, rgba(0,0,0,0.92) 100%)',
+          background: 'linear-gradient(to bottom, rgba(0,0,0,0.05) 0%, rgba(0,0,0,0.20) 50%, rgba(0,0,0,0.82) 78%, rgba(0,0,0,0.92) 100%)', // OPTION-B (best Mara visibility)
           pointerEvents: 'none',
           zIndex: 1,
         }}
