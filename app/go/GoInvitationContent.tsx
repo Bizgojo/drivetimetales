@@ -381,7 +381,7 @@ export default function GoInvitationContent({ arm: armProp }: GoInvitationConten
             ))}
           </div>
 
-          {/* "Listen in…" button — ear cue, no triangle, no scrubber */
+          {/* "Listen in…" button — ear cue, no triangle, no scrubber */}
           <button
             type="button"
             onClick={handleStart}
