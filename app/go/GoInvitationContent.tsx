@@ -60,8 +60,8 @@ const PAGE_COVER_URL =
 // PV2 (arm=2): stories/a88084ab  — Mara Vance (Greenville added 2026-08-10)
 // PV3-B1 (arm=3): stories/a37fdc46 — Reedy River
 const HOOK_LINES: Record<1 | 2 | 3, string> = {
-  1: "\u201CThe water rushed beneath Greenville\u2019s Liberty Bridge.\u201D",
-  2: "\u201CMy name is Mara Vance. In Greenville, a dead man whispered it after his heart had stopped.\u201D",
+  1: "In Greenville, a dead man\u2019s palm held three words in fresh ink: ASK WHO DROWNED.",
+  2: "In Greenville, a dead man whispered my name after his heart had stopped.",
   3: "\u201CIn Greenville, the Reedy River keeps its secrets beneath Falls Park, especially after dark.\u201D",
 }
 
