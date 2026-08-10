@@ -61,7 +61,7 @@ const PAGE_COVER_URL =
 // PV3-B1 (arm=3): stories/a37fdc46 — Reedy River
 const HOOK_LINES: Record<1 | 2 | 3, string> = {
   1: "\u201CThe water rushed beneath Greenville\u2019s Liberty Bridge.\u201D",
-  2: "\u201CMy name is Mara Vance, and in Greenville, a dead man whispered it after his heart had stopped.\u201D",
+  2: "\u201CMy name is Mara Vance. In Greenville, a dead man whispered it after his heart had stopped.\u201D",
   3: "\u201CIn Greenville, the Reedy River keeps its secrets beneath Falls Park, especially after dark.\u201D",
 }
 
@@ -112,8 +112,8 @@ export default function GoInvitationContent({ arm: armProp }: GoInvitationConten
   const [submitting, setSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
 
-  // Arm C: Continue button becomes visible when B1 reaches 75% of duration or ends.
-  // Button appears while the audio is still playing so listener sees it when Mara says "click continue."
+  // Arm C: Continue button becomes visible at exactly 76.44s — when Mara's "click continue" line begins.
+  // B1 total = 79.92s: 76.44s story audio, then the 3.48s CTA prompt. Button appears on that exact cue.
   // Beat 2 audio only starts on explicit button press — never autoplay.
   const [armCContinueReady, setArmCContinueReady] = useState(false)
 
@@ -135,7 +135,7 @@ export default function GoInvitationContent({ arm: armProp }: GoInvitationConten
     if (arm !== 3) return
     const audio = audioRef.current
     if (!audio || phaseRef.current !== 'playing') return
-    if (audio.duration > 0 && audio.currentTime >= audio.duration * 0.75) {
+    if (audio.currentTime >= 76.44) {
       setArmCContinueReady(true)
     }
   }, [arm])
@@ -425,8 +425,8 @@ export default function GoInvitationContent({ arm: armProp }: GoInvitationConten
             </span>
           </div>
 
-          {/* Arm C: Continue button — appears at 75% of B1 duration so it's visible when
-              Mara says "click continue." Only shown during B1 (phase === 'playing');
+          {/* Arm C: Continue button — appears at exactly 76.44s (when Mara says "click continue").
+              Only shown during B1 (phase === 'playing');
               hidden during B2 (phase === 'b2_playing') via armCContinueReady reset. */}
           {arm === 3 && phase === 'playing' && armCContinueReady && (
             <button
