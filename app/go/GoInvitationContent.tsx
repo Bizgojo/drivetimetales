@@ -253,20 +253,35 @@ export default function GoInvitationContent({ arm: armProp }: GoInvitationConten
     <div style={{
       minHeight: '100vh',
       backgroundColor: '#0f0f0f',
-      backgroundImage: `url(${PAGE_COVER_URL})`,
-      backgroundSize: 'cover',
-      backgroundPosition: 'center 40%', // OPTION-B (best Mara visibility)
-      backgroundRepeat: 'no-repeat',
       color: '#ffffff',
       fontFamily: "'DM Sans', 'Inter', -apple-system, BlinkMacSystemFont, sans-serif",
       WebkitFontSmoothing: 'antialiased',
       position: 'relative',
     }}>
+      {/* Background image layer — CSS brightness/contrast filter lifts luminance before overlay is applied.
+          brightness(1.55) contrast(0.90) = medium lift chosen as best balance:
+          · 1.25/0.95 = mild (figure still murky at phone width)
+          · 1.55/0.90 = medium (figure legible, no significant wash on headline area)
+          · 1.85/0.85 = strong (washed out; top text protection weaker)
+          z-index: 0 — sits below gradient (z:1) and all content (z:2+) */}
+      <div
+        aria-hidden="true"
+        style={{
+          position: 'absolute',
+          inset: 0,
+          backgroundImage: `url(${PAGE_COVER_URL})`,
+          backgroundSize: 'cover',
+          backgroundPosition: 'center 40%', // OPTION-B (best Mara visibility)
+          backgroundRepeat: 'no-repeat',
+          filter: 'brightness(1.55) contrast(0.90)',
+          zIndex: 0,
+        }}
+      />
       {/* Hidden audio elements */}
       <audio ref={audioRef} onEnded={handleAudioEnded} onTimeUpdate={handleTimeUpdate} style={{ display: 'none' }} />
       <audio ref={welcomeRef} style={{ display: 'none' }} />
 
-      {/* Full-bleed gradient overlay — sits above bg image (z:1), below all phase content (z:2+) */}
+      {/* Full-bleed gradient overlay — sits above filtered bg image (z:1), below all phase content (z:2+) */}
       <div
         aria-hidden="true"
         style={{
