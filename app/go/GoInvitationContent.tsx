@@ -135,7 +135,7 @@ export default function GoInvitationContent({ arm: armProp }: GoInvitationConten
     if (arm !== 3) return
     const audio = audioRef.current
     if (!audio || phaseRef.current !== 'playing') return
-    if (audio.currentTime >= 76.44) {
+    if (audio.currentTime >= 74.08) {
       setArmCContinueReady(true)
     }
   }, [arm])
