@@ -272,7 +272,7 @@ export default function GoInvitationContent({ arm: armProp }: GoInvitationConten
         style={{
           position: 'absolute',
           inset: 0,
-          background: 'linear-gradient(to bottom, rgba(0,0,0,0.05) 0%, rgba(0,0,0,0.20) 50%, rgba(0,0,0,0.82) 78%, rgba(0,0,0,0.92) 100%)', // OPTION-B (best Mara visibility)
+          background: 'linear-gradient(to bottom, rgba(0,0,0,0.88) 0%, rgba(0,0,0,0.65) 35%, rgba(0,0,0,0.18) 65%, rgba(0,0,0,0.04) 100%)', // OPTION-B inverted: heavy dark at top (text protection), light at bottom (figure visible)
           pointerEvents: 'none',
           zIndex: 1,
         }}
@@ -285,8 +285,8 @@ export default function GoInvitationContent({ arm: armProp }: GoInvitationConten
           display: 'flex',
           flexDirection: 'column',
           alignItems: 'center',
-          justifyContent: 'center',
-          padding: '24px 20px',
+          justifyContent: 'flex-start',
+          padding: '80px 20px 24px',
           position: 'relative',
           overflow: 'hidden',
           textAlign: 'center',
