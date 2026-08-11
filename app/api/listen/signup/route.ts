@@ -247,7 +247,7 @@ export async function POST(req: NextRequest) {
           const { error } = await supabase.from('user_library').upsert({
             user_id: userId,
             story_id: EP4_ID,
-            progress: 61, // Just above ContinueListening >60s threshold; updated to real position on /home
+            progress: 0, // start from beginning — was 61 (Marc 2026-08-11)
             completed: false,
             hide_from_home: false,
             not_for_me: false,

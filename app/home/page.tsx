@@ -316,7 +316,8 @@ function HomeContent() {
     }
     if (welcome && !user?.user_metadata?.welcome_dismissed) {
       setShowWelcome(true)
-      // No auto-dismiss — persisted via user_metadata.welcome_dismissed on tap
+      // Strip ?welcome=true from URL immediately on mount so back-nav can't re-trigger the banner
+      window.history.replaceState({}, '', window.location.pathname)
     }
   }, [searchParams, user?.id])
 

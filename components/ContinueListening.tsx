@@ -54,7 +54,7 @@ export default function ContinueListening({ onIdsLoaded, excludeStoryId = null }
       .eq('user_id', user!.id)
       .eq('completed', false)
       .eq('hide_from_home', false)
-      .gt('progress', 60)
+      .not('last_played', 'is', null)
       .order('last_played', { ascending: false })
       .limit(2)
     const rows = (data || []).filter(r => r.stories && r.story_id !== excludeStoryId)
