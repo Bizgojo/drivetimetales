@@ -127,7 +127,7 @@ export async function POST(req: NextRequest) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           session_id: sessionId,
-          variant: `listen-arm${armNum}`,
+          variant: `bell-arm${armNum}`,
           utm_source: utmSource ?? null,
           utm_campaign: utmCampaign ?? null,
           event: 'wall_submit',
