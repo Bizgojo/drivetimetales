@@ -126,7 +126,7 @@ export default function GoInvitationContent({ arm: armProp }: GoInvitationConten
   //   progress_75   → pct_75
   //   continue_pressed → cta_click
   //   page_view / wall_shown / wall_submit → same (already in DB)
-  // Variant: bell-arm{n} → listen-arm{n} (already in DB)
+  // Variant: bell-arm{n} written directly to go_listen_events
   const EVENT_MAP: Record<string, string> = {
     page_view:        'page_view',
     listen_start:     'play_start',
@@ -142,7 +142,7 @@ export default function GoInvitationContent({ arm: armProp }: GoInvitationConten
     const dbEvent = EVENT_MAP[specEvent] ?? specEvent
     const payload = {
       session_id: sessionIdRef.current,
-      variant: `listen-arm${arm}`,
+      variant: `bell-arm${arm}`,
       utm_source: searchParams.get('utm_source') ?? null,
       utm_campaign: searchParams.get('utm_campaign') ?? null,
       event: dbEvent,
