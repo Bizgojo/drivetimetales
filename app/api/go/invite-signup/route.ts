@@ -91,20 +91,26 @@ export async function POST(req: NextRequest) {
       // or 'user_already_exists' when the email already has an auth account.
       // Branch on structured error fields — NOT on message substrings.
       if (authError.status === 422) {
-        const { data: existingProfile, error: lookupError } = await supabase
-          .from('users')
-          .select('id, email')
-          .eq('email', email)
-          .single()
-        if (lookupError || !existingProfile) {
-          console.error('[invite-signup] existing user lookup in public.users failed:', {
-            authError: { message: authError.message, status: authError.status, code: authError.code },
-            lookupError,
-          })
+        // Resolve against auth.users via paginated loop — NOT public.users.
+        // 9 auth accounts currently have no public.users row; querying public.users
+        // would fail on exactly those cases. Page through auth.users 50 at a time
+        // (correct at any account count, no magic page-size limit).
+        let page = 1
+        let found: { id: string; email: string } | null = null
+        while (true) {
+          const { data: pageData, error: pageError } = await supabase.auth.admin.listUsers({ page, perPage: 50 })
+          if (pageError || !pageData?.users?.length) break
+          const match = pageData.users.find(u => u.email?.toLowerCase() === email.toLowerCase())
+          if (match) { found = { id: match.id, email: match.email ?? email }; break }
+          if (pageData.users.length < 50) break // last page reached
+          page++
+        }
+        if (!found) {
+          console.error('[invite-signup] could not locate existing user in auth after 422:', { email, authErrorCode: authError.code, authErrorStatus: authError.status })
           return NextResponse.json({ error: 'Account lookup failed' }, { status: 500 })
         }
         await supabase.from('users').upsert({
-          id: existingProfile.id,
+          id: found.id,
           email,
           first_name: firstName,
           display_name: firstName,
@@ -119,7 +125,7 @@ export async function POST(req: NextRequest) {
         }, { onConflict: 'id' })
 
         // FIX 4: Seed user_library so ContinueListening shows on /home
-        await seedUserLibrary(existingProfile.id, armNum as 1 | 2 | 3)
+        await seedUserLibrary(found.id, armNum as 1 | 2 | 3)
 
         // FIX 1: Fire wall_submit tracking (was missing for existing-user path)
         if (sessionId && typeof sessionId === 'string' && sessionId.length > 0) {
@@ -147,7 +153,7 @@ export async function POST(req: NextRequest) {
           email,
           customData: { arm: armNum, content_name: 'bell-arm-wall-submit' },
         })
-        return NextResponse.json({ ok: true, userId: existingProfile.id, note: 'existing user' })
+        return NextResponse.json({ ok: true, userId: found.id, note: 'existing user' })
       }
       console.error('[invite-signup] createUser error:', { message: authError.message, status: authError.status, code: authError.code })
       return NextResponse.json({ error: 'Account creation failed' }, { status: 500 })

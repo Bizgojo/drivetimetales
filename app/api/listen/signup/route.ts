@@ -89,24 +89,27 @@ export async function POST(req: NextRequest) {
     if (authError) {
       // If user already exists, look them up
       if (authError.status === 422) {
-        // GoTrue returns status 422 (Unprocessable Entity) with code 'email_exists'
-        // or 'user_already_exists' for duplicate email — branch on structured error,
-        // not message substrings. Use O(1) indexed email lookup in public.users.
-        const { data: existingProfile, error: lookupError } = await supabase
-          .from('users')
-          .select('id, email')
-          .eq('email', email)
-          .single()
-        if (lookupError || !existingProfile) {
-          console.error('[listen/signup] existing user lookup in public.users failed:', {
-            authError: { message: authError.message, status: authError.status, code: authError.code },
-            lookupError,
-          })
+        // GoTrue returns status 422 for duplicate email — branch on structured error,
+        // not message substrings. Resolve against auth.users via paginated loop;
+        // public.users has 9 auth accounts with no matching row, so querying
+        // public.users would fail on exactly those accounts.
+        let page = 1
+        let found: { id: string; email: string } | null = null
+        while (true) {
+          const { data: pageData, error: pageError } = await supabase.auth.admin.listUsers({ page, perPage: 50 })
+          if (pageError || !pageData?.users?.length) break
+          const match = pageData.users.find(u => u.email?.toLowerCase() === email.toLowerCase())
+          if (match) { found = { id: match.id, email: match.email ?? email }; break }
+          if (pageData.users.length < 50) break // last page reached
+          page++
+        }
+        if (!found) {
+          console.error('[listen/signup] could not locate existing user in auth after 422:', { email, authErrorCode: authError.code, authErrorStatus: authError.status })
           return NextResponse.json({ error: 'Account lookup failed' }, { status: 500 })
         }
-        // Update existing user record
+        // Update existing user record (upsert INSERTs if no public.users row exists)
         await supabase.from('users').upsert({
-          id: existingProfile.id,
+          id: found.id,
           email,
           display_name: displayName,
           first_name: displayName,
@@ -125,7 +128,7 @@ export async function POST(req: NextRequest) {
 
         return NextResponse.json({
           ok: true,
-          userId: existingProfile.id,
+          userId: found.id,
           continueEpisodeId: EP4_ID,
           continueAudioUrl: ep4?.story_audio_url ?? null,
           note: 'existing user updated',
