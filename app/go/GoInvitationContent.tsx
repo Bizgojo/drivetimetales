@@ -32,7 +32,7 @@
 // Styling: full-bleed cover bg + gradient overlay, WHITE text only, inline styles.
 // =============================================================================
 
-import { useState, useRef, useCallback } from 'react'
+import { useState, useRef, useCallback, useEffect } from 'react'
 import { useSearchParams } from 'next/navigation'
 
 // ─── Bell promo audio URLs (Supabase public storage, status=audio_ready) ─────
@@ -100,6 +100,68 @@ export default function GoInvitationContent({ arm: armProp }: GoInvitationConten
     armRaw === '2' ? 2 : armRaw === '3' ? 3 : 1
   )
 
+  // ── GATE-TRACK-001 — session tracking ──────────────────────────────────────
+  // One UUID per visit, stored in a ref so it never triggers re-renders.
+  // Initialised lazily so it only runs client-side (this component is 'use client').
+  const sessionIdRef = useRef<string>('')
+  if (!sessionIdRef.current) {
+    sessionIdRef.current =
+      typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+        ? crypto.randomUUID()
+        : `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
+  }
+
+  // Track which progress milestones have fired for the current audio clip.
+  // Reset when arm C switches from B1 → B2.
+  const progressFiredRef = useRef({ p25: false, p50: false, p75: false })
+
+  // Prevent duplicate wall_shown events if goTo('wall') is called more than once.
+  const wallShownFiredRef = useRef(false)
+
+  // ── trackEvent — fire-and-forget ingest to /api/go-listen ────────────────
+  // Maps spec event names → existing DB-valid event names (no migration required):
+  //   listen_start  → play_start
+  //   progress_25   → pct_25
+  //   progress_50   → pct_50
+  //   progress_75   → pct_75
+  //   continue_pressed → cta_click
+  //   page_view / wall_shown / wall_submit → same (already in DB)
+  // Variant: bell-arm{n} → listen-arm{n} (already in DB)
+  const EVENT_MAP: Record<string, string> = {
+    page_view:        'page_view',
+    listen_start:     'play_start',
+    progress_25:      'pct_25',
+    progress_50:      'pct_50',
+    progress_75:      'pct_75',
+    continue_pressed: 'cta_click',
+    wall_shown:       'wall_shown',
+    wall_submit:      'wall_submit',
+  }
+
+  const trackEvent = useCallback((specEvent: string, positionSeconds?: number) => {
+    const dbEvent = EVENT_MAP[specEvent] ?? specEvent
+    const payload = {
+      session_id: sessionIdRef.current,
+      variant: `listen-arm${arm}`,
+      utm_source: searchParams.get('utm_source') ?? null,
+      utm_campaign: searchParams.get('utm_campaign') ?? null,
+      event: dbEvent,
+      position_seconds: positionSeconds ?? 0,
+    }
+    void fetch('/api/go-listen', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+      keepalive: true,
+    }).catch(() => { /* silent — tracking never blocks UI */ })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [arm, searchParams])
+
+  // ── page_view on mount ───────────────────────────────────────────────────
+  useEffect(() => {
+    trackEvent('page_view')
+  }, [trackEvent])
+
   const phaseRef = useRef<Phase>('hook')
   const [phase, setPhase] = useState<Phase>('hook')
   const goTo = useCallback((next: Phase) => {
@@ -128,17 +190,45 @@ export default function GoInvitationContent({ arm: armProp }: GoInvitationConten
     audio.load()
     audio.play().catch(() => { /* autoplay policy — listener can tap again */ })
     goTo('playing')
-  }, [arm, goTo])
+    // GATE-TRACK-001: listen_start event
+    trackEvent('listen_start', 0)
+    // Meta pixel ViewContent — client-side only (server CAPI not applicable here)
+    try { (window as any).fbq?.('track', 'ViewContent', { content_name: 'bell-arm-promo', arm }) } catch { /* silent */ }
+  }, [arm, goTo, trackEvent])
 
-  // ── Track B1 progress — show Continue button at 75% for Arm C ───────────────
+  // ── Track B1 progress — progress events (all arms) + Continue button (arm C) ───
   const handleTimeUpdate = useCallback(() => {
-    if (arm !== 3) return
     const audio = audioRef.current
-    if (!audio || phaseRef.current !== 'playing') return
-    if (audio.currentTime >= 74.08) {
-      setArmCContinueReady(true)
+    if (!audio) return
+    const curPhase = phaseRef.current
+
+    // GATE-TRACK-001: progress milestones — all arms, both playing phases
+    if (curPhase === 'playing' || curPhase === 'b2_playing') {
+      const dur = audio.duration
+      if (dur > 0 && Number.isFinite(dur)) {
+        const pct = audio.currentTime / dur
+        if (!progressFiredRef.current.p25 && pct >= 0.25) {
+          progressFiredRef.current.p25 = true
+          trackEvent('progress_25', audio.currentTime)
+        }
+        if (!progressFiredRef.current.p50 && pct >= 0.50) {
+          progressFiredRef.current.p50 = true
+          trackEvent('progress_50', audio.currentTime)
+        }
+        if (!progressFiredRef.current.p75 && pct >= 0.75) {
+          progressFiredRef.current.p75 = true
+          trackEvent('progress_75', audio.currentTime)
+        }
+      }
     }
-  }, [arm])
+
+    // Arm C: show Continue button at 74.08s cue
+    if (arm === 3 && curPhase === 'playing') {
+      if (audio.currentTime >= 74.08) {
+        setArmCContinueReady(true)
+      }
+    }
+  }, [arm, trackEvent])
 
   // ── Promo audio ended ────────────────────────────────────────────────────────
   const handleAudioEnded = useCallback(() => {
@@ -149,23 +239,37 @@ export default function GoInvitationContent({ arm: armProp }: GoInvitationConten
         setArmCContinueReady(true)
         goTo('b1_continue')
       } else {
+        // GATE-TRACK-001: wall_shown fires once when form first becomes visible
+        if (!wallShownFiredRef.current) {
+          wallShownFiredRef.current = true
+          trackEvent('wall_shown')
+        }
         goTo('wall')
       }
     } else if (cur === 'b2_playing') {
+      // GATE-TRACK-001: wall_shown fires once when form first becomes visible
+      if (!wallShownFiredRef.current) {
+        wallShownFiredRef.current = true
+        trackEvent('wall_shown')
+      }
       goTo('wall')
     }
-  }, [arm, goTo])
+  }, [arm, goTo, trackEvent])
 
   // ── Arm C: "Continue →" → play B2 ───────────────────────────────────────────
   const handleContinue = useCallback(() => {
     const audio = audioRef.current
     if (!audio) return
+    // GATE-TRACK-001: continue_pressed (arm 3 only, per spec)
+    trackEvent('continue_pressed', audio.currentTime)
+    // Reset progress tracking for B2 clip
+    progressFiredRef.current = { p25: false, p50: false, p75: false }
     setArmCContinueReady(false) // Hide button during B2 playback
     audio.src = AUDIO_PV3B2
     audio.load()
     audio.play().catch(() => {})
     goTo('b2_playing')
-  }, [goTo])
+  }, [goTo, trackEvent])
 
   // ── Wall submit → signup → Belle welcome → auth-link → EP2 ──────────────────
   const handleSubmit = useCallback(async (e: React.FormEvent) => {
@@ -182,6 +286,7 @@ export default function GoInvitationContent({ arm: armProp }: GoInvitationConten
           email: email.trim(),
           name: name.trim() || undefined,
           arm,
+          sessionId: sessionIdRef.current,        // GATE-TRACK-001: Part C
           utmSource:   searchParams.get('utm_source'),
           utmCampaign: searchParams.get('utm_campaign'),
         }),
@@ -192,6 +297,11 @@ export default function GoInvitationContent({ arm: armProp }: GoInvitationConten
         setSubmitting(false)
         return
       }
+
+      // GATE-TRACK-001: wall_submit on successful API response
+      trackEvent('wall_submit')
+      // Meta pixel Lead — client-side
+      try { (window as any).fbq?.('track', 'Lead', { content_name: 'bell-arm-wall-submit', arm }) } catch { /* silent */ }
 
       goTo('welcome')
       const capturedEmail = email.trim()

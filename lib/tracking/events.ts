@@ -28,6 +28,7 @@ export type TrackedEventName =
   | 'InitiateCheckout'
   | 'StartTrial'
   | 'Subscribe'
+  | 'Lead'
 
 // Meta paid-conversion event name — DECIDED BY MARC 2026-07-13 10:46 EDT:
 // standard 'Purchase' (Susan's optimization-strength recommendation) with

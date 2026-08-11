@@ -12,6 +12,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { normalizeEmail } from '@/lib/email'
+import { sendServerEvent } from '@/lib/tracking/capi'
+import { randomEventId } from '@/lib/tracking/events'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -77,6 +79,13 @@ export async function POST(req: NextRequest) {
           listen_arm: armNum,
           updated_at: new Date().toISOString(),
         }, { onConflict: 'id' })
+        // Fire Lead CAPI for returning users too (GATE-TRACK-001)
+        void sendServerEvent({
+          name: 'Lead',
+          eventId: randomEventId('lead'),
+          email,
+          customData: { arm: armNum, content_name: 'bell-arm-wall-submit' },
+        })
         return NextResponse.json({ ok: true, userId: existing.id, note: 'existing user' })
       }
       console.error('[invite-signup] createUser error:', authError)
@@ -118,7 +127,7 @@ export async function POST(req: NextRequest) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           session_id: sessionId,
-          variant: `bell-arm${armNum}`,
+          variant: `listen-arm${armNum}`,
           utm_source: utmSource ?? null,
           utm_campaign: utmCampaign ?? null,
           event: 'wall_submit',
@@ -126,6 +135,18 @@ export async function POST(req: NextRequest) {
         }),
       }).catch(() => { /* silent — tracking never blocks signup */ })
     }
+
+    // 4. Fire Lead CAPI to Meta (fire-and-forget — GATE-TRACK-001)
+    const appBase = process.env.VERCEL_URL
+      ? `https://${process.env.VERCEL_URL}`
+      : 'http://localhost:3001'
+    void sendServerEvent({
+      name: 'Lead',
+      eventId: randomEventId('lead'),
+      email,
+      customData: { arm: armNum, content_name: 'bell-arm-wall-submit' },
+      sourceUrl: `${appBase}/go?arm=${armNum}`,
+    })
 
     return NextResponse.json({ ok: true, userId })
   } catch (err) {
