@@ -39,6 +39,7 @@ function makeChain() {
   chain.select = (_cols?: string) => chain
   chain.eq     = () => chain
   chain.neq    = () => chain
+  chain.ilike  = () => chain  // FIX-1c: case-insensitive match; behaves as pass-through in tests
 
   // Operation: captures the update payload and sets the result for this query
   chain.update = (payload: Record<string, unknown>) => {
@@ -291,7 +292,7 @@ test('4. Auth account with no public.users row — upsert creates profile on 422
 // TEST 5: Email in public.users, no auth account → UPDATE in-place (collision path)
 // ---------------------------------------------------------------------------
 
-test('5. Email collision — UPDATE in-place swaps orphaned row id to new auth id', async () => {
+test('5. Email collision (exact match) — UPDATE in-place swaps orphaned row id to new auth id', async () => {
   const NEW_AUTH_ID   = 'eeeeeeee-0005-4000-8000-000000000005'
   const ORPHANED_ID   = 'ffffffff-dead-4000-8000-000000000099'
 
@@ -324,4 +325,50 @@ test('5. Email collision — UPDATE in-place swaps orphaned row id to new auth i
   expect(capturedUpdatePayload!.signup_source).toBe('bell-invitation')
   expect(capturedUpdatePayload!.plan).toBe('subscriber')
   expect(capturedUpdatePayload!.listen_arm).toBe(1)
+})
+
+// ---------------------------------------------------------------------------
+// TEST 6: Case-mismatch collision (FIX-1c) — stored as mixed-case, incoming lowercase
+// ---------------------------------------------------------------------------
+
+test('6. Email collision, case mismatch — stored as "User@Example.com", incoming as "user@example.com" → UPDATE fires, not INSERT', async () => {
+  // Scenario: 'User@Example.com' is stored in public.users (legacy mixed-case row).
+  // Incoming request sends 'user@example.com'. normalizeEmail lowercases it to
+  // 'user@example.com'. The ilike() call matches 'User@Example.com' case-insensitively.
+  // The UPDATE path must fire — NOT upsert/INSERT.
+  const NEW_AUTH_ID = 'aaaaaaaa-6006-4000-8000-000000000006'
+  const ORPHANED_ID = 'bbbbbbbb-dead-4000-8000-000000000006'
+
+  // Incoming email has mixed case — normalizeEmail() (mocked above) will lowercase it
+  const caseBody = { ...VALID_BODY, email: 'User@Example.com' }
+
+  // createUser SUCCEEDS → new auth account (the mixed-case email is already auth-less)
+  mockCreateUser.mockResolvedValueOnce({
+    data: { user: { id: NEW_AUTH_ID } },
+    error: null,
+  })
+
+  // ilike() on the mock chain is a pass-through; maybeSingle() pops the result.
+  // Simulate: the orphaned mixed-case row is found.
+  fromQueue.push({ data: { id: ORPHANED_ID }, error: null })
+
+  // UPDATE in-place succeeds
+  fromQueue.push({ data: null, error: null })
+
+  // seedUserLibrary
+  fromQueue.push({ data: null, error: null })
+
+  const { status, json } = await callRoute(caseBody)
+
+  expect(status).toBe(200)
+  expect(json.ok).toBe(true)
+  expect(json.userId).toBe(NEW_AUTH_ID)
+
+  // UPDATE must have fired (capturedUpdatePayload set by chain.update mock),
+  // NOT the upsert path — confirming the collision branch was taken.
+  expect(capturedUpdatePayload).not.toBeNull()
+  expect(capturedUpdatePayload!.id).toBe(NEW_AUTH_ID)
+  expect(capturedUpdatePayload!.signup_source).toBe('bell-invitation')
+  // Email written to DB must be lowercased (normalizeEmail applied before any write)
+  expect(capturedUpdatePayload).not.toHaveProperty('email', 'User@Example.com')
 })

@@ -166,10 +166,16 @@ export async function POST(req: NextRequest) {
     // exists with this email but a different id (orphaned profile — no matching auth
     // account), an INSERT would hit the constraint and fail. Use maybeSingle() to
     // detect and branch before the write.
+    //
+    // FIX-1c: Use ilike() for case-insensitive matching so mixed-case legacy rows
+    // (e.g. 'M.Smith@gmail.com') are detected when the incoming address is lowercase.
+    // Escape LIKE wildcards ('%' and '_') before passing — underscores appear in real
+    // addresses (e.g. first_last@gmail.com) and are single-char wildcards in LIKE.
+    const escapedEmail = email.replace(/%/g, '\\%').replace(/_/g, '\\_')
     const { data: existingProfile } = await supabase
       .from('users')
       .select('id')
-      .eq('email', email)
+      .ilike('email', escapedEmail)
       .maybeSingle()
 
     if (existingProfile) {
@@ -197,7 +203,7 @@ export async function POST(req: NextRequest) {
           listen_arm: armNum,
           updated_at: new Date().toISOString(),
         })
-        .eq('email', email)
+        .ilike('email', escapedEmail) // case-insensitive — matches mixed-case legacy rows (FIX-1c)
         .neq('id', userId) // guard: only targets the orphaned row, not an already-correct one
       if (collisionUpdateError) {
         console.error('[invite-signup] email-collision id-swap failed (full error):', collisionUpdateError)
