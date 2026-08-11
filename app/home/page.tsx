@@ -1,6 +1,6 @@
 'use client'
 
-import { Suspense, useState, useEffect, useRef } from 'react'
+import { Suspense, useState, useEffect, useRef, useCallback } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
 import { supabase } from '@/lib/supabase'
@@ -271,6 +271,188 @@ function HomeSearchResults({ query }: { query: string }) {
   )
 }
 
+// ─── Belle Welcome Audio Card ────────────────────────────────────────────────
+// BELLE-WELCOME-001 (Marc, 2026-08-11)
+// Seg 2 is fixed/cached; Seg 1 URL comes from user_metadata.welcome_seg1_url
+// (pre-rendered at signup by invite-signup route). Falls back to /api/name-audio.
+const SEG2_URL = 'https://vmyhlfeouzslixtkmddy.supabase.co/storage/v1/object/public/audio/welcome/belle-welcome-seg2-v2.mp3'
+
+function AnimatedBars() {
+  return (
+    <div style={{ display: 'flex', alignItems: 'flex-end', gap: '3px', height: '24px' }}>
+      {[0, 1, 2, 3].map((i) => (
+        <div
+          key={i}
+          style={{
+            width: '4px',
+            borderRadius: '2px',
+            background: '#f97316',
+            animation: `belle-bar 0.8s ease-in-out ${i * 0.15}s infinite alternate`,
+            height: `${[14, 22, 18, 10][i]}px`,
+          }}
+        />
+      ))}
+      <style>{`
+        @keyframes belle-bar {
+          from { transform: scaleY(0.4); }
+          to   { transform: scaleY(1.0); }
+        }
+      `}</style>
+    </div>
+  )
+}
+
+interface WelcomeAudioCardProps {
+  seg1Url: string | null
+  firstName: string
+  onDismiss: () => void
+}
+
+function WelcomeAudioCard({ seg1Url, firstName, onDismiss }: WelcomeAudioCardProps) {
+  const audioRef = useRef<HTMLAudioElement | null>(null)
+  const [isPlaying, setIsPlaying] = useState(false)
+  const [autoplayBlocked, setAutoplayBlocked] = useState(false)
+  const [activeSeg, setActiveSeg] = useState<1 | 2>(1)
+
+  // Cleanup helper
+  const detachAudio = useCallback(() => {
+    if (!audioRef.current) return
+    audioRef.current.pause()
+    audioRef.current.onended = null
+    audioRef.current.onplay = null
+    audioRef.current.onpause = null
+  }, [])
+
+  // Play Seg 2 after Seg 1 ends
+  const playSeg2 = useCallback(() => {
+    const el = audioRef.current
+    if (!el) return
+    setActiveSeg(2)
+    el.src = SEG2_URL
+    el.onended = () => {
+      setIsPlaying(false)
+      onDismiss()
+    }
+    el.play().catch(() => setIsPlaying(false))
+  }, [onDismiss])
+
+  // Attempt to play Seg 1 (or Seg 2 if no Seg 1 URL)
+  const startPlayback = useCallback(() => {
+    const el = audioRef.current
+    if (!el) return
+    setAutoplayBlocked(false)
+    setIsPlaying(true)
+
+    if (seg1Url) {
+      setActiveSeg(1)
+      el.src = seg1Url
+      el.onended = playSeg2
+      el.play().catch(() => {
+        setIsPlaying(false)
+        setAutoplayBlocked(true)
+      })
+    } else {
+      // No Seg 1 — skip straight to Seg 2
+      playSeg2()
+    }
+  }, [seg1Url, playSeg2])
+
+  // Auto-attempt on mount
+  useEffect(() => {
+    const el = new Audio()
+    audioRef.current = el
+
+    // Preload both segments
+    if (seg1Url) el.src = seg1Url
+    else el.src = SEG2_URL
+
+    el.onplay = () => setIsPlaying(true)
+    el.onpause = () => setIsPlaying(false)
+
+    if (seg1Url) {
+      setActiveSeg(1)
+      el.onended = playSeg2
+    } else {
+      setActiveSeg(2)
+      el.onended = () => { setIsPlaying(false); onDismiss() }
+    }
+
+    const playPromise = el.play()
+    if (playPromise !== undefined) {
+      playPromise.catch((err: DOMException) => {
+        if (err.name === 'NotAllowedError') {
+          setAutoplayBlocked(true)
+          setIsPlaying(false)
+        }
+      })
+    }
+
+    return () => { detachAudio() }
+  }, []) // intentionally run once on mount only
+
+  const label = autoplayBlocked
+    ? 'Tap to hear your welcome'
+    : isPlaying
+      ? (activeSeg === 1 ? 'Welcome message' : 'Welcome message')
+      : 'Welcome message'
+
+  return (
+    <div
+      style={{
+        width: '100%',
+        background: '#111827',
+        border: '1px solid rgba(148,163,184,0.28)',
+        borderRadius: '12px',
+        padding: '12px 14px',
+        display: 'flex',
+        alignItems: 'center',
+        gap: '12px',
+        cursor: isPlaying && !autoplayBlocked ? 'default' : 'pointer',
+      }}
+      onClick={autoplayBlocked || !isPlaying ? startPlayback : undefined}
+      role={autoplayBlocked || !isPlaying ? 'button' : undefined}
+      tabIndex={autoplayBlocked || !isPlaying ? 0 : undefined}
+      aria-label={autoplayBlocked || !isPlaying ? label : undefined}
+      onKeyDown={(e) => {
+        if ((e.key === 'Enter' || e.key === ' ') && (autoplayBlocked || !isPlaying)) startPlayback()
+      }}
+    >
+      {/* Speaker icon */}
+      <span style={{ fontSize: '20px', flexShrink: 0 }}>🔊</span>
+
+      {/* Label */}
+      <span style={{ color: '#e2e8f0', fontSize: '15px', fontWeight: 500, flex: 1 }}>
+        {label}
+      </span>
+
+      {/* Visual state: bars when playing, play button when not */}
+      {isPlaying && !autoplayBlocked ? (
+        <AnimatedBars />
+      ) : (
+        <div
+          style={{
+            width: '36px',
+            height: '36px',
+            borderRadius: '50%',
+            backgroundColor: '#f97316',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            color: 'white',
+            fontSize: '14px',
+            paddingLeft: '2px',
+            flexShrink: 0,
+          }}
+          aria-hidden
+        >
+          ▶
+        </div>
+      )}
+    </div>
+  )
+}
+// ─────────────────────────────────────────────────────────────────────────────
+
 function HomeContent() {
   const { loading, user } = useAuth()
   const searchParams = useSearchParams()
@@ -285,6 +467,7 @@ function HomeContent() {
   // showing duplicate cards that are already visible in New Arrivals.
   const [newArrivalsReady, setNewArrivalsReady] = useState(false)
   const [showWelcome, setShowWelcome] = useState(false)
+  const [seg1Url, setSeg1Url] = useState<string | null>(null)
   const [authWaitExpired, setAuthWaitExpired] = useState(false)
   const [homeSearch, setHomeSearch] = useState('')
 
@@ -320,6 +503,34 @@ function HomeContent() {
       window.history.replaceState({}, '', window.location.pathname)
     }
   }, [searchParams, user?.id])
+
+  // BELLE-WELCOME-001: Resolve Seg 1 URL when welcome is active.
+  // Primary source: user_metadata.welcome_seg1_url (pre-rendered at signup).
+  // Fallback: GET /api/name-audio?name=firstName (renders on-demand, may take 2-4s).
+  // If both fail within 2s, skip welcome entirely.
+  useEffect(() => {
+    if (!showWelcome || !user) return
+    const firstName = (user as any)?.user_metadata?.first_name || ''
+    const preRendered: string | undefined = (user as any)?.user_metadata?.welcome_seg1_url
+    if (preRendered) {
+      setSeg1Url(preRendered)
+      return
+    }
+    // Fallback: fetch from name-audio API (client-side render)
+    if (!firstName) {
+      // No name — skip Seg 1, WelcomeAudioCard will play Seg 2 only
+      setSeg1Url(null)
+      return
+    }
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), 2000)
+    fetch(`/api/name-audio?name=${encodeURIComponent(firstName)}`, { signal: controller.signal })
+      .then(r => r.json())
+      .then(json => { if (json?.audio_url) setSeg1Url(json.audio_url) })
+      .catch(() => { /* timeout or network error — WelcomeAudioCard plays Seg 2 only */ })
+      .finally(() => clearTimeout(timeoutId))
+    return () => { controller.abort(); clearTimeout(timeoutId) }
+  }, [showWelcome, user?.id])
 
   // On mount with authenticated user: read gvl_nowplaying from sessionStorage (written by
   // /listen's handleGoToApp), update user_library to the real Ep4 position, then force
@@ -372,38 +583,19 @@ function HomeContent() {
       <main className="pb-20">
         <div style={{ padding: '1rem 1rem 0' }}>
           {showWelcome ? (
-            /* Welcome text sits exactly where the search field lives.
-               Tap it → showWelcome=false, search reveals and focuses. */
-            <button
-              onClick={() => {
+            /* BELLE-WELCOME-001 (Marc, 2026-08-11): audio player card in the search slot.
+               Auto-dismisses when both segments finish (~20.94s total).
+               Tapping the ▶ button starts/resumes audio (also the autoplay fallback). */
+            <WelcomeAudioCard
+              seg1Url={seg1Url}
+              firstName={firstName}
+              onDismiss={() => {
                 setShowWelcome(false)
                 setTimeout(() => searchInputRef.current?.focus(), 0)
-                // Persist dismissal to user_metadata — survives reloads and new sessions
+                // Persist dismissal so reload/revisit doesn't re-show the banner
                 void supabase.auth.updateUser({ data: { welcome_dismissed: true } })
-                // #2 BUG FIX: strip ?welcome=true from browser history so Back navigation
-                // doesn't re-trigger the welcome (user_metadata is async, URL is synchronous)
-                if (typeof window !== 'undefined') {
-                  const u = new URL(window.location.href)
-                  u.searchParams.delete('welcome')
-                  window.history.replaceState({}, '', u.toString())
-                }
               }}
-              style={{
-                width: '100%',
-                background: '#111827',
-                border: '1px solid rgba(148,163,184,0.28)',
-                borderRadius: '12px',
-                color: 'white',
-                fontSize: '16px',
-                padding: '12px 14px',
-                textAlign: 'left',
-                cursor: 'text',
-                fontFamily: 'inherit',
-                WebkitTapHighlightColor: 'transparent',
-              }}
-            >
-              Welcome{firstName ? ` ${firstName}` : ''} to your free 7 day trial
-            </button>
+            />
           ) : (
             <>
               <label htmlFor="home-story-search" style={{ display: 'block', color: 'white', fontSize: '12px', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: '0.5rem' }}>
