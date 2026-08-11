@@ -153,26 +153,37 @@ export async function POST(req: NextRequest) {
       .maybeSingle()
 
     if (existingProfile) {
-      // Email collision: public.users row exists with a different auth id.
-      // UPDATE by email instead of upserting with new auth id (which would INSERT
-      // and collide on users_email_key).
-      console.warn('[listen/signup] email-collision: public.users row exists with different auth id. new auth id:', userId, 'existing row id:', existingProfile.id, '— entitlement will use existing row id; see id-mismatch report.')
-      const { error: collisionUpdateError } = await supabase.from('users').update({
-        first_name: displayName,
-        display_name: displayName,
-        plan: 'subscriber',
-        subscription_ends_at: trialEndsAt,
-        subscription_type: 'trial',
-        signup_source: 'gvl-listen',
-        utm_source: utmSource ?? null,
-        utm_campaign: utmCampaign ?? null,
-        listen_arm: armNum,
-        updated_at: new Date().toISOString(),
-      }).eq('email', email)
+      // Email collision: orphaned public.users row (no matching auth account).
+      // UPDATE in-place: swap the id to the new auth id so app/api/user/route.ts
+      // can resolve the row by auth id. Preserves stripe_customer_id and all
+      // other columns not touched here.
+      // Marc 2026-08-11: verified zero child rows across all 13 FKs — safe to swap.
+      console.warn('[listen/signup] email-collision: swapping orphaned row id to new auth id', {
+        newAuthId: userId,
+        orphanedId: existingProfile.id,
+      })
+      const { error: collisionUpdateError } = await supabase
+        .from('users')
+        .update({
+          id: userId,
+          first_name: displayName,
+          display_name: displayName,
+          plan: 'subscriber',
+          subscription_ends_at: trialEndsAt,
+          subscription_type: 'trial',
+          signup_source: 'gvl-listen',
+          utm_source: utmSource ?? null,
+          utm_campaign: utmCampaign ?? null,
+          listen_arm: armNum,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('email', email)
+        .neq('id', userId) // guard: only targets the orphaned row, not an already-correct one
       if (collisionUpdateError) {
-        console.error('[listen/signup] email-collision update error:', collisionUpdateError)
+        console.error('[listen/signup] email-collision id-swap failed (full error):', collisionUpdateError)
+        return NextResponse.json({ error: 'Profile recovery failed — contact support' }, { status: 500 })
       }
-      // user_library seeding below uses new auth userId — continue card for new session
+      // user_library seeding below uses new auth userId (row now has id = userId after the swap)
     } else {
       // No collision — proceed with standard upsert
       const { error: userError } = await supabase.from('users').upsert({
