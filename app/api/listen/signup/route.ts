@@ -88,16 +88,25 @@ export async function POST(req: NextRequest) {
 
     if (authError) {
       // If user already exists, look them up
-      if (authError.message?.includes('already registered') || authError.message?.includes('already exists')) {
-        const { data: existingUsers } = await supabase.auth.admin.listUsers()
-        const existing = existingUsers?.users?.find((u: { email?: string; id: string }) => u.email === email)
-        if (!existing) {
-          console.error('[listen/signup] auth createUser error:', authError)
-          return NextResponse.json({ error: 'Account creation failed' }, { status: 500 })
+      if (authError.status === 422) {
+        // GoTrue returns status 422 (Unprocessable Entity) with code 'email_exists'
+        // or 'user_already_exists' for duplicate email — branch on structured error,
+        // not message substrings. Use O(1) indexed email lookup in public.users.
+        const { data: existingProfile, error: lookupError } = await supabase
+          .from('users')
+          .select('id, email')
+          .eq('email', email)
+          .single()
+        if (lookupError || !existingProfile) {
+          console.error('[listen/signup] existing user lookup in public.users failed:', {
+            authError: { message: authError.message, status: authError.status, code: authError.code },
+            lookupError,
+          })
+          return NextResponse.json({ error: 'Account lookup failed' }, { status: 500 })
         }
         // Update existing user record
         await supabase.from('users').upsert({
-          id: existing.id,
+          id: existingProfile.id,
           email,
           display_name: displayName,
           first_name: displayName,
@@ -116,14 +125,14 @@ export async function POST(req: NextRequest) {
 
         return NextResponse.json({
           ok: true,
-          userId: existing.id,
+          userId: existingProfile.id,
           continueEpisodeId: EP4_ID,
           continueAudioUrl: ep4?.story_audio_url ?? null,
           note: 'existing user updated',
         })
       }
 
-      console.error('[listen/signup] auth createUser error:', authError)
+      console.error('[listen/signup] auth createUser error:', { message: authError.message, status: authError.status, code: authError.code })
       return NextResponse.json({ error: 'Account creation failed' }, { status: 500 })
     }
 

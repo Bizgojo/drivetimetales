@@ -87,20 +87,24 @@ export async function POST(req: NextRequest) {
 
     if (authError) {
       // Existing user path — look up, update subscription.
-      // supabase.auth.admin.createUser() throws with message containing
-      // 'already registered' (Supabase GoTrue v2 status 422) when the email
-      // already has an auth account. We look up the user and proceed normally.
-      if (authError.message?.includes('already registered') || authError.message?.includes('already exists')) {
-        const { data: existingUsers } = await supabase.auth.admin.listUsers()
-        const existing = existingUsers?.users?.find(
-          (u: { email?: string; id: string }) => u.email === email
-        )
-        if (!existing) {
-          console.error('[invite-signup] existing user lookup failed:', authError)
+      // GoTrue returns status 422 (Unprocessable Entity) with code 'email_exists'
+      // or 'user_already_exists' when the email already has an auth account.
+      // Branch on structured error fields — NOT on message substrings.
+      if (authError.status === 422) {
+        const { data: existingProfile, error: lookupError } = await supabase
+          .from('users')
+          .select('id, email')
+          .eq('email', email)
+          .single()
+        if (lookupError || !existingProfile) {
+          console.error('[invite-signup] existing user lookup in public.users failed:', {
+            authError: { message: authError.message, status: authError.status, code: authError.code },
+            lookupError,
+          })
           return NextResponse.json({ error: 'Account lookup failed' }, { status: 500 })
         }
         await supabase.from('users').upsert({
-          id: existing.id,
+          id: existingProfile.id,
           email,
           first_name: firstName,
           display_name: firstName,
@@ -115,7 +119,7 @@ export async function POST(req: NextRequest) {
         }, { onConflict: 'id' })
 
         // FIX 4: Seed user_library so ContinueListening shows on /home
-        await seedUserLibrary(existing.id, armNum as 1 | 2 | 3)
+        await seedUserLibrary(existingProfile.id, armNum as 1 | 2 | 3)
 
         // FIX 1: Fire wall_submit tracking (was missing for existing-user path)
         if (sessionId && typeof sessionId === 'string' && sessionId.length > 0) {
@@ -143,9 +147,9 @@ export async function POST(req: NextRequest) {
           email,
           customData: { arm: armNum, content_name: 'bell-arm-wall-submit' },
         })
-        return NextResponse.json({ ok: true, userId: existing.id, note: 'existing user' })
+        return NextResponse.json({ ok: true, userId: existingProfile.id, note: 'existing user' })
       }
-      console.error('[invite-signup] createUser error:', authError)
+      console.error('[invite-signup] createUser error:', { message: authError.message, status: authError.status, code: authError.code })
       return NextResponse.json({ error: 'Account creation failed' }, { status: 500 })
     }
 
