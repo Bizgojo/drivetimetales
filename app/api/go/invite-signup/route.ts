@@ -161,31 +161,66 @@ export async function POST(req: NextRequest) {
 
     const userId = authData.user.id
 
-    // 2. Upsert users profile
-    const { error: userError } = await supabase.from('users').upsert({
-      id: userId,
-      email,
-      display_name: firstName,
-      first_name: firstName,
-      plan: 'subscriber',
-      subscription_ends_at: trialEndsAt,
-      subscription_type: 'trial',
-      signup_source: 'bell-invitation',
-      utm_source: utmSource ?? null,
-      utm_campaign: utmCampaign ?? null,
-      listen_arm: armNum,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    }, { onConflict: 'id' })
+    // 2. Check for email collision in public.users before upserting.
+    // public.users has a UNIQUE index on email (users_email_key). If a row already
+    // exists with this email but a different id (orphaned profile — no matching auth
+    // account), an INSERT would hit the constraint and fail. Use maybeSingle() to
+    // detect and branch before the write.
+    const { data: existingProfile } = await supabase
+      .from('users')
+      .select('id')
+      .eq('email', email)
+      .maybeSingle()
 
-    if (userError) {
-      console.error('[invite-signup] users upsert error:', userError)
-      // Auth user exists; profile failed — still return ok so client navigates
-      return NextResponse.json({ error: 'Profile creation failed', userId }, { status: 500 })
+    if (existingProfile) {
+      // Email collision: public.users row exists with a different auth id.
+      // UPDATE by email instead of upserting with new auth id (which would INSERT
+      // and collide on users_email_key).
+      console.warn('[invite-signup] email-collision: public.users row exists with different auth id. new auth id:', userId, 'existing row id:', existingProfile.id, '— entitlement will use existing row id; see id-mismatch report.')
+      const { error: collisionUpdateError } = await supabase.from('users').update({
+        first_name: firstName,
+        display_name: firstName,
+        plan: 'subscriber',
+        subscription_ends_at: trialEndsAt,
+        subscription_type: 'trial',
+        signup_source: 'bell-invitation',
+        utm_source: utmSource ?? null,
+        utm_campaign: utmCampaign ?? null,
+        listen_arm: armNum,
+        updated_at: new Date().toISOString(),
+      }).eq('email', email)
+      if (collisionUpdateError) {
+        console.error('[invite-signup] email-collision update error:', collisionUpdateError)
+      }
+      // Seed with new auth id so continue card appears for the new session
+      await seedUserLibrary(userId, armNum as 1 | 2 | 3)
+    } else {
+      // No collision — proceed with standard upsert
+      const { error: userError } = await supabase.from('users').upsert({
+        id: userId,
+        email,
+        display_name: firstName,
+        first_name: firstName,
+        plan: 'subscriber',
+        subscription_ends_at: trialEndsAt,
+        subscription_type: 'trial',
+        signup_source: 'bell-invitation',
+        utm_source: utmSource ?? null,
+        utm_campaign: utmCampaign ?? null,
+        listen_arm: armNum,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      }, { onConflict: 'id' })
+
+      if (userError) {
+        console.error('[invite-signup] users upsert error:', userError)
+        // Auth user exists; profile failed — still return ok so client navigates
+        return NextResponse.json({ error: 'Profile creation failed', userId }, { status: 500 })
+      }
+
+      // 2b. Seed user_library — non-fatal; ContinueListening requires progress > 60s
+      await seedUserLibrary(userId, armNum as 1 | 2 | 3)
     }
-
-    // 2b. Seed user_library — non-fatal; ContinueListening requires progress > 60s
-    await seedUserLibrary(userId, armNum as 1 | 2 | 3)
 
     // 3. Fire wall_submit tracking event (fire-and-forget — never blocks response)
     if (sessionId && typeof sessionId === 'string' && sessionId.length > 0) {

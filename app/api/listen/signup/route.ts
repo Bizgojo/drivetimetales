@@ -141,27 +141,61 @@ export async function POST(req: NextRequest) {
 
     const userId = authData.user.id
 
-    // 2. Insert/upsert users record
-    const { error: userError } = await supabase.from('users').upsert({
-      id: userId,
-      email,
-      display_name: displayName,
-      first_name: displayName,
-      plan: 'subscriber',
-      subscription_ends_at: trialEndsAt,
-      subscription_type: 'trial',
-      signup_source: 'gvl-listen',
-      utm_source: utmSource ?? null,
-      utm_campaign: utmCampaign ?? null,
-      listen_arm: armNum,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    }, { onConflict: 'id' })
+    // 2. Check for email collision in public.users before upserting.
+    // public.users has a UNIQUE index on email (users_email_key). If a row already
+    // exists with this email but a different id (orphaned profile — no matching auth
+    // account), an INSERT would hit the constraint and fail. Use maybeSingle() to
+    // detect and branch before the write.
+    const { data: existingProfile } = await supabase
+      .from('users')
+      .select('id')
+      .eq('email', email)
+      .maybeSingle()
 
-    if (userError) {
-      console.error('[listen/signup] users upsert error:', userError)
-      // Auth user created but profile failed — still return userId so client can proceed
-      return NextResponse.json({ error: 'Profile creation failed', userId }, { status: 500 })
+    if (existingProfile) {
+      // Email collision: public.users row exists with a different auth id.
+      // UPDATE by email instead of upserting with new auth id (which would INSERT
+      // and collide on users_email_key).
+      console.warn('[listen/signup] email-collision: public.users row exists with different auth id. new auth id:', userId, 'existing row id:', existingProfile.id, '— entitlement will use existing row id; see id-mismatch report.')
+      const { error: collisionUpdateError } = await supabase.from('users').update({
+        first_name: displayName,
+        display_name: displayName,
+        plan: 'subscriber',
+        subscription_ends_at: trialEndsAt,
+        subscription_type: 'trial',
+        signup_source: 'gvl-listen',
+        utm_source: utmSource ?? null,
+        utm_campaign: utmCampaign ?? null,
+        listen_arm: armNum,
+        updated_at: new Date().toISOString(),
+      }).eq('email', email)
+      if (collisionUpdateError) {
+        console.error('[listen/signup] email-collision update error:', collisionUpdateError)
+      }
+      // user_library seeding below uses new auth userId — continue card for new session
+    } else {
+      // No collision — proceed with standard upsert
+      const { error: userError } = await supabase.from('users').upsert({
+        id: userId,
+        email,
+        display_name: displayName,
+        first_name: displayName,
+        plan: 'subscriber',
+        subscription_ends_at: trialEndsAt,
+        subscription_type: 'trial',
+        signup_source: 'gvl-listen',
+        utm_source: utmSource ?? null,
+        utm_campaign: utmCampaign ?? null,
+        listen_arm: armNum,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      }, { onConflict: 'id' })
+
+      if (userError) {
+        console.error('[listen/signup] users upsert error:', userError)
+        // Auth user created but profile failed — still return userId so client can proceed
+        return NextResponse.json({ error: 'Profile creation failed', userId }, { status: 500 })
+      }
     }
 
     // 3. Fire wall_submit tracking event via the go-listen ingest endpoint
