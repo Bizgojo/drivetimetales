@@ -275,7 +275,7 @@ function HomeSearchResults({ query }: { query: string }) {
 // BELLE-WELCOME-001 (Marc, 2026-08-11)
 // Seg 2 is fixed/cached; Seg 1 URL comes from user_metadata.welcome_seg1_url
 // (pre-rendered at signup by invite-signup route). Falls back to /api/name-audio.
-const SEG2_URL = 'https://vmyhlfeouzslixtkmddy.supabase.co/storage/v1/object/public/audio/welcome/belle-welcome-seg2-fixed.mp3'
+const SEG2_URL = 'https://vmyhlfeouzslixtkmddy.supabase.co/storage/v1/object/public/audio/welcome/belle-welcome-seg2-v2.mp3'
 
 function AnimatedBars() {
   return (
