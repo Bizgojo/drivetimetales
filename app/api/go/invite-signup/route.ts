@@ -33,8 +33,7 @@ const supabase = createClient(
 )
 
 /**
- * Non-fatal user_library seed — sets progress=61 (above ContinueListening's
- * >60s threshold) so EP2 surfaces as a continue card on /home.
+ * Non-fatal user_library seed — sets progress=0 so EP2 surfaces on /home.
  * All arms seed EP2 regardless of which promo played on the gate page.
  * Mirrors the pattern in app/api/listen/signup/route.ts (EP4 seeding).
  */
@@ -43,7 +42,7 @@ async function seedUserLibrary(userId: string, _armNum: 1 | 2 | 3): Promise<void
     const { error } = await supabase.from('user_library').upsert({
       user_id: userId,
       story_id: SEED_STORY_ID,
-      progress: 61, // just above >60s threshold; updated to real position when user plays
+      progress: 0, // start from beginning — was 61 (Marc 2026-08-11)
       completed: false,
       hide_from_home: false,
       not_for_me: false,
