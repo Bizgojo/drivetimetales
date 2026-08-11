@@ -56,10 +56,13 @@ export async function POST(req: NextRequest) {
     const body = await req.json()
     const { firstName, email: rawEmail, arm, sessionId, utmSource, utmCampaign } = body
 
-    // Validate required fields
-    if (!firstName || typeof firstName !== 'string' || firstName.trim().length < 1) {
-      return NextResponse.json({ error: 'firstName is required' }, { status: 400 })
-    }
+    // firstName is optional — LANDING-GATE-001 email-only capture does not send it.
+    // EavesdropClient still sends it; both paths coexist.
+    const displayName =
+      typeof firstName === 'string' && firstName.trim().length > 0
+        ? firstName.trim()
+        : ''
+
     if (!rawEmail || typeof rawEmail !== 'string') {
       return NextResponse.json({ error: 'email is required' }, { status: 400 })
     }
@@ -80,7 +83,7 @@ export async function POST(req: NextRequest) {
     const { data: authData, error: authError } = await supabase.auth.admin.createUser({
       email,
       email_confirm: true,
-      user_metadata: { first_name: firstName.trim() },
+      user_metadata: { first_name: displayName },
     })
 
     if (authError) {
@@ -96,8 +99,8 @@ export async function POST(req: NextRequest) {
         await supabase.from('users').upsert({
           id: existing.id,
           email,
-          display_name: firstName.trim(),
-          first_name: firstName.trim(),
+          display_name: displayName,
+          first_name: displayName,
           plan: 'subscriber',
           subscription_ends_at: trialEndsAt,
           subscription_type: 'trial',
@@ -130,8 +133,8 @@ export async function POST(req: NextRequest) {
     const { error: userError } = await supabase.from('users').upsert({
       id: userId,
       email,
-      display_name: firstName.trim(),
-      first_name: firstName.trim(),
+      display_name: displayName,
+      first_name: displayName,
       plan: 'subscriber',
       subscription_ends_at: trialEndsAt,
       subscription_type: 'trial',
