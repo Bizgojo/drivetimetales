@@ -303,12 +303,10 @@ export default function GoInvitationContent({ arm: armProp }: GoInvitationConten
       // Meta pixel Lead — client-side
       try { (window as any).fbq?.('track', 'Lead', { content_name: 'bell-arm-wall-submit', arm }) } catch { /* silent */ }
 
-      goTo('welcome')
+      // FIX 3: Skip interstitial — navigate directly to home page (Marc canon 2026-08-11).
+      // No welcome audio, no "You're in" screen. Auth-link redirectTo is /home.
       const capturedEmail = email.trim()
-      const capturedName  = name.trim()
-
-      const routeToEp2 = async () => {
-        goTo('routing')
+      void (async () => {
         try {
           const linkRes = await fetch('/api/listen/auth-link', {
             method: 'POST',
@@ -324,32 +322,8 @@ export default function GoInvitationContent({ arm: armProp }: GoInvitationConten
             }
           }
         } catch { /* fallthrough */ }
-        window.location.href = EP2_FALLBACK_URL
-      }
-
-      let welcomeUrl = BELLE_WELCOME_URL
-      if (capturedName) {
-        try {
-          const nameAudioResp = await fetch(`/api/name-audio?name=${encodeURIComponent(capturedName)}`)
-          if (nameAudioResp.ok) {
-            const nameData = await nameAudioResp.json() as { audio_url?: string }
-            if (nameData.audio_url) welcomeUrl = nameData.audio_url
-          }
-        } catch {
-          // fallback to welcome_B.mp3
-        }
-      }
-
-      const wa = welcomeRef.current
-      if (wa) {
-        wa.src = welcomeUrl
-        wa.load()
-        wa.play().catch(() => { void routeToEp2() })
-        wa.onended = () => { void routeToEp2() }
-        setTimeout(() => { void routeToEp2() }, 12_000)
-      } else {
-        void routeToEp2()
-      }
+        window.location.href = '/home'
+      })()
     } catch {
       setSubmitError('Something went wrong. Please try again.')
       setSubmitting(false)
@@ -368,12 +342,13 @@ export default function GoInvitationContent({ arm: armProp }: GoInvitationConten
       WebkitFontSmoothing: 'antialiased',
       position: 'relative',
     }}>
-      {/* CSS keyframe for sound wave bars */}
+      {/* CSS keyframe for sound wave bars; placeholder color override (FIX 2) */}
       <style>{`
         @keyframes soundBar {
           0%, 100% { transform: scaleY(0.3); }
           50% { transform: scaleY(0.9); }
         }
+        input::placeholder { color: rgba(255,255,255,0.75); opacity: 1; }
       `}</style>
 
       {/* Background image layer — CSS brightness/contrast filter lifts luminance before overlay is applied.
@@ -852,6 +827,7 @@ export default function GoInvitationContent({ arm: armProp }: GoInvitationConten
               onChange={e => setEmail(e.target.value)}
               required
               autoComplete="email"
+              inputMode="email"
               style={{
                 background: 'rgba(255,255,255,0.08)',
                 border: '1px solid rgba(255,255,255,0.18)',

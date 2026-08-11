@@ -20,10 +20,41 @@ export const dynamic = 'force-dynamic'
 
 const TRIAL_DAYS = 7
 
+// Bell story IDs per arm — path segments asc3/<id>/final_mix_cta.mp3 in
+// GoInvitationContent.tsx ARE the stories.id values (confirmed from comments
+// PV1/arm=1: Liberty Bridge, PV2/arm=2: Mara Vance, PV3-B1/arm=3: Reedy River).
+const BELL_STORY_IDS: Record<1 | 2 | 3, string> = {
+  1: 'a8c8b8d0-f717-44c4-a6a5-39c3a65d9c2e', // PV1 — Liberty Bridge
+  2: 'a88084ab-62e3-47f4-9b7a-5cbc32943349', // PV2 — Mara Vance
+  3: 'a37fdc46-24d0-49a7-b749-320076978c3b', // PV3-B1 — Reedy River
+}
+
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
+
+/**
+ * Non-fatal user_library seed — sets progress=61 (above ContinueListening's
+ * >60s threshold) so the arm's story surfaces as a continue card on /home.
+ * Mirrors the pattern in app/api/listen/signup/route.ts (EP4 seeding).
+ */
+async function seedUserLibrary(userId: string, armNum: 1 | 2 | 3): Promise<void> {
+  try {
+    const { error } = await supabase.from('user_library').upsert({
+      user_id: userId,
+      story_id: BELL_STORY_IDS[armNum],
+      progress: 61, // just above >60s threshold; updated to real position when user plays
+      completed: false,
+      hide_from_home: false,
+      not_for_me: false,
+      last_played: new Date().toISOString(),
+    }, { onConflict: 'user_id,story_id' })
+    if (error) console.warn('[invite-signup] user_library seed failed (non-fatal):', error.message)
+  } catch (e) {
+    console.warn('[invite-signup] user_library seed error (non-fatal):', e)
+  }
+}
 
 export async function POST(req: NextRequest) {
   try {
@@ -55,7 +86,10 @@ export async function POST(req: NextRequest) {
     })
 
     if (authError) {
-      // Existing user path — look up, update subscription
+      // Existing user path — look up, update subscription.
+      // supabase.auth.admin.createUser() throws with message containing
+      // 'already registered' (Supabase GoTrue v2 status 422) when the email
+      // already has an auth account. We look up the user and proceed normally.
       if (authError.message?.includes('already registered') || authError.message?.includes('already exists')) {
         const { data: existingUsers } = await supabase.auth.admin.listUsers()
         const existing = existingUsers?.users?.find(
@@ -79,6 +113,29 @@ export async function POST(req: NextRequest) {
           listen_arm: armNum,
           updated_at: new Date().toISOString(),
         }, { onConflict: 'id' })
+
+        // FIX 4: Seed user_library so ContinueListening shows on /home
+        await seedUserLibrary(existing.id, armNum as 1 | 2 | 3)
+
+        // FIX 1: Fire wall_submit tracking (was missing for existing-user path)
+        if (sessionId && typeof sessionId === 'string' && sessionId.length > 0) {
+          const appBase = process.env.VERCEL_URL
+            ? `https://${process.env.VERCEL_URL}`
+            : 'http://localhost:3001'
+          void fetch(`${appBase}/api/go-listen`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              session_id: sessionId,
+              variant: `bell-arm${armNum}`,
+              utm_source: utmSource ?? null,
+              utm_campaign: utmCampaign ?? null,
+              event: 'wall_submit',
+              position_seconds: 0,
+            }),
+          }).catch(() => { /* silent — tracking never blocks signup */ })
+        }
+
         // Fire Lead CAPI for returning users too (GATE-TRACK-001)
         void sendServerEvent({
           name: 'Lead',
@@ -116,6 +173,9 @@ export async function POST(req: NextRequest) {
       // Auth user exists; profile failed — still return ok so client navigates
       return NextResponse.json({ error: 'Profile creation failed', userId }, { status: 500 })
     }
+
+    // 2b. Seed user_library — non-fatal; ContinueListening requires progress > 60s
+    await seedUserLibrary(userId, armNum as 1 | 2 | 3)
 
     // 3. Fire wall_submit tracking event (fire-and-forget — never blocks response)
     if (sessionId && typeof sessionId === 'string' && sessionId.length > 0) {
