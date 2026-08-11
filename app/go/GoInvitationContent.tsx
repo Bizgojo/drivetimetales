@@ -302,6 +302,8 @@ export default function GoInvitationContent({ arm: armProp }: GoInvitationConten
       trackEvent('wall_submit')
       // Meta pixel Lead — client-side
       try { (window as any).fbq?.('track', 'Lead', { content_name: 'bell-arm-wall-submit', arm }) } catch { /* silent */ }
+      // Clear gate sample progress so ContinueListening is unfiltered after signup (Marc 2026-08-11)
+      try { Object.keys(localStorage).filter(k => k.startsWith('et_go_sample_progress')).forEach(k => localStorage.removeItem(k)) } catch { /* private mode / quota — never fatal */ }
 
       // FIX 3: Skip interstitial — navigate directly to home page (Marc canon 2026-08-11).
       // No welcome audio, no "You're in" screen. Auth-link redirectTo is /home.
