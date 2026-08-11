@@ -20,14 +20,12 @@ export const dynamic = 'force-dynamic'
 
 const TRIAL_DAYS = 7
 
-// Bell story IDs per arm — path segments asc3/<id>/final_mix_cta.mp3 in
-// GoInvitationContent.tsx ARE the stories.id values (confirmed from comments
-// PV1/arm=1: Liberty Bridge, PV2/arm=2: Mara Vance, PV3-B1/arm=3: Reedy River).
-const BELL_STORY_IDS: Record<1 | 2 | 3, string> = {
-  1: 'a8c8b8d0-f717-44c4-a6a5-39c3a65d9c2e', // PV1 — Liberty Bridge
-  2: 'a88084ab-62e3-47f4-9b7a-5cbc32943349', // PV2 — Mara Vance
-  3: 'a37fdc46-24d0-49a7-b749-320076978c3b', // PV3-B1 — Reedy River
-}
+// The arm determines which promo audio plays on the gate page — it does NOT
+// determine what gets seeded post-signup. All three arms land on EP2.
+// PV IDs (a8c8b8d0, a88084ab, a37fdc46) have status=audio_ready + is_hidden=true
+// and cannot be loaded by non-admin users; seeding them caused the continue card
+// to show "This story isn't available yet" immediately after signup (Marc, 2026-08-11).
+const SEED_STORY_ID = '759dc525-185c-450f-b249-17e4a525ba60' // EP2: The Seventh Token
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -36,14 +34,15 @@ const supabase = createClient(
 
 /**
  * Non-fatal user_library seed — sets progress=61 (above ContinueListening's
- * >60s threshold) so the arm's story surfaces as a continue card on /home.
+ * >60s threshold) so EP2 surfaces as a continue card on /home.
+ * All arms seed EP2 regardless of which promo played on the gate page.
  * Mirrors the pattern in app/api/listen/signup/route.ts (EP4 seeding).
  */
-async function seedUserLibrary(userId: string, armNum: 1 | 2 | 3): Promise<void> {
+async function seedUserLibrary(userId: string, _armNum: 1 | 2 | 3): Promise<void> {
   try {
     const { error } = await supabase.from('user_library').upsert({
       user_id: userId,
-      story_id: BELL_STORY_IDS[armNum],
+      story_id: SEED_STORY_ID,
       progress: 61, // just above >60s threshold; updated to real position when user plays
       completed: false,
       hide_from_home: false,
