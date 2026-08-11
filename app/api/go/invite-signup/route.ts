@@ -11,9 +11,14 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { execSync } from 'child_process'
+import * as fs from 'fs'
+import * as os from 'os'
+import * as path from 'path'
 import { normalizeEmail } from '@/lib/email'
 import { sendServerEvent } from '@/lib/tracking/capi'
 import { randomEventId } from '@/lib/tracking/events'
+import { CANONICAL_BELLE_B_VOICE_ID } from '@/lib/voiceConstants'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -31,6 +36,124 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
+
+// Marc-approved Belle B voice settings for welcome audio (2026-08-11)
+const BELLE_VOICE_SETTINGS = {
+  stability: 0.49,
+  similarity_boost: 0.51,
+  style: 0.0,
+  use_speaker_boost: true,
+  speed: 1.0,
+}
+
+/**
+ * Apply volume=1.5 via ffmpeg if available; return raw buffer on failure.
+ * Never throws — ffmpeg absence is silently tolerated.
+ */
+function applyVolumeToMp3(rawBuf: Buffer): Buffer {
+  const tmpDir = os.tmpdir()
+  const rawPath = path.join(tmpDir, `seg1_raw_${Date.now()}.mp3`)
+  const wavPath = path.join(tmpDir, `seg1_${Date.now()}.wav`)
+  const outPath = path.join(tmpDir, `seg1_final_${Date.now()}.mp3`)
+  try {
+    fs.writeFileSync(rawPath, rawBuf)
+    execSync(`ffmpeg -y -i ${rawPath} -ar 44100 -ac 2 -c:a pcm_s16le ${wavPath}`, { stdio: 'pipe', timeout: 10000 })
+    execSync(`ffmpeg -y -i ${wavPath} -af "volume=1.5" -c:a libmp3lame -b:a 192k -ar 44100 -ac 2 ${outPath}`, { stdio: 'pipe', timeout: 10000 })
+    return fs.readFileSync(outPath)
+  } catch {
+    console.warn('[invite-signup] ffmpeg volume step skipped — serving raw ElevenLabs MP3')
+    return rawBuf
+  } finally {
+    for (const f of [rawPath, wavPath, outPath]) {
+      try { fs.unlinkSync(f) } catch {}
+    }
+  }
+}
+
+/**
+ * BELLE-WELCOME-001 (Marc, 2026-08-11)
+ * Pre-render Belle Seg 1 at signup so audio URL is ready when /home loads.
+ * Non-fatal: any failure here still allows signup to proceed.
+ * Wraps in a 3.5s timeout — if ElevenLabs is slow, skips gracefully.
+ * URL stored in user_metadata.welcome_seg1_url; home page reads it on mount.
+ */
+async function renderAndStoreBelleWelcomeSeg1(
+  userId: string,
+  firstName: string,
+): Promise<void> {
+  const elKey = process.env.ELEVENLABS_API_KEY
+  if (!elKey) {
+    console.warn('[invite-signup] ELEVENLABS_API_KEY missing — skipping welcome seg1 render')
+    return
+  }
+
+  const voiceId = CANONICAL_BELLE_B_VOICE_ID
+  const seg1Text = `Welcome, ${firstName}. I'm glad you decided to join us.`
+  const fileName = `welcome-seg1-${firstName.toLowerCase()}-${userId.slice(0, 8)}.mp3`
+
+  const renderWithTimeout = new Promise<void>((resolve) => {
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => {
+      controller.abort()
+      console.warn('[invite-signup] Belle Seg1 render timed out at 3.5s — skipping')
+      resolve()
+    }, 3500)
+
+    ;(async () => {
+      try {
+        const elRes = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
+          method: 'POST',
+          headers: { 'xi-api-key': elKey, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            text: seg1Text,
+            model_id: 'eleven_multilingual_v2',
+            voice_settings: BELLE_VOICE_SETTINGS,
+          }),
+          signal: controller.signal,
+        })
+
+        if (!elRes.ok) {
+          console.warn('[invite-signup] ElevenLabs Seg1 render failed:', elRes.status)
+          return
+        }
+
+        const rawBuf = Buffer.from(await elRes.arrayBuffer())
+        const audioBuf = applyVolumeToMp3(rawBuf)
+
+        // Upload to names bucket; upsert so re-signups don't error
+        const { error: uploadError } = await supabase.storage
+          .from('names')
+          .upload(fileName, audioBuf, { contentType: 'audio/mpeg', upsert: true })
+
+        if (uploadError) {
+          console.warn('[invite-signup] Seg1 upload failed (non-fatal):', uploadError.message)
+          return
+        }
+
+        const { data: { publicUrl } } = supabase.storage.from('names').getPublicUrl(fileName)
+
+        // Store on user_metadata so home page can read without an extra API call
+        const { error: metaError } = await supabase.auth.admin.updateUserById(userId, {
+          user_metadata: { welcome_seg1_url: publicUrl },
+        })
+
+        if (metaError) {
+          console.warn('[invite-signup] user_metadata update failed (non-fatal):', metaError.message)
+        } else {
+          console.log('[invite-signup] Belle Seg1 rendered and stored for userId:', userId.slice(0, 8))
+        }
+      } catch (err: any) {
+        if (err?.name === 'AbortError') return // timeout handled above
+        console.warn('[invite-signup] Belle Seg1 render error (non-fatal):', err?.message)
+      } finally {
+        clearTimeout(timeoutId)
+        resolve()
+      }
+    })()
+  })
+
+  await renderWithTimeout
+}
 
 /**
  * Non-fatal user_library seed — sets progress=0 so EP2 surfaces on /home.
@@ -125,6 +248,9 @@ export async function POST(req: NextRequest) {
         // FIX 4: Seed user_library so ContinueListening shows on /home
         await seedUserLibrary(found.id, armNum as 1 | 2 | 3)
 
+        // BELLE-WELCOME-001: Pre-render Seg 1 at signup so URL is ready on /home
+        await renderAndStoreBelleWelcomeSeg1(found.id, firstName)
+
         // FIX 1: Fire wall_submit tracking (was missing for existing-user path)
         if (sessionId && typeof sessionId === 'string' && sessionId.length > 0) {
           const appBase = process.env.VERCEL_URL
@@ -209,6 +335,8 @@ export async function POST(req: NextRequest) {
       }
       // Seed user_library with new auth id (row now has id = userId after the swap)
       await seedUserLibrary(userId, armNum as 1 | 2 | 3)
+      // BELLE-WELCOME-001: Pre-render Seg 1 at signup
+      await renderAndStoreBelleWelcomeSeg1(userId, firstName)
     } else {
       // No collision — proceed with standard upsert
       const { error: userError } = await supabase.from('users').upsert({
@@ -235,6 +363,8 @@ export async function POST(req: NextRequest) {
 
       // 2b. Seed user_library — non-fatal; ContinueListening requires progress > 60s
       await seedUserLibrary(userId, armNum as 1 | 2 | 3)
+      // BELLE-WELCOME-001: Pre-render Seg 1 at signup so URL is ready on /home
+      await renderAndStoreBelleWelcomeSeg1(userId, firstName)
     }
 
     // 3. Fire wall_submit tracking event (fire-and-forget — never blocks response)
