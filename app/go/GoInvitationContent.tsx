@@ -87,6 +87,7 @@ type Phase =
   | 'wall'        // Name+email capture wall
   | 'welcome'     // Belle welcome audio playing post-signup
   | 'routing'     // Generating auth link + navigating to EP2
+  | 'returning'   // GATE-PROTECT-001: lapsed user — show subscribe prompt, do not route to /home
 
 interface GoInvitationContentProps {
   /** arm passed from server component (page.tsx); falls back to useSearchParams if omitted. */
@@ -173,6 +174,8 @@ export default function GoInvitationContent({ arm: armProp }: GoInvitationConten
   const [email, setEmail]         = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
+  // GATE-PROTECT-001: name to display in the returning-user subscribe prompt
+  const [returningFirstName, setReturningFirstName] = useState('')
 
   // Arm C: Continue button becomes visible at exactly 76.44s — when Mara's "click continue" line begins.
   // B1 total = 79.92s: 76.44s story audio, then the 3.48s CTA prompt. Button appears on that exact cue.
@@ -291,14 +294,22 @@ export default function GoInvitationContent({ arm: armProp }: GoInvitationConten
           utmCampaign: searchParams.get('utm_campaign'),
         }),
       })
-      const data = (await res.json()) as { ok?: boolean; error?: string }
+      const data = (await res.json()) as { ok?: boolean; error?: string; returning?: boolean; active?: boolean; firstName?: string; email?: string }
       if (!res.ok || !data.ok) {
         setSubmitError(data.error ?? 'Something went wrong. Please try again.')
         setSubmitting(false)
         return
       }
 
-      // GATE-TRACK-001: wall_submit on successful API response
+      // GATE-PROTECT-001: returning user (lapsed trial) — show subscribe prompt, do not route to /home
+      if (data.returning) {
+        setReturningFirstName(data.firstName || name.trim() || '')
+        goTo('returning')
+        setSubmitting(false)
+        return
+      }
+
+      // GATE-TRACK-001: wall_submit on successful API response (new user or active user)
       trackEvent('wall_submit')
       // Meta pixel Lead — client-side
       try { (window as any).fbq?.('track', 'Lead', { content_name: 'bell-arm-wall-submit', arm }) } catch { /* silent */ }
@@ -678,6 +689,61 @@ export default function GoInvitationContent({ arm: armProp }: GoInvitationConten
           <p style={{ fontSize: '13px', color: '#ffffff', marginTop: '14px', opacity: 0.6 }}>
             The story continues…
           </p>
+        </div>
+      )}
+
+      {/* ── RETURNING USER — subscribe prompt (GATE-PROTECT-001) ──────────── */}
+      {/* Shown when the API returns returning:true (lapsed trial, no second free pass) */}
+      {phase === 'returning' && (
+        <div style={{
+          minHeight: '100vh',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: '24px 20px',
+          textAlign: 'center',
+          position: 'relative',
+          zIndex: 2,
+        }}>
+          <div style={{
+            backgroundColor: '#141414',
+            borderRadius: '20px',
+            padding: '36px 28px',
+            maxWidth: '420px',
+            width: '100%',
+            border: '1px solid rgba(255,255,255,0.12)',
+            boxShadow: '0 -12px 40px rgba(0,0,0,0.65)',
+            boxSizing: 'border-box',
+          }}>
+            <p style={{ fontSize: '22px', fontWeight: 800, color: '#ffffff', margin: '0 0 12px' }}>
+              Welcome back{returningFirstName ? `, ${returningFirstName}` : ''}.
+            </p>
+            <p style={{ fontSize: '15px', color: 'rgba(255,255,255,0.75)', lineHeight: 1.6, margin: '0 0 24px' }}>
+              Your trial has ended — subscribe to keep listening.
+            </p>
+            <a
+              href="/subscribe"
+              style={{
+                display: 'block',
+                width: '100%',
+                padding: '16px',
+                backgroundColor: '#f97316',
+                color: '#ffffff',
+                textDecoration: 'none',
+                borderRadius: '12px',
+                fontSize: '16px',
+                fontWeight: 800,
+                boxSizing: 'border-box',
+                boxShadow: '0 8px 30px rgba(249,115,22,0.35)',
+              }}
+            >
+              Subscribe · $7.99/month →
+            </a>
+            <p style={{ fontSize: '12px', color: 'rgba(255,255,255,0.35)', margin: '12px 0 0', lineHeight: 1.4 }}>
+              Free trial is one-time only · Cancel anytime
+            </p>
+          </div>
         </div>
       )}
 

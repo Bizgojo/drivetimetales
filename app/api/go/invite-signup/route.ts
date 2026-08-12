@@ -230,6 +230,54 @@ export async function POST(req: NextRequest) {
           console.error('[invite-signup] could not locate existing user in auth after 422:', { email, authErrorCode: authError.code, authErrorStatus: authError.status })
           return NextResponse.json({ error: 'Account lookup failed' }, { status: 500 })
         }
+        // GATE-PROTECT-001: query subscription status before any field writes.
+        // Active users must NEVER be downgraded; trialed users must not receive a second trial.
+        const { data: existingUser } = await supabase
+          .from('users')
+          .select('subscription_type, subscription_ends_at, trial_started_at, first_name')
+          .eq('id', found.id)
+          .maybeSingle()
+
+        const isActive = existingUser?.subscription_type === 'active'
+        const hasHadTrial = existingUser?.trial_started_at != null
+
+        // Helper: fire wall_submit tracking + Lead CAPI (non-fatal, shared across all cases)
+        const fireTracking = () => {
+          if (sessionId && typeof sessionId === 'string' && sessionId.length > 0) {
+            const appBase = process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3001'
+            void fetch(`${appBase}/api/go-listen`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                session_id: sessionId, variant: `bell-arm${armNum}`,
+                utm_source: utmSource ?? null, utm_campaign: utmCampaign ?? null,
+                event: 'wall_submit', position_seconds: 0,
+              }),
+            }).catch(() => { /* silent — tracking never blocks signup */ })
+          }
+          void sendServerEvent({ name: 'Lead', eventId: randomEventId('lead'), email, customData: { arm: armNum, content_name: 'bell-arm-wall-submit' } })
+        }
+
+        if (isActive) {
+          // Case (c): Currently paying customer — touch ONLY listen_arm. NEVER touch subscription fields.
+          await supabase.from('users').update({ listen_arm: armNum, updated_at: new Date().toISOString() }).eq('id', found.id)
+          await seedUserLibrary(found.id, armNum as 1 | 2 | 3)
+          fireTracking()
+          return NextResponse.json({ ok: true, active: true, userId: found.id })
+        }
+
+        if (hasHadTrial) {
+          // Case (b): Has had a prior trial, not currently active — deny second trial.
+          // Do NOT modify subscription_type, subscription_ends_at, or plan.
+          await supabase.from('users').update({ listen_arm: armNum, updated_at: new Date().toISOString() }).eq('id', found.id)
+          await seedUserLibrary(found.id, armNum as 1 | 2 | 3)
+          fireTracking()
+          const displayName = existingUser?.first_name || firstName
+          return NextResponse.json({ ok: true, returning: true, userId: found.id, firstName: displayName, email: found.email })
+        }
+
+        // Case (a) for 422 path: existing auth user but no prior trial record — grant trial.
+        // Post-migration this is rare (backfill covers subscription_ends_at rows) but handled defensively.
         await supabase.from('users').upsert({
           id: found.id,
           email,
@@ -238,6 +286,7 @@ export async function POST(req: NextRequest) {
           plan: 'subscriber',
           subscription_ends_at: trialEndsAt,
           subscription_type: 'trial',
+          trial_started_at: new Date().toISOString(),
           signup_source: 'bell-invitation',
           utm_source: utmSource ?? null,
           utm_campaign: utmCampaign ?? null,
@@ -251,33 +300,8 @@ export async function POST(req: NextRequest) {
         // BELLE-WELCOME-001: Pre-render Seg 1 at signup so URL is ready on /home
         await renderAndStoreBelleWelcomeSeg1(found.id, firstName)
 
-        // FIX 1: Fire wall_submit tracking (was missing for existing-user path)
-        if (sessionId && typeof sessionId === 'string' && sessionId.length > 0) {
-          const appBase = process.env.VERCEL_URL
-            ? `https://${process.env.VERCEL_URL}`
-            : 'http://localhost:3001'
-          void fetch(`${appBase}/api/go-listen`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              session_id: sessionId,
-              variant: `bell-arm${armNum}`,
-              utm_source: utmSource ?? null,
-              utm_campaign: utmCampaign ?? null,
-              event: 'wall_submit',
-              position_seconds: 0,
-            }),
-          }).catch(() => { /* silent — tracking never blocks signup */ })
-        }
-
-        // Fire Lead CAPI for returning users too (GATE-TRACK-001)
-        void sendServerEvent({
-          name: 'Lead',
-          eventId: randomEventId('lead'),
-          email,
-          customData: { arm: armNum, content_name: 'bell-arm-wall-submit' },
-        })
-        return NextResponse.json({ ok: true, userId: found.id, note: 'existing user' })
+        fireTracking()
+        return NextResponse.json({ ok: true, userId: found.id, note: 'existing user — first trial granted' })
       }
       console.error('[invite-signup] createUser error:', { message: authError.message, status: authError.status, code: authError.code })
       return NextResponse.json({ error: 'Account creation failed' }, { status: 500 })
@@ -321,6 +345,7 @@ export async function POST(req: NextRequest) {
           plan: 'subscriber',
           subscription_ends_at: trialEndsAt,
           subscription_type: 'trial',
+          trial_started_at: new Date().toISOString(),
           signup_source: 'bell-invitation',
           utm_source: utmSource ?? null,
           utm_campaign: utmCampaign ?? null,
@@ -347,6 +372,7 @@ export async function POST(req: NextRequest) {
         plan: 'subscriber',
         subscription_ends_at: trialEndsAt,
         subscription_type: 'trial',
+        trial_started_at: new Date().toISOString(),
         signup_source: 'bell-invitation',
         utm_source: utmSource ?? null,
         utm_campaign: utmCampaign ?? null,
