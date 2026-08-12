@@ -111,7 +111,12 @@ export async function GET(request: NextRequest) {
   for (const user of users) {
     try {
       const trialEnd = new Date(user.subscription_ends_at)
-      const start = new Date(trialEnd.getTime() - 14 * 24 * 60 * 60 * 1000)
+      // FIX: gate grants 7-day trial, not 14-day. Use 7 as base so start
+      // correctly resolves to trialEnd - 7 = signup date.
+      // NOTE: day-10 and day-13 thresholds below now fall outside a 7-day
+      // trial window and will never fire; Marc must update those thresholds
+      // to match the 7-day schedule (e.g. day 2, day 5, day 6).
+      const start = new Date(trialEnd.getTime() - 7 * 24 * 60 * 60 * 1000)
       const daysSinceStart = Math.floor((now.getTime() - start.getTime()) / (1000 * 60 * 60 * 24))
       const name = user.first_name || user.display_name || 'there'
       const email = user.email
