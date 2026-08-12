@@ -48,7 +48,15 @@ function appLinkButton(label: string): string {
     </div>`
 }
 
-function shell(inner: string): string {
+/** Generalized CTA button — orange pill, any label, any URL. */
+export function ctaButton(label: string, url: string): string {
+  return `
+    <div style="text-align:center;margin-bottom:24px;">
+      <a href="${url}" target="_blank" style="display:inline-block;background:#f97316;color:white;text-decoration:none;padding:16px 40px;border-radius:10px;font-size:16px;font-weight:800;letter-spacing:0.01em;">${label}</a>
+    </div>`
+}
+
+export function shell(inner: string): string {
   return `<!DOCTYPE html>
 <html>
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"></head>
