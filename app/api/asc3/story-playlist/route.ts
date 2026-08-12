@@ -57,7 +57,7 @@ async function resolveRequestUser(req: NextRequest) {
 async function resolveUserPlaybackProfile(userId: string, queryFirstName: string, authUser?: any) {
   const { data, error } = await supabase
     .from('users')
-    .select('first_name,display_name,name_pronunciation_key')
+    .select('first_name,display_name,name_pronunciation_key,signup_source')
     .eq('id', userId)
     .maybeSingle()
   if (error) throw new Error('user playback profile lookup failed: ' + error.message)
@@ -66,6 +66,7 @@ async function resolveUserPlaybackProfile(userId: string, queryFirstName: string
   return {
     preferredName: normalizeFirstName(data?.first_name || data?.display_name || queryFirstName || metadataName),
     pronunciationKey: String(data?.name_pronunciation_key || '').trim(),
+    signupSource: String(data?.signup_source || '').trim(),
   }
 }
 
@@ -179,10 +180,15 @@ async function buildPersonalizedQueue({
   story,
   userId,
   pronunciationKey,
+  suppressNameOpener = false,
 }: {
   story: any
   userId: string
   pronunciationKey: string
+  // When true (gate arrivals who received the /home Belle welcome), the
+  // personalized name-opener clip is omitted from the queue. The rest of
+  // the playlist (announcement, story, outro) is unchanged.
+  suppressNameOpener?: boolean
 }): Promise<PersonalizedQueueResult> {
   const gateReason = personalizedAssetGateReason(story, pronunciationKey)
   if (gateReason) return { payload: null, fallbackReason: gateReason }
@@ -192,6 +198,22 @@ async function buildPersonalizedQueue({
   if (!ready) return { payload: null, fallbackReason: 'name_pool_not_ready' }
 
   const toneCluster = await resolveToneClusterForStory(story)
+
+  // Gate arrivals (signup_source = 'bell-invitation') who received the /home
+  // Belle welcome skip the name-opener to avoid a triple greeting in session 1.
+  // Normal library subscribers always receive the full personalized queue.
+  if (suppressNameOpener) {
+    const queue: PlaybackQueueItem[] = [
+      { url: String(story.announcement_url).trim(), type: 'intro', label: 'Story intro' },
+      { url: String(story.story_audio_url).trim(), type: 'story', label: story.title || 'Story' },
+      { url: outroUrl, type: 'outro', label: 'Outro' },
+    ]
+    return {
+      payload: { queue, toneCluster, openerId: '' },
+      fallbackReason: null,
+    }
+  }
+
   const opener = await pickNameOpenerClip(userId, pronunciationKey, toneCluster)
   const queue: PlaybackQueueItem[] = [
     { url: opener.intro_audio_url!, type: 'intro', label: 'Welcome' },
@@ -219,11 +241,13 @@ export async function GET(req: NextRequest) {
   const authUser = await resolveRequestUser(req)
   let preferredName = ''
   let pronunciationKey = ''
+  let signupSource = ''
   if (authUser?.id) {
     try {
       const profile = await resolveUserPlaybackProfile(authUser.id, firstName, authUser)
       preferredName = profile.preferredName
       pronunciationKey = profile.pronunciationKey
+      signupSource = profile.signupSource
     } catch (err) {
       console.warn('[story-playlist] user playback profile lookup failed:', {
         storyId,
@@ -261,6 +285,9 @@ export async function GET(req: NextRequest) {
           story,
           userId: authUser.id,
           pronunciationKey,
+          // Suppress name-opener for gate arrivals (Bell ad funnel) — they
+          // already received a personalized Belle welcome on /home.
+          suppressNameOpener: signupSource === 'bell-invitation',
         })
         personalizedPayload = result.payload
         fallbackReason = result.fallbackReason
