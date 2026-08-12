@@ -185,9 +185,11 @@ async function buildPersonalizedQueue({
   story: any
   userId: string
   pronunciationKey: string
-  // When true (gate arrivals who received the /home Belle welcome), the
-  // personalized name-opener clip is omitted from the queue. The rest of
-  // the playlist (announcement, story, outro) is unchanged.
+  // When true (gate arrivals on their very first play — zero rows in
+  // play_events — who received the /home Belle welcome), the personalized
+  // name-opener clip is omitted from the queue. From their second play
+  // onward suppressNameOpener is false and the full personalized queue plays.
+  // The rest of the playlist (announcement, story, outro) is always unchanged.
   suppressNameOpener?: boolean
 }): Promise<PersonalizedQueueResult> {
   const gateReason = personalizedAssetGateReason(story, pronunciationKey)
@@ -199,8 +201,10 @@ async function buildPersonalizedQueue({
 
   const toneCluster = await resolveToneClusterForStory(story)
 
-  // Gate arrivals (signup_source = 'bell-invitation') who received the /home
-  // Belle welcome skip the name-opener to avoid a triple greeting in session 1.
+  // Gate arrivals (signup_source = 'bell-invitation') skip the name-opener
+  // ONLY on their very first play (zero rows in play_events), where the /home
+  // Belle welcome already greeted them by name. From play 2 onward
+  // suppressNameOpener is false and the full personalized queue plays.
   // Normal library subscribers always receive the full personalized queue.
   if (suppressNameOpener) {
     const queue: PlaybackQueueItem[] = [
@@ -274,6 +278,27 @@ export async function GET(req: NextRequest) {
   }
 
   const refUrl = String(story.audio_url || '').trim()
+  // Time-bounded gate suppression: for brand-new gate arrivals (signup_source
+  // = 'bell-invitation' AND zero rows in play_events) suppress the name-opener
+  // on their first play only. After that first listen play_events has at least
+  // one row so the condition is false and the name-opener plays from play 2
+  // onward. If the count query fails, default to non-zero → name opener plays
+  // (safe failure mode).
+  let firstPlayForGateUser = false
+  if (authUser?.id && signupSource === 'bell-invitation') {
+    try {
+      const { count } = await supabase
+        .from('play_events')
+        .select('id', { count: 'exact', head: true })
+        .eq('user_id', authUser.id)
+        .limit(1)
+      firstPlayForGateUser = (count ?? 1) === 0
+    } catch {
+      // safe default: treat as non-zero → name opener plays
+      firstPlayForGateUser = false
+    }
+  }
+
   let personalizedPayload: PersonalizedQueuePayload | null = null
   let fallbackReason: string | null = null
   if (authUser?.id) {
@@ -285,9 +310,9 @@ export async function GET(req: NextRequest) {
           story,
           userId: authUser.id,
           pronunciationKey,
-          // Suppress name-opener for gate arrivals (Bell ad funnel) — they
-          // already received a personalized Belle welcome on /home.
-          suppressNameOpener: signupSource === 'bell-invitation',
+          // Suppress name-opener only on the gate user's very first play
+          // (zero prior play_events rows). From play 2 onward this is false.
+          suppressNameOpener: signupSource === 'bell-invitation' && firstPlayForGateUser,
         })
         personalizedPayload = result.payload
         fallbackReason = result.fallbackReason
