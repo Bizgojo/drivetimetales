@@ -35,6 +35,13 @@ function emailDay6(name: string): { subject: string; html: string } {
 // ── Cron handler ───────────────────────────────────────────────────────────
 
 export async function GET(request: NextRequest) {
+  // DISABLED — email copy is placeholder. Remove this block after Marc supplies real copy.
+  const EMAIL_COPY_READY = false;
+  if (!EMAIL_COPY_READY) {
+    console.log('[trial-emails] Cron skipped — email copy is placeholder. Set EMAIL_COPY_READY = true after copy lands.');
+    return NextResponse.json({ skipped: true, reason: 'email_copy_placeholder' });
+  }
+
   // Verify this is called by Vercel cron (or Marc in testing)
   const authHeader = request.headers.get('authorization')
   if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
