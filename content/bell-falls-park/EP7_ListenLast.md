@@ -56,7 +56,7 @@ CLAIRE: I need to tell you some things that are not in the affidavit.
 
 [PAUSE:1]
 
-CLAIRE: I recorded this on December 12, 1997. Three weeks after the affidavit. I am telling you this because I want you to understand that by December I had a clear picture of what was happening and what was going to happen, and I made choices from that understanding.
+CLAIRE: I recorded this on December 12, 1997. Two months after the affidavit. I am telling you this because I want you to understand that by December I had a clear picture of what was happening and what was going to happen, and I made choices from that understanding.
 
 [PAUSE:2]
 
