@@ -100,7 +100,7 @@ UNKNOWN MAN: I have known, for twenty-nine years, why they didn't.
 
 MARA: He told it without drama. The particular flatness of a story that has been held for so long it has worn smooth — no rough edges left, just the shape of what happened.
 
-UNKNOWN MAN: Checkpoint five was below the Palmetto Hotel. That was the end of the route we were assigned. Thomas and Luis went in first. I heard two sounds — one I understood and one I didn't. Then nothing. I went in. What I found — what I understood I had found — was that Thomas and Luis had been killed by someone who had been waiting in the checkpoint five chamber. Someone who knew we would come.
+UNKNOWN MAN: Checkpoint five was below the Palmetto Hotel. That was the end of the route we were assigned. Thomas and Luis went in first. I heard two sounds — one I understood and one I didn't. Then nothing. I went in. What I found — what I understood I had found — was that Thomas and Luis had been killed by someone who had been waiting past checkpoint five — in the chamber through the passage at the end of the route. Someone who knew we would come.
 
 UNKNOWN MAN: I was twenty-two. I ran. I understood, running, that if whoever killed them knew I had survived, I would not survive for long. I never went home. I never filed anything. I understood that someone in the city infrastructure had known we would be there that night, at that time, and had arranged to make sure we didn't leave.
 
