@@ -1023,13 +1023,30 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
               // Lapsed user — let them reach the player with restricted access
               setIsLapsedUser(true)
               isLapsedRef.current = true
-              // For series: determine if this is episode 1 (full play) or EP2+ (wall immediately)
-              // Use episode_number; fall back to series_episode_number if null.
-              const storyEpisodeNum = (data as any).episode_number ?? (data as any).series_episode_number ?? null
-              const isEpisode1 = storyEpisodeNum !== null && Number(storyEpisodeNum) === 1
+              // For series: free the LOWEST published series_episode_number in the series,
+              // not literally episode 1. Handles series where the first published episode
+              // is numbered higher (e.g., a series whose only published ep is numbered 3).
+              // Per Marc production verification: series_episode_number is authoritative
+              // (zero nulls on series episodes); episode_number has one null — do not use as primary.
+              const storySeriesEpNum = (data as any).series_episode_number ?? (data as any).episode_number ?? null
               const hasSeries = Boolean((data as any).series_id)
-              if (hasSeries && !isEpisode1) {
-                // Episode 2+ → show wall immediately, no audio
+              let isLowestEpisode = false
+              if (hasSeries && storySeriesEpNum !== null) {
+                // Query the minimum published series_episode_number for this series
+                const { data: minRow } = await supabase
+                  .from('stories')
+                  .select('series_episode_number')
+                  .eq('series_id', (data as any).series_id)
+                  .eq('is_hidden', false)
+                  .not('series_episode_number', 'is', null)
+                  .order('series_episode_number', { ascending: true })
+                  .limit(1)
+                  .maybeSingle()
+                const minEpNum = minRow?.series_episode_number ?? null
+                isLowestEpisode = minEpNum !== null && Number(storySeriesEpNum) === Number(minEpNum)
+              }
+              if (hasSeries && !isLowestEpisode) {
+                // Not the lowest published episode → show wall immediately, no audio
                 setTrialWallVisible(true)
                 setTrialWallType('series_ep2plus')
                 // Don't redirect — let the player render so the wall overlay shows
