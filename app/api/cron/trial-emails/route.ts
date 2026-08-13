@@ -11,6 +11,7 @@ const resend = new Resend(process.env.RESEND_API_KEY)
 
 // ── Library URL constant (mirrors APP_HOME_URL pattern in retentionTemplates) ──
 const APP_LIBRARY_URL = 'https://app.endless-tales.com/library'
+const APP_PLAYER_BASE_URL = 'https://app.endless-tales.com/player'
 
 // ── Shared text styles for trial-retention email bodies ───────────────────
 const P = 'color:rgba(255,255,255,0.8);font-size:15px;line-height:1.7;margin:0 0 16px;'
@@ -20,9 +21,10 @@ const P_SIG = 'color:rgba(255,255,255,0.6);font-size:15px;font-style:italic;marg
 
 /**
  * Day-2 trial email.
- * @param safeTitle  Most-recent in-progress story title (trimmed, non-empty), or null.
+ * @param safeTitle   Most-recent in-progress story title (trimmed, non-empty), or null.
+ * @param safeStoryId Most-recent in-progress story_id, or null.
  */
-function emailDay2(name: string, safeTitle: string | null): { subject: string; html: string } {
+function emailDay2(name: string, safeTitle: string | null, safeStoryId: string | null): { subject: string; html: string } {
   if (safeTitle !== null) {
     // with-story variant
     return {
@@ -32,7 +34,7 @@ function emailDay2(name: string, safeTitle: string | null): { subject: string; h
         <p style="${P}">You started <strong style="color:#ffffff;">${safeTitle}</strong> — it's still there, right where you left off.</p>
         <p style="${P}">Your free week is running, and it covers everything: every series, every standalone. No card, nothing to cancel.</p>
         <p style="${P}">Come back when you've got a quiet half hour.</p>
-        ${ctaButton('Pick up where you left off', APP_LIBRARY_URL)}
+        ${ctaButton('Pick up where you left off', safeStoryId !== null ? `${APP_PLAYER_BASE_URL}/${safeStoryId}` : APP_LIBRARY_URL)}
         <p style="${P_SIG}">— Belle</p>
       `)
     }
@@ -52,9 +54,10 @@ function emailDay2(name: string, safeTitle: string | null): { subject: string; h
 
 /**
  * Day-5 trial email.
- * @param safeTitle  Most-recent in-progress story title (trimmed, non-empty), or null.
+ * @param safeTitle   Most-recent in-progress story title (trimmed, non-empty), or null.
+ * @param safeStoryId Most-recent in-progress story_id, or null.
  */
-function emailDay5(name: string, safeTitle: string | null): { subject: string; html: string } {
+function emailDay5(name: string, safeTitle: string | null, safeStoryId: string | null): { subject: string; html: string } {
   if (safeTitle !== null) {
     // with-story variant
     return {
@@ -64,7 +67,7 @@ function emailDay5(name: string, safeTitle: string | null): { subject: string; h
         <p style="${P}">You're partway through <strong style="color:#ffffff;">${safeTitle}</strong>, and your free week ends in two days.</p>
         <p style="${P}">Nothing will be charged and there's nothing to cancel — your access just ends, and the story stays exactly where you left it.</p>
         <p style="${P}">If you'd like to keep going, it's $7.99 a month and the whole library stays open.</p>
-        ${ctaButton(`Finish ${safeTitle}`, APP_LIBRARY_URL)}
+        ${ctaButton(`Finish ${safeTitle}`, safeStoryId !== null ? `${APP_PLAYER_BASE_URL}/${safeStoryId}` : APP_LIBRARY_URL)}
         <p style="${P_SIG}">— Belle</p>
       `)
     }
@@ -85,9 +88,10 @@ function emailDay5(name: string, safeTitle: string | null): { subject: string; h
 
 /**
  * Day-6 trial email.
- * @param safeTitle  Most-recent in-progress story title (trimmed, non-empty), or null.
+ * @param safeTitle   Most-recent in-progress story title (trimmed, non-empty), or null.
+ * @param safeStoryId Most-recent in-progress story_id, or null.
  */
-function emailDay6(name: string, safeTitle: string | null): { subject: string; html: string } {
+function emailDay6(name: string, safeTitle: string | null, safeStoryId: string | null): { subject: string; html: string } {
   if (safeTitle !== null) {
     // with-story variant
     return {
@@ -97,7 +101,7 @@ function emailDay6(name: string, safeTitle: string | null): { subject: string; h
         <p style="${P}">Your free week ends tomorrow, and <strong style="color:#ffffff;">${safeTitle}</strong> is still waiting.</p>
         <p style="${P}">You won't be charged for anything — you just won't be able to keep listening. If you come back, the story will be where you left it.</p>
         <p style="${P}">$7.99 a month keeps it all open.</p>
-        ${ctaButton(`Finish ${safeTitle}`, APP_LIBRARY_URL)}
+        ${ctaButton(`Finish ${safeTitle}`, safeStoryId !== null ? `${APP_PLAYER_BASE_URL}/${safeStoryId}` : APP_LIBRARY_URL)}
         <p style="${P_SIG}">— Belle</p>
       `)
     }
@@ -161,7 +165,7 @@ export async function GET(request: NextRequest) {
           const template = renderDay1InstallEmail(name)
           await resend.emails.send({
             from: 'Belle at Endless Tales <hello@endless-tales.com>',
-            reply_to: 'hello@endless-tales.com',
+            replyTo: 'hello.endlesstales@gmail.com',
             to: user.email,
             subject: template.subject,
             html: template.html,
@@ -213,6 +217,7 @@ export async function GET(request: NextRequest) {
       // ── Story lookup for variant selection ───────────────────────────────────
       // Only query when this user is actually in a send window.
       let safeTitle: string | null = null
+      let safeStoryId: string | null = null
       if (daysSinceStart === 2 || daysSinceStart === 5 || daysSinceStart === 6) {
         try {
           const { data: libraryRow } = await supabase
@@ -226,6 +231,9 @@ export async function GET(request: NextRequest) {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const storyTitle: string | null = (libraryRow as any)?.stories?.title ?? null
           safeTitle = (typeof storyTitle === 'string' && storyTitle.trim().length > 0) ? storyTitle.trim() : null
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const storyId: string | null = (libraryRow as any)?.story_id ?? null
+          safeStoryId = (typeof storyId === 'string' && storyId.trim().length > 0) ? storyId.trim() : null
         } catch {
           safeTitle = null
         }
@@ -237,20 +245,20 @@ export async function GET(request: NextRequest) {
       let template: { subject: string; html: string } | null = null
 
       if (daysSinceStart === 2) {
-        template = emailDay2(name, safeTitle)
+        template = emailDay2(name, safeTitle, safeStoryId)
         results.day2++
       } else if (daysSinceStart === 5) {
-        template = emailDay5(name, safeTitle)
+        template = emailDay5(name, safeTitle, safeStoryId)
         results.day5++
       } else if (daysSinceStart === 6) {
-        template = emailDay6(name, safeTitle)
+        template = emailDay6(name, safeTitle, safeStoryId)
         results.day6++
       }
 
       if (template) {
         await resend.emails.send({
           from: 'Belle at Endless Tales <hello@endless-tales.com>',
-          reply_to: 'hello@endless-tales.com',
+          replyTo: 'hello.endlesstales@gmail.com',
           to: email,
           subject: template.subject,
           html: template.html,
