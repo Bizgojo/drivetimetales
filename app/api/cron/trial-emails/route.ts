@@ -154,6 +154,7 @@ export async function GET(request: NextRequest) {
       .gte('created_at', windowStart)
       .lte('created_at', windowEnd)
       .is('day1_email_sent_at', null)
+      .not('is_test_account', 'is', true)
 
     if (day1Error) {
       console.error('[trial-emails] Day-1 query failed (migration applied?):', day1Error.message)
@@ -194,10 +195,11 @@ export async function GET(request: NextRequest) {
   // Fetch all trialing users with subscription_start set
   const { data: users, error } = await supabase
     .from('users')
-    .select('id, email, first_name, display_name, plan, subscription_ends_at')
+    .select('id, email, first_name, display_name, plan, subscription_ends_at, trial_started_at')
     .not('plan', 'is', null)
     .neq('plan', 'free')
     .not('subscription_ends_at', 'is', null)
+    .not('is_test_account', 'is', true)
 
   if (error || !users) {
     console.error('[trial-emails] Failed to fetch users:', error)
@@ -208,7 +210,9 @@ export async function GET(request: NextRequest) {
     try {
       const trialEnd = new Date(user.subscription_ends_at)
       // Gate grants 7-day trial. Thresholds updated to 2/5/6 per ATL-GATE-002.
-      const start = new Date(trialEnd.getTime() - 7 * 24 * 60 * 60 * 1000)
+      const start = user.trial_started_at
+        ? new Date(user.trial_started_at)
+        : new Date(trialEnd.getTime() - 7 * 24 * 60 * 60 * 1000)
       const daysSinceStart = Math.floor((now.getTime() - start.getTime()) / (1000 * 60 * 60 * 24))
       const name = user.first_name || user.display_name || 'there'
       const email = user.email
