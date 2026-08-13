@@ -134,6 +134,24 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
   const [autoAdvanceDisabledReason, setAutoAdvanceDisabledReason] = useState<AutoAdvanceDisabledReason | null>(null)
   const [showReview, setShowReview] = useState(false)
 
+  // ── POST-TRIAL-BELLE-001: post-trial experience state ─────────────────────
+  // isLapsedUser: authenticated user whose trial has ended (subscription_ends_at
+  // is in the past AND subscription_type !== 'active'). These users get a taste
+  // instead of an immediate redirect. Active subscribers and in-trial users
+  // (subscription_type === 'active') are NEVER lapsed — they are served before
+  // the lapsed check is reached. Unauthenticated users go to signin.
+  const [isLapsedUser, setIsLapsedUser] = useState(false)
+  const isLapsedRef = useRef(false) // mirror for onTimeUpdate / seekToClientX event handlers
+  // trialWallVisible: true when the wall overlay is shown
+  const [trialWallVisible, setTrialWallVisible] = useState(false)
+  // trialWallType: which wall variant ('standalone' = 60s cutoff, 'series_ep1_end' = full EP1 played,
+  // 'series_ep2plus' = blocked immediately)
+  const [trialWallType, setTrialWallType] = useState<'standalone' | 'series_ep1_end' | 'series_ep2plus' | null>(null)
+  // Belle audio URL for the wall (loaded asynchronously — wall shows immediately without it)
+  const [belleWallAudioUrl, setBelleWallAudioUrl] = useState<string | null>(null)
+  const belleWallAudioRef = useRef<HTMLAudioElement | null>(null)
+  const trialWallFiredRef = useRef(false) // prevent duplicate 60s triggers
+
   // ── Pills state ────────────────────────────────────────────────────────────
   const [activeModal, setActiveModal] = useState<'author' | 'narrator' | 'prose' | null>(null)
   const [proseDark, setProseDark] = useState(false)
@@ -820,7 +838,7 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
         stage = 'story-row'
         const { data, error } = await supabase
           .from('stories')
-          .select('id,title,author,genre,audio_url,cover_url,duration_mins,intro_audio_url,outro_audio_url,background_music_url,episode_number,series_id,series_name,is_free,prose_text,author_id,narrator_voice_id,narrator_voice_name,status,is_hidden,published_on')
+          .select('id,title,author,genre,audio_url,cover_url,duration_mins,intro_audio_url,outro_audio_url,background_music_url,episode_number,series_episode_number,series_id,series_name,is_free,prose_text,author_id,narrator_voice_id,narrator_voice_name,status,is_hidden,published_on')
           .eq('id', storyId)
           .maybeSingle()
 
@@ -984,9 +1002,56 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
                 (!dbUser?.subscription_ends_at || new Date(dbUser.subscription_ends_at) > new Date()))
             )
             if (!hasAccess) {
-              redirected = true
-              router.replace(`/subscribe?returnTo=/player/${storyId}`)
-              return
+              // POST-TRIAL-BELLE-001: determine if this is a lapsed trial user
+              // (subscription_ends_at < now AND subscription_type !== 'active')
+              // vs a user who never had a trial (subscription_ends_at null).
+              // Lapsed users get a preview; never-trialed users redirect to /subscribe.
+              // Active subscribers and in-trial users are already handled above
+              // (hasAccess === true for them, so they never reach this block).
+              const endsAt = dbUser?.subscription_ends_at
+              const isLapsed = Boolean(
+                endsAt &&
+                new Date(endsAt) <= new Date() &&
+                dbUser?.subscription_type !== 'active'
+              )
+              if (!isLapsed) {
+                // Never subscribed / no trial on record → standard subscribe redirect
+                redirected = true
+                router.replace(`/subscribe?returnTo=/player/${storyId}`)
+                return
+              }
+              // Lapsed user — let them reach the player with restricted access
+              setIsLapsedUser(true)
+              isLapsedRef.current = true
+              // For series: free the LOWEST published series_episode_number in the series,
+              // not literally episode 1. Handles series where the first published episode
+              // is numbered higher (e.g., a series whose only published ep is numbered 3).
+              // Per Marc production verification: series_episode_number is authoritative
+              // (zero nulls on series episodes); episode_number has one null — do not use as primary.
+              const storySeriesEpNum = (data as any).series_episode_number ?? (data as any).episode_number ?? null
+              const hasSeries = Boolean((data as any).series_id)
+              let isLowestEpisode = false
+              if (hasSeries && storySeriesEpNum !== null) {
+                // Query the minimum published series_episode_number for this series
+                const { data: minRow } = await supabase
+                  .from('stories')
+                  .select('series_episode_number')
+                  .eq('series_id', (data as any).series_id)
+                  .eq('is_hidden', false)
+                  .not('series_episode_number', 'is', null)
+                  .order('series_episode_number', { ascending: true })
+                  .limit(1)
+                  .maybeSingle()
+                const minEpNum = minRow?.series_episode_number ?? null
+                isLowestEpisode = minEpNum !== null && Number(storySeriesEpNum) === Number(minEpNum)
+              }
+              if (hasSeries && !isLowestEpisode) {
+                // Not the lowest published episode → show wall immediately, no audio
+                setTrialWallVisible(true)
+                setTrialWallType('series_ep2plus')
+                // Don't redirect — let the player render so the wall overlay shows
+              }
+              // Series EP1 and standalones continue to load normally
             }
           }
         }
@@ -1259,6 +1324,12 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
       const completedSeconds = getQueueTotalSeconds() || completedRef.current || duration
       setCumTime(completedSeconds)
       raise(0); setIsPlaying(false); setPlaybackEnded(true); saveProgress(completedSeconds, true)
+      // POST-TRIAL-BELLE-001: for lapsed users on series EP1, show wall at natural end
+      if (isLapsedRef.current && story?.series_id) {
+        setTrialWallVisible(true)
+        setTrialWallType('series_ep1_end')
+        return
+      }
       maybeAutoAdvanceFromNaturalEnd('natural_ended')
     } else {
       const completedSeconds = getQueueTotalSeconds() || completedRef.current || duration
@@ -1457,7 +1528,11 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
     if (!rect.width) return
 
     const ratio = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width))
-    const nextTime = ratio * actualDuration
+    let nextTime = ratio * actualDuration
+    // POST-TRIAL-BELLE-001: clamp seek for lapsed standalone users to 60s max
+    if (isLapsedRef.current && !story?.series_id) {
+      nextTime = Math.min(nextTime, 60)
+    }
     // ORION-PLAYER-ENDSTATE-001: scrubbing back from a finished state restores
     // resume semantics — the CTA must not restart from 0 after a user re-seeks.
     if (playbackEnded && nextTime < actualDuration - 2) {
@@ -1748,6 +1823,50 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
   const fmt = (s: number) => `${Math.floor(s / 60)}:${Math.floor(s % 60).toString().padStart(2, '0')}`
   const fmtMin = (s: number) => (s / 60).toFixed(1) + ' min'
   const actualAudioDuration = Number.isFinite(duration) && duration > 0 ? duration : 0
+  // POST-TRIAL-BELLE-001: fetch Belle wall audio when the trial wall becomes visible.
+  // The wall is shown IMMEDIATELY on trialWallVisible=true; Belle audio is a non-blocking
+  // enhancement. If fetch fails or is slow, the wall still shows its message and button.
+  useEffect(() => {
+    if (!trialWallVisible || !trialWallType || trialWallType === 'series_ep2plus') return
+    const wallKind = trialWallType === 'standalone' ? 'standalone' : 'series'
+    let aborted = false
+    ;(async () => {
+      try {
+        const res = await fetch(`/api/post-trial-belle?type=${wallKind}`)
+        if (aborted) return
+        const data = await res.json()
+        if (aborted) return
+        if (data?.url) {
+          setBelleWallAudioUrl(data.url)
+          return
+        }
+        // Not cached yet — generate it
+        const genRes = await fetch('/api/post-trial-belle', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ type: wallKind }),
+        })
+        if (aborted) return
+        if (genRes.ok) {
+          const genData = await genRes.json()
+          if (genData?.url && !aborted) setBelleWallAudioUrl(genData.url)
+        }
+      } catch {
+        // Silent — wall still works without audio
+      }
+    })()
+    return () => { aborted = true }
+  }, [trialWallVisible, trialWallType])
+
+  // Play Belle audio when URL arrives (non-blocking; failure is silent)
+  useEffect(() => {
+    if (!belleWallAudioUrl) return
+    const audio = new Audio(belleWallAudioUrl)
+    belleWallAudioRef.current = audio
+    audio.play().catch(() => {})
+    return () => { audio.pause(); audio.src = '' }
+  }, [belleWallAudioUrl])
+
   const effTotal = isASC3
     ? (totalDur > 0 ? totalDur : (story?.duration_mins || 0) * 60)
     : (actualAudioDuration || (story?.duration_mins || 0) * 60)
@@ -1788,6 +1907,17 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
         }}
         onTimeUpdate={(e) => {
           const t = e.currentTarget.currentTime; setCurrentTime(t); setCumTime(completedRef.current + t)
+          // POST-TRIAL-BELLE-001: 60-second cutoff for lapsed standalone users
+          if (isLapsedRef.current && !story?.series_id && t >= 60 && !trialWallFiredRef.current) {
+            trialWallFiredRef.current = true
+            e.currentTarget.pause()
+            musicRef.current?.pause()
+            setIsPlaying(false)
+            setTrialWallVisible(true)
+            setTrialWallType('standalone')
+          }
+          // POST-TRIAL-BELLE-001: end of series EP1 for lapsed users — wall triggers
+          // via onEnded (natural end) not here; this block is for standalones only.
           const progressSeconds = isASC3 ? completedRef.current + t : t
           const progressFloor = Math.floor(progressSeconds)
           if (progressFloor > 0 && progressFloor !== lastLocalProgressWriteRef.current) {
@@ -1914,6 +2044,12 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
           }
           if (!isASC3) {
             setIsPlaying(false); setPlaybackEnded(true); saveProgress(duration, true)
+            // POST-TRIAL-BELLE-001: for lapsed users on series EP1, show wall at natural end
+            if (isLapsedRef.current && story?.series_id) {
+              setTrialWallVisible(true)
+              setTrialWallType('series_ep1_end')
+              return
+            }
             maybeAutoAdvanceFromNaturalEnd('natural_ended')
             return
           }
@@ -2461,6 +2597,102 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
 
             </div>
           </div>
+        </div>
+      )}
+
+      {/* POST-TRIAL-BELLE-001: Trial wall overlay
+          Shown for lapsed users when playback should stop.
+          MUST appear before Belle audio is loaded — audio is an enhancement only.
+          Never blocks the subscribe button behind a loading state. */}
+      {trialWallVisible && (
+        <div
+          data-testid="trial-wall"
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(2,6,23,0.96)',
+            zIndex: 500,
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '32px 24px',
+            textAlign: 'center',
+            backdropFilter: 'blur(8px)',
+          }}
+        >
+          {/* Belle mark */}
+          <div style={{ fontSize: '48px', marginBottom: '16px' }}>🎙️</div>
+
+          {/* Main message */}
+          <p style={{
+            color: 'white',
+            fontSize: '20px',
+            fontWeight: 800,
+            lineHeight: 1.3,
+            margin: '0 0 12px',
+            maxWidth: '340px',
+          }}>
+            {trialWallType === 'standalone'
+              ? "That\u2019s a taste of it."
+              : trialWallType === 'series_ep1_end'
+              ? "That\u2019s where episode one ends."
+              : "There\u2019s more of this story."}
+          </p>
+
+          <p style={{
+            color: 'rgba(255,255,255,0.72)',
+            fontSize: '15px',
+            lineHeight: 1.5,
+            margin: '0 0 28px',
+            maxWidth: '320px',
+          }}>
+            {trialWallType === 'standalone'
+              ? 'Continue listening for \u00247.99/month \u2014 no credit card required for your first week.'
+              : trialWallType === 'series_ep1_end'
+              ? "There\u2019s more of this story. Continue for \u00247.99/month."
+              : "Subscribe to unlock the rest of this series and everything in the library."}
+          </p>
+
+          {/* Subscribe button — always visible, never disabled */}
+          <a
+            href="/subscribe"
+            style={{
+              display: 'block',
+              width: '100%',
+              maxWidth: '320px',
+              padding: '18px 24px',
+              background: '#f97316',
+              color: 'white',
+              fontSize: '17px',
+              fontWeight: 800,
+              borderRadius: '14px',
+              textDecoration: 'none',
+              textAlign: 'center',
+              marginBottom: '16px',
+            }}
+          >
+            Start Your Free Week
+          </a>
+
+          {/* Back link */}
+          <button
+            onClick={() => { disableAutoAdvanceForSession('navigation'); returnToSource('/library') }}
+            style={{
+              background: 'transparent',
+              border: 'none',
+              color: 'rgba(255,255,255,0.45)',
+              fontSize: '13px',
+              fontWeight: 600,
+              cursor: 'pointer',
+              padding: '8px',
+            }}
+          >
+            Back to Library
+          </button>
+
+          {/* Belle audio plays once URL arrives — audio element is handled by the
+              belleWallAudioUrl useEffect above; nothing to render here. */}
         </div>
       )}
 
