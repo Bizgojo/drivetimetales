@@ -19,8 +19,9 @@ const SIDEBAR_STORAGE_KEY = 'admin_sidebar_open'
 const NAV_GROUPS = [
   { id: 'dashboard', label: 'Dashboard', icon: '📊', items: [
     { href: '/admin', label: 'Overview' },
-    { href: '/admin/launch-report', label: 'Launch Report' },
-    { href: '/admin/listen-report', label: 'Listen Report' },
+    // Launch Report and Listen Report removed from nav 2026-08-13 (Bell campaign analytics
+    // supersedes them). Pages still exist at /admin/launch-report and /admin/listen-report
+    // and remain fully functional — navigate directly to restore access.
     { href: '/admin/command-center', label: 'Command Center' },
     { href: '/admin/workspace', label: 'Workspace' },
     { href: '/admin/accounts', label: 'Accounts & Integrations' },
@@ -55,6 +56,9 @@ const NAV_GROUPS = [
   ]},
   { id: 'analytics', label: 'Analytics', icon: '📈', items: [
     { href: '/admin/analytics', label: 'Overview' },
+    { href: '/admin/analytics/funnel', label: 'Funnel by Arm' },
+    { href: '/admin/analytics/signups', label: 'Signups & Behaviour' },
+    { href: '/admin/analytics/trial-paid', label: 'Trial to Paid' },
   ]},
   { id: 'finance', label: 'Finance', icon: '💰', items: [
     { href: '/admin/finance', label: 'Revenue & Costs' },
