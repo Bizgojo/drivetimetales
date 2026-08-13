@@ -260,18 +260,18 @@ export async function POST(req: NextRequest) {
 
         if (isActive) {
           // Case (c): Currently paying customer — touch ONLY listen_arm. NEVER touch subscription fields.
+          // No Lead event: existing paying subscriber re-submitting the gate is not a new signup.
           await supabase.from('users').update({ listen_arm: armNum, updated_at: new Date().toISOString() }).eq('id', found.id)
           await seedUserLibrary(found.id, armNum as 1 | 2 | 3)
-          fireTracking()
           return NextResponse.json({ ok: true, active: true, userId: found.id })
         }
 
         if (hasHadTrial) {
           // Case (b): Has had a prior trial, not currently active — deny second trial.
           // Do NOT modify subscription_type, subscription_ends_at, or plan.
+          // No Lead event: lapsed user shown subscribe card is not a new signup.
           await supabase.from('users').update({ listen_arm: armNum, updated_at: new Date().toISOString() }).eq('id', found.id)
           await seedUserLibrary(found.id, armNum as 1 | 2 | 3)
-          fireTracking()
           const displayName = existingUser?.first_name || firstName
           return NextResponse.json({ ok: true, returning: true, userId: found.id, firstName: displayName, email: found.email })
         }

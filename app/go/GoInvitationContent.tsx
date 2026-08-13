@@ -311,8 +311,11 @@ export default function GoInvitationContent({ arm: armProp }: GoInvitationConten
 
       // GATE-TRACK-001: wall_submit on successful API response (new user or active user)
       trackEvent('wall_submit')
-      // Meta pixel Lead — client-side
-      try { (window as any).fbq?.('track', 'Lead', { content_name: 'bell-arm-wall-submit', arm }) } catch { /* silent */ }
+      // Meta pixel Lead — client-side. Only on genuine new account creation.
+      // data.active means an existing paying subscriber submitted the gate — not a new signup.
+      if (!data.active) {
+        try { (window as any).fbq?.('track', 'Lead', { content_name: 'bell-arm-wall-submit', arm }) } catch { /* silent */ }
+      }
       // Clear gate sample progress so ContinueListening is unfiltered after signup (Marc 2026-08-11)
       try { Object.keys(localStorage).filter(k => k.startsWith('et_go_sample_progress')).forEach(k => localStorage.removeItem(k)) } catch { /* private mode / quota — never fatal */ }
 
