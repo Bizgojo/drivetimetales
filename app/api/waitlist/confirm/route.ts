@@ -18,6 +18,7 @@ export async function POST(req: NextRequest) {
 
     const { error } = await resend.emails.send({
       from: 'Endless Tales <hello@endless-tales.com>',
+      replyTo: 'hello.endlesstales@gmail.com',
       to: email,
       subject: "You're in — we'll see you on launch day 🎧",
       html: `

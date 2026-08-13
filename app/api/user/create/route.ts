@@ -109,6 +109,7 @@ export async function POST(request: NextRequest) {
       const welcome = renderWelcomeEmail(displayName)
       await resend.emails.send({
         from: 'Endless Tales <hello@endless-tales.com>',
+        replyTo: 'hello.endlesstales@gmail.com',
         to: email,
         subject: welcome.subject,
         html: welcome.html,
