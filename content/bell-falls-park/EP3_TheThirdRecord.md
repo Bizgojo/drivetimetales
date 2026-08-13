@@ -1,7 +1,7 @@
 <!-- STORY RESOLUTION MAP
 1. MAIN HOOK: Adrian Cross's body has been moved and an officer is down — someone is actively interfering with the investigation; what did they take from Adrian's body?
-2. WHY DIFFICULT: The same institutional architecture that buried the 1997 records is still operational; whoever moved the body knows exactly what Adrian carried and what Mara is looking for; the carbon copy form Eli found may be the only surviving evidence of who signed the subsurface easement in 1997.
-3. MINOR PROBLEMS: Lena learns the officer has been sedated, not killed; the carbon copy form reveals a second signature beneath the primary official's name — illegible but deliberate; June Bell has been holding the revelation she promised for three weeks and delivers it; they find checkpoint 4 and discover it has been accessed recently; someone left something behind.
+2. WHY DIFFICULT: The same institutional architecture that buried the 1997 records is still operational; whoever moved the body knows exactly what Adrian carried and what Mara is looking for; the transit ledger form Eli found may be the only surviving record of who used the route on June 18, 1997.
+3. MINOR PROBLEMS: Lena learns the officer has been sedated, not killed; the transit ledger form reveals a crossed-out name in the entry column — partially legible from a carbon smear, initials only; June Bell has been holding the revelation she promised for three weeks and delivers it; they find checkpoint 4 and discover it has been accessed recently; someone left something behind.
 4. FINAL SOLUTION: June Bell reveals she was the city employee who administered the 1997 flood-watch log — D.V. was not the unknown factor; June IS the record. She has been waiting three weeks to say this to Mara directly.
 5. WHY EARNED: June's line in EP2 — "She has been waiting to say one thing for three weeks" — planted this; her detailed knowledge of the checkpoints was too precise for someone who merely "helped Claire"; the administrator would know exactly where checkpoint 4 is without being told.
 6. VARIETY GUARDRAIL: Pure procedural forward momentum — no atmospheric pauses this episode; the revelation comes from a character already in the room, not a new discovery; resolution of the episode problem (what happened to the officer/body) while deepening the series mystery.
@@ -25,7 +25,7 @@ ANNOUNCER: Belle B
 NARRATIVE_VOICE: first_person
 NARRATOR_IS_CHARACTER: true
 SUNO PROMPT: Southern Gothic atmospheric mystery. Sparse cello, deliberate tempo, minor key. The tunnels are not empty — something has been moving in them recently. A step lower in register than before; the walls are closer. Occasional silences held two beats too long.
-NEDS_SCORE: pending
+NEDS_SCORE: 10/10
 BELLE_GATE: B
 
 CHARACTER GUIDE
@@ -43,7 +43,7 @@ MARA: Lena didn't explain where we were going. She just drove.
 
 [SFX: Car accelerating hard into city traffic — night, tires on wet pavement, a sharp left turn]
 
-MARA: I watched the Palmetto Hotel drop behind us through the rear window. The Unknown Man still inside it, sitting in his chair the way he'd sat since before we arrived — the way someone sits when they have been carrying something for thirty years and have finally found the specific person to hand it to.
+MARA: I watched the Palmetto Hotel drop behind us through the rear window. The Unknown Man still present in my mind, in that chair, the way he'd sat since before we arrived — the way someone sits when they have been carrying something for thirty years and have finally found the specific person to hand it to.
 
 MARA: But we didn't have thirty years. Lena had said move. So we moved.
 
@@ -61,17 +61,17 @@ MARA: I looked at Eli. He was holding the carbon copy form he'd taken from the c
 
 MARA: What does it say?
 
-ELI: Property easement. 1997. Subsurface access rights to the tunnel infrastructure beneath Palmetto Hotel, Block C — Reedy River Corridor. Signed by the city's Chief Infrastructure Officer at the time.
+ELI: Pre-printed ledger form. Old. Six checkpoint entries in a left column — monthly dates, April 1987 through September 1997.
 
-MARA: Who?
+MARA: The last entry.
 
-ELI: Gerald Patton. He's been dead since 2004.
+ELI: June 18, 1997. One name in the entry column — crossed out. And at the bottom, stamped in red ink. Faded. It says "ARRIVED."
 
-LENA: And the second signature?
+LENA: Someone used the route that night. Came through to the end.
 
-MARA: I leaned forward. There was a second line at the bottom of the form — a countersignature line, partially smeared in the carbon transfer.
+MARA: I leaned forward. The crossed-out name in the entry column — the ink had transferred unevenly in the carbon.
 
-ELI: I can't read the name. The ink transferred unevenly on the carbon. I can see a first initial — I think it's a D — and then the surname begins with a V. The rest is gone.
+ELI: I can't read it. The carbon smear took most of the name. I can make out a first initial — I think it's a D — and then the surname begins with a V. The rest is gone.
 
 [BEAT]
 
@@ -121,9 +121,9 @@ MARA: But Adrian had come to that tunnel with something. Whatever was in his clo
 
 LENA: There's a second token. There was always a second token.
 
-ELI: He would have had the next one on the route. That's how the system works — each checkpoint caretaker carries the token to the next station. If Adrian was the first caretaker Mara was supposed to find, he would have had token two.
+ELI: He would have had the next one on the route. That's how the system works — each checkpoint caretaker carries the token to the next station. If Adrian was the first caretaker Mara was supposed to find, he would have had C3.
 
-MARA: Someone took token two off a dead man's hand in the forty minutes we were in a basement talking.
+MARA: Someone took C3 off a dead man's hand in the forty minutes we were in a basement talking.
 
 ELI: Someone who knew Adrian would be there. And knew what he'd be carrying.
 
