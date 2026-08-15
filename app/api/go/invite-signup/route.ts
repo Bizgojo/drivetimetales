@@ -185,7 +185,7 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json()
-    const { email: rawEmail, name: rawName, arm, sessionId, utmSource, utmCampaign } = body
+    const { email: rawEmail, name: rawName, arm, sessionId, utmSource, utmCampaign, leadEventId } = body
     const firstName = (typeof rawName === 'string' && rawName.trim()) ? rawName.trim() : 'Listener'
 
     if (!rawEmail || typeof rawEmail !== 'string') {
@@ -255,7 +255,12 @@ export async function POST(req: NextRequest) {
               }),
             }).catch(() => { /* silent — tracking never blocks signup */ })
           }
-          void sendServerEvent({ name: 'Lead', eventId: randomEventId('lead'), email, customData: { arm: armNum, content_name: 'bell-arm-wall-submit' } })
+          // DEDUP-001: use the shared eventId from the client; fall back to randomEventId
+          // if the client didn't send one (e.g. old cached page load).
+          const capiEventId = (typeof leadEventId === 'string' && leadEventId.length > 0)
+            ? leadEventId
+            : randomEventId('lead')
+          void sendServerEvent({ name: 'Lead', eventId: capiEventId, email, customData: { arm: armNum, content_name: 'bell-arm-wall-submit' } })
         }
 
         if (isActive) {
@@ -413,12 +418,18 @@ export async function POST(req: NextRequest) {
     }
 
     // 4. Fire Lead CAPI to Meta (fire-and-forget — GATE-TRACK-001)
+    // DEDUP-001: use the shared eventId sent by the client so the server CAPI event
+    // matches the client pixel event. Meta deduplicates on eventID; without a shared
+    // ID both events are counted, inflating Lead count by ~2× and halving apparent CPL.
     const appBase = process.env.VERCEL_URL
       ? `https://${process.env.VERCEL_URL}`
       : 'http://localhost:3001'
+    const capiEventId = (typeof leadEventId === 'string' && leadEventId.length > 0)
+      ? leadEventId
+      : randomEventId('lead')
     void sendServerEvent({
       name: 'Lead',
-      eventId: randomEventId('lead'),
+      eventId: capiEventId,
       email,
       customData: { arm: armNum, content_name: 'bell-arm-wall-submit' },
       sourceUrl: `${appBase}/go?arm=${armNum}`,
