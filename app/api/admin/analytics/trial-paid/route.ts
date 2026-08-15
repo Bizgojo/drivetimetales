@@ -26,6 +26,11 @@ const ADMIN_EMAILS = new Set([
 const BELL_ARM_INTS = [1, 2, 3] as const
 type ArmInt = 1 | 2 | 3
 
+// CAMPAIGN_START_DATE: set this to the campaign go-live timestamp before first spend.
+// Leave as null until Marc sets the real date.
+// Format: ISO 8601 UTC, e.g. '2026-08-20T04:00:00.000Z'
+const CAMPAIGN_START_DATE: string | null = null
+
 // Map integer arm to bell-arm key (for spend table lookup)
 const ARM_TO_KEY: Record<ArmInt, string> = {
   1: 'bell-arm1',
@@ -105,11 +110,13 @@ export async function GET(req: NextRequest) {
     const day7Cutoff = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
 
     // Fetch bell-invitation users
-    const { data: rawUsers, error: usersErr } = await admin
+    let usersQuery = admin
       .from('users')
       .select('id, listen_arm, is_test_account, trial_started_at, first_paid_date')
       .eq('signup_source', 'bell-invitation')
       .in('listen_arm', [...BELL_ARM_INTS])
+    if (CAMPAIGN_START_DATE !== null) usersQuery = usersQuery.gte('created_at', CAMPAIGN_START_DATE)
+    const { data: rawUsers, error: usersErr } = await usersQuery
 
     if (usersErr) {
       console.error('[analytics/trial-paid] users read error:', usersErr.message)

@@ -29,6 +29,11 @@ const ADMIN_EMAILS = new Set([
 // Other values in go_listen_events ('listen-arm1', 'a', 'b', 'bare') are
 // from prior or parallel experiments — exclude them unconditionally.
 const BELL_VARIANTS = ['bell-arm1', 'bell-arm2', 'bell-arm3'] as const
+
+// CAMPAIGN_START_DATE: set this to the campaign go-live timestamp before first spend.
+// Leave as null until Marc sets the real date.
+// Format: ISO 8601 UTC, e.g. '2026-08-20T04:00:00.000Z'
+const CAMPAIGN_START_DATE: string | null = null
 type BellVariant = (typeof BELL_VARIANTS)[number]
 
 export const FUNNEL_STAGES = [
@@ -90,10 +95,12 @@ export async function GET(req: NextRequest) {
     const { admin } = clients()
 
     // Fetch only bell-arm variants — see IMPORTANT comment at top of file
-    const { data: events, error } = await admin
+    let funnelQuery = admin
       .from('go_listen_events')
       .select('session_id, variant, event')
       .in('variant', [...BELL_VARIANTS])
+    if (CAMPAIGN_START_DATE !== null) funnelQuery = funnelQuery.gte('created_at', CAMPAIGN_START_DATE)
+    const { data: events, error } = await funnelQuery
 
     if (error) {
       console.error('[analytics/funnel] go_listen_events read error:', error.message)
