@@ -682,7 +682,7 @@ export async function runRenderFinalMix(storyId: string): Promise<{
     const preRollSeconds = 2.5
     const postStoryTailSeconds = STORY_TAIL_SEC
     const preRollVolume = 0.65
-    const narrationBedVolume = 0.075
+    const narrationBedVolume = 0.12  // ATL-MUSIC-BED-003 (2026-08-14): adjusted from 0.15 to 0.12 per Marc
     // v2: swell reaches 0.85 (loud but not clipping); legacy: 0.45 with immediate fade
     const postStoryVolume = V2_MUSIC_SWELL ? 0.85 : 0.45
 
