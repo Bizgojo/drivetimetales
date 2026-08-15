@@ -3,6 +3,8 @@ import { createClient } from '@supabase/supabase-js'
 import { loadManifest, validateManifestGate, saveManifest, emptyManifest } from '@/lib/sfxAssetLock'
 // ATL-PARSER-001: shared line-index parser — single source of truth for segment numbering
 import { parseScriptPositions } from '@/lib/scriptLineIndex'
+// BELL-FREEZE-GUARD-001 v1.1: frozen promo guard (ATL-GUARD-HOLE-FIX-001)
+import { checkFrozenGuard, type Decision } from '@/lib/guards/frozenGuard'
 import { promises as fs, statfsSync } from 'node:fs'
 import path from 'path'
 import os from 'os'
@@ -283,6 +285,44 @@ export async function runRenderFinalMix(storyId: string): Promise<{
     if (renderManifest && Object.keys(renderManifest.locked_sfx ?? {}).length > 0) {
       console.log(`  [ATL-SFX-WIRE-001] Running manifest gate for ${Object.keys(renderManifest.locked_sfx).length} locked cue(s)...`)
       await validateManifestGate(renderManifest)  // throws on mismatch — Rule 3/8 hard stop
+    }
+
+    // BELL-FREEZE-GUARD-001 v1.1 (ATL-GUARD-HOLE-FIX-001): frozen promo hard stop.
+    // If this story's manifest is frozen, render is blocked unless a VALID unlock
+    // decision exists in the workspace decisions log. Valid = has marc_verbatim field.
+    // Agents cannot self-issue unlocks — unlock records without marc_verbatim are rejected.
+    if (renderManifest?.frozen) {
+      let decisions: Decision[] = []
+      try {
+        const fs2 = await import('node:fs')
+        const path2 = await import('node:path')
+        const os2 = await import('node:os')
+        const decisionsDir = process.env.DECISIONS_LOG_DIR ||
+          path2.join(os2.homedir(), '.openclaw', 'workspace-orion', 'decisions')
+        const today = new Date().toISOString().slice(0, 10)
+        const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10)
+        for (const day of [today, yesterday]) {
+          const p = path2.join(decisionsDir, `${day}.json`)
+          try {
+            if (fs2.existsSync(p)) {
+              const raw = fs2.readFileSync(p, 'utf8').trim()
+              if (raw) decisions.push(...JSON.parse(raw))
+            }
+          } catch { /* log file unreadable — guard stays strict */ }
+        }
+      } catch { /* decisions dir unavailable — guard stays strict */ }
+
+      const guardResult = checkFrozenGuard({
+        manifest: renderManifest as unknown as Parameters<typeof checkFrozenGuard>[0]['manifest'],
+        storyId,
+        operation: 'render-final-mix',
+        decisions,
+      })
+      if (!guardResult.allowed) {
+        console.error(`  [BELL-FREEZE-GUARD-001 v1.1] BLOCKED: ${guardResult.reason}`)
+        return { success: false, error: guardResult.reason }
+      }
+      console.log(`  [BELL-FREEZE-GUARD-001 v1.1] Frozen story — unlock verified: ${guardResult.unlockedByDecision}`)
     }
 
     const { data: filesRaw } = await supabase.storage.from('audio').list(`asc3/${storyId}`, { limit: 500 })

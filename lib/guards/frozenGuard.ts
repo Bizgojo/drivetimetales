@@ -1,5 +1,5 @@
 /**
- * lib/guards/frozenGuard.ts — BELL-FREEZE-GUARD-001 (Frozen Guard)
+ * lib/guards/frozenGuard.ts — BELL-FREEZE-GUARD-001 v1.1 (Frozen Guard)
  *
  * Prevents any operation on a frozen story unless Marc has explicitly unlocked it
  * via a decisions-log entry.
@@ -7,6 +7,20 @@
  * Root cause prevented: PV2 was frozen (Marc approval 2026-07-29), then re-rendered
  * with an unauthorized Lena voice change, then re-frozen BEFORE Marc ear re-approval.
  * This guard would have blocked both the re-render and the re-freeze.
+ *
+ * v1.1 — GUARD-HOLE FIX (Marc, 2026-08-06):
+ * Original guard read decisions log and accepted ANY decision-log entry matching
+ * the unlock pattern — including entries an agent wrote for itself.
+ * An agent self-issued two unlocks on 2026-08-06 before this fix.
+ *
+ * Fix: unlock entries for FROZEN PROMOS must include a non-empty `marc_verbatim`
+ * field containing Marc's actual quoted authorization text. Without it, the unlock
+ * is rejected even if the decision_id pattern matches.
+ *
+ * PROTOCOL RULE (enforced here):
+ *   — No agent may author a promo unlock entry.
+ *   — Unlock entries MUST quote Marc's verbatim authorization text in marc_verbatim.
+ *   — An unlock record without marc_verbatim is treated as blocked.
  *
  * Usage (API route):
  *   import { checkFrozenGuard } from '@/lib/guards/frozenGuard'
@@ -28,6 +42,13 @@ export interface Decision {
   timestamp: string
   description?: string
   source?: string
+  /**
+   * REQUIRED for promo unlock entries (v1.1 guard-hole fix, Marc 2026-08-06).
+   * Must contain Marc's verbatim authorization text as received.
+   * An unlock record without this field is rejected by the guard regardless of
+   * decision_id pattern match. No agent may write a promo unlock without this.
+   */
+  marc_verbatim?: string
 }
 
 export interface FrozenManifest {
@@ -105,10 +126,33 @@ export function checkFrozenGuard(params: {
     return v !== 'rejected' && v !== 'revoked' && v !== 'blocked' && v !== 'denied'
   }
 
+  /**
+   * v1.1 GUARD-HOLE FIX: promo unlock entries MUST include marc_verbatim.
+   * Without Marc's verbatim text in the record, the unlock is rejected even if
+   * the decision_id pattern matches. This prevents agents from self-issuing unlocks.
+   */
+  function hasMarcVerbatim(d: Decision): boolean {
+    return typeof d.marc_verbatim === 'string' && d.marc_verbatim.trim().length > 0
+  }
+
   // 1. Check explicit unlock decision id
   if (unlockDecisionId) {
     const d = decisions.find(x => x.decision_id === unlockDecisionId)
     if (d && isAffirmative(d.value)) {
+      if (!hasMarcVerbatim(d)) {
+        return {
+          allowed: false,
+          frozen: true,
+          frozenAt,
+          frozenRevision,
+          frozenBy,
+          unlockedByDecision: null,
+          reason:
+            `BELL-FREEZE-GUARD-001 v1.1 [frozenGuard]: Unlock decision "${unlockDecisionId}" found but` +
+            ` REJECTED — missing required marc_verbatim field. Promo unlocks require Marc's verbatim` +
+            ` authorization text. No agent may self-issue a promo unlock. (ATL-GUARD-HOLE-FIX-001)`,
+        }
+      }
       return {
         allowed: true,
         frozen: true,
@@ -127,6 +171,20 @@ export function checkFrozenGuard(params: {
   for (const pattern of patterns) {
     const d = decisions.find(x => x.decision_id === pattern)
     if (d && isAffirmative(d.value)) {
+      if (!hasMarcVerbatim(d)) {
+        return {
+          allowed: false,
+          frozen: true,
+          frozenAt,
+          frozenRevision,
+          frozenBy,
+          unlockedByDecision: null,
+          reason:
+            `BELL-FREEZE-GUARD-001 v1.1 [frozenGuard]: Unlock decision "${d.decision_id}" found but` +
+            ` REJECTED — missing required marc_verbatim field. Promo unlocks require Marc's verbatim` +
+            ` authorization text. No agent may self-issue a promo unlock. (ATL-GUARD-HOLE-FIX-001)`,
+        }
+      }
       return {
         allowed: true,
         frozen: true,

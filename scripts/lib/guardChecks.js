@@ -106,10 +106,27 @@ function checkFrozenGuard({ manifest, storyId, operation, decisions, unlockDecis
     return v !== 'rejected' && v !== 'revoked' && v !== 'blocked' && v !== 'denied'
   }
 
+  // v1.1 GUARD-HOLE FIX: promo unlock entries MUST include marc_verbatim.
+  // Without Marc's verbatim text, the unlock is rejected even if the pattern matches.
+  function hasMarcVerbatim(d) {
+    return typeof d.marc_verbatim === 'string' && d.marc_verbatim.trim().length > 0
+  }
+
+  const VERBATIM_REJECTION =
+    ` REJECTED — missing required marc_verbatim field. Promo unlocks require Marc\'s` +
+    ` verbatim authorization text. No agent may self-issue a promo unlock. (ATL-GUARD-HOLE-FIX-001)`
+
   // Check explicit unlock decision id
   if (unlockDecisionId) {
     const d = decisions.find(x => x.decision_id === unlockDecisionId)
     if (d && isAffirmative(d.value)) {
+      if (!hasMarcVerbatim(d)) {
+        return {
+          allowed: false, frozen: true, frozenAt, frozenRevision, frozenBy,
+          unlockedByDecision: null,
+          reason: `BELL-FREEZE-GUARD-001 v1.1 [frozenGuard]: Unlock decision "${unlockDecisionId}" found but` + VERBATIM_REJECTION,
+        }
+      }
       return {
         allowed: true, frozen: true, frozenAt, frozenRevision, frozenBy,
         unlockedByDecision: unlockDecisionId,
@@ -123,6 +140,13 @@ function checkFrozenGuard({ manifest, storyId, operation, decisions, unlockDecis
   for (const pattern of [`${shortId}-unlock`, `${storyId}-unlock`]) {
     const d = decisions.find(x => x.decision_id === pattern)
     if (d && isAffirmative(d.value)) {
+      if (!hasMarcVerbatim(d)) {
+        return {
+          allowed: false, frozen: true, frozenAt, frozenRevision, frozenBy,
+          unlockedByDecision: null,
+          reason: `BELL-FREEZE-GUARD-001 v1.1 [frozenGuard]: Unlock decision "${d.decision_id}" found but` + VERBATIM_REJECTION,
+        }
+      }
       return {
         allowed: true, frozen: true, frozenAt, frozenRevision, frozenBy,
         unlockedByDecision: d.decision_id,
@@ -136,11 +160,11 @@ function checkFrozenGuard({ manifest, storyId, operation, decisions, unlockDecis
     allowed: false, frozen: true, frozenAt, frozenRevision, frozenBy,
     unlockedByDecision: null,
     reason:
-      `BELL-FREEZE-GUARD-001 [frozenGuard]: Story ${storyId} is frozen` +
+      `BELL-FREEZE-GUARD-001 v1.1 [frozenGuard]: Story ${storyId} is frozen` +
       (frozenAt ? ` (frozen_at=${frozenAt})` : '') +
       (frozenBy ? `, frozen_by="${frozenBy}"` : '') +
       `. Operation "${operation}" is blocked. Only Marc can unlock.` +
-      ` Required decisions-log entry: decision_id="${unlockKey}".`,
+      ` Required decisions-log entry: decision_id="${unlockKey}" WITH marc_verbatim field.`,
   }
 }
 
