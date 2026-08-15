@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { Resend } from 'resend'
-import { renderDay1InstallEmail } from '@/lib/emails/retentionTemplates'
+import { renderDay1InstallEmail, shell, ctaButton } from '@/lib/emails/retentionTemplates'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -9,26 +9,114 @@ const supabase = createClient(
 )
 const resend = new Resend(process.env.RESEND_API_KEY)
 
+// ── Library URL constant (mirrors APP_HOME_URL pattern in retentionTemplates) ──
+const APP_LIBRARY_URL = 'https://app.endless-tales.com/library'
+const APP_PLAYER_BASE_URL = 'https://app.endless-tales.com/player'
+
+// ── Shared text styles for trial-retention email bodies ───────────────────
+const P = 'color:rgba(255,255,255,0.8);font-size:15px;line-height:1.7;margin:0 0 16px;'
+const P_SIG = 'color:rgba(255,255,255,0.6);font-size:15px;font-style:italic;margin:20px 0 0;'
+
 // ── Email templates ────────────────────────────────────────────────────────
 
-function emailDay3(name: string): { subject: string; html: string } {
+/**
+ * Day-2 trial email.
+ * @param safeTitle   Most-recent in-progress story title (trimmed, non-empty), or null.
+ * @param safeStoryId Most-recent in-progress story_id, or null.
+ */
+function emailDay2(name: string, safeTitle: string | null, safeStoryId: string | null): { subject: string; html: string } {
+  if (safeTitle !== null) {
+    // with-story variant
+    return {
+      subject: `Still with ${safeTitle}?`,
+      html: shell(`
+        <p style="${P}">Hi ${name}, it's Belle.</p>
+        <p style="${P}">You started <strong style="color:#ffffff;">${safeTitle}</strong> — it's still there, right where you left off.</p>
+        <p style="${P}">Your free week is running, and it covers everything: every series, every standalone. No card, nothing to cancel.</p>
+        <p style="${P}">Come back when you've got a quiet half hour.</p>
+        ${ctaButton('Pick up where you left off', safeStoryId !== null ? `${APP_PLAYER_BASE_URL}/${safeStoryId}` : APP_LIBRARY_URL)}
+        <p style="${P_SIG}">— Belle</p>
+      `)
+    }
+  }
+  // no-story variant
   return {
-    subject: `${name}, what are you listening to? 🎧`,
-    html: `<!DOCTYPE html><html><head><meta charset="utf-8"></head><body style="margin:0;padding:0;background:#0f0f1a;font-family:-apple-system,sans-serif;"><div style="max-width:560px;margin:0 auto;padding:40px 24px;"><div style="text-align:center;margin-bottom:32px;"><img src="https://app.endless-tales.com/images/et-logo.png" alt="Endless Tales" style="height:48px;" /><div style="font-size:22px;font-weight:900;color:#fff;margin-top:8px;">Endless <span style="color:#f97316;">Tales</span></div></div><div style="background:#1a1a2e;border-radius:16px;padding:32px 28px;border:1px solid rgba(249,115,22,0.2);"><h1 style="color:#fff;font-size:22px;font-weight:800;text-align:center;margin:0 0 12px;">3 days in, ${name}!</h1><p style="color:rgba(255,255,255,0.75);font-size:15px;line-height:1.7;margin:0 0 20px;text-align:center;">You have 11 days left in your free trial. Have you found a story you love yet? Mystery, western, sci-fi, drama — we have something for every mile.</p><div style="text-align:center;margin-bottom:24px;"><a href="https://app.endless-tales.com/library" style="display:inline-block;background:#f97316;color:white;text-decoration:none;padding:14px 32px;border-radius:10px;font-size:15px;font-weight:800;">Browse Stories</a></div><p style="color:rgba(255,255,255,0.5);font-size:13px;text-align:center;margin:0;">After your trial it is just $7.99/month. Cancel anytime before day 14.</p></div><p style="color:rgba(255,255,255,0.3);font-size:12px;margin-top:28px;text-align:center;">Questions? Reply to this email.</p></div></body></html>`
+    subject: `Your free week is running, ${name}`,
+    html: shell(`
+      <p style="${P}">Hi ${name}, it's Belle.</p>
+      <p style="${P}">The whole library is open to you this week — every series, every standalone. No card, nothing to cancel.</p>
+      <p style="${P}">Most people find their favourite in the first couple of days. If you haven't started anything yet, have a wander.</p>
+      ${ctaButton('Browse the library', APP_LIBRARY_URL)}
+      <p style="${P_SIG}">— Belle</p>
+    `)
   }
 }
 
-function emailDay10(name: string): { subject: string; html: string } {
+/**
+ * Day-5 trial email.
+ * @param safeTitle   Most-recent in-progress story title (trimmed, non-empty), or null.
+ * @param safeStoryId Most-recent in-progress story_id, or null.
+ */
+function emailDay5(name: string, safeTitle: string | null, safeStoryId: string | null): { subject: string; html: string } {
+  if (safeTitle !== null) {
+    // with-story variant
+    return {
+      subject: `Two days left to finish ${safeTitle}`,
+      html: shell(`
+        <p style="${P}">Hi ${name}, it's Belle.</p>
+        <p style="${P}">You're partway through <strong style="color:#ffffff;">${safeTitle}</strong>, and your free week ends in two days.</p>
+        <p style="${P}">Nothing will be charged and there's nothing to cancel — your access just ends, and the story stays exactly where you left it.</p>
+        <p style="${P}">If you'd like to keep going, it's $7.99 a month and the whole library stays open.</p>
+        ${ctaButton(`Finish ${safeTitle}`, safeStoryId !== null ? `${APP_PLAYER_BASE_URL}/${safeStoryId}` : APP_LIBRARY_URL)}
+        <p style="${P_SIG}">— Belle</p>
+      `)
+    }
+  }
+  // no-story variant
   return {
-    subject: `4 days left in your Endless Tales trial`,
-    html: `<!DOCTYPE html><html><head><meta charset="utf-8"></head><body style="margin:0;padding:0;background:#0f0f1a;font-family:-apple-system,sans-serif;"><div style="max-width:560px;margin:0 auto;padding:40px 24px;"><div style="text-align:center;margin-bottom:32px;"><img src="https://app.endless-tales.com/images/et-logo.png" alt="Endless Tales" style="height:48px;" /><div style="font-size:22px;font-weight:900;color:#fff;margin-top:8px;">Endless <span style="color:#f97316;">Tales</span></div></div><div style="background:#1a1a2e;border-radius:16px;padding:32px 28px;border:1px solid rgba(249,115,22,0.2);"><h1 style="color:#fff;font-size:22px;font-weight:800;text-align:center;margin:0 0 12px;">Your trial ends in 4 days</h1><p style="color:rgba(255,255,255,0.75);font-size:15px;line-height:1.7;margin:0 0 20px;text-align:center;">Hey ${name} — you are on day 10 of your free trial. Keep listening at $7.99/month, or cancel before day 14 and you will not be charged a thing.</p><div style="text-align:center;margin-bottom:16px;"><a href="https://app.endless-tales.com/home" style="display:inline-block;background:#f97316;color:white;text-decoration:none;padding:14px 32px;border-radius:10px;font-size:15px;font-weight:800;">Keep Listening</a></div><div style="text-align:center;margin-bottom:24px;"><a href="https://app.endless-tales.com/manage-subscription" style="display:inline-block;background:transparent;color:rgba(255,255,255,0.4);text-decoration:none;padding:10px 24px;border-radius:10px;font-size:13px;border:1px solid rgba(255,255,255,0.15);">Manage Subscription</a></div><p style="color:rgba(255,255,255,0.5);font-size:13px;text-align:center;margin:0;">No action needed to continue — your subscription starts automatically on day 14.</p></div><p style="color:rgba(255,255,255,0.3);font-size:12px;margin-top:28px;text-align:center;">Questions? Reply to this email.</p></div></body></html>`
+    subject: `Two days left, ${name}`,
+    html: shell(`
+      <p style="${P}">Hi ${name}, it's Belle.</p>
+      <p style="${P}">Your free week ends in two days, and there's still time to find something.</p>
+      <p style="${P}">Nothing will be charged and there's nothing to cancel — your access simply ends.</p>
+      <p style="${P}">If you'd like to keep the library open, it's $7.99 a month.</p>
+      ${ctaButton('Browse the library', APP_LIBRARY_URL)}
+      <p style="${P_SIG}">— Belle</p>
+    `)
   }
 }
 
-function emailDay13(name: string): { subject: string; html: string } {
+/**
+ * Day-6 trial email.
+ * @param safeTitle   Most-recent in-progress story title (trimmed, non-empty), or null.
+ * @param safeStoryId Most-recent in-progress story_id, or null.
+ */
+function emailDay6(name: string, safeTitle: string | null, safeStoryId: string | null): { subject: string; html: string } {
+  if (safeTitle !== null) {
+    // with-story variant
+    return {
+      subject: `Last day with ${safeTitle}`,
+      html: shell(`
+        <p style="${P}">Hi ${name}, it's Belle.</p>
+        <p style="${P}">Your free week ends tomorrow, and <strong style="color:#ffffff;">${safeTitle}</strong> is still waiting.</p>
+        <p style="${P}">You won't be charged for anything — you just won't be able to keep listening. If you come back, the story will be where you left it.</p>
+        <p style="${P}">$7.99 a month keeps it all open.</p>
+        ${ctaButton(`Finish ${safeTitle}`, safeStoryId !== null ? `${APP_PLAYER_BASE_URL}/${safeStoryId}` : APP_LIBRARY_URL)}
+        <p style="${P_SIG}">— Belle</p>
+      `)
+    }
+  }
+  // no-story variant
   return {
-    subject: `Last day of your free trial, ${name}`,
-    html: `<!DOCTYPE html><html><head><meta charset="utf-8"></head><body style="margin:0;padding:0;background:#0f0f1a;font-family:-apple-system,sans-serif;"><div style="max-width:560px;margin:0 auto;padding:40px 24px;"><div style="text-align:center;margin-bottom:32px;"><img src="https://app.endless-tales.com/images/et-logo.png" alt="Endless Tales" style="height:48px;" /><div style="font-size:22px;font-weight:900;color:#fff;margin-top:8px;">Endless <span style="color:#f97316;">Tales</span></div></div><div style="background:#1a1a2e;border-radius:16px;padding:32px 28px;border:1px solid rgba(249,115,22,0.2);"><h1 style="color:#fff;font-size:22px;font-weight:800;text-align:center;margin:0 0 12px;">Today is your last free day</h1><p style="color:rgba(255,255,255,0.75);font-size:15px;line-height:1.7;margin:0 0 20px;text-align:center;">Hi ${name} — your 14-day trial ends tomorrow. Your subscription will start automatically at $7.99/month unless you cancel today.</p><div style="text-align:center;margin-bottom:16px;"><a href="https://app.endless-tales.com/home" style="display:inline-block;background:#f97316;color:white;text-decoration:none;padding:14px 32px;border-radius:10px;font-size:15px;font-weight:800;">Keep My Subscription</a></div><div style="text-align:center;margin-bottom:24px;"><a href="https://app.endless-tales.com/manage-subscription" style="display:inline-block;background:transparent;color:rgba(255,255,255,0.4);text-decoration:none;padding:10px 24px;border-radius:10px;font-size:13px;border:1px solid rgba(255,255,255,0.15);">Cancel Before Charge</a></div><p style="color:rgba(255,255,255,0.5);font-size:13px;text-align:center;margin:0;">If you cancel today you will not be charged. We hope you stay.</p></div><p style="color:rgba(255,255,255,0.3);font-size:12px;margin-top:28px;text-align:center;">Questions? Reply to this email.</p></div></body></html>`
+    subject: `Last day of your free week`,
+    html: shell(`
+      <p style="${P}">Hi ${name}, it's Belle.</p>
+      <p style="${P}">Your free week ends tomorrow.</p>
+      <p style="${P}">You won't be charged for anything — you simply won't be able to keep listening after that.</p>
+      <p style="${P}">$7.99 a month keeps the whole library open.</p>
+      ${ctaButton('Browse the library', APP_LIBRARY_URL)}
+      <p style="${P_SIG}">— Belle</p>
+    `)
   }
 }
 
@@ -42,7 +130,7 @@ export async function GET(request: NextRequest) {
   }
 
   const now = new Date()
-  const results = { day1: 0, day3: 0, day10: 0, day13: 0, errors: 0 }
+  const results = { day1: 0, day2: 0, day5: 0, day6: 0, errors: 0 }
 
   // ── Day-1 home-screen install email (RETENTION-PATH-001) ─────────────────
   // All users created 24-48h ago who haven't received it yet, regardless of
@@ -59,6 +147,7 @@ export async function GET(request: NextRequest) {
       .gte('created_at', windowStart)
       .lte('created_at', windowEnd)
       .is('day1_email_sent_at', null)
+      .not('is_test_account', 'is', true)
 
     if (day1Error) {
       console.error('[trial-emails] Day-1 query failed (migration applied?):', day1Error.message)
@@ -69,7 +158,8 @@ export async function GET(request: NextRequest) {
           const name = user.first_name || user.display_name || 'there'
           const template = renderDay1InstallEmail(name)
           await resend.emails.send({
-            from: 'Endless Tales <hello@endless-tales.com>',
+            from: 'Belle at Endless Tales <hello@endless-tales.com>',
+            replyTo: 'hello.endlesstales@gmail.com',
             to: user.email,
             subject: template.subject,
             html: template.html,
@@ -98,10 +188,11 @@ export async function GET(request: NextRequest) {
   // Fetch all trialing users with subscription_start set
   const { data: users, error } = await supabase
     .from('users')
-    .select('id, email, first_name, display_name, plan, subscription_ends_at')
+    .select('id, email, first_name, display_name, plan, subscription_ends_at, trial_started_at')
     .not('plan', 'is', null)
     .neq('plan', 'free')
     .not('subscription_ends_at', 'is', null)
+    .not('is_test_account', 'is', true)
 
   if (error || !users) {
     console.error('[trial-emails] Failed to fetch users:', error)
@@ -111,28 +202,60 @@ export async function GET(request: NextRequest) {
   for (const user of users) {
     try {
       const trialEnd = new Date(user.subscription_ends_at)
-      const start = new Date(trialEnd.getTime() - 14 * 24 * 60 * 60 * 1000)
+      // Gate grants 7-day trial. Thresholds updated to 2/5/6 per ATL-GATE-002.
+      const start = user.trial_started_at
+        ? new Date(user.trial_started_at)
+        : new Date(trialEnd.getTime() - 7 * 24 * 60 * 60 * 1000)
       const daysSinceStart = Math.floor((now.getTime() - start.getTime()) / (1000 * 60 * 60 * 24))
       const name = user.first_name || user.display_name || 'there'
       const email = user.email
       if (!email) continue
 
+      // ── Story lookup for variant selection ───────────────────────────────────
+      // Only query when this user is actually in a send window.
+      let safeTitle: string | null = null
+      let safeStoryId: string | null = null
+      if (daysSinceStart === 2 || daysSinceStart === 5 || daysSinceStart === 6) {
+        try {
+          const { data: libraryRow } = await supabase
+            .from('user_library')
+            .select('story_id, last_played, stories(title)')
+            .eq('user_id', user.id)
+            .eq('completed', false)
+            .order('last_played', { ascending: false })
+            .limit(1)
+            .single()
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const storyTitle: string | null = (libraryRow as any)?.stories?.title ?? null
+          safeTitle = (typeof storyTitle === 'string' && storyTitle.trim().length > 0) ? storyTitle.trim() : null
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const storyId: string | null = (libraryRow as any)?.story_id ?? null
+          safeStoryId = (typeof storyId === 'string' && storyId.trim().length > 0) ? storyId.trim() : null
+        } catch {
+          safeTitle = null
+        }
+        if (safeTitle === null) {
+          console.warn('[trial-emails] No in-progress story for user', user.id, '— sending no-story variant')
+        }
+      }
+
       let template: { subject: string; html: string } | null = null
 
-      if (daysSinceStart === 3) {
-        template = emailDay3(name)
-        results.day3++
-      } else if (daysSinceStart === 10) {
-        template = emailDay10(name)
-        results.day10++
-      } else if (daysSinceStart === 13) {
-        template = emailDay13(name)
-        results.day13++
+      if (daysSinceStart === 2) {
+        template = emailDay2(name, safeTitle, safeStoryId)
+        results.day2++
+      } else if (daysSinceStart === 5) {
+        template = emailDay5(name, safeTitle, safeStoryId)
+        results.day5++
+      } else if (daysSinceStart === 6) {
+        template = emailDay6(name, safeTitle, safeStoryId)
+        results.day6++
       }
 
       if (template) {
         await resend.emails.send({
-          from: 'Endless Tales <hello@endless-tales.com>',
+          from: 'Belle at Endless Tales <hello@endless-tales.com>',
+          replyTo: 'hello.endlesstales@gmail.com',
           to: email,
           subject: template.subject,
           html: template.html,

@@ -1,6 +1,8 @@
 import { createClient } from '@supabase/supabase-js'
-// ATL-SFX-WIRE-001: manifest gate (Rule 8)
-import { loadManifest, validateManifestGate } from '@/lib/sfxAssetLock'
+// ATL-SFX-WIRE-001: manifest gate (Rule 8) + unconditional save on passing render
+import { loadManifest, validateManifestGate, saveManifest, emptyManifest } from '@/lib/sfxAssetLock'
+// ATL-PARSER-001: shared line-index parser — single source of truth for segment numbering
+import { parseScriptPositions } from '@/lib/scriptLineIndex'
 // BELL-FREEZE-GUARD-001 v1.1: frozen promo guard (ATL-GUARD-HOLE-FIX-001)
 import { checkFrozenGuard, type Decision } from '@/lib/guards/frozenGuard'
 import { promises as fs, statfsSync } from 'node:fs'
@@ -220,121 +222,25 @@ async function findStrongMusicOffset(filePath: string): Promise<number> {
   }
 }
 
+// ATL-PARSER-001: getSpokenSegmentNumbers — voice-only subset of expected indices.
+// Used for loudness audit (spoken lines only, not beats/pauses).
+// Delegates counting to parseScriptPositions so indices always match generate-voices.
 function getSpokenSegmentNumbers(script: string): Set<number> {
-  const spoken = new Set<number>()
-  const rawLines = script.split('\n')
-  const announcerIndices: number[] = []
-  rawLines.forEach((line, i) => {
-    const trimmed = line.trim()
-    if (/^ANNOUNCER:\s*Belle B\s*$/i.test(trimmed)) return
-    if (/^(ANNOUNCER|BELLE B|SANDY):/i.test(trimmed)) announcerIndices.push(i)
-  })
-  const firstAnnouncerIdx = announcerIndices[0] ?? -1
-  const lastAnnouncerIdx = announcerIndices[announcerIndices.length - 1] ?? -1
-  const explicitScriptStartIdx = rawLines.findIndex(l => l.includes('[START AUDIO DRAMA SCRIPT]'))
-  const characterGuideStartIdx = rawLines.findIndex(l => l.includes('CHARACTER GUIDE'))
-  const scriptStartIdx = explicitScriptStartIdx > -1 ? explicitScriptStartIdx : characterGuideStartIdx
-  const headerEndIdx = scriptStartIdx > -1 ? scriptStartIdx : (firstAnnouncerIdx + 1)
-  const headerKeys = [
-    'TITLE:', 'SERIES:', 'EPISODE:', 'AUTHOR:', 'GENRE:', 'DESCRIPTION:', 'SUNO PROMPT:',
-    'NARRATIVE_VOICE:', 'NARRATOR_IS_CHARACTER:', 'NARRATOR_IS_', 'EPISODE_TITLE:',
-    'SERIES_TOTAL', 'SERIES_IS_FINALE:', '[START AUDIO DRAMA SCRIPT]',
-    'CHARACTER GUIDE', '---'
-  ]
-
-  let lineIndex = 0
-  rawLines.forEach((line, rawIdx) => {
-    const trimmed = line.trim()
-    if (!trimmed) return
-    if (
-      explicitScriptStartIdx > -1 &&
-      rawIdx < explicitScriptStartIdx &&
-      rawIdx !== firstAnnouncerIdx &&
-      rawIdx !== lastAnnouncerIdx
-    ) return
-    if (headerKeys.some(k => trimmed.startsWith(k))) return
-    if (rawIdx < headerEndIdx && rawIdx !== firstAnnouncerIdx && rawIdx !== lastAnnouncerIdx) {
-      if (trimmed.startsWith('NARRATOR:') || trimmed.startsWith('ANNOUNCER:')) return
-    }
-    if (trimmed === '[BEAT]' || trimmed === '[PAUSE]' || /^\[PAUSE:\d+\]$/.test(trimmed) || trimmed.startsWith('[SFX:')) {
-      lineIndex += 1
-      return
-    }
-
-    const bracketMatch = trimmed.match(/^\[([A-Z][A-ZÀ-Ú\s'.()]+?)\]:\s*(.+)$/)
-    const speakerMatch = bracketMatch || trimmed.match(/^([A-Z][A-ZÀ-Ú\s'.()]+?):\s*(.+)$/)
-    if (!speakerMatch) return
-
-    const speaker = speakerMatch[1].trim()
-    const isAnnouncer = speaker === 'ANNOUNCER' || speaker === 'BELLE B' || speaker === 'SANDY'
-    const isIntro = isAnnouncer && rawIdx === firstAnnouncerIdx
-    const isOutro = isAnnouncer && rawIdx === lastAnnouncerIdx
-    if (!isAnnouncer && !isIntro && !isOutro) spoken.add(lineIndex)
-    lineIndex += 1
-  })
-
-  return spoken
+  const positions = parseScriptPositions(script)
+  return new Set(
+    positions
+      .filter(p => p.kind === 'voice' && p.isExpected)
+      .map(p => p.index)
+  )
 }
 
+// ATL-PARSER-001: getExpectedStorySegmentNumbers — all segment_ files render expects.
+// Replaces the previous inline counter that shared no code with generate-voices and
+// incorrectly skipped bare [PAUSE] lines (which generate-voices also skipped).
+// Now both callers derive expected indices identically from parseScriptPositions.
 function getExpectedStorySegmentNumbers(script: string): Set<number> {
-  const expected = new Set<number>()
-  const rawLines = script.split('\n')
-  const announcerIndices: number[] = []
-  rawLines.forEach((line, i) => {
-    const trimmed = line.trim()
-    if (/^ANNOUNCER:\s*Belle B\s*$/i.test(trimmed)) return
-    if (/^(ANNOUNCER|BELLE B|SANDY):/i.test(trimmed)) announcerIndices.push(i)
-  })
-  const firstAnnouncerIdx = announcerIndices[0] ?? -1
-  const lastAnnouncerIdx = announcerIndices[announcerIndices.length - 1] ?? -1
-  const explicitScriptStartIdx = rawLines.findIndex(l => l.includes('[START AUDIO DRAMA SCRIPT]'))
-  const characterGuideStartIdx = rawLines.findIndex(l => l.includes('CHARACTER GUIDE'))
-  const scriptStartIdx = explicitScriptStartIdx > -1 ? explicitScriptStartIdx : characterGuideStartIdx
-  const headerEndIdx = scriptStartIdx > -1 ? scriptStartIdx : (firstAnnouncerIdx + 1)
-  const headerKeys = [
-    'TITLE:', 'SERIES:', 'EPISODE:', 'AUTHOR:', 'GENRE:', 'DESCRIPTION:', 'SUNO PROMPT:',
-    'NARRATIVE_VOICE:', 'NARRATOR_IS_CHARACTER:', 'NARRATOR_IS_', 'EPISODE_TITLE:',
-    'SERIES_TOTAL', 'SERIES_IS_FINALE:', '[START AUDIO DRAMA SCRIPT]',
-    'CHARACTER GUIDE', '---'
-  ]
-
-  let lineIndex = 0
-  rawLines.forEach((line, rawIdx) => {
-    const trimmed = line.trim()
-    if (!trimmed) return
-    if (
-      explicitScriptStartIdx > -1 &&
-      rawIdx < explicitScriptStartIdx &&
-      rawIdx !== firstAnnouncerIdx &&
-      rawIdx !== lastAnnouncerIdx
-    ) return
-    if (headerKeys.some(k => trimmed.startsWith(k))) return
-    if (rawIdx < headerEndIdx && rawIdx !== firstAnnouncerIdx && rawIdx !== lastAnnouncerIdx) {
-      if (trimmed.startsWith('NARRATOR:') || trimmed.startsWith('ANNOUNCER:')) return
-    }
-    if (trimmed === '[BEAT]' || trimmed === '[PAUSE]' || /^\[PAUSE:\d+\]$/.test(trimmed)) {
-      expected.add(lineIndex)
-      lineIndex += 1
-      return
-    }
-    if (trimmed.startsWith('[SFX:')) {
-      lineIndex += 1
-      return
-    }
-
-    const bracketMatch = trimmed.match(/^\[([A-Z][A-ZÀ-Ú\s'.()]+?)\]:\s*(.+)$/)
-    const speakerMatch = bracketMatch || trimmed.match(/^([A-Z][A-ZÀ-Ú\s'.()]+?):\s*(.+)$/)
-    if (!speakerMatch) return
-
-    const speaker = speakerMatch[1].trim()
-    const isAnnouncer = speaker === 'ANNOUNCER' || speaker === 'BELLE B' || speaker === 'SANDY'
-    const isIntro = isAnnouncer && rawIdx === firstAnnouncerIdx
-    const isOutro = isAnnouncer && rawIdx === lastAnnouncerIdx
-    if (!isIntro && !isOutro) expected.add(lineIndex)
-    lineIndex += 1
-  })
-
-  return expected
+  const positions = parseScriptPositions(script)
+  return new Set(positions.filter(p => p.isExpected).map(p => p.index))
 }
 
 export async function runRenderFinalMix(storyId: string): Promise<{
@@ -816,7 +722,7 @@ export async function runRenderFinalMix(storyId: string): Promise<{
     const preRollSeconds = 2.5
     const postStoryTailSeconds = STORY_TAIL_SEC
     const preRollVolume = 0.65
-    const narrationBedVolume = 0.075
+    const narrationBedVolume = 0.12  // ATL-MUSIC-BED-003 (2026-08-14): adjusted from 0.15 to 0.12 per Marc
     // v2: swell reaches 0.85 (loud but not clipping); legacy: 0.45 with immediate fade
     const postStoryVolume = V2_MUSIC_SWELL ? 0.85 : 0.45
 
@@ -1122,6 +1028,22 @@ export async function runRenderFinalMix(storyId: string): Promise<{
       duration_mins: Math.ceil(durationSecs / 60)
     }).eq('id', storyId)
     if (storyUpdateErr) throw new Error(`Failed to update story audio_url: ${storyUpdateErr.message}`)
+
+    // ATL-PARSER-001 / manifest Rule 8: write sfx-manifest.json on every passing render.
+    // Previously the manifest was only touched during generate-voices (via lockVoiceSegment)
+    // and the render itself never wrote it, so the manifest timestamp froze at the last
+    // voice-generation run.  Stories with zero locked SFX cues (e.g. EP2) never triggered
+    // the validateManifestGate guard either, so saveManifest was never called at render time.
+    // Fix: unconditionally write the manifest after each successful render, recording
+    // last_render_at so engineers can verify the render path actually ran.
+    try {
+      const manifestAtRender = renderManifest ?? emptyManifest(storyId)
+      await saveManifest({ ...manifestAtRender, last_render_at: new Date().toISOString() } as any)
+      console.log(`  ✅ sfx-manifest.json written (last_render_at stamped)`)
+    } catch (manifestErr) {
+      // Non-fatal: manifest write failure must not abort a successful render.
+      console.warn('  ⚠️ sfx-manifest.json post-render write failed (non-fatal):', manifestErr)
+    }
 
     return {
       success: true,

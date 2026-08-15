@@ -7,6 +7,9 @@ import path from 'path'
 import os from 'os'
 import { createHash } from 'crypto'
 import { CANONICAL_BELLE_B_VOICE_ID, RESERVED_BELLE_B_VOICE_IDS, isBelleBVoiceId } from '@/lib/voiceConstants'
+// ATL-PARSER-001: shared script line-index parser — both GV and render-final-mix
+// delegate all counting to this function so [PAUSE] drift can never recur.
+import { parseScriptPositions } from '@/lib/scriptLineIndex'
 // CASTING-ALIAS-001: structured error builder for character_description_missing gate
 import { buildStructuredError } from '@/lib/pipeline-runner/types'
 import { buildProductionLearningFeedback } from '@/lib/productionLearning'
@@ -1678,8 +1681,18 @@ function findInlineProductionCues(lines: ScriptLine[]) {
 }
 
 function parseScript(script: string): ScriptLine[] {
+  // ATL-PARSER-001: delegate ALL line-index counting to the shared parser so this
+  // function can never diverge from render-final-mix's counting logic.
+  // Previously this function tracked its own `lineIndex` counter and skipped bare
+  // [PAUSE] lines (hitting `trimmed.startsWith('[')` without incrementing), while
+  // render-final-mix correctly counted them. The fix lives in parseScriptPositions.
+  const positions = parseScriptPositions(script)
+  const indexByRawLine = new Map<number, number>(positions.map(p => [p.rawLineNumber, p.index]))
+
   const lines: ScriptLine[] = []
   const rawLines = script.split('\n')
+
+  // Announcer detection is still needed to set isIntro / isOutro on ScriptLine.
   const announcerIndices: number[] = []
   rawLines.forEach((line, i) => {
     const trimmed = line.trim()
@@ -1688,34 +1701,34 @@ function parseScript(script: string): ScriptLine[] {
   })
   const firstAnnouncerIdx = announcerIndices[0] ?? -1
   const lastAnnouncerIdx = announcerIndices[announcerIndices.length - 1] ?? -1
-  const explicitScriptStartIdx = rawLines.findIndex(l => l.includes('[START AUDIO DRAMA SCRIPT]'))
-  const characterGuideStartIdx = rawLines.findIndex(l => l.includes('CHARACTER GUIDE'))
-  const scriptStartIdx = explicitScriptStartIdx > -1 ? explicitScriptStartIdx : characterGuideStartIdx
-  const headerEndIdx = scriptStartIdx > -1 ? scriptStartIdx : (firstAnnouncerIdx + 1)
-  const HEADER_KEYS = [
-    'TITLE:', 'SERIES:', 'EPISODE:', 'AUTHOR:', 'GENRE:', 'DESCRIPTION:', 'SUNO PROMPT:',
-    'NARRATIVE_VOICE:', 'NARRATOR_IS_CHARACTER:', 'NARRATOR_IS_', 'EPISODE_TITLE:',
-    'SERIES_TOTAL', 'SERIES_IS_FINALE:', '[START AUDIO DRAMA SCRIPT]',
-    'CHARACTER GUIDE', '---'
-  ]
-  let lineIndex = 0
+
   rawLines.forEach((line, rawIdx) => {
     const trimmed = line.trim()
     if (!trimmed) return
-    if (
-      explicitScriptStartIdx > -1 &&
-      rawIdx < explicitScriptStartIdx &&
-      rawIdx !== firstAnnouncerIdx &&
-      rawIdx !== lastAnnouncerIdx
-    ) return
-    if (HEADER_KEYS.some(k => trimmed.startsWith(k))) return
-    if (rawIdx < headerEndIdx && rawIdx !== firstAnnouncerIdx && rawIdx !== lastAnnouncerIdx) {
-      if (trimmed.startsWith('NARRATOR:') || trimmed.startsWith('ANNOUNCER:')) return
+
+    // Only process lines that parseScriptPositions assigned an index to.
+    const lineIndex = indexByRawLine.get(rawIdx + 1)
+    if (lineIndex === undefined) return
+
+    if (trimmed === '[BEAT]') {
+      lines.push({ index: lineIndex, speaker: 'BEAT', text: '0.75', type: 'beat', isIntro: false, isOutro: false, rawLineNumber: rawIdx + 1, sourceLine: line })
+      return
     }
-    if (trimmed === '[BEAT]') { lines.push({ index: lineIndex++, speaker: 'BEAT', text: '0.75', type: 'beat', isIntro: false, isOutro: false, rawLineNumber: rawIdx + 1, sourceLine: line }); return }
-    const pauseMatch = trimmed.match(/^\[PAUSE:(\d+)\]$/)
-    if (pauseMatch) { lines.push({ index: lineIndex++, speaker: 'PAUSE', text: pauseMatch[1], type: 'pause', isIntro: false, isOutro: false, rawLineNumber: rawIdx + 1, sourceLine: line }); return }
-    if (trimmed.startsWith('[SFX:')) { const sfxText = trimmed.replace(/^\[SFX:\s*/, '').replace(/\]$/, '').trim(); lines.push({ index: lineIndex++, speaker: 'SFX', text: sfxText, type: 'sfx', isIntro: false, isOutro: false, rawLineNumber: rawIdx + 1, sourceLine: line }); return }
+    // [PAUSE] bare (ATL-PARSER-001 fix: now counted by parseScriptPositions)
+    if (trimmed === '[PAUSE]') {
+      lines.push({ index: lineIndex, speaker: 'PAUSE', text: '1', type: 'pause', isIntro: false, isOutro: false, rawLineNumber: rawIdx + 1, sourceLine: line })
+      return
+    }
+    const pauseMatch = trimmed.match(/^\[PAUSE:(\d+(?:\.\d+)?)\]$/)
+    if (pauseMatch) {
+      lines.push({ index: lineIndex, speaker: 'PAUSE', text: pauseMatch[1], type: 'pause', isIntro: false, isOutro: false, rawLineNumber: rawIdx + 1, sourceLine: line })
+      return
+    }
+    if (trimmed.startsWith('[SFX:')) {
+      const sfxText = trimmed.replace(/^\[SFX:\s*/, '').replace(/\]$/, '').trim()
+      lines.push({ index: lineIndex, speaker: 'SFX', text: sfxText, type: 'sfx', isIntro: false, isOutro: false, rawLineNumber: rawIdx + 1, sourceLine: line })
+      return
+    }
     // Support bracketed dialogue like [NARRATOR]: text or [COLE DRISCOLL]: text
     const bracketDm = trimmed.match(/^\[([A-Z][A-ZÀ-Ú\s'.()]+?)\]:\s*(.+)$/)
     if (bracketDm) {
@@ -1726,12 +1739,9 @@ function parseScript(script: string): ScriptLine[] {
       let type: ScriptLine['type'] = 'character'
       if (isAnnouncer) type = 'announcer'
       else if (speaker === 'NARRATOR') type = 'narrator'
-      lines.push({ index: lineIndex++, speaker, text, type, isIntro, isOutro, rawLineNumber: rawIdx + 1, sourceLine: line })
+      lines.push({ index: lineIndex, speaker, text, type, isIntro, isOutro, rawLineNumber: rawIdx + 1, sourceLine: line })
       return
     }
-    if (trimmed.startsWith('[')) return
-    // Skip ANNOUNCER intro lines that slipped through
-    if (trimmed.startsWith('ANNOUNCER:') && trimmed.toLowerCase().includes('endless tales presents')) return
     const dm = trimmed.match(/^([A-Z][A-ZÀ-Ú\s'.()]+?):\s*(.+)$/)
     if (dm) {
       const speaker = dm[1].trim(); const text = dm[2].trim()
@@ -1741,7 +1751,7 @@ function parseScript(script: string): ScriptLine[] {
       let type: ScriptLine['type'] = 'character'
       if (isAnnouncer) type = 'announcer'
       else if (speaker === 'NARRATOR') type = 'narrator'
-      lines.push({ index: lineIndex++, speaker, text, type, isIntro, isOutro, rawLineNumber: rawIdx + 1, sourceLine: line })
+      lines.push({ index: lineIndex, speaker, text, type, isIntro, isOutro, rawLineNumber: rawIdx + 1, sourceLine: line })
     }
   })
   return lines
@@ -3666,6 +3676,17 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: false, error: `Failed to list final story segment inventory: ${finalListError.message}` }, { status: 500 })
     }
     const finalSegmentNames = new Set((finalAudioFiles || []).filter(file => segmentFilePattern.test(file.name)).map(file => file.name))
+    // ATL-SFX-FULLGEN-001: also collect sfx_NNNN.mp3 files into the inventory set so
+    // buildInventoryReport sees them and missingSegments is accurate for SFX lines.
+    // Mirrors the retryMissingOnly path (ATL-SFX-INCR-001, ~lines 3432-3435); that path
+    // was fixed when ATL-SFX-INCR-001 landed (2026-07-21) but the full generation path
+    // was not updated at the same time. Production pipeline (run-next) always calls with
+    // retryMissingOnly=true, so this bug only surfaces on direct API calls — it does NOT
+    // affect normal production runs. The fix closes the gap for local/manual invocations.
+    const sfxFilePatternFull = /^sfx_\d{4}\.mp3$/
+    for (const sfxFile of (finalAudioFiles || []).filter(f => sfxFilePatternFull.test(f.name))) {
+      finalSegmentNames.add(sfxFile.name)
+    }
     const inventory = buildInventoryReport(finalSegmentNames, failures)
     console.log(`  Inventory: missing=${inventory.missingSegments.length}, lowLoudness=${inventory.lowLoudnessSegments.length}, transcriptFailed=${inventory.transcriptFailedSegments.length}, reusedVoices=${inventory.reusedVoices.length}, escalated=${escalations.length}`)
     if (escalations.length > 0) {

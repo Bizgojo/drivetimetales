@@ -56,10 +56,13 @@ export async function POST(req: NextRequest) {
     const body = await req.json()
     const { firstName, email: rawEmail, arm, sessionId, utmSource, utmCampaign } = body
 
-    // Validate required fields
-    if (!firstName || typeof firstName !== 'string' || firstName.trim().length < 1) {
-      return NextResponse.json({ error: 'firstName is required' }, { status: 400 })
-    }
+    // firstName is optional — LANDING-GATE-001 email-only capture does not send it.
+    // EavesdropClient still sends it; both paths coexist.
+    const displayName =
+      typeof firstName === 'string' && firstName.trim().length > 0
+        ? firstName.trim()
+        : ''
+
     if (!rawEmail || typeof rawEmail !== 'string') {
       return NextResponse.json({ error: 'email is required' }, { status: 400 })
     }
@@ -80,24 +83,36 @@ export async function POST(req: NextRequest) {
     const { data: authData, error: authError } = await supabase.auth.admin.createUser({
       email,
       email_confirm: true,
-      user_metadata: { first_name: firstName.trim() },
+      user_metadata: { first_name: displayName },
     })
 
     if (authError) {
       // If user already exists, look them up
-      if (authError.message?.includes('already registered') || authError.message?.includes('already exists')) {
-        const { data: existingUsers } = await supabase.auth.admin.listUsers()
-        const existing = existingUsers?.users?.find((u: { email?: string; id: string }) => u.email === email)
-        if (!existing) {
-          console.error('[listen/signup] auth createUser error:', authError)
-          return NextResponse.json({ error: 'Account creation failed' }, { status: 500 })
+      if (authError.status === 422) {
+        // GoTrue returns status 422 for duplicate email — branch on structured error,
+        // not message substrings. Resolve against auth.users via paginated loop;
+        // public.users has 9 auth accounts with no matching row, so querying
+        // public.users would fail on exactly those accounts.
+        let page = 1
+        let found: { id: string; email: string } | null = null
+        while (true) {
+          const { data: pageData, error: pageError } = await supabase.auth.admin.listUsers({ page, perPage: 50 })
+          if (pageError || !pageData?.users?.length) break
+          const match = pageData.users.find(u => u.email?.toLowerCase() === email.toLowerCase())
+          if (match) { found = { id: match.id, email: match.email ?? email }; break }
+          if (pageData.users.length < 50) break // last page reached
+          page++
         }
-        // Update existing user record
+        if (!found) {
+          console.error('[listen/signup] could not locate existing user in auth after 422:', { email, authErrorCode: authError.code, authErrorStatus: authError.status })
+          return NextResponse.json({ error: 'Account lookup failed' }, { status: 500 })
+        }
+        // Update existing user record (upsert INSERTs if no public.users row exists)
         await supabase.from('users').upsert({
-          id: existing.id,
+          id: found.id,
           email,
-          display_name: firstName.trim(),
-          first_name: firstName.trim(),
+          display_name: displayName,
+          first_name: displayName,
           plan: 'subscriber',
           subscription_ends_at: trialEndsAt,
           subscription_type: 'trial',
@@ -113,40 +128,91 @@ export async function POST(req: NextRequest) {
 
         return NextResponse.json({
           ok: true,
-          userId: existing.id,
+          userId: found.id,
           continueEpisodeId: EP4_ID,
           continueAudioUrl: ep4?.story_audio_url ?? null,
           note: 'existing user updated',
         })
       }
 
-      console.error('[listen/signup] auth createUser error:', authError)
+      console.error('[listen/signup] auth createUser error:', { message: authError.message, status: authError.status, code: authError.code })
       return NextResponse.json({ error: 'Account creation failed' }, { status: 500 })
     }
 
     const userId = authData.user.id
 
-    // 2. Insert/upsert users record
-    const { error: userError } = await supabase.from('users').upsert({
-      id: userId,
-      email,
-      display_name: firstName.trim(),
-      first_name: firstName.trim(),
-      plan: 'subscriber',
-      subscription_ends_at: trialEndsAt,
-      subscription_type: 'trial',
-      signup_source: 'gvl-listen',
-      utm_source: utmSource ?? null,
-      utm_campaign: utmCampaign ?? null,
-      listen_arm: armNum,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    }, { onConflict: 'id' })
+    // 2. Check for email collision in public.users before upserting.
+    // public.users has a UNIQUE index on email (users_email_key). If a row already
+    // exists with this email but a different id (orphaned profile — no matching auth
+    // account), an INSERT would hit the constraint and fail. Use maybeSingle() to
+    // detect and branch before the write.
+    //
+    // FIX-1c: Use ilike() for case-insensitive matching so mixed-case legacy rows
+    // (e.g. 'M.Smith@gmail.com') are detected when the incoming address is lowercase.
+    // Escape LIKE wildcards ('%' and '_') before passing — underscores appear in real
+    // addresses (e.g. first_last@gmail.com) and are single-char wildcards in LIKE.
+    const escapedEmail = email.replace(/%/g, '\\%').replace(/_/g, '\\_')
+    const { data: existingProfile } = await supabase
+      .from('users')
+      .select('id')
+      .ilike('email', escapedEmail)
+      .maybeSingle()
 
-    if (userError) {
-      console.error('[listen/signup] users upsert error:', userError)
-      // Auth user created but profile failed — still return userId so client can proceed
-      return NextResponse.json({ error: 'Profile creation failed', userId }, { status: 500 })
+    if (existingProfile) {
+      // Email collision: orphaned public.users row (no matching auth account).
+      // UPDATE in-place: swap the id to the new auth id so app/api/user/route.ts
+      // can resolve the row by auth id. Preserves stripe_customer_id and all
+      // other columns not touched here.
+      // Marc 2026-08-11: verified zero child rows across all 13 FKs — safe to swap.
+      console.warn('[listen/signup] email-collision: swapping orphaned row id to new auth id', {
+        newAuthId: userId,
+        orphanedId: existingProfile.id,
+      })
+      const { error: collisionUpdateError } = await supabase
+        .from('users')
+        .update({
+          id: userId,
+          first_name: displayName,
+          display_name: displayName,
+          plan: 'subscriber',
+          subscription_ends_at: trialEndsAt,
+          subscription_type: 'trial',
+          signup_source: 'gvl-listen',
+          utm_source: utmSource ?? null,
+          utm_campaign: utmCampaign ?? null,
+          listen_arm: armNum,
+          updated_at: new Date().toISOString(),
+        })
+        .ilike('email', escapedEmail) // case-insensitive — matches mixed-case legacy rows (FIX-1c)
+        .neq('id', userId) // guard: only targets the orphaned row, not an already-correct one
+      if (collisionUpdateError) {
+        console.error('[listen/signup] email-collision id-swap failed (full error):', collisionUpdateError)
+        return NextResponse.json({ error: 'Profile recovery failed — contact support' }, { status: 500 })
+      }
+      // user_library seeding below uses new auth userId (row now has id = userId after the swap)
+    } else {
+      // No collision — proceed with standard upsert
+      const { error: userError } = await supabase.from('users').upsert({
+        id: userId,
+        email,
+        display_name: displayName,
+        first_name: displayName,
+        plan: 'subscriber',
+        subscription_ends_at: trialEndsAt,
+        subscription_type: 'trial',
+        signup_source: 'gvl-listen',
+        utm_source: utmSource ?? null,
+        utm_campaign: utmCampaign ?? null,
+        listen_arm: armNum,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      }, { onConflict: 'id' })
+
+      if (userError) {
+        console.error('[listen/signup] users upsert error:', userError)
+        // Auth user created but profile failed — still return userId so client can proceed
+        return NextResponse.json({ error: 'Profile creation failed', userId }, { status: 500 })
+      }
     }
 
     // 3. Fire wall_submit tracking event via the go-listen ingest endpoint
@@ -181,7 +247,7 @@ export async function POST(req: NextRequest) {
           const { error } = await supabase.from('user_library').upsert({
             user_id: userId,
             story_id: EP4_ID,
-            progress: 61, // Just above ContinueListening >60s threshold; updated to real position on /home
+            progress: 0, // start from beginning — was 61 (Marc 2026-08-11)
             completed: false,
             hide_from_home: false,
             not_for_me: false,

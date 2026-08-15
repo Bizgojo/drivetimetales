@@ -48,7 +48,7 @@ const RATE_LIMIT_MAX_IPS = 10_000
 // Single source of truth for allowed events (lib/goListenEventList.ts).
 // When adding an event: update that file, write a migration (CHECK + RLS in same file), run smoke test.
 const VALID_EVENTS = new Set(GO_LISTEN_EVENTS)
-const VALID_VARIANTS = new Set(['a', 'b', 'bare', 'listen-arm1', 'listen-arm2', 'listen-arm3'])
+const VALID_VARIANTS = new Set(['a', 'b', 'bare', 'listen-arm1', 'listen-arm2', 'listen-arm3', 'bell-arm1', 'bell-arm2', 'bell-arm3'])
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 
 // ── in-memory per-IP rate limit (best-effort per lambda instance) ───────────
