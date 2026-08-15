@@ -281,6 +281,14 @@ export default function GoInvitationContent({ arm: armProp }: GoInvitationConten
     setSubmitting(true)
     setSubmitError(null)
 
+    // DEDUP-001: Generate one shared eventID here, at the moment of submit.
+    // This same ID is passed to fbq (client pixel) AND to the server CAPI,
+    // so Meta can deduplicate and counts exactly one Lead per signup.
+    const leadEventId: string =
+      typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+        ? crypto.randomUUID()
+        : `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
+
     try {
       const res = await fetch('/api/go/invite-signup', {
         method: 'POST',
@@ -292,6 +300,7 @@ export default function GoInvitationContent({ arm: armProp }: GoInvitationConten
           sessionId: sessionIdRef.current,        // GATE-TRACK-001: Part C
           utmSource:   searchParams.get('utm_source'),
           utmCampaign: searchParams.get('utm_campaign'),
+          leadEventId,                             // DEDUP-001: shared ID for pixel + CAPI
         }),
       })
       const data = (await res.json()) as { ok?: boolean; error?: string; returning?: boolean; active?: boolean; firstName?: string; email?: string }
@@ -314,7 +323,8 @@ export default function GoInvitationContent({ arm: armProp }: GoInvitationConten
       // Meta pixel Lead — client-side. Only on genuine new account creation.
       // data.active means an existing paying subscriber submitted the gate — not a new signup.
       if (!data.active) {
-        try { (window as any).fbq?.('track', 'Lead', { content_name: 'bell-arm-wall-submit', arm }) } catch { /* silent */ }
+        // DEDUP-001: pass eventID so Meta can match this client event to the server CAPI event.
+        try { (window as any).fbq?.('track', 'Lead', { content_name: 'bell-arm-wall-submit', arm }, { eventID: leadEventId }) } catch { /* silent */ }
       }
       // Clear gate sample progress so ContinueListening is unfiltered after signup (Marc 2026-08-11)
       try { Object.keys(localStorage).filter(k => k.startsWith('et_go_sample_progress')).forEach(k => localStorage.removeItem(k)) } catch { /* private mode / quota — never fatal */ }
