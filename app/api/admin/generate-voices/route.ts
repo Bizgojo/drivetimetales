@@ -27,6 +27,8 @@ import {
   validateManifestGate, makeVoiceContentKey, emptyManifest,
   type SfxManifest, type SfxLockEntry,
 } from '@/lib/sfxAssetLock'
+// BELL-FREEZE-GUARD-001: centralized frozen guard (frozenGuard + freezePreflight)
+import { checkFrozenGuard } from '@/lib/guards/frozenGuard'
 import { EL_VOICE_CODE_LABEL } from '@/lib/voice-providers/elevenlabs/constants'
 // ATL-FOLLOWUP-002: transcript QC normalization + comparison extracted to a
 // shared, testable module. Both sides (script text and Whisper STT output)
@@ -3250,11 +3252,17 @@ export async function POST(req: NextRequest) {
     }
 
     if (retryMissingOnly === true) {
-      // ATL-SFX-WIRE-001: frozen guard for incremental path
+      // BELL-FREEZE-GUARD-001: frozen guard for incremental path
       if (purgeExisting === true) {
         const incrManifest = await loadManifest(storyId)
-        if ((incrManifest as any)?.frozen) {
-          return NextResponse.json({ success: false, error: `SFX-ASSET-LOCK-001: story ${storyId} is frozen. purgeExisting blocked. Only Marc can unlock.` }, { status: 403 })
+        const incrFrozenCheck = checkFrozenGuard({
+          manifest: incrManifest as any,
+          storyId,
+          operation: 'generate-voices (retryMissingOnly + purgeExisting)',
+          decisions: [], // API path: unlock only via decisions log in scripts
+        })
+        if (!incrFrozenCheck.allowed) {
+          return NextResponse.json({ success: false, error: incrFrozenCheck.reason }, { status: 403 })
         }
       }
       const requestedSegmentNumber = Number(segmentNumber)
@@ -3473,11 +3481,17 @@ export async function POST(req: NextRequest) {
     const results: { intro?: string; outro?: string; segments: any[] } = { segments: [] }
     let succeeded = 0; let failed = 0
 
-    // ATL-SFX-WIRE-001: load manifest for content-key reuse and frozen guard
+    // BELL-FREEZE-GUARD-001: load manifest + frozen guard (replaces ATL-SFX-WIRE-001 inline check)
     let activeManifest: SfxManifest = (await loadManifest(storyId)) ?? emptyManifest(storyId)
-    if ((activeManifest as any).frozen) {
-      console.error(`[ATL-SFX-WIRE-001] Story ${storyId} is frozen — re-generation blocked. Only Marc can unlock.`)
-      return NextResponse.json({ success: false, error: `SFX-ASSET-LOCK-001: story ${storyId} is frozen. Only Marc can unlock.` }, { status: 403 })
+    const frozenCheck = checkFrozenGuard({
+      manifest: activeManifest as any,
+      storyId,
+      operation: 'generate-voices',
+      decisions: [], // API path: unlock only via decisions log in scripts
+    })
+    if (!frozenCheck.allowed) {
+      console.error(`[BELL-FREEZE-GUARD-001] ${frozenCheck.reason}`)
+      return NextResponse.json({ success: false, error: frozenCheck.reason }, { status: 403 })
     }
 
     const { data: existingAudioFiles, error: listAudioError } = await supabase.storage.from('audio').list(storyAudioFolder, { limit: 500 })
