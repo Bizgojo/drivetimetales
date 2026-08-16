@@ -72,9 +72,17 @@ function applyVolumeToMp3(rawBuf: Buffer): Buffer {
 
 /**
  * BELLE-WELCOME-001 (Marc, 2026-08-11)
+ * BELLE-CACHE-001 (2026-08-16): cache by name only — no userId in filename.
  * Pre-render Belle Seg 1 at signup so audio URL is ready when /home loads.
  * Non-fatal: any failure here still allows signup to proceed.
- * Wraps in a 3.5s timeout — if ElevenLabs is slow, skips gracefully.
+ *
+ * Cache strategy:
+ *   filename = welcome-seg1-{normalizedName}.mp3  (no userId suffix)
+ *   On each signup: check names bucket first. Cache hit → skip ElevenLabs,
+ *   write URL to user_metadata immediately (<200ms). Cache miss → render
+ *   with 3.5s timeout as before. Seed script (scripts/seed-welcome-names.ts)
+ *   pre-populates top 300 names so cache hit rate ≈ 100% at steady state.
+ *
  * URL stored in user_metadata.welcome_seg1_url; home page reads it on mount.
  */
 async function renderAndStoreBelleWelcomeSeg1(
@@ -88,9 +96,32 @@ async function renderAndStoreBelleWelcomeSeg1(
   }
 
   const voiceId = CANONICAL_BELLE_B_VOICE_ID
+  // Use original-case firstName for TTS quality; normalized name for filename only
   const seg1Text = `Welcome, ${firstName}. I'm glad you decided to join us.`
-  const fileName = `welcome-seg1-${firstName.toLowerCase()}-${userId.slice(0, 8)}.mp3`
+  const normalizedName = firstName.trim().toLowerCase().replace(/[^a-z-]/g, '')
+  const fileName = `welcome-seg1-${normalizedName}.mp3`
 
+  // --- BELLE-CACHE-001: name-based cache lookup (fast, no ElevenLabs call) ---
+  try {
+    const { data: listed } = await supabase.storage.from('names').list('', { search: fileName })
+    const hit = listed?.find((f) => f.name === fileName && (f.metadata?.size ?? 0) > 0)
+    if (hit) {
+      const { data: { publicUrl } } = supabase.storage.from('names').getPublicUrl(fileName)
+      const { error: metaError } = await supabase.auth.admin.updateUserById(userId, {
+        user_metadata: { welcome_seg1_url: publicUrl },
+      })
+      if (metaError) {
+        console.warn('[invite-signup] user_metadata update failed (cache hit, non-fatal):', metaError.message)
+      } else {
+        console.log('[invite-signup] Belle Seg1 cache hit for userId:', userId.slice(0, 8), 'name:', normalizedName)
+      }
+      return
+    }
+  } catch (cacheErr: any) {
+    console.warn('[invite-signup] cache lookup error (non-fatal, falling through to render):', cacheErr?.message)
+  }
+
+  // --- Cache miss: render via ElevenLabs with 3.5s timeout ---
   const renderWithTimeout = new Promise<void>((resolve) => {
     const controller = new AbortController()
     const timeoutId = setTimeout(() => {
@@ -120,7 +151,7 @@ async function renderAndStoreBelleWelcomeSeg1(
         const rawBuf = Buffer.from(await elRes.arrayBuffer())
         const audioBuf = applyVolumeToMp3(rawBuf)
 
-        // Upload to names bucket; upsert so re-signups don't error
+        // Upload to names bucket; upsert so re-renders don't error
         const { error: uploadError } = await supabase.storage
           .from('names')
           .upload(fileName, audioBuf, { contentType: 'audio/mpeg', upsert: true })
