@@ -534,49 +534,22 @@ export default function GoInvitationContent({ arm: armProp }: GoInvitationConten
           textAlign: 'center',
           zIndex: 2,
         }}>
-          {/* Cover art — visible during playback, still secondary */}
+          {/* Cover art — full brightness; dim + blur removed (hook text gone, art is primary) */}
           {coverUrl && (
-            <>
-              <div
-                aria-hidden="true"
-                style={{
-                  position: 'absolute',
-                  inset: 0,
-                  backgroundImage: `url(${coverUrl})`,
-                  backgroundSize: 'cover',
-                  backgroundPosition: 'center top',
-                  opacity: 0.18,
-                  filter: 'blur(6px)',
-                  transform: 'scale(1.04)',
-                  pointerEvents: 'none',
-                }}
-              />
-              <div
-                aria-hidden="true"
-                style={{
-                  position: 'absolute',
-                  inset: 0,
-                  background: 'linear-gradient(to bottom, rgba(15,15,15,0.4) 0%, rgba(15,15,15,0.85) 100%)',
-                  pointerEvents: 'none',
-                }}
-              />
-            </>
+            <div
+              aria-hidden="true"
+              style={{
+                position: 'absolute',
+                inset: 0,
+                backgroundImage: `url(${coverUrl})`,
+                backgroundSize: 'cover',
+                backgroundPosition: 'center top',
+                opacity: 0.85,
+                transform: 'scale(1.04)',
+                pointerEvents: 'none',
+              }}
+            />
           )}
-
-          {/* Story hook — still visible, white, dominant */}
-          <p style={{
-            fontSize: 'clamp(20px, 4.5vw, 30px)',
-            fontWeight: 700,
-            color: '#ffffff',
-            textAlign: 'center',
-            lineHeight: 1.3,
-            maxWidth: '580px',
-            margin: '0 0 28px 0',
-            position: 'relative',
-            zIndex: 1,
-          }}>
-            {hookLine}
-          </p>
 
           {/* Sound wave — playing state (audio is active) */}
           <div
@@ -804,19 +777,6 @@ export default function GoInvitationContent({ arm: armProp }: GoInvitationConten
             justifyContent: 'center',
             padding: '24px 20px',
           }}>
-            <p style={{
-              fontSize: 'clamp(18px, 4vw, 28px)',
-              fontWeight: 700,
-              color: '#ffffff',
-              opacity: 0.35,
-              textAlign: 'center',
-              lineHeight: 1.3,
-              maxWidth: '560px',
-              margin: '0 0 16px 0',
-            }}>
-              {hookLine}
-            </p>
-
             {/* Sound wave — playing state (user has already pressed Listen In) */}
             <div
               aria-hidden="true"
