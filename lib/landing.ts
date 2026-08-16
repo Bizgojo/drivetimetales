@@ -15,7 +15,7 @@ import { applyPromoTrialDays } from './promo'
 // copy on /go — including the fail-quiet default when /api/promo/validate
 // is slow or down — must say 14-day. /go-ONLY base: signup/subscribe keep
 // BASE_TRIAL_DAYS (7) from lib/promo.ts; do not point them here.
-export const GO_BASE_TRIAL_DAYS = 14
+export const GO_BASE_TRIAL_DAYS = 7 // changed 14→7 (Marc auth 2026-08-16; TRIAL_DAYS=7 is canon)
 
 // UX-GO-001 revision (Marc verdict, msg 3015, 2026-07-19): the card line now
 // states the post-trial price. FLAG: no dollar-amount plan config exists in
