@@ -242,7 +242,7 @@ export async function POST(req: NextRequest) {
         const hasHadTrial = existingUser?.trial_started_at != null
 
         // Helper: fire wall_submit tracking + Lead CAPI (non-fatal, shared across all cases)
-        const fireTracking = () => {
+        const fireTracking = async () => { // LEAD-CAPI-001: async so await sendServerEvent inside is valid
           if (sessionId && typeof sessionId === 'string' && sessionId.length > 0) {
             const appBase = process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3001'
             void fetch(`${appBase}/api/go-listen`, {
@@ -305,7 +305,7 @@ export async function POST(req: NextRequest) {
         // BELLE-WELCOME-001: Pre-render Seg 1 at signup so URL is ready on /home
         await renderAndStoreBelleWelcomeSeg1(found.id, firstName)
 
-        fireTracking()
+        await fireTracking() // LEAD-CAPI-001: await so Vercel doesn't kill in-flight CAPI before return
         return NextResponse.json({ ok: true, userId: found.id, note: 'existing user — first trial granted' })
       }
       console.error('[invite-signup] createUser error:', { message: authError.message, status: authError.status, code: authError.code })
