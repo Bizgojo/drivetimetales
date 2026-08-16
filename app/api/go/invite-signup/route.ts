@@ -260,7 +260,7 @@ export async function POST(req: NextRequest) {
           const capiEventId = (typeof leadEventId === 'string' && leadEventId.length > 0)
             ? leadEventId
             : randomEventId('lead')
-          void sendServerEvent({ name: 'Lead', eventId: capiEventId, email, customData: { arm: armNum, content_name: 'bell-arm-wall-submit' } })
+          await sendServerEvent({ name: 'Lead', eventId: capiEventId, email, customData: { arm: armNum, content_name: 'bell-arm-wall-submit' } }) // LEAD-CAPI-001: await so Vercel doesn't kill in-flight CAPI before return
         }
 
         if (isActive) {
@@ -427,13 +427,13 @@ export async function POST(req: NextRequest) {
     const capiEventId = (typeof leadEventId === 'string' && leadEventId.length > 0)
       ? leadEventId
       : randomEventId('lead')
-    void sendServerEvent({
+    await sendServerEvent({
       name: 'Lead',
       eventId: capiEventId,
       email,
       customData: { arm: armNum, content_name: 'bell-arm-wall-submit' },
       sourceUrl: `${appBase}/go?arm=${armNum}`,
-    })
+    }) // LEAD-CAPI-001: await so Vercel doesn't kill in-flight CAPI before return
 
     return NextResponse.json({ ok: true, userId })
   } catch (err) {
