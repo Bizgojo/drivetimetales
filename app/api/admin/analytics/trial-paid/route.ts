@@ -29,7 +29,7 @@ type ArmInt = 1 | 2 | 3
 // CAMPAIGN_START_DATE: set this to the campaign go-live timestamp before first spend.
 // Leave as null until Marc sets the real date.
 // Format: ISO 8601 UTC, e.g. '2026-08-20T04:00:00.000Z'
-const CAMPAIGN_START_DATE: string | null = null
+const CAMPAIGN_START_DATE: string | null = '2026-08-18T04:00:00.000Z' // midnight EDT Aug 18 (Marc auth 2026-08-16)
 
 // Map integer arm to bell-arm key (for spend table lookup)
 const ARM_TO_KEY: Record<ArmInt, string> = {

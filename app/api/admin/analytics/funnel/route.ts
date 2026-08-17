@@ -33,7 +33,7 @@ const BELL_VARIANTS = ['bell-arm1', 'bell-arm2', 'bell-arm3'] as const
 // CAMPAIGN_START_DATE: set this to the campaign go-live timestamp before first spend.
 // Leave as null until Marc sets the real date.
 // Format: ISO 8601 UTC, e.g. '2026-08-20T04:00:00.000Z'
-const CAMPAIGN_START_DATE: string | null = null
+const CAMPAIGN_START_DATE: string | null = '2026-08-18T04:00:00.000Z' // midnight EDT Aug 18 (Marc auth 2026-08-16)
 type BellVariant = (typeof BELL_VARIANTS)[number]
 
 export const FUNNEL_STAGES = [
