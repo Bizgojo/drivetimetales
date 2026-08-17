@@ -504,32 +504,70 @@ function HomeContent() {
     }
   }, [searchParams, user?.id])
 
-  // BELLE-WELCOME-001: Resolve Seg 1 URL when welcome is active.
-  // Primary source: user_metadata.welcome_seg1_url (pre-rendered at signup).
-  // Fallback: GET /api/name-audio?name=firstName (renders on-demand, may take 2-4s).
-  // If both fail within 2s, skip welcome entirely.
+  // BELLE-WELCOME-001 / BELLE-SEG1-READER-001: Resolve Seg 1 URL when welcome is active.
+  // Priority:
+  //   1. user_metadata.welcome_seg1_url — fast path (set at signup when JWT was fresh).
+  //   2. BELLE-SEG1-READER-001: HEAD the "names" bucket using PR-121 naming:
+  //      welcome-seg1-{normalizedName}.mp3  (normalizedName = firstName.trim().toLowerCase().replace(/[^a-z-]/g, ''))
+  //      Fires when the JWT was stale at landing but the file was still written by invite-signup.
+  //   3. GET /api/name-audio?name=firstName — on-demand ElevenLabs render (2–4 s), last resort.
+  //   4. null → WelcomeAudioCard plays Seg 2 only (graceful degradation).
   useEffect(() => {
     if (!showWelcome || !user) return
     const firstName = (user as any)?.user_metadata?.first_name || ''
+
+    // Fast path: pre-rendered URL already present in session JWT
     const preRendered: string | undefined = (user as any)?.user_metadata?.welcome_seg1_url
     if (preRendered) {
       setSeg1Url(preRendered)
       return
     }
-    // Fallback: fetch from name-audio API (client-side render)
+
+    // No name — skip Seg 1, WelcomeAudioCard will play Seg 2 only
     if (!firstName) {
-      // No name — skip Seg 1, WelcomeAudioCard will play Seg 2 only
       setSeg1Url(null)
       return
     }
-    const controller = new AbortController()
-    const timeoutId = setTimeout(() => controller.abort(), 2000)
-    fetch(`/api/name-audio?name=${encodeURIComponent(firstName)}`, { signal: controller.signal })
-      .then(r => r.json())
-      .then(json => { if (json?.audio_url) setSeg1Url(json.audio_url) })
-      .catch(() => { /* timeout or network error — WelcomeAudioCard plays Seg 2 only */ })
-      .finally(() => clearTimeout(timeoutId))
-    return () => { controller.abort(); clearTimeout(timeoutId) }
+
+    // BELLE-SEG1-READER-001: bucket lookup + API fallback (async, non-blocking)
+    let cancelled = false
+    ;(async () => {
+      // Step 1: HEAD the "names" bucket using PR-121 naming convention.
+      // This resolves within ~200 ms for a cache hit and does not trigger ElevenLabs.
+      const normalizedName = firstName.trim().toLowerCase().replace(/[^a-z-]/g, '')
+      const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+      if (supabaseUrl) {
+        const bucketUrl = `${supabaseUrl}/storage/v1/object/public/names/welcome-seg1-${normalizedName}.mp3`
+        try {
+          const headCtrl = new AbortController()
+          const headTimeout = setTimeout(() => headCtrl.abort(), 1500)
+          const headRes = await fetch(bucketUrl, { method: 'HEAD', signal: headCtrl.signal })
+          clearTimeout(headTimeout)
+          if (!cancelled && headRes.ok) {
+            setSeg1Url(bucketUrl)
+            return
+          }
+        } catch {
+          // HEAD timed out or network error — fall through to API fallback
+        }
+      }
+
+      if (cancelled) return
+
+      // Step 2: /api/name-audio — on-demand render (2–4 s, triggers ElevenLabs)
+      try {
+        const apiCtrl = new AbortController()
+        const apiTimeout = setTimeout(() => apiCtrl.abort(), 2000)
+        const r = await fetch(`/api/name-audio?name=${encodeURIComponent(firstName)}`, { signal: apiCtrl.signal })
+        clearTimeout(apiTimeout)
+        const json = await r.json()
+        if (!cancelled && json?.audio_url) setSeg1Url(json.audio_url)
+      } catch {
+        // timeout or network error — WelcomeAudioCard plays Seg 2 only
+      }
+    })()
+
+    return () => { cancelled = true }
   }, [showWelcome, user?.id])
 
   // On mount with authenticated user: read gvl_nowplaying from sessionStorage (written by
