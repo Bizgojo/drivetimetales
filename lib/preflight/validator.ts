@@ -93,6 +93,62 @@ export function checkNarratorVoice(params: {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Inline Cue Contamination Check (INC-003 prevention)
+// ---------------------------------------------------------------------------
+// Detects [...] performance/emotional directions embedded inside spoken dialogue
+// lines (e.g. AIDEN: I don't [softly] understand...). These cause voice_preflight
+// downstream failures and must be stripped before voice generation.
+// Exception: [LISTENER_NAME] is kept — it is a personalization token.
+
+export interface InlineCueCheckResult {
+  passed: boolean
+  cueCount: number
+  offendingLines: Array<{ lineNumber: number; speaker: string; line: string; cues: string[] }>
+}
+
+const INLINE_CUE_RE = /\[(?!LISTENER_NAME\])([^\]]+)\]/g
+const SPEAKER_LINE_RE = /^([A-Z][A-Z0-9 ]+):\s+(.+)$/
+
+// Speakers whose [...] content is legitimate (standalone production cue lines)
+const PRODUCTION_CUE_SPEAKERS = new Set(['NARRATOR', 'SFX', 'BEAT', 'PAUSE', 'SILENCE', 'BELLE B'])
+
+export function checkInlineCueContamination(script: string): InlineCueCheckResult {
+  const offendingLines: InlineCueCheckResult['offendingLines'] = []
+  let cueCount = 0
+
+  const lines = script.split('\n')
+  lines.forEach((line, idx) => {
+    const speakerMatch = SPEAKER_LINE_RE.exec(line)
+    if (!speakerMatch) return
+
+    const speaker = speakerMatch[1]
+    const content = speakerMatch[2]
+
+    // Skip legitimate production-cue speakers
+    if (PRODUCTION_CUE_SPEAKERS.has(speaker)) return
+
+    const cues: string[] = []
+    let m: RegExpExecArray | null
+    INLINE_CUE_RE.lastIndex = 0
+    while ((m = INLINE_CUE_RE.exec(content)) !== null) {
+      cues.push(m[0])
+    }
+
+    if (cues.length > 0) {
+      cueCount += cues.length
+      offendingLines.push({
+        lineNumber: idx + 1,
+        speaker,
+        line: line.length > 120 ? line.slice(0, 120) + '…' : line,
+        cues,
+      })
+    }
+  })
+
+  return { passed: cueCount === 0, cueCount, offendingLines }
+}
+
 export interface PreflightReport {
   passed: boolean
   timestamp: string
@@ -107,6 +163,7 @@ export interface PreflightReport {
     productionAssets: CheckResult
     narratorVoiceCheck: CheckResult
     voiceCodeCheck: CheckResult
+    inlineCueContamination: CheckResult
   }
   summary: {
     totalChecks: number
@@ -181,8 +238,9 @@ export async function runPreflightChecks(params: {
       productionAssets: { passed: true, checkName: 'Production Assets', findings: {}, details: [], suggestedFixes: [] },
       narratorVoiceCheck: { passed: true, checkName: 'Narrator Voice Check', findings: {}, details: [], suggestedFixes: [] },
       voiceCodeCheck: { passed: true, checkName: 'Voice Code Validation', findings: {}, details: [], suggestedFixes: [] },
+      inlineCueContamination: { passed: true, checkName: 'Inline Cue Contamination', findings: {}, details: [], suggestedFixes: [] },
     },
-    summary: { totalChecks: 9, passed: 9, failed: 0 },
+    summary: { totalChecks: 10, passed: 10, failed: 0 },
     blockers: [],
     warnings: [],
     recommendations: [],
@@ -363,6 +421,47 @@ export async function runPreflightChecks(params: {
     } else {
       report.checks.voiceCodeCheck.details = ['Voice code check skipped — no voiceCodeAssignments provided']
       report.recommendations.push('Pass voiceCodeAssignments to enable voice_code format validation before generate_voices')
+    }
+  }
+
+  // Check 10: Inline Cue Contamination (INC-003 prevention)
+  // Detects [...] patterns inside spoken dialogue lines.
+  // Performance/emotional directions in speaker content cause voice_preflight failures.
+  // Exception: [LISTENER_NAME] is always allowed (personalization token).
+  {
+    const result = checkInlineCueContamination(params.script)
+    report.checks.inlineCueContamination.findings = {
+      issuesFound: !result.passed,
+      issues: result.offendingLines.map(
+        (o) => `Line ${o.lineNumber} (${o.speaker}): ${o.cues.join(', ')}`
+      ),
+    }
+    if (!result.passed) {
+      report.checks.inlineCueContamination.passed = false
+      report.checks.inlineCueContamination.details = [
+        `Found ${result.cueCount} inline cue(s) in ${result.offendingLines.length} spoken dialogue line(s).`,
+        ...result.offendingLines.slice(0, 5).map(
+          (o) => `  Line ${o.lineNumber} ${o.speaker}: ${o.cues.join(', ')}`
+        ),
+        ...(result.offendingLines.length > 5
+          ? [`  \u2026 and ${result.offendingLines.length - 5} more line(s)`]
+          : []),
+      ]
+      report.checks.inlineCueContamination.suggestedFixes = [
+        'Remove all [...] patterns from spoken dialogue lines except [LISTENER_NAME].',
+        'Performance/emotional directions must not appear inline in script dialogue.',
+        "Strip with: content.replace(/\\[(?!LISTENER_NAME\\])([^\\]]*)\\/g, '')",
+      ]
+      report.blockers.push(
+        `Inline cue contamination: ${result.cueCount} cue(s) in ${result.offendingLines.length} dialogue line(s) — strip before voice generation.`
+      )
+      report.summary.failed += 1
+      report.summary.passed -= 1
+      report.passed = false
+    } else {
+      report.checks.inlineCueContamination.details = [
+        'No inline production cues found in spoken dialogue lines.',
+      ]
     }
   }
 
