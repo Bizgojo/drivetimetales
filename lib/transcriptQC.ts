@@ -1049,6 +1049,17 @@ const HOMOPHONE_PAIRS: ReadonlyArray<readonly [string, string]> = [
   //                  "Noah's" → transcriptTokens → "noahs".
   // Mirrors the ['noras','norahs'] pattern above.
   ['noas', 'noahs'],
+  // ATL-QC-FP-008: character name "Aiden" (primary character, Eps 6-26) -
+  // Whisper reliably renders the spoken name as the more common
+  // English spelling "Aidan" (98.4% similarity, just under threshold).
+  // Audio homophone - no script rewrite can fix it; fix belongs at the
+  // QC layer. Story ID f5c26bcd-aed8-4b5d-93dd-47d2a7386e8d, segment_0120.
+  // Bare name form:
+  ['aiden', 'aidan'],
+  // Possessive form: "Aiden's" -> transcriptTokens -> "aidens";
+  //                  "Aidan's" -> transcriptTokens -> "aidans".
+  // Mirrors the ['noa','noah']/['noas','noahs'] pattern (ATL-QC-FP-007).
+  ['aidens', 'aidans'],
 ] as const
 
 export function knownHomophoneMatches(expected: string, detected: string): boolean {
