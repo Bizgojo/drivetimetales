@@ -1038,6 +1038,17 @@ const HOMOPHONE_PAIRS: ReadonlyArray<readonly [string, string]> = [
   // when referring to a woman. Both "Miss" and "Ms" are female titles;
   // phonetically near-identical. Fresh Gardenias, Segment 21.
   ['miss', 'ms'],
+  // ATL-QC-FP-007: character name "Noa" (Devi's Everling, Eps 6–26) —
+  // Whisper reliably renders the spoken name /noʊ.ə/ as the more common
+  // English name "Noah" (98.0–98.3% similarity, just under threshold).
+  // Audio homophone — no script rewrite can fix it; fix belongs at the
+  // QC layer. Story ID e93268f4, segment_0110, confirmed 2026-08-[fix].
+  // Bare name form:
+  ['noa', 'noah'],
+  // Possessive form: "Noa's" → transcriptTokens → "noas";
+  //                  "Noah's" → transcriptTokens → "noahs".
+  // Mirrors the ['noras','norahs'] pattern above.
+  ['noas', 'noahs'],
 ] as const
 
 export function knownHomophoneMatches(expected: string, detected: string): boolean {
