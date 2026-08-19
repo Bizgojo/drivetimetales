@@ -7,6 +7,13 @@ import { useEffect, useState } from 'react'
 type BellVariant = 'bell-arm1' | 'bell-arm2' | 'bell-arm3'
 type FunnelStage = 'page_view' | 'play_start' | 'pct_25' | 'pct_50' | 'pct_75' | 'wall_shown' | 'wall_submit'
 
+interface ReachData {
+  arm2_reach: number | null
+  configured: boolean
+  fetched_at?: string
+  error?: string
+}
+
 interface FunnelData {
   generatedAt: string
   stages: FunnelStage[]
@@ -82,6 +89,7 @@ export default function FunnelByArmPage() {
   const [data, setData] = useState<FunnelData | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [reach, setReach] = useState<ReachData | null>(null)
 
   useEffect(() => {
     fetch('/api/admin/analytics/funnel')
@@ -92,6 +100,11 @@ export default function FunnelByArmPage() {
       })
       .catch(e => setError(e.message))
       .finally(() => setLoading(false))
+
+    fetch('/api/admin/analytics/funnel-reach')
+      .then(r => r.json())
+      .then(setReach)
+      .catch(() => setReach({ arm2_reach: null, configured: false }))
   }, [])
 
   if (loading) return <div style={S.loading}>Loading funnel data…</div>
@@ -148,6 +161,38 @@ export default function FunnelByArmPage() {
                   </tr>
                 </thead>
                 <tbody>
+                  {/* ── Reach row (Meta arm2 adset) — above Page View ─────────── */}
+                  <tr>
+                    <td style={S.td}>
+                      <span style={S.stageLabel}>Reach</span>
+                      <span style={{ display: 'block', fontSize: 11, color: '#94a3b8' }}>meta_reach</span>
+                    </td>
+                    {/* Arm 1 — no active ad set */}
+                    <td style={S.tdDash}>—</td>
+                    {/* Arm 2 — Bell_Arm2_PV2_SE */}
+                    <td style={S.tdCenter}>
+                      {reach === null ? (
+                        // Still loading
+                        <span style={{ color: '#94a3b8' }}>—</span>
+                      ) : !reach.configured ? (
+                        <span style={{ color: '#94a3b8', fontSize: 12 }}>not configured</span>
+                      ) : reach.arm2_reach === null ? (
+                        // API error
+                        <span style={{ color: '#94a3b8' }} title={reach.error}>—</span>
+                      ) : (
+                        <>
+                          <strong>{reach.arm2_reach.toLocaleString()}</strong>
+                          {data && data.arms['bell-arm2'].page_view > 0 && (
+                            <span style={S.armCount}>
+                              {cell(data.arms['bell-arm2'].page_view, reach.arm2_reach).label} → page view
+                            </span>
+                          )}
+                        </>
+                      )}
+                    </td>
+                    {/* Arm 3 — no active ad set */}
+                    <td style={S.tdDash}>—</td>
+                  </tr>
                   {(data.stages as FunnelStage[]).map((stage, idx) => {
                     const prevStage = idx > 0 ? data.stages[idx - 1] as FunnelStage : null
                     return (
