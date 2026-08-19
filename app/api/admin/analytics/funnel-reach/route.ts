@@ -95,10 +95,14 @@ export async function GET(req: NextRequest) {
       } satisfies FunnelReachResponse)
     }
 
-    // Call Meta Graph API for adset-level reach over lifetime
+    // Call Meta Graph API for adset-level reach.
+    // NOTE: date_preset is rejected by this token/endpoint (error #100 for all
+    // presets including lifetime, last_7_days, etc.). Must use explicit time_range.
+    // Campaign first-delivery date: 2026-08-16.
+    const today = new Date().toISOString().slice(0, 10) // YYYY-MM-DD
     const metaUrl = new URL(`https://graph.facebook.com/v21.0/${adsetId}/insights`)
     metaUrl.searchParams.set('fields', 'reach')
-    metaUrl.searchParams.set('date_preset', 'lifetime')
+    metaUrl.searchParams.set('time_range', JSON.stringify({ since: '2026-08-16', until: today }))
     metaUrl.searchParams.set('access_token', accessToken)
 
     let metaRes: Response
