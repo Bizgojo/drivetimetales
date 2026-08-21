@@ -110,17 +110,23 @@ export async function GET(req: NextRequest) {
     // PostgREST caps at 1000 rows per request regardless of query size;
     // without pagination counts are silently truncated (ATL-FUNNEL-JOIN-001).
     // PAGE_SIZE matches the PostgREST server cap so each page is maximally full.
+    // ROUTE_BUILD: 20260821-pagination-v2 (forced recompile — Vercel build cache)
+    // ORDER BY created_at ASC ensures stable offset pagination across multiple
+    // range() calls. Without ORDER BY, OFFSET/LIMIT is non-deterministic.
     const PAGE_SIZE = 1000
     const MAX_ROWS = 50_000 // safety ceiling — campaign won't hit this
     const allEvents: Array<{ session_id: string; variant: string; event: string }> = []
+    let pagesFetched = 0
 
     for (let from = 0; from < MAX_ROWS; from += PAGE_SIZE) {
       let q = admin
         .from('go_listen_events')
         .select('session_id, variant, event')
         .in('variant', [...BELL_VARIANTS])
+        .order('created_at', { ascending: true })
       if (CAMPAIGN_START_DATE !== null) q = q.gte('created_at', CAMPAIGN_START_DATE)
       const { data, error } = await q.range(from, from + PAGE_SIZE - 1)
+      pagesFetched++
 
       if (error) {
         console.error('[analytics/funnel] go_listen_events read error:', error.message)
@@ -130,6 +136,7 @@ export async function GET(req: NextRequest) {
       allEvents.push(...(data ?? []))
       if (!data || data.length < PAGE_SIZE) break // last page — done
     }
+    // pagesFetched is used below in _debug
 
     // Build session sets: arms[variant][stage] = Set<session_id>
     // Each event fires at most once per session (unique constraint), so
@@ -172,7 +179,8 @@ export async function GET(req: NextRequest) {
         generatedAt: new Date().toISOString(),
         stages: [...FUNNEL_STAGES],
         arms,
-      } satisfies FunnelResponse,
+        _debug: { totalEventsFetched: allEvents.length, pagesFetched },
+      },
       {
         headers: { 'Cache-Control': 'no-store' },
       }
