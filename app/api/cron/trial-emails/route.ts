@@ -12,6 +12,10 @@ const resend = new Resend(process.env.RESEND_API_KEY)
 // ── Library URL constant (mirrors APP_HOME_URL pattern in retentionTemplates) ──
 const APP_LIBRARY_URL = 'https://app.endless-tales.com/library'
 const APP_PLAYER_BASE_URL = 'https://app.endless-tales.com/player'
+// BELL-DAY1-LINK-001: Bell-invitation users seeded with EP2; day-1 email links
+// directly to the EP2 player so bounced signups have a one-tap path back.
+const BELL_EP2_STORY_ID = '759dc525-185c-450f-b249-17e4a525ba60'
+const BELL_EP2_PLAYER_URL = `${APP_PLAYER_BASE_URL}/${BELL_EP2_STORY_ID}`
 
 // ── Shared text styles for trial-retention email bodies ───────────────────
 const P = 'color:rgba(255,255,255,0.8);font-size:15px;line-height:1.7;margin:0 0 16px;'
@@ -143,7 +147,7 @@ export async function GET(request: NextRequest) {
     const windowStart = new Date(now.getTime() - 48 * 60 * 60 * 1000).toISOString()
     const { data: day1Users, error: day1Error } = await supabase
       .from('users')
-      .select('id, email, first_name, display_name, created_at, day1_email_sent_at')
+      .select('id, email, first_name, display_name, created_at, day1_email_sent_at, signup_source')
       .gte('created_at', windowStart)
       .lte('created_at', windowEnd)
       .is('day1_email_sent_at', null)
@@ -156,7 +160,12 @@ export async function GET(request: NextRequest) {
         if (!user.email) continue
         try {
           const name = user.first_name || user.display_name || 'there'
-          const template = renderDay1InstallEmail(name)
+          // BELL-DAY1-LINK-001: bell-invitation signups get a direct EP2 link;
+          // standard signups keep the /home link.
+          const day1CtaUrl = user.signup_source === 'bell-invitation'
+            ? BELL_EP2_PLAYER_URL
+            : undefined
+          const template = renderDay1InstallEmail(name, day1CtaUrl)
           await resend.emails.send({
             from: 'Belle at Endless Tales <hello@endless-tales.com>',
             replyTo: 'hello.endlesstales@gmail.com',
