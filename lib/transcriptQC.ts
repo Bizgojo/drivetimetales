@@ -286,6 +286,17 @@ export function normalizeSpokenNumberPhrases(text: string): string {
       const value = parseSpokenCardinal(tokenizeSpokenNumberPhrase(match))
       return value === null ? match : String(value)
     })
+    // ── ATL-QC-FP-009: numeral-hyphen bridge (part 1 of 2) ────────────────────
+    // Scripts write compound adjectives with hyphens ("two-million-dollar grant");
+    // ElevenLabs/Whisper renders them with spaces ("two million dollar grant").
+    // After SPOKEN_NUMBER_PHRASE_RE converts leading number words to digits above,
+    // hyphens remain adjacent to scale words: "two-million-dollar" becomes
+    // "2-million-dollar" because "million" is NOT in CARDINAL_NUMBER_WORD_PATTERN
+    // and is not absorbed into the number phrase.  The existing digit+scale fold
+    // below requires a SPACE, so bridge digit-hyphen-scale to digit-space-scale
+    // here so "2-million" → "2 million" → "2000000" fires in one sequential pass.
+    // Genuine range expressions ("100-200") are safe — no scale word on the right.
+    .replace(/\b(\d{1,3})-(million|billion)\b/gi, '$1 $2')
     // ── ATL-QC-FP-004: scale words the cardinal parser does not model ──────
     // parseSpokenCardinal handles hundred/thousand but NOT million/billion/
     // dozen, so after the phrase pass above, "one million" has become
@@ -303,6 +314,14 @@ export function normalizeSpokenNumberPhrases(text: string): string {
       const value = Number(lead) * 12
       return Number.isFinite(value) ? String(value) : match
     })
+    // ── ATL-QC-FP-009: numeral-hyphen bridge (part 2 of 2) ────────────────────────────────
+    // After the million/billion fold fires, "2000000-dollar" may remain when
+    // the source text was "two-million-dollar" (the hyphen survives the scale
+    // bridge above because only the digit-scale junction is normalized there).
+    // Bridge digit-hyphen-currency so normalizeCompoundNumbers step 6 can
+    // strip the unit word on both pipeline paths (transcriptTokens and
+    // normalizeForQC).
+    .replace(/\b(\d+)-(dollars?|cents?)\b/gi, '$1 $2')
     // ── ATL-QC-FP-006: "too" ↔ "two" homophone folding ─────────────────────
     // Sunset Ep4 "The Shell" segment_0019 (TOM, 2026-07-20 21:05Z): script
     // "running two under" was transcribed by Whisper as "running too under" —
