@@ -167,11 +167,16 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    return NextResponse.json({
-      generatedAt: new Date().toISOString(),
-      stages: [...FUNNEL_STAGES],
-      arms,
-    } satisfies FunnelResponse)
+    return NextResponse.json(
+      {
+        generatedAt: new Date().toISOString(),
+        stages: [...FUNNEL_STAGES],
+        arms,
+      } satisfies FunnelResponse,
+      {
+        headers: { 'Cache-Control': 'no-store' },
+      }
+    )
   } catch (err) {
     console.error('[analytics/funnel] failed:', err)
     return NextResponse.json(
