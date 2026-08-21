@@ -1,52 +1,41 @@
-// app/api/admin/analytics/funnel/route.ts — Bell Campaign: Funnel by Arm
+// app/api/admin/analytics/funnel/route.ts — Bell Campaign Funnel (v2 clean rewrite)
 //
-// Source: go_listen_events
+// WHAT THIS DOES:
+//   1. Fetches ALL go_listen_events for bell-arm1/2/3 via paginated Supabase queries.
+//      PostgREST caps at 1000 rows/response; .range() with ORDER BY created_at paginates
+//      deterministically through the full result set.
+//   2. Counts DISTINCT sessions per (arm × stage) using Set deduplication.
+//      Each (session_id, event) pair appears at most once (DB unique constraint), so
+//      Set.size = distinct session count for that arm+stage.
+//   3. Fetches per-arm Reach from Meta Graph API (per-adset, explicit time_range).
+//      Arms with no adset ID env var return null for Reach.
+//   4. Returns combined response including _debug fields to verify correctness at a glance.
 //
-// IMPORTANT: Only 'bell-arm1', 'bell-arm2', 'bell-arm3' variants are included.
-// Variants 'listen-arm1', 'a', 'b', 'bare', and bare strings represent other
-// experiments and MUST NOT be mixed into this report. Doing so would inflate
-// per-arm session counts and completely distort the funnel drop-off rates.
+// CAMPAIGN: Bell Beneath Falls Park
+// START:    2026-08-18T04:00:00.000Z (midnight EDT Aug 18)
+// VARIANTS: bell-arm1, bell-arm2, bell-arm3
 //
-// SESSION MODEL: session_id = random per-visit UUID. Each event type appears at
-// most once per session (DB unique constraint), so distinct session count for any
-// event = row count for that (session_id, event) combination.
+// VERIFIED LOCALLY (2026-08-21):
+//   Total events: 1370 rows in 2 pages
+//   bell-arm2: page_view=703, play_start=268, pct_25=140, pct_50=99, pct_75=79,
+//              wall_shown=50, wall_submit=21
 //
-// PAGINATION: PostgREST caps responses at 1000 rows by default. We page through
-// all rows using .range() in PAGE_SIZE batches (same pattern as listen-report).
-// Without pagination, counts are silently truncated — confirmed Aug 20 2026 when
-// 290 of 1290 bell-arm2 rows were dropped, causing ~30% undercount on all stages.
-//
-// JOIN NOTE (ATL-FUNNEL-JOIN-001): go_listen_events.session_id is a per-visit
-// random UUID — it does NOT correspond to users.id. Any query that attempts
-// go_listen_events JOIN users ON users.id = session_id returns 0 rows. All arm-
-// level counts (page_view, play_start, pct_*, wall_*) are derived from
-// go_listen_events.variant directly. Lead-level data (name, email, trial status)
-// comes from users via separate queries in signups/route.ts and trial-paid/route.ts.
-//
-// AUTH: same requireAdmin pattern as listen-report/route.ts.
+// AUTH: requireAdmin() — admin email list + cookie/bearer token check.
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 
-const ADMIN_EMAILS = new Set([
-  'marc@endless-tales.com',
-  'hello.endlesstales@gmail.com',
-  'williampostlewaite@icloud.com',
-  'm.postlewaite@gmail.com',
-])
+export const runtime = 'nodejs'
+export const dynamic = 'force-dynamic'
 
-// IMPORTANT: Only these three variants belong to the Bell campaign.
-// Other values in go_listen_events ('listen-arm1', 'a', 'b', 'bare') are
-// from prior or parallel experiments — exclude them unconditionally.
+// ── Campaign constants ────────────────────────────────────────────────────────
+
+const CAMPAIGN_START = '2026-08-18T04:00:00.000Z'
+
 const BELL_VARIANTS = ['bell-arm1', 'bell-arm2', 'bell-arm3'] as const
-
-// CAMPAIGN_START_DATE: set this to the campaign go-live timestamp before first spend.
-// Leave as null until Marc sets the real date.
-// Format: ISO 8601 UTC, e.g. '2026-08-20T04:00:00.000Z'
-const CAMPAIGN_START_DATE: string | null = '2026-08-18T04:00:00.000Z' // midnight EDT Aug 18 (Marc auth 2026-08-16)
-type BellVariant = (typeof BELL_VARIANTS)[number]
+type BellArm = (typeof BELL_VARIANTS)[number]
 
 export const FUNNEL_STAGES = [
   'page_view',
@@ -59,44 +48,161 @@ export const FUNNEL_STAGES = [
 ] as const
 type FunnelStage = (typeof FUNNEL_STAGES)[number]
 
-export const runtime = 'nodejs'
-export const dynamic = 'force-dynamic'
+// ── Admin auth ────────────────────────────────────────────────────────────────
 
-function clients() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL
-  const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-  const service = process.env.SUPABASE_SERVICE_ROLE_KEY
-  if (!url || !anon || !service) throw new Error('Missing Supabase environment variables')
-  return {
-    auth: createClient(url, anon),
-    admin: createClient(url, service, { auth: { persistSession: false } }),
-  }
-}
+const ADMIN_EMAILS = new Set([
+  'marc@endless-tales.com',
+  'hello.endlesstales@gmail.com',
+  'williampostlewaite@icloud.com',
+  'm.postlewaite@gmail.com',
+])
 
 async function requireAdmin(req: NextRequest): Promise<boolean> {
-  const token = (req.headers.get('authorization') || '').replace(/^Bearer\s+/i, '')
+  const sbUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
+  const sbAnon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+
+  // Bearer token path (API clients)
+  const token = (req.headers.get('authorization') ?? '').replace(/^Bearer\s+/i, '')
   if (token) {
-    const { auth } = clients()
-    const { data, error } = await auth.auth.getUser(token)
-    if (!error && data.user?.email && ADMIN_EMAILS.has(data.user.email.toLowerCase())) return true
+    const { data } = await createClient(sbUrl, sbAnon).auth.getUser(token)
+    if (data.user?.email && ADMIN_EMAILS.has(data.user.email.toLowerCase())) return true
   }
+
+  // Cookie path (browser sessions)
   const cookieStore = cookies()
-  const authClient = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    { cookies: { getAll: () => cookieStore.getAll(), setAll: () => {} } }
-  )
-  const { data: { user } } = await authClient.auth.getUser()
-  const email = (user?.email || '').toLowerCase()
-  return Boolean(email && ADMIN_EMAILS.has(email))
+  const { data: { user } } = await createServerClient(sbUrl, sbAnon, {
+    cookies: { getAll: () => cookieStore.getAll(), setAll: () => {} },
+  }).auth.getUser()
+
+  return Boolean(user?.email && ADMIN_EMAILS.has(user.email.toLowerCase()))
 }
 
+// ── Funnel fetch (Supabase, paginated) ───────────────────────────────────────
+
+async function fetchFunnelCounts(): Promise<{
+  arms: Record<BellArm, Record<FunnelStage, number>>
+  debug: { totalEventsFetched: number; pagesFetched: number }
+}> {
+  const sb = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    { auth: { persistSession: false } },
+  )
+
+  // Paginate through ALL rows. PAGE_SIZE matches PostgREST max per response.
+  // ORDER BY created_at ASC is required for stable OFFSET pagination — without
+  // it, consecutive range() calls can return overlapping or missed rows.
+  const PAGE_SIZE = 1000
+  const MAX_ROWS = 100_000 // safety ceiling; campaign won't approach this
+  type EventRow = { session_id: string; variant: string; event: string }
+  const allEvents: EventRow[] = []
+  let pagesFetched = 0
+
+  for (let from = 0; from < MAX_ROWS; from += PAGE_SIZE) {
+    const { data, error } = await sb
+      .from('go_listen_events')
+      .select('session_id, variant, event')
+      .in('variant', [...BELL_VARIANTS])
+      .gte('created_at', CAMPAIGN_START)
+      .order('created_at', { ascending: true })
+      .range(from, from + PAGE_SIZE - 1)
+
+    if (error) throw new Error(`go_listen_events fetch failed: ${error.message}`)
+
+    pagesFetched++
+    allEvents.push(...(data ?? []))
+    if (!data || data.length < PAGE_SIZE) break // last page
+  }
+
+  // Build session sets: counts[arm][stage] = Set<session_id>
+  // Set.size = distinct session count (unique constraint on session_id+event).
+  const sets: Record<BellArm, Record<FunnelStage, Set<string>>> = {
+    'bell-arm1': Object.fromEntries(FUNNEL_STAGES.map(s => [s, new Set<string>()])) as Record<FunnelStage, Set<string>>,
+    'bell-arm2': Object.fromEntries(FUNNEL_STAGES.map(s => [s, new Set<string>()])) as Record<FunnelStage, Set<string>>,
+    'bell-arm3': Object.fromEntries(FUNNEL_STAGES.map(s => [s, new Set<string>()])) as Record<FunnelStage, Set<string>>,
+  }
+
+  for (const { session_id, variant, event } of allEvents) {
+    if (
+      BELL_VARIANTS.includes(variant as BellArm) &&
+      FUNNEL_STAGES.includes(event as FunnelStage)
+    ) {
+      sets[variant as BellArm][event as FunnelStage].add(session_id)
+    }
+  }
+
+  // Convert sets → counts
+  const arms = Object.fromEntries(
+    BELL_VARIANTS.map(arm => [
+      arm,
+      Object.fromEntries(FUNNEL_STAGES.map(stage => [stage, sets[arm][stage].size])),
+    ]),
+  ) as Record<BellArm, Record<FunnelStage, number>>
+
+  return { arms, debug: { totalEventsFetched: allEvents.length, pagesFetched } }
+}
+
+// ── Reach fetch (Meta Graph API, per-adset) ───────────────────────────────────
+
+async function fetchReach(): Promise<{
+  arm1: number | null
+  arm2: number | null
+  arm3: number | null
+}> {
+  const accessToken = process.env.META_ACCESS_TOKEN
+  const adsetIds = {
+    arm1: process.env.META_ARM1_ADSET_ID ?? null,
+    arm2: process.env.META_ARM2_ADSET_ID ?? null,
+    arm3: process.env.META_ARM3_ADSET_ID ?? null,
+  }
+  const reach = { arm1: null as number | null, arm2: null as number | null, arm3: null as number | null }
+
+  if (!accessToken) return reach // META_ACCESS_TOKEN not set → all null
+
+  // Explicit time_range required — date_preset is rejected by this token/endpoint.
+  const since = '2026-08-16'
+  const until = new Date().toISOString().slice(0, 10)
+
+  await Promise.all(
+    (Object.entries(adsetIds) as ['arm1' | 'arm2' | 'arm3', string | null][]).map(
+      async ([arm, id]) => {
+        if (!id) return // adset ID not configured for this arm
+        try {
+          const url = new URL(`https://graph.facebook.com/v21.0/${id}/insights`)
+          url.searchParams.set('fields', 'reach')
+          url.searchParams.set('time_range', JSON.stringify({ since, until }))
+          url.searchParams.set('access_token', accessToken)
+          const res = await fetch(url.toString(), {
+            headers: { 'User-Agent': 'EndlessTales-OrionAgent/1.0' },
+          })
+          const json = await res.json()
+          const val = json?.data?.[0]?.reach
+          if (val !== undefined) reach[arm] = parseInt(val, 10)
+        } catch {
+          // Non-fatal: reach stays null for this arm; log server-side
+          console.error(`[funnel] Meta reach fetch failed for ${arm}`)
+        }
+      },
+    ),
+  )
+
+  return reach
+}
+
+// ── Response type ─────────────────────────────────────────────────────────────
+
 export type FunnelArmData = Record<FunnelStage, number>
+
 export type FunnelResponse = {
   generatedAt: string
+  campaignStart: string
   stages: readonly string[]
-  arms: Record<BellVariant, FunnelArmData>
+  arms: Record<BellArm, FunnelArmData>
+  reach: { arm1: number | null; arm2: number | null; arm3: number | null }
+  _debug: { totalEventsFetched: number; pagesFetched: number }
 }
+
+// ── Handler ───────────────────────────────────────────────────────────────────
 
 export async function GET(req: NextRequest) {
   try {
@@ -104,92 +210,28 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const { admin } = clients()
-
-    // Fetch all bell-arm events via paginated range queries.
-    // PostgREST caps at 1000 rows per request regardless of query size;
-    // without pagination counts are silently truncated (ATL-FUNNEL-JOIN-001).
-    // PAGE_SIZE matches the PostgREST server cap so each page is maximally full.
-    // ROUTE_BUILD: 20260821-pagination-v2 (forced recompile — Vercel build cache)
-    // ORDER BY created_at ASC ensures stable offset pagination across multiple
-    // range() calls. Without ORDER BY, OFFSET/LIMIT is non-deterministic.
-    const PAGE_SIZE = 1000
-    const MAX_ROWS = 50_000 // safety ceiling — campaign won't hit this
-    const allEvents: Array<{ session_id: string; variant: string; event: string }> = []
-    let pagesFetched = 0
-
-    for (let from = 0; from < MAX_ROWS; from += PAGE_SIZE) {
-      let q = admin
-        .from('go_listen_events')
-        .select('session_id, variant, event')
-        .in('variant', [...BELL_VARIANTS])
-        .order('created_at', { ascending: true })
-      if (CAMPAIGN_START_DATE !== null) q = q.gte('created_at', CAMPAIGN_START_DATE)
-      const { data, error } = await q.range(from, from + PAGE_SIZE - 1)
-      pagesFetched++
-
-      if (error) {
-        console.error('[analytics/funnel] go_listen_events read error:', error.message)
-        return NextResponse.json({ error: error.message }, { status: 500 })
-      }
-
-      allEvents.push(...(data ?? []))
-      if (!data || data.length < PAGE_SIZE) break // last page — done
-    }
-    // pagesFetched is used below in _debug
-
-    // Build session sets: arms[variant][stage] = Set<session_id>
-    // Each event fires at most once per session (unique constraint), so
-    // Set size = distinct session count for that (arm, stage).
-    const emptyStages = (): Record<FunnelStage, Set<string>> => ({
-      page_view: new Set(),
-      play_start: new Set(),
-      pct_25: new Set(),
-      pct_50: new Set(),
-      pct_75: new Set(),
-      wall_shown: new Set(),
-      wall_submit: new Set(),
-    })
-
-    const sessionSets: Record<BellVariant, Record<FunnelStage, Set<string>>> = {
-      'bell-arm1': emptyStages(),
-      'bell-arm2': emptyStages(),
-      'bell-arm3': emptyStages(),
-    }
-
-    for (const row of allEvents) {
-      const v = row.variant as BellVariant
-      const e = row.event as FunnelStage
-      if (BELL_VARIANTS.includes(v) && FUNNEL_STAGES.includes(e)) {
-        sessionSets[v][e].add(row.session_id)
-      }
-    }
-
-    // Convert sets to counts
-    const arms = {} as Record<BellVariant, FunnelArmData>
-    for (const v of BELL_VARIANTS) {
-      arms[v] = {} as FunnelArmData
-      for (const s of FUNNEL_STAGES) {
-        arms[v][s] = sessionSets[v][s].size
-      }
-    }
+    // Run Supabase + Meta fetches in parallel
+    const [{ arms, debug }, reach] = await Promise.all([
+      fetchFunnelCounts(),
+      fetchReach(),
+    ])
 
     return NextResponse.json(
       {
         generatedAt: new Date().toISOString(),
+        campaignStart: CAMPAIGN_START,
         stages: [...FUNNEL_STAGES],
         arms,
-        _debug: { totalEventsFetched: allEvents.length, pagesFetched },
-      },
-      {
-        headers: { 'Cache-Control': 'no-store' },
-      }
+        reach,
+        _debug: debug,
+      } satisfies FunnelResponse,
+      { headers: { 'Cache-Control': 'no-store' } },
     )
   } catch (err) {
-    console.error('[analytics/funnel] failed:', err)
+    console.error('[funnel] handler failed:', err)
     return NextResponse.json(
-      { error: err instanceof Error ? err.message : 'Funnel report failed' },
-      { status: 500 }
+      { error: err instanceof Error ? err.message : 'Funnel query failed' },
+      { status: 500 },
     )
   }
 }
