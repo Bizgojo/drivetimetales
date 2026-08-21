@@ -11,6 +11,18 @@
 // most once per session (DB unique constraint), so distinct session count for any
 // event = row count for that (session_id, event) combination.
 //
+// PAGINATION: PostgREST caps responses at 1000 rows by default. We page through
+// all rows using .range() in PAGE_SIZE batches (same pattern as listen-report).
+// Without pagination, counts are silently truncated — confirmed Aug 20 2026 when
+// 290 of 1290 bell-arm2 rows were dropped, causing ~30% undercount on all stages.
+//
+// JOIN NOTE (ATL-FUNNEL-JOIN-001): go_listen_events.session_id is a per-visit
+// random UUID — it does NOT correspond to users.id. Any query that attempts
+// go_listen_events JOIN users ON users.id = session_id returns 0 rows. All arm-
+// level counts (page_view, play_start, pct_*, wall_*) are derived from
+// go_listen_events.variant directly. Lead-level data (name, email, trial status)
+// comes from users via separate queries in signups/route.ts and trial-paid/route.ts.
+//
 // AUTH: same requireAdmin pattern as listen-report/route.ts.
 
 import { NextRequest, NextResponse } from 'next/server'
@@ -94,17 +106,29 @@ export async function GET(req: NextRequest) {
 
     const { admin } = clients()
 
-    // Fetch only bell-arm variants — see IMPORTANT comment at top of file
-    let funnelQuery = admin
-      .from('go_listen_events')
-      .select('session_id, variant, event')
-      .in('variant', [...BELL_VARIANTS])
-    if (CAMPAIGN_START_DATE !== null) funnelQuery = funnelQuery.gte('created_at', CAMPAIGN_START_DATE)
-    const { data: events, error } = await funnelQuery
+    // Fetch all bell-arm events via paginated range queries.
+    // PostgREST caps at 1000 rows per request regardless of query size;
+    // without pagination counts are silently truncated (ATL-FUNNEL-JOIN-001).
+    // PAGE_SIZE matches the PostgREST server cap so each page is maximally full.
+    const PAGE_SIZE = 1000
+    const MAX_ROWS = 50_000 // safety ceiling — campaign won't hit this
+    const allEvents: Array<{ session_id: string; variant: string; event: string }> = []
 
-    if (error) {
-      console.error('[analytics/funnel] go_listen_events read error:', error.message)
-      return NextResponse.json({ error: error.message }, { status: 500 })
+    for (let from = 0; from < MAX_ROWS; from += PAGE_SIZE) {
+      let q = admin
+        .from('go_listen_events')
+        .select('session_id, variant, event')
+        .in('variant', [...BELL_VARIANTS])
+      if (CAMPAIGN_START_DATE !== null) q = q.gte('created_at', CAMPAIGN_START_DATE)
+      const { data, error } = await q.range(from, from + PAGE_SIZE - 1)
+
+      if (error) {
+        console.error('[analytics/funnel] go_listen_events read error:', error.message)
+        return NextResponse.json({ error: error.message }, { status: 500 })
+      }
+
+      allEvents.push(...(data ?? []))
+      if (!data || data.length < PAGE_SIZE) break // last page — done
     }
 
     // Build session sets: arms[variant][stage] = Set<session_id>
@@ -126,7 +150,7 @@ export async function GET(req: NextRequest) {
       'bell-arm3': emptyStages(),
     }
 
-    for (const row of events || []) {
+    for (const row of allEvents) {
       const v = row.variant as BellVariant
       const e = row.event as FunnelStage
       if (BELL_VARIANTS.includes(v) && FUNNEL_STAGES.includes(e)) {
