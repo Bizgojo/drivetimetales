@@ -305,10 +305,24 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
       return playlistIndex >= 0 && pl.length > 0 && playlistIndex === pl.length - 1
     }
 
+    // REVIEW-PROMPT-001: prefer the explicit series_is_finale flag as the authoritative
+    // signal. A mid-series episode with a broken status (e.g. validator_failed) would
+    // otherwise make canLoadStory() return false and trick the fallback query into
+    // thinking the current episode is the last one.
+    const seriesIsFinale = (story as any)?.series_is_finale
+    if (seriesIsFinale === true) return true
+    if (seriesIsFinale === false) return false
+
+    // Fallback for stories where series_is_finale is null/undefined: query for the
+    // next published+visible episode. Only count episodes the user can actually play
+    // (status=published AND is_hidden=false) so a validator_failed mid-series episode
+    // does not falsely terminate the series here.
     const { data, error } = await supabase
       .from('stories')
       .select(AUTO_ADVANCE_STORY_SELECT)
       .eq('series_id', (story as any).series_id)
+      .eq('status', 'published')
+      .eq('is_hidden', false)
       .not('episode_number', 'is', null)
       .gt('episode_number', currentEpisodeNumber)
       .order('episode_number', { ascending: true })
@@ -848,7 +862,7 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
         stage = 'story-row'
         const { data, error } = await supabase
           .from('stories')
-          .select('id,title,author,genre,audio_url,cover_url,duration_mins,intro_audio_url,outro_audio_url,background_music_url,episode_number,series_episode_number,series_id,series_name,is_free,prose_text,author_id,narrator_voice_id,narrator_voice_name,status,is_hidden,published_on')
+          .select('id,title,author,genre,audio_url,cover_url,duration_mins,intro_audio_url,outro_audio_url,background_music_url,episode_number,series_episode_number,series_id,series_name,series_is_finale,is_free,prose_text,author_id,narrator_voice_id,narrator_voice_name,status,is_hidden,published_on')
           .eq('id', storyId)
           .maybeSingle()
 
