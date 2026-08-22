@@ -1396,9 +1396,9 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
   }, [isPlaying])
 
   // ORION-PLAYER-ENDSTATE-001 §1: restart the CURRENT episode from 0 and play.
-  // Mechanics mirror the Start Over button (minus its auto-advance 'stop'
-  // disarm — replaying is fresh listening, not a stop gesture; the current
-  // arming state is left exactly as-is pending Marc's re-arm ruling).
+  // Mechanics mirror the Start Over button. Neither path disables auto-advance:
+  // replaying is fresh listening, not a stop gesture (PLAYER-SERIES-ADVANCE-001
+  // ruling: Start Over must not kill auto-advance for the session).
   const restartFromBeginning = () => {
     setPlaybackEnded(false)
     setEndStateCandidate(null)
@@ -2345,7 +2345,14 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
           </button>
           {hasProgress && (
             <button onClick={() => {
-                disableAutoAdvanceForSession('stop')
+                // PLAYER-SERIES-ADVANCE-001: do NOT disable auto-advance here.
+                // "Start Over" is fresh listening, not a stop gesture — see
+                // restartFromBeginning() comment (ORION-PLAYER-ENDSTATE-001 §1).
+                // Calling disableAutoAdvanceForSession('stop') was permanently
+                // disabling auto-advance for the session: users with prior progress
+                // who pressed Start Over (common on Safari where autoplay is blocked
+                // and the story loads at a resumed position) ended up dead-ended
+                // at Ep end instead of auto-advancing to the next episode.
                 clearLocalPlayerProgress(storyId, user?.id)
                 lastLocalProgressWriteRef.current = 0
                 if (!isASC3 && story?.audio_url) {
