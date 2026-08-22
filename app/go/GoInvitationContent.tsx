@@ -303,7 +303,7 @@ export default function GoInvitationContent({ arm: armProp }: GoInvitationConten
           leadEventId,                             // DEDUP-001: shared ID for pixel + CAPI
         }),
       })
-      const data = (await res.json()) as { ok?: boolean; error?: string; returning?: boolean; active?: boolean; firstName?: string; email?: string }
+      const data = (await res.json()) as { ok?: boolean; error?: string; returning?: boolean; active?: boolean; firstName?: string; email?: string; magicToken?: string }
       if (!res.ok || !data.ok) {
         setSubmitError(data.error ?? 'Something went wrong. Please try again.')
         setSubmitting(false)
@@ -331,8 +331,20 @@ export default function GoInvitationContent({ arm: armProp }: GoInvitationConten
 
       // FIX 3: Skip interstitial — navigate directly to home page (Marc canon 2026-08-11).
       // No welcome audio, no "You're in" screen. Auth-link redirectTo is /home.
+      //
+      // BELLE-SEG1-READER-003: Use server-pre-generated magicToken when available.
+      // The server generates the magic link AFTER writing welcome_seg1_url to metadata,
+      // guaranteeing the JWT minted at auth/callback sees fresh metadata (no 4ms race).
+      // Falls back to the separate auth-link call if the server didn’t return a token.
       const capturedEmail = email.trim()
       void (async () => {
+        // Fast path: server pre-generated the magic link after all metadata writes.
+        if (data.magicToken) {
+          window.location.href =
+            `/auth/callback?token_hash=${encodeURIComponent(data.magicToken)}&type=magiclink`
+          return
+        }
+        // Fallback: call auth-link separately (existing users, generateLink failure, etc.)
         try {
           const linkRes = await fetch('/api/listen/auth-link', {
             method: 'POST',

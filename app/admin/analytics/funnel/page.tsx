@@ -25,11 +25,14 @@ interface FunnelCostData {
   metaError?: string
 }
 
+// ATL-FUNNEL-REACH-001: per-adset reach (arm1/arm2/arm3 independent)
 interface ReachData {
+  arm1_reach: number | null
   arm2_reach: number | null
-  configured: boolean
+  arm3_reach: number | null
+  configured_arms: ('arm1' | 'arm2' | 'arm3')[]
   fetched_at?: string
-  error?: string
+  errors?: Partial<Record<'arm1' | 'arm2' | 'arm3', string>>
 }
 
 interface FunnelData {
@@ -124,7 +127,7 @@ export default function FunnelByArmPage() {
     fetch('/api/admin/analytics/funnel-reach')
       .then(r => r.json())
       .then(setReach)
-      .catch(() => setReach({ arm2_reach: null, configured: false }))
+      .catch(() => setReach({ arm1_reach: null, arm2_reach: null, arm3_reach: null, configured_arms: [] }))
 
     fetch('/api/admin/analytics/funnel-cost')
       .then(r => r.json())
@@ -272,37 +275,47 @@ export default function FunnelByArmPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {/* ── Reach row (Meta arm2 adset) — above Page View ─────────── */}
+                  {/* ── Reach row (ATL-FUNNEL-REACH-001: per-adset) — above Page View ── */}
                   <tr>
                     <td style={S.td}>
                       <span style={S.stageLabel}>Reach</span>
                       <span style={{ display: 'block', fontSize: 11, color: '#94a3b8' }}>meta_reach</span>
                     </td>
-                    {/* Arm 1 — no active ad set */}
-                    <td style={S.tdDash}>—</td>
-                    {/* Arm 2 — Bell_Arm2_PV2_SE */}
-                    <td style={S.tdCenter}>
-                      {reach === null ? (
+                    {ARMS.map(arm => {
+                      // Map BellVariant → reach key and arm key
+                      const armKey = arm.replace('bell-', '') as 'arm1' | 'arm2' | 'arm3'
+                      const reachKey = `${armKey}_reach` as 'arm1_reach' | 'arm2_reach' | 'arm3_reach'
+                      const configured = reach !== null && reach.configured_arms.includes(armKey)
+                      const reachVal = reach?.[reachKey] ?? null
+                      const errMsg = reach?.errors?.[armKey]
+                      const pvCount = data?.arms[arm]?.page_view ?? 0
+
+                      if (reach === null) {
                         // Still loading
-                        <span style={{ color: '#94a3b8' }}>—</span>
-                      ) : !reach.configured ? (
-                        <span style={{ color: '#94a3b8', fontSize: 12 }}>not configured</span>
-                      ) : reach.arm2_reach === null ? (
-                        // API error
-                        <span style={{ color: '#94a3b8' }} title={reach.error}>—</span>
-                      ) : (
-                        <>
-                          <strong>{reach.arm2_reach.toLocaleString()}</strong>
-                          {data && data.arms['bell-arm2'].page_view > 0 && (
+                        return <td key={arm} style={S.tdDash}>—</td>
+                      }
+                      if (!configured) {
+                        return <td key={arm} style={S.tdDash}>—</td>
+                      }
+                      if (reachVal === null) {
+                        // API error or no data
+                        return (
+                          <td key={arm} style={S.tdDash}>
+                            <span title={errMsg}>—</span>
+                          </td>
+                        )
+                      }
+                      return (
+                        <td key={arm} style={S.tdCenter}>
+                          <strong>{reachVal.toLocaleString()}</strong>
+                          {pvCount > 0 && (
                             <span style={S.armCount}>
-                              {cell(data.arms['bell-arm2'].page_view, reach.arm2_reach).label} → page view
+                              {cell(pvCount, reachVal).label} → page view
                             </span>
                           )}
-                        </>
-                      )}
-                    </td>
-                    {/* Arm 3 — no active ad set */}
-                    <td style={S.tdDash}>—</td>
+                        </td>
+                      )
+                    })}
                   </tr>
                   {(data.stages as FunnelStage[]).map((stage, idx) => {
                     const prevStage = idx > 0 ? data.stages[idx - 1] as FunnelStage : null

@@ -1,15 +1,21 @@
 // app/api/admin/analytics/funnel-reach/route.ts
 //
-// Returns Reach for the Bell Arm 2 ad set (Bell_Arm2_PV2_SE) from Meta Graph API.
-// Arms 1 and 3 have no active ad sets — return null for those.
+// ATL-FUNNEL-REACH-001: per-adset Reach from Meta Graph API.
+// Returns Reach for each Bell arm's adset independently.
+// Arms with no adset ID env var configured return null for that arm.
 //
 // AUTH: same requireAdmin() pattern as funnel/route.ts.
 // ENV:
 //   META_ACCESS_TOKEN     — Meta Graph API access token
-//   META_ARM2_ADSET_ID    — Ad set ID for Bell_Arm2_PV2_SE (set in Vercel + .env.local)
+//   META_ARM1_ADSET_ID    — Ad set ID for Bell Arm 1 (optional)
+//   META_ARM2_ADSET_ID    — Ad set ID for Bell Arm 2 (optional)
+//   META_ARM3_ADSET_ID    — Ad set ID for Bell Arm 3 (optional)
 //
-// If META_ARM2_ADSET_ID is not set, returns { arm2_reach: null, configured: false }.
-// If Meta API errors, returns { arm2_reach: null, error: <message> }.
+// Each arm independently: if an adset ID env var is absent, that arm's reach is null.
+// If Meta API errors for a given arm, that arm's reach is null and error is surfaced.
+//
+// NOTE: date_preset is rejected by this token/endpoint (Meta error #100 for all
+// presets). Must use explicit time_range. Campaign first-delivery: 2026-08-16.
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
@@ -60,10 +66,49 @@ async function requireAdmin(req: NextRequest): Promise<boolean> {
 // ─── Response types ───────────────────────────────────────────────────────────
 
 export interface FunnelReachResponse {
+  arm1_reach: number | null
   arm2_reach: number | null
-  configured: boolean
+  arm3_reach: number | null
+  /** Which arms have an adset ID configured */
+  configured_arms: ('arm1' | 'arm2' | 'arm3')[]
   fetched_at: string
-  error?: string
+  errors?: Partial<Record<'arm1' | 'arm2' | 'arm3', string>>
+}
+
+// ─── Per-adset fetch helper ───────────────────────────────────────────────────
+
+async function fetchAdsetReach(
+  adsetId: string,
+  accessToken: string,
+  since: string,
+  until: string,
+): Promise<{ reach: number | null; error?: string }> {
+  const metaUrl = new URL(`https://graph.facebook.com/v21.0/${adsetId}/insights`)
+  metaUrl.searchParams.set('fields', 'reach')
+  metaUrl.searchParams.set('time_range', JSON.stringify({ since, until }))
+  metaUrl.searchParams.set('access_token', accessToken)
+
+  let res: Response
+  try {
+    res = await fetch(metaUrl.toString(), {
+      method: 'GET',
+      headers: { 'User-Agent': 'EndlessTales-OrionAgent/1.0' },
+    })
+  } catch (err) {
+    return { reach: null, error: 'Failed to reach Meta Graph API' }
+  }
+
+  const raw = await res.json()
+
+  if (!res.ok || raw?.error) {
+    const msg = raw?.error?.message ?? raw?.error ?? `Meta API status ${res.status}`
+    console.error(`[analytics/funnel-reach] Meta API error for adset ${adsetId}:`, msg)
+    return { reach: null, error: String(msg) }
+  }
+
+  const reachRaw = raw?.data?.[0]?.reach
+  const reach = reachRaw !== undefined ? parseInt(reachRaw, 10) : null
+  return { reach: Number.isFinite(reach) ? reach : null }
 }
 
 // ─── Main handler ─────────────────────────────────────────────────────────────
@@ -75,83 +120,70 @@ export async function GET(req: NextRequest) {
     }
 
     const accessToken = process.env.META_ACCESS_TOKEN
-    const adsetId = process.env.META_ARM2_ADSET_ID
-
-    // If adset ID not configured, return gracefully
-    if (!adsetId) {
-      return NextResponse.json({
-        arm2_reach: null,
-        configured: false,
-        fetched_at: new Date().toISOString(),
-      } satisfies FunnelReachResponse)
+    const adsetIds = {
+      arm1: process.env.META_ARM1_ADSET_ID ?? null,
+      arm2: process.env.META_ARM2_ADSET_ID ?? null,
+      arm3: process.env.META_ARM3_ADSET_ID ?? null,
     }
+
+    const configuredArms = (Object.entries(adsetIds) as ['arm1' | 'arm2' | 'arm3', string | null][])
+      .filter(([, id]) => id !== null)
+      .map(([arm]) => arm)
+
+    // Use explicit time_range — date_preset is rejected by this token/endpoint.
+    // Campaign first-delivery date: 2026-08-16.
+    const since = '2026-08-16'
+    const until = new Date().toISOString().slice(0, 10) // YYYY-MM-DD
+
+    const reaches: Record<'arm1' | 'arm2' | 'arm3', number | null> = {
+      arm1: null,
+      arm2: null,
+      arm3: null,
+    }
+    const errors: Partial<Record<'arm1' | 'arm2' | 'arm3', string>> = {}
 
     if (!accessToken) {
+      // No token — return gracefully with configured_arms populated
       return NextResponse.json({
+        arm1_reach: null,
         arm2_reach: null,
-        configured: false,
+        arm3_reach: null,
+        configured_arms: configuredArms,
         fetched_at: new Date().toISOString(),
-        error: 'META_ACCESS_TOKEN not set',
+        errors: { arm1: 'META_ACCESS_TOKEN not set', arm2: 'META_ACCESS_TOKEN not set', arm3: 'META_ACCESS_TOKEN not set' },
       } satisfies FunnelReachResponse)
     }
 
-    // Call Meta Graph API for adset-level reach.
-    // NOTE: date_preset is rejected by this token/endpoint (error #100 for all
-    // presets including lifetime, last_7_days, etc.). Must use explicit time_range.
-    // Campaign first-delivery date: 2026-08-16.
-    const today = new Date().toISOString().slice(0, 10) // YYYY-MM-DD
-    const metaUrl = new URL(`https://graph.facebook.com/v21.0/${adsetId}/insights`)
-    metaUrl.searchParams.set('fields', 'reach')
-    metaUrl.searchParams.set('time_range', JSON.stringify({ since: '2026-08-16', until: today }))
-    metaUrl.searchParams.set('access_token', accessToken)
-
-    let metaRes: Response
-    try {
-      metaRes = await fetch(metaUrl.toString(), {
-        method: 'GET',
-        headers: { 'User-Agent': 'EndlessTales-OrionAgent/1.0' },
-      })
-    } catch (err) {
-      console.error('[analytics/funnel-reach] Meta fetch failed:', err)
-      return NextResponse.json({
-        arm2_reach: null,
-        configured: true,
-        fetched_at: new Date().toISOString(),
-        error: 'Failed to reach Meta Graph API',
-      } satisfies FunnelReachResponse)
-    }
-
-    const raw = await metaRes.json()
-
-    if (!metaRes.ok || raw?.error) {
-      const metaErrMsg =
-        raw?.error?.message ?? raw?.error ?? `Meta API returned status ${metaRes.status}`
-      console.error('[analytics/funnel-reach] Meta API error:', metaErrMsg)
-      return NextResponse.json({
-        arm2_reach: null,
-        configured: true,
-        fetched_at: new Date().toISOString(),
-        error: metaErrMsg,
-      } satisfies FunnelReachResponse)
-    }
-
-    // Extract reach from data[0].reach
-    const reachRaw = raw?.data?.[0]?.reach
-    const arm2Reach = reachRaw !== undefined ? parseInt(reachRaw, 10) : null
+    // Fetch all configured arms in parallel
+    await Promise.all(
+      (Object.entries(adsetIds) as ['arm1' | 'arm2' | 'arm3', string | null][]).map(
+        async ([arm, id]) => {
+          if (!id) return // not configured — leave as null
+          const result = await fetchAdsetReach(id, accessToken, since, until)
+          reaches[arm] = result.reach
+          if (result.error) errors[arm] = result.error
+        }
+      )
+    )
 
     return NextResponse.json({
-      arm2_reach: Number.isFinite(arm2Reach) ? arm2Reach : null,
-      configured: true,
+      arm1_reach: reaches.arm1,
+      arm2_reach: reaches.arm2,
+      arm3_reach: reaches.arm3,
+      configured_arms: configuredArms,
       fetched_at: new Date().toISOString(),
+      ...(Object.keys(errors).length > 0 ? { errors } : {}),
     } satisfies FunnelReachResponse)
   } catch (err) {
     console.error('[analytics/funnel-reach] failed:', err)
     return NextResponse.json(
       {
+        arm1_reach: null,
         arm2_reach: null,
-        configured: true,
+        arm3_reach: null,
+        configured_arms: [],
         fetched_at: new Date().toISOString(),
-        error: err instanceof Error ? err.message : 'funnel-reach failed',
+        errors: { arm1: err instanceof Error ? err.message : 'funnel-reach failed' },
       } satisfies FunnelReachResponse,
       { status: 500 }
     )
