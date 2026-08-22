@@ -7,6 +7,24 @@ import { useEffect, useState } from 'react'
 type BellVariant = 'bell-arm1' | 'bell-arm2' | 'bell-arm3'
 type FunnelStage = 'page_view' | 'play_start' | 'pct_25' | 'pct_50' | 'pct_75' | 'wall_shown' | 'wall_submit'
 
+// ─── Cost data (from /api/admin/analytics/funnel-cost) ──────────────────────
+
+interface ArmCostData {
+  spend: number | null
+  pvCount: number
+  trialCount: number
+  costPerPv: number | null
+  costPerTrial: number | null
+  adsetConfigured: boolean
+}
+
+interface FunnelCostData {
+  arms: Record<BellVariant, ArmCostData>
+  window: '7d'
+  fetchedAt: string
+  metaError?: string
+}
+
 // ATL-FUNNEL-REACH-001: per-adset reach (arm1/arm2/arm3 independent)
 interface ReachData {
   arm1_reach: number | null
@@ -93,6 +111,8 @@ export default function FunnelByArmPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [reach, setReach] = useState<ReachData | null>(null)
+  const [costData, setCostData] = useState<FunnelCostData | null>(null)
+  const [costLoading, setCostLoading] = useState(true)
 
   useEffect(() => {
     fetch('/api/admin/analytics/funnel')
@@ -108,6 +128,14 @@ export default function FunnelByArmPage() {
       .then(r => r.json())
       .then(setReach)
       .catch(() => setReach({ arm1_reach: null, arm2_reach: null, arm3_reach: null, configured_arms: [] }))
+
+    fetch('/api/admin/analytics/funnel-cost')
+      .then(r => r.json())
+      .then(d => {
+        if (!d.error) setCostData(d)
+      })
+      .catch(() => { /* non-fatal — cost section shows graceful fallback */ })
+      .finally(() => setCostLoading(false))
   }, [])
 
   if (loading) return <div style={S.loading}>Loading funnel data…</div>
@@ -145,6 +173,89 @@ export default function FunnelByArmPage() {
                 </div>
               ))}
             </div>
+          </div>
+
+          {/* ── Cost metrics table (7-day rolling) ─────────────────────── */}
+          <div style={S.section}>
+            <div style={S.sectionTitle}>Cost metrics — 7-day rolling (Meta spend ÷ Supabase events)</div>
+            {costLoading ? (
+              <div style={{ color: '#94a3b8', fontSize: 13 }}>Loading cost data…</div>
+            ) : (
+              <div style={S.tableWrap}>
+                <table style={S.table}>
+                  <thead>
+                    <tr style={S.thRow}>
+                      <th style={S.th}>Arm</th>
+                      <th style={{ ...S.thArm, minWidth: 120 }}>7d Spend</th>
+                      <th style={{ ...S.thArm, minWidth: 120 }}>Cost / PV</th>
+                      <th style={{ ...S.thArm, minWidth: 120 }}>Cost / Trial</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {ARMS.map(arm => {
+                      const cd = costData?.arms?.[arm]
+                      const fmtUsd = (v: number | null) =>
+                        v === null ? '—' : `$${v.toFixed(2)}`
+                      return (
+                        <tr key={arm}>
+                          <td style={S.td}>
+                            <span style={S.stageLabel}>{ARM_LABELS[arm]}</span>
+                            <span style={{ display: 'block', fontSize: 11, color: '#94a3b8' }}>{arm}</span>
+                          </td>
+                          {/* 7d Spend */}
+                          <td style={S.tdCenter}>
+                            {!cd ? (
+                              <span style={{ color: '#94a3b8' }}>—</span>
+                            ) : !cd.adsetConfigured ? (
+                              <span style={{ color: '#94a3b8', fontSize: 11 }}>not configured</span>
+                            ) : cd.spend === null ? (
+                              <span style={{ color: '#94a3b8' }} title={costData?.metaError}>—</span>
+                            ) : (
+                              <strong>{fmtUsd(cd.spend)}</strong>
+                            )}
+                          </td>
+                          {/* Cost / PV */}
+                          <td style={S.tdCenter}>
+                            {!cd || !cd.adsetConfigured ? (
+                              <span style={{ color: '#94a3b8' }}>—</span>
+                            ) : cd.costPerPv === null ? (
+                              <span style={{ color: '#94a3b8' }} title={cd.pvCount === 0 ? 'No page views in window' : costData?.metaError}>—</span>
+                            ) : (
+                              <>
+                                <strong>{fmtUsd(cd.costPerPv)}</strong>
+                                <span style={S.armCount}>{cd.pvCount.toLocaleString()} PVs</span>
+                              </>
+                            )}
+                          </td>
+                          {/* Cost / Trial */}
+                          <td style={S.tdCenter}>
+                            {!cd || !cd.adsetConfigured ? (
+                              <span style={{ color: '#94a3b8' }}>—</span>
+                            ) : cd.costPerTrial === null ? (
+                              <span style={{ color: '#94a3b8' }} title={cd.trialCount === 0 ? 'No trial submits in window' : costData?.metaError}>—</span>
+                            ) : (
+                              <>
+                                <strong>{fmtUsd(cd.costPerTrial)}</strong>
+                                <span style={S.armCount}>{cd.trialCount.toLocaleString()} trials</span>
+                              </>
+                            )}
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+            {costData?.metaError && (
+              <p style={{ fontSize: 11, color: '#ef4444', marginTop: '0.5rem' }}>
+                Meta API: {costData.metaError}
+              </p>
+            )}
+            <p style={{ fontSize: 11, color: '#94a3b8', marginTop: '0.75rem' }}>
+              Spend = Meta adset spend (last 7 days) · Cost/PV = Spend ÷ page_view sessions ·
+              Cost/Trial = Spend ÷ wall_submit sessions · &quot;—&quot; = not configured or zero denominator.
+            </p>
           </div>
 
           {/* Funnel table */}
