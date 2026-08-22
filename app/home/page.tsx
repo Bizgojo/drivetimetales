@@ -397,58 +397,125 @@ function WelcomeAudioCard({ seg1Url, firstName, onDismiss }: WelcomeAudioCardPro
       : 'Welcome message'
 
   return (
-    <div
-      style={{
-        width: '100%',
-        background: '#111827',
-        border: '1px solid rgba(148,163,184,0.28)',
-        borderRadius: '12px',
-        padding: '12px 14px',
-        display: 'flex',
-        alignItems: 'center',
-        gap: '12px',
-        cursor: isPlaying && !autoplayBlocked ? 'default' : 'pointer',
-      }}
-      onClick={autoplayBlocked || !isPlaying ? startPlayback : undefined}
-      role={autoplayBlocked || !isPlaying ? 'button' : undefined}
-      tabIndex={autoplayBlocked || !isPlaying ? 0 : undefined}
-      aria-label={autoplayBlocked || !isPlaying ? label : undefined}
-      onKeyDown={(e) => {
-        if ((e.key === 'Enter' || e.key === ' ') && (autoplayBlocked || !isPlaying)) startPlayback()
-      }}
-    >
-      {/* Speaker icon */}
-      <span style={{ fontSize: '20px', flexShrink: 0 }}>🔊</span>
-
-      {/* Label */}
-      <span style={{ color: '#e2e8f0', fontSize: '15px', fontWeight: 500, flex: 1 }}>
-        {label}
-      </span>
-
-      {/* Visual state: bars when playing, play button when not */}
-      {isPlaying && !autoplayBlocked ? (
-        <AnimatedBars />
-      ) : (
+    <>
+      {/* BELL-GATE-WELCOME-UX-001: Full-screen tap gate when autoplay is blocked.
+          iOS Safari (dominant mobile browser for Meta ad traffic) resets audio
+          permission after the auth redirect. The card-level button alone wasn't
+          prominent enough — 16/21 arm2 signups never played (2026-08-21).
+          This overlay is unmissable: covers the entire viewport, single tap starts audio. */}
+      {autoplayBlocked && (
         <div
+          role="button"
+          aria-label="Tap to hear your welcome message"
+          tabIndex={0}
+          onClick={startPlayback}
+          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') startPlayback() }}
           style={{
-            width: '36px',
-            height: '36px',
+            position: 'fixed',
+            inset: 0,
+            zIndex: 9998,
+            background: 'rgba(2, 6, 23, 0.97)',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: '20px',
+            cursor: 'pointer',
+            WebkitTapHighlightColor: 'transparent',
+            touchAction: 'manipulation',
+            userSelect: 'none',
+          }}
+        >
+          <span style={{ fontSize: '52px', lineHeight: 1 }}>🔊</span>
+          <span style={{
+            color: '#ffffff',
+            fontSize: '22px',
+            fontWeight: 800,
+            textAlign: 'center',
+            padding: '0 32px',
+            lineHeight: 1.3,
+          }}>
+            Tap to hear your welcome
+          </span>
+          <div style={{
+            width: '72px',
+            height: '72px',
             borderRadius: '50%',
             backgroundColor: '#f97316',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
             color: 'white',
-            fontSize: '14px',
-            paddingLeft: '2px',
+            fontSize: '28px',
+            paddingLeft: '4px',
             flexShrink: 0,
-          }}
-          aria-hidden
-        >
-          ▶
+          }}>
+            ▶
+          </div>
+          <span style={{
+            color: 'rgba(255,255,255,0.5)',
+            fontSize: '14px',
+            textAlign: 'center',
+            padding: '0 40px',
+          }}>
+            Belle has a message for you
+          </span>
         </div>
       )}
-    </div>
+
+      <div
+        style={{
+          width: '100%',
+          background: '#111827',
+          border: '1px solid rgba(148,163,184,0.28)',
+          borderRadius: '12px',
+          padding: '12px 14px',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '12px',
+          cursor: isPlaying && !autoplayBlocked ? 'default' : 'pointer',
+        }}
+        onClick={autoplayBlocked || !isPlaying ? startPlayback : undefined}
+        role={autoplayBlocked || !isPlaying ? 'button' : undefined}
+        tabIndex={autoplayBlocked || !isPlaying ? 0 : undefined}
+        aria-label={autoplayBlocked || !isPlaying ? label : undefined}
+        onKeyDown={(e) => {
+          if ((e.key === 'Enter' || e.key === ' ') && (autoplayBlocked || !isPlaying)) startPlayback()
+        }}
+      >
+        {/* Speaker icon */}
+        <span style={{ fontSize: '20px', flexShrink: 0 }}>🔊</span>
+
+        {/* Label */}
+        <span style={{ color: '#e2e8f0', fontSize: '15px', fontWeight: 500, flex: 1 }}>
+          {label}
+        </span>
+
+        {/* Visual state: bars when playing, play button when not */}
+        {isPlaying && !autoplayBlocked ? (
+          <AnimatedBars />
+        ) : (
+          <div
+            style={{
+              width: '36px',
+              height: '36px',
+              borderRadius: '50%',
+              backgroundColor: '#f97316',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              color: 'white',
+              fontSize: '14px',
+              paddingLeft: '2px',
+              flexShrink: 0,
+            }}
+            aria-hidden
+          >
+            ▶
+          </div>
+        )}
+      </div>
+    </>
   )
 }
 // ─────────────────────────────────────────────────────────────────────────────

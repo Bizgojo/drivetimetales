@@ -7,23 +7,39 @@ import { useEffect, useState } from 'react'
 type BellVariant = 'bell-arm1' | 'bell-arm2' | 'bell-arm3'
 type FunnelStage = 'page_view' | 'play_start' | 'pct_25' | 'pct_50' | 'pct_75' | 'wall_shown' | 'wall_submit'
 
+// ─── Cost data (from /api/admin/analytics/funnel-cost) ──────────────────────
+
+interface ArmCostData {
+  spend: number | null
+  pvCount: number
+  trialCount: number
+  costPerPv: number | null
+  costPerTrial: number | null
+  adsetConfigured: boolean
+}
+
+interface FunnelCostData {
+  arms: Record<BellVariant, ArmCostData>
+  window: '7d'
+  fetchedAt: string
+  metaError?: string
+}
+
+// ATL-FUNNEL-REACH-001: per-adset reach (arm1/arm2/arm3 independent)
+interface ReachData {
+  arm1_reach: number | null
+  arm2_reach: number | null
+  arm3_reach: number | null
+  configured_arms: ('arm1' | 'arm2' | 'arm3')[]
+  fetched_at?: string
+  errors?: Partial<Record<'arm1' | 'arm2' | 'arm3', string>>
+}
+
 interface FunnelData {
   generatedAt: string
   stages: FunnelStage[]
   arms: Record<BellVariant, Record<FunnelStage, number>>
 }
-
-interface MetaReachData {
-  reach: number | null
-  adSetName: string
-  generatedAt: string
-  cacheTtlSeconds: number
-}
-
-type MetaReachState =
-  | { status: 'loading' }
-  | { status: 'ok'; data: MetaReachData }
-  | { status: 'error'; message: string }
 
 // ─── Config ───────────────────────────────────────────────────────────────────
 
@@ -33,9 +49,6 @@ const ARM_LABELS: Record<BellVariant, string> = {
   'bell-arm2': 'Arm 2',
   'bell-arm3': 'Arm 3',
 }
-
-/** Only Arm 2 has a live Meta ad set — Arms 1 and 3 are intentionally inactive. */
-const ARM_WITH_META_ADS: BellVariant = 'bell-arm2'
 
 const STAGE_LABELS: Record<FunnelStage, string> = {
   page_view: 'Page View',
@@ -82,62 +95,13 @@ const S = {
   td: { padding: '10px 16px', fontSize: 13, borderBottom: '1px solid #f1f5f9', color: '#1e293b' } as React.CSSProperties,
   tdCenter: { padding: '10px 16px', fontSize: 13, borderBottom: '1px solid #f1f5f9', color: '#1e293b', textAlign: 'center' as const },
   tdDash: { padding: '10px 16px', fontSize: 13, borderBottom: '1px solid #f1f5f9', color: '#94a3b8', textAlign: 'center' as const },
-  tdMeta: { padding: '10px 16px', fontSize: 13, borderBottom: '1px solid #f1f5f9', color: '#1e293b', textAlign: 'center' as const, background: '#f8fafc' } as React.CSSProperties,
-  tdReachRow: { padding: '10px 16px', fontSize: 13, borderBottom: '1px solid #f1f5f9', color: '#1e293b', background: '#f8fafc' } as React.CSSProperties,
   stageLabel: { fontWeight: 600 } as React.CSSProperties,
-  stageSub: { display: 'block', fontSize: 11, color: '#94a3b8' } as React.CSSProperties,
   armKey: { display: 'block', fontSize: 11, color: '#94a3b8', fontWeight: 400 } as React.CSSProperties,
   armCount: { display: 'block', fontSize: 11, color: '#64748b', marginTop: 2 } as React.CSSProperties,
   badge: { display: 'inline-block', background: '#fef3c7', color: '#92400e', fontSize: 10, padding: '1px 5px', borderRadius: 4, marginLeft: 4, fontWeight: 700 } as React.CSSProperties,
   loading: { padding: '4rem 2rem', textAlign: 'center' as const, color: '#94a3b8', fontSize: 14 },
   error: { padding: '1.5rem 2rem', background: '#fef2f2', borderRadius: 10, color: '#991b1b', fontSize: 13, margin: '2rem 0' } as React.CSSProperties,
   overall: { fontSize: 11, color: '#64748b', display: 'block', marginTop: 2 } as React.CSSProperties,
-  reachNum: { fontWeight: 700, fontSize: 15 } as React.CSSProperties,
-  reachSub: { display: 'block', fontSize: 10, color: '#94a3b8', marginTop: 2 } as React.CSSProperties,
-  metaBadge: { display: 'inline-block', background: '#eff6ff', color: '#1d4ed8', fontSize: 10, padding: '1px 5px', borderRadius: 4, marginLeft: 4, fontWeight: 700, verticalAlign: 'middle' } as React.CSSProperties,
-}
-
-// ─── Reach cell ───────────────────────────────────────────────────────────────
-
-function ReachCell({ arm, metaState }: { arm: BellVariant; metaState: MetaReachState }) {
-  if (arm !== ARM_WITH_META_ADS) {
-    return <td style={S.tdDash}>—</td>
-  }
-
-  if (metaState.status === 'loading') {
-    return (
-      <td style={S.tdMeta}>
-        <span style={{ color: '#94a3b8', fontSize: 12 }}>…</span>
-      </td>
-    )
-  }
-
-  if (metaState.status === 'error') {
-    return (
-      <td style={S.tdMeta}>
-        <span title={metaState.message} style={{ color: '#dc2626', fontSize: 12, cursor: 'help' }}>
-          ⚠ error
-        </span>
-      </td>
-    )
-  }
-
-  const reach = metaState.data.reach
-  if (reach === null) {
-    return (
-      <td style={S.tdMeta}>
-        <span style={{ color: '#94a3b8' }}>—</span>
-        <span style={S.reachSub}>ad set not found</span>
-      </td>
-    )
-  }
-
-  return (
-    <td style={S.tdMeta}>
-      <span style={S.reachNum}>{reach.toLocaleString()}</span>
-      <span style={S.reachSub}>unique accounts reached</span>
-    </td>
-  )
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -146,31 +110,32 @@ export default function FunnelByArmPage() {
   const [data, setData] = useState<FunnelData | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [metaState, setMetaState] = useState<MetaReachState>({ status: 'loading' })
+  const [reach, setReach] = useState<ReachData | null>(null)
+  const [costData, setCostData] = useState<FunnelCostData | null>(null)
+  const [costLoading, setCostLoading] = useState(true)
 
   useEffect(() => {
-    const fetchFunnel = fetch('/api/admin/analytics/funnel').then((r) => r.json())
-    const fetchReach = fetch('/api/admin/analytics/meta-reach').then((r) => r.json())
-
-    Promise.all([fetchFunnel, fetchReach])
-      .then(([funnelData, reachData]) => {
-        if (funnelData.error) {
-          setError(funnelData.error)
-        } else {
-          setData(funnelData)
-        }
-
-        if (reachData.error) {
-          setMetaState({ status: 'error', message: reachData.error })
-        } else {
-          setMetaState({ status: 'ok', data: reachData as MetaReachData })
-        }
+    fetch('/api/admin/analytics/funnel')
+      .then(r => r.json())
+      .then(d => {
+        if (d.error) setError(d.error)
+        else setData(d)
       })
-      .catch((e) => {
-        setError(e.message)
-        setMetaState({ status: 'error', message: e.message })
-      })
+      .catch(e => setError(e.message))
       .finally(() => setLoading(false))
+
+    fetch('/api/admin/analytics/funnel-reach')
+      .then(r => r.json())
+      .then(setReach)
+      .catch(() => setReach({ arm1_reach: null, arm2_reach: null, arm3_reach: null, configured_arms: [] }))
+
+    fetch('/api/admin/analytics/funnel-cost')
+      .then(r => r.json())
+      .then(d => {
+        if (!d.error) setCostData(d)
+      })
+      .catch(() => { /* non-fatal — cost section shows graceful fallback */ })
+      .finally(() => setCostLoading(false))
   }, [])
 
   if (loading) return <div style={S.loading}>Loading funnel data…</div>
@@ -182,13 +147,7 @@ export default function FunnelByArmPage() {
       {data && (
         <p style={S.meta}>
           Generated {new Date(data.generatedAt).toLocaleString()} ·
-          Filters: bell-arm1, bell-arm2, bell-arm3 only ·{' '}
-          {metaState.status === 'ok' && (
-            <>
-              Reach via Meta (cached {metaState.data.cacheTtlSeconds / 60} min) ·{' '}
-              {new Date(metaState.data.generatedAt).toLocaleString()}
-            </>
-          )}
+          Filters: bell-arm1, bell-arm2, bell-arm3 only
         </p>
       )}
 
@@ -216,6 +175,89 @@ export default function FunnelByArmPage() {
             </div>
           </div>
 
+          {/* ── Cost metrics table (7-day rolling) ─────────────────────── */}
+          <div style={S.section}>
+            <div style={S.sectionTitle}>Cost metrics — 7-day rolling (Meta spend ÷ Supabase events)</div>
+            {costLoading ? (
+              <div style={{ color: '#94a3b8', fontSize: 13 }}>Loading cost data…</div>
+            ) : (
+              <div style={S.tableWrap}>
+                <table style={S.table}>
+                  <thead>
+                    <tr style={S.thRow}>
+                      <th style={S.th}>Arm</th>
+                      <th style={{ ...S.thArm, minWidth: 120 }}>7d Spend</th>
+                      <th style={{ ...S.thArm, minWidth: 120 }}>Cost / PV</th>
+                      <th style={{ ...S.thArm, minWidth: 120 }}>Cost / Trial</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {ARMS.map(arm => {
+                      const cd = costData?.arms?.[arm]
+                      const fmtUsd = (v: number | null) =>
+                        v === null ? '—' : `$${v.toFixed(2)}`
+                      return (
+                        <tr key={arm}>
+                          <td style={S.td}>
+                            <span style={S.stageLabel}>{ARM_LABELS[arm]}</span>
+                            <span style={{ display: 'block', fontSize: 11, color: '#94a3b8' }}>{arm}</span>
+                          </td>
+                          {/* 7d Spend */}
+                          <td style={S.tdCenter}>
+                            {!cd ? (
+                              <span style={{ color: '#94a3b8' }}>—</span>
+                            ) : !cd.adsetConfigured ? (
+                              <span style={{ color: '#94a3b8', fontSize: 11 }}>not configured</span>
+                            ) : cd.spend === null ? (
+                              <span style={{ color: '#94a3b8' }} title={costData?.metaError}>—</span>
+                            ) : (
+                              <strong>{fmtUsd(cd.spend)}</strong>
+                            )}
+                          </td>
+                          {/* Cost / PV */}
+                          <td style={S.tdCenter}>
+                            {!cd || !cd.adsetConfigured ? (
+                              <span style={{ color: '#94a3b8' }}>—</span>
+                            ) : cd.costPerPv === null ? (
+                              <span style={{ color: '#94a3b8' }} title={cd.pvCount === 0 ? 'No page views in window' : costData?.metaError}>—</span>
+                            ) : (
+                              <>
+                                <strong>{fmtUsd(cd.costPerPv)}</strong>
+                                <span style={S.armCount}>{cd.pvCount.toLocaleString()} PVs</span>
+                              </>
+                            )}
+                          </td>
+                          {/* Cost / Trial */}
+                          <td style={S.tdCenter}>
+                            {!cd || !cd.adsetConfigured ? (
+                              <span style={{ color: '#94a3b8' }}>—</span>
+                            ) : cd.costPerTrial === null ? (
+                              <span style={{ color: '#94a3b8' }} title={cd.trialCount === 0 ? 'No trial submits in window' : costData?.metaError}>—</span>
+                            ) : (
+                              <>
+                                <strong>{fmtUsd(cd.costPerTrial)}</strong>
+                                <span style={S.armCount}>{cd.trialCount.toLocaleString()} trials</span>
+                              </>
+                            )}
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+            {costData?.metaError && (
+              <p style={{ fontSize: 11, color: '#ef4444', marginTop: '0.5rem' }}>
+                Meta API: {costData.metaError}
+              </p>
+            )}
+            <p style={{ fontSize: 11, color: '#94a3b8', marginTop: '0.75rem' }}>
+              Spend = Meta adset spend (last 7 days) · Cost/PV = Spend ÷ page_view sessions ·
+              Cost/Trial = Spend ÷ wall_submit sessions · &quot;—&quot; = not configured or zero denominator.
+            </p>
+          </div>
+
           {/* Funnel table */}
           <div style={S.section}>
             <div style={S.sectionTitle}>Stage-by-stage funnel</div>
@@ -233,28 +275,55 @@ export default function FunnelByArmPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {/* ── Reach row (Meta ad-delivery metric, above Page View) ── */}
+                  {/* ── Reach row (ATL-FUNNEL-REACH-001: per-adset) — above Page View ── */}
                   <tr>
-                    <td style={S.tdReachRow}>
-                      <span style={S.stageLabel}>
-                        Reach
-                        <span style={S.metaBadge}>Meta</span>
-                      </span>
-                      <span style={S.stageSub}>ad delivery · unique accounts</span>
+                    <td style={S.td}>
+                      <span style={S.stageLabel}>Reach</span>
+                      <span style={{ display: 'block', fontSize: 11, color: '#94a3b8' }}>meta_reach</span>
                     </td>
-                    {ARMS.map((arm) => (
-                      <ReachCell key={arm} arm={arm} metaState={metaState} />
-                    ))}
-                  </tr>
+                    {ARMS.map(arm => {
+                      // Map BellVariant → reach key and arm key
+                      const armKey = arm.replace('bell-', '') as 'arm1' | 'arm2' | 'arm3'
+                      const reachKey = `${armKey}_reach` as 'arm1_reach' | 'arm2_reach' | 'arm3_reach'
+                      const configured = reach !== null && reach.configured_arms.includes(armKey)
+                      const reachVal = reach?.[reachKey] ?? null
+                      const errMsg = reach?.errors?.[armKey]
+                      const pvCount = data?.arms[arm]?.page_view ?? 0
 
-                  {/* ── Supabase funnel stages ── */}
+                      if (reach === null) {
+                        // Still loading
+                        return <td key={arm} style={S.tdDash}>—</td>
+                      }
+                      if (!configured) {
+                        return <td key={arm} style={S.tdDash}>—</td>
+                      }
+                      if (reachVal === null) {
+                        // API error or no data
+                        return (
+                          <td key={arm} style={S.tdDash}>
+                            <span title={errMsg}>—</span>
+                          </td>
+                        )
+                      }
+                      return (
+                        <td key={arm} style={S.tdCenter}>
+                          <strong>{reachVal.toLocaleString()}</strong>
+                          {pvCount > 0 && (
+                            <span style={S.armCount}>
+                              {cell(pvCount, reachVal).label} → page view
+                            </span>
+                          )}
+                        </td>
+                      )
+                    })}
+                  </tr>
                   {(data.stages as FunnelStage[]).map((stage, idx) => {
                     const prevStage = idx > 0 ? data.stages[idx - 1] as FunnelStage : null
                     return (
                       <tr key={stage}>
                         <td style={S.td}>
                           <span style={S.stageLabel}>{STAGE_LABELS[stage]}</span>
-                          <span style={S.stageSub}>{stage}</span>
+                          <span style={{ display: 'block', fontSize: 11, color: '#94a3b8' }}>{stage}</span>
                         </td>
                         {ARMS.map(arm => {
                           const count = data.arms[arm][stage]
@@ -297,8 +366,7 @@ export default function FunnelByArmPage() {
             </div>
             <p style={{ fontSize: 11, color: '#94a3b8', marginTop: '0.75rem' }}>
               Each cell shows <strong>stage-to-previous-stage rate (n/prev)</strong> with overall rate vs page_view below.
-              ⚠️ = fewer than {LOW_N_THRESHOLD} sessions in denominator — interpret with caution.{' '}
-              Reach = Meta ad-delivery count (live, cached 5 min); only Arm 2 has a running ad set.
+              ⚠️ = fewer than {LOW_N_THRESHOLD} sessions in denominator — interpret with caution.
             </p>
           </div>
         </>

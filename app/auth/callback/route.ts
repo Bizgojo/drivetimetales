@@ -15,7 +15,13 @@ import { NextResponse } from 'next/server'
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url)
-  const origin = process.env.NEXT_PUBLIC_APP_URL || process.env.NEXT_PUBLIC_SITE_URL || new URL(request.url).origin
+  // VERCEL_URL is a server-only env var Vercel injects per deployment
+  // (preview AND production).  NEXT_PUBLIC_APP_URL is baked to the
+  // production URL at build time, so preview callbacks would redirect
+  // back to production without this fix.
+  const origin = process.env.VERCEL_URL
+    ? `https://${process.env.VERCEL_URL}`
+    : (process.env.NEXT_PUBLIC_APP_URL || process.env.NEXT_PUBLIC_SITE_URL || new URL(request.url).origin)
   const isLocalhost = origin.includes('localhost')
   const cookieOptions = {
     sameSite: isLocalhost ? 'lax' : 'none',

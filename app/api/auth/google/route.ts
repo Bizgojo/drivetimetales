@@ -11,7 +11,13 @@ export async function GET(request: Request) {
   const url = new URL(request.url)
   const returnTo = url.searchParams.get('returnTo') || '/home'
   const origin = url.origin
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL || origin
+  // On Vercel preview deployments NEXT_PUBLIC_APP_URL is baked to the
+  // production URL at build time.  VERCEL_URL is injected per-deployment
+  // (server-only) and always points to the current deployment — use it
+  // so OAuth redirect_uri matches the preview origin, not production.
+  const appUrl = process.env.VERCEL_URL
+    ? `https://${process.env.VERCEL_URL}`
+    : (process.env.NEXT_PUBLIC_APP_URL || origin)
   const isLocalhost = appUrl.includes('localhost')
   const redirectTo = `${appUrl}/auth/callback`
   const cookieOptions = {

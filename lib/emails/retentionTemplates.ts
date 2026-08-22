@@ -40,11 +40,11 @@ export function installStepsBlock(): string {
 // ORION-EMAIL-AUDIT-001: the line under the button is now a REAL link (it
 // was plain text) so there is always a tappable fallback if a mail client
 // mangles the button anchor; target=_blank added for client compatibility.
-function appLinkButton(label: string): string {
+function appLinkButton(label: string, url: string = APP_HOME_URL): string {
   return `
     <div style="text-align:center;margin-bottom:24px;">
-      <a href="${APP_HOME_URL}" target="_blank" style="display:inline-block;background:#f97316;color:white;text-decoration:none;padding:16px 40px;border-radius:10px;font-size:16px;font-weight:800;letter-spacing:0.01em;">${label}</a>
-      <div style="font-size:12px;margin-top:8px;"><a href="${APP_HOME_URL}" target="_blank" style="color:rgba(255,255,255,0.45);text-decoration:underline;">app.endless-tales.com/home</a></div>
+      <a href="${url}" target="_blank" style="display:inline-block;background:#f97316;color:white;text-decoration:none;padding:16px 40px;border-radius:10px;font-size:16px;font-weight:800;letter-spacing:0.01em;">${label}</a>
+      <div style="font-size:12px;margin-top:8px;"><a href="${url}" target="_blank" style="color:rgba(255,255,255,0.45);text-decoration:underline;">${url.replace('https://','')}</a></div>
     </div>`
 }
 
@@ -106,8 +106,9 @@ export function renderWelcomeEmail(displayName: string): { subject: string; html
 }
 
 /** Day-1 email — dedicated home-screen install nudge, 24-48h post-signup. */
-export function renderDay1InstallEmail(name: string): { subject: string; html: string } {
+export function renderDay1InstallEmail(name: string, ctaUrl?: string): { subject: string; html: string } {
   const safeName = name || 'there'
+  const ctaTarget = ctaUrl || APP_HOME_URL
   return {
     subject: 'One tap and your stories are always with you 📲',
     html: shell(`
@@ -116,7 +117,7 @@ export function renderDay1InstallEmail(name: string): { subject: string; html: s
       <p style="color:rgba(255,255,255,0.75);font-size:15px;line-height:1.7;margin:0 0 20px;text-align:center;">
         Hey ${safeName} — the easiest way to get back to your stories is a one-tap icon on your phone. It takes about 10 seconds and works like a regular app. No app store needed.
       </p>
-      ${appLinkButton('Open Endless Tales →')}
+      ${appLinkButton('Open Endless Tales →', ctaTarget)}
       ${installStepsBlock()}
       <p style="color:rgba(255,255,255,0.5);font-size:13px;line-height:1.6;margin:0;text-align:center;">
         Once it's on your home screen, your next story is always one tap away.<br>

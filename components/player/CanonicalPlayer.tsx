@@ -1396,9 +1396,9 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
   }, [isPlaying])
 
   // ORION-PLAYER-ENDSTATE-001 §1: restart the CURRENT episode from 0 and play.
-  // Mechanics mirror the Start Over button (minus its auto-advance 'stop'
-  // disarm — replaying is fresh listening, not a stop gesture; the current
-  // arming state is left exactly as-is pending Marc's re-arm ruling).
+  // Mechanics mirror the Start Over button. Neither path disables auto-advance:
+  // replaying is fresh listening, not a stop gesture (PLAYER-SERIES-ADVANCE-001
+  // ruling: Start Over must not kill auto-advance for the session).
   const restartFromBeginning = () => {
     setPlaybackEnded(false)
     setEndStateCandidate(null)
@@ -2345,7 +2345,14 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
           </button>
           {hasProgress && (
             <button onClick={() => {
-                disableAutoAdvanceForSession('stop')
+                // PLAYER-SERIES-ADVANCE-001: do NOT disable auto-advance here.
+                // "Start Over" is fresh listening, not a stop gesture — see
+                // restartFromBeginning() comment (ORION-PLAYER-ENDSTATE-001 §1).
+                // Calling disableAutoAdvanceForSession('stop') was permanently
+                // disabling auto-advance for the session: users with prior progress
+                // who pressed Start Over (common on Safari where autoplay is blocked
+                // and the story loads at a resumed position) ended up dead-ended
+                // at Ep end instead of auto-advancing to the next episode.
                 clearLocalPlayerProgress(storyId, user?.id)
                 lastLocalProgressWriteRef.current = 0
                 if (!isASC3 && story?.audio_url) {
@@ -2407,12 +2414,12 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
                     {/* Portrait + follow row */}
                     <div style={{ display:'flex', alignItems:'center', gap:'16px' }}>
                       {authorData.photo_url
-                        ? <img src={authorData.photo_url} alt={authorData.name} style={{ width:72, height:72, borderRadius:'50%', objectFit:'cover', border:'2px solid rgba(249,115,22,0.4)', flexShrink:0 }} />
-                        : <div style={{ width:72, height:72, borderRadius:'50%', background:'linear-gradient(135deg,#f97316,#7c3aed)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:28, flexShrink:0 }}>✍️</div>
+                        ? <div style={{ width:'33%', aspectRatio:'1/1', overflow:'hidden', flexShrink:0 }}><img src={authorData.photo_url} alt={authorData.name} style={{ width:'100%', height:'100%', objectFit:'cover' }} /></div>
+                        : <div style={{ width:'33%', aspectRatio:'1/1', background:'linear-gradient(135deg,#f97316,#7c3aed)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:28, flexShrink:0 }}>✍️</div>
                       }
                       <div style={{ flex:1 }}>
                         <p style={{ color:'white', fontSize:'17px', fontWeight:800, margin:'0 0 2px' }}>{authorData.name}</p>
-                        <p style={{ color:'#64748b', fontSize:'12px', margin:'0 0 8px' }}>{(authorData.follower_count || 0).toLocaleString()} followers</p>
+                        <p style={{ color:'white', fontSize:'12px', margin:'0 0 8px' }}>{(authorData.follower_count || 0).toLocaleString()} followers</p>
                         <button
                           onClick={async () => {
                             if (!user) { router.push('/signin'); return }
@@ -2431,7 +2438,7 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
                       </div>
                     </div>
                     <p style={{ color:'#f97316', fontSize:'12px', fontWeight:700, margin:0, textTransform:'uppercase', letterSpacing:'0.05em' }}>{authorData.description}</p>
-                    {authorData.bio && <p style={{ color:'#cbd5e1', fontSize:'14px', lineHeight:1.7, margin:0 }}>{authorData.bio}</p>}
+                    {authorData.bio && <p style={{ color:'white', fontSize:'14px', lineHeight:1.7, margin:0 }}>{authorData.bio}</p>}
                     {authorData.techniques && (
                       <div>
                         <p style={{ color:'#64748b', fontSize:'11px', fontWeight:700, margin:'0 0 6px', textTransform:'uppercase', letterSpacing:'0.08em' }}>Writing Style</p>
@@ -2451,12 +2458,12 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
                     {/* Portrait + follow row */}
                     <div style={{ display:'flex', alignItems:'center', gap:'16px' }}>
                       {narratorData.photo_url
-                        ? <img src={narratorData.photo_url} alt={narratorData.name} style={{ width:72, height:72, borderRadius:'50%', objectFit:'cover', border:'2px solid rgba(249,115,22,0.4)', flexShrink:0 }} />
-                        : <div style={{ width:72, height:72, borderRadius:'50%', background:'linear-gradient(135deg,#3b82f6,#8b5cf6)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:28, flexShrink:0 }}>🎙️</div>
+                        ? <div style={{ width:'33%', aspectRatio:'1/1', overflow:'hidden', flexShrink:0 }}><img src={narratorData.photo_url} alt={narratorData.name} style={{ width:'100%', height:'100%', objectFit:'cover' }} /></div>
+                        : <div style={{ width:'33%', aspectRatio:'1/1', background:'linear-gradient(135deg,#3b82f6,#8b5cf6)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:28, flexShrink:0 }}>🎙️</div>
                       }
                       <div style={{ flex:1 }}>
                         <p style={{ color:'white', fontSize:'17px', fontWeight:800, margin:'0 0 2px' }}>{narratorData.name}</p>
-                        <p style={{ color:'#64748b', fontSize:'12px', margin:'0 0 8px' }}>{(narratorData.follower_count || 0).toLocaleString()} followers</p>
+                        <p style={{ color:'white', fontSize:'12px', margin:'0 0 8px' }}>{(narratorData.follower_count || 0).toLocaleString()} followers</p>
                         <button
                           onClick={async () => {
 	                            if (!user) { router.push('/signin'); return }
@@ -2479,16 +2486,15 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
                       </div>
                     </div>
                     <p style={{ color:'#f97316', fontSize:'12px', fontWeight:700, margin:0, textTransform:'uppercase', letterSpacing:'0.05em' }}>{narratorData.gender} · {narratorData.accent} accent · {narratorData.tone} tone</p>
-                    {narratorData.bio && <p style={{ color:'#cbd5e1', fontSize:'14px', lineHeight:1.7, margin:0 }}>{narratorData.bio}</p>}
+                    {narratorData.bio && <p style={{ color:'white', fontSize:'14px', lineHeight:1.7, margin:0 }}>{narratorData.bio}</p>}
                     {narratorData.tone_tags?.length > 0 && (
-                      <div>
-                        <p style={{ color:'#64748b', fontSize:'11px', fontWeight:700, margin:'0 0 8px', textTransform:'uppercase', letterSpacing:'0.08em' }}>Best For</p>
-                        <div style={{ display:'flex', flexWrap:'wrap', gap:'6px' }}>
-                          {narratorData.tone_tags.map((g: string) => (
-                            <span key={g} style={{ padding:'4px 10px', borderRadius:'999px', background:'rgba(249,115,22,0.15)', color:'#f97316', fontSize:'12px', fontWeight:600 }}>{g}</span>
-                          ))}
-                        </div>
-                      </div>
+                      <p style={{ color:'white', fontSize:'14px', lineHeight:1.7, margin:0 }}>
+                        {(() => {
+                          const tags = (narratorData.tone_tags as string[]).slice(0, 4);
+                          const listed = tags.length === 1 ? tags[0] : tags.slice(0, -1).join(', ') + ', and ' + tags[tags.length - 1];
+                          return `${narratorData.name} narrates mostly ${listed}.`;
+                        })()}
+                      </p>
                     )}
                   </div>
                 ) : (

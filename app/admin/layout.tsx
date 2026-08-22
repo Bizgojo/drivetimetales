@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
-import { useEffect, useState, useRef } from 'react'
+import { useEffect, useState, useRef, useCallback } from 'react'
 import { useAuth } from '@/contexts/AuthContext'
 import { createBrowserClient } from '@supabase/ssr'
 
@@ -88,6 +88,46 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const [reauthing, setReauthing] = useState(false)
   const [reauthed, setReauthed] = useState(false)
   const hadUserRef = useRef(false)
+
+  // ── Pull-to-refresh (PTR) ────────────────────────────────────────────────────
+  // Lightweight custom implementation — no extra dependency.
+  // Attaches to the <main> scroll container; activates only when scrollY === 0.
+  const [ptrState, setPtrState] = useState<'idle' | 'pulling' | 'refreshing'>('idle')
+  const touchStartYRef = useRef(0)
+  const atTopRef = useRef(false)
+  const pullDistRef = useRef(0)
+  const PULL_THRESHOLD = 80
+
+  const handlePtrTouchStart = useCallback((e: React.TouchEvent) => {
+    atTopRef.current = window.scrollY === 0
+    if (atTopRef.current) {
+      touchStartYRef.current = e.touches[0].clientY
+      pullDistRef.current = 0
+    }
+  }, [])
+
+  const handlePtrTouchMove = useCallback((e: React.TouchEvent) => {
+    if (!atTopRef.current) return
+    const dy = e.touches[0].clientY - touchStartYRef.current
+    if (dy > 0) {
+      pullDistRef.current = dy
+      setPtrState(s => s === 'refreshing' ? 'refreshing' : 'pulling')
+    }
+  }, [])
+
+  const handlePtrTouchEnd = useCallback(() => {
+    if (!atTopRef.current) return
+    if (pullDistRef.current >= PULL_THRESHOLD) {
+      setPtrState('refreshing')
+      pullDistRef.current = 0
+      atTopRef.current = false
+      router.refresh()
+      setTimeout(() => setPtrState('idle'), 1500)
+    } else {
+      setPtrState('idle')
+      pullDistRef.current = 0
+    }
+  }, [router])
   const [openGroups, setOpenGroups] = useState<Set<string>>(() => {
     const active = NAV_GROUPS.find(g => g.items.some(i => isActivePath(pathname, i.href)))
     return new Set(active ? [active.id] : ['dashboard'])
@@ -320,16 +360,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       )}
       <aside style={{ width: sidebarOpen ? `${SIDEBAR_WIDTH}px` : 0, backgroundColor: '#1e293b', padding: sidebarOpen ? '1rem 0.75rem' : '1rem 0', position: 'fixed', top: 0, left: 0, height: '100vh', overflowY: sidebarOpen ? 'auto' : 'hidden', overflowX: 'hidden', boxSizing: 'border-box', transition: 'width 0.2s ease, padding 0.2s ease' }}>
         <div style={{ width: `${SIDEBAR_WIDTH - 24}px`, opacity: sidebarOpen ? 1 : 0, transition: 'opacity 0.15s ease' }}>
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.35rem', marginBottom: '0.75rem', padding: '0 0.25rem' }}>
-            <button
-              type="button"
-              onClick={() => router.refresh()}
-              title="Refresh"
-              aria-label="Refresh"
-              style={{ width: '30px', height: '30px', border: '1px solid #334155', borderRadius: '6px', backgroundColor: '#273449', color: '#e2e8f0', cursor: 'pointer', fontSize: '14px', fontWeight: 800 }}
-            >
-              &#8635;
-            </button>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '0.75rem', padding: '0 0.25rem' }}>
             <button
               type="button"
               onClick={() => setSidebarOpen(false)}
@@ -399,7 +430,41 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           </div>
         </div>
       </aside>
-      <main style={{ flex: 1, marginLeft: sidebarOpen ? `${SIDEBAR_WIDTH}px` : 0, backgroundColor: '#FAF9F6', minHeight: '100vh', transition: 'margin-left 0.2s ease' }}>
+      <main
+        style={{ flex: 1, marginLeft: sidebarOpen ? `${SIDEBAR_WIDTH}px` : 0, backgroundColor: '#FAF9F6', minHeight: '100vh', transition: 'margin-left 0.2s ease' }}
+        onTouchStart={handlePtrTouchStart}
+        onTouchMove={handlePtrTouchMove}
+        onTouchEnd={handlePtrTouchEnd}
+      >
+        {/* Pull-to-refresh indicator */}
+        {ptrState !== 'idle' && (
+          <div style={{
+            position: 'sticky',
+            top: 0,
+            left: 0,
+            right: 0,
+            zIndex: 20,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: '6px',
+            padding: '8px 12px',
+            backgroundColor: '#FAF9F6',
+            borderBottom: '1px solid #e2e8f0',
+            fontSize: '13px',
+            color: '#64748b',
+          }}>
+            {ptrState === 'refreshing' ? (
+              <>
+                <span style={{ display: 'inline-block', width: '14px', height: '14px', border: '2px solid #cbd5e1', borderTopColor: '#f97316', borderRadius: '50%', animation: 'ptr-spin 0.7s linear infinite', flexShrink: 0 }} />
+                Refreshing…
+              </>
+            ) : (
+              <span>↓ Release to refresh</span>
+            )}
+          </div>
+        )}
+        <style>{`@keyframes ptr-spin { 0%{transform:rotate(0deg)} 100%{transform:rotate(360deg)} }`}</style>
         {children}
       </main>
     </div>

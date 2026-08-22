@@ -8,6 +8,17 @@
 // app/api/listen/signup/route.ts but simplified for the invitation gate.
 //
 // signup_source: 'bell-invitation' distinguishes these users in analytics.
+//
+// BELLE-SEG1-READER-003 (2026-08-17): Fixed JWT timing race.
+// Root cause: updateUserById (welcome_seg1_url) was committed to PostgreSQL
+// ~4ms AFTER the client minted a JWT at auth/callback. Even though the route
+// awaits the metadata write, there is a brief read-visibility window after
+// the Supabase Admin API returns "success" and before the write is visible
+// to verifyOtp. The fix: generate the magic link SERVER-SIDE immediately after
+// all metadata writes (step 3 → step 4), include the token in the response,
+// and have the client use it directly — skipping the separate auth-link call.
+// The generateLink API round-trip (~50-100ms) plus the sendServerEvent await
+// gives PostgreSQL >100ms to commit before verifyOtp ever reads the user row.
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
@@ -466,7 +477,34 @@ export async function POST(req: NextRequest) {
       sourceUrl: `${appBase}/go?arm=${armNum}`,
     }) // LEAD-CAPI-001: await so Vercel doesn't kill in-flight CAPI before return
 
-    return NextResponse.json({ ok: true, userId })
+    // BELLE-SEG1-READER-003: Generate magic link SERVER-SIDE after all metadata writes.
+    // This guarantees the JWT minted at auth/callback is minted AFTER welcome_seg1_url
+    // and first_name are committed to PostgreSQL. The generateLink API call (~50-100ms)
+    // acts as an additional buffer on top of the sendServerEvent await above, giving
+    // the DB write >100ms to become visible before verifyOtp ever reads the user row.
+    // Client uses this token directly, skipping the separate /api/listen/auth-link call.
+    // Non-fatal: on failure the client falls back to the auth-link endpoint as before.
+    const appUrlForLink = process.env.NEXT_PUBLIC_APP_URL || process.env.NEXT_PUBLIC_SITE_URL || 'https://app.endless-tales.com'
+    let magicToken: string | null = null
+    try {
+      const { data: linkData, error: linkError } = await supabase.auth.admin.generateLink({
+        type: 'magiclink',
+        email,
+        options: { redirectTo: `${appUrlForLink}/home` },
+      })
+      if (linkError) {
+        console.warn('[invite-signup] BELLE-SEG1-READER-003: generateLink error (non-fatal, client falls back to auth-link):', linkError.message)
+      } else {
+        magicToken = linkData?.properties?.hashed_token ?? null
+        if (magicToken) {
+          console.log('[invite-signup] BELLE-SEG1-READER-003: magic link pre-generated for userId:', userId.slice(0, 8))
+        }
+      }
+    } catch (linkErr: any) {
+      console.warn('[invite-signup] BELLE-SEG1-READER-003: generateLink threw (non-fatal):', linkErr?.message)
+    }
+
+    return NextResponse.json({ ok: true, userId, ...(magicToken ? { magicToken } : {}) })
   } catch (err) {
     console.error('[invite-signup] unexpected error:', err)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
