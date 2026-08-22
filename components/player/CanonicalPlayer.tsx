@@ -636,11 +636,15 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
       localStorage.removeItem('dtt_playlist_index')
       isAdvancingRef.current = false
       setCatalogExhausted(true)
+      // PLAYER-UX-001 (Bug 3): surface end-state card now that we know we're not navigating
+      if (mountedRef.current) setPlaybackEnded(true)
       return
     }
 
     if (!(story as any)?.series_id) {
+      // Standalone story — no series to advance into; surface the end-state card.
       isAdvancingRef.current = false
+      if (mountedRef.current) setPlaybackEnded(true)
       return
     }
 
@@ -657,6 +661,8 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
     }
 
     setCatalogExhausted(true)
+    // PLAYER-UX-001 (Bug 3): series exhausted — surface end-state card
+    if (mountedRef.current) setPlaybackEnded(true)
     isAdvancingRef.current = false
   }
 
@@ -1327,13 +1333,16 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
     } else if (source === 'natural_ended') {
       const completedSeconds = getQueueTotalSeconds() || completedRef.current || duration
       setCumTime(completedSeconds)
-      raise(0); setIsPlaying(false); setPlaybackEnded(true); saveProgress(completedSeconds, true)
+      raise(0); setIsPlaying(false); saveProgress(completedSeconds, true)
       // POST-TRIAL-BELLE-001: for lapsed users on series EP1, show wall at natural end
       if (isLapsedRef.current && story?.series_id) {
+        setPlaybackEnded(true)
         setTrialWallVisible(true)
         setTrialWallType('series_ep1_end')
         return
       }
+      // PLAYER-UX-001 (Bug 3): same deferred-playbackEnded pattern as onEnded
+      if (!autoAdvanceEnabledRef.current) setPlaybackEnded(true)
       maybeAutoAdvanceFromNaturalEnd('natural_ended')
     } else {
       const completedSeconds = getQueueTotalSeconds() || completedRef.current || duration
@@ -2047,13 +2056,19 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
             }
           }
           if (!isASC3) {
-            setIsPlaying(false); setPlaybackEnded(true); saveProgress(duration, true)
+            setIsPlaying(false); saveProgress(duration, true)
             // POST-TRIAL-BELLE-001: for lapsed users on series EP1, show wall at natural end
             if (isLapsedRef.current && story?.series_id) {
+              setPlaybackEnded(true)
               setTrialWallVisible(true)
               setTrialWallType('series_ep1_end')
               return
             }
+            // PLAYER-UX-001 (Bug 3): defer setPlaybackEnded(true) until after the
+            // auto-advance check. This prevents the brief "Play Again" interstitial
+            // that appeared before auto-advance navigated to the next episode.
+            // maybeAutoAdvanceFromNaturalEnd sets playbackEnded in all non-navigating paths.
+            if (!autoAdvanceEnabledRef.current) setPlaybackEnded(true)
             maybeAutoAdvanceFromNaturalEnd('natural_ended')
             return
           }
@@ -2082,7 +2097,10 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
               }
               return
             }
-            if (resumeRef.current > 0) audioRef.current.currentTime = resumeRef.current
+            // PLAYER-UX-001 (Bug 2): clear resumeRef after applying so a later canplay
+            // event (e.g. after buffering or seeking) does not seek back to the original
+            // resume position, causing an intermittent restart from 0:00 mid-episode.
+            if (resumeRef.current > 0) { audioRef.current.currentTime = resumeRef.current; resumeRef.current = 0 }
           }
         }}
         onError={(e) => {
@@ -2341,7 +2359,8 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
         <div style={{ display:'flex', gap:'12px' }}>
           <button onClick={handlePlayPause} style={{ flex:2, padding:'16px', borderRadius:'14px', border:'none', fontSize:'16px', fontWeight:700, cursor:'pointer', backgroundColor: isPlaying ? '#f97316' : '#22c55e', color:'white' }}>
             {/* ORION-PLAYER-ENDSTATE-001 §2: never '▶ Continue' at 0.0 min left — a finished episode replays from 0 */}
-            {isPlaying ? (isBuffering ? '⏳ Buffering…' : '⏸ Pause') : isAtNaturalEnd() ? '▶ Play Again' : hasProgress ? '▶ Continue' : '▶ Play'}
+            {/* PLAYER-UX-001 (Bug 1): label is 'Continue' when mid-episode (position > 0 s), 'Play' for fresh start */}
+            {isPlaying ? (isBuffering ? '⏳ Buffering…' : '⏸ Pause') : isAtNaturalEnd() ? '▶ Play Again' : getProgressSeconds() > 0 ? '▶ Continue' : '▶ Play'}
           </button>
           {hasProgress && (
             <button onClick={() => {
