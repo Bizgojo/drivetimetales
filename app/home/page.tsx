@@ -273,9 +273,12 @@ function HomeSearchResults({ query }: { query: string }) {
 
 // ─── Belle Welcome Audio Card ────────────────────────────────────────────────
 // BELLE-WELCOME-001 (Marc, 2026-08-11)
-// Seg 2 is fixed/cached; Seg 1 URL comes from user_metadata.welcome_seg1_url
-// (pre-rendered at signup by invite-signup route). Falls back to /api/name-audio.
-const SEG2_URL = 'https://vmyhlfeouzslixtkmddy.supabase.co/storage/v1/object/public/audio/welcome/belle-welcome-seg2-v2.mp3'
+// BELL-ONBOARD-001 (Marc, 2026-08-23): Welcome is now a single self-contained
+// clip. Seg 2 (18s story catch-up) is REMOVED — the new welcome line ends with
+// "now let's continue with Episode 2" and onDismiss routes directly to the EP2
+// player (router.push in HomeContent). No second audio segment needed.
+// SEG2_URL kept as a reference but is no longer played.
+// const SEG2_URL = 'https://vmyhlfeouzslixtkmddy.supabase.co/storage/v1/object/public/audio/welcome/belle-welcome-seg2-v2.mp3'
 
 function AnimatedBars() {
   return (
@@ -323,17 +326,11 @@ function WelcomeAudioCard({ seg1Url, firstName, onDismiss }: WelcomeAudioCardPro
     audioRef.current.onpause = null
   }, [])
 
-  // Play Seg 2 after Seg 1 ends
+  // BELL-ONBOARD-001: Seg 2 removed. After Seg 1 finishes, dismiss immediately
+  // so onDismiss routes the user to the EP2 player (no catch-up segment).
   const playSeg2 = useCallback(() => {
-    const el = audioRef.current
-    if (!el) return
-    setActiveSeg(2)
-    el.src = SEG2_URL
-    el.onended = () => {
-      setIsPlaying(false)
-      onDismiss()
-    }
-    el.play().catch(() => setIsPlaying(false))
+    setIsPlaying(false)
+    onDismiss()
   }, [onDismiss])
 
   // Attempt to play Seg 1 (or Seg 2 if no Seg 1 URL)
@@ -362,18 +359,17 @@ function WelcomeAudioCard({ seg1Url, firstName, onDismiss }: WelcomeAudioCardPro
     const el = new Audio()
     audioRef.current = el
 
-    // Preload both segments
+    // Preload Seg 1 (self-contained welcome); if unavailable, dismiss immediately
     if (seg1Url) el.src = seg1Url
-    else el.src = SEG2_URL
 
     el.onplay = () => setIsPlaying(true)
     el.onpause = () => setIsPlaying(false)
 
     if (seg1Url) {
       setActiveSeg(1)
-      el.onended = playSeg2
+      el.onended = playSeg2  // playSeg2 now calls onDismiss (BELL-ONBOARD-001)
     } else {
-      setActiveSeg(2)
+      // No welcome audio — skip straight to EP2 player
       el.onended = () => { setIsPlaying(false); onDismiss() }
     }
 
