@@ -164,17 +164,6 @@ export default function GoInvitationContent({ arm: armProp }: GoInvitationConten
     trackEvent('page_view')
   }, [trackEvent])
 
-  // Back-button on hook phase → /home (not ad/loop)
-  // Intercepts browser/device back so pressing back on Page A goes to /home,
-  // not back to the ad or looping to this page.
-  useEffect(() => {
-    if (phase !== 'hook') return
-    window.history.pushState(null, '', window.location.href)
-    const onPopState = () => { window.location.href = '/home' }
-    window.addEventListener('popstate', onPopState)
-    return () => window.removeEventListener('popstate', onPopState)
-  }, [phase])
-
   const phaseRef = useRef<Phase>('hook')
   const [phase, setPhase] = useState<Phase>('hook')
   const goTo = useCallback((next: Phase) => {
@@ -405,20 +394,22 @@ export default function GoInvitationContent({ arm: armProp }: GoInvitationConten
         input::placeholder { color: rgba(255,255,255,0.75); opacity: 1; }
       `}</style>
 
-      {/* Background image layer — phase-aware:
-          · hook phase → editorial arm cover (original photo, no obstruction on subject)
-          · playing phase → PAGE_COVER_URL (bell-token cover, no text overlay so full art visible)
+      {/* Background image layer — CSS brightness/contrast filter lifts luminance before overlay is applied.
+          brightness(1.55) contrast(0.90) = medium lift chosen as best balance:
+          · 1.25/0.95 = mild (figure still murky at phone width)
+          · 1.55/0.90 = medium (figure legible, no significant wash on headline area)
+          · 1.85/0.85 = strong (washed out; top text protection weaker)
           z-index: 0 — sits below gradient (z:1) and all content (z:2+) */}
       <div
         aria-hidden="true"
         style={{
           position: 'absolute',
           inset: 0,
-          backgroundImage: `url(${(phase === 'playing' || phase === 'b2_playing') ? PAGE_COVER_URL : (coverUrl || COVER_PV1)})`,
+          backgroundImage: `url(${PAGE_COVER_URL})`,
           backgroundSize: 'cover',
-          backgroundPosition: 'center 30%',
+          backgroundPosition: 'center 40%', // OPTION-B (best Mara visibility)
           backgroundRepeat: 'no-repeat',
-          filter: (phase === 'playing' || phase === 'b2_playing') ? 'none' : 'brightness(1.4) contrast(0.95)',
+          filter: 'brightness(1.55) contrast(0.90)',
           zIndex: 0,
         }}
       />
@@ -445,13 +436,30 @@ export default function GoInvitationContent({ arm: armProp }: GoInvitationConten
           display: 'flex',
           flexDirection: 'column',
           alignItems: 'center',
-          justifyContent: 'flex-end',
-          padding: '0 20px calc(48px + env(safe-area-inset-bottom, 0px))',
+          justifyContent: 'flex-start',
+          padding: '80px 20px 24px',
           position: 'relative',
           overflow: 'hidden',
           textAlign: 'center',
           zIndex: 2,
         }}>
+          {/* Cover art — background only, dim, never competes with hook */}
+          {coverUrl && (
+            <div
+              aria-hidden="true"
+              style={{
+                position: 'absolute',
+                inset: 0,
+                backgroundImage: `url(${coverUrl})`,
+                backgroundSize: 'cover',
+                backgroundPosition: 'center top',
+                opacity: 0.07,
+                filter: 'blur(14px)',
+                transform: 'scale(1.06)',
+                pointerEvents: 'none',
+              }}
+            />
+          )}
 
           {/* Hook text — DOMINANT, first thing the eye lands on */}
           <p style={{
@@ -543,20 +551,22 @@ export default function GoInvitationContent({ arm: armProp }: GoInvitationConten
           textAlign: 'center',
           zIndex: 2,
         }}>
-          {/* Bell-token cover — full brightness on Listening page (no text overlay here so full art can show) */}
-          <div
-            aria-hidden="true"
-            style={{
-              position: 'absolute',
-              inset: 0,
-              backgroundImage: `url(${PAGE_COVER_URL})`,
-              backgroundSize: 'cover',
-              backgroundPosition: 'center 30%',
-              opacity: 0.92,
-              transform: 'scale(1.02)',
-              pointerEvents: 'none',
-            }}
-          />
+          {/* Cover art — full brightness; dim + blur removed (hook text gone, art is primary) */}
+          {coverUrl && (
+            <div
+              aria-hidden="true"
+              style={{
+                position: 'absolute',
+                inset: 0,
+                backgroundImage: `url(${coverUrl})`,
+                backgroundSize: 'cover',
+                backgroundPosition: 'center top',
+                opacity: 0.85,
+                transform: 'scale(1.04)',
+                pointerEvents: 'none',
+              }}
+            />
+          )}
 
           {/* Sound wave — playing state (audio is active) */}
           <div
