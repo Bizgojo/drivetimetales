@@ -108,7 +108,9 @@ async function renderAndStoreBelleWelcomeSeg1(
 
   const voiceId = CANONICAL_BELLE_B_VOICE_ID
   // Use original-case firstName for TTS quality; normalized name for filename only
-  const seg1Text = `Welcome, ${firstName}. I'm glad you decided to join us.`
+  // BELL-ONBOARD-001 (Marc, 2026-08-23): New welcome line replaces Seg1+Seg2 chain.
+  // Single self-contained clip; Seg2 (18s catch-up) removed on the home page.
+  const seg1Text = `Hi ${firstName}. Glad you decided to join us. I'm Belle, your personal assistant — now let's continue with Episode 2 of The Bell Beneath Falls Park.`
   const normalizedName = firstName.trim().toLowerCase().replace(/[^a-z-]/g, '')
   const fileName = `welcome-seg1-${normalizedName}.mp3`
 

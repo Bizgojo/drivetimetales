@@ -75,8 +75,10 @@ export async function GET(request: NextRequest) {
   // Normalize: capitalize first letter, lowercase rest
   const name = rawName.charAt(0).toUpperCase() + rawName.slice(1).toLowerCase()
 
-  // -v2 suffix separates new full-sentence cache rows from old bare-name rows
-  const cacheKey = `${name}-v2`
+  // -v3 suffix: BELL-ONBOARD-001 (Marc 2026-08-23) — new welcome text replaces
+  // Seg1+Seg2 chain. v2 rows used old phrasing ("Welcome, [Name]. I'm glad...");
+  // v3 rows use the new self-contained line ("Hi [Name]... Episode 2 of The Bell...").
+  const cacheKey = `${name}-v3`
 
   const { data: cached } = await supabase
     .from('name_audio')
@@ -90,8 +92,9 @@ export async function GET(request: NextRequest) {
   const elKey = process.env.ELEVENLABS_API_KEY
   if (!elKey) return NextResponse.json({ error: 'EL key not configured' }, { status: 500 })
 
-  // Full Seg 1 sentence — Marc-approved phrasing (2026-08-11)
-  const seg1Text = `Welcome, ${name}. I'm glad you decided to join us.`
+  // BELL-ONBOARD-001 (Marc, 2026-08-23): New self-contained welcome line.
+  // Replaces old Seg1+Seg2 chain — single clip, no catch-up segment.
+  const seg1Text = `Hi ${name}. Glad you decided to join us. I'm Belle, your personal assistant — now let's continue with Episode 2 of The Bell Beneath Falls Park.`
 
   const elRes = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
     method: 'POST',
@@ -108,8 +111,8 @@ export async function GET(request: NextRequest) {
   const rawBuf = Buffer.from(await elRes.arrayBuffer())
   const audioBuffer = applyVolumeFfmpeg(rawBuf)
 
-  // File name includes -v2 to match cache key convention
-  const fileName = `welcome-seg1-${name.toLowerCase()}-${voiceId.slice(0, 8)}-v2.mp3`
+  // File name includes -v3 to match cache key convention (BELL-ONBOARD-001)
+  const fileName = `welcome-seg1-${name.toLowerCase()}-${voiceId.slice(0, 8)}-v3.mp3`
 
   const { error: uploadError } = await supabase.storage
     .from('names')
