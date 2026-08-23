@@ -2533,9 +2533,12 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
                the real episode page (cover/title/author) is fully visible behind this button.
                Non-onboarding users see the normal play button below. */}
           {onboardActive ? (
+            // BELL-ONBOARD-007 Fix 3: position:fixed — always visible at viewport bottom
+            // regardless of page height or scroll state. window.scrollTo was unreliable
+            // on mobile Safari; fixed positioning is deterministic.
             <button
               onClick={handleOnboardContinue}
-              style={{ flex:2, padding:'16px', borderRadius:'14px', border:'none', fontSize:'16px', fontWeight:700, cursor:'pointer', backgroundColor:'#f97316', color:'white', touchAction:'manipulation' }}
+              style={{ position:'fixed', bottom:'32px', left:'16px', right:'16px', zIndex:9998, padding:'18px', borderRadius:'14px', border:'none', fontSize:'17px', fontWeight:700, cursor:'pointer', backgroundColor:'#f97316', color:'white', touchAction:'manipulation', boxShadow:'0 4px 24px rgba(0,0,0,0.45)' }}
             >
               ▶ Continue your story
             </button>

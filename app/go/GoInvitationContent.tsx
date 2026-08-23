@@ -50,10 +50,14 @@ const COVER_PV1 =
 const COVER_PV2 =
   `${BELL_BASE}/a88084ab-62e3-47f4-9b7a-5cbc32943349/cover_1785337196082.jpg`
 
-// Page-level cover background (all arms) — full-bleed behind gradient overlay
-// BELL-ONBOARD-004: updated to Marc-approved bell-token cover (chiaroscuro, dusk/fog, bell embossed on token, 2026-08-23)
+// Bell-token cover — used on the Listening/playback page (Page B) where no text overlays the art
+// BELL-ONBOARD-004: Marc-approved bell-token cover (chiaroscuro, dusk/fog, bell on token, 2026-08-23)
 const PAGE_COVER_URL =
   'https://vmyhlfeouzslixtkmddy.supabase.co/storage/v1/object/public/audio/covers/bell-gate-cover-g-1787516497872.png'
+
+// Teaser/hook page background (Page A) — crouching woman at waterfall, correct per Marc 2026-08-23
+const HOOK_BG_URL =
+  'https://vmyhlfeouzslixtkmddy.supabase.co/storage/v1/object/public/audio/covers/bell-gate-1786379576312-b.png'
 
 // Hook lines — first spoken line of each arm's cold open
 // Pulled 2026-08-07 from stories.script via node script; Marc to confirm pick.
@@ -405,11 +409,13 @@ export default function GoInvitationContent({ arm: armProp }: GoInvitationConten
         style={{
           position: 'absolute',
           inset: 0,
-          backgroundImage: `url(${PAGE_COVER_URL})`,
+          // BELL-ONBOARD-007: phase-conditional bg — crouching woman on hook/teaser (Page A),
+          // bell-token cover on Listening page (Page B, no text overlay so full art visible)
+          backgroundImage: `url(${(phase === 'playing' || phase === 'b2_playing') ? PAGE_COVER_URL : HOOK_BG_URL})`,
           backgroundSize: 'cover',
-          backgroundPosition: 'center 40%', // OPTION-B (best Mara visibility)
+          backgroundPosition: 'center 40%',
           backgroundRepeat: 'no-repeat',
-          filter: 'brightness(1.55) contrast(0.90)',
+          filter: (phase === 'playing' || phase === 'b2_playing') ? 'none' : 'brightness(1.55) contrast(0.90)',
           zIndex: 0,
         }}
       />
@@ -443,6 +449,21 @@ export default function GoInvitationContent({ arm: armProp }: GoInvitationConten
           textAlign: 'center',
           zIndex: 2,
         }}>
+          {/* BELL-ONBOARD-007: ← Home link — solid white, top-left, no router/history manipulation */}
+          <a
+            href="/home"
+            style={{
+              position: 'absolute', top: '16px', left: '16px', zIndex: 10,
+              color: '#ffffff',
+              fontSize: '14px', fontWeight: 500,
+              textDecoration: 'none',
+              display: 'flex', alignItems: 'center', gap: '4px',
+              WebkitTapHighlightColor: 'transparent',
+            }}
+          >
+            ← Home
+          </a>
+
           {/* Cover art — background only, dim, never competes with hook */}
           {coverUrl && (
             <div
@@ -551,22 +572,20 @@ export default function GoInvitationContent({ arm: armProp }: GoInvitationConten
           textAlign: 'center',
           zIndex: 2,
         }}>
-          {/* Cover art — full brightness; dim + blur removed (hook text gone, art is primary) */}
-          {coverUrl && (
-            <div
-              aria-hidden="true"
-              style={{
-                position: 'absolute',
-                inset: 0,
-                backgroundImage: `url(${coverUrl})`,
-                backgroundSize: 'cover',
-                backgroundPosition: 'center top',
-                opacity: 0.85,
-                transform: 'scale(1.04)',
-                pointerEvents: 'none',
-              }}
-            />
-          )}
+          {/* Bell-token cover — full art on Listening page, no text overlay here */}
+          <div
+            aria-hidden="true"
+            style={{
+              position: 'absolute',
+              inset: 0,
+              backgroundImage: `url(${PAGE_COVER_URL})`,
+              backgroundSize: 'cover',
+              backgroundPosition: 'center 30%',
+              opacity: 0.92,
+              transform: 'scale(1.02)',
+              pointerEvents: 'none',
+            }}
+          />
 
           {/* Sound wave — playing state (audio is active) */}
           <div
