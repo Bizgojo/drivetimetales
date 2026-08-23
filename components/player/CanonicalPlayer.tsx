@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { supabaseBrowser } from '@/lib/supabase-browser'
@@ -56,6 +56,13 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
   const userEmail = String(user?.email || '').trim().toLowerCase()
   const [returnContext, setReturnContext] = useState({ returnUrl: '', approvalReview: false })
   const safeReturnUrl = returnContext.returnUrl
+
+  // BELL-ONBOARD-002: detect direct-to-player onboarding flow
+  const isOnboarding = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('onboard') === '1'
+  // Gate overlay — shown immediately on mount for onboarding users, dismissed on first tap
+  const [showOnboardGate, setShowOnboardGate] = useState(false)
+  const [onboardWelcomeUrl, setOnboardWelcomeUrl] = useState<string | null>(null)
+  const onboardAudioRef = useRef<HTMLAudioElement | null>(null)
 
   const audioRef = useRef<HTMLAudioElement>(null)  // voice
   const musicRef = useRef<HTMLAudioElement>(null)  // single music track
@@ -170,6 +177,39 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
   const [seriesProseChapters, setSeriesProseChapters] = useState<Array<{ id: string; title: string; episode_number: number; prose_text: string }>>([])
   const [authorData, setAuthorData]   = useState<any | null>(null)
   const [narratorData, setNarratorData] = useState<any | null>(null)
+
+  // ── BELL-ONBOARD-002: onboarding gate ───────────────────────────────────────
+  // Show the "Continue" overlay immediately on mount (before loading completes)
+  // so iOS autoplay-requires-tap is satisfied the moment the player renders.
+  useEffect(() => {
+    if (isOnboarding) setShowOnboardGate(true)
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleOnboardContinue = useCallback(async () => {
+    setShowOnboardGate(false)
+    if (onboardWelcomeUrl) {
+      // Play Belle's ~9s welcome line, then seamlessly into EP2 audio
+      const welcomeAudio = new Audio(onboardWelcomeUrl)
+      onboardAudioRef.current = welcomeAudio
+      welcomeAudio.onended = () => {
+        // Mark welcome as played
+        if (user?.id) {
+          supabase.from('users').update({ welcome_played: true }).eq('id', user.id).then(() => {})
+        }
+        // Start EP2 story audio
+        if (audioRef.current) {
+          audioRef.current.play().catch(() => {})
+        }
+      }
+      welcomeAudio.play().catch(() => {
+        // Welcome audio failed — start story anyway
+        audioRef.current?.play().catch(() => {})
+      })
+    } else {
+      // No welcome audio — start story directly
+      audioRef.current?.play().catch(() => {})
+    }
+  }, [onboardWelcomeUrl, user?.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Volume helpers ─────────────────────────────────────────────────────────
 
@@ -1102,11 +1142,28 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
             }, { onConflict: 'user_id,story_id' })
           }
 
-          // ── Welcome experience — first play only ─────────────────────────────
+          // ── Welcome experience — first play only ───────────────────────────────────────
           stage = 'welcome-check'
           const { data: dbUser } = await supabase.from('users')
             .select('first_name, welcome_played').eq('id', user.id).single()
-          if (dbUser && !dbUser.welcome_played && !lib?.progress) {
+          // BELL-ONBOARD-002: onboarding users get the gate overlay + pre-generated
+          // welcome seg1 — skip the legacy on-demand generate path entirely.
+          if (isOnboarding) {
+            const metaUrl = user.user_metadata?.welcome_seg1_url as string | undefined
+            if (metaUrl) {
+              setOnboardWelcomeUrl(metaUrl)
+            } else {
+              // Fallback: HEAD-check the storage path for a pre-rendered name clip
+              const normalizedName = (dbUser?.first_name || '').toLowerCase().replace(/[^a-z0-9]/g, '')
+              if (normalizedName) {
+                const storageUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/names/welcome-seg1-${normalizedName}.mp3`
+                try {
+                  const headRes = await fetch(storageUrl, { method: 'HEAD' })
+                  if (headRes.ok) setOnboardWelcomeUrl(storageUrl)
+                } catch { /* no welcome audio — story plays directly on Continue tap */ }
+              }
+            }
+          } else if (dbUser && !dbUser.welcome_played && !lib?.progress) {
             try {
               const firstName = dbUser.first_name || 'friend'
               const welcomeText = `Hey ${firstName}! I'm Belle. I'll be here before every story. Just a friend who knows what's worth your time. You're going to love this one.`
@@ -2176,7 +2233,8 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
       <audio ref={musicRef} loop style={{ display:'none' }} />
 
       {/* RETENTION-PATH-001: shows only when a completed-story re-offer fires */}
-      <InstallAppBanner reofferOnly />
+      {/* BELL-ONBOARD-002: suppress install banner for brand-new onboarding users */}
+      {!isOnboarding && <InstallAppBanner reofferOnly />}
 
       {showReview && user?.id && story && (
         <ReviewModal
@@ -2736,6 +2794,31 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
 
           {/* Belle audio plays once URL arrives — audio element is handled by the
               belleWallAudioUrl useEffect above; nothing to render here. */}
+        </div>
+      )}
+
+      {/* BELL-ONBOARD-002: full-viewport gate overlay — satisfies iOS autoplay-requires-tap */}
+      {showOnboardGate && (
+        <div
+          role="button"
+          onClick={handleOnboardContinue}
+          style={{
+            position: 'fixed', inset: 0, zIndex: 9999,
+            background: 'rgba(2, 6, 23, 0.95)',
+            display: 'flex', flexDirection: 'column',
+            alignItems: 'center', justifyContent: 'center',
+            cursor: 'pointer', touchAction: 'manipulation',
+          }}
+        >
+          <div style={{
+            width: '80px', height: '80px', borderRadius: '50%',
+            backgroundColor: '#f97316', display: 'flex',
+            alignItems: 'center', justifyContent: 'center',
+            fontSize: '32px', color: 'white', paddingLeft: '4px',
+          }}>&#9654;</div>
+          <span style={{ color: '#fff', fontSize: '20px', fontWeight: 800, marginTop: '20px' }}>
+            Continue
+          </span>
         </div>
       )}
 
