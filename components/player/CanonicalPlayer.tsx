@@ -189,34 +189,105 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
     if (new URLSearchParams(window.location.search).get('onboard') === '1') {
       isOnboardingRef.current = true
       setOnboardActive(true)
-      // Issue 2: scroll to top so the play button is fully visible on load
+      // Fix 2a: scroll to top on mount so player controls are in view
       window.scrollTo({ top: 0, behavior: 'instant' as ScrollBehavior })
     }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const handleOnboardContinue = useCallback(async () => {
+  // Fix 2b: re-scroll after loading completes — mount-time scroll fires before player
+  // content renders; by the time loading=false the page may have shifted and the
+  // Continue button scrolled below fold. Run again once the button is actually live.
+  useEffect(() => {
+    if (!loading && onboardActive) {
+      window.scrollTo({ top: 0, behavior: 'instant' as ScrollBehavior })
+    }
+  }, [loading, onboardActive])
+
+  // Fix 4: resolve onboarding welcome URL in parallel with main load(), not sequentially
+  // after it. Runs as soon as user is available so the URL is ready before the user taps
+  // Continue — eliminates the race where tapping before Tier-3 API completes left no welcome.
+  useEffect(() => {
+    if (!onboardActive || !user || onboardWelcomeUrl !== null) return
+    let cancelled = false
+    const resolve = async () => {
+      // Tier 1: pre-generated at signup — validate still alive before trusting
+      const metaUrl = user.user_metadata?.welcome_seg1_url as string | undefined
+      if (metaUrl) {
+        try {
+          const check = await fetch(metaUrl, { method: 'HEAD' })
+          if (!cancelled && check.ok) { setOnboardWelcomeUrl(metaUrl); return }
+        } catch { /* fall through */ }
+      }
+      // Tier 2: cached name clip in names bucket
+      try {
+        const { data: dbUser } = await supabase.from('users')
+          .select('first_name').eq('id', user.id).single()
+        const normalizedName = (dbUser?.first_name || '').toLowerCase().replace(/[^a-z0-9]/g, '')
+        if (normalizedName) {
+          const storageUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/names/welcome-seg1-${normalizedName}.mp3`
+          const headRes = await fetch(storageUrl, { method: 'HEAD' })
+          if (!cancelled && headRes.ok) { setOnboardWelcomeUrl(storageUrl); return }
+        }
+        // Tier 3: generate on-demand
+        if (!cancelled) {
+          const firstName = dbUser?.first_name || 'friend'
+          const welcomeText = `Hi ${firstName}. Glad you decided to join us. I'm Belle, your personal assistant — now let's continue with Episode 2 of The Bell Beneath Falls Park.`
+          const res = await fetch('/api/admin/generate-belle-intro', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ type: 'welcome', firstName, introText: welcomeText }),
+          })
+          const genData = res.ok ? await res.json() : null
+          if (!cancelled && genData?.url) setOnboardWelcomeUrl(genData.url)
+        }
+      } catch { /* welcome fails silently — story plays directly on Continue tap */ }
+    }
+    void resolve()
+    return () => { cancelled = true }
+  }, [onboardActive, user?.id]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleOnboardContinue = useCallback(() => {
     setOnboardActive(false)
+    // Fix 3: start story with proper player state — setIsPlaying(true) + music fade-in.
+    // Previous version called audioRef.current.play() but never updated isPlaying or started
+    // music, so the first tap appeared to do nothing (overlay dismissed but no audible playback
+    // and button still showed green ▶ Play state).
+    const startStory = () => {
+      const a = audioRef.current
+      if (!a) return
+      a.play().then(() => {
+        setIsPlaying(true)
+        const mu = musicRef.current
+        if (mu && !noMusicRef.current && introMusicRef.current) {
+          if (!mu.src || mu.src === 'about:blank' || mu.src === window.location.href) {
+            mu.src = introMusicRef.current; mu.loop = true
+          }
+          mu.volume = 0; mu.play().catch(() => {})
+          animVol(mu, 0, VOL_INTRO_MUSIC, 2000)
+        }
+      }).catch(() => {
+        // Audio not ready yet (still buffering) — retry once after short delay
+        setTimeout(() => {
+          a.play().then(() => { setIsPlaying(true) }).catch(() => {})
+        }, 250)
+      })
+    }
     if (onboardWelcomeUrl) {
       // Play Belle's ~9s welcome line, then seamlessly into EP2 audio
       const welcomeAudio = new Audio(onboardWelcomeUrl)
       onboardAudioRef.current = welcomeAudio
       welcomeAudio.onended = () => {
-        // Mark welcome as played
         if (user?.id) {
           supabase.from('users').update({ welcome_played: true }).eq('id', user.id).then(() => {})
         }
-        // Start EP2 story audio
-        if (audioRef.current) {
-          audioRef.current.play().catch(() => {})
-        }
+        startStory()
       }
       welcomeAudio.play().catch(() => {
-        // Welcome audio failed — start story anyway
-        audioRef.current?.play().catch(() => {})
+        // Welcome audio failed — start story directly
+        startStory()
       })
     } else {
-      // No welcome audio — start story directly
-      audioRef.current?.play().catch(() => {})
+      startStory()
     }
   }, [onboardWelcomeUrl, user?.id]) // eslint-disable-line react-hooks/exhaustive-deps
 

@@ -51,8 +51,9 @@ const COVER_PV2 =
   `${BELL_BASE}/a88084ab-62e3-47f4-9b7a-5cbc32943349/cover_1785337196082.jpg`
 
 // Page-level cover background (all arms) — full-bleed behind gradient overlay
+// BELL-ONBOARD-004: updated to Marc-approved bell-token cover (chiaroscuro, dusk/fog, bell embossed on token, 2026-08-23)
 const PAGE_COVER_URL =
-  'https://vmyhlfeouzslixtkmddy.supabase.co/storage/v1/object/public/audio/covers/bell-gate-1786379576312-b.png'
+  'https://vmyhlfeouzslixtkmddy.supabase.co/storage/v1/object/public/audio/covers/bell-gate-cover-g-1787516497872.png'
 
 // Hook lines — first spoken line of each arm's cold open
 // Pulled 2026-08-07 from stories.script via node script; Marc to confirm pick.
