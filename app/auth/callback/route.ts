@@ -15,13 +15,22 @@ import { NextResponse } from 'next/server'
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url)
-  // VERCEL_URL is a server-only env var Vercel injects per deployment
-  // (preview AND production).  NEXT_PUBLIC_APP_URL is baked to the
-  // production URL at build time, so preview callbacks would redirect
-  // back to production without this fix.
-  const origin = process.env.VERCEL_URL
-    ? `https://${process.env.VERCEL_URL}`
-    : (process.env.NEXT_PUBLIC_APP_URL || process.env.NEXT_PUBLIC_SITE_URL || new URL(request.url).origin)
+  // AUTH-CALLBACK-ORIGIN-001 (2026-08-23): Use the runtime request URL origin.
+  //
+  // PREVIOUS BUG: the origin was computed from process.env.VERCEL_URL — a
+  // build-time env var that Vercel always sets to the deployment-specific
+  // .vercel.app URL (e.g. drivetimetales-abc123.vercel.app) on EVERY
+  // deployment, including production. Vercel enables Deployment Protection on
+  // .vercel.app URLs; redirecting users there sent them to vercel.com/login
+  // (the Vercel SSO auth wall) rather than the app. This caused 0% activation
+  // for all real subscribers since PR #138 — they hit Vercel's login screen
+  // and abandoned. Root cause confirmed 2026-08-23.
+  //
+  // FIX: use the actual request host at runtime. The callback always runs at
+  // whatever domain the user is actually on — app.endless-tales.com for
+  // production, the preview .vercel.app URL for previews, localhost for dev.
+  // This is always correct and never routes through Vercel's auth wall.
+  const origin = new URL(request.url).origin
   const isLocalhost = origin.includes('localhost')
   const cookieOptions = {
     sameSite: isLocalhost ? 'lax' : 'none',
