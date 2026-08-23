@@ -338,6 +338,10 @@ export default function GoInvitationContent({ arm: armProp }: GoInvitationConten
       // Falls back to the separate auth-link call if the server didn’t return a token.
       const capturedEmail = email.trim()
       void (async () => {
+        // BELL-ONBOARD-002: direct new bell-invitation users to EP2 player, not /home.
+        // Set cookie BEFORE any navigation so auth/callback picks it up.
+        document.cookie = 'auth_return_to=/player/759dc525-185c-450f-b249-17e4a525ba60?onboard=1; path=/; max-age=300; SameSite=Lax'
+
         // Fast path: server pre-generated the magic link after all metadata writes.
         if (data.magicToken) {
           window.location.href =
