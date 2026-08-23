@@ -1,7 +1,7 @@
 'use client'
 
 import { Suspense, useState, useEffect, useRef, useCallback } from 'react'
-import { useSearchParams } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
 import { supabase } from '@/lib/supabase'
 import ContinueListening from '@/components/ContinueListening'
@@ -523,6 +523,7 @@ function WelcomeAudioCard({ seg1Url, firstName, onDismiss }: WelcomeAudioCardPro
 function HomeContent() {
   const { loading, user } = useAuth()
   const searchParams = useSearchParams()
+  const router = useRouter()
   const [continueIds, setContinueIds] = useState<string[]>([])
   // WALK-BUG-0713 #5: catalog story id the ContinueSampleHero is showing —
   // the Continue Listening list excludes it (no same-story double-stack).
@@ -696,7 +697,12 @@ function HomeContent() {
               firstName={firstName}
               onDismiss={() => {
                 setShowWelcome(false)
-                setTimeout(() => searchInputRef.current?.focus(), 0)
+                // BELL-ONBOARD-001 (2026-08-23): Route new bell-invitation users directly
+                // to EP2 player after the welcome plays. Without this, users land back on
+                // /home and must find EP2 in Continue Listening on their own — cold ad
+                // traffic on mobile does not do this (0/5 post-fix signups activated).
+                // Bell EP2: "The Seventh Token" (759dc525-185c-450f-b249-17e4a525ba60).
+                router.push('/player/759dc525-185c-450f-b249-17e4a525ba60')
                 // Persist dismissal so reload/revisit doesn't re-show the banner
                 void supabase.auth.updateUser({ data: { welcome_dismissed: true } })
               }}
