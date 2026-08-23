@@ -30,16 +30,22 @@ export default function AppHeader() {
   return (
     <header className="fixed left-0 right-0 top-0 z-50 h-14 w-full border-b border-slate-800 bg-slate-950 px-4">
       <div className="mx-auto flex h-full max-w-7xl items-center justify-between">
-        <button
-          type="button"
-          onClick={goBack}
-          className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full bg-blue-500 text-white transition-colors hover:bg-blue-400"
-          aria-label="Go back"
-        >
-          <span className="text-3xl font-bold leading-none" aria-hidden="true">
-            ‹
-          </span>
-        </button>
+        {/* APP-HEADER-HOME-001: hide back button on /home — no meaningful back destination
+             from the home screen (router.back() returns to /go ad teaser for funnel users). */}
+        {pathname !== '/home' ? (
+          <button
+            type="button"
+            onClick={goBack}
+            className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full bg-blue-500 text-white transition-colors hover:bg-blue-400"
+            aria-label="Go back"
+          >
+            <span className="text-3xl font-bold leading-none" aria-hidden="true">
+              ‹
+            </span>
+          </button>
+        ) : (
+          <div className="h-11 w-11 flex-shrink-0" aria-hidden="true" />
+        )}
 
         <button
           type="button"
