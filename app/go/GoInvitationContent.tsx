@@ -50,10 +50,14 @@ const COVER_PV1 =
 const COVER_PV2 =
   `${BELL_BASE}/a88084ab-62e3-47f4-9b7a-5cbc32943349/cover_1785337196082.jpg`
 
-// Page-level cover background (all arms) — full-bleed behind gradient overlay
-// BELL-ONBOARD-004: updated to Marc-approved bell-token cover (chiaroscuro, dusk/fog, bell embossed on token, 2026-08-23)
+// Page-level cover background for the Listening... page (Page B) — bell-token cover, no text overlay here
+// BELL-ONBOARD-004: approved bell-token cover (chiaroscuro, dusk/fog, bell embossed on token, 2026-08-23)
 const PAGE_COVER_URL =
   'https://vmyhlfeouzslixtkmddy.supabase.co/storage/v1/object/public/audio/covers/bell-gate-cover-g-1787516497872.png'
+
+// Teaser/hook page (Page A) background — crouching woman at waterfall, correct as-is per Marc (2026-08-23)
+const HOOK_BG_URL =
+  'https://vmyhlfeouzslixtkmddy.supabase.co/storage/v1/object/public/audio/covers/bell-gate-1786379576312-b.png'
 
 // Hook lines — first spoken line of each arm's cold open
 // Pulled 2026-08-07 from stories.script via node script; Marc to confirm pick.
@@ -414,11 +418,11 @@ export default function GoInvitationContent({ arm: armProp }: GoInvitationConten
         style={{
           position: 'absolute',
           inset: 0,
-          backgroundImage: `url(${(phase === 'playing' || phase === 'b2_playing') ? PAGE_COVER_URL : (coverUrl || COVER_PV1)})`,
+          backgroundImage: `url(${(phase === 'playing' || phase === 'b2_playing') ? PAGE_COVER_URL : HOOK_BG_URL})`,
           backgroundSize: 'cover',
-          backgroundPosition: 'center 30%',
+          backgroundPosition: 'center 40%',
           backgroundRepeat: 'no-repeat',
-          filter: (phase === 'playing' || phase === 'b2_playing') ? 'none' : 'brightness(1.4) contrast(0.95)',
+          filter: (phase === 'playing' || phase === 'b2_playing') ? 'none' : 'brightness(1.55) contrast(0.90)',
           zIndex: 0,
         }}
       />
@@ -445,13 +449,30 @@ export default function GoInvitationContent({ arm: armProp }: GoInvitationConten
           display: 'flex',
           flexDirection: 'column',
           alignItems: 'center',
-          justifyContent: 'flex-end',
-          padding: '0 20px calc(48px + env(safe-area-inset-bottom, 0px))',
+          justifyContent: 'flex-start',
+          padding: '80px 20px 24px',
           position: 'relative',
           overflow: 'hidden',
           textAlign: 'center',
           zIndex: 2,
         }}>
+          {/* Cover art — dim background blur, subtle depth behind hook text */}
+          {coverUrl && (
+            <div
+              aria-hidden="true"
+              style={{
+                position: 'absolute',
+                inset: 0,
+                backgroundImage: `url(${coverUrl})`,
+                backgroundSize: 'cover',
+                backgroundPosition: 'center top',
+                opacity: 0.07,
+                filter: 'blur(14px)',
+                transform: 'scale(1.06)',
+                pointerEvents: 'none',
+              }}
+            />
+          )}
 
           {/* Hook text — DOMINANT, first thing the eye lands on */}
           <p style={{
