@@ -20,6 +20,13 @@ export default function AppHeader() {
   if (pathname?.startsWith('/admin')) return null
 
   const goBack = () => {
+    // APP-HEADER-PLAYER-001: on the player screen router.back() returns users
+    // to /go (ad teaser) when they arrived via the onboarding funnel.
+    // Redirect to /home explicitly instead.
+    if (pathname?.startsWith('/player/')) {
+      router.push('/home')
+      return
+    }
     if (pathname === '/' || window.history.length <= 1) {
       router.push('/')
       return
