@@ -2429,11 +2429,23 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
           </div>
         </div>
         <div style={{ display:'flex', gap:'12px' }}>
-          <button onClick={handlePlayPause} style={{ flex:2, padding:'16px', borderRadius:'14px', border:'none', fontSize:'16px', fontWeight:700, cursor:'pointer', backgroundColor: isPlaying ? '#f97316' : '#22c55e', color:'white' }}>
-            {/* ORION-PLAYER-ENDSTATE-001 §2: never '▶ Continue' at 0.0 min left — a finished episode replays from 0 */}
-            {/* PLAYER-UX-001 (Bug 1): label is 'Continue' when mid-episode (position > 0 s), 'Play' for fresh start */}
-            {isPlaying ? (isBuffering ? '⏳ Buffering…' : '⏸ Pause') : isAtNaturalEnd() ? '▶ Play Again' : getProgressSeconds() > 0 ? '▶ Continue' : '▶ Play'}
-          </button>
+          {/* BELL-ONBOARD-003: onboarding gate — one required tap satisfies iOS autoplay policy;
+               the real episode page (cover/title/author) is fully visible behind this button.
+               Non-onboarding users see the normal play button below. */}
+          {isOnboarding && showOnboardGate ? (
+            <button
+              onClick={handleOnboardContinue}
+              style={{ flex:2, padding:'16px', borderRadius:'14px', border:'none', fontSize:'16px', fontWeight:700, cursor:'pointer', backgroundColor:'#f97316', color:'white', touchAction:'manipulation' }}
+            >
+              ▶ Continue your story
+            </button>
+          ) : (
+            <button onClick={handlePlayPause} style={{ flex:2, padding:'16px', borderRadius:'14px', border:'none', fontSize:'16px', fontWeight:700, cursor:'pointer', backgroundColor: isPlaying ? '#f97316' : '#22c55e', color:'white' }}>
+              {/* ORION-PLAYER-ENDSTATE-001 §2: never '▶ Continue' at 0.0 min left — a finished episode replays from 0 */}
+              {/* PLAYER-UX-001 (Bug 1): label is 'Continue' when mid-episode (position > 0 s), 'Play' for fresh start */}
+              {isPlaying ? (isBuffering ? '⏳ Buffering…' : '⏸ Pause') : isAtNaturalEnd() ? '▶ Play Again' : getProgressSeconds() > 0 ? '▶ Continue' : '▶ Play'}
+            </button>
+          )}
           {hasProgress && (
             <button onClick={() => {
                 // PLAYER-SERIES-ADVANCE-001: do NOT disable auto-advance here.
@@ -2797,30 +2809,7 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
         </div>
       )}
 
-      {/* BELL-ONBOARD-002: full-viewport gate overlay — satisfies iOS autoplay-requires-tap */}
-      {showOnboardGate && (
-        <div
-          role="button"
-          onClick={handleOnboardContinue}
-          style={{
-            position: 'fixed', inset: 0, zIndex: 9999,
-            background: 'rgba(2, 6, 23, 0.95)',
-            display: 'flex', flexDirection: 'column',
-            alignItems: 'center', justifyContent: 'center',
-            cursor: 'pointer', touchAction: 'manipulation',
-          }}
-        >
-          <div style={{
-            width: '80px', height: '80px', borderRadius: '50%',
-            backgroundColor: '#f97316', display: 'flex',
-            alignItems: 'center', justifyContent: 'center',
-            fontSize: '32px', color: 'white', paddingLeft: '4px',
-          }}>&#9654;</div>
-          <span style={{ color: '#fff', fontSize: '20px', fontWeight: 800, marginTop: '20px' }}>
-            Continue
-          </span>
-        </div>
-      )}
+      {/* BELL-ONBOARD-003: overlay removed — gate is now the inline play button; see play button below */}
 
       <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
     </div>
