@@ -57,10 +57,12 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
   const [returnContext, setReturnContext] = useState({ returnUrl: '', approvalReview: false })
   const safeReturnUrl = returnContext.returnUrl
 
-  // BELL-ONBOARD-002: detect direct-to-player onboarding flow
-  const isOnboarding = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('onboard') === '1'
-  // Gate overlay — shown immediately on mount for onboarding users, dismissed on first tap
-  const [showOnboardGate, setShowOnboardGate] = useState(false)
+  // BELL-ONBOARD-004: consolidated onboard state — initialized false so SSR and hydration match.
+  // Set to true in a useEffect so the 'Continue your story' button only appears after mount,
+  // eliminating the hydration mismatch where isOnboarding (window-dependent const) was false
+  // on the server but true on the client, causing the conditional to flip unreliably.
+  const [onboardActive, setOnboardActive] = useState(false)
+  const isOnboardingRef = useRef(false) // readable in async load() without adding deps
   const [onboardWelcomeUrl, setOnboardWelcomeUrl] = useState<string | null>(null)
   const onboardAudioRef = useRef<HTMLAudioElement | null>(null)
 
@@ -178,15 +180,22 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
   const [authorData, setAuthorData]   = useState<any | null>(null)
   const [narratorData, setNarratorData] = useState<any | null>(null)
 
-  // ── BELL-ONBOARD-002: onboarding gate ───────────────────────────────────────
-  // Show the "Continue" overlay immediately on mount (before loading completes)
-  // so iOS autoplay-requires-tap is satisfied the moment the player renders.
+  // ── BELL-ONBOARD-004: onboarding gate ─────────────────────────────────────
+  // Detect ?onboard=1 on mount only (client-side). Scroll to top so the play
+  // button (issue 2) is always fully visible on landing. Using state + effect
+  // (not a render-time const) eliminates the SSR/client hydration mismatch that
+  // caused the 'Continue your story' button to never appear (issue 1).
   useEffect(() => {
-    if (isOnboarding) setShowOnboardGate(true)
+    if (new URLSearchParams(window.location.search).get('onboard') === '1') {
+      isOnboardingRef.current = true
+      setOnboardActive(true)
+      // Issue 2: scroll to top so the play button is fully visible on load
+      window.scrollTo({ top: 0, behavior: 'instant' as ScrollBehavior })
+    }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleOnboardContinue = useCallback(async () => {
-    setShowOnboardGate(false)
+    setOnboardActive(false)
     if (onboardWelcomeUrl) {
       // Play Belle's ~9s welcome line, then seamlessly into EP2 audio
       const welcomeAudio = new Audio(onboardWelcomeUrl)
@@ -1146,21 +1155,41 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
           stage = 'welcome-check'
           const { data: dbUser } = await supabase.from('users')
             .select('first_name, welcome_played').eq('id', user.id).single()
-          // BELL-ONBOARD-002: onboarding users get the gate overlay + pre-generated
-          // welcome seg1 — skip the legacy on-demand generate path entirely.
-          if (isOnboarding) {
+          // BELL-ONBOARD-004: onboarding users — use isOnboardingRef.current (readable in async
+          // closure without adding to effect deps). Three-tier welcome URL resolution:
+          // 1. user_metadata.welcome_seg1_url (pre-generated at invite-signup, fastest)
+          // 2. HEAD-check names bucket for a cached name clip
+          // 3. On-demand generate via generate-belle-intro (issue 3 fix: was missing, caused
+          //    EP2 ASC3 intro to play instead of personalized Belle welcome)
+          if (isOnboardingRef.current) {
             const metaUrl = user.user_metadata?.welcome_seg1_url as string | undefined
             if (metaUrl) {
               setOnboardWelcomeUrl(metaUrl)
             } else {
-              // Fallback: HEAD-check the storage path for a pre-rendered name clip
+              // Tier 2: name clip in storage bucket
               const normalizedName = (dbUser?.first_name || '').toLowerCase().replace(/[^a-z0-9]/g, '')
+              let found = false
               if (normalizedName) {
                 const storageUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/names/welcome-seg1-${normalizedName}.mp3`
                 try {
                   const headRes = await fetch(storageUrl, { method: 'HEAD' })
-                  if (headRes.ok) setOnboardWelcomeUrl(storageUrl)
-                } catch { /* no welcome audio — story plays directly on Continue tap */ }
+                  if (headRes.ok) { setOnboardWelcomeUrl(storageUrl); found = true }
+                } catch { /* fall through to tier 3 */ }
+              }
+              // Tier 3: generate on-demand (same API as non-onboarding welcome path).
+              // Runs during loading so the URL is ready before the user taps the button.
+              if (!found) {
+                try {
+                  const firstName = dbUser?.first_name || 'friend'
+                  const welcomeText = `Hi ${firstName}. Glad you decided to join us. I'm Belle, your personal assistant — now let's continue with Episode 2 of The Bell Beneath Falls Park.`
+                  const res = await fetch('/api/admin/generate-belle-intro', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ type: 'welcome', firstName, introText: welcomeText }),
+                  })
+                  const genData = res.ok ? await res.json() : null
+                  if (genData?.url) setOnboardWelcomeUrl(genData.url)
+                } catch { /* welcome fails silently — story plays directly on Continue tap */ }
               }
             }
           } else if (dbUser && !dbUser.welcome_played && !lib?.progress) {
@@ -2234,7 +2263,7 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
 
       {/* RETENTION-PATH-001: shows only when a completed-story re-offer fires */}
       {/* BELL-ONBOARD-002: suppress install banner for brand-new onboarding users */}
-      {!isOnboarding && <InstallAppBanner reofferOnly />}
+      {!onboardActive && <InstallAppBanner reofferOnly />}
 
       {showReview && user?.id && story && (
         <ReviewModal
@@ -2432,7 +2461,7 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
           {/* BELL-ONBOARD-003: onboarding gate — one required tap satisfies iOS autoplay policy;
                the real episode page (cover/title/author) is fully visible behind this button.
                Non-onboarding users see the normal play button below. */}
-          {isOnboarding && showOnboardGate ? (
+          {onboardActive ? (
             <button
               onClick={handleOnboardContinue}
               style={{ flex:2, padding:'16px', borderRadius:'14px', border:'none', fontSize:'16px', fontWeight:700, cursor:'pointer', backgroundColor:'#f97316', color:'white', touchAction:'manipulation' }}
