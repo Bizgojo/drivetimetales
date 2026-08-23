@@ -449,21 +449,6 @@ export default function GoInvitationContent({ arm: armProp }: GoInvitationConten
           textAlign: 'center',
           zIndex: 2,
         }}>
-          {/* BELL-ONBOARD-007: ← Home link — solid white, top-left, no router/history manipulation */}
-          <a
-            href="/home"
-            style={{
-              position: 'absolute', top: '16px', left: '16px', zIndex: 10,
-              color: '#ffffff',
-              fontSize: '14px', fontWeight: 500,
-              textDecoration: 'none',
-              display: 'flex', alignItems: 'center', gap: '4px',
-              WebkitTapHighlightColor: 'transparent',
-            }}
-          >
-            ← Home
-          </a>
-
           {/* Cover art — background only, dim, never competes with hook */}
           {coverUrl && (
             <div
