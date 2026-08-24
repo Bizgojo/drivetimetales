@@ -37,6 +37,8 @@ interface ReachData {
 
 interface FunnelData {
   generatedAt: string
+  campaignStart: string
+  since: string
   stages: FunnelStage[]
   arms: Record<BellVariant, Record<FunnelStage, number>>
 }
@@ -106,6 +108,9 @@ const S = {
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
+const CLEAN_CUTOFF = '2026-08-23T22:35:00.000Z'
+const FULL_CAMPAIGN = '2026-08-18T04:00:00.000Z'
+
 export default function FunnelByArmPage() {
   const [data, setData] = useState<FunnelData | null>(null)
   const [loading, setLoading] = useState(true)
@@ -113,9 +118,14 @@ export default function FunnelByArmPage() {
   const [reach, setReach] = useState<ReachData | null>(null)
   const [costData, setCostData] = useState<FunnelCostData | null>(null)
   const [costLoading, setCostLoading] = useState(true)
+  const [since, setSince] = useState(CLEAN_CUTOFF)
+  const [showCustom, setShowCustom] = useState(false)
+  const [customValue, setCustomValue] = useState('')
 
   useEffect(() => {
-    fetch('/api/admin/analytics/funnel')
+    setLoading(true)
+    setError(null)
+    fetch('/api/admin/analytics/funnel?since=' + encodeURIComponent(since))
       .then(r => r.json())
       .then(d => {
         if (d.error) setError(d.error)
@@ -123,7 +133,9 @@ export default function FunnelByArmPage() {
       })
       .catch(e => setError(e.message))
       .finally(() => setLoading(false))
+  }, [since])
 
+  useEffect(() => {
     fetch('/api/admin/analytics/funnel-reach')
       .then(r => r.json())
       .then(setReach)
@@ -144,6 +156,49 @@ export default function FunnelByArmPage() {
     <div style={S.page}>
       <h1 style={S.heading}>Funnel by Arm</h1>
       <p style={S.subtitle}>Shows where each arm lost people — at the ad, during the promo, or at the wall.</p>
+
+      {/* Date filter control bar */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' as const, margin: '0.75rem 0 0.5rem', padding: '0.75rem 1rem', background: '#f8fafc', borderRadius: 8, border: '1px solid #e2e8f0' }}>
+        <span style={{ fontSize: 12, fontWeight: 700, color: '#475569', marginRight: 4 }}>Filter since:</span>
+        <button
+          onClick={() => { setSince(CLEAN_CUTOFF); setShowCustom(false) }}
+          style={{ fontSize: 12, padding: '4px 10px', borderRadius: 6, border: '1px solid', cursor: 'pointer', background: since === CLEAN_CUTOFF && !showCustom ? '#0f172a' : '#fff', color: since === CLEAN_CUTOFF && !showCustom ? '#fff' : '#1e293b', borderColor: since === CLEAN_CUTOFF && !showCustom ? '#0f172a' : '#cbd5e1', fontWeight: 600 }}
+        >
+          Clean pipeline (Aug 23 22:35 UTC)
+        </button>
+        <button
+          onClick={() => { setSince(FULL_CAMPAIGN); setShowCustom(false) }}
+          style={{ fontSize: 12, padding: '4px 10px', borderRadius: 6, border: '1px solid', cursor: 'pointer', background: since === FULL_CAMPAIGN && !showCustom ? '#0f172a' : '#fff', color: since === FULL_CAMPAIGN && !showCustom ? '#fff' : '#1e293b', borderColor: since === FULL_CAMPAIGN && !showCustom ? '#0f172a' : '#cbd5e1', fontWeight: 600 }}
+        >
+          Full campaign (Aug 18)
+        </button>
+        <button
+          onClick={() => { setShowCustom(true); setCustomValue(since) }}
+          style={{ fontSize: 12, padding: '4px 10px', borderRadius: 6, border: '1px solid', cursor: 'pointer', background: showCustom ? '#0f172a' : '#fff', color: showCustom ? '#fff' : '#1e293b', borderColor: showCustom ? '#0f172a' : '#cbd5e1', fontWeight: 600 }}
+        >
+          Custom
+        </button>
+        {showCustom && (
+          <>
+            <input
+              type="datetime-local"
+              value={customValue.slice(0, 16)}
+              onChange={e => setCustomValue(e.target.value + ':00.000Z')}
+              style={{ fontSize: 12, padding: '3px 8px', borderRadius: 6, border: '1px solid #cbd5e1' }}
+            />
+            <button
+              onClick={() => setSince(customValue)}
+              style={{ fontSize: 12, padding: '4px 10px', borderRadius: 6, border: '1px solid #0ea5e9', cursor: 'pointer', background: '#0ea5e9', color: '#fff', fontWeight: 600 }}
+            >
+              Apply
+            </button>
+          </>
+        )}
+      </div>
+      <p style={{ fontSize: 11, color: '#64748b', margin: '0 0 1rem' }}>
+        Showing events since: <strong>{since}</strong>
+      </p>
+
       {data && (
         <p style={S.meta}>
           Generated {new Date(data.generatedAt).toLocaleString()} ·
