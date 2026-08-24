@@ -79,7 +79,7 @@ async function requireAdmin(req: NextRequest): Promise<boolean> {
 
 // ── Funnel fetch (Supabase, paginated) ───────────────────────────────────────
 
-async function fetchFunnelCounts(): Promise<{
+async function fetchFunnelCounts(since: string): Promise<{
   arms: Record<BellArm, Record<FunnelStage, number>>
   debug: { totalEventsFetched: number; pagesFetched: number }
 }> {
@@ -103,7 +103,7 @@ async function fetchFunnelCounts(): Promise<{
       .from('go_listen_events')
       .select('session_id, variant, event')
       .in('variant', [...BELL_VARIANTS])
-      .gte('created_at', CAMPAIGN_START)
+      .gte('created_at', since)
       .order('created_at', { ascending: true })
       .range(from, from + PAGE_SIZE - 1)
 
@@ -196,6 +196,7 @@ export type FunnelArmData = Record<FunnelStage, number>
 export type FunnelResponse = {
   generatedAt: string
   campaignStart: string
+  since: string
   stages: readonly string[]
   arms: Record<BellArm, FunnelArmData>
   reach: { arm1: number | null; arm2: number | null; arm3: number | null }
@@ -211,8 +212,10 @@ export async function GET(req: NextRequest) {
     }
 
     // Run Supabase + Meta fetches in parallel
+    const since = req.nextUrl.searchParams.get('since') || CAMPAIGN_START
+
     const [{ arms, debug }, reach] = await Promise.all([
-      fetchFunnelCounts(),
+      fetchFunnelCounts(since),
       fetchReach(),
     ])
 
@@ -220,6 +223,7 @@ export async function GET(req: NextRequest) {
       {
         generatedAt: new Date().toISOString(),
         campaignStart: CAMPAIGN_START,
+        since,
         stages: [...FUNNEL_STAGES],
         arms,
         reach,
