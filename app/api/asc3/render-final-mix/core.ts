@@ -335,15 +335,26 @@ export async function runRenderFinalMix(storyId: string): Promise<{
       .eq('id', storyId)
       .single()
 
+    // SUNSET-MIX-SPEC-001 (2026-08-24, Marc Postlewaite): intro_corrected.mp3 and outro_corrected.mp3
+    // are the canonical corrected intro/outro files. They contain: ET Signature Sting + Belle narration only,
+    // with NO music bed under the narration. When present, they take absolute priority over all other intro/outro files.
+    // If found in the file listing but failing to download → HARD FAIL (no silent fallback).
+    // Canon spec: Intro = sting + Belle narration (no bed). Outro = sting + Belle narration (no bed).
+    //             Story body = continuous genre music bed at 15% under dialogue.
+    const introCorrectedFile = files.find(f => f.name === 'intro_corrected.mp3')
+    const outroCorrectedFile = files.find(f => f.name === 'outro_corrected.mp3')
+
     // Phase 3: prefer a story announcement clip. Legacy split/single intro support remains
     // only so older already-rendered assets can still be re-rendered.
     const announcementFile = files.find(f => f.name === 'announcement.mp3' || f.name.startsWith('announcement_'))
     const introBeforeFile = files.find(f => f.name.startsWith('intro_before_'))
     const introAfterFile  = files.find(f => f.name.startsWith('intro_after_'))
-    const introSingleFile = files.find(f => f.name === 'intro.mp3' || (f.name.startsWith('intro_') && !f.name.startsWith('intro_before_') && !f.name.startsWith('intro_after_')))
-    const isSplitIntro = !announcementFile && !!(introBeforeFile && introAfterFile)
-    const introFile = announcementFile ?? (isSplitIntro ? null : (introSingleFile ?? null))
-    const outroFile = files.find(f => f.name === 'outro.mp3' || f.name.startsWith('outro_'))
+    const introSingleFile = files.find(f => f.name === 'intro.mp3' || (f.name.startsWith('intro_') && !f.name.startsWith('intro_before_') && !f.name.startsWith('intro_after_') && !f.name.startsWith('intro_corrected')))
+    const isSplitIntro = !introCorrectedFile && !announcementFile && !!(introBeforeFile && introAfterFile)
+    // Priority: intro_corrected.mp3 > announcement > split > single
+    const introFile = introCorrectedFile ?? announcementFile ?? (isSplitIntro ? null : (introSingleFile ?? null))
+    // Priority: outro_corrected.mp3 > outro.mp3 / outro_*
+    const outroFile = outroCorrectedFile ?? files.find(f => (f.name === 'outro.mp3' || f.name.startsWith('outro_')) && !f.name.startsWith('outro_corrected'))
     const segmentPattern = /^segment_(\d{4})\.mp3$/
     const parsedSegments = files
       .map(f => {
@@ -416,13 +427,32 @@ export async function runRenderFinalMix(storyId: string): Promise<{
     const outputPath = path.join(tmpDir, 'final_mix.mp3')
 
     await download(STING_URL, stingPath)
+    // SUNSET-MIX-SPEC-001: intro_corrected.mp3 / outro_corrected.mp3 — HARD FAIL if expected but missing.
+    // These files were explicitly placed in storage by the correction pipeline. If they appear in the
+    // storage listing but can't be downloaded, that is a critical pipeline error — not a graceful fallback.
+    if (introCorrectedFile) {
+      try {
+        await download(`${BASE_STORAGE}/asc3/${storyId}/intro_corrected.mp3`, introPath)
+        console.log(`  SUNSET-MIX-SPEC-001: using intro_corrected.mp3 (ET sting + Belle narration, no music bed)`)
+      } catch (err) {
+        throw new Error(`MISSING_CORRECTED_INTRO: story_id ${storyId} — intro_corrected.mp3 listed in storage but failed to download: ${(err as Error).message}`)
+      }
+    }
+    if (outroCorrectedFile) {
+      try {
+        await download(`${BASE_STORAGE}/asc3/${storyId}/outro_corrected.mp3`, outroPath)
+        console.log(`  SUNSET-MIX-SPEC-001: using outro_corrected.mp3 (ET sting + Belle narration, no music bed)`)
+      } catch (err) {
+        throw new Error(`MISSING_CORRECTED_OUTRO: story_id ${storyId} — outro_corrected.mp3 listed in storage but failed to download: ${(err as Error).message}`)
+      }
+    }
     // Assemble front voice: use announcement clip, or concatenate legacy split halves.
     // No loudnorm here — ElevenLabs output is already at consistent levels; single-pass loudnorm
     // can introduce leading silence artifacts and dynamic gain pumping on short dialogue clips.
-    if (announcementFile) {
+    if (!introCorrectedFile && announcementFile) {
       await download(`${BASE_STORAGE}/asc3/${storyId}/${announcementFile.name}`, introPath)
       console.log(`  Selected announcement clip: ${announcementFile.name}`)
-    } else if (isSplitIntro) {
+    } else if (!introCorrectedFile && isSplitIntro) {
       const introBefore = path.join(tmpDir, 'intro_before.mp3')
       const introAfter  = path.join(tmpDir, 'intro_after.mp3')
       await download(`${BASE_STORAGE}/asc3/${storyId}/${introBeforeFile!.name}`, introBefore)
@@ -437,14 +467,14 @@ export async function runRenderFinalMix(storyId: string): Promise<{
       await execFileAsync(FFMPEG_PATH, ['-f', 'concat', '-safe', '0', '-i', splitConcatFile, '-ar', '44100', '-ac', '2', '-b:a', '192k', '-y', introPath])
       const splitIntroDur = await getAudioDuration(introPath)
       console.log(`  Assembled split intro: ${introBeforeFile!.name} + ${introAfterFile!.name} → ${splitIntroDur.toFixed(2)}s`)
-    } else if (!isLandingStory001) {
+    } else if (!introCorrectedFile && !isLandingStory001) {
       await download(`${BASE_STORAGE}/asc3/${storyId}/${introFile!.name}`, introPath)
     }
     // LANDING-STORY-001: no Belle B intro — no intro file to download (cold open)
     // Also, LANDING-STORY-001 episodes may have no outro file (Eps 1-3 of preview package)
-    if (outroFile) {
+    if (!outroCorrectedFile && outroFile) {
       await download(`${BASE_STORAGE}/asc3/${storyId}/${outroFile.name}`, outroPath)
-    } else {
+    } else if (!outroCorrectedFile) {
       console.log('  No outro file found — skipping outro download (LANDING-STORY-001 preview episode)')
     }
     await download(`${BASE_STORAGE}/asc3/${storyId}/${musicFile.name}`, musicPath)
