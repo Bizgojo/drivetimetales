@@ -1703,6 +1703,7 @@ Intro requirements:
 - ATL-BELLE-QC-BUG-001: For standalone stories, must not include [LISTENER_NAME] or any listener name; the shared name opener handles personalization. For series episodes, [LISTENER_NAME] at the start of the intro is the CORRECT personalization format ("[LISTENER_NAME], \"Series Name,\" Episode N: \"Episode Title.\" <hook>") and must NOT be flagged as a violation.
 
 Outro requirements:
+- ATL-BELLE-QC-BUG-003: [LISTENER_NAME] is NEVER required in outros — neither standalone nor series. Do not flag the absence of [LISTENER_NAME] in any outro as a violation. Outros are not personalized with listener names.
 - Emotionally lands and feels companion-like, as if Belle is still beside the listener after the story.
 - Matches the declared story type.
 - Standalone outros must include the story title.
@@ -1711,7 +1712,7 @@ Outro requirements:
 - Standalone outros must leave emotional residue or reflection; do not pass outros that are only title/author credits or plot summary.
 - Standalone outros must tie the emotional closure to the actual resolution, choice, reveal, or final consequence of the story.
 - Standalone outros must not tease a fake episode 2, "next time", "what happens next", or unresolved continuation.
-- Series non-finale outros may create intentional next-episode desire.
+- Series non-finale outros may create intentional next-episode desire. A forward-tease construction (e.g. "Continue to the next episode to find out...") is ALLOWED for series non-finale outros — do NOT flag this as a violation. Only fail a series non-finale outro if it has zero emotional residue AND is purely a plot-summary recap with no companion presence.
 - Finale outros should feel complete.
 - Credits language is only acceptable if brief and not the emotional center.
 - Must not use flat "That was..." credits-style structure as the dominant move.
@@ -1748,7 +1749,7 @@ Content rules:
 - No "Welcome", "begins now", "only on Endless Tales", "tonight", "stay tuned", "next time", or "what happens next" for standalone stories.
 
 MANDATORY FIELD REQUIREMENTS - you will be rejected if these are missing:
-1. LISTENER NAME RULE: For standalone stories, the intro/announcement MUST NOT include [LISTENER_NAME]; the shared name opener handles personalization. For series episodes, [LISTENER_NAME] at the start of the intro IS the correct personalization format (e.g. "[LISTENER_NAME], \"Series Name,\" Episode N: \"Episode Title.\" <hook>") and MUST NOT be flagged as a violation — it is required and expected. Do not remove it.
+1. LISTENER NAME RULE: For standalone stories, the intro/announcement MUST NOT include [LISTENER_NAME]; the shared name opener handles personalization. For series episodes, [LISTENER_NAME] at the start of the intro IS the correct personalization format (e.g. "[LISTENER_NAME], \"Series Name,\" Episode N: \"Episode Title.\" <hook>") and MUST NOT be flagged as a violation — it is required and expected. Do not remove it. OUTRO RULE: [LISTENER_NAME] is NEVER required in outros — neither standalone nor series — and MUST NOT be added to any outro. Do not add [LISTENER_NAME] to a repaired outro.
 2. NO GREETING: The intro/announcement MUST NOT use greeting/opener language such as "welcome", "settle in", or "let's begin".
 3. STORY TITLE: Standalone intro/announcement and outro MUST include the exact story title as provided in TITLE above. Do not paraphrase, shorten, or omit it.
 4. CONCRETE HOOK: Standalone intro/announcement MUST include a concrete narrative hook - a specific conflict, crime, mystery mechanism, secret, danger, cover-up, wrongdoing, or story object. "Something waiting" or "a story about trust" is NOT a hook. "Paper trail breaks, someone broke it on purpose" IS a hook. "A forged deed" IS a hook. Name the specific thing that creates danger or mystery.

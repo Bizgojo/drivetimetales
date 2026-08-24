@@ -240,6 +240,11 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Invalid email' }, { status: 400 })
     }
 
+    // ATL-TESTUSER-002 (Marc, 2026-08-24): flag Marc's +alias test accounts app-side.
+    // DB trigger (20260824000000_is_test_account_auto_flag.sql) also fires on INSERT/UPDATE
+    // as a safety net; this explicit flag covers all 5 write paths in this route.
+    const isTestAccount = /^m\.postlewaite\+.+@gmail\.com$/i.test(email)
+
     const armNum = [1, 2, 3].includes(Number(arm)) ? Number(arm) : 1
     const trialEndsAt = new Date(Date.now() + TRIAL_DAYS * 24 * 60 * 60 * 1000).toISOString()
 
@@ -310,7 +315,8 @@ export async function POST(req: NextRequest) {
         if (isActive) {
           // Case (c): Currently paying customer — touch ONLY listen_arm. NEVER touch subscription fields.
           // No Lead event: existing paying subscriber re-submitting the gate is not a new signup.
-          await supabase.from('users').update({ listen_arm: armNum, updated_at: new Date().toISOString() }).eq('id', found.id)
+          const listenArmLabelC = armNum === 1 ? 'A' : armNum === 2 ? 'B' : 'C'
+          await supabase.from('users').update({ listen_arm: armNum, listen_arm_label: listenArmLabelC, is_test_account: isTestAccount, updated_at: new Date().toISOString() }).eq('id', found.id)
           await seedUserLibrary(found.id, armNum as 1 | 2 | 3)
           return NextResponse.json({ ok: true, active: true, userId: found.id })
         }
@@ -319,7 +325,8 @@ export async function POST(req: NextRequest) {
           // Case (b): Has had a prior trial, not currently active — deny second trial.
           // Do NOT modify subscription_type, subscription_ends_at, or plan.
           // No Lead event: lapsed user shown subscribe card is not a new signup.
-          await supabase.from('users').update({ listen_arm: armNum, updated_at: new Date().toISOString() }).eq('id', found.id)
+          const listenArmLabelB = armNum === 1 ? 'A' : armNum === 2 ? 'B' : 'C'
+          await supabase.from('users').update({ listen_arm: armNum, listen_arm_label: listenArmLabelB, is_test_account: isTestAccount, updated_at: new Date().toISOString() }).eq('id', found.id)
           await seedUserLibrary(found.id, armNum as 1 | 2 | 3)
           const displayName = existingUser?.first_name || firstName
           return NextResponse.json({ ok: true, returning: true, userId: found.id, firstName: displayName, email: found.email })
@@ -327,6 +334,7 @@ export async function POST(req: NextRequest) {
 
         // Case (a) for 422 path: existing auth user but no prior trial record — grant trial.
         // Post-migration this is rare (backfill covers subscription_ends_at rows) but handled defensively.
+        const listenArmLabelA = armNum === 1 ? 'A' : armNum === 2 ? 'B' : 'C'
         await supabase.from('users').upsert({
           id: found.id,
           email,
@@ -340,6 +348,8 @@ export async function POST(req: NextRequest) {
           utm_source: utmSource ?? null,
           utm_campaign: utmCampaign ?? null,
           listen_arm: armNum,
+          listen_arm_label: listenArmLabelA,
+          is_test_account: isTestAccount,
           updated_at: new Date().toISOString(),
         }, { onConflict: 'id' })
 
@@ -385,6 +395,7 @@ export async function POST(req: NextRequest) {
         newAuthId: userId,
         orphanedId: existingProfile.id,
       })
+      const listenArmLabelCollision = armNum === 1 ? 'A' : armNum === 2 ? 'B' : 'C'
       const { error: collisionUpdateError } = await supabase
         .from('users')
         .update({
@@ -399,6 +410,8 @@ export async function POST(req: NextRequest) {
           utm_source: utmSource ?? null,
           utm_campaign: utmCampaign ?? null,
           listen_arm: armNum,
+          listen_arm_label: listenArmLabelCollision,
+          is_test_account: isTestAccount,
           updated_at: new Date().toISOString(),
         })
         .ilike('email', escapedEmail) // case-insensitive — matches mixed-case legacy rows (FIX-1c)
@@ -413,6 +426,7 @@ export async function POST(req: NextRequest) {
       await renderAndStoreBelleWelcomeSeg1(userId, firstName)
     } else {
       // No collision — proceed with standard upsert
+      const listenArmLabelNew = armNum === 1 ? 'A' : armNum === 2 ? 'B' : 'C'
       const { error: userError } = await supabase.from('users').upsert({
         id: userId,
         email,
@@ -426,6 +440,8 @@ export async function POST(req: NextRequest) {
         utm_source: utmSource ?? null,
         utm_campaign: utmCampaign ?? null,
         listen_arm: armNum,
+        listen_arm_label: listenArmLabelNew,
+        is_test_account: isTestAccount,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       }, { onConflict: 'id' })
