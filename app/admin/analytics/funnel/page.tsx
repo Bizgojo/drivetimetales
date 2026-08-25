@@ -45,7 +45,9 @@ interface FunnelData {
 
 // ─── Config ───────────────────────────────────────────────────────────────────
 
-const ARMS: BellVariant[] = ['bell-arm1', 'bell-arm2', 'bell-arm3']
+// ARM-2-ONLY-001 (Marc ruling, 2026-08-25): Arms 1 and 3 permanently retired.
+// Historical event data stays in DB; display filtered to Arm 2 only.
+const ARMS: BellVariant[] = ['bell-arm2']
 const ARM_LABELS: Record<BellVariant, string> = {
   'bell-arm1': 'Arm 1',
   'bell-arm2': 'Arm 2',
@@ -154,8 +156,8 @@ export default function FunnelByArmPage() {
 
   return (
     <div style={S.page}>
-      <h1 style={S.heading}>Funnel by Arm</h1>
-      <p style={S.subtitle}>Shows where each arm lost people — at the ad, during the promo, or at the wall.</p>
+      <h1 style={S.heading}>Funnel — Arm 2 (Bell Beneath Falls Park)</h1>
+      <p style={S.subtitle}>Active campaign arm. Arms 1 and 3 retired — historical data preserved in DB.</p>
 
       {/* Date filter control bar */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' as const, margin: '0.75rem 0 0.5rem', padding: '0.75rem 1rem', background: '#f8fafc', borderRadius: 8, border: '1px solid #e2e8f0' }}>
@@ -202,7 +204,7 @@ export default function FunnelByArmPage() {
       {data && (
         <p style={S.meta}>
           Generated {new Date(data.generatedAt).toLocaleString()} ·
-          Filters: bell-arm1, bell-arm2, bell-arm3 only
+          Filtering: bell-arm2 only (Arms 1 &amp; 3 retired)
         </p>
       )}
 
@@ -210,9 +212,9 @@ export default function FunnelByArmPage() {
 
       {data && (
         <>
-          {/* Total sessions per arm */}
+          {/* Total sessions */}
           <div style={S.section}>
-            <div style={S.sectionTitle}>Session totals (page views)</div>
+            <div style={S.sectionTitle}>Session totals (page views — Arm 2)</div>
             <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' as const }}>
               {ARMS.map(arm => (
                 <div key={arm} style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 10, padding: '1rem 1.5rem', minWidth: 150 }}>
@@ -308,25 +310,20 @@ export default function FunnelByArmPage() {
               </p>
             )}
             <p style={{ fontSize: 11, color: '#94a3b8', marginTop: '0.75rem' }}>
-              Spend = Meta adset spend (last 7 days) · Cost/PV = Spend ÷ page_view sessions ·
+              Spend = Meta adset spend (last 7 days, Arm 2 adset) · Cost/PV = Spend ÷ page_view sessions ·
               Cost/Trial = Spend ÷ wall_submit sessions · &quot;—&quot; = not configured or zero denominator.
             </p>
           </div>
 
           {/* Funnel table */}
           <div style={S.section}>
-            <div style={S.sectionTitle}>Stage-by-stage funnel</div>
+            <div style={S.sectionTitle}>Stage-by-stage funnel — Arm 2</div>
             <div style={S.tableWrap}>
               <table style={S.table}>
                 <thead>
                   <tr style={S.thRow}>
                     <th style={S.th}>Stage</th>
-                    {ARMS.map(arm => (
-                      <th key={arm} style={S.thArm}>
-                        {ARM_LABELS[arm]}
-                        <span style={{ display: 'block', fontSize: 10, color: '#94a3b8', fontWeight: 400 }}>{arm}</span>
-                      </th>
-                    ))}
+                    <th style={S.thArm}>Arm 2 — Bell Beneath Falls Park</th>
                   </tr>
                 </thead>
                 <tbody>
