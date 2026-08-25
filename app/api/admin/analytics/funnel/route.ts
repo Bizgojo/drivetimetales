@@ -144,7 +144,7 @@ async function fetchFunnelCounts(since: string): Promise<{
 
 // ── Reach fetch (Meta Graph API, per-adset) ───────────────────────────────────
 
-async function fetchReach(): Promise<{
+async function fetchReach(since: string): Promise<{
   arm1: number | null
   arm2: number | null
   arm3: number | null
@@ -160,8 +160,10 @@ async function fetchReach(): Promise<{
   if (!accessToken) return reach // META_ACCESS_TOKEN not set → all null
 
   // Explicit time_range required — date_preset is rejected by this token/endpoint.
-  // since = 2026-08-21: campaign effective-start, aligned with funnel-reach default.
-  const since = '2026-08-21'
+  // since is passed from the handler so reach and page_view counts always share
+  // the same date window (FUNNEL-WINDOW-ALIGN-001).
+  // Clamp to ISO date (YYYY-MM-DD) — Meta Graph API requires date strings, not timestamps.
+  const sinceDate = since.slice(0, 10)
   const until = new Date().toISOString().slice(0, 10)
 
   await Promise.all(
@@ -171,7 +173,7 @@ async function fetchReach(): Promise<{
         try {
           const url = new URL(`https://graph.facebook.com/v21.0/${id}/insights`)
           url.searchParams.set('fields', 'reach')
-          url.searchParams.set('time_range', JSON.stringify({ since, until }))
+          url.searchParams.set('time_range', JSON.stringify({ since: sinceDate, until }))
           url.searchParams.set('access_token', accessToken)
           const res = await fetch(url.toString(), {
             headers: { 'User-Agent': 'EndlessTales-OrionAgent/1.0' },
@@ -217,7 +219,7 @@ export async function GET(req: NextRequest) {
 
     const [{ arms, debug }, reach] = await Promise.all([
       fetchFunnelCounts(since),
-      fetchReach(),
+      fetchReach(since),
     ])
 
     return NextResponse.json(
