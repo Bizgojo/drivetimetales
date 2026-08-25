@@ -160,7 +160,8 @@ async function fetchReach(): Promise<{
   if (!accessToken) return reach // META_ACCESS_TOKEN not set → all null
 
   // Explicit time_range required — date_preset is rejected by this token/endpoint.
-  const since = '2026-08-16'
+  // since = 2026-08-21: campaign effective-start, aligned with funnel-reach default.
+  const since = '2026-08-21'
   const until = new Date().toISOString().slice(0, 10)
 
   await Promise.all(

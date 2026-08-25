@@ -15,7 +15,8 @@
 // If Meta API errors for a given arm, that arm's reach is null and error is surfaced.
 //
 // NOTE: date_preset is rejected by this token/endpoint (Meta error #100 for all
-// presets). Must use explicit time_range. Campaign first-delivery: 2026-08-16.
+// presets). Must use explicit time_range. Campaign effective-start (ad delivery
+// aligned to Marc's Ads Manager baseline): 2026-08-21.
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
@@ -131,8 +132,9 @@ export async function GET(req: NextRequest) {
       .map(([arm]) => arm)
 
     // Use explicit time_range — date_preset is rejected by this token/endpoint.
-    // Campaign first-delivery date: 2026-08-16.
-    const since = '2026-08-16'
+    // Default since = 2026-08-21 (campaign effective-start, verified in Ads Manager
+    // Aug 25 2026). Accepts ?since=YYYY-MM-DD override.
+    const since = req.nextUrl.searchParams.get('since') ?? '2026-08-21'
     const until = new Date().toISOString().slice(0, 10) // YYYY-MM-DD
 
     const reaches: Record<'arm1' | 'arm2' | 'arm3', number | null> = {
