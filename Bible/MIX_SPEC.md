@@ -3,13 +3,17 @@
 **Canon (Marc Postlewaite, Aug 24 2026)**
 **Production Standard: ASC3 v2 | SUNSET-MIX-SPEC-001**
 
+> **⚠️ OUTRO CANON SUPERSEDED — Aug 25 2026**
+> Marc issued a ruling at 11:10 EDT Aug 25 2026 that replaces all prior outro structure.
+> See Structure §3 and Assembly Diagram below. The intro sting is unchanged.
+
 ---
 
 ## Structure
 
 1. **Intro**: ET Signature Sting (v7) → Belle B narration begins at 1.5s while sting fades → narration completes → 0.75s silence. **NO music bed under narration.**
 2. **Story body**: Music pre-roll (2.5s at 65%) → continuous genre music bed (12% under dialogue) → story narration → music swell (2s, peaks at 85%) at body end.
-3. **Outro**: ET Signature Sting → Belle B outro narration begins at 1.5s while sting fades → narration completes. **NO music bed under narration.**
+3. **Outro** *(superseded Aug 25 2026 — see canon note above)*: Music crescendos at story body end → music fades **under** Belle B outro narration (no sting break, no separate sting) → narration completes → music continues fading for 2 more seconds → stop. **NO outro sting.** Music transitions continuously from the story body into the outro without interruption.
 
 ---
 
@@ -25,9 +29,9 @@
 | `PREROLL_VOL` | 0.65 | Music volume during pre-roll |
 | `POST_STORY_VOL` | 0.85 | Music swell peak at story body end |
 | `POST_STORY_TAIL` | 2.0 s | Duration of music swell after last voice line |
-| `V2_DUCK_VOL` | 0.019 | Music level under outro Belle narration (v2 path) |
+| `V2_DUCK_VOL` | 0.019 | Music level under outro Belle narration |
 | `V2_DUCK_RAMP` | 0.5 s | Ramp time from swell peak to duck level |
-| `V2_TAIL_FADE` | 3.0 s | Music fade to silence after Belle outro ends |
+| `V2_TAIL_FADE` | **2.0 s** | Music fade tail after outro narration ends (**updated Aug 25 2026** from 3.0 s — Marc canon) |
 | Sting file | `audio/sting/ET_Signature_Sting_v7.mp3.mp3` | Canonical ET sting |
 | Belle B voice | `GMhgX8fCR9GUtd3kmlKC` | Belle B (ElevenLabs) |
 
@@ -40,7 +44,7 @@ For episodes that have gone through the Aug 24 2026 correction pass:
 | File | Purpose |
 |---|---|
 | `asc3/<story_id>/intro_corrected.mp3` | Canonical corrected intro: ET sting + Belle narration. NO music bed. |
-| `asc3/<story_id>/outro_corrected.mp3` | Canonical corrected outro: ET sting + Belle narration. NO music bed. |
+| `asc3/<story_id>/outro_corrected.mp3` | Canonical corrected outro: music fade under Belle narration + 2 s tail. **No outro sting** (Aug 25 2026 canon). |
 
 `core.ts` gives these files **absolute priority** over all other intro/outro files when they exist in storage.
 
@@ -99,11 +103,14 @@ Per standing workflow (Marc, Aug 21 2026): **no corrected episode goes live unti
                                        ↕ (mixed under)
                              [Story voice segments] ─► [Music swell 2s @ 85%]
 
-[ET Sting v7] ─────┐
-                   ├──(overlap at 1.5s)──► [Belle outro narration] ─► [Music fades 3s]
-[Belle enters]─────┘
+⚠️ UPDATED Aug 25 2026:
+[Music swell peak] ──► [Music fades UNDER outro narration] ──► [+2 s fade tail] ──► STOP
+                                    ↕ (fading beneath)
+                         [Belle B outro narration]
 ```
 
 ---
 
 *This spec supersedes any prior per-episode assembly notes that reference `intro_outro_music.mp3` for intro/outro stings.*
+
+*The outro structure in §3 and the Assembly Diagram supersede all prior outro rules effective Aug 25 2026 (Marc Postlewaite, 11:10 EDT). The intro sting (§1) is unchanged.*
