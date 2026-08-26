@@ -36,10 +36,9 @@ const EP2_STORY_ID = '759dc525-185c-450f-b249-17e4a525ba60'
 const BELL_ARM_INTS = [1, 2, 3] as const
 type ArmInt = 1 | 2 | 3
 
-// CAMPAIGN_START_DATE: set this to the campaign go-live timestamp before first spend.
-// Leave as null until Marc sets the real date.
-// Format: ISO 8601 UTC, e.g. '2026-08-20T04:00:00.000Z'
-const CAMPAIGN_START_DATE: string | null = '2026-08-18T04:00:00.000Z' // midnight EDT Aug 18 (Marc auth 2026-08-16)
+// DEFAULT_SINCE: aligned with funnel page (2026-08-21 = BELL-GATE-WELCOME-UX-001 fix deploy).
+// Override via ?since= query param (ISO 8601 UTC).
+const DEFAULT_SINCE = '2026-08-21T00:00:00.000Z'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -83,6 +82,7 @@ export type SignupsArmData = {
 
 export type SignupsResponse = {
   generatedAt: string
+  since: string
   ep2StoryId: string
   arms: Record<ArmInt, SignupsArmData>
 }
@@ -95,13 +95,17 @@ export async function GET(req: NextRequest) {
 
     const { admin } = clients()
 
+    // Accept ?since= override; fall back to DEFAULT_SINCE
+    const sinceParam = req.nextUrl.searchParams.get('since') || DEFAULT_SINCE
+    const sinceDate = new Date(sinceParam).toISOString()
+
     // Fetch bell-invitation users
-    let usersQuery = admin
+    const usersQuery = admin
       .from('users')
       .select('id, listen_arm, is_test_account')
       .eq('signup_source', 'bell-invitation')
       .in('listen_arm', [...BELL_ARM_INTS])
-    if (CAMPAIGN_START_DATE !== null) usersQuery = usersQuery.gte('created_at', CAMPAIGN_START_DATE)
+      .gte('created_at', sinceDate)
     const { data: rawUsers, error: usersErr } = await usersQuery
 
     if (usersErr) {
@@ -191,6 +195,7 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json({
       generatedAt: new Date().toISOString(),
+      since: sinceDate,
       ep2StoryId: EP2_STORY_ID,
       arms,
     } satisfies SignupsResponse)
