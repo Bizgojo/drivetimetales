@@ -107,12 +107,13 @@ export interface FunnelCostResponse {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function sevenDayWindow(): { since: string; until: string } {
-  const now = new Date()
-  const until = now.toISOString().slice(0, 10) // YYYY-MM-DD (today UTC)
-  const since7 = new Date(now)
-  since7.setUTCDate(since7.getUTCDate() - 7)
-  const since = since7.toISOString().slice(0, 10)
+// FIX-DUAL-COUNT-001: campaignWindow accepts an ISO since string from the caller
+// (matches the ?since= param the page passes). Defaults to campaign start 2026-08-21
+// so that cost-metrics PV counts use the same window as the stage-funnel section.
+function campaignWindow(sinceIso: string): { since: string; until: string } {
+  const until = new Date().toISOString().slice(0, 10) // YYYY-MM-DD (today UTC)
+  // Clamp to YYYY-MM-DD for Meta Graph API (it rejects timestamps with time components)
+  const since = sinceIso.slice(0, 10)
   return { since, until }
 }
 
@@ -163,7 +164,11 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const { since, until } = sevenDayWindow()
+    // FIX-DUAL-COUNT-001: Accept ?since= from the page so this route uses the
+    // same date window as /api/admin/analytics/funnel. Defaults to 2026-08-21
+    // (campaign effective-start, Marc verified ground truth Aug 26 2026).
+    const sinceParam = req.nextUrl.searchParams.get('since') ?? '2026-08-21T00:00:00.000Z'
+    const { since, until } = campaignWindow(sinceParam)
     const accessToken = process.env.META_ACCESS_TOKEN ?? ''
     const { admin } = clients()
 
@@ -186,13 +191,13 @@ export async function GET(req: NextRequest) {
     // Collect any meta error to surface in response
     const metaError = spendResults.find(r => r.error)?.error
 
-    // ── 2. Fetch Supabase event counts (7-day rolling) ────────────────────────
+    // ── 2. Fetch Supabase event counts (campaign-aligned window) ──────────────
+    // FIX-DUAL-COUNT-001: Use sinceParam (from page ?since= param) instead of
+    // hardcoded 7-day rolling window so cost-metrics PV count matches stage-funnel.
     // Columns: session_id, variant (not "arm"), event
     // NOTE: go_listen_events does NOT have an is_test_account column (verified
-    // Aug 2026). Filter by variant + event + 7-day window only.
-    const sevenDaysAgo = new Date()
-    sevenDaysAgo.setUTCDate(sevenDaysAgo.getUTCDate() - 7)
-    const isoSince = sevenDaysAgo.toISOString()
+    // Aug 2026). Filter by variant + event + campaign-aligned window only.
+    const isoSince = sinceParam
 
     const { data: events, error: sbError } = await admin
       .from('go_listen_events')
@@ -247,7 +252,7 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json({
       arms,
-      window: '7d',
+      window: '7d', // kept for type compat; actual window is since→today (see sinceParam)
       fetchedAt: new Date().toISOString(),
       ...(metaError ? { metaError } : {}),
     } satisfies FunnelCostResponse)
