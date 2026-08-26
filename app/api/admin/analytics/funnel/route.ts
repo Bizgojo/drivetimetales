@@ -81,13 +81,27 @@ async function requireAdmin(req: NextRequest): Promise<boolean> {
 
 async function fetchFunnelCounts(since: string): Promise<{
   arms: Record<BellArm, Record<FunnelStage, number>>
-  debug: { totalEventsFetched: number; pagesFetched: number }
+  debug: { totalEventsFetched: number; pagesFetched: number; testSessionIdsExcluded: number }
 }> {
   const sb = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!,
     { auth: { persistSession: false } },
   )
+
+  // ATL-TESTUSER-003: Fetch test-account session IDs to exclude from funnel counts.
+  // Test accounts have is_test_account=true and a signup_session_id recorded at signup
+  // (backfilled for existing users via scripts/backfill-signup-session-id.js).
+  // Only exclude confirmed test sessions — unknowns (null signup_session_id) are kept.
+  const { data: testUsers } = await sb
+    .from('users')
+    .select('signup_session_id')
+    .eq('is_test_account', true)
+    .not('signup_session_id', 'is', null)
+  const testSessionIds = new Set<string>(
+    (testUsers ?? []).map((u: { signup_session_id: string }) => u.signup_session_id).filter(Boolean)
+  )
+  console.log(`[funnel] Excluding ${testSessionIds.size} test-account session IDs from counts`)
 
   // Paginate through ALL rows. PAGE_SIZE matches PostgREST max per response.
   // ORDER BY created_at ASC is required for stable OFFSET pagination — without
@@ -123,6 +137,8 @@ async function fetchFunnelCounts(since: string): Promise<{
   }
 
   for (const { session_id, variant, event } of allEvents) {
+    // ATL-TESTUSER-003: skip test-account sessions
+    if (testSessionIds.has(session_id)) continue
     if (
       BELL_VARIANTS.includes(variant as BellArm) &&
       FUNNEL_STAGES.includes(event as FunnelStage)
@@ -139,7 +155,7 @@ async function fetchFunnelCounts(since: string): Promise<{
     ]),
   ) as Record<BellArm, Record<FunnelStage, number>>
 
-  return { arms, debug: { totalEventsFetched: allEvents.length, pagesFetched } }
+  return { arms, debug: { totalEventsFetched: allEvents.length, pagesFetched, testSessionIdsExcluded: testSessionIds.size } }
 }
 
 // ── Reach fetch (Meta Graph API, per-adset) ───────────────────────────────────
@@ -203,7 +219,7 @@ export type FunnelResponse = {
   stages: readonly string[]
   arms: Record<BellArm, FunnelArmData>
   reach: { arm1: number | null; arm2: number | null; arm3: number | null }
-  _debug: { totalEventsFetched: number; pagesFetched: number }
+  _debug: { totalEventsFetched: number; pagesFetched: number; testSessionIdsExcluded: number }
 }
 
 // ── Handler ───────────────────────────────────────────────────────────────────

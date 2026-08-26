@@ -316,7 +316,7 @@ export async function POST(req: NextRequest) {
           // Case (c): Currently paying customer — touch ONLY listen_arm. NEVER touch subscription fields.
           // No Lead event: existing paying subscriber re-submitting the gate is not a new signup.
           const listenArmLabelC = armNum === 1 ? 'A' : armNum === 2 ? 'B' : 'C'
-          await supabase.from('users').update({ listen_arm: armNum, listen_arm_label: listenArmLabelC, is_test_account: isTestAccount, updated_at: new Date().toISOString() }).eq('id', found.id)
+          await supabase.from('users').update({ listen_arm: armNum, listen_arm_label: listenArmLabelC, is_test_account: isTestAccount, signup_session_id: (typeof sessionId === 'string' && sessionId.length > 0) ? sessionId : null, updated_at: new Date().toISOString() }).eq('id', found.id)
           await seedUserLibrary(found.id, armNum as 1 | 2 | 3)
           return NextResponse.json({ ok: true, active: true, userId: found.id })
         }
@@ -326,7 +326,7 @@ export async function POST(req: NextRequest) {
           // Do NOT modify subscription_type, subscription_ends_at, or plan.
           // No Lead event: lapsed user shown subscribe card is not a new signup.
           const listenArmLabelB = armNum === 1 ? 'A' : armNum === 2 ? 'B' : 'C'
-          await supabase.from('users').update({ listen_arm: armNum, listen_arm_label: listenArmLabelB, is_test_account: isTestAccount, updated_at: new Date().toISOString() }).eq('id', found.id)
+          await supabase.from('users').update({ listen_arm: armNum, listen_arm_label: listenArmLabelB, is_test_account: isTestAccount, signup_session_id: (typeof sessionId === 'string' && sessionId.length > 0) ? sessionId : null, updated_at: new Date().toISOString() }).eq('id', found.id)
           await seedUserLibrary(found.id, armNum as 1 | 2 | 3)
           const displayName = existingUser?.first_name || firstName
           return NextResponse.json({ ok: true, returning: true, userId: found.id, firstName: displayName, email: found.email })
@@ -350,6 +350,7 @@ export async function POST(req: NextRequest) {
           listen_arm: armNum,
           listen_arm_label: listenArmLabelA,
           is_test_account: isTestAccount,
+          signup_session_id: (typeof sessionId === 'string' && sessionId.length > 0) ? sessionId : null,
           updated_at: new Date().toISOString(),
         }, { onConflict: 'id' })
 
@@ -412,6 +413,7 @@ export async function POST(req: NextRequest) {
           listen_arm: armNum,
           listen_arm_label: listenArmLabelCollision,
           is_test_account: isTestAccount,
+          signup_session_id: (typeof sessionId === 'string' && sessionId.length > 0) ? sessionId : null,
           updated_at: new Date().toISOString(),
         })
         .ilike('email', escapedEmail) // case-insensitive — matches mixed-case legacy rows (FIX-1c)
@@ -442,6 +444,7 @@ export async function POST(req: NextRequest) {
         listen_arm: armNum,
         listen_arm_label: listenArmLabelNew,
         is_test_account: isTestAccount,
+        signup_session_id: (typeof sessionId === 'string' && sessionId.length > 0) ? sessionId : null,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       }, { onConflict: 'id' })

@@ -195,9 +195,19 @@ export async function GET(req: NextRequest) {
     // FIX-DUAL-COUNT-001: Use sinceParam (from page ?since= param) instead of
     // hardcoded 7-day rolling window so cost-metrics PV count matches stage-funnel.
     // Columns: session_id, variant (not "arm"), event
-    // NOTE: go_listen_events does NOT have an is_test_account column (verified
-    // Aug 2026). Filter by variant + event + campaign-aligned window only.
+    // ATL-TESTUSER-003: Exclude test-account session IDs via signup_session_id join.
     const isoSince = sinceParam
+
+    // Fetch test-account session IDs to exclude (same pattern as funnel/route.ts)
+    const { data: testUsers } = await admin
+      .from('users')
+      .select('signup_session_id')
+      .eq('is_test_account', true)
+      .not('signup_session_id', 'is', null)
+    const testSessionIds = new Set<string>(
+      (testUsers ?? []).map((u: { signup_session_id: string }) => u.signup_session_id).filter(Boolean)
+    )
+    console.log(`[funnel-cost] Excluding ${testSessionIds.size} test-account session IDs`)
 
     const { data: events, error: sbError } = await admin
       .from('go_listen_events')
@@ -227,6 +237,8 @@ export async function GET(req: NextRequest) {
     for (const row of events ?? []) {
       const v = row.variant as BellArm
       if (!BELL_ARMS.includes(v)) continue
+      // ATL-TESTUSER-003: skip test-account sessions
+      if (testSessionIds.has(row.session_id)) continue
       if (row.event === 'page_view') pvSets[v].add(row.session_id)
       else if (row.event === 'wall_submit') trialSets[v].add(row.session_id)
     }
