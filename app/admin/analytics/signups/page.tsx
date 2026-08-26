@@ -16,12 +16,14 @@ interface SignupsArmData {
 
 interface SignupsData {
   generatedAt: string
+  since: string
   ep2StoryId: string
   arms: Record<ArmInt, SignupsArmData>
 }
 
 // ─── Config ───────────────────────────────────────────────────────────────────
 
+const DEFAULT_SINCE = '2026-08-21T00:00:00.000Z'
 const ARMS: ArmInt[] = [1, 2, 3]
 const ARM_LABELS: Record<ArmInt, string> = { 1: 'Arm 1', 2: 'Arm 2', 3: 'Arm 3' }
 const ARM_KEYS: Record<ArmInt, string> = { 1: 'bell-arm1', 2: 'bell-arm2', 3: 'bell-arm3' }
@@ -114,9 +116,11 @@ export default function SignupsByArmPage() {
   const [data, setData] = useState<SignupsData | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [since] = useState(DEFAULT_SINCE)
 
   useEffect(() => {
-    fetch('/api/admin/analytics/signups')
+    setLoading(true)
+    fetch('/api/admin/analytics/signups?since=' + encodeURIComponent(since))
       .then(r => r.json())
       .then(d => {
         if (d.error) setError(d.error)
@@ -124,7 +128,7 @@ export default function SignupsByArmPage() {
       })
       .catch(e => setError(e.message))
       .finally(() => setLoading(false))
-  }, [])
+  }, [since])
 
   if (loading) return <div style={S.loading}>Loading signup data…</div>
 
@@ -134,10 +138,13 @@ export default function SignupsByArmPage() {
       <p style={S.subtitle}>
         Whether each arm attracts people who listen, or only people who submit an email.
       </p>
+      <p style={{ fontSize: 13, color: '#0f172a', fontWeight: 600, margin: '0 0 0.25rem', background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 6, padding: '6px 12px', display: 'inline-block' } as React.CSSProperties}>
+        Signups since: {since.slice(0, 10)}
+      </p>
       {data && (
         <p style={S.meta}>
           Generated {new Date(data.generatedAt).toLocaleString()} ·
-          Filter: signup_source = &lsquo;bell-invitation&rsquo;, listen_arm IN (1,2,3), is_test_account IS DISTINCT FROM true
+          Filter: signup_source = &lsquo;bell-invitation&rsquo;, listen_arm IN (1,2,3), is_test_account IS DISTINCT FROM true, created_at ≥ {(data.since || since).slice(0, 10)}
         </p>
       )}
 
