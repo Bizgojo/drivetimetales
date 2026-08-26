@@ -110,7 +110,9 @@ const S = {
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
-const CLEAN_CUTOFF = '2026-08-23T22:35:00.000Z'
+// FIX-SINCE-001: Changed from 2026-08-23T22:35:00.000Z (old clean-pipeline cutoff) to 2026-08-21
+// per Marc verified ground truth (585 unique page_view sessions since 2026-08-21 in Supabase).
+const CLEAN_CUTOFF = '2026-08-21T00:00:00.000Z'
 const FULL_CAMPAIGN = '2026-08-18T04:00:00.000Z'
 
 export default function FunnelByArmPage() {
@@ -142,15 +144,20 @@ export default function FunnelByArmPage() {
       .then(r => r.json())
       .then(setReach)
       .catch(() => setReach({ arm1_reach: null, arm2_reach: null, arm3_reach: null, configured_arms: [] }))
+  }, [])
 
-    fetch('/api/admin/analytics/funnel-cost')
+  // FIX-DUAL-COUNT-001: Pass `since` to funnel-cost so cost-metrics PV count uses the same
+  // date window as the stage-funnel section. Re-fetch whenever `since` changes.
+  useEffect(() => {
+    setCostLoading(true)
+    fetch('/api/admin/analytics/funnel-cost?since=' + encodeURIComponent(since))
       .then(r => r.json())
       .then(d => {
         if (!d.error) setCostData(d)
       })
       .catch(() => { /* non-fatal — cost section shows graceful fallback */ })
       .finally(() => setCostLoading(false))
-  }, [])
+  }, [since])
 
   if (loading) return <div style={S.loading}>Loading funnel data…</div>
 
@@ -166,7 +173,7 @@ export default function FunnelByArmPage() {
           onClick={() => { setSince(CLEAN_CUTOFF); setShowCustom(false) }}
           style={{ fontSize: 12, padding: '4px 10px', borderRadius: 6, border: '1px solid', cursor: 'pointer', background: since === CLEAN_CUTOFF && !showCustom ? '#0f172a' : '#fff', color: since === CLEAN_CUTOFF && !showCustom ? '#fff' : '#1e293b', borderColor: since === CLEAN_CUTOFF && !showCustom ? '#0f172a' : '#cbd5e1', fontWeight: 600 }}
         >
-          Clean pipeline (Aug 23 22:35 UTC)
+          Campaign start (Aug 21 00:00 UTC)
         </button>
         <button
           onClick={() => { setSince(FULL_CAMPAIGN); setShowCustom(false) }}
@@ -234,7 +241,7 @@ export default function FunnelByArmPage() {
 
           {/* ── Cost metrics table (7-day rolling) ─────────────────────── */}
           <div style={S.section}>
-            <div style={S.sectionTitle}>Cost metrics — 7-day rolling (Meta spend ÷ Supabase events)</div>
+            <div style={S.sectionTitle}>Cost metrics — since {since.slice(0, 10)} (Meta spend ÷ Supabase events)</div>
             {costLoading ? (
               <div style={{ color: '#94a3b8', fontSize: 13 }}>Loading cost data…</div>
             ) : (
@@ -310,7 +317,7 @@ export default function FunnelByArmPage() {
               </p>
             )}
             <p style={{ fontSize: 11, color: '#94a3b8', marginTop: '0.75rem' }}>
-              Spend = Meta adset spend (last 7 days, Arm 2 adset) · Cost/PV = Spend ÷ page_view sessions ·
+              Spend = Meta adset spend (since {since.slice(0, 10)}, Arm 2 adset) · Cost/PV = Spend ÷ page_view sessions ·
               Cost/Trial = Spend ÷ wall_submit sessions · &quot;—&quot; = not configured or zero denominator.
             </p>
           </div>
