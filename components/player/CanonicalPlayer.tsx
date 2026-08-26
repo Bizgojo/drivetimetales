@@ -357,7 +357,12 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
       readyState: audio.readyState,
       networkState: audio.networkState,
     })
+    // PLAYER-P0-001 (2026-08-26): 12-second timeout guards against loadedmetadata
+    // never firing (CDN hiccup, 5xx, network drop during reload). Without this,
+    // stallRecoveringRef stays true forever and the watchdog is permanently blinded.
+    let metaTimeout: ReturnType<typeof setTimeout> | null = null
     const onMeta = () => {
+      if (metaTimeout !== null) { clearTimeout(metaTimeout); metaTimeout = null }
       audio.removeEventListener('loadedmetadata', onMeta)
       try { audio.currentTime = pos } catch (_) {}
       audio.play().then(() => {
@@ -368,6 +373,29 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
         console.error('[player] stall recovery play() failed:', err)
       })
     }
+    metaTimeout = setTimeout(() => {
+      audio.removeEventListener('loadedmetadata', onMeta)
+      stallRecoveringRef.current = false
+      console.error('[player] stall recovery: loadedmetadata timed out after 12s', {
+        storyId,
+        attempt: stallRecoveryCountRef.current,
+        src: src.slice(-80),
+        readyState: audio.readyState,
+        networkState: audio.networkState,
+      })
+      // Retry if still under the 2-attempt cap; otherwise surface the error card.
+      if (stallRecoveryCountRef.current < 2) {
+        recoverFromStall()
+      } else {
+        audio.pause()
+        setIsPlaying(false)
+        setIsBuffering(false)
+        setAudioErrorMessage('Audio stalled — check your connection and try again.')
+        endAnalyticsSession('playback_error')
+        stallSampleRef.current = null
+        stallRecoveryCountRef.current = 0
+      }
+    }, 12000)
     audio.addEventListener('loadedmetadata', onMeta)
     audio.src = bustAudioUrl(src.replace(/[?&]et_retry=\d+/, ''))
     audio.load()
@@ -2325,6 +2353,14 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
               if (ni < queue.length) {
                 console.warn('[player] Skipping failed segment to next:', failedUrl)
                 advanceQueue('error_skip')
+              } else {
+                // PLAYER-P0-002 (2026-08-26): last segment (outro) failed — was previously
+                // a silent dead end (empty else branch). Treat as episode end so progress
+                // is saved and auto-advance fires, same as a trusted natural end.
+                console.error('[player] Last segment failed — treating as episode end:', failedUrl)
+                setIsPlaying(false)
+                saveProgress(cumTime, true)
+                maybeAutoAdvanceFromNaturalEnd('natural_ended')
               }
             }
           }
