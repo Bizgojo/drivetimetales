@@ -1,5 +1,6 @@
 'use client'
 
+import * as Sentry from '@sentry/nextjs'
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
@@ -371,6 +372,17 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
       }).catch((err) => {
         stallRecoveringRef.current = false
         console.error('[player] stall recovery play() failed:', err)
+        Sentry.captureException(err, {
+          tags: {
+            event_type: 'player_reliability',
+            p0_id: 'PLAYER-P0-001b',
+            story_id: storyId,
+            handled: 'true',
+          },
+          extra: {
+            attempt: stallRecoveryCountRef.current,
+          },
+        })
       })
     }
     metaTimeout = setTimeout(() => {
@@ -382,6 +394,21 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
         src: src.slice(-80),
         readyState: audio.readyState,
         networkState: audio.networkState,
+      })
+      Sentry.captureEvent({
+        message: 'player.stall_recovery.loadedmetadata_timeout',
+        level: 'warning',
+        tags: {
+          event_type: 'player_reliability',
+          p0_id: 'PLAYER-P0-001a',
+          story_id: storyId,
+        },
+        extra: {
+          attempt: stallRecoveryCountRef.current,
+          src: src.slice(-80),
+          readyState: audio.readyState,
+          networkState: audio.networkState,
+        },
       })
       // Retry if still under the 2-attempt cap; otherwise surface the error card.
       if (stallRecoveryCountRef.current < 2) {
@@ -2358,6 +2385,21 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
                 // a silent dead end (empty else branch). Treat as episode end so progress
                 // is saved and auto-advance fires, same as a trusted natural end.
                 console.error('[player] Last segment failed — treating as episode end:', failedUrl)
+                Sentry.captureEvent({
+                  message: 'player.last_segment_failed',
+                  level: 'warning',
+                  tags: {
+                    event_type: 'player_reliability',
+                    p0_id: 'PLAYER-P0-002',
+                    story_id: storyId,
+                    handled: 'true',
+                  },
+                  extra: {
+                    failedUrl,
+                    queueIndex,
+                    queueLength: queue.length,
+                  },
+                })
                 setIsPlaying(false)
                 saveProgress(cumTime, true)
                 maybeAutoAdvanceFromNaturalEnd('natural_ended')

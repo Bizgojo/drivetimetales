@@ -11,6 +11,7 @@
     "@aws-sdk/client-s3": "^3.490.0",
     "@aws-sdk/s3-request-presigner": "^3.490.0",
     "@ffmpeg-installer/ffmpeg": "^1.1.0",
+    "@sentry/nextjs": "^10.71.0",
     "@stripe/react-stripe-js": "^2.4.0",
     "@stripe/stripe-js": "^2.0.0",
     "@supabase/ssr": "^0.8.0",
