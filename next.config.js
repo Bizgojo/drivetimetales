@@ -1,5 +1,7 @@
+const { withSentryConfig } = require('@sentry/nextjs')
+
 /** @type {import('next').NextConfig} */
-module.exports = {
+const nextConfig = {
   typescript: { ignoreBuildErrors: true },
   experimental: {
     serverComponentsExternalPackages: ['ws', 'bufferutil', 'utf-8-validate', 'fluent-ffmpeg', 'sharp'],
@@ -28,3 +30,21 @@ module.exports = {
     ]
   },
 }
+
+module.exports = withSentryConfig(nextConfig, {
+  // Sentry build-time options
+  org: process.env.SENTRY_ORG,
+  project: process.env.SENTRY_PROJECT,
+  // Suppress source map upload warnings when env vars not set
+  silent: !process.env.SENTRY_AUTH_TOKEN,
+  // Disable source map upload during local dev (no auth token)
+  sourcemaps: {
+    disable: !process.env.SENTRY_AUTH_TOKEN,
+  },
+  // Don't require Sentry to be configured to build successfully
+  disableLogger: true,
+  // Automatically instrument common Next.js patterns
+  autoInstrumentServerFunctions: true,
+  autoInstrumentMiddleware: true,
+  autoInstrumentAppDirectory: true,
+})
