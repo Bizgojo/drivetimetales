@@ -430,10 +430,12 @@ async function runSegmentsMode({ story, sb, FOLDER, storageFiles, tmp, outputFil
 
   // ── Segment listing — SINGLE AUTHORITATIVE SOURCE ─────────────────────────
   // Segments explicitly excluded from final mix.
-  // PERMANENT: segment_0122 is a known duplicate — must never be in final mix.
+  // NOTE: segment_0122.mp3 permanent exclusion was removed 2026-08-27 for EP8 v12 full
+  // fresh re-render. In the new numbering (all 144 segs from current script), segment_0122
+  // is "NARRATOR: Ruth showed him how..." — valid narration, must NOT be excluded.
   // CLI --exclude flags add to this set per-run for story-specific orphans.
   const EXCLUDED_SEGMENTS = new Set([
-    'segment_0122.mp3',  // duplicate — excluded Aug 2026, must never be in final mix
+    // (empty — full fresh re-render, all segments are valid per current script)
   ]);
 
   // Merge CLI --exclude flags into EXCLUDED_SEGMENTS
@@ -529,22 +531,26 @@ async function runSegmentsMode({ story, sb, FOLDER, storageFiles, tmp, outputFil
   }
 
   // ── OUTRO ─────────────────────────────────────────────────────────────────
-  log('\n🎙  Resolving outro...');
+  // SEGMENTS MODE OUTRO RULE: outro_corrected.mp3 is "ET sting + Belle narration" —
+  // incompatible with v2 outro-with-music overlay. Use raw Belle narration only.
+  log('\n🎙  Resolving outro (segments mode — skipping outro_corrected.mp3)...');
   let outroSource = null;
   if (outroTextOverride) {
-    log(`  --outro-text provided: "${outroTextOverride}"`);
     await renderBelleB(outroTextOverride, outroP);
     outroSource = 'rendered:outro-text';
-    log('  Fresh outro rendered from --outro-text');
-  } else if (hasOutroCorrected) {
-    const outroCorUrl = `${SUPABASE_URL}/storage/v1/object/public/audio/asc3/${FOLDER}/outro_corrected.mp3`;
-    await dl(outroCorUrl, outroP, 'outro_corrected.mp3');
-    outroSource = 'storage:outro_corrected.mp3';
-    log('  Using outro_corrected.mp3 from storage');
   } else {
-    await dl(story.outro_audio_url, outroP, 'outro (DB url)');
-    outroSource = 'db:outro_audio_url';
-    log('  Using outro_audio_url from DB');
+    // Look for stale-tagged raw outro (outro_NNNN.mp3.stale-aug24)
+    const staleOutroFile = (storageFiles || []).find(f => /^outro_\d{4}\.mp3\.stale-aug24$/.test(f.name));
+    if (staleOutroFile) {
+      const staleUrl = `${SUPABASE_URL}/storage/v1/object/public/audio/asc3/${FOLDER}/${staleOutroFile.name}`;
+      await dl(staleUrl, outroP, staleOutroFile.name);
+      outroSource = `storage:${staleOutroFile.name} (raw Belle narration)`;
+      log(`  ✓ Using raw outro: ${staleOutroFile.name} (bypassing outro_corrected.mp3 — has sting baked in)`);
+    } else {
+      await dl(story.outro_audio_url, outroP, 'outro (DB url)');
+      outroSource = 'db:outro_audio_url';
+      log('  ✓ Using outro_audio_url from DB');
+    }
   }
 
   // ── SEGMENTS: download all to segDir ─────────────────────────────────────
@@ -587,43 +593,85 @@ async function runSegmentsMode({ story, sb, FOLDER, storageFiles, tmp, outputFil
 
   log(`  intro: ${introDur.toFixed(1)}s | story: ${(storyDur/60).toFixed(2)} min | outro: ${outroDur.toFixed(1)}s`);
 
-  // ── MUSIC BED: mix at 12% under story dialogue (MIX_SPEC NARRATION_BED_VOL = 0.12) ───
-  log('\n🎵  Mixing music bed at 12% under story dialogue...');
-  // 1) 2.5s pre-roll at 65% (music alone before voices begin, per MIX_SPEC MUSIC_PREROLL_SEC)
-  const prerollP   = path.join(tmp, 'music_preroll.mp3');
-  const storyBedP  = path.join(tmp, 'story_bed.mp3');
-  const storyWithBedP = path.join(tmp, 'story_with_bed.mp3');
+  // ── MUSIC BED v2: preroll(2.5s@65%) + bed(storyDur@12%) + swell(2s@0.85) ─────
+  log('\n🎵  Building v2 music shape (preroll+bed+swell)...');
+  const shapedMusicP  = path.join(tmp, 'music_shaped.mp3');
+  const delayedStoryP = path.join(tmp, 'story_delayed.mp3');
+  const storyBodyP    = path.join(tmp, 'story_body.mp3');
 
-  ff([
-    '-stream_loop', '-1', '-i', musicBedP,
-    '-t', '2.5',
-    '-af', 'volume=0.65,afade=t=in:st=0:d=0.5',
-    '-ar', '44100', '-ac', '2', '-b:a', '192k', '-y', prerollP,
-  ], 'music preroll (2.5s @ 65%)');
+  const musicShapeFilter =
+    `[0:a]atrim=start=0:duration=2.5,asetpts=PTS-STARTPTS,volume=0.65,afade=t=in:st=0:d=0.5[pre];` +
+    `[0:a]atrim=start=0:duration=${storyDur.toFixed(3)},asetpts=PTS-STARTPTS,volume=0.12[bed];` +
+    `[0:a]atrim=start=0:duration=2.0,asetpts=PTS-STARTPTS,volume=0.85,afade=t=in:st=0:d=2.0[swell];` +
+    `[pre][bed][swell]concat=n=3:v=0:a=1[music_out]`;
 
-  // 2) Continuous bed at 12% mixed under storyNorm for its full duration
-  ff([
-    '-stream_loop', '-1', '-i', musicBedP,
-    '-i', storyNorm,
+  ff(['-stream_loop', '-1', '-i', musicBedP,
+    '-filter_complex', musicShapeFilter,
+    '-map', '[music_out]',
+    '-ar', '44100', '-ac', '2', '-b:a', '192k', '-y', shapedMusicP], 'shape music (preroll+bed+swell)');
+
+  // Delay story narration by 2500ms to align with preroll
+  ff(['-i', storyNorm, '-af', 'adelay=2500|2500',
+    '-ar', '44100', '-ac', '2', '-b:a', '192k', '-y', delayedStoryP], 'delay story 2.5s');
+
+  // Mix delayed narration + shaped music (duration=longest preserves swell tail)
+  ff(['-i', delayedStoryP, '-i', shapedMusicP,
+    '-filter_complex', '[0:a][1:a]amix=inputs=2:duration=longest[mixed]',
+    '-map', '[mixed]', '-ar', '44100', '-ac', '2', '-b:a', '192k', '-y', storyBodyP],
+    'mix narration + shaped music');
+
+  const storyBodyDur = getDur(storyBodyP);
+  log(`  Story body (with swell): ${(storyBodyDur/60).toFixed(2)} min`);
+
+  // ── OUTRO WITH MUSIC v2 ──────────────────────────────────────────────────
+  // v2 outro: music ducks from swell peak (0.85) under Belle, then fades 2s after Belle ends
+  log('\n🎵  Building v2 outro with music (duck+fade)...');
+  const V2_DUCK_VOL  = 0.019;   // ~25% of narrative bed level (0.12 * 0.25 ≈ 0.019)
+  const V2_DUCK_RAMP = 0.5;     // seconds: ramp from 0.85 → 0.019
+  const V2_TAIL_FADE = 2.0;     // seconds: fade to silence after Belle ends (Marc spec)
+
+  const belleEnd    = V2_DUCK_RAMP + outroDur;
+  const fadeEnd     = belleEnd + V2_TAIL_FADE;
+  const outroBed    = fadeEnd + 0.5;  // music clip length + buffer
+
+  const outroVolExpr =
+    `if(lt(t,${V2_DUCK_RAMP.toFixed(3)}),` +
+      `0.85+(${V2_DUCK_VOL}-0.85)*t/${V2_DUCK_RAMP},` +
+    `if(lt(t,${belleEnd.toFixed(3)}),${V2_DUCK_VOL},` +
+    `max(0,${V2_DUCK_VOL}*(1-(t-${belleEnd.toFixed(3)})/${V2_TAIL_FADE}))))`;
+
+  const outroMusicClipP = path.join(tmp, 'outro_music_clip.mp3');
+  const outroBelleDelP  = path.join(tmp, 'outro_belle_del.mp3');
+  const outroWithMusicP = path.join(tmp, 'outro_with_music.mp3');
+
+  // Extract shaped outro music
+  ff(['-stream_loop', '-1', '-t', String(outroBed), '-i', musicBedP,
     '-filter_complex',
-    '[0:a]volume=0.12[bed];[1:a][bed]amix=inputs=2:duration=first:dropout_transition=1[out]',
-    '-map', '[out]',
-    '-ar', '44100', '-ac', '2', '-b:a', '192k', '-y', storyBedP,
-  ], 'mix music bed @ 12% under story');
+    `[0:a]atrim=duration=${outroBed},asetpts=PTS-STARTPTS,volume='${outroVolExpr}':eval=frame[out]`,
+    '-map', '[out]', '-ar', '44100', '-ac', '2', '-b:a', '192k', '-y', outroMusicClipP],
+    'shape outro music (duck+fade)');
 
-  // 3) Prepend pre-roll to the bed-mixed story
-  concatFiles([prerollP, storyBedP], storyWithBedP, 'concat preroll + story-with-bed');
+  // Delay Belle narration by duck ramp
+  ff(['-i', outroNorm,
+    '-af', `adelay=${Math.round(V2_DUCK_RAMP*1000)}|${Math.round(V2_DUCK_RAMP*1000)}`,
+    '-ar', '44100', '-ac', '2', '-b:a', '192k', '-y', outroBelleDelP],
+    'delay Belle outro 0.5s');
 
-  const storyBedDur = getDur(storyWithBedP);
-  log(`  Music bed applied: preroll 2.5s + story ${(storyBedDur/60).toFixed(2)} min total`);
-  log(`  intro: ${introDur.toFixed(1)}s | story+bed: ${(storyBedDur/60).toFixed(2)} min | outro: ${outroDur.toFixed(1)}s`);
+  // Mix Belle + outro music (volume=2 compensates amix ÷2)
+  ff(['-i', outroBelleDelP, '-i', outroMusicClipP,
+    '-filter_complex',
+    '[0:a][1:a]amix=inputs=2:duration=longest[mixed];[mixed]volume=2[out]',
+    '-map', '[out]', '-ar', '44100', '-ac', '2', '-b:a', '192k', '-y', outroWithMusicP],
+    'mix Belle + outro music');
 
+  const outroWithMusicDur = getDur(outroWithMusicP);
+  log(`  outro_with_music: ${outroWithMusicDur.toFixed(1)}s (duck+fade under ${outroDur.toFixed(1)}s Belle + ${V2_TAIL_FADE}s tail)`);
 
   // ── Timeline ──────────────────────────────────────────────────────────────
   const sections = [
     ['Belle B intro', introDur],
-    ['Story + music bed', storyBedDur],
-    ['Belle B outro',  outroDur],
+    ['Story body + music (v2)', storyBodyDur],
+    ['Outro with music (v2)', outroWithMusicDur],
   ];
   let t = 0;
   log('\n⏱   Timeline:');
@@ -631,18 +679,18 @@ async function runSegmentsMode({ story, sb, FOLDER, storageFiles, tmp, outputFil
     log(`    ${t.toFixed(1)}s → ${(t+dur).toFixed(1)}s  [${label}]`);
     t += dur;
   }
-  const totalExpected = t;
+  const totalExpected = introDur + storyBodyDur + outroWithMusicDur;
   log(`    Total expected: ${(totalExpected/60).toFixed(2)} min`);
 
   // ── Concat final mix ──────────────────────────────────────────────────────
-  log('\n🎬  Building final mix...');
+  log('\n🎬  Building final mix (intro + story-body + outro-with-music)...');
   const finalP   = path.join(tmp, 'final_mix.mp3');
   const limitedP = path.join(tmp, 'final_limited.mp3');
 
   concatFiles(
-    [introNorm, storyWithBedP, outroNorm],
+    [introNorm, storyBodyP, outroWithMusicP],
     finalP,
-    'concat intro + story-with-bed + outro',
+    'concat intro + story-body + outro-with-music',
   );
 
   ff(['-i', finalP,
@@ -674,9 +722,9 @@ async function runSegmentsMode({ story, sb, FOLDER, storageFiles, tmp, outputFil
 
   const storyStart = introDur;
   const checkPositions = [
-    storyStart + storyBedDur * 0.25,
-    storyStart + storyBedDur * 0.50,
-    storyStart + storyBedDur * 0.75,
+    storyStart + storyBodyDur * 0.25,
+    storyStart + storyBodyDur * 0.50,
+    storyStart + storyBodyDur * 0.75,
   ];
   const fingerprints = checkPositions.map(pos => ({
     pos: pos.toFixed(1),
