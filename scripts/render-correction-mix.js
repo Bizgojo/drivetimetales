@@ -422,6 +422,12 @@ async function runStoryBodyMode({ story, sb, FOLDER, storageFiles, tmp, outputFi
 // Music bed replaces IO stings (MIX_SPEC SUNSET-MIX-SPEC-001, Aug 26 2026).
 // Assembly: [intro_norm] + [story_body + music bed @ 12%] + [outro_norm]
 // No intro_outro_music.mp3 IO stings — that music is retired from segments mode.
+//
+// PREREQUISITE — MISSING-STORY-MUSIC-001 (Marc ruling 2026-08-27, HARD FAIL):
+// asc3/<STORY_ID>/background_music.mp3 MUST exist in Supabase storage before running.
+// This script will throw MISSING_STORY_MUSIC and abort if the file is absent.
+// Generate story-specific music via kie.ai/Suno first. The shared root
+// intro_outro_music.mp3 is NEVER acceptable as a music bed for any specific story.
 
 async function runSegmentsMode({ story, sb, FOLDER, storageFiles, tmp, outputFilename, outroTextOverride, excludeSegments }) {
   log('\n══════════════════════════════════════════');
@@ -483,9 +489,14 @@ async function runSegmentsMode({ story, sb, FOLDER, storageFiles, tmp, outputFil
   const outroP    = path.join(tmp, 'outro_raw.mp3');
   const musicBedP = path.join(tmp, 'music_bed_src.mp3');
 
-  // ── MUSIC BED: story-specific background_music.mp3, fallback to root ──────
+  // ── MUSIC BED: story-specific background_music.mp3 — REQUIRED, no fallback ──
   // MIX_SPEC SUNSET-MIX-SPEC-001: genre music bed at 12% under dialogue.
   // NOTE: IO stings from intro_outro_music.mp3 are RETIRED — not used here.
+  // MISSING-STORY-MUSIC-001 (2026-08-27, Marc ruling): missing background_music.mp3
+  // is a HARD FAIL. This has silently fallen back to root intro_outro_music.mp3 twice
+  // (EP8 and EP9) — producing wrong music for both episodes. The root file is NEVER
+  // the correct background music for any specific story. Generate story-specific music
+  // via kie.ai/Suno before running this script.
   log('\n🎵  Resolving music bed source...');
   const hasStoryBgMusic = (storageFiles || []).some(f => f.name === 'background_music.mp3');
   let musicBedSource;
@@ -495,10 +506,14 @@ async function runSegmentsMode({ story, sb, FOLDER, storageFiles, tmp, outputFil
     musicBedSource = `storage:asc3/${FOLDER}/background_music.mp3`;
     log('  ✓ Using story-specific background_music.mp3');
   } else {
-    const fallbackUrl = `${SUPABASE_URL}/storage/v1/object/public/audio/intro_outro_music.mp3`;
-    await dl(fallbackUrl, musicBedP, 'intro_outro_music.mp3 (fallback)');
-    musicBedSource = 'root:intro_outro_music.mp3 (fallback — no story background_music.mp3)';
-    log('  ⚠️  No story-specific background_music.mp3 — falling back to root intro_outro_music.mp3');
+    throw new Error(
+      `MISSING_STORY_MUSIC: No background_music.mp3 found in storage for story ${STORY_ID}.\n` +
+      `Generate story-specific music first (kie.ai/Suno with story's SUNO PROMPT), upload as:\n` +
+      `  asc3/${FOLDER}/background_music.mp3\n` +
+      `Then re-run this script. DO NOT proceed with the shared root intro_outro_music.mp3 —\n` +
+      `it is never the correct background music for any specific story.\n` +
+      `(MISSING-STORY-MUSIC-001: third occurrence, now a hard gate per Marc ruling 2026-08-27)`
+    );
   }
   const musicBedDur = getDur(musicBedP);
   if (musicBedDur < 1) {
