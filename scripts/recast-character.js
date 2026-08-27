@@ -7,11 +7,16 @@
  * then rebuilds the final mix. Leaves all other character voices untouched.
  *
  * Usage:
- *   node scripts/recast-character.js <storyId> <characterName> <newVoiceId> [--dry-run]
+ *   node scripts/recast-character.js <storyId> <characterName> <newVoiceId> [options]
  *
  * Options:
- *   --dry-run    Print plan only — no storage deletes, no API calls, no DB writes
- *   --voice-only Use voice-only-render.js path (no music stings) instead of full render-story-mix
+ *   --dry-run        Print plan only — no storage deletes, no API calls, no DB writes
+ *                   (Phase 1b orphan preflight runs and may HALT even in dry-run mode)
+ *   --voice-only     Use voice-only-render.js path (no music stings) instead of full render-story-mix
+ *   --exclude SEG    Exclude segment_NNNN[.mp3] from Phase 4 concat (repeatable).
+ *                   Required when Mechanism A orphan candidate detected — operator confirms exclusion.
+ *   --allow-orphans  Skip the Mechanism A HALT and proceed even if candidates are found.
+ *                   Use only after manual review confirms the candidates are NOT orphans.
  *
  * Examples:
  *   node scripts/recast-character.js 60fce080-ae81-4b13-91f2-41899a8dc025 "Gray" "0fbdXLXuDBZXm2IHek4L" --dry-run
@@ -28,6 +33,7 @@ const { spawnSync } = require('child_process')
 const fs = require('fs')
 const path = require('path')
 const os = require('os')
+const { detectOrphans } = require('./lib/orphan-detection')
 
 // ── VOICE-FALLBACK-001 gate ────────────────────────────────────────────────────
 // Loaded lazily after TypeScript compile; if the compiled JS is not present we
@@ -66,8 +72,19 @@ const args     = process.argv.slice(2)
 const storyId  = args[0]
 const charName = args[1]
 const newVoiceId = args[2]
-const dryRun   = args.includes('--dry-run')
-const voiceOnly = args.includes('--voice-only')
+const dryRun      = args.includes('--dry-run')
+const voiceOnly   = args.includes('--voice-only')
+const allowOrphans = args.includes('--allow-orphans')
+
+// Parse repeatable --exclude flags (accepts segment_NNNN or segment_NNNN.mp3)
+const excludeArgs = []
+for (let i = 0; i < args.length; i++) {
+  if (args[i] === '--exclude' && args[i + 1]) {
+    const seg = args[++i]
+    excludeArgs.push(seg.endsWith('.mp3') ? seg : seg + '.mp3')
+  }
+}
+const excludeArgSet = new Set(excludeArgs)
 
 if (!storyId || !charName || !newVoiceId) {
   console.error('Usage: node scripts/recast-character.js <storyId> <characterName> <newVoiceId> [--dry-run]')
@@ -152,6 +169,7 @@ async function dl(url, dest) {
 
 // ── Main ─────────────────────────────────────────────────────────────────────
 async function main() {
+  let mechBAutoExclude = []   // populated by Phase 1b; consumed by Phase 4
   const audit = {
     tool: 'recast-character',
     version: 'VOICE-ONLY-REPAIR-001',
@@ -172,6 +190,9 @@ async function main() {
   if (storyErr || !story) { console.error('Story not found:', storyErr?.message); process.exit(1) }
   console.log(`   title: "${story.title}"`)
   if (!story.script) { console.error('Story has no script'); process.exit(1) }
+
+  // Compute storyFolder early — needed in Phase 1b (orphan preflight) as well as Phase 3
+  const storyFolder = (story.story_audio_url || story.audio_url || '').match(/asc3\/([^/?]+)\//)?.[1] || storyId
 
   const allLines = parseScriptLines(story.script)
   const normChar = normalizeCharName(charName)
@@ -261,6 +282,60 @@ async function main() {
     newVoiceName,
   }
 
+  // ── Phase 1b: Storage orphan preflight ───────────────────────────────────────────────
+  console.log('\n▶ Phase 1b — Storage orphan preflight')
+  const { data: storageFilesForOrphan, error: listErr } = await sb.storage.from('audio')
+    .list(`asc3/${storyFolder}`, { limit: 500, sortBy: { column: 'name', order: 'asc' } })
+
+  if (listErr) {
+    console.warn(`  ⚠ Storage list failed — orphan check skipped: ${listErr.message}`)
+  } else {
+    const segFilesForOrphan = (storageFilesForOrphan || []).filter(f => /^segment_\d{4}\.mp3$/.test(f.name))
+    const recastTargetPositions = new Set(charLines.map(l => l.index))
+    const orphanResult = detectOrphans(segFilesForOrphan, allLines, charLines, recastTargetPositions)
+
+    audit.phases.orphanPreflight = orphanResult
+
+    if (orphanResult.mechanismB.length > 0) {
+      console.log(`\n  🚨 Mechanism B orphans detected (HIGH confidence — auto-excluded from Phase 4):`)
+      for (const o of orphanResult.mechanismB) {
+        console.log(`    ${o.name}: position ${o.position} >= script length (${allLines.length} lines), size ${(o.size / 1024).toFixed(0)}KB`)
+      }
+      mechBAutoExclude = orphanResult.mechanismB.map(o => o.name)
+    }
+
+    if (orphanResult.mechanismACandidates.length > 0) {
+      console.log(`\n  ⚠ Mechanism A orphan CANDIDATES detected (require explicit --exclude):`)
+      for (const c of orphanResult.mechanismACandidates) {
+        console.log(`    ${c.name}: N-1 of recast pos ${c.recastNeighbor}, size ${(c.size / 1024).toFixed(0)}KB, current speaker at pos ${c.position}: ${c.currentSpeakerAtPos}`)
+        console.log(`    Reason: ${c.reason}`)
+      }
+
+      const uncovered = orphanResult.mechanismACandidates.filter(c => !excludeArgSet.has(c.name))
+      if (uncovered.length > 0 && !allowOrphans) {
+        console.error(`\n  ❌ HALT — Mechanism A orphan candidates require explicit --exclude:`)
+        for (const c of uncovered) {
+          console.error(`    --exclude ${c.name.replace('.mp3', '')}`)
+        }
+        console.error(`  Re-run with the above --exclude flags to confirm exclusion, or add --allow-orphans to skip check.`)
+        audit.haltReason = 'Mechanism A orphan candidates require --exclude'
+        audit.haltAt = new Date().toISOString()
+        writeAuditLog(audit)
+        process.exit(1)
+      } else if (uncovered.length === 0) {
+        console.log(`  ✔ All Mechanism A candidates covered by --exclude flags`)
+      } else if (allowOrphans) {
+        console.warn(`  ⚠ --allow-orphans set — skipping Mechanism A HALT (${orphanResult.mechanismACandidates.length} candidate(s) unresolved)`)
+      }
+    }
+
+    if (orphanResult.mechanismB.length === 0 && orphanResult.mechanismACandidates.length === 0) {
+      console.log('  ✔ No orphans detected — storage is clean')
+    } else {
+      console.log(`\n  Summary: ${orphanResult.summary}`)
+    }
+  }
+
   if (dryRun) {
     audit.dryRunEndedAt = new Date().toISOString()
     writeAuditLog(audit)
@@ -296,7 +371,7 @@ async function main() {
 
   // ── Phase 3: Segment re-render ───────────────────────────────────────────────
   console.log(`\n▶ Phase 3 — Segment re-render (${charLines.length} segments)`)
-  const storyFolder = (story.story_audio_url || story.audio_url || '').match(/asc3\/([^/?]+)\//)?.[1] || storyId
+  // storyFolder already computed in Phase 1
   const segResults = []
 
   for (let i = 0; i < charLines.length; i++) {
@@ -337,9 +412,21 @@ async function main() {
   // ── Phase 4: Rebuild mix ─────────────────────────────────────────────────────
   console.log('\n▶ Phase 4 — Rebuild mix')
   const { data: files } = await sb.storage.from('audio').list(`asc3/${storyFolder}`, { limit: 400, sortBy: { column: 'name', order: 'asc' } })
-  const segs = (files || []).filter(f => f.name.startsWith('segment_') && f.name.endsWith('.mp3'))
-    .sort((a, b) => a.name.localeCompare(b.name))
-  console.log(`  segments in storage: ${segs.length}`)
+  // Apply orphan exclusion list: Mechanism B auto-excludes + --exclude CLI flags
+  const mechBSet = new Set(mechBAutoExclude || [])
+  const segs = (files || []).filter(f => {
+    if (!f.name.startsWith('segment_') || !f.name.endsWith('.mp3')) return false
+    if (mechBSet.has(f.name)) {
+      console.log(`  Auto-excluding Mechanism B orphan: ${f.name}`)
+      return false
+    }
+    if (excludeArgSet.has(f.name)) {
+      console.log(`  Excluding (--exclude flag): ${f.name}`)
+      return false
+    }
+    return true
+  }).sort((a, b) => a.name.localeCompare(b.name))
+  console.log(`  segments in storage: ${segs.length} (after orphan exclusion)`)
 
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'recast-'))
   try {
