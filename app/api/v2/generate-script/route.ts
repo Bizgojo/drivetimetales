@@ -1,9 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import Anthropic from '@anthropic-ai/sdk'
+import fs from 'fs'
+import path from 'path'
 import { logAnthropicCall } from '@/app/lib/anthropic-logger'
 import { buildNamePalettePromptBlock } from '@/lib/story/namePalette'
 import { runPremiseGate, formatPremiseCollisionMessage, formatPremiseAdjacentWarning } from '@/lib/premiseGate'
+import { loadActiveExcellenceLessons } from '@/lib/storyExcellenceLedger'
 
 export const runtime = 'nodejs'
 
@@ -122,6 +125,47 @@ function runtimeTarget(runtime: string) {
   }
 }
 
+/**
+ * Load a canon document from the project root.
+ * Throws with a named error code if the file is missing — no silent fallback.
+ * A missing canon document is a production blocker, not a graceful degradation case.
+ *
+ * CANON-001: This registry takes precedence over ET_Story_Rules and STAGE2_SCRIPT_PROMPT
+ * wherever they conflict. Conflicts are flagged inline in buildEnrichedPrompt() below.
+ */
+function loadCanonDoc(relPath: string, errorCode: string): string {
+  const fullPath = path.join(process.cwd(), relPath)
+  try {
+    return fs.readFileSync(fullPath, 'utf-8')
+  } catch (err) {
+    throw new Error(
+      `${errorCode}: Could not read ${relPath} at ${fullPath} — ` +
+      `${err instanceof Error ? err.message : String(err)}`
+    )
+  }
+}
+
+/**
+ * Format excellence lessons for inclusion in the prompt.
+ * Returns empty string if no lessons — never throws.
+ */
+function formatExcellenceBlock(lessons: Awaited<ReturnType<typeof loadActiveExcellenceLessons>>): string {
+  if (!lessons.length) return ''
+  return (
+    `\n\n${'='.repeat(80)}\n` +
+    `EXCELLENCE LESSONS — MANDATORY (${lessons.length} active from Marc's actual rejections)\n` +
+    `${'='.repeat(80)}\n` +
+    `Study each lesson. Do not repeat these patterns. These are not suggestions.\n\n` +
+    lessons
+      .map((l, i) =>
+        `[LESSON-${i + 1}] Category: ${l.lesson_category}\n` +
+        `${l.lesson_text}` +
+        (l.prevention_rule ? `\nPrevention rule: ${l.prevention_rule}` : '')
+      )
+      .join('\n\n')
+  )
+}
+
 async function loadRecentStoryTexts() {
   const { data, error } = await supabase
     .from('stories')
@@ -210,6 +254,47 @@ export async function POST(req: NextRequest) {
         adjacencies: premiseGate.adjacencies,
       })
     }
+    // ── CANON DOCUMENT LOADING (feat/canon-hal-brief-001) ───────────────────────────────
+    // Port of the four inputs used in the proven manual Hal session (HAL_SESSION_START_PROTOCOL.md).
+    // Files are read at request time: updating a file takes effect on the next call, no deploy needed.
+    //
+    // Hard-fail if any required document is missing — a missing canon doc is a production blocker.
+    // Do NOT add silent fallbacks here. If these files are missing, the build is broken.
+    //
+    // Authority order (CANON-001): Canon Registry > ET Story Rules v3.2 > STAGE2 v2.4 > inline block
+    //
+    // KNOWN DISCREPANCIES between documents — flagged for Marc's ruling, not silently resolved:
+    //   DISC-001: DESCRIPTION constraint — route.ts inline says "70 characters or fewer";
+    //             ET_Story_Rules_v3_2 (r14) and STAGE2 v2.4 both say "24 words maximum".
+    //             Canon Registry has no DESCRIPTION rule. ET Rules and STAGE2 agree on 24 words.
+    //             Resolution needed: Marc should confirm which governs, then update inline block.
+    //   DISC-002: SFX frequency — ET_Story_Rules_v3_2 (r11) says "at least one every 60–90 seconds";
+    //             STAGE2 v2.4 says "3–6 anchor SFX cues per story". Canon Registry SFX-001 says
+    //             max 3 SFX per episode. Use Canon Registry SFX-001 as governing (CANON-001).
+    //   DISC-004: Resolution Map placement — STAGE2 is explicit: above Belle B intro block.
+    //             Inline block says "comment block at the top" without specifying above/below Belle B.
+    //             STAGE2 wins per CANON-001 ordering.
+    //   DISC-005: Series Belle intro — inline block says "Belle B intro MUST name the series title";
+    //             STAGE2 (r36) and ET_Story_Rules_v3_2 Belle B Intro Standard do not list this
+    //             requirement. Canon Registry BELLE-001 does not address it either.
+    //             Resolution needed: Marc should confirm whether series-title-in-Belle-intro is canon.
+    const canonRegistryRules = loadCanonDoc(
+      'Bible/CANON_REGISTRY_STORY_RULES.md',
+      'ET_CANON_REGISTRY_MISSING'
+    )
+    const etStoryRules = loadCanonDoc(
+      'Bible/ET_Story_Rules_v3_2_CANONICAL.md',
+      'ET_STORY_RULES_MISSING'
+    )
+    const stage2Prompt = loadCanonDoc(
+      'docs/STAGE2_SCRIPT_PROMPT.md',
+      'STAGE2_PROMPT_MISSING'
+    )
+    // Excellence lessons: additive, never blocking. Returns [] on any DB error.
+    const excellenceLessons = await loadActiveExcellenceLessons(supabase)
+    const excellenceBlock = formatExcellenceBlock(excellenceLessons)
+    // ── END CANON DOCUMENT LOADING ──────────────────────────────────────────────────────
+
     const target = runtimeTarget(brief.runtime || '')
     const recentStoryTexts = await loadRecentStoryTexts()
     const namePaletteBlock = buildNamePalettePromptBlock({
@@ -219,7 +304,49 @@ export async function POST(req: NextRequest) {
       recentStoryTexts,
     })
 
-    const prompt = `You are the Endless Tales Stage 2 script writer.
+    const prompt = `${'='.repeat(80)}
+CANON REGISTRY — STORY-WRITING RULES
+Authority: SUPREME per CANON-001. These rules take precedence over everything below,
+including ET Story Rules v3.2 and STAGE2 v2.4, wherever they conflict.
+Loaded: ${new Date().toISOString().slice(0, 10)} from Bible/CANON_REGISTRY_STORY_RULES.md
+${'='.repeat(80)}
+
+${canonRegistryRules}
+
+${'='.repeat(80)}
+ENDLESS TALES STORY BIBLE v3.2 — CANONICAL
+Loaded from: Bible/ET_Story_Rules_v3_2_CANONICAL.md
+Note: Where this document conflicts with the Canon Registry above, Canon Registry wins (CANON-001).
+Known conflict: r11 SFX frequency ("every 60–90 seconds") is superseded by Canon Registry SFX-001
+(max 3 SFX per episode). Follow SFX-001.
+${'='.repeat(80)}
+
+${etStoryRules}
+
+${'='.repeat(80)}
+STAGE 2 MASTER PROMPT v2.4
+Loaded from: docs/STAGE2_SCRIPT_PROMPT.md
+Note: Where this document conflicts with the Canon Registry above, Canon Registry wins (CANON-001).
+Note: Internal footer version mismatch (footer says v2.3, header says v2.4) — header is correct;
+      the Early Investment Rule (r42) was added June 26 2026 as v2.4 and the footer was not updated.
+Known conflict: DESCRIPTION constraint in this document (24 words max) differs from the
+      inline production block below (70 characters). Both ET Story Rules and this document agree
+      on 24 words. Resolution flagged as DISC-001 — Marc to confirm which governs.
+Known conflict: SFX frequency — this document (3–6 anchors) supersedes ET Story Rules r11
+      (every 60–90s). Canon Registry SFX-001 (max 3) supersedes both. Follow SFX-001.
+${'='.repeat(80)}
+
+${stage2Prompt}
+${excellenceBlock}
+
+${'='.repeat(80)}
+IMMEDIATE PRODUCTION INSTRUCTIONS
+The sections above are the canonical inputs from the proven manual Hal session.
+Where the sections above and the instructions below conflict, the above sections win (CANON-001).
+The instructions below provide story-specific context and production format requirements.
+${'='.repeat(80)}
+
+You are the Endless Tales Stage 2 script writer.
 
 🎯 ENTERTAINMENT FIRST RULE — NON-NEGOTIABLE
 
