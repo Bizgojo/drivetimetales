@@ -74,7 +74,7 @@ function isInvalidDescription(description: string): boolean {
     .trim()
 
   if (!clean) return true
-  if (clean.length > 65) return true
+  if (countWords(clean) > 24) return true // DESCRIPTION-001: 24-word max (replaces prior 70-char limit)
   if (/[.]{2,}|…/.test(clean)) return true
   if (!/[.!?]$/.test(clean)) return true
 
@@ -264,20 +264,19 @@ export async function POST(req: NextRequest) {
     // Authority order (CANON-001): Canon Registry > ET Story Rules v3.2 > STAGE2 v2.4 > inline block
     //
     // KNOWN DISCREPANCIES between documents — flagged for Marc's ruling, not silently resolved:
-    //   DISC-001: DESCRIPTION constraint — route.ts inline says "70 characters or fewer";
-    //             ET_Story_Rules_v3_2 (r14) and STAGE2 v2.4 both say "24 words maximum".
-    //             Canon Registry has no DESCRIPTION rule. ET Rules and STAGE2 agree on 24 words.
-    //             Resolution needed: Marc should confirm which governs, then update inline block.
-    //   DISC-002: SFX frequency — ET_Story_Rules_v3_2 (r11) says "at least one every 60–90 seconds";
-    //             STAGE2 v2.4 says "3–6 anchor SFX cues per story". Canon Registry SFX-001 says
-    //             max 3 SFX per episode. Use Canon Registry SFX-001 as governing (CANON-001).
-    //   DISC-004: Resolution Map placement — STAGE2 is explicit: above Belle B intro block.
-    //             Inline block says "comment block at the top" without specifying above/below Belle B.
-    //             STAGE2 wins per CANON-001 ordering.
-    //   DISC-005: Series Belle intro — inline block says "Belle B intro MUST name the series title";
-    //             STAGE2 (r36) and ET_Story_Rules_v3_2 Belle B Intro Standard do not list this
-    //             requirement. Canon Registry BELLE-001 does not address it either.
-    //             Resolution needed: Marc should confirm whether series-title-in-Belle-intro is canon.
+    //   DISC-001: RESOLVED (Marc, 2026-08-29). Use 24 words (DESCRIPTION-001). Prior 70-char limit
+    //             was wrong. isInvalidDescription() and inline instructions updated to match.
+    //   DISC-002: RESOLVED by CANON-001. SFX-001 (max 3 per episode) governs over ET Rules r11
+    //             (every 60–90s) and STAGE2 (3–6 anchors). SFX-001 is already in the canon block above.
+    //   DISC-003: STAGE2 footer/header version mismatch — footer says v2.3, header says v2.4.
+    //             Header is correct (r42 Early Investment Rule added as v2.4, Jun 26 2026).
+    //             No action needed — noted here for completeness. Numbering gap in prior report was
+    //             an error: DISC-003 was never a separate code fix, it was a documentation note.
+    //   DISC-004: RESOLVED by CANON-001 ordering. Resolution Map goes above Belle B per STAGE2.
+    //   DISC-005: RESOLVED (Marc, 2026-08-29). Old inline behavior (series title in EVERY episode's
+    //             Belle B intro) was wrong and contradicted BELLE-006. Correct behavior per BELLE-004:
+    //             first episode only names title+author in intro. Inline block updated; old requirement
+    //             dropped entirely.
     const canonRegistryRules = loadCanonDoc(
       'Bible/CANON_REGISTRY_STORY_RULES.md',
       'ET_CANON_REGISTRY_MISSING'
@@ -329,9 +328,8 @@ Loaded from: docs/STAGE2_SCRIPT_PROMPT.md
 Note: Where this document conflicts with the Canon Registry above, Canon Registry wins (CANON-001).
 Note: Internal footer version mismatch (footer says v2.3, header says v2.4) — header is correct;
       the Early Investment Rule (r42) was added June 26 2026 as v2.4 and the footer was not updated.
-Known conflict: DESCRIPTION constraint in this document (24 words max) differs from the
-      inline production block below (70 characters). Both ET Story Rules and this document agree
-      on 24 words. Resolution flagged as DISC-001 — Marc to confirm which governs.
+DISC-001 RESOLVED: DESCRIPTION constraint is 24 words max (DESCRIPTION-001) per Marc ruling
+      2026-08-29. Prior 70-char limit in the inline block below has been updated to match.
 Known conflict: SFX frequency — this document (3–6 anchors) supersedes ET Story Rules r11
       (every 60–90s). Canon Registry SFX-001 (max 3) supersedes both. Follow SFX-001.
 ${'='.repeat(80)}
@@ -420,7 +418,8 @@ Use the CURRENT published rules:
 - Belle B intro must include exactly one [LISTENER_NAME] placeholder. Do not include the listener's actual name.
 - Belle B intro/outro must never use "Tonight" or any time-of-day reference.
 - Belle B intro must never mention the author, narrator, or "an Endless Tales original"; those credits belong only in the Belle B outro.
-- Series episodes: Belle B intro MUST name the series title (e.g. "In Room Three Twelve, [LISTENER_NAME]..."). Standalone episodes do not include a series name.
+- BELLE-004: The FIRST episode of a series must name the series title and author in the intro.
+- BELLE-006: Interior and final episodes must NOT name the series title or author in the intro or outro. The old requirement to name the series title in every episode's Belle B intro was wrong — it directly contradicted BELLE-006 and has been dropped (Marc ruling, 2026-08-29).
 - Series non-finale episodes: Belle B outro must NOT credit the author or narrator — save those credits for the finale only. Non-finale outros must tease what comes next or end on the cliffhanger emotion.
 - Series finale episodes: Belle B outro credits the author by name and says "an Endless Tales original".
 - Standalone episodes: Belle B outro credits the author by name and says "an Endless Tales original".
@@ -440,7 +439,7 @@ SERIES_TOTAL_EPISODES:
 SERIES_IS_FINALE:
 AUTHOR:
 GENRE:
-DESCRIPTION: [70 characters or fewer, present tense only]
+DESCRIPTION: [24 words or fewer, present tense only — DESCRIPTION-001]
 NARRATOR: [assigned voice name from narrator_voices — ALWAYS the voice talent name (e.g. "Ray Dolan"), NEVER a story character name, even when NARRATOR_IS_CHARACTER is true]
 ANNOUNCER: Belle B
 NARRATIVE_VOICE:
@@ -453,7 +452,9 @@ CHARACTER GUIDE
 
 BELLE B INTRO
 ---
-BELLE B: [one or two short sentences, warm, specific, sensory, includes exactly one [LISTENER_NAME] placeholder placed naturally and not always at the start, reads gracefully if the name is omitted, includes the story title in quotes, references something specific from the story, no time-of-day reference, no author/narrator credit, no "Endless Tales original"]
+BELLE B: [one or two short sentences, warm, specific, sensory, includes exactly one [LISTENER_NAME] placeholder placed naturally and not always at the start, reads gracefully if the name is omitted, no time-of-day reference, no author/narrator credit, no "Endless Tales original".
+  SERIES FIRST EPISODE (BELLE-004): must name the series title and author.
+  INTERIOR + FINAL EPISODES (BELLE-006): must NOT name the series title or author — reference something specific from the story's plot or mood instead.]
 
 [START AUDIO DRAMA SCRIPT]
 NARRATOR: ...
@@ -472,7 +473,7 @@ Production-format hard rules:
 - Right: NARRATOR: Pike's jaw tightened.
 
 Additional rules:
-- DESCRIPTION must be 70 characters or fewer and present tense only so it fits two lines on story cards. If the brief-provided description is longer than 70 characters or uses past-tense constructions, rewrite it to comply. Reject past-tense story-card phrasing such as "vanished", "was", "were", "had", "found", "discovered", "left", "moved", "sealed", "signed", "forged", "buried", or "hidden".
+- DESCRIPTION must be 24 words or fewer and present tense only (DESCRIPTION-001). If the brief-provided description is longer than 24 words or uses past-tense constructions, rewrite it to comply. Reject past-tense story-card phrasing such as "vanished", "was", "were", "had", "found", "discovered", "left", "moved", "sealed", "signed", "forged", "buried", or "hidden".
 - NARRATOR header must ALWAYS be the assigned voice talent name (e.g. "Ray Dolan", "Samuel Cord"). Never a story character name. This rule has no exceptions. (HAL-SCRIPT-001)
 - If NARRATOR_IS_CHARACTER is false, the narrator is a detached third-person voice.
 - If NARRATOR_IS_CHARACTER is true, the narrator is a story character speaking in first person — but the NARRATOR header still uses the voice talent name, not the character name.
