@@ -641,9 +641,9 @@ async function runSegmentsMode({ story, sb, FOLDER, storageFiles, tmp, outputFil
   // ── OUTRO WITH MUSIC v2 ──────────────────────────────────────────────────
   // v2 outro: music ducks from swell peak (0.85) under Belle, then fades 2s after Belle ends
   log('\n🎵  Building v2 outro with music (duck+fade)...');
-  const V2_DUCK_VOL  = 0.019;   // ~25% of narrative bed level (0.12 * 0.25 ≈ 0.019)
+  const V2_DUCK_VOL  = 0.06;    // MUSICBED-001: Marc ruling 2026-08-28 (was 0.019)
   const V2_DUCK_RAMP = 0.5;     // seconds: ramp from 0.85 → 0.019
-  const V2_TAIL_FADE = 2.0;     // seconds: fade to silence after Belle ends (Marc spec)
+  const V2_TAIL_FADE = 3.0;     // MUSICBED-001: Marc ruling 2026-08-28 (was 2.0)
 
   const belleEnd    = V2_DUCK_RAMP + outroDur;
   const fadeEnd     = belleEnd + V2_TAIL_FADE;
