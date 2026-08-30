@@ -972,6 +972,10 @@ async function runSegmentsMode({ story, sb, FOLDER, storageFiles, tmp, outputFil
     garbleCheck: {
       passed: true,
       verificationSource: garbleVerificationSource,
+      ...(garbleResultFile ? {
+        garble_result_source: garbleReport?.garble_result_source ||
+          `${garbleReport?.source || path.basename(garbleResultFile)} (${garbleReport?.sourceNote || 'pre-computed'})`,
+      } : {}),
       failures: garbleReport?.results?.filter(r => r.status === 'fail')
         ?.map(r => ({ segment: r.segName + '.mp3', wer: r.wer })) ?? [],
       warnings: garbleReport?.results?.filter(r => r.status === 'warn')
