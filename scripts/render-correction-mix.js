@@ -50,6 +50,49 @@ const fs   = require('fs');
 const path = require('path');
 const os   = require('os');
 
+// ── ATL-PARSER-001 position counter — kept in sync with lib/assembleAndVerifyFinalMix.ts ──
+// Used for Mechanism B orphan detection before any segment concat.
+const PARSER_HEADER_KEYS = [
+  'TITLE:', 'SERIES:', 'EPISODE:', 'AUTHOR:', 'GENRE:', 'DESCRIPTION:', 'SUNO PROMPT:',
+  'NARRATIVE_VOICE:', 'NARRATOR_IS_CHARACTER:', 'NARRATOR_IS_', 'EPISODE_TITLE:',
+  'SERIES_TOTAL', 'SERIES_IS_FINALE:', '[START AUDIO DRAMA SCRIPT]',
+  'CHARACTER GUIDE', '---',
+];
+
+function parseScriptPositionCount(script) {
+  const rawLines = script.split('\n');
+  const announcerLineIndices = [];
+  rawLines.forEach((line, i) => {
+    const trimmed = line.trim();
+    if (/^ANNOUNCER:\s*Belle B\s*$/i.test(trimmed)) return;
+    if (/^(ANNOUNCER|BELLE B|SANDY):/i.test(trimmed)) announcerLineIndices.push(i);
+  });
+  const firstAnnouncerIdx = announcerLineIndices[0] ?? -1;
+  const lastAnnouncerIdx  = announcerLineIndices[announcerLineIndices.length - 1] ?? -1;
+  const explicitScriptStartIdx = rawLines.findIndex(l => l.includes('[START AUDIO DRAMA SCRIPT]'));
+  const characterGuideStartIdx = rawLines.findIndex(l => l.includes('CHARACTER GUIDE'));
+  const scriptStartIdx = explicitScriptStartIdx > -1 ? explicitScriptStartIdx : characterGuideStartIdx;
+  const headerEndIdx   = scriptStartIdx > -1 ? scriptStartIdx : (firstAnnouncerIdx + 1);
+  let lineIndex = 0;
+  rawLines.forEach((line, rawIdx) => {
+    const trimmed = line.trim();
+    if (!trimmed) return;
+    if (explicitScriptStartIdx > -1 && rawIdx < explicitScriptStartIdx &&
+        rawIdx !== firstAnnouncerIdx && rawIdx !== lastAnnouncerIdx) return;
+    if (PARSER_HEADER_KEYS.some(k => trimmed.startsWith(k))) return;
+    if (rawIdx < headerEndIdx && rawIdx !== firstAnnouncerIdx && rawIdx !== lastAnnouncerIdx) {
+      if (trimmed.startsWith('NARRATOR:') || trimmed.startsWith('ANNOUNCER:')) return;
+    }
+    if (trimmed === '[BEAT]' || trimmed === '[PAUSE]' || /^\[PAUSE:\d/.test(trimmed)) { lineIndex++; return; }
+    if (trimmed.startsWith('[SFX:')) { lineIndex++; return; }
+    if (trimmed.startsWith('[')) return;
+    if (trimmed.startsWith('ANNOUNCER:') && /endless tales presents/i.test(trimmed)) return;
+    if (trimmed.match(/^\[([A-Z][A-ZÀ-Ú\s'.()]+?)\]:\s*(.+)$/) ||
+        trimmed.match(/^([A-Z][A-ZÀ-Ú\s'.()]+?):\s*(.+)$/)) lineIndex++;
+  });
+  return lineIndex;
+}
+
 const FF           = '/opt/homebrew/bin/ffmpeg';
 const FFP          = '/opt/homebrew/bin/ffprobe';
 const SUPABASE_URL = 'https://vmyhlfeouzslixtkmddy.supabase.co';
@@ -479,6 +522,66 @@ async function runSegmentsMode({ story, sb, FOLDER, storageFiles, tmp, outputFil
   log(`  Excluding ${excludedCount} segments: [${Array.from(EXCLUDED_SEGMENTS).sort().join(', ')}]`);
   log(`  ${segs.length} unique segments after exclusion (${rawSegs.length - segs.length} dupes removed)`);
 
+  // ── ASSEMBLEANDVERIFYFINALYMIX: ORPHAN CHECK (Mechanism B) ────────────────────
+  // Wired from lib/assembleAndVerifyFinalMix.ts: verify no segment position
+  // ≥ script length (definitive Mechanism B orphans). Hard-fail blocks assembly.
+  log('\n🔍  assembleAndVerifyFinalMix — orphan check (Mechanism B)...');
+  let orphanFlaggedNames = [];
+  if (story.script) {
+    const parsedPositionCount = parseScriptPositionCount(story.script);
+    orphanFlaggedNames = segs
+      .map(f => f.name)
+      .filter(name => {
+        const m = name.match(/^segment_(\d{4})\.mp3$/);
+        return m && parseInt(m[1], 10) >= parsedPositionCount;
+      });
+    if (orphanFlaggedNames.length > 0) {
+      throw new Error(
+        `ORPHAN_CHECK_FAILED (assembleAndVerifyFinalMix): ` +
+        `${orphanFlaggedNames.length} segment(s) beyond script boundary ` +
+        `(${parsedPositionCount} positions). Pass them via --exclude: ${orphanFlaggedNames.join(', ')}`
+      );
+    }
+    log(`  ✓ Orphan check: all ${segs.length} segments within ${parsedPositionCount}-position bound`);
+  } else {
+    log('  ⚠️  Orphan check skipped — story.script not available (add \'script\' to DB select)');
+  }
+
+  // ── ASSEMBLEANDVERIFYFINALYMIX: GARBLE DETECTION GATE ──────────────────────
+  // Wired from lib/assembleAndVerifyFinalMix.ts: run garble-detection-gate.js
+  // against all segments. Any HARD FAIL (WER > 40%) blocks assembly.
+  log('\n🔍  assembleAndVerifyFinalMix — garble detection gate...');
+  log('  (Whisper transcription of all segments — may take several minutes)');
+  const garbleGateScript = path.join(__dirname, '..', 'garble-detection-gate.js');
+  const garbleResult = spawnSync(
+    'node',
+    [garbleGateScript, STORY_ID],
+    {
+      encoding: 'utf8',
+      timeout: 20 * 60 * 1000,   // 20 min max — Whisper on all segments
+      maxBuffer: 30 * 1024 * 1024,
+    }
+  );
+  if (garbleResult.stdout) process.stdout.write(garbleResult.stdout);
+  if (garbleResult.stderr) process.stderr.write(garbleResult.stderr);
+  if (garbleResult.error) {
+    throw new Error(`GARBLE_GATE_PROCESS_ERROR (assembleAndVerifyFinalMix): ${garbleResult.error.message}`);
+  }
+  if (garbleResult.status === 2) {
+    throw new Error('GARBLE_GATE_FATAL (assembleAndVerifyFinalMix): gate encountered a fatal error — no output written');
+  }
+  if (garbleResult.status === 1) {
+    throw new Error('GARBLE_CHECK_FAILED (assembleAndVerifyFinalMix): corrupted audio detected — no output written');
+  }
+  log('  ✓ Garble detection gate: PASSED');
+
+  // Parse the gate\'s JSON report for inclusion in the scan report
+  let garbleReport = null;
+  const garbleReportMatch = (garbleResult.stdout || '').match(/JSON report:\s+(\S+\.json)/);
+  if (garbleReportMatch) {
+    try { garbleReport = JSON.parse(fs.readFileSync(garbleReportMatch[1], 'utf8')); } catch {}
+  }
+
   const hasOutroCorrected = (storageFiles || []).some(f => f.name === 'outro_corrected.mp3');
   log(`  outro_corrected.mp3 in storage: ${hasOutroCorrected}`);
 
@@ -772,6 +875,49 @@ async function runSegmentsMode({ story, sb, FOLDER, storageFiles, tmp, outputFil
 
   const { data: { publicUrl } } = sb.storage.from('audio').getPublicUrl(storagePath);
 
+  // ── ASSEMBLEANDVERIFYFINALYMIX: SCAN REPORT ────────────────────────────────
+  // Wired from lib/assembleAndVerifyFinalMix.ts: write scan-report-v{N}.json
+  // to the same Supabase storage folder as the output file.
+  log('\n📊  Writing scan report (assembleAndVerifyFinalMix contract)...');
+  const scanReport = {
+    storyId: STORY_ID,
+    buildTimestamp: new Date().toISOString(),
+    outputFilename: storageName,
+    segmentCount: segs.length,
+    excludedSegments: Array.from(EXCLUDED_SEGMENTS),
+    orphanCheck: {
+      passed: true,
+      flagged: orphanFlaggedNames,  // empty — would have thrown above if non-empty
+    },
+    garbleCheck: {
+      passed: true,
+      failures: garbleReport?.results?.filter(r => r.status === 'fail')
+        ?.map(r => ({ segment: r.segName + '.mp3', wer: r.wer })) ?? [],
+      warnings: garbleReport?.results?.filter(r => r.status === 'warn')
+        ?.map(r => ({ segment: r.segName + '.mp3', wer: r.wer })) ?? [],
+    },
+  };
+  const existingReportVersions = (storageFiles || [])
+    .map(f => f.name.match(/^scan-report-v(\d+)\.json$/))
+    .filter(Boolean)
+    .map(m => parseInt(m[1], 10));
+  const nextReportN = existingReportVersions.length > 0
+    ? Math.max(...existingReportVersions) + 1 : 1;
+  const reportName  = `scan-report-v${nextReportN}.json`;
+  const reportBuf   = Buffer.from(JSON.stringify(scanReport, null, 2));
+  const { error: reportErr } = await sb.storage.from('audio').upload(
+    `asc3/${FOLDER}/${reportName}`, reportBuf, {
+      contentType: 'application/json',
+      upsert: false,
+      cacheControl: '0',
+    }
+  );
+  if (reportErr) {
+    log(`  ⚠️  Scan report upload failed (non-fatal): ${reportErr.message}`);
+  } else {
+    log(`  ✓ Scan report: ${reportName}`);
+  }
+
   log(`\n✅  DONE`);
   log(`   File: ${storageName}`);
   log(`   Duration: ${(finalDur/60).toFixed(2)} min (${finalDur.toFixed(0)}s)`);
@@ -791,6 +937,7 @@ async function runSegmentsMode({ story, sb, FOLDER, storageFiles, tmp, outputFil
     outroSource,
     musicBedSource,
     validationPassed: true,
+    scanReport,
   }));
 
   return { publicUrl, finalDur, storageName };
@@ -805,7 +952,7 @@ async function main() {
   // ── DB lookup ─────────────────────────────────────────────────────────────
   log(`Looking up story ${STORY_ID}`);
   const { data: story, error } = await sb.from('stories')
-    .select('id, title, episode_number, intro_audio_url, outro_audio_url, story_audio_url')
+    .select('id, title, episode_number, intro_audio_url, outro_audio_url, story_audio_url, script')
     .eq('id', STORY_ID).single();
   if (error || !story) throw new Error('Story not found: ' + (error?.message || STORY_ID));
   log(`EP${story.episode_number}: "${story.title}"`);
