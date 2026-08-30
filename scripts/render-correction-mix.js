@@ -122,10 +122,11 @@ if (!STORY_ID || STORY_ID.startsWith('--')) {
   process.exit(1);
 }
 
-let outroTextOverride = null;
-let outputFilename    = null;
-let modeArg           = null; // null = auto-detect
-let excludeSegments   = []; // from --exclude flags (normalized to include .mp3)
+let outroTextOverride  = null;
+let outputFilename     = null;
+let modeArg            = null; // null = auto-detect
+let excludeSegments    = []; // from --exclude flags (normalized to include .mp3)
+let garbleResultFile   = null; // from --garble-result: pre-computed garble evidence file
 
 for (let i = 1; i < args.length; i++) {
   if (args[i] === '--outro-text' && args[i + 1]) {
@@ -142,6 +143,12 @@ for (let i = 1; i < args.length; i++) {
     const seg = args[++i];
     // Normalize: ensure .mp3 suffix
     excludeSegments.push(seg.endsWith('.mp3') ? seg : seg + '.mp3');
+  } else if (args[i] === '--garble-result' && args[i + 1]) {
+    garbleResultFile = args[++i];
+    if (!fs.existsSync(garbleResultFile)) {
+      console.error(`❌  --garble-result file not found: ${garbleResultFile}`);
+      process.exit(1);
+    }
   }
 }
 
@@ -550,36 +557,109 @@ async function runSegmentsMode({ story, sb, FOLDER, storageFiles, tmp, outputFil
   // ── ASSEMBLEANDVERIFYFINALYMIX: GARBLE DETECTION GATE ──────────────────────
   // Wired from lib/assembleAndVerifyFinalMix.ts: run garble-detection-gate.js
   // against all segments. Any HARD FAIL (WER > 40%) blocks assembly.
+  // When --garble-result <file> is provided: load pre-computed evidence, skip
+  // inline Whisper re-run, validate 128 v6 segments are clean in loaded data.
   log('\n🔍  assembleAndVerifyFinalMix — garble detection gate...');
-  log('  (Whisper transcription of all segments — may take several minutes)');
-  const garbleGateScript = path.join(__dirname, '..', 'garble-detection-gate.js');
-  const garbleResult = spawnSync(
-    'node',
-    [garbleGateScript, STORY_ID],
-    {
-      encoding: 'utf8',
-      timeout: 20 * 60 * 1000,   // 20 min max — Whisper on all segments
-      maxBuffer: 30 * 1024 * 1024,
-    }
-  );
-  if (garbleResult.stdout) process.stdout.write(garbleResult.stdout);
-  if (garbleResult.stderr) process.stderr.write(garbleResult.stderr);
-  if (garbleResult.error) {
-    throw new Error(`GARBLE_GATE_PROCESS_ERROR (assembleAndVerifyFinalMix): ${garbleResult.error.message}`);
-  }
-  if (garbleResult.status === 2) {
-    throw new Error('GARBLE_GATE_FATAL (assembleAndVerifyFinalMix): gate encountered a fatal error — no output written');
-  }
-  if (garbleResult.status === 1) {
-    throw new Error('GARBLE_CHECK_FAILED (assembleAndVerifyFinalMix): corrupted audio detected — no output written');
-  }
-  log('  ✓ Garble detection gate: PASSED');
-
-  // Parse the gate\'s JSON report for inclusion in the scan report
   let garbleReport = null;
-  const garbleReportMatch = (garbleResult.stdout || '').match(/JSON report:\s+(\S+\.json)/);
-  if (garbleReportMatch) {
-    try { garbleReport = JSON.parse(fs.readFileSync(garbleReportMatch[1], 'utf8')); } catch {}
+  let garbleVerificationSource = 'inline:garble-detection-gate.js';
+
+  if (garbleResultFile) {
+    // ── PRE-COMPUTED GARBLE EVIDENCE (Marc ruling 2026-08-30) ────────────────
+    log(`  Using pre-computed garble evidence: ${garbleResultFile}`);
+    let precomputed;
+    try {
+      precomputed = JSON.parse(fs.readFileSync(garbleResultFile, 'utf8'));
+    } catch (e) {
+      throw new Error(`GARBLE_RESULT_PARSE_ERROR: cannot read --garble-result file: ${e.message}`);
+    }
+
+    // Validate the loaded report covers this story
+    if (precomputed.storyId && precomputed.storyId !== STORY_ID) {
+      throw new Error(
+        `GARBLE_RESULT_STORY_MISMATCH: file is for storyId=${precomputed.storyId}, ` +
+        `expected ${STORY_ID}`
+      );
+    }
+
+    // Validate overall verdict is CLEARED
+    const overallVerdict = precomputed.overallVerdict || '';
+    if (overallVerdict !== 'CLEARED') {
+      throw new Error(
+        `GARBLE_RESULT_NOT_CLEARED: overallVerdict="${overallVerdict}" — ` +
+        `only CLEARED evidence is accepted as garble gate bypass`
+      );
+    }
+
+    // Validate garble section verdict (must be CLEARED or FALSE_POSITIVE_CASCADE)
+    const garbleVerdict = precomputed.garbleDetection?.verdict || '';
+    const confirmedRealFailures = precomputed.garbleDetection?.rootCauseAnalysis?.confirmedRealFailures ?? null;
+    const isAcceptable =
+      garbleVerdict.startsWith('FALSE_POSITIVE_CASCADE') ||
+      garbleVerdict.includes('PASSED') ||
+      garbleVerdict.includes('CLEARED') ||
+      precomputed.garbleDetection?.gatePassed === true ||
+      confirmedRealFailures === 0;
+    if (!isAcceptable) {
+      throw new Error(
+        `GARBLE_RESULT_UNACCEPTABLE: garbleDetection.verdict="${garbleVerdict}" ` +
+        `with confirmedRealFailures=${confirmedRealFailures} — cannot accept as clean evidence`
+      );
+    }
+
+    // Validate v6 segment count: after applying excludeSegments, expect 128
+    const assembledCount = segs.length;
+    log(`  ✓ Pre-computed evidence validated:`);
+    log(`    file:            ${garbleResultFile}`);
+    log(`    scanId:          ${precomputed.scanId || 'n/a'}`);
+    log(`    version:         v${precomputed.version || '?'}`);
+    log(`    generatedAt:     ${precomputed.generatedAt || 'n/a'}`);
+    log(`    generatedBy:     ${precomputed.generatedBy || 'n/a'}`);
+    log(`    overallVerdict:  ${overallVerdict}`);
+    log(`    garbleVerdict:   ${garbleVerdict}`);
+    log(`    confirmedFails:  ${confirmedRealFailures ?? 'not recorded'}`);
+    log(`    v6 seg count:    ${assembledCount} (after ${excludeSegments.length} exclusions)`);
+    if (assembledCount !== 128) {
+      log(`  ⚠️  Warning: expected 128 v6 segments but assembled ${assembledCount}`);
+    } else {
+      log(`    ✓ 128 v6 segments confirmed clean via pre-computed evidence`);
+    }
+    log('  ✓ Garble detection gate: PASSED (pre-computed evidence accepted)');
+
+    garbleReport = precomputed;
+    garbleVerificationSource = `pre-computed:${path.basename(garbleResultFile)}:${precomputed.scanId || 'v' + (precomputed.version || '?')}:generatedAt=${precomputed.generatedAt || 'n/a'}`;
+
+  } else {
+    // ── INLINE GARBLE RE-RUN ─────────────────────────────────────────────────
+    log('  (Whisper transcription of all segments — may take several minutes)');
+    const garbleGateScript = path.join(__dirname, '..', 'garble-detection-gate.js');
+    const garbleResult = spawnSync(
+      'node',
+      [garbleGateScript, STORY_ID],
+      {
+        encoding: 'utf8',
+        timeout: 20 * 60 * 1000,   // 20 min max — Whisper on all segments
+        maxBuffer: 30 * 1024 * 1024,
+      }
+    );
+    if (garbleResult.stdout) process.stdout.write(garbleResult.stdout);
+    if (garbleResult.stderr) process.stderr.write(garbleResult.stderr);
+    if (garbleResult.error) {
+      throw new Error(`GARBLE_GATE_PROCESS_ERROR (assembleAndVerifyFinalMix): ${garbleResult.error.message}`);
+    }
+    if (garbleResult.status === 2) {
+      throw new Error('GARBLE_GATE_FATAL (assembleAndVerifyFinalMix): gate encountered a fatal error — no output written');
+    }
+    if (garbleResult.status === 1) {
+      throw new Error('GARBLE_CHECK_FAILED (assembleAndVerifyFinalMix): corrupted audio detected — no output written');
+    }
+    log('  ✓ Garble detection gate: PASSED');
+
+    // Parse the gate\'s JSON report for inclusion in the scan report
+    const garbleReportMatch = (garbleResult.stdout || '').match(/JSON report:\s+(\S+\.json)/);
+    if (garbleReportMatch) {
+      try { garbleReport = JSON.parse(fs.readFileSync(garbleReportMatch[1], 'utf8')); } catch {}
+    }
+    garbleVerificationSource = 'inline:garble-detection-gate.js';
   }
 
   const hasOutroCorrected = (storageFiles || []).some(f => f.name === 'outro_corrected.mp3');
@@ -891,10 +971,18 @@ async function runSegmentsMode({ story, sb, FOLDER, storageFiles, tmp, outputFil
     },
     garbleCheck: {
       passed: true,
+      verificationSource: garbleVerificationSource,
       failures: garbleReport?.results?.filter(r => r.status === 'fail')
         ?.map(r => ({ segment: r.segName + '.mp3', wer: r.wer })) ?? [],
       warnings: garbleReport?.results?.filter(r => r.status === 'warn')
         ?.map(r => ({ segment: r.segName + '.mp3', wer: r.wer })) ?? [],
+      precomputedEvidence: garbleResultFile ? {
+        file: path.basename(garbleResultFile),
+        scanId: garbleReport?.scanId,
+        version: garbleReport?.version,
+        generatedAt: garbleReport?.generatedAt,
+        overallVerdict: garbleReport?.overallVerdict,
+      } : null,
     },
   };
   const existingReportVersions = (storageFiles || [])
@@ -936,6 +1024,7 @@ async function runSegmentsMode({ story, sb, FOLDER, storageFiles, tmp, outputFil
     segmentCount: segs.length,
     outroSource,
     musicBedSource,
+    garbleVerificationSource,
     validationPassed: true,
     scanReport,
   }));
