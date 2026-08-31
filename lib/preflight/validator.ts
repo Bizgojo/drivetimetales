@@ -7,6 +7,7 @@
 
 import { PREFLIGHT_RULES, KNOWN_DIALOGUE_FRAGMENTS } from './knownFailures'
 import { checkVoiceCodes, toCheckResult, type VoiceCodeAssignment } from './voice-code-check'
+import { runBelleStructureGate } from '../belleStructureGate'
 
 // ---------------------------------------------------------------------------
 // Narrator voice preflight check
@@ -107,6 +108,7 @@ export interface PreflightReport {
     productionAssets: CheckResult
     narratorVoiceCheck: CheckResult
     voiceCodeCheck: CheckResult
+    belleStructureCheck: CheckResult
   }
   summary: {
     totalChecks: number
@@ -181,8 +183,9 @@ export async function runPreflightChecks(params: {
       productionAssets: { passed: true, checkName: 'Production Assets', findings: {}, details: [], suggestedFixes: [] },
       narratorVoiceCheck: { passed: true, checkName: 'Narrator Voice Check', findings: {}, details: [], suggestedFixes: [] },
       voiceCodeCheck: { passed: true, checkName: 'Voice Code Validation', findings: {}, details: [], suggestedFixes: [] },
+      belleStructureCheck: { passed: true, checkName: 'BELLE Structure (BELLE-001–006)', findings: {}, details: [], suggestedFixes: [] },
     },
-    summary: { totalChecks: 9, passed: 9, failed: 0 },
+    summary: { totalChecks: 10, passed: 10, failed: 0 },
     blockers: [],
     warnings: [],
     recommendations: [],
@@ -363,6 +366,75 @@ export async function runPreflightChecks(params: {
     } else {
       report.checks.voiceCodeCheck.details = ['Voice code check skipped — no voiceCodeAssignments provided']
       report.recommendations.push('Pass voiceCodeAssignments to enable voice_code format validation before generate_voices')
+    }
+  }
+
+  // Check 10: BELLE Structure (BELLE-001 through BELLE-006)
+  // Full six-rule check including style/content nuance:
+  //   BELLE-001: intro exactly one BELLE B line
+  //   BELLE-002: funnel exception (INCONCLUSIVE if no is_funnel_entry flag)
+  //   BELLE-003: no listener name in outro
+  //   BELLE-004: first episode intro names title and author
+  //   BELLE-005: finale outro restates title and author
+  //   BELLE-006: interior episode doesn't name title/author (INCONCLUSIVE if season-break possible)
+  {
+    try {
+      const belleOutcome = await runBelleStructureGate(params.storyId)
+      const belleFailures   = belleOutcome.checks.filter(c => c.verdict === 'fail')
+      const belleInconclusive = belleOutcome.checks.filter(c => c.verdict === 'inconclusive')
+      const belleDetails: string[] = [
+        ...belleOutcome.checks.map(c => `${c.rule} [${c.verdict.toUpperCase()}]: ${c.details}`),
+        ...belleOutcome.warnings.map(w => `⚠ ${w}`),
+      ]
+
+      report.checks.belleStructureCheck.findings = {
+        riskFound:     !belleOutcome.passed,
+        issuesFound:   belleFailures.length > 0,
+        issues:        belleFailures.map(f => `${f.rule}: ${f.details}`),
+        inconclusive:  belleInconclusive.map(i => `${i.rule}: ${i.details}`),
+        warnings:      belleOutcome.warnings,
+      }
+      report.checks.belleStructureCheck.details = belleDetails
+
+      if (!belleOutcome.passed) {
+        report.checks.belleStructureCheck.passed = false
+        report.checks.belleStructureCheck.suggestedFixes = belleFailures.map(
+          f => `Fix ${f.rule}: ${f.details.slice(0, 200)}`
+        )
+        report.passed = false
+        report.summary.failed += 1
+        report.summary.passed -= 1
+        for (const f of belleFailures) {
+          report.blockers.push(`BELLE structure: ${f.rule} — ${f.details.slice(0, 160)}`)
+        }
+      } else {
+        if (belleInconclusive.length > 0) {
+          report.warnings.push(
+            `BELLE gate: ${belleInconclusive.length} inconclusive rule(s) — review manually. ` +
+            belleInconclusive.map(i => i.rule).join(', ')
+          )
+        }
+        if (belleOutcome.warnings.length > 0) {
+          for (const w of belleOutcome.warnings) report.warnings.push(`BELLE gate: ${w}`)
+        }
+        report.checks.belleStructureCheck.details =
+          belleDetails.length > 0
+            ? belleDetails
+            : ['All BELLE rules passed or skipped']
+        report.recommendations.push(
+          belleInconclusive.length > 0
+            ? `BELLE gate passed with ${belleInconclusive.length} inconclusive rule(s) — manual review recommended`
+            : `BELLE gate passed — all six rules satisfied`
+        )
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err)
+      report.checks.belleStructureCheck.passed = false
+      report.checks.belleStructureCheck.details = [`BELLE gate error: ${msg}`]
+      report.passed = false
+      report.summary.failed += 1
+      report.summary.passed -= 1
+      report.blockers.push(`BELLE structure gate threw an error: ${msg}`)
     }
   }
 
