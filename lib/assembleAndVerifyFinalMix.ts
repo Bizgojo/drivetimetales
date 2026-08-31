@@ -40,6 +40,7 @@ import * as os from 'os';
 import * as path from 'path';
 
 import { runGarbleGate, type GarbleGateOutcome } from './garbleGate';
+import { runVoiceMapGate, type VoiceMapGateOutcome } from './voiceMapGate';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -58,6 +59,11 @@ export interface ScanReport {
     passed: boolean;
     failures: { segment: string; wer: number }[];
     warnings: { segment: string; wer: number }[];
+  };
+  voiceCheck: {
+    passed: boolean;
+    failures: { segment: string; character: string; actualVoiceId: string; expectedVoiceId: string }[];
+    inconclusive: { segment: string; character: string | null; note: string }[];
   };
 }
 
@@ -202,6 +208,7 @@ function makeScanReport(
   excludedSegments: string[],
   orphanCheck: ScanReport['orphanCheck'],
   garbleCheck: ScanReport['garbleCheck'],
+  voiceCheck: ScanReport['voiceCheck'],
 ): ScanReport {
   return {
     storyId,
@@ -211,6 +218,7 @@ function makeScanReport(
     excludedSegments,
     orphanCheck,
     garbleCheck,
+    voiceCheck,
   };
 }
 
@@ -271,7 +279,7 @@ export async function assembleAndVerifyFinalMix(opts: {
   if (outputFilename === 'final_mix.mp3') {
     return {
       success: false,
-      scanReport: makeScanReport(storyId, new Date().toISOString(), outputFilename, [], [], { passed: false, flagged: [] }, { passed: false, failures: [], warnings: [] }),
+      scanReport: makeScanReport(storyId, new Date().toISOString(), outputFilename, [], [], { passed: false, flagged: [] }, { passed: false, failures: [], warnings: [] }, { passed: false, failures: [], inconclusive: [] }),
       errors: ['BLOCKED: outputFilename must not be "final_mix.mp3". Use a versioned name.'],
     };
   }
@@ -286,7 +294,7 @@ export async function assembleAndVerifyFinalMix(opts: {
   if (!SUPABASE_URL || !SERVICE_KEY) {
     return {
       success: false,
-      scanReport: makeScanReport(storyId, buildTimestamp, outputFilename, segments, Array.from(excludeSet), { passed: false, flagged: [] }, { passed: false, failures: [], warnings: [] }),
+      scanReport: makeScanReport(storyId, buildTimestamp, outputFilename, segments, Array.from(excludeSet), { passed: false, flagged: [] }, { passed: false, failures: [], warnings: [] }, { passed: false, failures: [], inconclusive: [] }),
       errors: ['Missing NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY'],
     };
   }
@@ -304,7 +312,7 @@ export async function assembleAndVerifyFinalMix(opts: {
   if (storyErr || !story?.script) {
     return {
       success: false,
-      scanReport: makeScanReport(storyId, buildTimestamp, outputFilename, segments, Array.from(excludeSet), { passed: false, flagged: [] }, { passed: false, failures: [], warnings: [] }),
+      scanReport: makeScanReport(storyId, buildTimestamp, outputFilename, segments, Array.from(excludeSet), { passed: false, flagged: [] }, { passed: false, failures: [], warnings: [] }, { passed: false, failures: [], inconclusive: [] }),
       errors: [`Cannot fetch story script: ${storyErr?.message ?? 'script column empty'}`],
     };
   }
@@ -343,6 +351,55 @@ export async function assembleAndVerifyFinalMix(opts: {
     .map(s => segIndexFromName(s))
     .filter((idx): idx is number => idx !== null)
     .sort((a, b) => a - b);
+
+  // ── 3a. Voice map gate ────────────────────────────────────────────────────
+  // Verifies every segment was rendered with the character's CURRENT assigned
+  // voice from series_character_roster (is_locked=true). Catches recast-but-not-
+  // re-rendered segments (e.g. EP10 segment_0089 — Hector in old voice).
+  // This check runs BEFORE garble detection (cheaper; no Whisper required).
+
+  let voicePassed = false;
+  const voiceFailures: { segment: string; character: string; actualVoiceId: string; expectedVoiceId: string }[] = [];
+  const voiceInconclusive: { segment: string; character: string | null; note: string }[] = [];
+
+  try {
+    console.log(`[assembleAndVerifyFinalMix] Running voice map gate on ${segments.length} segment(s)...`);
+    const voiceOutcome: VoiceMapGateOutcome = await runVoiceMapGate(storyId, segments);
+    voicePassed = voiceOutcome.passed;
+
+    for (const f of voiceOutcome.failures) {
+      voiceFailures.push({
+        segment:          f.segName + '.mp3',
+        character:        f.character ?? '',
+        actualVoiceId:    f.actualVoiceId ?? '',
+        expectedVoiceId:  f.expectedVoiceId ?? '',
+      });
+    }
+    for (const i of voiceOutcome.inconclusive) {
+      voiceInconclusive.push({
+        segment:   i.segName + '.mp3',
+        character: i.character,
+        note:      i.note ?? '',
+      });
+    }
+
+    if (!voicePassed) {
+      errors.push(
+        `Voice map gate FAILED: ${voiceFailures.length} segment(s) rendered with wrong voice. ` +
+        voiceFailures.map(f => `${f.segment}(char=${f.character},actual=${f.actualVoiceId},expected=${f.expectedVoiceId})`).join(', ')
+      );
+      console.error(`[assembleAndVerifyFinalMix] ${errors[errors.length - 1]}`);
+    } else {
+      console.log(
+        `[assembleAndVerifyFinalMix] ✓ Voice map gate passed` +
+        (voiceInconclusive.length > 0 ? ` (${voiceInconclusive.length} inconclusive)` : '')
+      );
+    }
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    errors.push(`Voice map gate error: ${msg}`);
+    voicePassed = false;
+  }
 
   let garblePassed = false;
   const garbleFailures: { segment: string; wer: number }[] = [];
@@ -384,11 +441,12 @@ export async function assembleAndVerifyFinalMix(opts: {
     storyId, buildTimestamp, outputFilename, segments, Array.from(excludeSet),
     { passed: orphanPassed, flagged: orphanFlagged },
     { passed: garblePassed, failures: garbleFailures, warnings: garbleWarnings },
+    { passed: voicePassed, failures: voiceFailures, inconclusive: voiceInconclusive },
   );
 
   // ── 4. Abort on any check failure — no output written ────────────────────
 
-  if (!orphanPassed || !garblePassed) {
+  if (!orphanPassed || !garblePassed || !voicePassed) {
     console.error('[assembleAndVerifyFinalMix] ✗ Checks failed — no output written');
     return { success: false, scanReport, errors };
   }
