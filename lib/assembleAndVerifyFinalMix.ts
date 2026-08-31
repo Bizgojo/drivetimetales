@@ -41,6 +41,7 @@ import * as path from 'path';
 
 import { runGarbleGate, type GarbleGateOutcome } from './garbleGate';
 import { runVoiceMapGate, type VoiceMapGateOutcome } from './voiceMapGate';
+import { runBelleStructureGate, type BelleGateOutcome } from './belleStructureGate';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -64,6 +65,12 @@ export interface ScanReport {
     passed: boolean;
     failures: { segment: string; character: string; actualVoiceId: string; expectedVoiceId: string }[];
     inconclusive: { segment: string; character: string | null; note: string }[];
+  };
+  belleCheck: {
+    passed: boolean;
+    failures: { rule: string; verdict: string; details: string }[];
+    inconclusive: { rule: string; verdict: string; details: string }[];
+    warnings: string[];
   };
 }
 
@@ -200,6 +207,13 @@ function segIndexFromName(name: string): number | null {
   return m ? parseInt(m[1], 10) : null;
 }
 
+const DEFAULT_BELLE_CHECK: ScanReport['belleCheck'] = {
+  passed: true,
+  failures: [],
+  inconclusive: [],
+  warnings: [],
+};
+
 function makeScanReport(
   storyId: string,
   buildTimestamp: string,
@@ -209,6 +223,7 @@ function makeScanReport(
   orphanCheck: ScanReport['orphanCheck'],
   garbleCheck: ScanReport['garbleCheck'],
   voiceCheck: ScanReport['voiceCheck'],
+  belleCheck: ScanReport['belleCheck'] = DEFAULT_BELLE_CHECK,
 ): ScanReport {
   return {
     storyId,
@@ -219,6 +234,7 @@ function makeScanReport(
     orphanCheck,
     garbleCheck,
     voiceCheck,
+    belleCheck,
   };
 }
 
@@ -435,6 +451,52 @@ export async function assembleAndVerifyFinalMix(opts: {
     garblePassed = false;
   }
 
+  // ── 3c. BELLE structure gate ──────────────────────────────────────────────
+  // Structural backstop — validates BELLE B intro/outro structure against
+  // BELLE-001 through BELLE-006. Hard-fail checks only:
+  //   BELLE-001: multi-line intro
+  //   BELLE-003: listener name in outro
+  //   BELLE-004: first episode intro missing title/author
+  //   BELLE-005: finale outro missing title/author recap
+  //   BELLE-006: interior episode naming title/author (INCONCLUSIVE — not blocking)
+
+  let bellePassed = false;
+  const belleCheckFailures: { rule: string; verdict: string; details: string }[] = [];
+  const belleCheckInconclusive: { rule: string; verdict: string; details: string }[] = [];
+  const belleCheckWarnings: string[] = [];
+
+  try {
+    console.log(`[assembleAndVerifyFinalMix] Running BELLE structure gate...`);
+    const belleOutcome: BelleGateOutcome = await runBelleStructureGate(storyId);
+    bellePassed = belleOutcome.passed;
+
+    for (const c of belleOutcome.checks) {
+      if (c.verdict === 'fail') {
+        belleCheckFailures.push({ rule: c.rule, verdict: c.verdict, details: c.details });
+      } else if (c.verdict === 'inconclusive') {
+        belleCheckInconclusive.push({ rule: c.rule, verdict: c.verdict, details: c.details });
+      }
+    }
+    for (const w of belleOutcome.warnings) belleCheckWarnings.push(w);
+
+    if (!bellePassed) {
+      errors.push(
+        `BELLE structure gate FAILED: ${belleCheckFailures.length} rule(s) violated. ` +
+        belleCheckFailures.map(f => `${f.rule}: ${f.details.slice(0, 120)}`).join('; ')
+      );
+      console.error(`[assembleAndVerifyFinalMix] ${errors[errors.length - 1]}`);
+    } else {
+      console.log(
+        `[assembleAndVerifyFinalMix] ✓ BELLE structure gate passed` +
+        (belleCheckInconclusive.length > 0 ? ` (${belleCheckInconclusive.length} inconclusive)` : '')
+      );
+    }
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    errors.push(`BELLE structure gate error: ${msg}`);
+    bellePassed = false;
+  }
+
   // ── Build scan report (populated regardless of check outcome) ─────────────
 
   const scanReport = makeScanReport(
@@ -442,11 +504,12 @@ export async function assembleAndVerifyFinalMix(opts: {
     { passed: orphanPassed, flagged: orphanFlagged },
     { passed: garblePassed, failures: garbleFailures, warnings: garbleWarnings },
     { passed: voicePassed, failures: voiceFailures, inconclusive: voiceInconclusive },
+    { passed: bellePassed, failures: belleCheckFailures, inconclusive: belleCheckInconclusive, warnings: belleCheckWarnings },
   );
 
   // ── 4. Abort on any check failure — no output written ────────────────────
 
-  if (!orphanPassed || !garblePassed || !voicePassed) {
+  if (!orphanPassed || !garblePassed || !voicePassed || !bellePassed) {
     console.error('[assembleAndVerifyFinalMix] ✗ Checks failed — no output written');
     return { success: false, scanReport, errors };
   }
