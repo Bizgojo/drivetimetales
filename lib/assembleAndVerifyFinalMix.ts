@@ -42,6 +42,7 @@ import * as path from 'path';
 import { runGarbleGate, type GarbleGateOutcome } from './garbleGate';
 import { runVoiceMapGate, type VoiceMapGateOutcome } from './voiceMapGate';
 import { runBelleStructureGate, type BelleGateOutcome } from './belleStructureGate';
+import { runStingDetectorGate, type StingCheckResult } from './stingDetectorGate';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -70,6 +71,14 @@ export interface ScanReport {
     passed: boolean;
     failures: { rule: string; verdict: string; details: string }[];
     inconclusive: { rule: string; verdict: string; details: string }[];
+    warnings: string[];
+  };
+  stingCheck: {
+    passed: boolean;
+    stingPresent: boolean;
+    stingBeforeBelle: boolean;
+    stingCount: number;
+    details: string;
     warnings: string[];
   };
 }
@@ -214,6 +223,15 @@ const DEFAULT_BELLE_CHECK: ScanReport['belleCheck'] = {
   warnings: [],
 };
 
+const DEFAULT_STING_CHECK: ScanReport['stingCheck'] = {
+  passed: true,
+  stingPresent: false,
+  stingBeforeBelle: false,
+  stingCount: 0,
+  details: 'not run',
+  warnings: [],
+};
+
 function makeScanReport(
   storyId: string,
   buildTimestamp: string,
@@ -224,6 +242,7 @@ function makeScanReport(
   garbleCheck: ScanReport['garbleCheck'],
   voiceCheck: ScanReport['voiceCheck'],
   belleCheck: ScanReport['belleCheck'] = DEFAULT_BELLE_CHECK,
+  stingCheck: ScanReport['stingCheck'] = DEFAULT_STING_CHECK,
 ): ScanReport {
   return {
     storyId,
@@ -235,6 +254,7 @@ function makeScanReport(
     garbleCheck,
     voiceCheck,
     belleCheck,
+    stingCheck,
   };
 }
 
@@ -568,7 +588,56 @@ export async function assembleAndVerifyFinalMix(opts: {
     const assembledSize = (fs.statSync(concatOut).size / 1024 / 1024).toFixed(1);
     console.log(`[assembleAndVerifyFinalMix] Assembled: ${assembledSize} MB, ${(assembledDur / 60).toFixed(2)} min`);
 
-    // ── 6d. Upload output file ──────────────────────────────────────────────
+    // ── 6d. Sting detector gate (POST-assembly, PRE-upload) ──────────────────
+    // Verifies: sting present at start, before Belle's first line, exactly once.
+    // Runs on the local assembled file BEFORE it is uploaded or audio_url returned.
+    // On failure: logs and returns { success: false } WITHOUT deleting the file
+    // (Marc may want to inspect it).
+    console.log('[assembleAndVerifyFinalMix] Running sting detector gate (post-assembly)...');
+    let stingCheckResult: StingCheckResult;
+    try {
+      stingCheckResult = await runStingDetectorGate(storyId, concatOut);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      stingCheckResult = {
+        stingPresent: false,
+        stingBeforeBelle: false,
+        stingCount: 0,
+        passed: false,
+        details: `Sting gate threw an error: ${msg}`,
+        warnings: [],
+      };
+    }
+
+    // Rebuild scan report with actual stingCheck results
+    const finalScanReport = makeScanReport(
+      storyId, buildTimestamp, outputFilename, segments, Array.from(excludeSet),
+      { passed: orphanPassed, flagged: orphanFlagged },
+      { passed: garblePassed, failures: garbleFailures, warnings: garbleWarnings },
+      { passed: voicePassed, failures: voiceFailures, inconclusive: voiceInconclusive },
+      { passed: bellePassed, failures: belleCheckFailures, inconclusive: belleCheckInconclusive, warnings: belleCheckWarnings },
+      {
+        passed:          stingCheckResult.passed,
+        stingPresent:    stingCheckResult.stingPresent,
+        stingBeforeBelle: stingCheckResult.stingBeforeBelle,
+        stingCount:      stingCheckResult.stingCount,
+        details:         stingCheckResult.details,
+        warnings:        stingCheckResult.warnings,
+      },
+    );
+
+    if (!stingCheckResult.passed) {
+      console.error(
+        `[assembleAndVerifyFinalMix] ✗ Sting gate FAILED — not uploading. ${stingCheckResult.details}`
+      );
+      errors.push(`Sting gate FAILED: ${stingCheckResult.details}`);
+      // Assembled file is NOT deleted — Marc may want to inspect it.
+      return { success: false, scanReport: finalScanReport, errors };
+    }
+
+    console.log(`[assembleAndVerifyFinalMix] ✓ Sting gate passed (count=${stingCheckResult.stingCount})`);
+
+    // ── 6e. Upload output file ──────────────────────────────────────────────
     const storagePath = `asc3/${FOLDER}/${outputFilename}`;
     console.log(`[assembleAndVerifyFinalMix] Uploading as ${outputFilename}...`);
     const buf = fs.readFileSync(concatOut);
@@ -581,14 +650,14 @@ export async function assembleAndVerifyFinalMix(opts: {
 
     const { data: { publicUrl } } = sb.storage.from('audio').getPublicUrl(storagePath);
 
-    // ── 6e. Write scan report to same storage folder (atomic alongside output) ─
-    const reportName = await writeScanReport(sb, FOLDER, scanReport);
+    // ── 6f. Write scan report to same storage folder (atomic alongside output) ─
+    const reportName = await writeScanReport(sb, FOLDER, finalScanReport);
     console.log(`[assembleAndVerifyFinalMix] ✓ Scan report: ${reportName}`);
 
     console.log(`[assembleAndVerifyFinalMix] ✓ DONE — ${outputFilename} (${assembledSize} MB, ${(assembledDur / 60).toFixed(2)} min)`);
     console.log(`[assembleAndVerifyFinalMix]   URL: ${publicUrl}`);
 
-    return { success: true, outputPath: publicUrl, scanReport, errors: [] };
+    return { success: true, outputPath: publicUrl, scanReport: finalScanReport, errors: [] };
 
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
