@@ -204,11 +204,21 @@ export async function runStingDetectorGate(
     : 8; // fallback: check first 8 seconds
 
   const startWindowMaxVol = getMaxVolume(assembledFilePath, 0, windowSec);
-  const stingPresent = startWindowMaxVol > AUDIO_PRESENCE_THRESHOLD_DB;
+
+  // When the reference sting is available, anchor the presence threshold to the
+  // sting's measured peak (within 12 dB). This prevents a quiet non-sting audio
+  // (e.g. speech, music bed, or a sine-wave) from falsely passing as "sting present".
+  // Falls back to the flat -40 dBFS constant when no reference is available.
+  const presenceThresholdDb = (referenceAvailable && stingMaxVolDb !== null)
+    ? stingMaxVolDb - 12
+    : AUDIO_PRESENCE_THRESHOLD_DB;
+
+  const stingPresent = startWindowMaxVol > presenceThresholdDb;
 
   console.log(
     `${prefix} Start window check [0–${windowSec.toFixed(1)}s]: ` +
-    `max_volume=${startWindowMaxVol.toFixed(1)}dBFS → stingPresent=${stingPresent}`
+    `max_volume=${startWindowMaxVol.toFixed(1)}dBFS, ` +
+    `threshold=${presenceThresholdDb.toFixed(1)}dBFS → stingPresent=${stingPresent}`
   );
 
   // ── Step 3: stingBeforeBelle — verify sting ends before Belle's first line ──────
