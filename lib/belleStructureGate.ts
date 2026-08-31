@@ -721,12 +721,3 @@ export async function runBelleStructureGate(
   return { passed, checks, warnings };
 }
 
-// ── CommonJS shim ─────────────────────────────────────────────────────────────
-// Allow: const { runBelleStructureGate } = require('./lib/belleStructureGate');
-// Mirrors the pattern in lib/garbleGate.ts and lib/voiceMapGate.ts.
-if (typeof module !== 'undefined') {
-  // @ts-ignore
-  module.exports = { runBelleStructureGate };
-  // @ts-ignore
-  module.exports.runBelleStructureGate = runBelleStructureGate;
-}
