@@ -56,8 +56,18 @@ import * as path from 'path';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-const FF  = '/opt/homebrew/bin/ffmpeg';
-const FFP = '/opt/homebrew/bin/ffprobe';
+// Portable ffmpeg binary — mirrors app/api/asc3/render-final-mix/core.ts.
+// @ffmpeg-installer/ffmpeg ships a static binary for each platform (macOS,
+// Linux x64/arm64) and is the production binary on Vercel. The eval() trick
+// prevents Next.js/webpack from inlining the require at build time.
+// Falls back to system 'ffmpeg' if the package is somehow absent.
+let FF = 'ffmpeg';
+try { FF = (eval('require')('@ffmpeg-installer/ffmpeg') as { path: string }).path; } catch { /* system ffmpeg */ }
+
+// ffprobe-static is NOT installed in this project (checked: node_modules only
+// contains ffmpeg-static and @ffmpeg-installer/ffmpeg, both ffmpeg-only).
+// getDuration() uses 'ffmpeg -i <file> -f null -' stderr parsing instead —
+// identical to the getAudioDuration() implementation in core.ts.
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL ?? 'https://vmyhlfeouzslixtkmddy.supabase.co';
 
@@ -252,6 +262,26 @@ export async function runStingDetectorGate(
     const episodeDur = getDuration(assembledFilePath);
     console.log(`${prefix} Episode duration: ${(episodeDur / 60).toFixed(2)} min`);
 
+    // Measure episode background loudness at a stable mid-episode point so we
+    // can use an episode-relative threshold. Endless Tales episodes have
+    // continuous background music (-5 to -10 dBFS throughout). Comparing scan
+    // windows to the sting's absolute peak would flag all music as duplicates;
+    // instead we flag only if a window is significantly ABOVE the background bed.
+    //
+    // A misplaced sting playing on top of the music bed would add its energy on
+    // top, raising the window by at least STING_ON_BED_EXCESS_DB above baseline.
+    const BG_SAMPLE_START = Math.min(60, episodeDur * 0.10); // 10% in or 60s — past sting
+    const BG_SAMPLE_DUR   = 30;                               // 30-second sample
+    const STING_ON_BED_EXCESS_DB = 4;                        // dB above background = suspicious
+    let backgroundDb: number | null = null;
+    if (episodeDur > BG_SAMPLE_START + BG_SAMPLE_DUR) {
+      backgroundDb = getMaxVolume(assembledFilePath, BG_SAMPLE_START, BG_SAMPLE_DUR);
+      console.log(
+        `${prefix} Background level: ${backgroundDb.toFixed(1)}dBFS ` +
+        `(measured at ${BG_SAMPLE_START.toFixed(0)}–${(BG_SAMPLE_START + BG_SAMPLE_DUR).toFixed(0)}s)`
+      );
+    }
+
     // Strategic scan positions — where a misplaced sting would most likely appear
     const scanStartOffset = stingDurSec + START_WINDOW_BUFFER_SEC + 5; // past start region
     const duplicateScanPositions: { label: string; startSec: number }[] = [];
@@ -274,9 +304,14 @@ export async function runStingDetectorGate(
       }
     }
 
-    const duplicateThresholdDb = stingMaxVolDb - DUPLICATE_DETECTION_MARGIN_DB;
+    // Determine threshold: background-relative when available; fallback to
+    // sting-peak margin (original heuristic) when background cannot be measured.
+    const duplicateThresholdDb = backgroundDb !== null
+      ? backgroundDb + STING_ON_BED_EXCESS_DB  // episode-relative
+      : stingMaxVolDb - DUPLICATE_DETECTION_MARGIN_DB; // sting-relative fallback
     console.log(
-      `${prefix} Duplicate scan: threshold=${duplicateThresholdDb.toFixed(1)}dBFS, ` +
+      `${prefix} Duplicate scan: threshold=${duplicateThresholdDb.toFixed(1)}dBFS ` +
+      `(${backgroundDb !== null ? `background+${STING_ON_BED_EXCESS_DB}dB` : 'sting-peak fallback'}), ` +
       `checking ${duplicateScanPositions.length} position(s)...`
     );
 
@@ -338,16 +373,18 @@ export async function runStingDetectorGate(
 // ── Internal: ffprobe helpers ─────────────────────────────────────────────────
 
 /**
- * Get the duration (seconds) of an audio file using ffprobe.
+ * Get the duration (seconds) of an audio file using ffmpeg stderr output.
+ *
+ * Mirrors core.ts getAudioDuration(): runs 'ffmpeg -i <file> -f null -' and
+ * parses the 'Duration: HH:MM:SS.ss' line from stderr. This avoids any
+ * dependency on ffprobe, which has no portable static-binary package.
  */
 function getDuration(filePath: string): number {
-  const r = spawnSync(FFP, [
-    '-v', 'quiet',
-    '-show_entries', 'format=duration',
-    '-of', 'default=noprint_wrappers=1:nokey=1',
-    filePath,
-  ]);
-  return parseFloat(((r.stdout ?? '') as unknown as string).toString().trim()) || 0;
+  const r = spawnSync(FF, ['-i', filePath, '-f', 'null', '-'], { stdio: ['ignore', 'ignore', 'pipe'] });
+  const out = ((r.stderr ?? Buffer.alloc(0)) as unknown as { toString(): string }).toString();
+  const m = out.match(/Duration:\s*(\d+):(\d+):(\d+\.?\d*)/);
+  if (!m) return 0;
+  return parseInt(m[1]) * 3600 + parseInt(m[2]) * 60 + parseFloat(m[3]);
 }
 
 /**
