@@ -9395,6 +9395,7 @@ export async function POST(req: NextRequest) {
             .from('stories')
             .update({
               workflow_state: 'ready_for_review',
+              is_hidden: true,
               workflow_state_changed_by: 'autonomous-runner',
               workflow_state_changed_at: finalizationAt,
               workflow_state_change_reason: `Series package ${lockedJob.id} completed and auto-finalized to ready_for_review.`,
@@ -9405,6 +9406,25 @@ export async function POST(req: NextRequest) {
           }
           // PREMISE-UNIQUENESS-001: entering a protected state reserves the premise (best-effort).
           await syncPremiseIndexForTransition(supabase, { storyIds: episodeIdsToPromote, toState: 'ready_for_review' })
+          // ORION-GOV-006 / matches ATL-PIPE-014's standalone audit-write —
+          // fixes the gap where series episodes landed ready_for_review with
+          // no audit row and is_hidden left false.
+          for (const episodeStoryId of episodeIdsToPromote) {
+            await supabase
+              .from('story_workflow_audit')
+              .insert({
+                story_id: episodeStoryId,
+                from_state: null,
+                to_state: 'ready_for_review',
+                changed_by: 'autonomous-runner',
+                changed_at: finalizationAt,
+                reason: `Series package ${lockedJob.id} completed and auto-finalized to ready_for_review.`,
+                session_context: lockedJob.id,
+              })
+              .then(({ error: auditErr }) => {
+                if (auditErr) console.warn(`[series_ready_for_review] audit row insert failed for ${episodeStoryId} (non-fatal): ${auditErr.message}`)
+              })
+          }
         }
 
         const completedLogs = appendLog(lockedJob, 'Series package complete - auto-finalized to Ready for Review', {

@@ -20,14 +20,18 @@ const BASE_STORAGE = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/
 const STING_URL = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/audio/sting/ET_Signature_Sting_v7.mp3.mp3`
 const TMP_MIN_FREE_MB = 150
 
-// ASC3 Mix Spec v1.2 (ATL-PIPE-007 — 2026-06-10)
-// 1. STING         — full volume, no music
-// 2. BELLE INTRO   — full volume, no story music; ET sting may tail under intro
+// ASC3 Mix Spec — MUSIC-002 (Canon Registry, Aug 31 2026; supersedes MUSIC-001
+// and the prior ATL-PIPE-007 / v1.2 values below). All gains are on the same
+// mix-bus scale as Belle's fixed gain (BELLE-008, 1.5).
+// 1. STING — gain 1.75, no music
+// 2. BELLE INTRO — full volume, no story music; ET sting tails under intro
 // 3. 0.75s silence
-// 4. STORY         — voices begin with story-specific Suno music ducked underneath
-// 5. STORY ENDS    — music swells over 2s as last narrative line ends (+3dB swell)
-// 6. BELLE OUTRO   — music ducks to ~25% of narrative bed level under Belle B
-// 7. BELLE ENDS    — music fades to silence over exactly 3 seconds
+// 4. STORY-BODY START — music swells to gain 1.30 (~1s log-curve ramp, content-aware placement)
+// 5. STORY — voices begin with music bed ducked to 0.13
+// 6. STORY ENDS — music swells to gain 1.30 again (~1s log-curve ramp, content-aware placement)
+// 7. BELLE OUTRO — music ducks to 0.13 at outro start, rises gradually across
+// Belle's full outro dialogue to reach gain 0.50 at the moment she finishes
+// 8. BELLE ENDS — music fades from 0.50 to 0 over exactly 3 seconds
 
 let FFMPEG_PATH = 'ffmpeg'
 try { FFMPEG_PATH = eval('require')('@ffmpeg-installer/ffmpeg').path } catch { /* system ffmpeg */ }
@@ -751,10 +755,12 @@ export async function runRenderFinalMix(storyId: string): Promise<{
     const shapedMusicPath = path.join(tmpDir, 'music_shaped.mp3')
     const preRollSeconds = 2.5
     const postStoryTailSeconds = STORY_TAIL_SEC
-    const preRollVolume = 0.65
-    const narrationBedVolume = 0.12  // ATL-MUSIC-BED-003 (2026-08-14): adjusted from 0.15 to 0.12 per Marc
-    // v2: swell reaches 0.85 (loud but not clipping); legacy: 0.45 with immediate fade
-    const postStoryVolume = V2_MUSIC_SWELL ? 0.85 : 0.45
+    // MUSIC-002 (canon, Aug 31 2026) — supersedes MUSIC-001 and the prior
+    // ATL-MUSIC-BED-003 / "Production Standard v2" values.
+    const preRollVolume = 1.30         // MUSIC-002: story-body-start swell (was 0.65)
+    const narrationBedVolume = 0.13    // MUSIC-002: story-body duck (was 0.12)
+    const postStoryVolume = V2_MUSIC_SWELL ? 1.30 : 0.45  // MUSIC-002: story-body-end swell (was 0.85)
+    const SWELL_RAMP_SEC = 1.0         // MUSIC-002: ~1s ramp on both swells (see afade curve=log below)
 
     let musicShapeFilter: string
     if (V2_MUSIC_SWELL) {
@@ -762,10 +768,13 @@ export async function runRenderFinalMix(storyId: string): Promise<{
       // Swell peaks at postStoryVolume; outro music ducks to ~25% narrative level when Belle speaks.
       // Final fade after Belle: 3s clean fade to silence (spec: fade out 3 seconds after Belle ends).
       musicShapeFilter =
-        `[0:a]atrim=start=${musicOffset}:duration=${preRollSeconds},asetpts=PTS-STARTPTS,volume=${preRollVolume},afade=t=in:st=0:d=0.4[pre];` +
+        // MUSIC-002: story-body-start swell — ~1s log-curve ramp (was 0.4s linear).
+        `[0:a]atrim=start=${musicOffset}:duration=${preRollSeconds},asetpts=PTS-STARTPTS,volume=${preRollVolume},afade=t=in:st=0:d=${SWELL_RAMP_SEC}:curve=log[pre];` +
         `[0:a]atrim=start=0:duration=${segsDur},asetpts=PTS-STARTPTS,volume=${narrationBedVolume}[bed];` +
+        // MUSIC-002: story-body-end swell — same ~1s log-curve ramp, same content-aware
+        // placement (musicOffset), consistent with the start-swell treatment.
         `[0:a]atrim=start=${musicOffset}:duration=${postStoryTailSeconds},asetpts=PTS-STARTPTS,` +
-          `volume=${postStoryVolume},afade=t=in:st=0:d=${postStoryTailSeconds}[swell];` +
+        `volume=${postStoryVolume},afade=t=in:st=0:d=${SWELL_RAMP_SEC}:curve=log[swell];` +
         `[pre][bed][swell]concat=n=3:v=0:a=1[music_out]`
     } else {
       // Legacy shape: pre-roll → bed → 0.5s tail (fades immediately — no real swell)
@@ -814,7 +823,8 @@ export async function runRenderFinalMix(storyId: string): Promise<{
       await execFileAsync(FFMPEG_PATH, [
         '-i', stingPath, '-i', normalizedIntroPath,
         '-filter_complex',
-        `[0:a]afade=t=out:st=${BELLE_ENTER_SEC}:d=${STING_FADE_DUR},aformat=sample_rates=44100:channel_layouts=stereo[s];` +
+        // MUSIC-002: sting gain 1.75.
+        `[0:a]volume=1.75,afade=t=out:st=${BELLE_ENTER_SEC}:d=${STING_FADE_DUR},aformat=sample_rates=44100:channel_layouts=stereo[s];` +
         `[1:a]adelay=${belleDelayMs}|${belleDelayMs},aformat=sample_rates=44100:channel_layouts=stereo[v];` +
         `[s][v]amix=inputs=2:duration=longest[out]`,
         '-map', '[out]',
@@ -840,24 +850,34 @@ export async function runRenderFinalMix(storyId: string): Promise<{
       //   Phase 2 (Belle speaks): t=DUCK_RAMP .. belleEnd    hold DUCK_VOL (Belle clearly dominant)
       //   Phase 3 (fade after):  t=belleEnd .. fadeEnd (3s)   fade DUCK_VOL → 0 (clean silence)
       // Per spec: duck ~25% of narrative bed (0.075 * 0.25 ≈ 0.019), fade exactly 3 seconds
-      const V2_DUCK_VOL  = 0.019  // linear — 25% of narrative bed level (0.075 * 0.25)
-      const V2_DUCK_RAMP = 0.5    // s — duck ramp from swell peak to bed level
-      const V2_TAIL_FADE = 3.0    // s — music fade to silence after Belle B ends (spec: exactly 3s)
+      // MUSIC-002: replaces the old duck-then-HOLD-then-fade shape with
+      // duck-then-RISE-then-fade. Ducks to DUCK_VOL at the start of Belle's
+      // outro, rises gradually across her full spoken duration to reach
+      // RISE_TARGET at the exact moment she finishes, then fades to silence.
+      const V2_DUCK_VOL = 0.13           // MUSIC-002: duck level at start of Belle's outro (was 0.019)
+      const V2_DUCK_RAMP = 0.5           // s — duck ramp from swell peak to DUCK_VOL.
+                                         // NOT specified by MUSIC-002 itself — carried over from the
+                                         // prior implementation. Flag to Marc if this needs its own value.
+      const V2_RISE_TARGET = 0.50        // MUSIC-002: gain at the exact moment Belle finishes speaking
+      const V2_TAIL_FADE = 3.0           // s — fade RISE_TARGET to silence after Belle ends (unchanged — already matched MUSIC-002)
 
       const outroDurSecs = outroDurForShape
       const belleEnd = V2_DUCK_RAMP + outroDurSecs
-      const fadeEnd  = belleEnd + V2_TAIL_FADE
-      const outroBed = fadeEnd + 0.5   // music clip duration + small buffer for fade completion
+      const fadeEnd = belleEnd + V2_TAIL_FADE
+      const outroBed = fadeEnd + 0.5     // music clip duration + small buffer for fade completion
 
       // Three-phase volume expression (eval=frame for sample-accurate ramps)
-      // Phase 1: swell peaks at postStoryVolume, ducks to DUCK_VOL over DUCK_RAMP seconds
-      // Phase 2: hold DUCK_VOL while Belle speaks
-      // Phase 3: fade DUCK_VOL to silence over exactly 3 seconds after Belle ends
+      // Phase 1 (t=0..DUCK_RAMP): swell peak (postStoryVolume) -> DUCK_VOL
+      // Phase 2 (t=DUCK_RAMP..belleEnd): DUCK_VOL -> RISE_TARGET, linear across Belle's
+      // full spoken duration. MUSIC-002 says "rises gradually" with no curve specified —
+      // this is a literal linear reading. Flag to Marc if a log/exp curve was intended here too.
+      // Phase 3 (t=belleEnd..fadeEnd): RISE_TARGET -> 0 over exactly V2_TAIL_FADE seconds
       const outroVolExpr =
         `if(lt(t,${V2_DUCK_RAMP.toFixed(3)}),` +
-          `${postStoryVolume}+(${V2_DUCK_VOL}-${postStoryVolume})*t/${V2_DUCK_RAMP},` +
-        `if(lt(t,${belleEnd.toFixed(3)}),${V2_DUCK_VOL},` +
-        `max(0,${V2_DUCK_VOL}*(1-(t-${belleEnd.toFixed(3)})/${V2_TAIL_FADE}))))`
+        `${postStoryVolume}+(${V2_DUCK_VOL}-${postStoryVolume})*t/${V2_DUCK_RAMP},` +
+        `if(lt(t,${belleEnd.toFixed(3)}),` +
+        `${V2_DUCK_VOL}+(${V2_RISE_TARGET}-${V2_DUCK_VOL})*(t-${V2_DUCK_RAMP})/(${belleEnd.toFixed(3)}-${V2_DUCK_RAMP}),` +
+        `max(0,${V2_RISE_TARGET}*(1-(t-${belleEnd.toFixed(3)})/${V2_TAIL_FADE}))))`
 
       const outroMusicClipPath = path.join(tmpDir, 'outro_music_clip.mp3')
       const outroBelleDelPath  = path.join(tmpDir, 'outro_belle_del.mp3')
