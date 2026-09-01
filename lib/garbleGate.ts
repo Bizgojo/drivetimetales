@@ -230,14 +230,5 @@ async function runGateProcess(args: string[]): Promise<GarbleGateOutcome> {
   return { passed, failures, warnings, reportPath, report };
 }
 
-// ---------------------------------------------------------------------------
-// CommonJS shim — correction scripts use require()
-// ---------------------------------------------------------------------------
-
-// Allow: const { runGarbleGate } = require('./lib/garbleGate');
-if (typeof module !== 'undefined') {
-  // @ts-ignore
-  module.exports = { runGarbleGate };
-  // @ts-ignore
-  module.exports.runGarbleGate = runGarbleGate;
-}
+// Note: CommonJS shim removed — route.ts imports this module via ESM.
+// Correction scripts that need CJS can use: const { runGarbleGate } = require('./garble-detection-gate.js')
