@@ -16,6 +16,7 @@ import { runPremiseGate, formatPremiseCollisionMessage, formatPremiseAdjacentWar
 import { syncPremiseIndexForTransition } from '@/lib/premiseIndex'
 import { verifyArtifactHttp } from '@/lib/artifactGate'
 import { runHookGateForStory, detectBelleQualityRepairEmpty } from '@/lib/hookGate'
+import { runGarbleGate } from '@/lib/garbleGate'
 
 export const runtime = 'nodejs'
 // maxDuration governed by vercel.json (800s) - do not override here
@@ -4464,6 +4465,84 @@ async function runStandaloneRenderFinalMix(job: ProductionJob, origin: string) {
   } catch (e) {
     // If segment validation itself fails, log warning but continue to render attempt
     console.warn(`[ATL-PIPE-003] Segment pre-flight validation error: ${String(e).slice(0, 200)}`)
+  }
+
+  // GARBLE-001 (canon): every segment's rendered audio must match its script
+  // line, WER <= 40%. Hard stop on failure — never assemble a mix containing
+  // a known-corrupted segment.
+  try {
+    const garbleOutcome = await runGarbleGate(String(storyId))
+    if (!garbleOutcome.passed) {
+      const errorReport = {
+        success: false,
+        kind: 'garble_gate_failed',
+        error: 'GARBLE_001_GATE_FAILED',
+        failedSegments: garbleOutcome.failures.map(f => f.segName),
+        warnSegments: garbleOutcome.warnings.map(f => f.segName),
+        message: `GARBLE-001: ${garbleOutcome.failures.length} segment(s) exceed 40% WER against script. Blocked before render_final_mix.`,
+      }
+      console.warn(`[GARBLE-001] Gate failed for ${storyId}:`, errorReport.failedSegments)
+      return {
+        success: false,
+        skippedExisting: false,
+        storyId: String(storyId),
+        finalAudioUrl: null,
+        storyBodyUrl: null,
+        durationSecs: null,
+        report: errorReport,
+        state: {
+          ...state,
+          storyId: String(storyId),
+          renderFinalMix: {
+            status: 'failed',
+            skippedExisting: false,
+            finalAudioUrl: null,
+            storyBodyUrl: null,
+            durationSecs: null,
+            routeResponse: errorReport,
+            failedAt: nowIso(),
+            terminalFailure: false,
+          },
+        },
+      }
+    }
+    if (garbleOutcome.warnings.length > 0) {
+      console.warn(`[GARBLE-001] ${garbleOutcome.warnings.length} segment(s) borderline (20-40% WER), continuing:`, garbleOutcome.warnings.map(f => f.segName))
+    }
+  } catch (e) {
+    // GARBLE-001 gate itself crashed (Whisper unavailable, etc). Per the module's own
+    // header: "If it returns passed=false, halt." A crash is not a pass — do not
+    // silently continue. Fail closed, matching GARBLE-001's fail-closed intent.
+    const errorReport = {
+      success: false,
+      kind: 'garble_gate_error',
+      error: 'GARBLE_001_GATE_ERROR',
+      message: `GARBLE-001 gate threw before verdict: ${String(e).slice(0, 300)}`,
+    }
+    console.error(`[GARBLE-001] Gate crashed for ${storyId}: ${String(e).slice(0, 300)}`)
+    return {
+      success: false,
+      skippedExisting: false,
+      storyId: String(storyId),
+      finalAudioUrl: null,
+      storyBodyUrl: null,
+      durationSecs: null,
+      report: errorReport,
+      state: {
+        ...state,
+        storyId: String(storyId),
+        renderFinalMix: {
+          status: 'failed',
+          skippedExisting: false,
+          finalAudioUrl: null,
+          storyBodyUrl: null,
+          durationSecs: null,
+          routeResponse: errorReport,
+          failedAt: nowIso(),
+          terminalFailure: false,
+        },
+      },
+    }
   }
 
   // Direct module call - eliminates HTTP hop and Vercel edge network timeout risk (ATL P1-B)
