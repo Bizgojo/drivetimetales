@@ -101,7 +101,9 @@ export interface GarbleGateOutcome {
 // Constants
 // ---------------------------------------------------------------------------
 
-const GATE_SCRIPT = path.resolve(__dirname, '../garble-detection-gate.js');
+// Use process.cwd() (= project root in Next.js) instead of __dirname which resolves
+// incorrectly in webpack-bundled App Router context.
+const GATE_SCRIPT = path.join(process.cwd(), 'garble-detection-gate.js');
 
 // ---------------------------------------------------------------------------
 // Main export
