@@ -2480,7 +2480,7 @@ async function loadSeriesEpisodes(seriesId: string) {
     // recommissioned replacement occupies the slot (dispatch-queue applies the
     // same exclusion). Without this, a retired row makes the validator see
     // duplicate/extra episodes (Limestone canary failure 22:06Z).
-    .neq('workflow_state', 'cold_storage')
+    .or('workflow_state.neq.cold_storage,workflow_state.is.null')
     .order('episode_number', { ascending: true })
 
   if (error) throw new Error(`Failed to load series episodes: ${error.message}`)
