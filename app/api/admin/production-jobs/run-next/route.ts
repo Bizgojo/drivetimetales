@@ -343,8 +343,9 @@ function musicPromptFor(script: string, title: string, genre: string) {
 
 function storyTypeFor(job: ProductionJob, queueItem: any): 'standalone' | 'series' {
   const fromJob = String(job.job_type || '').toLowerCase()
-  if (fromJob === 'series') return 'series'
-  if (fromJob === 'single') return 'standalone'
+  const normalizedJobType = fromJob.replace(/^test_/i, '')
+  if (normalizedJobType === 'series') return 'series'
+  if (normalizedJobType === 'single') return 'standalone'
   const notes = String(queueValue(queueItem, 'notes')).toLowerCase()
   const totalEpisodes = totalEpisodesFor(queueItem)
   if (notes.includes('type: series') || totalEpisodes > 1) return 'series'
