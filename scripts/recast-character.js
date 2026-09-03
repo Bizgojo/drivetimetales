@@ -460,6 +460,32 @@ async function main() {
     sil(sil1, 0.5); sil(sil2, 0.5)
     concat([introN, sil1, storyN, sil2, outroN], finalMix, 'build final mix')
 
+    // GARBLE-001: every recast segment must be checked before this script's
+    // known behavior of writing straight to production audio_url with no
+    // pause for approval. This is the one path where that write is immediate,
+    // so this is also the one path where a missed gate has the least room
+    // for anyone to catch it before it's live.
+    console.log('\n🔍  GARBLE-001 gate — checking recast segments (Whisper transcription, may take a few minutes)...')
+    const garbleGateScript = path.join(__dirname, '..', 'garble-detection-gate.js')
+    const garbleResult = spawnSync(
+      'node',
+      [garbleGateScript, storyId],
+      { encoding: 'utf8', timeout: 20 * 60 * 1000, maxBuffer: 30 * 1024 * 1024 }
+    )
+    if (garbleResult.stdout) process.stdout.write(garbleResult.stdout)
+    if (garbleResult.stderr) process.stderr.write(garbleResult.stderr)
+    if (garbleResult.error) {
+      throw new Error(`GARBLE_GATE_PROCESS_ERROR (recast-character): ${garbleResult.error.message}`)
+    }
+    if (garbleResult.status === 2) {
+      throw new Error('GARBLE_GATE_FATAL (recast-character): gate encountered a fatal error — no output written. Recast NOT uploaded to production.')
+    }
+    if (garbleResult.status === 1) {
+      throw new Error('GARBLE_CHECK_FAILED (recast-character): corrupted audio detected in recast segments. Recast NOT uploaded to production.')
+    }
+    console.log('  ✓ Garble detection gate: PASSED')
+    audit.phases.garbleGate = { status: 'passed', checkedAt: new Date().toISOString() }
+
     // Upload
     const mixPath = `asc3/${storyFolder}/final_mix_${Date.now()}.mp3`
     const { error: upErr } = await sb.storage.from('audio').upload(mixPath, fs.readFileSync(finalMix), { contentType: 'audio/mpeg', upsert: false })
