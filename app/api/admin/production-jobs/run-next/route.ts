@@ -17,6 +17,7 @@ import { syncPremiseIndexForTransition } from '@/lib/premiseIndex'
 import { verifyArtifactHttp } from '@/lib/artifactGate'
 import { runHookGateForStory, detectBelleQualityRepairEmpty } from '@/lib/hookGate'
 import { runGarbleGate } from '@/lib/garbleGate'
+import { parseScriptPositions } from '@/lib/scriptLineIndex'
 
 export const runtime = 'nodejs'
 // maxDuration governed by vercel.json (800s) - do not override here
@@ -4467,6 +4468,44 @@ async function runStandaloneRenderFinalMix(job: ProductionJob, origin: string) {
     console.warn(`[ATL-PIPE-003] Segment pre-flight validation error: ${String(e).slice(0, 200)}`)
   }
 
+  // ORPHAN-001 (canon): every segment must correspond to a real script line.
+  // Runs before GARBLE-001 — cheaper check, and no reason to spend Whisper
+  // calls checking a segment that's going to be rejected anyway.
+  const orphanOutcome = await checkOrphanSegments(String(storyId))
+  if (!orphanOutcome.passed) {
+    const errorReport = {
+      success: false,
+      kind: 'orphan_check_failed',
+      error: 'ORPHAN_001_CHECK_FAILED',
+      orphanSegments: orphanOutcome.orphanNames,
+      message: `ORPHAN-001: ${orphanOutcome.orphanNames.length} segment(s) beyond script boundary. Blocked before render_final_mix.`,
+    }
+    console.warn(`[ORPHAN-001] Check failed for ${storyId}:`, orphanOutcome.orphanNames)
+    return {
+      success: false,
+      skippedExisting: false,
+      storyId: String(storyId),
+      finalAudioUrl: null,
+      storyBodyUrl: null,
+      durationSecs: null,
+      report: errorReport,
+      state: {
+        ...state,
+        storyId: String(storyId),
+        renderFinalMix: {
+          status: 'failed',
+          skippedExisting: false,
+          finalAudioUrl: null,
+          storyBodyUrl: null,
+          durationSecs: null,
+          routeResponse: errorReport,
+          failedAt: nowIso(),
+          terminalFailure: false,
+        },
+      },
+    }
+  }
+
   // GARBLE-001 (canon): every segment's rendered audio must match its script
   // line, WER <= 40%. Hard stop on failure — never assemble a mix containing
   // a known-corrupted segment.
@@ -6645,6 +6684,42 @@ async function runSeriesMusicGeneration(job: ProductionJob, origin: string) {
   }
 }
 
+// ORPHAN-001 (canon): every segment file present in storage must correspond to
+// a real line in the CURRENT script. A segment at a position beyond the
+// script's parsed length is left over from a prior revision and must never
+// silently play in the final mix. Hard-fail, matching the already-approved
+// Mechanism B behavior in assembleAndVerifyFinalMix.ts / render-correction-mix.js
+// — detect, name, stop. Self-contained: does its own story/script fetch and
+// its own storage listing, independent of caller scope.
+async function checkOrphanSegments(storyId: string): Promise<{ passed: boolean; orphanNames: string[] }> {
+  const { data: story } = await supabase
+    .from('stories')
+    .select('script')
+    .eq('id', storyId)
+    .single()
+
+  if (!story?.script) {
+    // No script to check against — cannot evaluate, do not false-fail.
+    console.warn(`[ORPHAN-001] Skipped for ${storyId} — story.script not available`)
+    return { passed: true, orphanNames: [] }
+  }
+
+  const parsedPositionCount = parseScriptPositions(story.script).length
+
+  const { data: files } = await supabase.storage
+    .from('audio')
+    .list(`asc3/${storyId}`)
+
+  const orphanNames = (files || [])
+    .map(f => f.name)
+    .filter(name => {
+      const m = name.match(/^segment_(\d{4})\.mp3$/)
+      return m ? parseInt(m[1], 10) >= parsedPositionCount : false
+    })
+
+  return { passed: orphanNames.length === 0, orphanNames }
+}
+
 async function runSeriesRenderFinalMix(job: ProductionJob, origin: string) {
   const state = job.state_json && typeof job.state_json === 'object' ? job.state_json : {}
   const seriesId = job.series_id || state.seriesId
@@ -6677,6 +6752,31 @@ async function runSeriesRenderFinalMix(job: ProductionJob, origin: string) {
       console.warn(`[runSeriesRenderFinalMix] Ep${num} was marked done in state but final_mix.mp3 is not complete in DB/storage; re-rendering ${storyId}`)
       doneByEp[key] = false
       finalMixUrlByEp[key] = null
+    }
+
+    // ORPHAN-001 (canon): same check, series path.
+    const orphanOutcome = await checkOrphanSegments(String(storyId))
+    if (!orphanOutcome.passed) {
+      const errorReport = {
+        success: false,
+        kind: 'orphan_check_failed',
+        error: 'ORPHAN_001_CHECK_FAILED',
+        orphanSegments: orphanOutcome.orphanNames,
+        message: `ORPHAN-001: ${orphanOutcome.orphanNames.length} segment(s) beyond script boundary. Blocked before render_final_mix.`,
+      }
+      console.warn(`[ORPHAN-001] Check failed for ${storyId}:`, orphanOutcome.orphanNames)
+      return {
+        allDone: false,
+        processedEp: num,
+        finalMixUrl: null,
+        duration: null,
+        lastError: errorReport.message,
+        state: {
+          ...state,
+          seriesId: String(seriesId),
+          seriesRenderFinalMix: { doneByEp, finalMixUrlByEp, allDone: false, lastUpdatedAt: nowIso(), orphanCheckError: errorReport },
+        },
+      }
     }
 
     // GARBLE-001 (canon): every segment's rendered audio must match its script
