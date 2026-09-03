@@ -22,10 +22,16 @@ const TOLERANCE_DB = 3.0  // ±3 dB per phase — starting point, confirmed/adju
 // Seconds to sample for outro duck/rise point measurements
 const SAMPLE_DUR_SEC = 2.0
 
-// ── getMaxVolume — verbatim from lib/stingDetectorGate.ts ─────────────────────
+// ── getMaxVolume — input-side seek for accurate windowed measurements ─────────
+// NOTE: Unlike stingDetectorGate.ts (which uses output-side seek, i.e., -i before
+// -ss), this gate requires accurate per-window measurements for comparative dB
+// analysis. Output-side seek accumulates max_volume from t=0 (not the specified
+// window), making all deltas collapse to 0. Input-side seek (-ss before -i)
+// correctly limits volumedetect to the [startSec, startSec+durationSec] window.
 function getMaxVolume(filePath: string, startSec: number, durationSec: number | null): number {
-  const args = ['-i', filePath]
-  if (startSec > 0) args.push('-ss', String(startSec))
+  const args: string[] = []
+  if (startSec > 0) args.push('-ss', String(startSec))  // input-side seek — must come before -i
+  args.push('-i', filePath)
   if (durationSec !== null) args.push('-t', String(durationSec))
   args.push('-af', 'volumedetect', '-f', 'null', '-')
   const r = spawnSync(FF, args, { stdio: ['ignore', 'ignore', 'pipe'] })
