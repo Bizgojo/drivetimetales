@@ -18,6 +18,7 @@ import { verifyArtifactHttp } from '@/lib/artifactGate'
 import { runHookGateForStory, detectBelleQualityRepairEmpty } from '@/lib/hookGate'
 import { runGarbleGate } from '@/lib/garbleGate'
 import { parseScriptPositions } from '@/lib/scriptLineIndex'
+import { runVoiceMapGate } from '@/lib/voiceMapGate'
 
 export const runtime = 'nodejs'
 // maxDuration governed by vercel.json (800s) - do not override here
@@ -4506,6 +4507,44 @@ async function runStandaloneRenderFinalMix(job: ProductionJob, origin: string) {
     }
   }
 
+  // VOICE-001 (canon): every segment must use the currently-assigned voice_id
+  // for its speaking character. Runs after ORPHAN-001, before GARBLE-001 —
+  // DB-only check, no Whisper call, so it's cheaper than the garble gate.
+  const voiceOutcome = await checkVoiceMap(String(storyId))
+  if (!voiceOutcome.passed) {
+    const errorReport = {
+      success: false,
+      kind: 'voice_map_check_failed',
+      error: 'VOICE_001_CHECK_FAILED',
+      voiceFailures: voiceOutcome.failures,
+      message: `VOICE-001: ${voiceOutcome.failures.length} segment(s) using the wrong voice_id. Blocked before render_final_mix.`,
+    }
+    console.warn(`[VOICE-001] Check failed for ${storyId}:`, voiceOutcome.failures)
+    return {
+      success: false,
+      skippedExisting: false,
+      storyId: String(storyId),
+      finalAudioUrl: null,
+      storyBodyUrl: null,
+      durationSecs: null,
+      report: errorReport,
+      state: {
+        ...state,
+        storyId: String(storyId),
+        renderFinalMix: {
+          status: 'failed',
+          skippedExisting: false,
+          finalAudioUrl: null,
+          storyBodyUrl: null,
+          durationSecs: null,
+          routeResponse: errorReport,
+          failedAt: nowIso(),
+          terminalFailure: false,
+        },
+      },
+    }
+  }
+
   // GARBLE-001 (canon): every segment's rendered audio must match its script
   // line, WER <= 40%. Hard stop on failure — never assemble a mix containing
   // a known-corrupted segment.
@@ -6691,6 +6730,33 @@ async function runSeriesMusicGeneration(job: ProductionJob, origin: string) {
 // Mechanism B behavior in assembleAndVerifyFinalMix.ts / render-correction-mix.js
 // — detect, name, stop. Self-contained: does its own story/script fetch and
 // its own storage listing, independent of caller scope.
+// VOICE-001 (canon): every character's spoken segment must use the exact
+// voice_id currently assigned to that character. Hard-fail, same severity as
+// GARBLE-001 and ORPHAN-001 — this is what would have caught EP10's
+// segment_0089 (stale voice after a recast) automatically. Self-contained:
+// lists storage itself, same pattern as checkOrphanSegments.
+async function checkVoiceMap(storyId: string): Promise<{ passed: boolean; failures: string[] }> {
+  const { data: files } = await supabase.storage
+    .from('audio')
+    .list(`asc3/${storyId}`)
+
+  const segmentNames = (files || [])
+    .map(f => f.name)
+    .filter(name => /^segment_\d{4}\.mp3$/.test(name))
+    .sort()
+
+  if (segmentNames.length === 0) {
+    // Nothing to check yet — not a failure, just nothing rendered.
+    return { passed: true, failures: [] }
+  }
+
+  const outcome = await runVoiceMapGate(storyId, segmentNames)
+  return {
+    passed: outcome.passed,
+    failures: outcome.failures.map(f => `${f.segName} (${f.character ?? 'unknown'}: expected ${f.expectedVoiceName ?? f.expectedVoiceId}, got ${f.actualVoiceId})`),
+  }
+}
+
 async function checkOrphanSegments(storyId: string): Promise<{ passed: boolean; orphanNames: string[] }> {
   const { data: story } = await supabase
     .from('stories')
@@ -6775,6 +6841,31 @@ async function runSeriesRenderFinalMix(job: ProductionJob, origin: string) {
           ...state,
           seriesId: String(seriesId),
           seriesRenderFinalMix: { doneByEp, finalMixUrlByEp, allDone: false, lastUpdatedAt: nowIso(), orphanCheckError: errorReport },
+        },
+      }
+    }
+
+    // VOICE-001 (canon): same check, series path.
+    const voiceOutcome = await checkVoiceMap(String(storyId))
+    if (!voiceOutcome.passed) {
+      const errorReport = {
+        success: false,
+        kind: 'voice_map_check_failed',
+        error: 'VOICE_001_CHECK_FAILED',
+        voiceFailures: voiceOutcome.failures,
+        message: `VOICE-001: ${voiceOutcome.failures.length} segment(s) using the wrong voice_id. Blocked before render_final_mix.`,
+      }
+      console.warn(`[VOICE-001] Check failed for ${storyId}:`, voiceOutcome.failures)
+      return {
+        allDone: false,
+        processedEp: num,
+        finalMixUrl: null,
+        duration: null,
+        lastError: errorReport.message,
+        state: {
+          ...state,
+          seriesId: String(seriesId),
+          seriesRenderFinalMix: { doneByEp, finalMixUrlByEp, allDone: false, lastUpdatedAt: nowIso(), voiceCheckError: errorReport },
         },
       }
     }
