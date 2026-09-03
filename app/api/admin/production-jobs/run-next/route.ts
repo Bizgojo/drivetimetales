@@ -2133,13 +2133,18 @@ async function selectCandidate(jobId: string) {
   if (jobId) {
     query = query.eq('id', jobId).in('status', ['queued', 'running'])
   } else {
-    query = query.or(
-      [
-        'status.eq.queued',
-        `and(status.eq.running,locked_by.is.null,updated_at.lt.${zombieCutoff})`,
-        `and(status.eq.running,locked_at.not.is.null,locked_at.lt.${zombieCutoff})`,
-      ].join(','),
-    )
+    // TEST-ISOLATION-001: never let production cron workers pick up test jobs.
+    // Jobs with a TEST_ prefix on job_type are only driveable via explicit jobId;
+    // the open-ended cron path always skips them regardless of timing.
+    query = query
+      .not('job_type', 'like', 'TEST_%')
+      .or(
+        [
+          'status.eq.queued',
+          `and(status.eq.running,locked_by.is.null,updated_at.lt.${zombieCutoff})`,
+          `and(status.eq.running,locked_at.not.is.null,locked_at.lt.${zombieCutoff})`,
+        ].join(','),
+      )
   }
 
   const { data, error } = await query.maybeSingle()
