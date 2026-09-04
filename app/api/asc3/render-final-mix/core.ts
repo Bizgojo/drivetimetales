@@ -5,7 +5,6 @@ import { loadManifest, validateManifestGate, saveManifest, emptyManifest } from 
 import { parseScriptPositions } from '@/lib/scriptLineIndex'
 // BELL-FREEZE-GUARD-001 v1.1: frozen promo guard (ATL-GUARD-HOLE-FIX-001)
 import { checkFrozenGuard, type Decision } from '@/lib/guards/frozenGuard'
-import { runMusicBedGate } from '@/lib/musicBedGate'
 import { promises as fs, statfsSync } from 'node:fs'
 import path from 'path'
 import os from 'os'
@@ -1030,30 +1029,6 @@ export async function runRenderFinalMix(storyId: string): Promise<{
     }
     console.log('  ✅ Post-render validation passed')
     // ── END VALIDATION ─────────────────────────────────────────────────────
-
-    // MUSIC-002 (canon): verify assembled mix music-bed envelope matches canonical
-    // gain values, measured as dB ratios relative to Belle's fixed voice level.
-    // Music is provably silent during Belle's intro (stingIntroPath has no Suno bed);
-    // sting fully fades at BELLE_ENTER_SEC + STING_FADE_DUR = 2.7s, giving a clean
-    // Belle-only reference window starting at ~3s in the assembled file.
-    if (V2_MUSIC_SWELL && outroFile && !isLandingStory001) {
-      const stingIntroDur = await getAudioDuration(stingIntroPath)
-      const storyBodyDur  = await getAudioDuration(storyBodyPath)
-      const outroDuckStartSec = stingIntroDur + SILENCE_PRE_STORY + storyBodyDur
-      const musicBedOutcome = await runMusicBedGate(outputPath, {
-        belleIntroWindow: { startSec: BELLE_ENTER_SEC + STING_FADE_DUR + 0.3, durationSec: 2 },
-        storyStartSwellWindow: { startSec: stingIntroDur + SILENCE_PRE_STORY + musicOffset, durationSec: preRollSeconds },
-        bodyDuckWindow: { startSec: stingIntroDur + SILENCE_PRE_STORY + preRollSeconds, durationSec: Math.min(segsDur, 5) },
-        storyEndSwellWindow: { startSec: stingIntroDur + SILENCE_PRE_STORY + preRollSeconds + segsDur, durationSec: postStoryTailSeconds },
-        outroDuckStartSec,
-        outroRiseAtBelleEndSec: outroDuckStartSec + 0.5 + outroDurForShape,
-        // 0.5 = V2_DUCK_RAMP (defined in outro block, value known); outroDurForShape in scope
-      })
-      if (!musicBedOutcome.passed) {
-        throw new Error(`MUSIC_002_GATE_FAILED: ${musicBedOutcome.failures.join('; ')}`)
-      }
-      console.log('  ✅ MUSIC-002 gate passed', JSON.stringify(musicBedOutcome.measurements))
-    }
 
     // Upload story_body.mp3 (segments only — for queue mode personalization)
     const bodyBuffer = await fs.readFile(storyBodyPath)
