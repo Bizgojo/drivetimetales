@@ -554,6 +554,20 @@ async function runSegmentsMode({ story, sb, FOLDER, storageFiles, tmp, outputFil
     log('  ⚠️  Orphan check skipped — story.script not available (add \'script\' to DB select)');
   }
 
+  log('\n🔍 assembleAndVerifyFinalMix — voice-map check (VOICE-001, subprocess tsx)...')
+  {
+    const voiceListPath = path.join(os.tmpdir(), `voicemap_${STORY_ID}_${Date.now()}.json`)
+    fs.writeFileSync(voiceListPath, JSON.stringify(segs.map(f => f.name).filter(n => /^segment_\d{4}\.mp3$/.test(n)).sort()))
+    const voiceGateScript = path.join(__dirname, 'voice-map-gate.ts')
+    const r = spawnSync('npx', ['tsx', voiceGateScript, STORY_ID, voiceListPath], { encoding: 'utf8', timeout: 5 * 60 * 1000, maxBuffer: 30 * 1024 * 1024 })
+    try { fs.unlinkSync(voiceListPath) } catch {}
+    if (r.stdout) process.stdout.write(r.stdout); if (r.stderr) process.stderr.write(r.stderr)
+    if (r.error) throw new Error(`VOICE_GATE_PROCESS_ERROR (assembleAndVerifyFinalMix): ${r.error.message}`)
+    if (r.status === 2) throw new Error('VOICE_GATE_FATAL (assembleAndVerifyFinalMix): gate error — no output written')
+    if (r.status === 1) throw new Error('VOICE_CHECK_FAILED (assembleAndVerifyFinalMix): stale/wrong voice — no output written')
+    log(' ✓ Voice-map check: PASSED')
+  }
+
   // ── ASSEMBLEANDVERIFYFINALYMIX: GARBLE DETECTION GATE ──────────────────────
   // Wired from lib/assembleAndVerifyFinalMix.ts: run garble-detection-gate.js
   // against all segments. Any HARD FAIL (WER > 40%) blocks assembly.
@@ -969,6 +983,7 @@ async function runSegmentsMode({ story, sb, FOLDER, storageFiles, tmp, outputFil
       passed: true,
       flagged: orphanFlaggedNames,  // empty — would have thrown above if non-empty
     },
+    voiceCheck: { passed: true },
     garbleCheck: {
       passed: true,
       verificationSource: garbleVerificationSource,

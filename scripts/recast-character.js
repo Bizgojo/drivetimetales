@@ -460,6 +460,21 @@ async function main() {
     sil(sil1, 0.5); sil(sil2, 0.5)
     concat([introN, sil1, storyN, sil2, outroN], finalMix, 'build final mix')
 
+  console.log('\n🔍 VOICE-001 gate — voice-map check (subprocess, tsx)...')
+  {
+    const voiceListPath = path.join(os.tmpdir(), `voicemap_${storyId}_${Date.now()}.json`)
+    fs.writeFileSync(voiceListPath, JSON.stringify(segs.map(f => f.name).filter(n => /^segment_\d{4}\.mp3$/.test(n)).sort()))
+    const voiceGateScript = path.join(__dirname, 'voice-map-gate.ts')
+    const r = spawnSync('npx', ['tsx', voiceGateScript, storyId, voiceListPath], { encoding: 'utf8', timeout: 5 * 60 * 1000, maxBuffer: 30 * 1024 * 1024 })
+    try { fs.unlinkSync(voiceListPath) } catch {}
+    if (r.stdout) process.stdout.write(r.stdout); if (r.stderr) process.stderr.write(r.stderr)
+    if (r.error) throw new Error(`VOICE_GATE_PROCESS_ERROR (recast-character): ${r.error.message}`)
+    if (r.status === 2) throw new Error('VOICE_GATE_FATAL (recast-character): gate error — Recast NOT uploaded to production.')
+    if (r.status === 1) throw new Error('VOICE_CHECK_FAILED (recast-character): stale/wrong voice. Recast NOT uploaded to production.')
+    console.log(' ✓ Voice-map check: PASSED')
+    audit.phases.voiceMapGate = { status: 'passed', checkedAt: new Date().toISOString() }
+  }
+
     // GARBLE-001: every recast segment must be checked before this script's
     // known behavior of writing straight to production audio_url with no
     // pause for approval. This is the one path where that write is immediate,
