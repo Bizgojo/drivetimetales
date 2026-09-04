@@ -394,12 +394,7 @@ export async function runVoiceMapGate(
   };
 }
 
-// ── CommonJS shim ─────────────────────────────────────────────────────────────
-// Allow: const { runVoiceMapGate } = require('./lib/voiceMapGate');
-// Mirrors the pattern in lib/garbleGate.ts and lib/assembleAndVerifyFinalMix.ts.
-if (typeof module !== 'undefined') {
-  // @ts-ignore
-  module.exports = { runVoiceMapGate };
-  // @ts-ignore
-  module.exports.runVoiceMapGate = runVoiceMapGate;
-}
+// NOTE: The CJS shim (module.exports = ...) was removed because Next.js/webpack
+// rejects static module.exports assignments in ESM-bundled files.
+// Correction scripts that previously used require('./voiceMapGate') should
+// instead use ESM import or tsx: import { runVoiceMapGate } from './voiceMapGate'.

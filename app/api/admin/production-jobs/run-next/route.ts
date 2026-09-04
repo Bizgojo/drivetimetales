@@ -16,6 +16,9 @@ import { runPremiseGate, formatPremiseCollisionMessage, formatPremiseAdjacentWar
 import { syncPremiseIndexForTransition } from '@/lib/premiseIndex'
 import { verifyArtifactHttp } from '@/lib/artifactGate'
 import { runHookGateForStory, detectBelleQualityRepairEmpty } from '@/lib/hookGate'
+import { runGarbleGate } from '@/lib/garbleGate'
+import { parseScriptPositions } from '@/lib/scriptLineIndex'
+import { runVoiceMapGate } from '@/lib/voiceMapGate'
 
 export const runtime = 'nodejs'
 // maxDuration governed by vercel.json (800s) - do not override here
@@ -340,8 +343,9 @@ function musicPromptFor(script: string, title: string, genre: string) {
 
 function storyTypeFor(job: ProductionJob, queueItem: any): 'standalone' | 'series' {
   const fromJob = String(job.job_type || '').toLowerCase()
-  if (fromJob === 'series') return 'series'
-  if (fromJob === 'single') return 'standalone'
+  const normalizedJobType = fromJob.replace(/^test_/i, '')
+  if (normalizedJobType === 'series') return 'series'
+  if (normalizedJobType === 'single') return 'standalone'
   const notes = String(queueValue(queueItem, 'notes')).toLowerCase()
   const totalEpisodes = totalEpisodesFor(queueItem)
   if (notes.includes('type: series') || totalEpisodes > 1) return 'series'
@@ -2130,13 +2134,18 @@ async function selectCandidate(jobId: string) {
   if (jobId) {
     query = query.eq('id', jobId).in('status', ['queued', 'running'])
   } else {
-    query = query.or(
-      [
-        'status.eq.queued',
-        `and(status.eq.running,locked_by.is.null,updated_at.lt.${zombieCutoff})`,
-        `and(status.eq.running,locked_at.not.is.null,locked_at.lt.${zombieCutoff})`,
-      ].join(','),
-    )
+    // TEST-ISOLATION-001: never let production cron workers pick up test jobs.
+    // Jobs with a TEST_ prefix on job_type are only driveable via explicit jobId;
+    // the open-ended cron path always skips them regardless of timing.
+    query = query
+      .not('job_type', 'like', 'TEST_%')
+      .or(
+        [
+          'status.eq.queued',
+          `and(status.eq.running,locked_by.is.null,updated_at.lt.${zombieCutoff})`,
+          `and(status.eq.running,locked_at.not.is.null,locked_at.lt.${zombieCutoff})`,
+        ].join(','),
+      )
   }
 
   const { data, error } = await query.maybeSingle()
@@ -2479,7 +2488,7 @@ async function loadSeriesEpisodes(seriesId: string) {
     // recommissioned replacement occupies the slot (dispatch-queue applies the
     // same exclusion). Without this, a retired row makes the validator see
     // duplicate/extra episodes (Limestone canary failure 22:06Z).
-    .neq('workflow_state', 'cold_storage')
+    .or('workflow_state.neq.cold_storage,workflow_state.is.null')
     .order('episode_number', { ascending: true })
 
   if (error) throw new Error(`Failed to load series episodes: ${error.message}`)
@@ -4464,6 +4473,160 @@ async function runStandaloneRenderFinalMix(job: ProductionJob, origin: string) {
   } catch (e) {
     // If segment validation itself fails, log warning but continue to render attempt
     console.warn(`[ATL-PIPE-003] Segment pre-flight validation error: ${String(e).slice(0, 200)}`)
+  }
+
+  // ORPHAN-001 (canon): every segment must correspond to a real script line.
+  // Runs before GARBLE-001 — cheaper check, and no reason to spend Whisper
+  // calls checking a segment that's going to be rejected anyway.
+  const orphanOutcome = await checkOrphanSegments(String(storyId))
+  if (!orphanOutcome.passed) {
+    const errorReport = {
+      success: false,
+      kind: 'orphan_check_failed',
+      error: 'ORPHAN_001_CHECK_FAILED',
+      orphanSegments: orphanOutcome.orphanNames,
+      message: `ORPHAN-001: ${orphanOutcome.orphanNames.length} segment(s) beyond script boundary. Blocked before render_final_mix.`,
+    }
+    console.warn(`[ORPHAN-001] Check failed for ${storyId}:`, orphanOutcome.orphanNames)
+    return {
+      success: false,
+      skippedExisting: false,
+      storyId: String(storyId),
+      finalAudioUrl: null,
+      storyBodyUrl: null,
+      durationSecs: null,
+      report: errorReport,
+      state: {
+        ...state,
+        storyId: String(storyId),
+        renderFinalMix: {
+          status: 'failed',
+          skippedExisting: false,
+          finalAudioUrl: null,
+          storyBodyUrl: null,
+          durationSecs: null,
+          routeResponse: errorReport,
+          failedAt: nowIso(),
+          terminalFailure: false,
+        },
+      },
+    }
+  }
+
+  // VOICE-001 (canon): every segment must use the currently-assigned voice_id
+  // for its speaking character. Runs after ORPHAN-001, before GARBLE-001 —
+  // DB-only check, no Whisper call, so it's cheaper than the garble gate.
+  const voiceOutcome = await checkVoiceMap(String(storyId))
+  if (!voiceOutcome.passed) {
+    const errorReport = {
+      success: false,
+      kind: 'voice_map_check_failed',
+      error: 'VOICE_001_CHECK_FAILED',
+      voiceFailures: voiceOutcome.failures,
+      message: `VOICE-001: ${voiceOutcome.failures.length} segment(s) using the wrong voice_id. Blocked before render_final_mix.`,
+    }
+    console.warn(`[VOICE-001] Check failed for ${storyId}:`, voiceOutcome.failures)
+    return {
+      success: false,
+      skippedExisting: false,
+      storyId: String(storyId),
+      finalAudioUrl: null,
+      storyBodyUrl: null,
+      durationSecs: null,
+      report: errorReport,
+      state: {
+        ...state,
+        storyId: String(storyId),
+        renderFinalMix: {
+          status: 'failed',
+          skippedExisting: false,
+          finalAudioUrl: null,
+          storyBodyUrl: null,
+          durationSecs: null,
+          routeResponse: errorReport,
+          failedAt: nowIso(),
+          terminalFailure: false,
+        },
+      },
+    }
+  }
+
+  // GARBLE-001 (canon): every segment's rendered audio must match its script
+  // line, WER <= 40%. Hard stop on failure — never assemble a mix containing
+  // a known-corrupted segment.
+  try {
+    const garbleOutcome = await runGarbleGate(String(storyId))
+    if (!garbleOutcome.passed) {
+      const errorReport = {
+        success: false,
+        kind: 'garble_gate_failed',
+        error: 'GARBLE_001_GATE_FAILED',
+        failedSegments: garbleOutcome.failures.map(f => f.segName),
+        warnSegments: garbleOutcome.warnings.map(f => f.segName),
+        message: `GARBLE-001: ${garbleOutcome.failures.length} segment(s) exceed 40% WER against script. Blocked before render_final_mix.`,
+      }
+      console.warn(`[GARBLE-001] Gate failed for ${storyId}:`, errorReport.failedSegments)
+      return {
+        success: false,
+        skippedExisting: false,
+        storyId: String(storyId),
+        finalAudioUrl: null,
+        storyBodyUrl: null,
+        durationSecs: null,
+        report: errorReport,
+        state: {
+          ...state,
+          storyId: String(storyId),
+          renderFinalMix: {
+            status: 'failed',
+            skippedExisting: false,
+            finalAudioUrl: null,
+            storyBodyUrl: null,
+            durationSecs: null,
+            routeResponse: errorReport,
+            failedAt: nowIso(),
+            terminalFailure: false,
+          },
+        },
+      }
+    }
+    if (garbleOutcome.warnings.length > 0) {
+      console.warn(`[GARBLE-001] ${garbleOutcome.warnings.length} segment(s) borderline (20-40% WER), continuing:`, garbleOutcome.warnings.map(f => f.segName))
+    }
+  } catch (e) {
+    // GARBLE-001 gate itself crashed (Whisper unavailable, etc). Per the module's own
+    // header: "If it returns passed=false, halt." A crash is not a pass — do not
+    // silently continue. Fail closed, matching GARBLE-001's fail-closed intent.
+    const errorReport = {
+      success: false,
+      kind: 'garble_gate_error',
+      error: 'GARBLE_001_GATE_ERROR',
+      message: `GARBLE-001 gate threw before verdict: ${String(e).slice(0, 300)}`,
+    }
+    console.error(`[GARBLE-001] Gate crashed for ${storyId}: ${String(e).slice(0, 300)}`)
+    return {
+      success: false,
+      skippedExisting: false,
+      storyId: String(storyId),
+      finalAudioUrl: null,
+      storyBodyUrl: null,
+      durationSecs: null,
+      report: errorReport,
+      state: {
+        ...state,
+        storyId: String(storyId),
+        renderFinalMix: {
+          status: 'failed',
+          skippedExisting: false,
+          finalAudioUrl: null,
+          storyBodyUrl: null,
+          durationSecs: null,
+          routeResponse: errorReport,
+          failedAt: nowIso(),
+          terminalFailure: false,
+        },
+      },
+    }
   }
 
   // Direct module call - eliminates HTTP hop and Vercel edge network timeout risk (ATL P1-B)
@@ -6566,6 +6729,69 @@ async function runSeriesMusicGeneration(job: ProductionJob, origin: string) {
   }
 }
 
+// ORPHAN-001 (canon): every segment file present in storage must correspond to
+// a real line in the CURRENT script. A segment at a position beyond the
+// script's parsed length is left over from a prior revision and must never
+// silently play in the final mix. Hard-fail, matching the already-approved
+// Mechanism B behavior in assembleAndVerifyFinalMix.ts / render-correction-mix.js
+// — detect, name, stop. Self-contained: does its own story/script fetch and
+// its own storage listing, independent of caller scope.
+// VOICE-001 (canon): every character's spoken segment must use the exact
+// voice_id currently assigned to that character. Hard-fail, same severity as
+// GARBLE-001 and ORPHAN-001 — this is what would have caught EP10's
+// segment_0089 (stale voice after a recast) automatically. Self-contained:
+// lists storage itself, same pattern as checkOrphanSegments.
+async function checkVoiceMap(storyId: string): Promise<{ passed: boolean; failures: string[] }> {
+  const { data: files } = await supabase.storage
+    .from('audio')
+    .list(`asc3/${storyId}`)
+
+  const segmentNames = (files || [])
+    .map(f => f.name)
+    .filter(name => /^segment_\d{4}\.mp3$/.test(name))
+    .sort()
+
+  if (segmentNames.length === 0) {
+    // Nothing to check yet — not a failure, just nothing rendered.
+    return { passed: true, failures: [] }
+  }
+
+  const outcome = await runVoiceMapGate(storyId, segmentNames)
+  return {
+    passed: outcome.passed,
+    failures: outcome.failures.map(f => `${f.segName} (${f.character ?? 'unknown'}: expected ${f.expectedVoiceName ?? f.expectedVoiceId}, got ${f.actualVoiceId})`),
+  }
+}
+
+async function checkOrphanSegments(storyId: string): Promise<{ passed: boolean; orphanNames: string[] }> {
+  const { data: story } = await supabase
+    .from('stories')
+    .select('script')
+    .eq('id', storyId)
+    .single()
+
+  if (!story?.script) {
+    // No script to check against — cannot evaluate, do not false-fail.
+    console.warn(`[ORPHAN-001] Skipped for ${storyId} — story.script not available`)
+    return { passed: true, orphanNames: [] }
+  }
+
+  const parsedPositionCount = parseScriptPositions(story.script).length
+
+  const { data: files } = await supabase.storage
+    .from('audio')
+    .list(`asc3/${storyId}`)
+
+  const orphanNames = (files || [])
+    .map(f => f.name)
+    .filter(name => {
+      const m = name.match(/^segment_(\d{4})\.mp3$/)
+      return m ? parseInt(m[1], 10) >= parsedPositionCount : false
+    })
+
+  return { passed: orphanNames.length === 0, orphanNames }
+}
+
 async function runSeriesRenderFinalMix(job: ProductionJob, origin: string) {
   const state = job.state_json && typeof job.state_json === 'object' ? job.state_json : {}
   const seriesId = job.series_id || state.seriesId
@@ -6598,6 +6824,112 @@ async function runSeriesRenderFinalMix(job: ProductionJob, origin: string) {
       console.warn(`[runSeriesRenderFinalMix] Ep${num} was marked done in state but final_mix.mp3 is not complete in DB/storage; re-rendering ${storyId}`)
       doneByEp[key] = false
       finalMixUrlByEp[key] = null
+    }
+
+    // ORPHAN-001 (canon): same check, series path.
+    const orphanOutcome = await checkOrphanSegments(String(storyId))
+    if (!orphanOutcome.passed) {
+      const errorReport = {
+        success: false,
+        kind: 'orphan_check_failed',
+        error: 'ORPHAN_001_CHECK_FAILED',
+        orphanSegments: orphanOutcome.orphanNames,
+        message: `ORPHAN-001: ${orphanOutcome.orphanNames.length} segment(s) beyond script boundary. Blocked before render_final_mix.`,
+      }
+      console.warn(`[ORPHAN-001] Check failed for ${storyId}:`, orphanOutcome.orphanNames)
+      return {
+        allDone: false,
+        processedEp: num,
+        finalMixUrl: null,
+        duration: null,
+        lastError: errorReport.message,
+        state: {
+          ...state,
+          seriesId: String(seriesId),
+          seriesRenderFinalMix: { doneByEp, finalMixUrlByEp, allDone: false, lastUpdatedAt: nowIso(), orphanCheckError: errorReport },
+        },
+      }
+    }
+
+    // VOICE-001 (canon): same check, series path.
+    const voiceOutcome = await checkVoiceMap(String(storyId))
+    if (!voiceOutcome.passed) {
+      const errorReport = {
+        success: false,
+        kind: 'voice_map_check_failed',
+        error: 'VOICE_001_CHECK_FAILED',
+        voiceFailures: voiceOutcome.failures,
+        message: `VOICE-001: ${voiceOutcome.failures.length} segment(s) using the wrong voice_id. Blocked before render_final_mix.`,
+      }
+      console.warn(`[VOICE-001] Check failed for ${storyId}:`, voiceOutcome.failures)
+      return {
+        allDone: false,
+        processedEp: num,
+        finalMixUrl: null,
+        duration: null,
+        lastError: errorReport.message,
+        state: {
+          ...state,
+          seriesId: String(seriesId),
+          seriesRenderFinalMix: { doneByEp, finalMixUrlByEp, allDone: false, lastUpdatedAt: nowIso(), voiceCheckError: errorReport },
+        },
+      }
+    }
+
+    // GARBLE-001 (canon): every segment's rendered audio must match its script
+    // line, WER <= 40%. Hard stop on failure — never assemble a mix containing
+    // a known-corrupted segment.
+    try {
+      const garbleOutcome = await runGarbleGate(String(storyId))
+      if (!garbleOutcome.passed) {
+        const errorReport = {
+          success: false,
+          kind: 'garble_gate_failed',
+          error: 'GARBLE_001_GATE_FAILED',
+          failedSegments: garbleOutcome.failures.map(f => f.segName),
+          warnSegments: garbleOutcome.warnings.map(f => f.segName),
+          message: `GARBLE-001: ${garbleOutcome.failures.length} segment(s) exceed 40% WER against script. Blocked before render_final_mix.`,
+        }
+        console.warn(`[GARBLE-001] Gate failed for ${storyId}:`, errorReport.failedSegments)
+        return {
+          allDone: false,
+          processedEp: num,
+          finalMixUrl: null,
+          duration: null,
+          lastError: errorReport.message,
+          state: {
+            ...state,
+            seriesId: String(seriesId),
+            seriesRenderFinalMix: { doneByEp, finalMixUrlByEp, allDone: false, lastUpdatedAt: nowIso(), garbleGateError: errorReport },
+          },
+        }
+      }
+      if (garbleOutcome.warnings.length > 0) {
+        console.warn(`[GARBLE-001] ${garbleOutcome.warnings.length} segment(s) borderline (20-40% WER), continuing:`, garbleOutcome.warnings.map(f => f.segName))
+      }
+    } catch (e) {
+      // GARBLE-001 gate itself crashed (Whisper unavailable, etc). Per the module's own
+      // header: "If it returns passed=false, halt." A crash is not a pass — do not
+      // silently continue. Fail closed, matching GARBLE-001's fail-closed intent.
+      const errorReport = {
+        success: false,
+        kind: 'garble_gate_error',
+        error: 'GARBLE_001_GATE_ERROR',
+        message: `GARBLE-001 gate threw before verdict: ${String(e).slice(0, 300)}`,
+      }
+      console.error(`[GARBLE-001] Gate crashed for ${storyId}: ${String(e).slice(0, 300)}`)
+      return {
+        allDone: false,
+        processedEp: num,
+        finalMixUrl: null,
+        duration: null,
+        lastError: errorReport.message,
+        state: {
+          ...state,
+          seriesId: String(seriesId),
+          seriesRenderFinalMix: { doneByEp, finalMixUrlByEp, allDone: false, lastUpdatedAt: nowIso(), garbleGateError: errorReport },
+        },
+      }
     }
 
     // Direct module call - eliminates HTTP hop and Vercel edge network timeout risk (ATL P1-B)
@@ -9395,6 +9727,7 @@ export async function POST(req: NextRequest) {
             .from('stories')
             .update({
               workflow_state: 'ready_for_review',
+              is_hidden: true,
               workflow_state_changed_by: 'autonomous-runner',
               workflow_state_changed_at: finalizationAt,
               workflow_state_change_reason: `Series package ${lockedJob.id} completed and auto-finalized to ready_for_review.`,
@@ -9405,6 +9738,25 @@ export async function POST(req: NextRequest) {
           }
           // PREMISE-UNIQUENESS-001: entering a protected state reserves the premise (best-effort).
           await syncPremiseIndexForTransition(supabase, { storyIds: episodeIdsToPromote, toState: 'ready_for_review' })
+          // ORION-GOV-006 / matches ATL-PIPE-014's standalone audit-write —
+          // fixes the gap where series episodes landed ready_for_review with
+          // no audit row and is_hidden left false.
+          for (const episodeStoryId of episodeIdsToPromote) {
+            await supabase
+              .from('story_workflow_audit')
+              .insert({
+                story_id: episodeStoryId,
+                from_state: null,
+                to_state: 'ready_for_review',
+                changed_by: 'autonomous-runner',
+                changed_at: finalizationAt,
+                reason: `Series package ${lockedJob.id} completed and auto-finalized to ready_for_review.`,
+                session_context: lockedJob.id,
+              })
+              .then(({ error: auditErr }) => {
+                if (auditErr) console.warn(`[series_ready_for_review] audit row insert failed for ${episodeStoryId} (non-fatal): ${auditErr.message}`)
+              })
+          }
         }
 
         const completedLogs = appendLog(lockedJob, 'Series package complete - auto-finalized to Ready for Review', {

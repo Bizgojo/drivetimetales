@@ -101,7 +101,9 @@ export interface GarbleGateOutcome {
 // Constants
 // ---------------------------------------------------------------------------
 
-const GATE_SCRIPT = path.resolve(__dirname, '../garble-detection-gate.js');
+// Use process.cwd() (= project root in Next.js) instead of __dirname which resolves
+// incorrectly in webpack-bundled App Router context.
+const GATE_SCRIPT = path.join(process.cwd(), 'garble-detection-gate.js');
 
 // ---------------------------------------------------------------------------
 // Main export
@@ -196,15 +198,10 @@ async function runGateProcess(args: string[]): Promise<GarbleGateOutcome> {
   if (result.stderr) process.stderr.write(result.stderr);
 
   if (result.error) {
-    console.error('[garbleGate] Gate process error:', result.error.message);
-    // Return a failed outcome on process error — don't swallow it
-    return {
-      passed:     false,
-      failures:   [],
-      warnings:   [],
-      reportPath: null,
-      report:     null,
-    };
+    // ATL-GARBLE-002: throw so callers see a real error rather than a phantom
+    // gate failure (passed=false, failures=[]).  A spawn/timeout failure is an
+    // infrastructure problem, not a garble-detection verdict.
+    throw new Error(`[garbleGate] Gate process error: ${result.error.message}`);
   }
 
   // Parse JSON report path from stdout
@@ -224,20 +221,17 @@ async function runGateProcess(args: string[]): Promise<GarbleGateOutcome> {
   const failures: GarbleResult[] = report?.results.filter(r => r.status === 'fail') ?? [];
   const warnings: GarbleResult[] = report?.results.filter(r => r.status === 'warn') ?? [];
 
-  // Gate exit code: 0 = pass, 1 = fail, 2 = fatal
-  const passed = result.status === 0;
+  // ATL-GARBLE-002: derive passed from the failures array, not from the exit
+  // code alone.  When the gate exits non-zero but produces no parseable report
+  // (e.g. fatal DB/Whisper error, exit code 2), report is null → failures=[],
+  // and result.status===0 would be false — yielding passed=false with an empty
+  // failures list (the phantom trigger).  Using failures.length keeps the two
+  // fields always consistent: if there are no hard-fail segments, the gate
+  // passes regardless of exit code.
+  const passed = failures.length === 0;
 
   return { passed, failures, warnings, reportPath, report };
 }
 
-// ---------------------------------------------------------------------------
-// CommonJS shim — correction scripts use require()
-// ---------------------------------------------------------------------------
-
-// Allow: const { runGarbleGate } = require('./lib/garbleGate');
-if (typeof module !== 'undefined') {
-  // @ts-ignore
-  module.exports = { runGarbleGate };
-  // @ts-ignore
-  module.exports.runGarbleGate = runGarbleGate;
-}
+// Note: CommonJS shim removed — route.ts imports this module via ESM.
+// Correction scripts that need CJS can use: const { runGarbleGate } = require('./garble-detection-gate.js')
