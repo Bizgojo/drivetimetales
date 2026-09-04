@@ -186,7 +186,7 @@ export async function runVoiceMapGate(
   type RosterRow = {
     canonical_name_normalized: string;
     aliases: string[];
-    voice_id: string;
+    voice_id: string | null;
     voice_name: string | null;
   };
 
@@ -244,7 +244,7 @@ export async function runVoiceMapGate(
   // ── Helpers ───────────────────────────────────────────────────────────────
 
   /** Find the expected voice_id for a character from series_character_roster (is_locked=true). */
-  function findExpected(character: string): { voice_id: string; voice_name: string | null } | null {
+  function findExpected(character: string): { voice_id: string | null; voice_name: string | null } | null {
     const norm = normalizeName(character);
     for (const r of seriesRoster) {
       // Match on canonical name
@@ -324,6 +324,22 @@ export async function runVoiceMapGate(
       });
       continue;
     }
+
+      if (!expectedAssignment.voice_id) {
+        // Character IS in the locked roster, but no canonical voice_id is recorded
+        // (is_locked=true, voice_id null/blank). No expected voice to compare against,
+        // so this is INCONCLUSIVE, not a fail. Backfilling roster.voice_id for these
+        // characters is what would enable real verification.
+        results.push({
+          segNum, segName, character,
+          expectedVoiceId: null,
+          expectedVoiceName: expectedAssignment.voice_name,
+          actualVoiceId: findActual(character, pos.text),
+          status: 'inconclusive',
+          note: 'character in series_character_roster but no canonical voice_id recorded (is_locked=true, voice_id null) — roster backfill needed to verify',
+        });
+        continue;
+      }
 
     // ── Resolve actual rendered voice ─────────────────────────────────────
     const actualVoiceId = findActual(character, pos.text);
