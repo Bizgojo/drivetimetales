@@ -421,8 +421,8 @@ Use the CURRENT published rules:
 - BELLE-004: The FIRST episode of a series must name the series title and author in the intro.
 - BELLE-006: Interior and final episodes must NOT name the series title or author in the intro or outro. The old requirement to name the series title in every episode's Belle B intro was wrong — it directly contradicted BELLE-006 and has been dropped (Marc ruling, 2026-08-29).
 - Series non-finale episodes: Belle B outro must NOT credit the author or narrator — save those credits for the finale only. Non-finale outros must tease what comes next or end on the cliffhanger emotion.
-- Series finale episodes: Belle B outro credits the author by name and says "an Endless Tales original".
-- Standalone episodes: Belle B outro credits the author by name and says "an Endless Tales original".
+- Series finale episodes: Belle B outro briefly recaps the story, restates the title, credits the author by name, says "an Endless Tales original", and invites the listener to rate the story.
+- Standalone episodes: Belle B outro briefly recaps the story, restates the title, credits the author by name, says "an Endless Tales original", and invites the listener to rate the story.
 - No SFX in the published story body.
 - The title may be blank in the brief; if blank, choose the best title from the story.
 - Final title must be 1 to 5 words and 28 characters or fewer so it fits one line on story cards.
@@ -462,7 +462,7 @@ CHARACTER NAME: ...
 
 BELLE B OUTRO
 ---
-BELLE B: [one or two short sentences, reflective, no time-of-day reference. For series non-finales: do NOT credit the author or narrator — tease the next episode or hold the cliffhanger emotion instead. For series finales and all standalone episodes: credit the author by name and say "an Endless Tales original".]
+BELLE B: [one or two short sentences, reflective, no time-of-day reference. For series non-finales: do NOT credit the author or narrator — tease the next episode or hold the cliffhanger emotion instead. For series finales and all standalone episodes: briefly recap the story, restate the title, credit the author by name, say "an Endless Tales original", and invite the listener to rate the story.]
 
 Production-format hard rules:
 - Speaker labels are for spoken words only.
