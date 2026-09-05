@@ -423,7 +423,7 @@ Use the CURRENT published rules:
 - Series non-finale episodes: Belle B outro must NOT credit the author or narrator — save those credits for the finale only. Non-finale outros must tease what comes next or end on the cliffhanger emotion.
 - Series finale episodes: Belle B outro briefly recaps the story, restates the title, credits the author by name, says "an Endless Tales original", and invites the listener to rate the story.
 - Standalone episodes: Belle B outro briefly recaps the story, restates the title, credits the author by name, says "an Endless Tales original", and invites the listener to rate the story.
-- No SFX in the published story body.
+- SFX: at most 3 per episode (SFX-001). Use sparingly; never exceed 3.
 - The title may be blank in the brief; if blank, choose the best title from the story.
 - Final title must be 1 to 5 words and 28 characters or fewer so it fits one line on story cards.
 - Output the complete script (including the STORY RESOLUTION MAP as a comment block at the top). No additional commentary outside the script.
