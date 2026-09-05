@@ -8,6 +8,11 @@ const nextConfig = {
     outputFileTracingIncludes: {
       '/api/asc3/render-final-mix': ['./node_modules/@ffmpeg-installer/**/*'],
       '/api/landing/render-mix': ['./node_modules/@ffmpeg-installer/**/*'],
+      '/api/v2/generate-script': [
+        './Bible/CANON_REGISTRY_STORY_RULES.md',
+        './Bible/ET_Story_Rules_v3_2_CANONICAL.md',
+        './docs/STAGE2_SCRIPT_PROMPT.md',
+      ],
     },
   },
   webpack: (config, { isServer }) => {
