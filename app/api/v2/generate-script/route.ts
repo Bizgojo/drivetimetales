@@ -1,9 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import Anthropic from '@anthropic-ai/sdk'
+import fs from 'fs'
+import path from 'path'
 import { logAnthropicCall } from '@/app/lib/anthropic-logger'
 import { buildNamePalettePromptBlock } from '@/lib/story/namePalette'
 import { runPremiseGate, formatPremiseCollisionMessage, formatPremiseAdjacentWarning } from '@/lib/premiseGate'
+import { loadActiveExcellenceLessons } from '@/lib/storyExcellenceLedger'
 
 export const runtime = 'nodejs'
 
@@ -71,7 +74,7 @@ function isInvalidDescription(description: string): boolean {
     .trim()
 
   if (!clean) return true
-  if (clean.length > 65) return true
+  if (countWords(clean) > 24) return true // DESCRIPTION-001: 24-word max (replaces prior 70-char limit)
   if (/[.]{2,}|…/.test(clean)) return true
   if (!/[.!?]$/.test(clean)) return true
 
@@ -120,6 +123,47 @@ function runtimeTarget(runtime: string) {
     runtime: targets[minutes] ? runtime || '15 min' : '15 min',
     ...target,
   }
+}
+
+/**
+ * Load a canon document from the project root.
+ * Throws with a named error code if the file is missing — no silent fallback.
+ * A missing canon document is a production blocker, not a graceful degradation case.
+ *
+ * CANON-001: This registry takes precedence over ET_Story_Rules and STAGE2_SCRIPT_PROMPT
+ * wherever they conflict. Conflicts are flagged inline in buildEnrichedPrompt() below.
+ */
+function loadCanonDoc(relPath: string, errorCode: string): string {
+  const fullPath = path.join(process.cwd(), relPath)
+  try {
+    return fs.readFileSync(fullPath, 'utf-8')
+  } catch (err) {
+    throw new Error(
+      `${errorCode}: Could not read ${relPath} at ${fullPath} — ` +
+      `${err instanceof Error ? err.message : String(err)}`
+    )
+  }
+}
+
+/**
+ * Format excellence lessons for inclusion in the prompt.
+ * Returns empty string if no lessons — never throws.
+ */
+function formatExcellenceBlock(lessons: Awaited<ReturnType<typeof loadActiveExcellenceLessons>>): string {
+  if (!lessons.length) return ''
+  return (
+    `\n\n${'='.repeat(80)}\n` +
+    `EXCELLENCE LESSONS — MANDATORY (${lessons.length} active from Marc's actual rejections)\n` +
+    `${'='.repeat(80)}\n` +
+    `Study each lesson. Do not repeat these patterns. These are not suggestions.\n\n` +
+    lessons
+      .map((l, i) =>
+        `[LESSON-${i + 1}] Category: ${l.lesson_category}\n` +
+        `${l.lesson_text}` +
+        (l.prevention_rule ? `\nPrevention rule: ${l.prevention_rule}` : '')
+      )
+      .join('\n\n')
+  )
 }
 
 async function loadRecentStoryTexts() {
@@ -210,6 +254,46 @@ export async function POST(req: NextRequest) {
         adjacencies: premiseGate.adjacencies,
       })
     }
+    // ── CANON DOCUMENT LOADING (feat/canon-hal-brief-001) ───────────────────────────────
+    // Port of the four inputs used in the proven manual Hal session (HAL_SESSION_START_PROTOCOL.md).
+    // Files are read at request time: updating a file takes effect on the next call, no deploy needed.
+    //
+    // Hard-fail if any required document is missing — a missing canon doc is a production blocker.
+    // Do NOT add silent fallbacks here. If these files are missing, the build is broken.
+    //
+    // Authority order (CANON-001): Canon Registry > ET Story Rules v3.2 > STAGE2 v2.4 > inline block
+    //
+    // KNOWN DISCREPANCIES between documents — flagged for Marc's ruling, not silently resolved:
+    //   DISC-001: RESOLVED (Marc, 2026-08-29). Use 24 words (DESCRIPTION-001). Prior 70-char limit
+    //             was wrong. isInvalidDescription() and inline instructions updated to match.
+    //   DISC-002: RESOLVED by CANON-001. SFX-001 (max 3 per episode) governs over ET Rules r11
+    //             (every 60–90s) and STAGE2 (3–6 anchors). SFX-001 is already in the canon block above.
+    //   DISC-003: STAGE2 footer/header version mismatch — footer says v2.3, header says v2.4.
+    //             Header is correct (r42 Early Investment Rule added as v2.4, Jun 26 2026).
+    //             No action needed — noted here for completeness. Numbering gap in prior report was
+    //             an error: DISC-003 was never a separate code fix, it was a documentation note.
+    //   DISC-004: RESOLVED by CANON-001 ordering. Resolution Map goes above Belle B per STAGE2.
+    //   DISC-005: RESOLVED (Marc, 2026-08-29). Old inline behavior (series title in EVERY episode's
+    //             Belle B intro) was wrong and contradicted BELLE-006. Correct behavior per BELLE-004:
+    //             first episode only names title+author in intro. Inline block updated; old requirement
+    //             dropped entirely.
+    const canonRegistryRules = loadCanonDoc(
+      'Bible/CANON_REGISTRY_STORY_RULES.md',
+      'ET_CANON_REGISTRY_MISSING'
+    )
+    const etStoryRules = loadCanonDoc(
+      'Bible/ET_Story_Rules_v3_2_CANONICAL.md',
+      'ET_STORY_RULES_MISSING'
+    )
+    const stage2Prompt = loadCanonDoc(
+      'docs/STAGE2_SCRIPT_PROMPT.md',
+      'STAGE2_PROMPT_MISSING'
+    )
+    // Excellence lessons: additive, never blocking. Returns [] on any DB error.
+    const excellenceLessons = await loadActiveExcellenceLessons(supabase)
+    const excellenceBlock = formatExcellenceBlock(excellenceLessons)
+    // ── END CANON DOCUMENT LOADING ──────────────────────────────────────────────────────
+
     const target = runtimeTarget(brief.runtime || '')
     const recentStoryTexts = await loadRecentStoryTexts()
     const namePaletteBlock = buildNamePalettePromptBlock({
@@ -219,7 +303,48 @@ export async function POST(req: NextRequest) {
       recentStoryTexts,
     })
 
-    const prompt = `You are the Endless Tales Stage 2 script writer.
+    const prompt = `${'='.repeat(80)}
+CANON REGISTRY — STORY-WRITING RULES
+Authority: SUPREME per CANON-001. These rules take precedence over everything below,
+including ET Story Rules v3.2 and STAGE2 v2.4, wherever they conflict.
+Loaded: ${new Date().toISOString().slice(0, 10)} from Bible/CANON_REGISTRY_STORY_RULES.md
+${'='.repeat(80)}
+
+${canonRegistryRules}
+
+${'='.repeat(80)}
+ENDLESS TALES STORY BIBLE v3.2 — CANONICAL
+Loaded from: Bible/ET_Story_Rules_v3_2_CANONICAL.md
+Note: Where this document conflicts with the Canon Registry above, Canon Registry wins (CANON-001).
+Known conflict: r11 SFX frequency ("every 60–90 seconds") is superseded by Canon Registry SFX-001
+(max 3 SFX per episode). Follow SFX-001.
+${'='.repeat(80)}
+
+${etStoryRules}
+
+${'='.repeat(80)}
+STAGE 2 MASTER PROMPT v2.4
+Loaded from: docs/STAGE2_SCRIPT_PROMPT.md
+Note: Where this document conflicts with the Canon Registry above, Canon Registry wins (CANON-001).
+Note: Internal footer version mismatch (footer says v2.3, header says v2.4) — header is correct;
+      the Early Investment Rule (r42) was added June 26 2026 as v2.4 and the footer was not updated.
+DISC-001 RESOLVED: DESCRIPTION constraint is 24 words max (DESCRIPTION-001) per Marc ruling
+      2026-08-29. Prior 70-char limit in the inline block below has been updated to match.
+Known conflict: SFX frequency — this document (3–6 anchors) supersedes ET Story Rules r11
+      (every 60–90s). Canon Registry SFX-001 (max 3) supersedes both. Follow SFX-001.
+${'='.repeat(80)}
+
+${stage2Prompt}
+${excellenceBlock}
+
+${'='.repeat(80)}
+IMMEDIATE PRODUCTION INSTRUCTIONS
+The sections above are the canonical inputs from the proven manual Hal session.
+Where the sections above and the instructions below conflict, the above sections win (CANON-001).
+The instructions below provide story-specific context and production format requirements.
+${'='.repeat(80)}
+
+You are the Endless Tales Stage 2 script writer.
 
 🎯 ENTERTAINMENT FIRST RULE — NON-NEGOTIABLE
 
@@ -293,7 +418,8 @@ Use the CURRENT published rules:
 - Belle B intro must include exactly one [LISTENER_NAME] placeholder. Do not include the listener's actual name.
 - Belle B intro/outro must never use "Tonight" or any time-of-day reference.
 - Belle B intro must never mention the author, narrator, or "an Endless Tales original"; those credits belong only in the Belle B outro.
-- Series episodes: Belle B intro MUST name the series title (e.g. "In Room Three Twelve, [LISTENER_NAME]..."). Standalone episodes do not include a series name.
+- BELLE-004: The FIRST episode of a series must name the series title and author in the intro.
+- BELLE-006: Interior and final episodes must NOT name the series title or author in the intro or outro. The old requirement to name the series title in every episode's Belle B intro was wrong — it directly contradicted BELLE-006 and has been dropped (Marc ruling, 2026-08-29).
 - Series non-finale episodes: Belle B outro must NOT credit the author or narrator — save those credits for the finale only. Non-finale outros must tease what comes next or end on the cliffhanger emotion.
 - Series finale episodes: Belle B outro credits the author by name and says "an Endless Tales original".
 - Standalone episodes: Belle B outro credits the author by name and says "an Endless Tales original".
@@ -313,7 +439,7 @@ SERIES_TOTAL_EPISODES:
 SERIES_IS_FINALE:
 AUTHOR:
 GENRE:
-DESCRIPTION: [70 characters or fewer, present tense only]
+DESCRIPTION: [24 words or fewer, present tense only — DESCRIPTION-001]
 NARRATOR: [assigned voice name from narrator_voices — ALWAYS the voice talent name (e.g. "Ray Dolan"), NEVER a story character name, even when NARRATOR_IS_CHARACTER is true]
 ANNOUNCER: Belle B
 NARRATIVE_VOICE:
@@ -326,7 +452,9 @@ CHARACTER GUIDE
 
 BELLE B INTRO
 ---
-BELLE B: [one or two short sentences, warm, specific, sensory, includes exactly one [LISTENER_NAME] placeholder placed naturally and not always at the start, reads gracefully if the name is omitted, includes the story title in quotes, references something specific from the story, no time-of-day reference, no author/narrator credit, no "Endless Tales original"]
+BELLE B: [one or two short sentences, warm, specific, sensory, includes exactly one [LISTENER_NAME] placeholder placed naturally and not always at the start, reads gracefully if the name is omitted, no time-of-day reference, no author/narrator credit, no "Endless Tales original".
+  SERIES FIRST EPISODE (BELLE-004): must name the series title and author.
+  INTERIOR + FINAL EPISODES (BELLE-006): must NOT name the series title or author — reference something specific from the story's plot or mood instead.]
 
 [START AUDIO DRAMA SCRIPT]
 NARRATOR: ...
@@ -345,7 +473,7 @@ Production-format hard rules:
 - Right: NARRATOR: Pike's jaw tightened.
 
 Additional rules:
-- DESCRIPTION must be 70 characters or fewer and present tense only so it fits two lines on story cards. If the brief-provided description is longer than 70 characters or uses past-tense constructions, rewrite it to comply. Reject past-tense story-card phrasing such as "vanished", "was", "were", "had", "found", "discovered", "left", "moved", "sealed", "signed", "forged", "buried", or "hidden".
+- DESCRIPTION must be 24 words or fewer and present tense only (DESCRIPTION-001). If the brief-provided description is longer than 24 words or uses past-tense constructions, rewrite it to comply. Reject past-tense story-card phrasing such as "vanished", "was", "were", "had", "found", "discovered", "left", "moved", "sealed", "signed", "forged", "buried", or "hidden".
 - NARRATOR header must ALWAYS be the assigned voice talent name (e.g. "Ray Dolan", "Samuel Cord"). Never a story character name. This rule has no exceptions. (HAL-SCRIPT-001)
 - If NARRATOR_IS_CHARACTER is false, the narrator is a detached third-person voice.
 - If NARRATOR_IS_CHARACTER is true, the narrator is a story character speaking in first person — but the NARRATOR header still uses the voice talent name, not the character name.
