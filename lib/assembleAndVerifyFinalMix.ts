@@ -43,6 +43,12 @@ import { runGarbleGate, type GarbleGateOutcome } from './garbleGate';
 import { runVoiceMapGate, type VoiceMapGateOutcome } from './voiceMapGate';
 import { runBelleStructureGate, type BelleGateOutcome } from './belleStructureGate';
 import { runStingDetectorGate, type StingCheckResult } from './stingDetectorGate';
+import {
+  runLoudnessGate,
+  type LoudnessGateResult,
+  LOUDNESS_001_GATE_ENABLED,
+  HARD_FAIL_THRESHOLD_LUFS,
+} from './loudness-gate';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -80,6 +86,18 @@ export interface ScanReport {
     stingCount: number;
     details: string;
     warnings: string[];
+  };
+  /**
+   * LOUDNESS-001 gate result — populated when LOUDNESS_001_GATE=true.
+   * When the gate is disabled, enabled=false and all counts are −1 (sentinel).
+   */
+  loudnessCheck: {
+    enabled: boolean;
+    passed: boolean;
+    ok: number;
+    normalized: number;
+    hard_fail: number;
+    hard_fail_segments: string[];
   };
 }
 
@@ -232,6 +250,15 @@ const DEFAULT_STING_CHECK: ScanReport['stingCheck'] = {
   warnings: [],
 };
 
+const DEFAULT_LOUDNESS_CHECK: ScanReport['loudnessCheck'] = {
+  enabled: false,
+  passed: true,
+  ok: -1,
+  normalized: -1,
+  hard_fail: -1,
+  hard_fail_segments: [],
+};
+
 function makeScanReport(
   storyId: string,
   buildTimestamp: string,
@@ -243,6 +270,7 @@ function makeScanReport(
   voiceCheck: ScanReport['voiceCheck'],
   belleCheck: ScanReport['belleCheck'] = DEFAULT_BELLE_CHECK,
   stingCheck: ScanReport['stingCheck'] = DEFAULT_STING_CHECK,
+  loudnessCheck: ScanReport['loudnessCheck'] = DEFAULT_LOUDNESS_CHECK,
 ): ScanReport {
   return {
     storyId,
@@ -255,6 +283,7 @@ function makeScanReport(
     voiceCheck,
     belleCheck,
     stingCheck,
+    loudnessCheck,
   };
 }
 
@@ -580,6 +609,75 @@ export async function assembleAndVerifyFinalMix(opts: {
       throw new Error(`Segment count mismatch: listed ${segments.length}, downloaded ${downloaded}`);
     }
 
+    // ── 6b-lx. LOUDNESS-001 gate (PRE-mix, post-download) ─────────────────────
+    // Runs BEFORE ffmpeg concat so loudnorm is applied to individual segments
+    // before they are mixed. Belle, sting, and music-bed segments are excluded
+    // by convention (assembleAndVerifyFinalMix receives only voice segments;
+    // callers must exclude non-voice files before passing the segments list).
+    //
+    // Feature flag: LOUDNESS_001_GATE=true enables enforcement.
+    // Default: disabled — wiring present but gate does not block or modify.
+    let loudnessScanResult: LoudnessGateResult | null = null;
+    let loudnessPassed = true;
+
+    if (LOUDNESS_001_GATE_ENABLED) {
+      try {
+        console.log(
+          `[assembleAndVerifyFinalMix] Running LOUDNESS-001 gate on ${segPaths.length} segment(s)...`,
+        );
+        loudnessScanResult = await runLoudnessGate(segPaths, { dryRun: false });
+        loudnessPassed = loudnessScanResult.hard_fail === 0;
+
+        if (!loudnessPassed) {
+          const failNames = loudnessScanResult.hard_fail_segments
+            .map(p => path.basename(p))
+            .join(', ');
+          errors.push(
+            `LOUDNESS-001 gate FAILED: ${loudnessScanResult.hard_fail} segment(s) below ` +
+            `${HARD_FAIL_THRESHOLD_LUFS} LUFS (near-silent). Flagged for re-render: ${failNames}`,
+          );
+          console.error(`[assembleAndVerifyFinalMix] ${errors[errors.length - 1]}`);
+        } else {
+          console.log(
+            `[assembleAndVerifyFinalMix] ✓ LOUDNESS-001 gate passed ` +
+            `(ok=${loudnessScanResult.ok}, normalized=${loudnessScanResult.normalized}, hard_fail=0)`,
+          );
+        }
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        errors.push(`LOUDNESS-001 gate error: ${msg}`);
+        loudnessPassed = false;
+        console.error(`[assembleAndVerifyFinalMix] LOUDNESS-001 gate error: ${msg}`);
+      }
+
+      if (!loudnessPassed) {
+        // Return immediately — do not assemble segments that include hard-fail audio
+        const loudnessCheckForReport: ScanReport['loudnessCheck'] = {
+          enabled: true,
+          passed: false,
+          ok: loudnessScanResult?.ok ?? -1,
+          normalized: loudnessScanResult?.normalized ?? -1,
+          hard_fail: loudnessScanResult?.hard_fail ?? -1,
+          hard_fail_segments: loudnessScanResult?.hard_fail_segments.map(p => path.basename(p)) ?? [],
+        };
+        const loudnessFailReport = makeScanReport(
+          storyId, buildTimestamp, outputFilename, segments, Array.from(excludeSet),
+          { passed: orphanPassed, flagged: orphanFlagged },
+          { passed: garblePassed, failures: garbleFailures, warnings: garbleWarnings },
+          { passed: voicePassed, failures: voiceFailures, inconclusive: voiceInconclusive },
+          { passed: bellePassed, failures: belleCheckFailures, inconclusive: belleCheckInconclusive, warnings: belleCheckWarnings },
+          DEFAULT_STING_CHECK,
+          loudnessCheckForReport,
+        );
+        return { success: false, scanReport: loudnessFailReport, errors };
+      }
+    } else {
+      console.log(
+        '[assembleAndVerifyFinalMix] LOUDNESS-001 gate disabled ' +
+        '(set LOUDNESS_001_GATE=true to enable enforcement)',
+      );
+    }
+
     // ── 6c. ffmpeg concat (same logic as render-correction-mix.js concatFiles) ─
     const concatOut = path.join(tmp, 'segments_assembled.mp3');
     concatSegments(segPaths, concatOut, `concat ${segPaths.length} segments`);
@@ -609,7 +707,18 @@ export async function assembleAndVerifyFinalMix(opts: {
       };
     }
 
-    // Rebuild scan report with actual stingCheck results
+    // Rebuild scan report with actual stingCheck + loudnessCheck results
+    const finalLoudnessCheck: ScanReport['loudnessCheck'] = LOUDNESS_001_GATE_ENABLED && loudnessScanResult
+      ? {
+          enabled: true,
+          passed: loudnessPassed,
+          ok: loudnessScanResult.ok,
+          normalized: loudnessScanResult.normalized,
+          hard_fail: loudnessScanResult.hard_fail,
+          hard_fail_segments: loudnessScanResult.hard_fail_segments.map(p => path.basename(p)),
+        }
+      : DEFAULT_LOUDNESS_CHECK;
+
     const finalScanReport = makeScanReport(
       storyId, buildTimestamp, outputFilename, segments, Array.from(excludeSet),
       { passed: orphanPassed, flagged: orphanFlagged },
@@ -624,6 +733,7 @@ export async function assembleAndVerifyFinalMix(opts: {
         details:         stingCheckResult.details,
         warnings:        stingCheckResult.warnings,
       },
+      finalLoudnessCheck,
     );
 
     if (!stingCheckResult.passed) {
