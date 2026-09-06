@@ -415,14 +415,14 @@ Hard rules for the map:
 Use the CURRENT published rules:
 - Belle B is the only announcer voice.
 - Belle B is never labeled ANNOUNCER or SANDY.
-- Belle B intro must include exactly one [LISTENER_NAME] placeholder. Do not include the listener's actual name.
+- Belle B intro must include exactly one [LISTENER_NAME] placeholder for series episodes only. Standalone stories must NOT use [LISTENER_NAME] in Belle's intro. Do not include the listener's actual name.
 - Belle B intro/outro must never use "Tonight" or any time-of-day reference.
 - Belle B intro must never mention the author, narrator, or "an Endless Tales original"; those credits belong only in the Belle B outro.
 - BELLE-004: The FIRST episode of a series must name the series title and author in the intro.
 - BELLE-006: Interior and final episodes must NOT name the series title or author in the intro or outro. The old requirement to name the series title in every episode's Belle B intro was wrong — it directly contradicted BELLE-006 and has been dropped (Marc ruling, 2026-08-29).
 - Series non-finale episodes: Belle B outro must NOT credit the author or narrator — save those credits for the finale only. Non-finale outros must tease what comes next or end on the cliffhanger emotion.
-- Series finale episodes: Belle B outro briefly recaps the story, restates the title, credits the author by name, says "an Endless Tales original", and invites the listener to rate the story.
-- Standalone episodes: Belle B outro briefly recaps the story, restates the title, credits the author by name, says "an Endless Tales original", and invites the listener to rate the story.
+- Series finale episodes: Belle B outro is 1–2 sentences, ≤42 words total. No "That was" opener. Open with an emotional beat that references the story's resolution or the character left in the listener's mind. Then: title + author + narrator name + "an Endless Tales original." No spoken rating CTA — rating is handled by the review screen.
+- Standalone episodes: Belle B outro is 1–2 sentences, ≤42 words total. No "That was" opener. Open with an emotional beat that references the story's resolution or the character left in the listener's mind. Then: title + author + narrator name + "an Endless Tales original." No spoken rating CTA — rating is handled by the review screen.
 - SFX: at most 3 per episode (SFX-001). Use sparingly; never exceed 3.
 - The title may be blank in the brief; if blank, choose the best title from the story.
 - Final title must be 1 to 5 words and 28 characters or fewer so it fits one line on story cards.
@@ -452,7 +452,9 @@ CHARACTER GUIDE
 
 BELLE B INTRO
 ---
-BELLE B: [one or two short sentences, warm, specific, sensory, includes exactly one [LISTENER_NAME] placeholder placed naturally and not always at the start, reads gracefully if the name is omitted, no time-of-day reference, no author/narrator credit, no "Endless Tales original".
+BELLE B: [one or two short sentences, warm, specific, sensory, no time-of-day reference, no author/narrator credit, no "Endless Tales original".
+  SERIES EPISODES ONLY: include exactly one [LISTENER_NAME] placeholder placed naturally and not always at the start; line must read gracefully if the name is omitted.
+  STANDALONE STORIES: do NOT include [LISTENER_NAME] — no name placeholder of any kind.
   SERIES FIRST EPISODE (BELLE-004): must name the series title and author.
   INTERIOR + FINAL EPISODES (BELLE-006): must NOT name the series title or author — reference something specific from the story's plot or mood instead.]
 
@@ -462,7 +464,7 @@ CHARACTER NAME: ...
 
 BELLE B OUTRO
 ---
-BELLE B: [one or two short sentences, reflective, no time-of-day reference. For series non-finales: do NOT credit the author or narrator — tease the next episode or hold the cliffhanger emotion instead. For series finales and all standalone episodes: briefly recap the story, restate the title, credit the author by name, say "an Endless Tales original", and invite the listener to rate the story.]
+BELLE B: [For series non-finales: do NOT credit the author or narrator — tease the next episode or hold the cliffhanger emotion instead. For series finales and standalone episodes: 1–2 sentences, ≤42 words total, no "That was" opener; open with an emotional beat referencing the story's resolution or the character left in the listener's mind; then title + author + narrator name + "an Endless Tales original." No spoken rating CTA — rating is handled by the review screen.]
 
 Production-format hard rules:
 - Speaker labels are for spoken words only.

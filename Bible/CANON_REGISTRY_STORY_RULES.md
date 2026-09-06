@@ -56,10 +56,10 @@ Conflict: None. Compatible with BELLE-002 — the first episode is already exemp
 ---
 
 ## BELLE-005
-Status: ACTIVE | Scope: Final episode of a series only | Last Revised: Aug 28, 2026
-Purpose: Close out a series with a satisfying sense of completion and remind the listener what they just finished, for recall and word-of-mouth.
-Rule: The final episode's outro must recap the story in a way that satisfies the listener, then restate the title and author. When the last episode has played, and before Belle finishes, she should ask the listener to rate the story, and then the review screen should pop up. (This applies to a standalone final-episode listen — see QUEUE-005 for the distinct, non-interrupting version of this during playlist playback.)
-Conflict: None.
+Status: ACTIVE | Scope: Final episode of a series AND standalone stories | Last Revised: Sep 6, 2026
+Purpose: Close out a series or standalone story with a satisfying sense of completion and remind the listener what they just finished, for recall and word-of-mouth.
+Rule: The series finale outro and all standalone story outros must be 1–2 sentences, ≤42 words total. No "That was" opener. Open with an emotional beat that references the story's resolution or the character left in the listener's mind. Then credit: title + author + narrator name + "an Endless Tales original." Narrator credit (narrator name) is required in the outro. Rating is prompted via the review screen — Belle must NOT include a spoken rating CTA in the outro. [LISTENER_NAME] is restricted to series episodes only in Belle's intro and must never appear in the outro (BELLE-003).
+Conflict: None. (Expanded Sep 6, 2026 to cover standalone outros with the same constraint, add mandatory narrator credit, remove spoken rating CTA, and clarify [LISTENER_NAME] intro scope.)
 
 ---
 
