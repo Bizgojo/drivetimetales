@@ -610,8 +610,18 @@ export async function runRenderFinalMix(storyId: string): Promise<{
       : preparedSegments
     const buriedSegments: Array<{ segment: string; lufs: number; truePeak: number }> = []
     for (const segment of segmentsToAudit) {
-      const metrics = await analyzeAudioLoudness(segment.path)
-      console.log(`  Segment loudness ${segment.name}: ${metrics.input_i.toFixed(2)} LUFS, ${metrics.input_tp.toFixed(2)} dBTP`)
+      let metrics: { input_i: number; input_tp: number } | null = null
+      try {
+        metrics = await analyzeAudioLoudness(segment.path)
+      } catch {
+        // Unmeasurable — treat as hard-fail (cannot confirm segment is clean)
+        console.warn(`  LOUDNESS-001: cannot measure ${segment.name} — flagging for re-render`)
+        buriedSegments.push({ segment: segment.name, lufs: NaN, truePeak: NaN })
+        continue
+      }
+      const lufsStr = Number.isFinite(metrics.input_i) ? metrics.input_i.toFixed(2) : String(metrics.input_i)
+      const tpStr = Number.isFinite(metrics.input_tp) ? metrics.input_tp.toFixed(2) : String(metrics.input_tp)
+      console.log(`  Segment loudness ${segment.name}: ${lufsStr} LUFS, ${tpStr} dBTP`)
       if (!Number.isFinite(metrics.input_i) || metrics.input_i < -28) {
         buriedSegments.push({
           segment: segment.name,
@@ -620,15 +630,10 @@ export async function runRenderFinalMix(storyId: string): Promise<{
         })
       }
     }
-    // HAL-PIPE-002 TEMPORARY FIX: Skip buried segment check for now.
-    // 8 segments have null loudness (analysis failed) but files exist and are valid.
-    // The hard audio gate (final_mix.mp3 existence check) in ready_for_review catches
-    // any rendering failures. Allowing render to proceed to test full pipeline.
-    // TODO: investigate why analyzeAudioLoudness returns NaN for specific segments.
-    if (false && buriedSegments.length > 0) {
+    if (buriedSegments.length > 0) {
       return {
         success: false,
-        error: 'Buried narration segment detected before render',
+        error: 'LOUDNESS-001: near-silent or unmeasurable segment(s) detected — re-render required before mix',
         thresholdLufs: -28,
         buriedSegments,
       }
