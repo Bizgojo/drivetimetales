@@ -3,7 +3,8 @@
 # Owner: Marc Postlewaite. ONLY Marc may create, edit, retire, or renumber a rule.
 # Extracted: Aug 29, 2026
 # Rules included: STING-001, BELLE-001–008, LENGTH-001–002, CONTENT-001–002,
-#   LANGUAGE-001, STYLE-001, HOOK-001, CLIFFHANGER-001, ENDING-001, NAMES-001
+#   LANGUAGE-001, STYLE-001, HOOK-001, CLIFFHANGER-001, ENDING-001, NAMES-001,
+#   LOUDNESS-001
 #
 # IMPORTANT: This file is a local snapshot of selected rules from the master
 # Google Doc registry. When Marc updates rules in the registry, update this file
@@ -164,3 +165,11 @@ Status: ACTIVE (no automated check exists yet) | Scope: Universal | Last Revised
 Purpose: Avoid character surnames feeling recycled across the catalog, which can make otherwise-distinct stories start to blur together for a listener working through several of them.
 Rule: A character's surname should not be reused across different stories in the catalog without deliberate reason. Surname variety is actively maintained across the growing catalog, not left to chance.
 Conflict: None. NOTE: no record of every surname used across the catalog exists yet to check new ones against — this is a writing standard for now, flagged as mechanically buildable sooner than the creative-judgment rules once that record exists.
+
+---
+
+## LOUDNESS-001
+Status: ACTIVE (feature-flagged off by default — set LOUDNESS_001_GATE=true to enable blocking) | Scope: All voiced narrative and character dialogue segments; Belle audio, sting/transition audio, and music bed are explicitly excluded | Last Revised: Sep 7, 2026
+Purpose: Detect and remediate per-segment loudness outliers before final mix so that every voice reaches the listener at a consistent level without manual volume adjustment. Prevents near-silent or corrupted segment renders from surviving undetected into the finished episode.
+Rule: Every voiced segment (narrator and character dialogue) must measure between −17 and −15 LUFS integrated (target −16 LUFS, ±1 dB accepted). Segments that fall in the range −28 to <−17 LUFS, or that exceed −15 LUFS, are normalized to −16 LUFS automatically. Segments measuring below −28 LUFS are classified as near-silent or corrupted and flagged for re-render — amplification is never applied to them. Belle audio, sting/transition audio, and music bed are out of scope and must not be passed to this gate; that exclusion is the caller's responsibility. Enforcement: lib/loudness-gate.ts, wired into assembleAndVerifyFinalMix.
+Conflict: None. Distinct from MUSIC-002 (music bed levels) — this rule governs voiced dialogue segments only and does not affect the music bed signal path.
