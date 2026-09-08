@@ -72,7 +72,7 @@ const STEP_MODELS = {
 const NARRATIVE_HOOK_FALLBACK_TIMEOUT_MS = 8000
 const VOICE_PREFLIGHT_TIMEOUT_MS = 120_000
 const TITLE_MAX_CHARS = 28
-const DESCRIPTION_MAX_CHARS = 70
+const DESCRIPTION_MAX_WORDS = 24
 const DESCRIPTION_PAST_TENSE_RE = /\b(vanished|was|were|had|found|discovered|left|moved|sealed|signed|forged|buried|hidden|lost)\b/i
 
 // ATL-PIPE-008: Classify validate_script failure into canonical kinds.
@@ -130,8 +130,8 @@ function classifyValidateScriptFailure(
       isAutonomousRetryable: true,
       marcRequired: false,
       recommendedAction: hasBlockedWord
-        ? 'DESCRIPTION uses a forbidden past-tense word. Re-generate with explicit rule: DESCRIPTION must be ≤70 chars, present-tense, active-voice. Blocked words: vanished, was, were, had, found, discovered, left, moved, sealed, signed, forged, buried, hidden.'
-        : 'TITLE or DESCRIPTION format violation. Re-generate with card-copy constraints (TITLE ≤5 words / 28 chars; DESCRIPTION ≤70 chars, present tense).',
+        ? 'DESCRIPTION uses a forbidden past-tense word. Re-generate with explicit rule: DESCRIPTION must be ≤24 words, present-tense, active-voice. Blocked words: vanished, was, were, had, found, discovered, left, moved, sealed, signed, forged, buried, hidden.'
+        : 'TITLE or DESCRIPTION format violation. Re-generate with card-copy constraints (TITLE ≤5 words / 28 chars; DESCRIPTION ≤24 words, present tense).',
     }
   }
 
@@ -557,23 +557,15 @@ function sanitizeDescription(description: string): string {
     .trim()
   const fallback = 'A dangerous secret pulls every choice toward the truth.'
   const source = clean || fallback
-  const maxChars = 70
+  const maxWords = 24
   const weakEnding = /\b(and|or|but|with|to|of|for|from|by|into|before|after|while|when|where|under|beneath|inside|outside|near|below|above|through|around|across|behind|beyond|against|among|within|between|onto|upon|over|in|on|at|the|a|an)$/i
-  let next = source
-  if (next.length > maxChars) {
-    next = ''
-    for (const word of source.split(' ')) {
-      const candidate = next ? `${next} ${word}` : word
-      const punctuated = /[.!?]$/.test(candidate) ? candidate : `${candidate}.`
-      if (punctuated.length > maxChars) break
-      next = candidate
-    }
-  }
+  const srcWords = source.split(' ')
+  let next = srcWords.length > maxWords ? srcWords.slice(0, maxWords).join(' ') : source
   next = next.replace(/[,\-:;.!?]+$/g, '').trim()
   while (weakEnding.test(next) && next.includes(' ')) next = next.split(' ').slice(0, -1).join(' ').trim()
   if (!next) next = fallback.replace(/[.!?]+$/g, '')
   if (!/[.!?]$/.test(next)) next = `${next}.`
-  return next.length > maxChars ? fallback : next
+  return next.split(/\s+/).filter(Boolean).length > maxWords ? fallback : next
 }
 
 function normalizeScriptDescription(script: string, fallbackDescription = '') {
@@ -584,20 +576,19 @@ function normalizeScriptDescription(script: string, fallbackDescription = '') {
   }
 }
 
+const DESCRIPTION_FALLBACK: Record<string, string> = {
+  mystery: 'A seemingly ordinary discovery pulls an amateur sleuth into a case with no clean answers.',
+  thriller: 'A routine situation unravels into something dangerous, and the clock is running out.',
+  romance: 'Two people with nothing in common keep ending up in the same place at the wrong time.',
+  comedy: 'A small misunderstanding snowballs into a situation that somehow gets worse with every fix.',
+  drama: 'A long-buried truth surfaces at exactly the wrong moment for everyone involved.',
+  horror: 'Something is wrong in a place that should be safe, and leaving is not as simple as it sounds.',
+  adventure: 'An unexpected detour leads somewhere no one was prepared for.',
+  default: 'A quiet day turns into something no one saw coming.',
+}
+
 function deterministicDescriptionForGenre(genre: string): string {
-  const normalizedGenre = genre.toLowerCase()
-
-  if (normalizedGenre.includes('mystery') || normalizedGenre.includes('thriller')) {
-    return 'A driver finds a secret someone is willing to kill for.'
-  }
-  if (normalizedGenre.includes('horror')) {
-    return 'A quiet place hides something that should not be awake.'
-  }
-  if (normalizedGenre.includes('comedy')) {
-    return 'One bad decision turns an ordinary trip sideways.'
-  }
-
-  return 'One discovery changes everything before the road ends.'
+  return DESCRIPTION_FALLBACK[genre?.toLowerCase()] ?? DESCRIPTION_FALLBACK.default
 }
 
 function isInvalidStandaloneDescription(description: string): boolean {
@@ -661,8 +652,8 @@ function validateCardCopy(script: string) {
   if (!description) {
     issues.push('DESCRIPTION is required.')
   } else {
-    if (description.length > DESCRIPTION_MAX_CHARS) {
-      issues.push(`DESCRIPTION must be ${DESCRIPTION_MAX_CHARS} characters or fewer so it fits two lines on story cards. Current: ${description.length} characters.`)
+    if (description.split(/\s+/).filter(Boolean).length > DESCRIPTION_MAX_WORDS) {
+      issues.push(`DESCRIPTION must be ${DESCRIPTION_MAX_WORDS} words or fewer (DISC-001). Current: ${description.split(/\s+/).filter(Boolean).length} words.`)
     }
     const pastTenseMatch = DESCRIPTION_PAST_TENSE_RE.exec(description)
     if (pastTenseMatch) {
@@ -673,7 +664,7 @@ function validateCardCopy(script: string) {
         `DESCRIPTION contains forbidden past-tense/blocked word: "${pastTenseMatch[0]}". ` +
         `Full DESCRIPTION text: "${description}". ` +
         `Rule: DESCRIPTION_PAST_TENSE_RE. ` +
-        `Rewrite the DESCRIPTION in present tense (≤70 chars) using active-voice, present-tense verbs only. ` +
+        `Rewrite the DESCRIPTION in present tense (≤24 words, DISC-001) using active-voice, present-tense verbs only. ` +
         `Blocked words: vanished, was, were, had, found, discovered, left, moved, sealed, signed, forged, buried, hidden.`
       )
     }
@@ -1604,9 +1595,9 @@ const VALIDATOR_PROMPT = `You are validating an Endless Tales production script.
 Use the CURRENT rules:
 - Belle B is the announcer.
 - Belle B is never narrator or character.
-- No SFX in the published story body.
+- SFX: at most 3 per episode (SFX-001). Use sparingly; never exceed 3.
 - The title must be 1 to 5 words and 28 characters or fewer.
-- DESCRIPTION must be 70 characters or fewer and present tense only.
+- Description: ≤24 words, present tense (DISC-001). No spoilers. No past tense.
 - DESCRIPTION fails if it uses past-tense constructions or past-tense story-card phrasing such as "vanished", "was", "were", "had", "found", "discovered", "left", "moved", "sealed", "signed", "forged", "buried", "hidden", or "lost".
 - DESCRIPTION PROTAGONIST RULE: the DESCRIPTION must accurately reflect who the protagonist actually is and what they are trying to do. If the script's protagonist is a security guard, DESCRIPTION must not say "driver". If the protagonist is a nurse, DESCRIPTION must not say "teacher". Mismatches between DESCRIPTION and actual protagonist role are a hard fail.
 - DESCRIPTION SPOILER RULE: DESCRIPTION is a story-card teaser, not a plot summary. It must raise a question, not answer it. HARD FAIL if DESCRIPTION reveals: the survivor, the culprit, the missing person's status, a hidden person alive or dead, the final discovery, or the resolution payoff. Examples of failing DESCRIPTION phrases: "to a survivor", "to the killer", "reveals who did it", "the missing child is alive".
@@ -2910,7 +2901,7 @@ Use the CURRENT published rules:
 - Belle B announcement must not include [LISTENER_NAME] or any listener name; the shared name opener handles greeting/personalization.
 - Belle B intro/outro must never use "Tonight" or any time-of-day reference.
 - Belle B announcement must never include a greeting/opener, the author, narrator, or "an Endless Tales original"; those credits belong only in the Belle B outro.
-- No SFX in the published story body.
+- SFX: at most 3 per episode (SFX-001). Use sparingly; never exceed 3.
 - The title may be blank in the brief; if blank, choose the best title from the story.
 - Final title must be 1 to 5 words and 28 characters or fewer so it fits one line on story cards.
 - Output ONLY the script, including the Story Resolution Map comment block. No commentary outside the script.
@@ -2928,7 +2919,7 @@ SERIES_TOTAL_EPISODES:
 SERIES_IS_FINALE:
 AUTHOR:
 GENRE:
-DESCRIPTION: [complete sentence, 70 characters or fewer, present tense only, tease a question without revealing the climax, twist, final discovery, or resolution payoff]
+DESCRIPTION: [complete sentence, ≤24 words, present tense only (DISC-001), tease a question without revealing the climax, twist, final discovery, or resolution payoff]
 NARRATOR: ${narratorContext.mode === 'assigned' ? narratorContext.narratorName : '[pick exactly one name from the narrator selection list above]'}
 ANNOUNCER: Belle B
 NARRATIVE_VOICE:
@@ -2978,7 +2969,7 @@ Additional production-format hard rules:
 - Right: NARRATOR: Pike's jaw tightened.
 
 Additional rules:
-- DESCRIPTION must be a COMPLETE sentence, 70 characters or fewer, and present tense only so it fits two lines on story cards. If the brief-provided description is longer than 70 characters or uses past-tense constructions, rewrite it to comply. Before final output, self-check DESCRIPTION length; if it is over 70 characters, rewrite it internally until it is complete and 70 characters or fewer. Never cut DESCRIPTION mid-word or mid-phrase. Never output a fragment. Reject past-tense story-card phrasing such as "vanished", "was", "were", "had", "found", "discovered", "left", "moved", "sealed", "signed", "forged", "buried", "hidden", or "lost". DESCRIPTION must TEASE a question, never reveal the story's climax, twist, final discovery, or resolution payoff. Raise curiosity about the setup or mystery; do NOT state the outcome. Example: tease "strange notes under a neighbor's door at 3:12 a.m."; do NOT reveal "someone is trapped inside."
+- DESCRIPTION must be a COMPLETE sentence, ≤24 words, present tense only (DISC-001). If the brief-provided description exceeds 24 words or uses past-tense constructions, rewrite it to comply. Before final output, self-check DESCRIPTION word count; if it is over 24 words, rewrite it internally until it is complete and ≤24 words. Never cut DESCRIPTION mid-word or mid-phrase. Never output a fragment. Reject past-tense story-card phrasing such as "vanished", "was", "were", "had", "found", "discovered", "left", "moved", "sealed", "signed", "forged", "buried", "hidden", or "lost". DESCRIPTION must TEASE a question, never reveal the story's climax, twist, final discovery, or resolution payoff. Raise curiosity about the setup or mystery; do NOT state the outcome. Example: tease "strange notes under a neighbor's door at 3:12 a.m."; do NOT reveal "someone is trapped inside."
 - If NARRATOR_IS_CHARACTER is false, NARRATOR must not be a story character name and must not include "(character)".
 - If the narrator is a story character, NARRATOR_IS_CHARACTER must be true and the script must use consistent first-person narration.
 - Standalone stories must end conclusively.
@@ -5171,7 +5162,7 @@ CURRENT published rules:
 - Belle B intro/outro must never use "Tonight" or any time-of-day reference.
 - Belle B announcement must never include a greeting/opener, the author, narrator, or "an Endless Tales original"; those credits belong only in the Belle B outro.
 - ${belleOutroRule}
-- No SFX in the published story body.
+- SFX: at most 3 per episode (SFX-001). Use sparingly; never exceed 3.
 - Final title must be 1 to 5 words and 28 characters or fewer so it fits one line on story cards.
 
 ${namePaletteBlock}
@@ -5185,7 +5176,7 @@ SERIES_TOTAL_EPISODES: ${totalEpisodes}
 SERIES_IS_FINALE: ${isFinale ? 'true' : 'false'}
 AUTHOR: ${episode.author || brief.author || ''}
 GENRE: ${episode.genre || brief.genre || ''}
-DESCRIPTION: [complete sentence, 70 characters or fewer, present tense only, tease a question without revealing the episode climax, twist, final discovery, or resolution payoff]
+DESCRIPTION: [complete sentence, ≤24 words, present tense only (DISC-001), tease a question without revealing the episode climax, twist, final discovery, or resolution payoff]
 NARRATOR: ${assignedNarratorName}
 ANNOUNCER: Belle B
 NARRATIVE_VOICE: ${episode.narrative_voice || brief.narrative_voice || ''}
@@ -5225,7 +5216,7 @@ Series rules:
 - ${isFinale ? 'This is the finale. Resolve the season arc completely.' : 'This is not the finale. End on a specific cliffhanger with forward momentum. Do not use "to be continued" phrasing.'}
 
 Additional rules:
-- DESCRIPTION must be a COMPLETE sentence, 70 characters or fewer, and present tense only. Before final output, self-check DESCRIPTION length; if it is over 70 characters, rewrite it internally until it is complete and 70 characters or fewer. Never cut DESCRIPTION mid-word or mid-phrase. Never output a fragment. DESCRIPTION must TEASE a question, never reveal the episode's climax, twist, final discovery, or resolution payoff. Raise curiosity about the setup or mystery; do NOT state the outcome. Example: tease "strange notes under a neighbor's door at 3:12 a.m."; do NOT reveal "someone is trapped inside."
+- DESCRIPTION must be a COMPLETE sentence, ≤24 words, present tense only (DISC-001). Before final output, self-check DESCRIPTION word count; if it is over 24 words, rewrite it internally until it is complete and ≤24 words. Never cut DESCRIPTION mid-word or mid-phrase. Never output a fragment. DESCRIPTION must TEASE a question, never reveal the episode's climax, twist, final discovery, or resolution payoff. Raise curiosity about the setup or mystery; do NOT state the outcome. Example: tease "strange notes under a neighbor's door at 3:12 a.m."; do NOT reveal "someone is trapped inside."
 - If NARRATOR_IS_CHARACTER is false, NARRATOR must not be a story character name and must not include "(character)".
 - If the narrator is a story character, NARRATOR_IS_CHARACTER must be true and the script must use consistent first-person narration.
 - Keep narrator voice consistent.
@@ -5923,7 +5914,7 @@ function classifyDescriptionValidatorFailure(report: string): null | {
   const failureLines = extractValidatorFailureLines(report)
   if (!failureLines.length) return null
 
-  const descriptionLine = /\bdescription\b|story-card|teaser|present tense|70 characters|characters or fewer|blocked word|past-tense/i
+  const descriptionLine = /\bdescription\b|story-card|teaser|present tense|70 characters|24 words|characters or fewer|words or fewer|blocked word|past-tense/i
   if (!failureLines.every((line) => descriptionLine.test(line))) return null
 
   const substantive = /spoiler|reveals?|climax|twist|final discovery|resolution payoff|outcome|culprit|survivor|protagonist.*mismatch|mismatch.*protagonist|role.*mismatch|description\s+does not match\s+(?:the\s+)?(?:protagonist|role)|weak plot|weak hook|editorial/i
@@ -5931,7 +5922,7 @@ function classifyDescriptionValidatorFailure(report: string): null | {
     return { retryable: false, kind: 'substantive', reason: failureLines.join('; '), failureLines }
   }
 
-  const mechanical = /required|missing|70 characters|characters or fewer|too long|present tense|past-tense|blocked word|format|punctuation|complete sentence|truncated|fragment|incomplete|mid-phrase|mid-word/i
+  const mechanical = /required|missing|70 characters|24 words|characters or fewer|words or fewer|too long|present tense|past-tense|blocked word|format|punctuation|complete sentence|truncated|fragment|incomplete|mid-phrase|mid-word/i
   if (failureLines.every((line) => mechanical.test(line))) {
     return { retryable: true, kind: 'mechanical', reason: failureLines.join('; '), failureLines }
   }
@@ -5984,10 +5975,10 @@ Use the validator feedback exactly.
 
 Rules:
 - Return JSON only: {"description": "text"}
-- DESCRIPTION must be a complete sentence, 70 characters or fewer.
+- DESCRIPTION must be a complete sentence, ≤24 words (DISC-001).
 - DESCRIPTION must be present tense.
 - DESCRIPTION must tease a question, not reveal the climax, twist, final discovery, culprit/survivor/status, or resolution payoff.
-- Before returning, self-check the length and rewrite internally if it is over 70 characters.
+- Before returning, self-check the word count and rewrite internally if it is over 24 words.
 - Do not reuse the current DESCRIPTION verbatim; generate a fresh compliant sentence.
 - Prefer the validator's suggested wording when it gives one.
 
