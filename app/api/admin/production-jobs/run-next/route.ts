@@ -16,6 +16,7 @@ import { runPremiseGate, formatPremiseCollisionMessage, formatPremiseAdjacentWar
 import { syncPremiseIndexForTransition } from '@/lib/premiseIndex'
 import { verifyArtifactHttp } from '@/lib/artifactGate'
 import { runHookGateForStory, detectBelleQualityRepairEmpty } from '@/lib/hookGate'
+import { runStoryQualityGate } from '@/lib/storyQualityGate'
 import { runGarbleGate } from '@/lib/garbleGate'
 import { parseScriptPositions } from '@/lib/scriptLineIndex'
 import { runVoiceMapGate } from '@/lib/voiceMapGate'
@@ -10085,6 +10086,98 @@ export async function POST(req: NextRequest) {
         }
       }
       // ── END HOOK-GATE-001 ─────────────────────────────────────────────────
+
+      // ── STEP 10 QUALITY GATE ──────────────────────────────────────────────
+      // Standalone only (series returns earlier in this block).
+      // publish (≥22): continue to ready_for_review as normal.
+      // review  (17–21): set needs_attention=true, continue (Marc listens + decides).
+      // block   (<17): set validator_failed, halt — Marc reviews scores.
+      // tooling error: fail-open, log and continue (never block on broken judge).
+      if (result.storyId) {
+        const qualityResult = await runStoryQualityGate(result.storyId)
+
+        if (qualityResult.error) {
+          // Tooling failure — fail open
+          console.warn(
+            `[run-next] quality-gate tooling error for ${result.storyId}: ${qualityResult.error} — continuing to ready_for_review`,
+          )
+        } else if (qualityResult.recommendation === 'block') {
+          // Score < 17 — halt, set validator_failed
+          console.warn(
+            `[run-next] QUALITY-GATE BLOCK for ${result.storyId}: score=${qualityResult.score} — ${qualityResult.summary}`,
+          )
+          console.warn(`[run-next] quality-gate dimensions:`, qualityResult.dimensions)
+
+          await supabase
+            .from('stories')
+            .update({
+              status: 'validator_failed',
+              needs_attention: true,
+              needs_attention_reason: `Quality gate block: score=${qualityResult.score}/30. ${qualityResult.summary}`.slice(0, 1000),
+              needs_attention_at: nowIso(),
+              updated_at: nowIso(),
+            })
+            .eq('id', result.storyId)
+
+          await supabase
+            .from('production_jobs')
+            .update({
+              story_id: result.storyId,
+              status: 'failed',
+              current_step: 'quality_gate_blocked',
+              state_json: result.state,
+              error_json: {
+                kind: 'quality_gate_block',
+                gate: 'QUALITY-GATE-001',
+                step: 'complete_story_package',
+                storyId: result.storyId,
+                score: qualityResult.score,
+                dimensions: qualityResult.dimensions,
+                summary: qualityResult.summary,
+                message: `Quality gate blocked: score ${qualityResult.score}/30 < 17 threshold.`,
+                at: nowIso(),
+              },
+              logs,
+              locked_at: null,
+              locked_by: null,
+            })
+            .match(ownedJobFence(lockedJob, lockHolderId))
+
+          return NextResponse.json({
+            halted: true,
+            reason: 'quality_gate_block',
+            gate: 'QUALITY-GATE-001',
+            jobId: lockedJob.id,
+            storyId: result.storyId,
+            score: qualityResult.score,
+            dimensions: qualityResult.dimensions,
+            summary: qualityResult.summary,
+          }, { status: 200 })
+
+        } else if (qualityResult.recommendation === 'review') {
+          // Score 17–21 — flag for Marc's closer listen, do NOT block
+          console.log(
+            `[run-next] QUALITY-GATE REVIEW for ${result.storyId}: score=${qualityResult.score} — setting needs_attention`,
+          )
+          await supabase
+            .from('stories')
+            .update({
+              needs_attention: true,
+              needs_attention_reason: `Quality gate review: score=${qualityResult.score}/30. ${qualityResult.summary}`.slice(0, 1000),
+              needs_attention_at: nowIso(),
+              updated_at: nowIso(),
+            })
+            .eq('id', result.storyId)
+          // Continue to ready_for_review normally below
+
+        } else {
+          // recommendation === 'publish', score ≥ 22 — auto-approved
+          console.log(
+            `[run-next] QUALITY-GATE PUBLISH for ${result.storyId}: score=${qualityResult.score}/30`,
+          )
+        }
+      }
+      // ── END STEP 10 QUALITY GATE ──────────────────────────────────────────
 
       const { data: updatedJob, error: updateError } = await supabase
         .from('production_jobs')
