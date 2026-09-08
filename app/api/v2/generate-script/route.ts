@@ -51,20 +51,19 @@ function replaceOrInsertHeader(script: string, key: string, value: string): stri
   return `${key}: ${value}\n${script}`
 }
 
+const DESCRIPTION_FALLBACK: Record<string, string> = {
+  mystery: 'A seemingly ordinary discovery pulls an amateur sleuth into a case with no clean answers.',
+  thriller: 'A routine situation unravels into something dangerous, and the clock is running out.',
+  romance: 'Two people with nothing in common keep ending up in the same place at the wrong time.',
+  comedy: 'A small misunderstanding snowballs into a situation that somehow gets worse with every fix.',
+  drama: 'A long-buried truth surfaces at exactly the wrong moment for everyone involved.',
+  horror: 'Something is wrong in a place that should be safe, and leaving is not as simple as it sounds.',
+  adventure: 'An unexpected detour leads somewhere no one was prepared for.',
+  default: 'A quiet day turns into something no one saw coming.',
+}
+
 function deterministicDescriptionForGenre(genre: string): string {
-  const normalizedGenre = genre.toLowerCase()
-
-  if (normalizedGenre.includes('mystery') || normalizedGenre.includes('thriller')) {
-    return 'A driver finds a secret someone is willing to kill for.'
-  }
-  if (normalizedGenre.includes('horror')) {
-    return 'A quiet place hides something that should not be awake.'
-  }
-  if (normalizedGenre.includes('comedy')) {
-    return 'One bad decision turns an ordinary trip sideways.'
-  }
-
-  return 'One discovery changes everything before the road ends.'
+  return DESCRIPTION_FALLBACK[genre?.toLowerCase()] ?? DESCRIPTION_FALLBACK.default
 }
 
 function isInvalidDescription(description: string): boolean {
