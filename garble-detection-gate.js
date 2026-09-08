@@ -215,6 +215,62 @@ function normalise(text) {
 }
 
 // ---------------------------------------------------------------------------
+// Numeral normalisation — digit→word conversion for WER comparison
+// Whisper emits digits ("2", "1987"); scripts use words ("two", "nineteen eighty-seven").
+// Apply to both reference and hypothesis immediately before wer() to eliminate
+// false-fail mismatches on numerically equivalent but differently-formatted text.
+// ATL-GARBLE-STOPLINE-001
+// ---------------------------------------------------------------------------
+
+const nw = require('number-to-words');
+
+/**
+ * Convert a 4-digit year (1100–2099) to its spoken-English word form.
+ * 1987 → "nineteen eighty seven"
+ * 2000 → "two thousand"
+ * 2010 → "two thousand ten"
+ */
+function yearToWords(n) {
+  if (n >= 1100 && n <= 1999) {
+    const century   = Math.floor(n / 100);
+    const remainder = n % 100;
+    if (remainder === 0) return nw.toWords(century) + ' hundred';
+    if (remainder < 10)  return nw.toWords(century) + ' oh ' + nw.toWords(remainder);
+    return nw.toWords(century) + ' ' + nw.toWords(remainder);
+  }
+  if (n >= 2000 && n <= 2099) {
+    const remainder = n % 100;
+    if (remainder === 0) return 'two thousand';
+    if (remainder < 10)  return 'two thousand oh ' + nw.toWords(remainder);
+    return 'two thousand ' + nw.toWords(remainder);
+  }
+  return nw.toWords(n);
+}
+
+/**
+ * Receive already-normalised text (from normalise()), convert any bare digit
+ * tokens to their word equivalents, and return the result.
+ * Applies digit→word only; input is already lowercase, no punctuation.
+ */
+function normalizeForWer(text) {
+  return text
+    .split(/\s+/)
+    .filter(Boolean)
+    .map(token => {
+      if (!/^\d+$/.test(token)) return token;
+      const n = parseInt(token, 10);
+      if (!Number.isFinite(n)) return token;
+      const words = (n >= 1000 && n <= 2099) ? yearToWords(n) : nw.toWords(n);
+      // Strip hyphens that number-to-words emits (normalise already removed them
+      // from the reference/hypothesis strings, so we must match that shape).
+      return words.replace(/-/g, ' ');
+    })
+    .join(' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+// ---------------------------------------------------------------------------
 // Word Error Rate (WER) via Levenshtein on word tokens
 // ---------------------------------------------------------------------------
 
@@ -409,7 +465,7 @@ async function runGate(storyId, requestedIndices) {
     }
 
     const whisperNormal = normalise(whisperRaw);
-    const werScore      = wer(expectedNormal, whisperNormal);
+    const werScore      = wer(normalizeForWer(expectedNormal), normalizeForWer(whisperNormal));
     const status        = werScore > WER_HARD_FAIL ? 'fail' : werScore > WER_WARN ? 'warn' : 'ok';
 
     results.push(makeResult(idx, status, werScore, expectedText, whisperRaw));

@@ -9434,6 +9434,53 @@ export async function POST(req: NextRequest) {
       const queueItem = input.queueItem || {}
       const type = storyTypeFor(lockedJob, queueItem)
 
+      // -----------------------------------------------------------------------
+      // GARBLE STOP-LINE (ATL-GARBLE-STOPLINE-001)
+      // Before complete_story_package runs, verify the garble scan-report passed.
+      // If overallPassed === false: halt, set story to validator_failed, return.
+      // If report is missing or unreadable: warn and continue (safety net only).
+      // Applies to standalone only; series episodes each have their own reports.
+      // -----------------------------------------------------------------------
+      if (type === 'standalone' && lockedJob.story_id) {
+        try {
+          const scanReportPath = `asc3/${lockedJob.story_id}/scan-report-v1.json`
+          const { data: scanReportData, error: scanReportError } = await supabase
+            .storage
+            .from('audio')
+            .download(scanReportPath)
+
+          if (!scanReportError && scanReportData) {
+            const scanReportText = await scanReportData.text()
+            const scanReport = JSON.parse(scanReportText)
+
+            if (scanReport.overallPassed === false) {
+              console.warn(`[run-next] STOP-LINE: scan-report overallPassed=false for ${lockedJob.story_id}. Halting before complete_story_package.`)
+
+              await supabase
+                .from('stories')
+                .update({
+                  status: 'validator_failed',
+                  needs_attention: true,
+                  updated_at: new Date().toISOString(),
+                })
+                .eq('id', lockedJob.story_id)
+
+              return NextResponse.json({
+                halted: true,
+                reason: 'garble_scan_failed',
+                storyId: lockedJob.story_id,
+                message: 'Scan report indicates overallPassed=false. Story set to validator_failed. complete_story_package skipped.',
+              }, { status: 200 })
+            }
+          } else if (scanReportError) {
+            console.warn(`[run-next] STOP-LINE: could not read scan-report for ${lockedJob.story_id}: ${scanReportError.message}. Continuing.`)
+          }
+        } catch (e) {
+          console.warn(`[run-next] STOP-LINE: scan-report check threw: ${e}. Continuing.`)
+        }
+      }
+      // End GARBLE STOP-LINE
+
       if (type === 'series') {
         const origin = new URL(req.url).origin
         const result = await runSeriesPackageCompletion(lockedJob, origin)
