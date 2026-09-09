@@ -52,7 +52,7 @@ function replaceOrInsertHeader(script: string, key: string, value: string): stri
 }
 
 const DESCRIPTION_FALLBACK: Record<string, string> = {
-  mystery: 'A seemingly ordinary discovery pulls an amateur sleuth into a case with no clean answers.',
+  mystery: 'A mystery unfolds in a small community, and one person is determined to find out what really happened.',
   thriller: 'A routine situation unravels into something dangerous, and the clock is running out.',
   romance: 'Two people with nothing in common keep ending up in the same place at the wrong time.',
   comedy: 'A small misunderstanding snowballs into a situation that somehow gets worse with every fix.',
@@ -91,7 +91,22 @@ function isInvalidDescription(description: string): boolean {
   return cutoffPatterns.some((pattern) => pattern.test(withoutPunctuation))
 }
 
-function normalizeDescription(script: string, genre: string) {
+function normalizeDescription(script: string, genre: string, briefDescription?: string) {
+  // Brief-first: if brief_json carries a valid description, use it directly
+  if (briefDescription) {
+    const cleanedBrief = briefDescription
+      .replace(/\s+/g, ' ')
+      .replace(/^["']|["']$/g, '')
+      .trim()
+    const wordCount = cleanedBrief.split(/\s+/).filter(Boolean).length
+    if (wordCount > 0 && wordCount <= 24 && !isInvalidDescription(cleanedBrief)) {
+      return {
+        script: replaceOrInsertHeader(script, 'DESCRIPTION', cleanedBrief),
+        description: cleanedBrief,
+      }
+    }
+  }
+
   const currentDescription = extractHeader(script, 'DESCRIPTION')
     .replace(/\s+/g, ' ')
     .replace(/^["']|["']$/g, '')
@@ -507,7 +522,7 @@ ${JSON.stringify(brief, null, 2)}
       .map((c: any) => ('text' in c ? c.text : ''))
       .join('')
       .trim()
-    const { script, description } = normalizeDescription(generatedScript, story.genre || brief.genre || '')
+    const { script, description } = normalizeDescription(generatedScript, story.genre || brief.genre || '', brief.description || undefined)
 
     const generatedTitle = extractTitle(script) || story.title || ''
     const wordCount = countWords(generatedTitle)
