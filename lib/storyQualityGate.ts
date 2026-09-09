@@ -36,7 +36,7 @@ export interface QualityDimensions {
   hook: number          // 1–5: Did first 90s earn attention?
   clarity: number       // 1–5: Could distracted driver follow without rewinding?
   pacing: number        // 1–5: Did it turn every few minutes or go flat in middle?
-  audio_quality: number // 1–5: Clean voices, music ducking, SFX in gaps, no ghost voices?
+  audio_design: number  // 1–5: Does the script give audio production enough to work with?
   landing: number       // 1–5: Did ending resolve/satisfy or cliffhanger burn?
   investment: number    // 1–5: Did listener care? Feel something at ending?
 }
@@ -81,15 +81,15 @@ Scoring rubric:
 - Hook (1–5): Did the opening 90 seconds earn the listener's attention? 1=no hook at all, 5=immediately gripping
 - Clarity (1–5): Could a distracted driver follow every character, place, and event without rewinding? 1=confusing, 5=crystal clear
 - Pacing (1–5): Did the story turn (reveal, twist, escalation) every few minutes, or did the middle go flat? 1=flatlines in middle, 5=tight turns throughout
-- Audio Quality (1–5): Are voices clean and balanced? Does music duck under dialogue? Do SFX land in gaps, not over speech? Any ghost voices or garbled segments? 1=technical problems, 5=production-perfect
+- Audio Design (1–5): Does the script give the audio production enough to work with — clear scene-setting, natural dialogue rhythm, SFX placement that makes sense for the scene? Score from script alone; do not infer actual production quality. 1=no audio design awareness, 5=script is production-ready.
 - Landing (1–5): For standalones — did the ending resolve and satisfy? For series non-finales — did the cliffhanger burn? 1=unsatisfying, 5=deeply satisfying or compelling
 - Investment (1–5): Did the listener care what happened to this person? Did they feel something at the ending? 1=no emotional connection, 5=strong emotional impact
 
 Return ONLY valid JSON, no commentary, no markdown fences:
-{"hook":N,"clarity":N,"pacing":N,"audio_quality":N,"landing":N,"investment":N,"total":N,"recommendation":"publish","summary":"one sentence"}
+{"hook":N,"clarity":N,"pacing":N,"audio_design":N,"landing":N,"investment":N,"total":N,"recommendation":"publish","summary":"one sentence"}
 
 Where:
-- total = hook + clarity + pacing + audio_quality + landing + investment (must equal sum of the six)
+- total = hook + clarity + pacing + audio_design + landing + investment (must equal sum of the six)
 - recommendation: "publish" if total >= 22, "review" if 17-21, "block" if < 17
 - summary: one sentence naming the main strength AND the main weakness`
 
@@ -99,7 +99,7 @@ Where:
 
 export async function runStoryQualityGate(storyId: string): Promise<QualityGateResult> {
   const ZERO_DIMENSIONS: QualityDimensions = {
-    hook: 0, clarity: 0, pacing: 0, audio_quality: 0, landing: 0, investment: 0,
+    hook: 0, clarity: 0, pacing: 0, audio_design: 0, landing: 0, investment: 0,
   }
 
   try {
@@ -154,7 +154,7 @@ ${scriptContent.slice(0, 12000)}`
       hook: Number(parsed.hook),
       clarity: Number(parsed.clarity),
       pacing: Number(parsed.pacing),
-      audio_quality: Number(parsed.audio_quality),
+      audio_design: Number(parsed.audio_design),
       landing: Number(parsed.landing),
       investment: Number(parsed.investment),
     }
