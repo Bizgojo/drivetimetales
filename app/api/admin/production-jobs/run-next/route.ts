@@ -617,7 +617,9 @@ function isInvalidStandaloneDescription(description: string): boolean {
   return cutoffPatterns.some((pattern) => pattern.test(withoutPunctuation))
 }
 
-function normalizeStandaloneDescription(script: string, genre: string, briefDescription?: string) {
+function normalizeStandaloneDescription(script: string, genre: string, briefDescription?: string, narratorVoiceName?: string) {
+  let result: { script: string; description: string }
+
   // Brief-first: if brief_json carries a valid description, use it directly
   if (briefDescription) {
     const cleanedBrief = briefDescription
@@ -625,27 +627,47 @@ function normalizeStandaloneDescription(script: string, genre: string, briefDesc
       .replace(/^["']|["']$/g, '')
       .trim()
     const wordCount = cleanedBrief.split(/\s+/).filter(Boolean).length
-    if (wordCount > 0 && wordCount <= 24 && !isInvalidStandaloneDescription(cleanedBrief)) {
-      return {
+    if (wordCount > 0 && wordCount <= 24 && /[.!?]$/.test(cleanedBrief)) {
+      result = {
         script: replaceOrInsertHeader(script, 'DESCRIPTION', cleanedBrief),
         description: cleanedBrief,
       }
+    } else {
+      const currentDescription = extractHeader(script, 'DESCRIPTION')
+        .replace(/\s+/g, ' ')
+        .replace(/^["']|["']$/g, '')
+        .trim()
+      const description = isInvalidStandaloneDescription(currentDescription)
+        ? deterministicDescriptionForGenre(genre)
+        : currentDescription
+      result = {
+        script: replaceOrInsertHeader(script, 'DESCRIPTION', description),
+        description,
+      }
+    }
+  } else {
+    const currentDescription = extractHeader(script, 'DESCRIPTION')
+      .replace(/\s+/g, ' ')
+      .replace(/^["']|["']$/g, '')
+      .trim()
+    const description = isInvalidStandaloneDescription(currentDescription)
+      ? deterministicDescriptionForGenre(genre)
+      : currentDescription
+    result = {
+      script: replaceOrInsertHeader(script, 'DESCRIPTION', description),
+      description,
     }
   }
 
-  const currentDescription = extractHeader(script, 'DESCRIPTION')
-    .replace(/\s+/g, ' ')
-    .replace(/^["']|["']$/g, '')
-    .trim()
-
-  const description = isInvalidStandaloneDescription(currentDescription)
-    ? deterministicDescriptionForGenre(genre)
-    : currentDescription
-
-  return {
-    script: replaceOrInsertHeader(script, 'DESCRIPTION', description),
-    description,
+  // Ensure NARRATOR header is present if we know the narrator name
+  if (narratorVoiceName && !extractHeader(result.script, 'NARRATOR').trim()) {
+    result = {
+      ...result,
+      script: replaceOrInsertHeader(result.script, 'NARRATOR', narratorVoiceName),
+    }
   }
+
+  return result
 }
 
 function validateCardCopy(script: string) {
@@ -3203,7 +3225,7 @@ async function generateStandaloneScript(job: ProductionJob, model: string) {
     .map((c: any) => ('text' in c ? c.text : ''))
     .join('')
     .trim()
-  const normalized = normalizeStandaloneDescription(generatedScript, story.genre || brief.genre || '', brief.description || undefined)
+  const normalized = normalizeStandaloneDescription(generatedScript, story.genre || brief.genre || '', brief.description || undefined, narratorContext.mode === 'assigned' ? narratorContext.narratorName : (story.narrator_voice_name || undefined))
   const script = normalized.script
   const description = normalized.description
   const generatedTitle = extractTitle(script) || story.title || ''
