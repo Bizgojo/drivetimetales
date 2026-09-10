@@ -15,6 +15,8 @@
  * History markers preserved from the route: ATL-PIPE-008/011/013/016/017.
  */
 
+import { normalizeForWer } from './normalizeForWer'
+
 export const SEGMENT_TRANSCRIPT_MIN_COVERAGE = 0.62
 export const SEGMENT_TRANSCRIPT_TAIL_WORDS = 4
 
@@ -1485,12 +1487,24 @@ export type TranscriptQCResult = {
 }
 
 export function evaluateTranscriptQC(expectedText: string, detectedText: string): TranscriptQCResult {
+  // ATL-NUMERAL-NORM-002: apply normalizeForWer (digit→word) to both sides so
+  // that Whisper digit forms ("2000", "2006") and script word forms ("two
+  // thousand", "two thousand and six") converge before similarity and
+  // numeric-sequence checks.  normalizeForWer is the same function used by
+  // garble-detection-gate.js (ATL-GARBLE-STOPLINE-001 / PR #190).
+  const werExpected = normalizeForWer(expectedText)
+  const werDetected = normalizeForWer(detectedText)
+  const werSimilarity = stringSimilarity(normalizeForQC(werExpected), normalizeForQC(werDetected))
+
   const expected = transcriptTokens(expectedText)
   const detected = transcriptTokens(detectedText)
   const normExpected = normalizeForQC(expectedText)
   const normDetected = normalizeForQC(detectedText)
   const detectedBlank = detectedText.trim().length === 0 || normDetected.length === 0
-  const normalizedSimilarity = stringSimilarity(normExpected, normDetected)
+  // werSimilarity is taken as a secondary path: when the digit↔word forms agree
+  // highly the raw normalizedSimilarity may be suppressed by broken word→digit
+  // conversion (e.g. "two thousand and X" corrupted by normalizeCompoundNumbers).
+  const normalizedSimilarity = Math.max(stringSimilarity(normExpected, normDetected), werSimilarity)
   const normalizedExactMatch = normExpected === normDetected
   const radicalLengthMismatch = normExpected.length > 0
     && normDetected.length < normExpected.length * 0.30
@@ -1505,6 +1519,10 @@ export function evaluateTranscriptQC(expectedText: string, detectedText: string)
   const tokenSimilarity = Math.max(...expectedVariants.map(variant => transcriptSimilarity(variant, detected)))
   const similarity = Math.max(tokenSimilarity, normalizedSimilarity)
   const numericMismatch = numericTokenSequenceMismatch(expected, detected)
+  // ATL-NUMERAL-NORM-002: suppress the numeric-sequence veto when the
+  // WER-normalized forms agree at ≥ 0.95 — high werSimilarity means the
+  // mismatch was a digit↔word surface difference, not a genuine content error.
+  const numericMismatchFinal = numericMismatch && werSimilarity < 0.95
   const shortLineMatches = expected.length <= 8
     ? expectedVariants.some(variant => containsOrderedTokenVariant(detected, variant)) || similarity >= 0.88
     : true
@@ -1529,7 +1547,7 @@ export function evaluateTranscriptQC(expectedText: string, detectedText: string)
   const normalizedQcPassed = normalizedExactMatch || normalizedSimilarity >= 0.85
   const passed = !detectedBlank
     && !radicalLengthMismatch
-    && !numericMismatch
+    && !numericMismatchFinal
     && (tokenQcPassed || normalizedQcPassed)
 
   return {
