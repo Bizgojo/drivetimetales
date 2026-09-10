@@ -472,6 +472,8 @@ BELLE B: [one or two short sentences, warm, specific, sensory, no time-of-day re
   SERIES FIRST EPISODE (BELLE-004): must name the series title and author.
   INTERIOR + FINAL EPISODES (BELLE-006): must NOT name the series title or author — reference something specific from the story's plot or mood instead.]
 
+HOOK-GATE-001 REQUIREMENT: The inciting event, discovery, or dramatic hook must appear within the first 30 words of the story body (approximately the first 10–15 seconds of audio). The hookGate will hard-fail if it arrives later. Do NOT open with atmosphere, scene-setting, or backstory — begin with the thing that makes the listener stay.
+
 [START AUDIO DRAMA SCRIPT]
 NARRATOR: ...
 CHARACTER NAME: ...
