@@ -9045,6 +9045,11 @@ export async function POST(req: NextRequest) {
           removedAssetCount: result.report.removedAssets.length,
         })
 
+        await supabase
+          .from('stories')
+          .update({ segments_generated_at: new Date().toISOString() })
+          .eq('id', result.storyId)
+
         const { data: updatedJob, error: updateError } = await supabase
           .from('production_jobs')
           .update({
