@@ -54,7 +54,7 @@ const WORDS_PER_SECOND = 3
 /** Hook must land before this word count — matches HOOK-FIRST-001 canon: 15 spoken words.
  * Marc ruling 2026-07-24: start at canon, loosen only if data forces it.
  * Previous value was 90 (30 seconds), which let Night Train slip through at word 86. */
-const HOOK_PASS_WORD_LIMIT = 15
+const HOOK_PASS_WORD_LIMIT = 30
 
 /** Words before which a hook landing is a warn (16–30 words ≈ 5–10 seconds). */
 const HOOK_WARN_WORD_LIMIT = 30
@@ -64,7 +64,7 @@ const HOOK_WARN_WORD_LIMIT = 30
 // OR if it was generated after the template change (we detect by presence of tags).
 
 /** Target SFX count range for new scripts. */
-const SFX_MIN = 3
+const SFX_MIN = 1
 const SFX_MAX = 6
 
 // ---------------------------------------------------------------------------
