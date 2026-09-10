@@ -65,7 +65,7 @@ const HOOK_WARN_WORD_LIMIT = 30
 
 /** Target SFX count range for new scripts. */
 const SFX_MIN = 1
-const SFX_MAX = 6
+const SFX_MAX = 3
 
 // ---------------------------------------------------------------------------
 // Result types
