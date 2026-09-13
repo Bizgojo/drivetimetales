@@ -55,6 +55,9 @@ export const VOICE_SETTINGS_OVERRIDES: Record<string, ElVoiceSettings> = {
   // Aiden (first Everling) — warm, open, gently curious; non-anxious discovery.
   // [Marc-approved Sep 11, 2026 — Clip B comparison]
   lrNW0BJYfUIVVt3VDdUy: { stability: 0.50, similarity_boost: 0.75, style: 0.10, use_speaker_boost: true, speed: 0.97 },
+  // Origin 2.0 narrator — warm, authoritative, Carl Sagan-style science voice.
+  // [Marc-approved Sep 13, 2026]
+  azh4nsbTITfkYjggyoxF: { stability: 0.65, similarity_boost: 0.80, style: 0.10, use_speaker_boost: true, speed: 0.95 },
 }
 
 /**
