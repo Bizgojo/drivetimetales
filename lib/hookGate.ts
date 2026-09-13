@@ -34,6 +34,7 @@
  */
 
 import { createClient } from '@supabase/supabase-js'
+import Anthropic from '@anthropic-ai/sdk'
 import { verifyArtifactHttp } from './artifactGate'
 
 // ---------------------------------------------------------------------------
@@ -43,6 +44,12 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!,
 )
+
+// ---------------------------------------------------------------------------
+// Anthropic client
+// ---------------------------------------------------------------------------
+
+const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! })
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -185,6 +192,10 @@ function extractAudioDramaSection(script: string): string {
 /**
  * Detect the hook position in the drama section.
  *
+ * Two-stage approach:
+ *   Stage 1 — keyword/punctuation pattern matching (synchronous, fast)
+ *   Stage 2 — Claude haiku semantic fallback (only when Stage 1 finds nothing)
+ *
  * "Hook" is a tension or conflict signal. We use the same broad category
  * detection used in ATL-PIPE-020 (narrative hook detection immunity):
  * look for strong narrative hook signals (questions, exclamations, alarm/danger
@@ -193,7 +204,7 @@ function extractAudioDramaSection(script: string): string {
  * Returns the word offset from the start of the drama section where the
  * first hook-like NARRATOR line starts, or null if none found.
  */
-function detectHookWordOffset(dramaSectionText: string): number | null {
+async function detectHookWordOffset(dramaSectionText: string): Promise<number | null> {
   const lines = dramaSectionText.split('\n')
   let wordOffset = 0
 
@@ -228,6 +239,7 @@ function detectHookWordOffset(dramaSectionText: string): number | null {
     /\b(cannot|impossible|too late|desperate|urgent)\b/i,
   ]
 
+  // ── Stage 1: keyword/punctuation pattern matching ──────────────────────
   for (const line of lines) {
     const trimmed = line.trim()
     // Only count NARRATOR lines
@@ -243,7 +255,7 @@ function detectHookWordOffset(dramaSectionText: string): number | null {
 
     // Check if this narrator line is a hook
     const isHook = HOOK_PATTERNS.some(pat => pat.test(narratorText))
-    if (isHook) {
+    if (isHook && wordOffset <= HOOK_PASS_WORD_LIMIT) {
       // Return the word count at the start of this line
       return wordOffset
     }
@@ -251,14 +263,68 @@ function detectHookWordOffset(dramaSectionText: string): number | null {
     wordOffset += wordCount(narratorText)
   }
 
-  return null
+  // ── Stage 2: Claude haiku semantic fallback ────────────────────────────
+  // Only reached when Stage 1 finds no match within HOOK_PASS_WORD_LIMIT.
+  console.log('hookGate: Stage 1 no match — falling back to semantic check')
+
+  // Extract the first 80 words of NARRATOR text from the drama section.
+  // Re-use the same NARRATOR extraction logic (same loop, same pattern).
+  const narratorWords: string[] = []
+  for (const line of lines) {
+    const trimmed = line.trim()
+    const narratorMatch = trimmed.match(/^NARRATOR\s*:\s*(.+)$/i)
+    if (!narratorMatch) continue
+    const words = narratorMatch[1].trim().split(/\s+/).filter(Boolean)
+    narratorWords.push(...words)
+    if (narratorWords.length >= 80) break
+  }
+  const passage = narratorWords.slice(0, 80).join(' ')
+
+  try {
+    const timeoutMs = 3000
+    const apiCall = anthropic.messages.create({
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 100,
+      messages: [
+        {
+          role: 'user',
+          content:
+            'Does this opening passage contain a narrative hook — an inciting event, surprising discovery, or dramatic tension that makes a listener want to keep listening? Answer YES or NO only.\n\nPassage:\n' +
+            passage,
+        },
+      ],
+    })
+
+    const timeoutPromise = new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error('hookGate semantic timeout')), timeoutMs),
+    )
+
+    const response = await Promise.race([apiCall, timeoutPromise])
+
+    const rawText =
+      response.content[0].type === 'text' ? response.content[0].text : ''
+    const answer = rawText.trim().toUpperCase()
+
+    if (answer.includes('YES')) {
+      console.log('hookGate: semantic result: YES')
+      return 0
+    } else {
+      console.log('hookGate: semantic result: NO')
+      return null
+    }
+  } catch (err) {
+    const isTimeout =
+      err instanceof Error && err.message.includes('hookGate semantic timeout')
+    console.log(`hookGate: semantic result: ${isTimeout ? 'TIMEOUT' : 'ERROR'}`)
+    return null
+  }
 }
 
 // ---------------------------------------------------------------------------
 // Check 1: Hook within 30 spoken seconds
 // ---------------------------------------------------------------------------
 
-function checkHook(script: string): HookCheckResult {
+async function checkHook(script: string): Promise<HookCheckResult> {
   const dramaSection = extractAudioDramaSection(script)
   if (!dramaSection.trim()) {
     return {
@@ -269,7 +335,7 @@ function checkHook(script: string): HookCheckResult {
     }
   }
 
-  const hookOffset = detectHookWordOffset(dramaSection)
+  const hookOffset = await detectHookWordOffset(dramaSection)
 
   if (hookOffset === null) {
     return {
@@ -759,7 +825,7 @@ export async function runHookGate(input: RunHookGateInput): Promise<HookGateResu
           'LANDING-STORY-001 cold-open format: keyword gate exempt. ' +
           'LLM hook rubric required before RfR — see HOOK-GATE-001 compensating check.',
       }
-    : checkHook(script)
+    : await checkHook(script)
   const sfxCheck = checkSfx(script)
   // Belle check: skip for LANDING-STORY-001 (no Belle B by design)
   const belleCheck: BelleCheckResult = isBelleExempt
