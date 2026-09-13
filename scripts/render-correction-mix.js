@@ -103,8 +103,9 @@ const EL_KEY       = process.env.ELEVENLABS_API_KEY;
 // BELLE B voice ID for outro re-render
 const BELLE_B_VOICE = 'GMhgX8fCR9GUtd3kmlKC';
 
-// ET Signature Sting — prepended to intro when intro_corrected.mp3 is not used
-// (intro_corrected.mp3 already has sting baked in; fallback intros do not)
+// ET Signature Sting — prepended to intro after sting-detection gate (see startsWithSting).
+// All intro sources (intro_corrected.mp3, intro_00.1.mp3, DB url) go through the same gate;
+// prepend is skipped only when amplitude comparison confirms the sting is already present.
 const ET_STING_URL = `${SUPABASE_URL}/storage/v1/object/public/audio/sting/ET_Signature_Sting_v7.mp3.mp3`;
 
 // IO music sting durations
@@ -214,6 +215,32 @@ function mkSting(src, out, dur, { fadeIn = 0.3, fadeOut = 0.5, vol = IO_VOL } = 
     '-af', `volume=${vol},afade=t=in:st=0:d=${fadeIn},afade=t=out:st=${fadeOutSt}:d=${fadeOut}`,
     '-map', '0:a', '-ar', '44100', '-ac', '2', '-b:a', '192k', '-y', out,
   ]);
+}
+
+/**
+ * Detects whether an audio file already starts with the ET Signature Sting.
+ *
+ * Method: amplitude comparison (reuses existing getMaxVolume helper).
+ * If the intro's first-2s peak dBFS is within ±3 dBFS of the sting's
+ * first-2s peak, the sting is considered already baked in and prepend
+ * is skipped. A ±3 dBFS window is intentionally loose to absorb minor
+ * normalization differences between encode passes.
+ *
+ * This is a heuristic: it reliably catches the case where
+ * intro_corrected.mp3 was assembled with the sting mixed in, and it
+ * correctly passes through bare Belle speech (which sits well below
+ * sting peak levels in the first 2s).
+ *
+ * @param {string} audioFilePath - Path to the intro file to inspect
+ * @param {string} stingFilePath - Path to the ET Signature Sting reference
+ * @returns {boolean} true if sting already present, false if prepend needed
+ */
+function startsWithSting(audioFilePath, stingFilePath) {
+  const introPeak = getMaxVolume(audioFilePath, 0, 2);
+  const stingPeak = getMaxVolume(stingFilePath, 0, 2);
+  const delta = Math.abs(introPeak - stingPeak);
+  log(`    startsWithSting: intro first-2s peak=${introPeak.toFixed(1)} dBFS | sting peak=${stingPeak.toFixed(1)} dBFS | delta=${delta.toFixed(1)} dBFS (threshold 3)`);
+  return delta <= 3;
 }
 
 function normalize(inP, outP, label) {
@@ -327,22 +354,33 @@ async function runStoryBodyMode({ story, sb, FOLDER, storageFiles, tmp, outputFi
   normalize(introRawP, introNormRawP, 'normalize intro');
   normalize(outroRawP, outroNormP, 'normalize outro');
 
-  // ── STING — unconditional prepend when intro is not intro_corrected.mp3 ──
-  // intro_corrected.mp3 already has ET Signature Sting baked in.
-  // All other intro sources (intro_00.1.mp3, DB url) do NOT — prepend sting.
+  // ── STING — always resolve, then detect before prepend ─────────────────
+  // Previously, intro_corrected.mp3 was assumed to have the sting baked in
+  // and was exempt from prepend. That assumption is fragile: Belle asset
+  // regeneration writes to intro_00.1.mp3, creating asymmetric code paths
+  // depending on which file is found first. Now ALL intro sources go through
+  // the same sting-detection gate (startsWithSting) before prepend.
+  //
+  // Detection method: amplitude comparison (±3 dBFS on first 2s vs sting
+  // reference). See startsWithSting() above for rationale.
+  log('\n🔔  Resolving ET Signature Sting for detection...');
+  const stingRawP  = path.join(tmp, 'et_sting.mp3');
+  const stingNormP = path.join(tmp, 'et_sting_norm.mp3');
+  await dl(ET_STING_URL, stingRawP, 'ET_Signature_Sting_v7.mp3');
+  normalize(stingRawP, stingNormP, 'normalize ET sting');
+
   let introNormP = introNormRawP;
-  if (introSource !== 'storage:intro_corrected.mp3') {
-    log('\n🔔  Prepending ET Signature Sting (intro_corrected not used)...');
-    const stingRawP  = path.join(tmp, 'et_sting.mp3');
-    const stingNormP = path.join(tmp, 'et_sting_norm.mp3');
-    await dl(ET_STING_URL, stingRawP, 'ET_Signature_Sting_v7.mp3');
-    normalize(stingRawP, stingNormP, 'normalize ET sting');
+  const stingAlreadyPresent = startsWithSting(introNormRawP, stingNormP);
+  if (stingAlreadyPresent) {
+    log(`  ✓ Sting already detected in intro (amplitude within ±3 dBFS) — skipping prepend`);
+    log(`    intro source: ${introSource}`);
+  } else {
+    log('\n🔔  Prepending ET Signature Sting (not detected in intro)...');
     const introWithStingP = path.join(tmp, 'intro_with_sting.mp3');
     concatFiles([stingNormP, introNormRawP], introWithStingP, 'concat sting+intro');
     introNormP = introWithStingP;
     log(`  ✓ Sting prepended (${getDur(stingNormP).toFixed(1)}s) → intro total ${getDur(introNormP).toFixed(1)}s`);
-  } else {
-    log('  ✓ Using intro_corrected.mp3 — sting already embedded, no prepend needed');
+    log(`    intro source: ${introSource}`);
   }
 
   const introDur     = getDur(introNormP);
