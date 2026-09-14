@@ -33,6 +33,16 @@ const TMP_MIN_FREE_MB = 150
 // Belle's full outro dialogue to reach gain 0.50 at the moment she finishes
 // 8. BELLE ENDS — music fades from 0.50 to 0 over exactly 3 seconds
 
+// CORRECTION-PERSIST-001: correction audit log type — shared interface (also in generate-voices and run-next)
+// Corrections written here would be via appendCorrection() in generate-voices; core.ts reads them.
+export interface CorrectionEntry {
+  type: 'voice_recast' | 'pronoun_fix' | 'sfx_removal' | 'outro_fix' | 'segment_rebuild' | string
+  applied_at: string
+  segments_affected: string[]
+  protected: true
+  note?: string
+}
+
 let FFMPEG_PATH = 'ffmpeg'
 try { FFMPEG_PATH = eval('require')('@ffmpeg-installer/ffmpeg').path } catch { /* system ffmpeg */ }
 
