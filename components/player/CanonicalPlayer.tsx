@@ -122,6 +122,7 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
   // Buffering… instead of lying with a playing state).
   const [isBuffering, setIsBuffering] = useState(false)
   const [autoplayBlocked, setAutoplayBlocked] = useState(false)
+  const [showSeriesContinueOverlay, setShowSeriesContinueOverlay] = useState(false)
   const isAdvancingRef = useRef(false)
   const mountedRef = useRef(false)
   const autoAdvanceEnabledRef = useRef(true)
@@ -888,6 +889,7 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
     setPlaybackEnded(false)
     setEndStateCandidate(null)
     setAutoplayBlocked(false)
+    setShowSeriesContinueOverlay(false)
     setShowReview(false)
     if (autoAdvanceTimerRef.current) {
       clearTimeout(autoAdvanceTimerRef.current)
@@ -1482,6 +1484,7 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
           console.warn('[player] series continuation autoplay blocked:', error)
           setAutoplayBlocked(true)
           setIsPlaying(false)
+          setShowSeriesContinueOverlay(params.get('seriesContinue') === '1')
         })
     }
 
@@ -1696,6 +1699,7 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
       audioRef.current.play().then(() => {
         setIsPlaying(true)
         setAutoplayBlocked(false)
+        setShowSeriesContinueOverlay(false)
         if (!user && !sessionStartRef.current) { sessionStartRef.current = Date.now() }
         if (user?.id) supabase.from('user_library').upsert({ user_id: user.id, story_id: storyId, not_for_me: false, last_played: new Date().toISOString() }, { onConflict: 'user_id,story_id' }).then(() => {})
         // Analytics: track play start (only once per session) — user-gesture path
@@ -2430,10 +2434,30 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
       {/* Header removed 2026-07-13 (Marc): global AppHeader in AppShell already renders back/logo/account — inline player header was a duplicate */}
 
       {/* Cover */}
-      <div style={{ width:'100vw', height:'min(46vh, 360px)', minHeight:'260px', flexShrink:0, overflow:'hidden' }}>
+      <div style={{ width:'100vw', height:'min(46vh, 360px)', minHeight:'260px', flexShrink:0, overflow:'hidden', position:'relative' }}>
         {story.cover_url
           ? <img src={story.cover_url} alt={story.title} style={{ width:'100%', height:'100%', objectFit:'cover' }} />
           : <div style={{ width:'100%', height:'100%', background:'linear-gradient(135deg,#475569,#1e293b)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:'64px' }}>🎧</div>}
+        {/* iOS series-continue autoplay overlay — shown when autoplay is blocked on a seriesContinue navigation */}
+        {showSeriesContinueOverlay && (
+          <div style={{ position:'absolute', inset:0, background:'rgba(0,0,0,0.55)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:10 }}>
+            <button
+              onClick={() => {
+                const audio = audioRef.current
+                if (!audio) return
+                audio.play().then(() => {
+                  setIsPlaying(true)
+                  setAutoplayBlocked(false)
+                  setShowSeriesContinueOverlay(false)
+                  startAnalyticsSession('auto_advance')
+                }).catch(() => {})
+              }}
+              style={{ padding:'18px 32px', borderRadius:'14px', border:'none', background:'#22c55e', color:'white', fontSize:'20px', fontWeight:800, cursor:'pointer', minHeight:'56px', touchAction:'manipulation', boxShadow:'0 4px 24px rgba(0,0,0,0.45)' }}
+            >
+              ▶ Continue to Episode {(story as any).episode_number ?? (story as any).series_episode_number ?? ''}
+            </button>
+          </div>
+        )}
       </div>
 
       {/* ── Info Pills — between cover and title ─────────────────────────── */}
