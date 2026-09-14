@@ -67,6 +67,36 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
 
+// CORRECTION-PERSIST-001: correction audit log types + helpers
+interface CorrectionEntry {
+  type: 'voice_recast' | 'pronoun_fix' | 'sfx_removal' | 'outro_fix' | 'segment_rebuild' | string
+  applied_at: string
+  segments_affected: string[]
+  protected: true
+  note?: string
+}
+
+function segmentIsSfx(name: string): boolean {
+  return name.startsWith('sfx_')
+}
+
+function isSegmentProtected(segmentName: string, corrections: CorrectionEntry[]): boolean {
+  return corrections.some(c => c.protected && c.segments_affected.includes(segmentName))
+}
+
+async function appendCorrection(storyId: string, entry: Omit<CorrectionEntry, 'applied_at'>): Promise<void> {
+  try {
+    const { data: story } = await supabase.from('stories').select('state_json').eq('id', storyId).single()
+    const stateJson = (story?.state_json as Record<string, unknown>) ?? {}
+    const corrections: CorrectionEntry[] = (stateJson.corrections as CorrectionEntry[]) ?? []
+    corrections.push({ ...entry, applied_at: new Date().toISOString() })
+    await supabase.from('stories').update({ state_json: { ...stateJson, corrections } }).eq('id', storyId)
+    console.log(`[CORRECTION-PERSIST-001] Appended ${entry.type} correction, ${entry.segments_affected.length} segment(s) protected`)
+  } catch (e) {
+    console.warn('[CORRECTION-PERSIST-001] appendCorrection failed (non-fatal):', e)
+  }
+}
+
 const EL_API_KEY = process.env.ELEVENLABS_API_KEY!
 const BASE_STORAGE = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/audio`
 const EL_SETTINGS = { stability: 0.5, similarity_boost: 0.75, style: 0.0, use_speaker_boost: true }
@@ -2610,13 +2640,19 @@ export async function POST(req: NextRequest) {
     let script = scriptParam
     const { data: storyRow, error: storyRowError } = await supabase
       .from('stories')
-      .select('id,title,author,author_id,genre,description,duration_mins,created_at,script,narrator_voice_id,narrator_voice_name,series_name,series_id,episode_number,series_episode_number,series_total,series_total_episodes,series_is_finale,options')
+      .select('id,title,author,author_id,genre,description,duration_mins,created_at,script,narrator_voice_id,narrator_voice_name,series_name,series_id,episode_number,series_episode_number,series_total,series_total_episodes,series_is_finale,options,sfx_disabled,state_json')
       .eq('id', storyId)
       .single()
     if (!script) {
       script = storyRow?.script
       if (!script) return NextResponse.json({ success: false, error: 'Script not found in database' }, { status: 400 })
     }
+    // CORRECTION-PERSIST-001: extract sfx_disabled flag and existing corrections from story row
+    const sfxDisabled = Boolean((storyRow as any)?.sfx_disabled)
+    const storyStateJson = ((storyRow as any)?.state_json as Record<string, unknown>) ?? {}
+    const existingCorrections: CorrectionEntry[] = (storyStateJson.corrections as CorrectionEntry[]) ?? []
+    if (sfxDisabled) console.log(`[SFX-DISABLED] story ${storyId} has sfx_disabled=true — SFX generation will be skipped`)
+
     // characterVoices: explicit from request body, or fallback from story.options (set by Hal for pre-written scripts)
     const characterVoices = characterVoicesParam
       ?? (storyRow as any)?.options?.characterVoices
@@ -3252,6 +3288,15 @@ export async function POST(req: NextRequest) {
     }
 
     if (retryMissingOnly === true) {
+      // CORRECTION-PERSIST-001: Re-render scope guard — log protected segments before incremental generation
+      if (existingCorrections.length > 0) {
+        const protectedSegs = existingCorrections.flatMap(c => c.segments_affected)
+        console.warn(
+          `[CORRECTION-GUARD] ${existingCorrections.length} correction(s) on record for story ${storyId} (incremental path). ` +
+          `Protected segments (${protectedSegs.length}): ${protectedSegs.join(', ')}. ` +
+          `Correction types: ${existingCorrections.map(c => c.type).join(', ')}`
+        )
+      }
       // BELL-FREEZE-GUARD-001: frozen guard for incremental path
       if (purgeExisting === true) {
         const incrManifest = await loadManifest(storyId)
@@ -3397,13 +3442,21 @@ export async function POST(req: NextRequest) {
           const url = await generateVoiceLine(targetLine.text, voiceId, storyId, targetLine.index, 'segment', true, targetLine.speaker, 8, qcSkippedSegments)
           generatedSegments.push({ index: targetLine.index, speaker: targetLine.speaker, type: targetLine.type, url })
         } else if (targetLine.type === 'sfx') {
-          // ATL-SFX-INCR-001: generate SFX audio for [SFX:] cues in the incremental path.
-          // The full render path generates these in its main loop; the incremental path
-          // previously threw here, leaving sfx_NNNN.mp3 files absent from storage.
-          // generateSFX() writes sfx_NNNN.mp3; render-final-mix picks it up via sfxPattern.
-          const sfxUrl = await generateSFX(targetLine.text, storyId, targetLine.index)
-          if (!sfxUrl) throw new Error(`SFX generation returned null for cue "${targetLine.text}" (index ${targetLine.index}) - ElevenLabs SFX API may be unavailable`)
-          generatedSegments.push({ index: targetLine.index, speaker: 'SFX', type: 'sfx', url: sfxUrl })
+          // CORRECTION-PERSIST-001: sfx_disabled gate — skip SFX generation if flag is set
+          if (sfxDisabled) {
+            const sfxFileName = `sfx_${targetLine.index.toString().padStart(4, '0')}.mp3`
+            console.log(`[SFX-DISABLED] Skipping SFX segment ${sfxFileName} in incremental path (sfx_disabled=true)`)
+            await appendCorrection(storyId, { type: 'sfx_removal', segments_affected: [sfxFileName], protected: true, note: 'sfx_disabled=true; incremental path' })
+            // Continue without pushing to generatedSegments — segment intentionally absent
+          } else {
+            // ATL-SFX-INCR-001: generate SFX audio for [SFX:] cues in the incremental path.
+            // The full render path generates these in its main loop; the incremental path
+            // previously threw here, leaving sfx_NNNN.mp3 files absent from storage.
+            // generateSFX() writes sfx_NNNN.mp3; render-final-mix picks it up via sfxPattern.
+            const sfxUrl = await generateSFX(targetLine.text, storyId, targetLine.index)
+            if (!sfxUrl) throw new Error(`SFX generation returned null for cue "${targetLine.text}" (index ${targetLine.index}) - ElevenLabs SFX API may be unavailable`)
+            generatedSegments.push({ index: targetLine.index, speaker: 'SFX', type: 'sfx', url: sfxUrl })
+          }
         } else {
           throw new Error(`Targeted retry does not support ${targetLine.type} lines`)
         }
@@ -3544,6 +3597,16 @@ export async function POST(req: NextRequest) {
       } catch (e) { console.error('  ❌ Announcement failed:', e) }
     }
     if (outroLine && outroLine.index !== introLine?.index) { try { results.outro = await generateVoiceLine(outroLine.text, CANONICAL_BELLE_B_VOICE_ID, storyId, outroLine.index, 'outro'); console.log('  ✅ Belle B outro') } catch (e) { console.error('  ❌ Outro failed:', e) } }
+    // CORRECTION-PERSIST-001: Re-render scope guard — log protected segments before any generation begins
+    if (existingCorrections.length > 0) {
+      const protectedSegs = existingCorrections.flatMap(c => c.segments_affected)
+      console.warn(
+        `[CORRECTION-GUARD] ${existingCorrections.length} correction(s) on record for story ${storyId}. ` +
+        `Protected segments (${protectedSegs.length}): ${protectedSegs.join(', ')}. ` +
+        `Correction types: ${existingCorrections.map(c => c.type).join(', ')}`
+      )
+    }
+    const skippedSfxSegments: string[] = []
     for (const line of storyLines) {
       if (nonDialogueSpeakers.has(line.speaker.toUpperCase())) continue
       if (line.type === 'beat' || line.type === 'pause') {
@@ -3557,6 +3620,13 @@ export async function POST(req: NextRequest) {
         continue
       }
       if (line.type === 'sfx') {
+        // CORRECTION-PERSIST-001: sfx_disabled gate — never generates sfx_*.mp3 when flag is set
+        if (sfxDisabled) {
+          const sfxFileName = `sfx_${line.index.toString().padStart(4, '0')}.mp3`
+          console.log(`[SFX-DISABLED] Skipping SFX segment ${sfxFileName} (sfx_disabled=true)`)
+          skippedSfxSegments.push(sfxFileName)
+          continue
+        }
         // ATL-SFX-WIRE-001 Rule 2: check manifest locked_sfx before generating
         const sfxLockedEntry = findLockedSfxEntry(activeManifest, line.text)
         const sfxFileName = `sfx_${line.index.toString().padStart(4, '0')}.mp3`
@@ -3665,6 +3735,15 @@ export async function POST(req: NextRequest) {
     if (results.intro && introLine) updates.announcement_text = introLine.text
     if (results.outro && outroLine && outroLine.index !== introLine?.index) updates.outro_text = outroLine.text
     if (Object.keys(updates).length > 0) await supabase.from('stories').update(updates).eq('id', storyId)
+    // CORRECTION-PERSIST-001: append sfx_removal correction entry if any SFX were skipped this run
+    if (skippedSfxSegments.length > 0) {
+      await appendCorrection(storyId, {
+        type: 'sfx_removal',
+        segments_affected: skippedSfxSegments,
+        protected: true,
+        note: `sfx_disabled=true; ${skippedSfxSegments.length} SFX segment(s) skipped`,
+      })
+    }
     const voiceTotal = storyLines.filter(l =>
       !nonDialogueSpeakers.has(l.speaker.toUpperCase()) &&
       (l.type === 'narrator' || l.type === 'character')

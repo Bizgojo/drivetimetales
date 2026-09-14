@@ -32,6 +32,53 @@ const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! })
 
 const WORKER_ID = `run-next:${process.pid}`
 const LOCK_STALE_MS = 10 * 60 * 1000
+
+// CORRECTION-PERSIST-001: correction audit types shared with generate-voices and core
+interface CorrectionEntry {
+  type: 'voice_recast' | 'pronoun_fix' | 'sfx_removal' | 'outro_fix' | 'segment_rebuild' | string
+  applied_at: string
+  segments_affected: string[]
+  protected: true
+  note?: string
+}
+
+/**
+ * CORRECTION-PERSIST-001: appendCorrection — write a correction entry to stories.state_json.corrections[].
+ * Used here for job-level correction events (e.g. voice recast dispatched via run-next).
+ */
+async function appendCorrectionRunNext(supabaseClient: ReturnType<typeof createClient>, storyId: string, entry: Omit<CorrectionEntry, 'applied_at'>): Promise<void> {
+  try {
+    const { data: story } = await supabaseClient.from('stories').select('state_json').eq('id', storyId).single()
+    const stateJson = (story?.state_json as Record<string, unknown>) ?? {}
+    const corrections: CorrectionEntry[] = (stateJson.corrections as CorrectionEntry[]) ?? []
+    corrections.push({ ...entry, applied_at: new Date().toISOString() })
+    await supabaseClient.from('stories').update({ state_json: { ...stateJson, corrections } }).eq('id', storyId)
+    console.log(`[CORRECTION-PERSIST-001] appendCorrection (run-next): ${entry.type}, ${entry.segments_affected.length} segment(s) protected`)
+  } catch (e) {
+    console.warn('[CORRECTION-PERSIST-001] appendCorrectionRunNext failed (non-fatal):', e)
+  }
+}
+
+/**
+ * CORRECTION-PERSIST-001: maybeSetSfxDisabled — auto-set stories.sfx_disabled=true when all [SFX:]
+ * markers are bulk-removed from a script. Compare prevScript vs newScript; if prevCount > 0 and
+ * newCount === 0, set the flag.
+ *
+ * TODO: Wire this to the admin script-edit endpoint (or wherever prevScript + newScript are both
+ * available). No existing call site in run-next/route.ts — add when a script-edit operation lands here.
+ */
+async function maybeSetSfxDisabled(supabaseClient: ReturnType<typeof createClient>, storyId: string, prevScript: string, newScript: string): Promise<void> {
+  const prevCount = (prevScript.match(/\[SFX:/g) || []).length
+  const newCount = (newScript.match(/\[SFX:/g) || []).length
+  if (prevCount > 0 && newCount === 0) {
+    await supabaseClient.from('stories').update({ sfx_disabled: true }).eq('id', storyId)
+    console.log(`[SFX-DISABLED] Auto-set sfx_disabled=true for story ${storyId} — all ${prevCount} SFX markers removed from script`)
+  }
+}
+// TODO (CORRECTION-PERSIST-001): wire appendCorrectionRunNext for voice_recast when runStandaloneVoiceSegment is called after a character voice_id reassignment
+// TODO (CORRECTION-PERSIST-001): wire appendCorrectionRunNext for pronoun_fix when per-segment text editing is dispatched
+// TODO (CORRECTION-PERSIST-001): wire appendCorrectionRunNext for segment_rebuild when targeted segment re-render is dispatched
+
 // A job is a zombie when it is status=running, has no lock, and has not been
 // touched in this long, or when its lock is older than this threshold.
 const ZOMBIE_STALE_MS = 15 * 60 * 1000
