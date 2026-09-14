@@ -3149,7 +3149,12 @@ async function generateStandaloneScript(job: ProductionJob, model: string) {
 
   const brief = story.brief_json as any
 
-  if (story.script) {
+  // GEN-SCRIPT-NULL-CHECK-001: a null or empty script is definitive proof that
+  // generation is needed. Always run generate_script when stories.script IS NULL
+  // or empty — even if state_json carries generateScriptSkipped=true from a
+  // previous run. This prevents the skip-flag from firing on retry when
+  // validate_script has cleared the script back to null.
+  if (story.script != null && story.script !== '') {
     return {
       generated: false,
       storyId: String(story.id),
