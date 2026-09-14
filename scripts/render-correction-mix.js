@@ -354,12 +354,12 @@ async function runStoryBodyMode({ story, sb, FOLDER, storageFiles, tmp, outputFi
   normalize(introRawP, introNormRawP, 'normalize intro');
   normalize(outroRawP, outroNormP, 'normalize outro');
 
-  // ── STING — always resolve, then detect before prepend ─────────────────
-  // Previously, intro_corrected.mp3 was assumed to have the sting baked in
-  // and was exempt from prepend. That assumption is fragile: Belle asset
-  // regeneration writes to intro_00.1.mp3, creating asymmetric code paths
-  // depending on which file is found first. Now ALL intro sources go through
-  // the same sting-detection gate (startsWithSting) before prepend.
+  // ── STING — source-aware detection then prepend ─────────────────────────
+  // Only run amplitude detection for intro_corrected.mp3 — the one source
+  // where the sting may already be baked in. For intro_00.1.mp3 and DB
+  // url sources, the sting is never pre-baked; always prepend unconditionally.
+  // PR #201 introduced startsWithSting() but applied it to all sources,
+  // causing false positives on bare Belle intro audio.
   //
   // Detection method: amplitude comparison (±3 dBFS on first 2s vs sting
   // reference). See startsWithSting() above for rationale.
@@ -370,11 +370,21 @@ async function runStoryBodyMode({ story, sb, FOLDER, storageFiles, tmp, outputFi
   normalize(stingRawP, stingNormP, 'normalize ET sting');
 
   let introNormP = introNormRawP;
-  const stingAlreadyPresent = startsWithSting(introNormRawP, stingNormP);
+  // Only run amplitude detection for intro_corrected.mp3 — the one source
+  // where the sting may already be baked in. For intro_00.1.mp3 and DB
+  // url sources, the sting is never pre-baked; always prepend unconditionally.
+  // PR #201 introduced startsWithSting() but applied it to all sources,
+  // causing false positives on bare Belle intro audio.
+  const stingAlreadyPresent = (introSource === 'storage:intro_corrected.mp3')
+    ? startsWithSting(introNormRawP, stingNormP)
+    : false;
   if (stingAlreadyPresent) {
-    log(`  ✓ Sting already detected in intro (amplitude within ±3 dBFS) — skipping prepend`);
-    log(`    intro source: ${introSource}`);
+    log('  ✓ Sting already detected in intro_corrected.mp3 (amplitude within ±3 dBFS) — skipping prepend');
   } else {
+    if (introSource !== 'storage:intro_corrected.mp3') {
+      log('  → intro source is not intro_corrected.mp3 — prepending sting unconditionally');
+      log('    intro source: ' + introSource);
+    }
     log('\n🔔  Prepending ET Signature Sting (not detected in intro)...');
     const introWithStingP = path.join(tmp, 'intro_with_sting.mp3');
     concatFiles([stingNormP, introNormRawP], introWithStingP, 'concat sting+intro');
