@@ -10418,6 +10418,38 @@ export async function POST(req: NextRequest) {
           console.log(
             `[run-next] QUALITY-GATE PUBLISH for ${result.storyId}: score=${qualityResult.score}/30`,
           )
+
+          // SERIES-COHERENCE-001: don't auto-publish a series episode if any earlier
+          // episode in the series is not yet published. A gap is a bad listener experience.
+          // Hold the episode until prior episodes are published — it will auto-publish
+          // on its next quality gate pass once the gap is filled.
+          const { data: storyMeta } = await supabase
+            .from('stories')
+            .select('series_id, series_episode_number')
+            .eq('id', result.storyId)
+            .single()
+
+          if (storyMeta?.series_id && storyMeta?.series_episode_number && storyMeta.series_episode_number > 1) {
+            const { data: unpublishedPrior } = await supabase
+              .from('stories')
+              .select('series_episode_number, status, workflow_state')
+              .eq('series_id', storyMeta.series_id)
+              .lt('series_episode_number', storyMeta.series_episode_number)
+              .eq('is_hidden', false)
+              .not('status', 'eq', 'published')
+              .limit(1)
+
+            if (unpublishedPrior && unpublishedPrior.length > 0) {
+              const blockedBy = unpublishedPrior[0].series_episode_number
+              console.warn(
+                `[run-next] SERIES-COHERENCE-001: EP${storyMeta.series_episode_number} scored ≥24 ` +
+                `but EP${blockedBy} is not yet published — holding at ready_for_review`
+              )
+              // Override recommendation — hold for when prior episode publishes
+              qualityResult.recommendation = 'block'
+              ;(qualityResult as any).workflow_state = 'ready_for_review'
+            }
+          }
         }
       }
       // ── END STEP 10 QUALITY GATE (AUTO-REWRITE LOOP) ─────────────────────
