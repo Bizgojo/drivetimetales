@@ -6,6 +6,14 @@ import { storeSeriesPlayback } from '@/lib/seriesPlayback'
 
 const PLAYLIST_KEY = 'et_current_playlist'
 
+function formatDuration(minutes: number): string {
+  const h = Math.floor(minutes / 60)
+  const m = minutes % 60
+  if (h === 0) return `${m}min`
+  if (m === 0) return `${h}h`
+  return `${h}h ${m}min`
+}
+
 interface SeriesCardProps {
   id: string
   series_name: string
@@ -160,7 +168,7 @@ export default function SeriesCard({
             <span style={{ fontSize: '13px', background: '#111', borderRadius: '4px', padding: '1px 5px', flexShrink: 0 }}>👎</span>
           )}
           <div style={{ flex: 1 }} />
-          <span style={{ color: 'white', fontSize: '11px', fontWeight: 500 }}>~{avgDuration}min</span>
+          <span style={{ color: 'white', fontSize: '11px', fontWeight: 500 }}>~{formatDuration(avgDuration)}</span>
         </div>
 
         <div
