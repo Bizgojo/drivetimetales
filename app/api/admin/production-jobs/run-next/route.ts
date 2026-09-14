@@ -3155,25 +3155,41 @@ async function generateStandaloneScript(job: ProductionJob, model: string) {
   // previous run. This prevents the skip-flag from firing on retry when
   // validate_script has cleared the script back to null.
   if (story.script != null && story.script !== '') {
-    return {
-      generated: false,
-      storyId: String(story.id),
-      story: {
-        id: story.id,
-        title: story.title,
-        status: story.status,
-        description: story.description,
-      },
-      state: {
-        ...state,
+    // GEN-SCRIPT-REUSE-NULL-CHECK-002: re-verify stories.script in the DB before
+    // taking the reuse early return. The initial SELECT (above) is a point-in-time
+    // snapshot; a concurrent retry could have cleared the column between that read
+    // and this point. A second targeted query confirms the column is genuinely
+    // non-null before we skip generation and advance the job.
+    // Invariant: after ANY path through generate_script returns success,
+    // stories.script MUST be non-null in the DB.
+    const { data: scriptVerify } = await supabase
+      .from('stories')
+      .select('script')
+      .eq('id', storyId)
+      .single()
+
+    if (scriptVerify?.script != null && scriptVerify?.script !== '') {
+      return {
+        generated: false,
         storyId: String(story.id),
-        storyTitle: story.title,
-        storyStatus: story.status,
-        description: story.description,
-        hasScript: true,
-        generateScriptSkipped: true,
-      },
+        story: {
+          id: story.id,
+          title: story.title,
+          status: story.status,
+          description: story.description,
+        },
+        state: {
+          ...state,
+          storyId: String(story.id),
+          storyTitle: story.title,
+          storyStatus: story.status,
+          description: story.description,
+          hasScript: true,
+          generateScriptSkipped: true,
+        },
+      }
     }
+    // stories.script is null/empty in the DB — fall through to full generation
   }
 
   await enforcePremiseGateBeforeStage2({
