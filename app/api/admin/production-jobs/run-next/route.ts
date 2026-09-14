@@ -10150,11 +10150,13 @@ export async function POST(req: NextRequest) {
       }
       // ── END HOOK-GATE-001 ─────────────────────────────────────────────────
 
-      // ── STEP 10 QUALITY GATE ──────────────────────────────────────────────
+      // ── STEP 10 QUALITY GATE (AUTO-REWRITE LOOP) ────────────────────────
       // Standalone only (series returns earlier in this block).
-      // publish (≥22): continue to ready_for_review as normal.
-      // review  (17–21): set needs_attention=true, continue (Marc listens + decides).
-      // block   (<17): set validator_failed, halt — Marc reviews scores.
+      // publish (≥24): continue to ready_for_review.
+      // review (22-23) or block (<22): trigger auto-rewrite loop (max 3 attempts).
+      //   state_json.rewriteAttempts — 0-indexed; incremented before each rewrite.
+      //   state_json.qualityGateHistory — records each attempt's score + dimensions.
+      //   After 3 failed rewrites: needs_attention=true, stop cleanly (no Marc ping).
       // tooling error: fail-open, log and continue (never block on broken judge).
       if (result.storyId) {
         const qualityResult = await runStoryQualityGate(result.storyId)
@@ -10164,83 +10166,261 @@ export async function POST(req: NextRequest) {
           console.warn(
             `[run-next] quality-gate tooling error for ${result.storyId}: ${qualityResult.error} — continuing to ready_for_review`,
           )
-        } else if (qualityResult.recommendation === 'block') {
-          // Score < 17 — halt, set validator_failed
-          console.warn(
-            `[run-next] QUALITY-GATE BLOCK for ${result.storyId}: score=${qualityResult.score} — ${qualityResult.summary}`,
-          )
-          console.warn(`[run-next] quality-gate dimensions:`, qualityResult.dimensions)
+        } else if (qualityResult.recommendation !== 'publish') {
+          // Score <24 (review 22-23 or block <22) — auto-rewrite loop
+          const stateForRewrite = result.state && typeof result.state === 'object'
+            ? result.state as Record<string, unknown>
+            : {}
+          const rewriteAttempts = Number((stateForRewrite as any).rewriteAttempts ?? 0)
+          const qualityGateHistory: Array<{ attempt: number; score: number; dimensions: Record<string, number> }> =
+            Array.isArray((stateForRewrite as any).qualityGateHistory)
+              ? (stateForRewrite as any).qualityGateHistory
+              : []
 
-          await supabase
+          // Append current attempt to history
+          const updatedHistory = [
+            ...qualityGateHistory,
+            {
+              attempt: rewriteAttempts,
+              score: qualityResult.score,
+              dimensions: qualityResult.dimensions as unknown as Record<string, number>,
+            },
+          ]
+
+          if (rewriteAttempts >= 3) {
+            // Max rewrites exhausted — needs_attention, stop cleanly. Do NOT notify Marc.
+            console.warn(
+              `[run-next] QUALITY-GATE EXHAUSTED for ${result.storyId}: score=${qualityResult.score}/30 after ${rewriteAttempts} rewrite attempts — needs_attention set`,
+            )
+
+            await supabase
+              .from('stories')
+              .update({
+                needs_attention: true,
+                needs_attention_reason: `Quality gate failed after 3 rewrite attempts — needs_attention set. Final score: ${qualityResult.score}/30. ${qualityResult.summary}`.slice(0, 1000),
+                needs_attention_at: nowIso(),
+                updated_at: nowIso(),
+              })
+              .eq('id', result.storyId)
+
+            const exhaustedState = {
+              ...stateForRewrite,
+              rewriteAttempts,
+              qualityGateHistory: updatedHistory,
+            }
+
+            await supabase
+              .from('production_jobs')
+              .update({
+                story_id: result.storyId,
+                status: 'failed',
+                current_step: 'quality_gate_exhausted',
+                state_json: exhaustedState,
+                error_json: {
+                  kind: 'quality_gate_exhausted',
+                  gate: 'QUALITY-GATE-001',
+                  step: 'complete_story_package',
+                  storyId: result.storyId,
+                  rewriteAttempts,
+                  score: qualityResult.score,
+                  dimensions: qualityResult.dimensions,
+                  qualityGateHistory: updatedHistory,
+                  summary: qualityResult.summary,
+                  message: `Quality gate failed after 3 rewrite attempts — needs_attention set.`,
+                  at: nowIso(),
+                },
+                logs,
+                locked_at: null,
+                locked_by: null,
+              })
+              .match(ownedJobFence(lockedJob, lockHolderId))
+
+            return NextResponse.json({
+              halted: true,
+              reason: 'quality_gate_exhausted',
+              gate: 'QUALITY-GATE-001',
+              jobId: lockedJob.id,
+              storyId: result.storyId,
+              rewriteAttempts,
+              score: qualityResult.score,
+              dimensions: qualityResult.dimensions,
+              summary: qualityResult.summary,
+              message: 'Quality gate failed after 3 rewrite attempts — needs_attention set',
+            }, { status: 200 })
+          }
+
+          // rewriteAttempts < 3 — perform auto-rewrite
+          const nextAttempt = rewriteAttempts + 1
+          console.log(
+            `[run-next] QUALITY-GATE REWRITE ${nextAttempt}/3 for ${result.storyId}: score=${qualityResult.score}/30 — ${qualityResult.summary}`,
+          )
+          console.log(`[run-next] quality-gate dimensions:`, qualityResult.dimensions)
+
+          const dims = qualityResult.dimensions
+          const dimEntries = Object.entries(dims) as Array<[string, number]>
+          const sortedDims = [...dimEntries].sort((a, b) => a[1] - b[1])
+          const weakestLabel = sortedDims.slice(0, 3).map(([k, v]) => `${k}(${v}/5)`).join(', ')
+
+          const feedbackPrefix = [
+            `[REWRITE ATTEMPT ${nextAttempt} OF 3]`,
+            `Previous quality gate score: ${qualityResult.score}/30`,
+            `Dimension breakdown:`,
+            `- hook: ${dims.hook}/5`,
+            `- clarity: ${dims.clarity}/5`,
+            `- pacing: ${dims.pacing}/5`,
+            `- audio_design: ${dims.audio_design}/5`,
+            `- landing: ${dims.landing}/5`,
+            `- investment: ${dims.investment}/5`,
+            ``,
+            `Focus on the lowest-scoring dimensions. The script must score ≥24/30 to publish.`,
+            `Keep the same story — rewrite for quality, not content.`,
+          ].join('\n')
+
+          // Fetch current script for rewrite
+          const { data: storyForRewrite, error: storyFetchError } = await supabase
+            .from('stories')
+            .select('id,title,genre,script')
+            .eq('id', result.storyId)
+            .single()
+
+          if (storyFetchError || !storyForRewrite?.script) {
+            throw new Error(
+              `Quality-gate rewrite: failed to fetch script for story ${result.storyId}: ${
+                storyFetchError?.message ?? 'script is null'
+              }`,
+            )
+          }
+
+          const rewritePrompt = [
+            feedbackPrefix,
+            '',
+            'Here is the current script to rewrite:',
+            '',
+            storyForRewrite.script,
+            '',
+            'Rewrite the script above to improve the lowest-scoring dimensions. Keep the same story, characters, title, narrator, genre, and script format. Return only the complete rewritten script starting with TITLE: — do not include any commentary before or after.',
+          ].join('\n')
+
+          const rewriteResponse = await anthropic.messages.create({
+            model,
+            max_tokens: 12000,
+            temperature: 0.7,
+            messages: [{ role: 'user', content: rewritePrompt }],
+          })
+
+          const rewrittenScript = rewriteResponse.content
+            .map((c: any) => ('text' in c ? c.text : ''))
+            .join('')
+            .trim()
+
+          if (!rewrittenScript) {
+            throw new Error(
+              `Quality-gate rewrite attempt ${nextAttempt} returned empty script for story ${result.storyId}`,
+            )
+          }
+
+          // Save rewritten script — is_hidden unchanged, audio_url NOT touched
+          const { error: scriptSaveError } = await supabase
             .from('stories')
             .update({
-              status: 'validator_failed',
-              needs_attention: true,
-              needs_attention_reason: `Quality gate block: score=${qualityResult.score}/30. ${qualityResult.summary}`.slice(0, 1000),
-              needs_attention_at: nowIso(),
+              script: rewrittenScript,
               updated_at: nowIso(),
             })
             .eq('id', result.storyId)
 
-          await supabase
+          if (scriptSaveError) {
+            throw new Error(
+              `Quality-gate rewrite: failed to save rewritten script for story ${result.storyId}: ${scriptSaveError.message}`,
+            )
+          }
+
+          logAnthropicCall({
+            route: '/api/admin/production-jobs/run-next',
+            purpose: 'quality-gate-rewrite',
+            model,
+            inputTokens: rewriteResponse.usage?.input_tokens ?? 0,
+            outputTokens: rewriteResponse.usage?.output_tokens ?? 0,
+            storyId: String(result.storyId),
+            storyTitle: storyForRewrite.title ?? '',
+            metadata: {
+              attempt: nextAttempt,
+              score: qualityResult.score,
+              production_job_id: lockedJob.id,
+            },
+          }).catch(() => {})
+
+          // Build next state — clear downstream audio state so generate_voices
+          // starts fresh (HOOK-GATE-STALE-001: purgeExisting fires when
+          // voiceGeneration has no lastUpdatedAt, ensuring old segments are
+          // purged before regeneration for the new script).
+          const rewriteState = {
+            ...stateForRewrite,
+            // Clear audio pipeline state so the loop starts fresh from generate_voices
+            voiceGeneration: {},
+            belleAssets: {},
+            belleQualityValidation: {},
+            belleQualityRepair: {},
+            musicGeneration: {},
+            renderFinalMix: {},
+            // Rewrite tracking
+            rewriteAttempts: nextAttempt,
+            qualityGateHistory: updatedHistory,
+          }
+
+          const rewriteLogs = appendLog(
+            { ...lockedJob, logs },
+            `Quality-gate rewrite ${nextAttempt}/3: score=${qualityResult.score}/30 (weakest: ${weakestLabel}). Script rewritten — resetting to generate_voices.`,
+            {
+              storyId: result.storyId,
+              score: qualityResult.score,
+              dimensions: qualityResult.dimensions,
+              attempt: nextAttempt,
+              weakest: weakestLabel,
+            },
+          )
+
+          // Reset job to generate_voices (pipeline continues:
+          // generate_voices → render_final_mix → quality gate)
+          const { error: rewriteJobError } = await supabase
             .from('production_jobs')
             .update({
               story_id: result.storyId,
-              status: 'failed',
-              current_step: 'quality_gate_blocked',
-              state_json: result.state,
-              error_json: {
-                kind: 'quality_gate_block',
-                gate: 'QUALITY-GATE-001',
-                step: 'complete_story_package',
-                storyId: result.storyId,
-                score: qualityResult.score,
-                dimensions: qualityResult.dimensions,
-                summary: qualityResult.summary,
-                message: `Quality gate blocked: score ${qualityResult.score}/30 < 17 threshold.`,
-                at: nowIso(),
-              },
-              logs,
+              status: 'queued',
+              current_step: NEXT_STEP_AFTER_STANDALONE_PREFLIGHT,
+              state_json: rewriteState,
+              error_json: null,
+              logs: rewriteLogs,
               locked_at: null,
               locked_by: null,
             })
             .match(ownedJobFence(lockedJob, lockHolderId))
 
+          if (rewriteJobError) {
+            throw new Error(
+              `Quality-gate rewrite: failed to reset job to generate_voices for story ${result.storyId}: ${rewriteJobError.message}`,
+            )
+          }
+
           return NextResponse.json({
-            halted: true,
-            reason: 'quality_gate_block',
-            gate: 'QUALITY-GATE-001',
+            action: 'quality_gate_rewrite',
+            attempt: nextAttempt,
+            maxAttempts: 3,
             jobId: lockedJob.id,
             storyId: result.storyId,
             score: qualityResult.score,
             dimensions: qualityResult.dimensions,
-            summary: qualityResult.summary,
+            weakest: weakestLabel,
+            nextStep: NEXT_STEP_AFTER_STANDALONE_PREFLIGHT,
           }, { status: 200 })
 
-        } else if (qualityResult.recommendation === 'review') {
-          // Score 17–21 — flag for Marc's closer listen, do NOT block
-          console.log(
-            `[run-next] QUALITY-GATE REVIEW for ${result.storyId}: score=${qualityResult.score} — setting needs_attention`,
-          )
-          await supabase
-            .from('stories')
-            .update({
-              needs_attention: true,
-              needs_attention_reason: `Quality gate review: score=${qualityResult.score}/30. ${qualityResult.summary}`.slice(0, 1000),
-              needs_attention_at: nowIso(),
-              updated_at: nowIso(),
-            })
-            .eq('id', result.storyId)
-          // Continue to ready_for_review normally below
-
         } else {
-          // recommendation === 'publish', score ≥ 22 — auto-approved
+          // recommendation === 'publish', score ≥ 24 — auto-approved
           console.log(
             `[run-next] QUALITY-GATE PUBLISH for ${result.storyId}: score=${qualityResult.score}/30`,
           )
         }
       }
-      // ── END STEP 10 QUALITY GATE ──────────────────────────────────────────
+      // ── END STEP 10 QUALITY GATE (AUTO-REWRITE LOOP) ─────────────────────
 
       const { data: updatedJob, error: updateError } = await supabase
         .from('production_jobs')
