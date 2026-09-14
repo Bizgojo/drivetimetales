@@ -3,9 +3,9 @@
  *
  * Uses Claude (claude-opus-4-6) to score a story script on 6 dimensions,
  * 30 points total. Thresholds:
- *   ≥ 22 → publish  (auto-approved)
- *   17–21 → review  (flag for Marc's closer listen, not blocked)
- *   < 17  → block   (validator_failed, Marc decides fix-or-retire)
+ *   ≥ 24  → auto-publish     (no human review needed)
+ *   22–23 → review           (ready_for_review, human review band)
+ *   < 22  → block            (needs_rewrite)
  *
  * Applies to standalone stories only.
  * Fail-safe on tooling errors: returns recommendation='review', never hard-blocks.
@@ -46,6 +46,7 @@ export interface QualityGateResult {
   passed: boolean
   score: number
   recommendation: 'publish' | 'review' | 'block'
+  workflow_state: 'published' | 'ready_for_review' | 'needs_rewrite'
   dimensions: QualityDimensions
   summary: string
   error?: string
@@ -63,9 +64,9 @@ export interface CalibrationStoryResult {
 
 export interface CalibrationResult {
   sampleSize: number
-  publishCount: number   // ≥ 22
-  reviewCount: number    // 17–21
-  blockCount: number     // < 17
+  publishCount: number   // ≥ 24
+  reviewCount: number    // 22–23
+  blockCount: number     // < 22
   results: CalibrationStoryResult[]
 }
 
@@ -90,8 +91,16 @@ Return ONLY valid JSON, no commentary, no markdown fences:
 
 Where:
 - total = hook + clarity + pacing + audio_design + landing + investment (must equal sum of the six)
-- recommendation: "publish" if total >= 22, "review" if 17-21, "block" if < 17
+- recommendation: "publish" if total >= 24, "review" if 22-23, "block" if < 22
 - summary: one sentence naming the main strength AND the main weakness`
+
+// ---------------------------------------------------------------------------
+// Thresholds
+// ---------------------------------------------------------------------------
+
+// Marc-authorized Sep 14 2026 — review band 22-23, auto-publish ≥24
+const QUALITY_GATE_AUTO_PUBLISH_THRESHOLD = 24
+const QUALITY_GATE_REVIEW_THRESHOLD = 22
 
 // ---------------------------------------------------------------------------
 // runStoryQualityGate — main pipeline gate
@@ -165,14 +174,26 @@ ${scriptContent.slice(0, 12000)}`
         ? Number(parsed.total)
         : Object.values(dimensions).reduce((a, b) => a + b, 0)
 
-    const recommendation: 'publish' | 'review' | 'block' =
-      total >= 22 ? 'publish' : total >= 17 ? 'review' : 'block'
+    let recommendation: 'publish' | 'review' | 'block'
+    let workflow_state: 'published' | 'ready_for_review' | 'needs_rewrite'
+
+    if (total >= QUALITY_GATE_AUTO_PUBLISH_THRESHOLD) {
+      recommendation = 'publish'
+      workflow_state = 'published'
+    } else if (total >= QUALITY_GATE_REVIEW_THRESHOLD) {
+      recommendation = 'review'
+      workflow_state = 'ready_for_review'
+    } else {
+      recommendation = 'block'
+      workflow_state = 'needs_rewrite'
+    }
 
     return {
       storyId,
       passed: recommendation !== 'block',
       score: total,
       recommendation,
+      workflow_state,
       dimensions,
       summary: String(parsed.summary ?? ''),
     }
@@ -184,6 +205,7 @@ ${scriptContent.slice(0, 12000)}`
       passed: false,
       score: 0,
       recommendation: 'review', // fail-safe: never hard-block on tooling error
+      workflow_state: 'ready_for_review',
       dimensions: ZERO_DIMENSIONS,
       summary: '',
       error: message,
@@ -197,8 +219,8 @@ ${scriptContent.slice(0, 12000)}`
 
 /**
  * Fetches up to sampleSize published stories and runs runStoryQualityGate
- * on each. Returns a summary of how many scored ≥22 (publish), 17–21
- * (review), <17 (block). Use to validate threshold calibration against
+ * on each. Returns a summary of how many scored ≥24 (publish), 22–23
+ * (review), <22 (block). Use to validate threshold calibration against
  * Marc-ear-approved stories before deploying the gate.
  */
 export async function calibrateQualityGate(sampleSize: number): Promise<CalibrationResult> {
