@@ -176,17 +176,29 @@ function wordCount(text: string): number {
  *
  * The section begins after the first line matching /^\[START AUDIO DRAMA/i
  * and ends at BELLE B OUTRO (or end of script).
+ *
+ * Fallback (PR #214 parity): Origin 2.0 narrator-only scripts use a flat
+ * format without a [START AUDIO DRAMA SCRIPT] marker.  When no marker is
+ * found but NARRATOR: lines are present, return the full script so that
+ * detectHookWordOffset can locate the hook.  Non-NARRATOR lines (headers,
+ * BELLE B: lines) add to wordOffset but do not trigger hook patterns, so
+ * the slight increase in offset is acceptable.
  */
 function extractAudioDramaSection(script: string): string {
   // Find [START AUDIO DRAMA SCRIPT] or [START AUDIO DRAMA] boundary
   const startMatch = script.match(/^\[START AUDIO DRAMA(?:\s+SCRIPT)?\]/im)
-  if (!startMatch || startMatch.index === undefined) return ''
-
-  // End of drama section: BELLE B OUTRO or end of file
-  const dramaSection = script.slice(startMatch.index)
-  const outroMatch = dramaSection.match(/^BELLE B OUTRO\s*$/im)
-  const endIndex = outroMatch?.index ?? dramaSection.length
-  return dramaSection.slice(0, endIndex)
+  if (startMatch && startMatch.index !== undefined) {
+    // End of drama section: BELLE B OUTRO or end of file
+    const dramaSection = script.slice(startMatch.index)
+    const outroMatch = dramaSection.match(/^BELLE B OUTRO\s*$/im)
+    const endIndex = outroMatch?.index ?? dramaSection.length
+    return dramaSection.slice(0, endIndex)
+  }
+  // Fallback: Origin 2.0 scripts have no section marker.
+  // Return the full script if NARRATOR: lines exist; detectHookWordOffset
+  // filters to NARRATOR lines only, so headers are counted but harmless.
+  if (/^NARRATOR\s*:/im.test(script)) return script
+  return ''
 }
 
 /**
@@ -481,6 +493,11 @@ async function checkGenre(genre: string): Promise<GenreCheckResult> {
 /**
  * Extracts BELLE B ANNOUNCEMENT and BELLE B OUTRO sections.
  * Returns the line content following "BELLE B:" in each section, or '' if absent.
+ *
+ * Fallback (PR #214 parity): Origin 2.0 scripts use bare "BELLE B: text"
+ * lines without section-header blocks.  When no header block is found,
+ * scan the full script for BELLE B: lines — first match = intro,
+ * last match = outro — mirroring extractBelleSection in route.ts.
  */
 function extractBelleSectionForGate(script: string, kind: 'intro' | 'outro'): string {
   const markers = kind === 'intro'
@@ -494,7 +511,13 @@ function extractBelleSectionForGate(script: string, kind: 'intro' | 'outro'): st
     const match = afterMarker.match(/^BELLE B:\s*(.+)$/im)
     if (match && match[1]?.trim()) return match[1].trim()
   }
-  return ''
+  // Fallback: bare inline format used by Origin 2.0 scripts (e.g. "BELLE B: text here").
+  // Mirrors the fallback added to extractBelleSection in route.ts (PR #214).
+  // First BELLE B: line = intro; last BELLE B: line = outro.
+  const allMatches = Array.from(script.matchAll(/^BELLE B:\s*(.+)$/gim))
+  if (allMatches.length === 0) return ''
+  const pick = kind === 'outro' ? allMatches[allMatches.length - 1] : allMatches[0]
+  return (pick[1] || '').trim()
 }
 
 function checkBelle(script: string): BelleCheckResult {
