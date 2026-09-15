@@ -767,16 +767,30 @@ function extractBelleSection(script: string, kind: 'intro' | 'outro') {
   const markerIndex = markers
     .map(marker => script.search(new RegExp(`^${marker}\\s*$`, 'im')))
     .find(index => index >= 0) ?? -1
-  if (markerIndex < 0) return ''
-  const afterMarker = script.slice(markerIndex)
-  const match = afterMarker.match(/^BELLE B:\s*(.+)$/im)
-  return normalizeHeaderValue(match?.[1] || '')
+  if (markerIndex >= 0) {
+    const afterMarker = script.slice(markerIndex)
+    const match = afterMarker.match(/^BELLE B:\s*(.+)$/im)
+    return normalizeHeaderValue(match?.[1] || '')
+  }
+  // Fallback: bare inline format used by Origin 2.0 scripts (e.g. "BELLE B: text here")
+  const allMatches = Array.from(script.matchAll(/^BELLE B:\s*(.+)$/gim))
+  if (allMatches.length === 0) return ''
+  const pick = kind === 'outro' ? allMatches[allMatches.length - 1] : allMatches[0]
+  return normalizeHeaderValue(pick[1] || '')
 }
 
 function replaceBelleSection(script: string, kind: 'intro' | 'outro', text: string) {
   for (const marker of belleSectionMarkers(kind)) {
     const pattern = new RegExp(`(^${marker}\\s*\\n(?:---\\s*\\n)?)(BELLE B:\\s*).*$`, 'im')
     if (pattern.test(script)) return script.replace(pattern, `$1$2${normalizeHeaderValue(text)}`)
+  }
+  // Fallback: bare inline format used by Origin 2.0 scripts (e.g. "BELLE B: text here")
+  const allMatches = Array.from(script.matchAll(/^BELLE B:\s*.+$/gim))
+  if (allMatches.length > 0) {
+    const target = kind === 'outro' ? allMatches[allMatches.length - 1] : allMatches[0]
+    const idx = target.index!
+    const line = target[0]
+    return script.slice(0, idx) + `BELLE B: ${normalizeHeaderValue(text)}` + script.slice(idx + line.length)
   }
   throw new Error(`${belleSectionMarkers(kind)[0]} block is missing or malformed`)
 }
@@ -8615,7 +8629,7 @@ export async function POST(req: NextRequest) {
         // Check if this is a text-only issue that can be repaired (vs. audio/transcript QC failures)
         const issues = Array.isArray(result.report.issues) ? result.report.issues : []
         const isTextOnlyFailure = issues.length > 0 && issues.every(issue =>
-          /forbidden|promotional|must include|must say|must be|incomplete|appear|missing|too|weak|atmospheric/i.test(issue)
+          /forbidden|promotional|must include|must say|must be|incomplete|appear|missing|too|weak|atmospheric|required/i.test(issue)
         )
 
         // RFR Sprint: classify defect before deciding whether to block or continue.
