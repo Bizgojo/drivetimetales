@@ -2321,12 +2321,15 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
           }
           const ni = queueIndex + 1
           const lastStory = typeRef.current === 'story' && ni < queue.length && queue[ni]?.type === 'outro'
-          if (lastStory) {
-            // 3s musical swell, then swap to outro music, then advance
+          if (lastStory && introMusicRef.current) {
+            // Non-personalized: external music URL present — swell, swap, then advance after 3s
             raise(VOL_SWELL)
             setTimeout(() => swapMusic(introMusicRef.current, VOL_INTRO_MUSIC, 2000), 500)
             setTimeout(() => advanceQueue(), 3000)
-          } else advanceQueue()
+          } else {
+            // Personalized mode (no external music) or no outro: advance immediately — eliminates 3s silence gap
+            advanceQueue()
+          }
         }}
         onCanPlay={() => {
           if (isASC3 && resumeRef.current > 0 && getQueueTotalSeconds() > 0) {
