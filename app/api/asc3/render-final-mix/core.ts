@@ -868,6 +868,8 @@ export async function runRenderFinalMix(storyId: string): Promise<{
     let finalParts: string[]
     let outroWithMusicPath: string | null = null
     let outroWithMusicStorageUrl: string | null = null
+    let storyBodyWithOutroPath: string | null = null
+    let storyBodyWithOutroStorageUrl: string | null = null
 
     if (V2_MUSIC_SWELL && outroFile) {
       // ── Outro Standard v2 (ATL-PIPE-007: 2026-06-10) ───────────────────────
@@ -950,6 +952,20 @@ export async function runRenderFinalMix(storyId: string): Promise<{
       finalParts = isLandingStory001
         ? [storyBodyPath]
         : [stingIntroPath, sil075Path, storyBodyPath]
+    }
+
+    // Produce story_body_with_outro.mp3 for personalized ASC3 queue (eliminates outro cold-fetch gap on iOS)
+    // Only when both story body and outro exist (skip for LANDING-STORY-001 and no-outro episodes)
+    if (outroFile) {
+      storyBodyWithOutroPath = path.join(tmpDir, 'story_body_with_outro.mp3')
+      const sbwoConcatListPath = path.join(tmpDir, 'story_body_with_outro_concat.txt')
+      const outroSrcPath = outroWithMusicPath ?? normalizedOutroPath  // prefer outro_with_music if it exists
+      await fs.writeFile(sbwoConcatListPath, `file '${storyBodyPath}'\nfile '${outroSrcPath}'`)
+      await execFileAsync(FFMPEG_PATH, [
+        '-f', 'concat', '-safe', '0', '-i', sbwoConcatListPath,
+        '-ar', '44100', '-ac', '2', '-b:a', '192k', '-y', storyBodyWithOutroPath
+      ])
+      console.log(`  story_body_with_outro.mp3: produced`)
     }
 
     await fs.writeFile(finalConcatFile, finalParts.map(p => `file '${p}'`).join('\n'))
@@ -1071,6 +1087,21 @@ export async function runRenderFinalMix(storyId: string): Promise<{
       outroWithMusicStorageUrl = `${BASE_STORAGE}/${outroWithMusicStoragePath}`
     }
 
+    if (storyBodyWithOutroPath) {
+      const storyBodyWithOutroBuffer = await fs.readFile(storyBodyWithOutroPath)
+      const storagePath = `asc3/${storyId}/story_body_with_outro.mp3`
+      const { error: sbwoErr } = await supabase.storage.from('audio').upload(storagePath, storyBodyWithOutroBuffer, {
+        contentType: 'audio/mpeg',
+        cacheControl: '31536000',
+        upsert: true,
+      })
+      if (sbwoErr) console.warn(`  story_body_with_outro upload failed: ${sbwoErr.message}`)
+      else {
+        storyBodyWithOutroStorageUrl = `${BASE_STORAGE}/asc3/${storyId}/story_body_with_outro.mp3`
+        console.log(`  story_body_with_outro.mp3: uploaded → ${storyBodyWithOutroStorageUrl}`)
+      }
+    }
+
     // Upload final_mix.mp3 (full mix for backward compat)
     const mixBuffer = await fs.readFile(outputPath)
     const mixPath = `asc3/${storyId}/final_mix.mp3`
@@ -1101,6 +1132,7 @@ export async function runRenderFinalMix(storyId: string): Promise<{
       story_audio_url: storyBodyUrl,
       audio_url: finalAudioUrl,  // store plain URL (no ?v= cache-buster — versioning in response only)
       ...(outroWithMusicStorageUrl ? { outro_with_music_url: outroWithMusicStorageUrl } : {}),
+      ...(storyBodyWithOutroStorageUrl ? { story_body_with_outro_url: storyBodyWithOutroStorageUrl } : {}),
       duration_mins: Math.ceil(durationSecs / 60)
     }).eq('id', storyId)
     if (storyUpdateErr) throw new Error(`Failed to update story audio_url: ${storyUpdateErr.message}`)

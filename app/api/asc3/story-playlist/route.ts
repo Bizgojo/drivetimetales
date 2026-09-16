@@ -195,6 +195,7 @@ async function buildPersonalizedQueue({
   const gateReason = personalizedAssetGateReason(story, pronunciationKey)
   if (gateReason) return { payload: null, fallbackReason: gateReason }
   const outroUrl = String(story?.outro_with_music_url || story?.outro_audio_url || '').trim()
+  const storyBodyWithOutroUrl = String(story?.story_body_with_outro_url || '').trim()
 
   const ready = await assertNamePoolReady(pronunciationKey)
   if (!ready) return { payload: null, fallbackReason: 'name_pool_not_ready' }
@@ -209,9 +210,16 @@ async function buildPersonalizedQueue({
   if (suppressNameOpener) {
     const queue: PlaybackQueueItem[] = [
       { url: String(story.announcement_url).trim(), type: 'intro', label: 'Story intro' },
-      { url: String(story.story_audio_url).trim(), type: 'story', label: story.title || 'Story' },
-      { url: outroUrl, type: 'outro', label: 'Outro' },
     ]
+    if (storyBodyWithOutroUrl) {
+      // New: single segment covers story + outro, no gap on iOS
+      queue.push({ url: storyBodyWithOutroUrl, type: 'story', label: story.title || 'Story' })
+      // No outro segment — it's baked in
+    } else {
+      // Fallback: two segments (existing episodes without story_body_with_outro.mp3)
+      queue.push({ url: String(story.story_audio_url).trim(), type: 'story', label: story.title || 'Story' })
+      if (outroUrl) queue.push({ url: outroUrl, type: 'outro', label: 'Outro' })
+    }
     return {
       payload: { queue, toneCluster, openerId: '' },
       fallbackReason: null,
@@ -222,9 +230,16 @@ async function buildPersonalizedQueue({
   const queue: PlaybackQueueItem[] = [
     { url: opener.intro_audio_url!, type: 'intro', label: 'Welcome' },
     { url: String(story.announcement_url).trim(), type: 'intro', label: 'Story intro' },
-    { url: String(story.story_audio_url).trim(), type: 'story', label: story.title || 'Story' },
-    { url: outroUrl, type: 'outro', label: 'Outro' },
   ]
+  if (storyBodyWithOutroUrl) {
+    // New: single segment covers story + outro, no gap on iOS
+    queue.push({ url: storyBodyWithOutroUrl, type: 'story', label: story.title || 'Story' })
+    // No outro segment — it's baked in
+  } else {
+    // Fallback: two segments (existing episodes without story_body_with_outro.mp3)
+    queue.push({ url: String(story.story_audio_url).trim(), type: 'story', label: story.title || 'Story' })
+    if (outroUrl) queue.push({ url: outroUrl, type: 'outro', label: 'Outro' })
+  }
 
   return {
     payload: {
@@ -263,7 +278,7 @@ export async function GET(req: NextRequest) {
 
   const { data: story, error } = await supabase
     .from('stories')
-    .select('id,title,primary_genre,genre,audio_url,announcement_url,story_audio_url,outro_with_music_url,outro_audio_url,updated_at')
+    .select('id,title,primary_genre,genre,audio_url,announcement_url,story_audio_url,story_body_with_outro_url,outro_with_music_url,outro_audio_url,updated_at')
     .eq('id', storyId)
     .single()
 
