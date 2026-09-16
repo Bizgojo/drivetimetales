@@ -82,16 +82,51 @@ export async function resolveNarratorVoiceId(
     row = data as any
   }
 
-  // Step 2: If narrator_voice_id is already set on the story row, use it directly
+  // Step 2: If narrator_voice_id is already set on the story row, cross-validate it
   const existingVoiceId = String(row?.narrator_voice_id ?? '').trim()
   const existingVoiceName = String(row?.narrator_voice_name ?? '').trim()
   if (existingVoiceId) {
+    // Cross-check: ensure the stored value is actually an ElevenLabs voice ID (not a
+    // narrator_voices table UUID accidentally stored in stories.narrator_voice_id).
+    const { data: narratorByElId } = await supabase
+      .from('narrator_voices')
+      .select('id, elevenlabs_voice_id')
+      .eq('elevenlabs_voice_id', existingVoiceId)
+      .maybeSingle()
+
+    if (narratorByElId) {
+      // Found — confirmed it is a valid ElevenLabs voice ID.
+      return {
+        ok: true,
+        narratorVoiceId: existingVoiceId,
+        narratorVoiceName: existingVoiceName,
+        authorName: String(row?.author ?? '').trim(),
+        source: 'story_row',
+      }
+    }
+
+    // Not found by EL voice ID. Determine failure reason.
+    const looksLikeUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(existingVoiceId)
+
+    if (looksLikeUuid) {
+      return {
+        ok: false,
+        code: 'NARRATOR_VOICE_ID_MISSING',
+        message:
+          `narrator_voice_id '${existingVoiceId}' appears to be a narrator_voices table UUID, ` +
+          `not an ElevenLabs voice ID. Expected format: ElevenLabs voice ID (e.g. hpp4J3VqNfWAUOO0d1Us). ` +
+          `Cross-check narrator_voices.elevenlabs_voice_id for this narrator row.`,
+        retry_safe: false,
+      }
+    }
+
     return {
-      ok: true,
-      narratorVoiceId: existingVoiceId,
-      narratorVoiceName: existingVoiceName,
-      authorName: String(row?.author ?? '').trim(),
-      source: 'story_row',
+      ok: false,
+      code: 'NARRATOR_VOICE_ID_MISSING',
+      message:
+        `narrator_voice_id '${existingVoiceId}' not found in narrator_voices.elevenlabs_voice_id. ` +
+        `Cannot validate narrator for voice generation.`,
+      retry_safe: false,
     }
   }
 
