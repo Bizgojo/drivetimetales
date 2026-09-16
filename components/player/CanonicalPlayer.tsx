@@ -2176,11 +2176,11 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
             const ni = queueIndex + 1
             if (ni < queue.length && !nextSegRef.current) { const p = new Audio(queue[ni].url); p.preload='auto'; p.load(); nextSegRef.current = p }
           }
-          // Preload next segment at 80% of current segment duration (eliminates buffering gap at story_body→outro transition)
+          // Preload next segment at 50% of current segment duration (eliminates buffering gap at story_body→outro transition)
           if (isASC3) {
             const segDur = e.currentTarget.duration
             const pct80 = Number.isFinite(segDur) && segDur > 0 ? t / segDur : 0
-            if (pct80 >= 0.80) {
+            if (pct80 >= 0.50) {
               const ni80 = queueIndex + 1
               if (ni80 < queue.length && !preloadRef.current) {
                 const nextUrl = queue[ni80]?.url
