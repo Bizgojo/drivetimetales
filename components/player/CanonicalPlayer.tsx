@@ -70,6 +70,7 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
   const audioRef = useRef<HTMLAudioElement>(null)  // voice
   const musicRef = useRef<HTMLAudioElement>(null)  // single music track
   const nextSegRef = useRef<HTMLAudioElement | null>(null)
+  const preloadRef = useRef<HTMLAudioElement | null>(null)
   const progressBarRef = useRef<HTMLDivElement>(null)
 
   const volTimer   = useRef<ReturnType<typeof setInterval> | null>(null)
@@ -1550,6 +1551,7 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
         if (nextSegRef.current?.src?.includes(next.url.split('/').pop() || '')) {
           audioRef.current.src = nextSegRef.current.src; nextSegRef.current = null
         } else { audioRef.current.src = next.url; audioRef.current.load() }
+        preloadRef.current = null
         audioRef.current.play().catch(() => {})
         // Brief swell on segment boundary then duck again
         const m = musicRef.current
@@ -2173,6 +2175,21 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
           if (rem < 6 && rem > 0 && isASC3) {
             const ni = queueIndex + 1
             if (ni < queue.length && !nextSegRef.current) { const p = new Audio(queue[ni].url); p.preload='auto'; p.load(); nextSegRef.current = p }
+          }
+          // Preload next segment at 80% of current segment duration (eliminates buffering gap at story_body→outro transition)
+          if (isASC3) {
+            const segDur = e.currentTarget.duration
+            const pct80 = Number.isFinite(segDur) && segDur > 0 ? t / segDur : 0
+            if (pct80 >= 0.80) {
+              const ni80 = queueIndex + 1
+              if (ni80 < queue.length && !preloadRef.current) {
+                const nextUrl = queue[ni80]?.url
+                if (nextUrl) {
+                  preloadRef.current = new Audio(nextUrl)
+                  preloadRef.current.preload = 'auto'
+                }
+              }
+            }
           }
         }}
         onPlay={() => {
