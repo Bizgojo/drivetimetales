@@ -204,7 +204,7 @@ export async function POST(req: NextRequest) {
 
     const { data: story, error } = await supabase
       .from('stories')
-      .select('id,title,author,author_style,genre,narrative_voice,brief_json,status,script_version,series_id,voice_profile_id')
+      .select('id,title,author,author_id,author_style,genre,narrative_voice,brief_json,status,script_version,series_id,voice_profile_id')
       .eq('id', storyId)
       .single()
 
@@ -309,12 +309,28 @@ export async function POST(req: NextRequest) {
     // ── END CANON DOCUMENT LOADING ──────────────────────────────────────────────────────
 
     // ── VOICE-PROFILE-INJECT: load house style card if story has one ─────────────────
+    // Resolve voice profile: story-level first, author-level as fallback.
+    // This lets every story for an author automatically inherit the author's house style
+    // without requiring manual voice_profile_id assignment per story.
+    let resolvedVoiceProfileId: string | null = story.voice_profile_id ?? null
+    if (!resolvedVoiceProfileId && story.author_id) {
+      const { data: authorRow } = await supabase
+        .from('authors')
+        .select('voice_profile_id')
+        .eq('id', story.author_id)
+        .maybeSingle()
+      resolvedVoiceProfileId = authorRow?.voice_profile_id ?? null
+      if (resolvedVoiceProfileId) {
+        console.log(`[voice-profile] story has no profile — falling back to author profile for author ${story.author_id}`)
+      }
+    }
+
     let voiceProfileBlock = ''
-    if (story.voice_profile_id) {
+    if (resolvedVoiceProfileId) {
       const { data: vp } = await supabase
         .from('voice_profiles')
         .select('*')
-        .eq('id', story.voice_profile_id)
+        .eq('id', resolvedVoiceProfileId)
         .maybeSingle()
       if (vp) {
         console.log(`[voice-profile] injecting house style: ${vp.style_slug} v${vp.version}`)
