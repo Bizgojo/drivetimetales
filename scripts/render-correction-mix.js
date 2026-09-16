@@ -482,7 +482,7 @@ async function runStoryBodyMode({ story, sb, FOLDER, storageFiles, tmp, outputFi
   const { error: upErr } = await sb.storage.from('audio').upload(storagePath, buf, {
     contentType: 'audio/mpeg',
     upsert: true,
-    cacheControl: '0',
+    cacheControl: '31536000',
   });
   if (upErr) throw new Error('Upload failed: ' + upErr.message);
 
@@ -1011,7 +1011,7 @@ async function runSegmentsMode({ story, sb, FOLDER, storageFiles, tmp, outputFil
   const { error: upErr } = await sb.storage.from('audio').upload(storagePath, buf, {
     contentType: 'audio/mpeg',
     upsert: true,
-    cacheControl: '0',
+    cacheControl: '31536000',
   });
   if (upErr) throw new Error('Upload failed: ' + upErr.message);
 
@@ -1064,7 +1064,7 @@ async function runSegmentsMode({ story, sb, FOLDER, storageFiles, tmp, outputFil
     `asc3/${FOLDER}/${reportName}`, reportBuf, {
       contentType: 'application/json',
       upsert: false,
-      cacheControl: '0',
+      cacheControl: '31536000',
     }
   );
   if (reportErr) {
