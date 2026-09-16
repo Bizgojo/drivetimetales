@@ -204,7 +204,7 @@ export async function POST(req: NextRequest) {
 
     const { data: story, error } = await supabase
       .from('stories')
-      .select('id,title,author,author_style,genre,narrative_voice,brief_json,status,script_version,series_id')
+      .select('id,title,author,author_style,genre,narrative_voice,brief_json,status,script_version,series_id,voice_profile_id')
       .eq('id', storyId)
       .single()
 
@@ -307,6 +307,40 @@ export async function POST(req: NextRequest) {
     const excellenceLessons = await loadActiveExcellenceLessons(supabase)
     const excellenceBlock = formatExcellenceBlock(excellenceLessons)
     // ── END CANON DOCUMENT LOADING ──────────────────────────────────────────────────────
+
+    // ── VOICE-PROFILE-INJECT: load house style card if story has one ─────────────────
+    let voiceProfileBlock = ''
+    if (story.voice_profile_id) {
+      const { data: vp } = await supabase
+        .from('voice_profiles')
+        .select('*')
+        .eq('id', story.voice_profile_id)
+        .maybeSingle()
+      if (vp) {
+        console.log(`[voice-profile] injecting house style: ${vp.style_slug} v${vp.version}`)
+        const techniques = (vp.signature_techniques as string[] || [])
+          .map((t: string, i: number) => `${i + 1}. ${t}`)
+          .join('\n')
+        const banned = (vp.banned_list as string[] || [])
+          .map((b: string) => `• ${b}`)
+          .join('\n')
+        const anchorsFormatted = (vp.anchors as string[] || [])
+          .join('\n---\n')
+        voiceProfileBlock = [
+          `HOUSE STYLE: ${vp.display_name}`,
+          `ESSENCE: ${vp.essence}`,
+          `DICTION & RHYTHM: ${vp.diction_and_rhythm}`,
+          `SIGNATURE TECHNIQUES (do these):`,
+          techniques,
+          `TONE: ${vp.tone_handling}`,
+          `BANNED (never do these — firing any of these items is a script failure):`,
+          banned,
+          `STYLE ANCHORS — write in this register:`,
+          anchorsFormatted,
+        ].join('\n')
+      }
+    }
+    // ── END VOICE-PROFILE-INJECT ────────────────────────────────────────────────────
 
     const target = runtimeTarget(brief.runtime || '')
     const recentStoryTexts = await loadRecentStoryTexts()
@@ -473,7 +507,7 @@ BELLE B: [one or two short sentences, warm, specific, sensory, no time-of-day re
   INTERIOR + FINAL EPISODES (BELLE-006): must NOT name the series title or author — reference something specific from the story's plot or mood instead.]
 
 HOOK-GATE-001 REQUIREMENT: The inciting event, discovery, or dramatic hook must appear within the first 30 words of the story body (approximately the first 10–15 seconds of audio). The hookGate will hard-fail if it arrives later. Do NOT open with atmosphere, scene-setting, or backstory — begin with the thing that makes the listener stay.
-
+${voiceProfileBlock ? `\n${voiceProfileBlock}\n` : ''}
 [START AUDIO DRAMA SCRIPT]
 NARRATOR: ...
 CHARACTER NAME: ...

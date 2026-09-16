@@ -20,6 +20,7 @@ import { runStoryQualityGate } from '@/lib/storyQualityGate'
 import { runGarbleGate } from '@/lib/garbleGate'
 import { parseScriptPositions } from '@/lib/scriptLineIndex'
 import { runVoiceMapGate } from '@/lib/voiceMapGate'
+import { runVoiceConformanceGate, type VoiceProfile } from '@/lib/voiceConformanceGate'
 
 export const runtime = 'nodejs'
 // maxDuration governed by vercel.json (800s) - do not override here
@@ -83,7 +84,9 @@ async function maybeSetSfxDisabled(supabaseClient: ReturnType<typeof createClien
 // touched in this long, or when its lock is older than this threshold.
 const ZOMBIE_STALE_MS = 15 * 60 * 1000
 const NEXT_STEP_AFTER_CREATE = 'generate_script'
-const NEXT_STEP_AFTER_STANDALONE_SCRIPT = 'validate_script'
+const NEXT_STEP_AFTER_STANDALONE_SCRIPT = 'validate_voice_conformance'
+const STEP_VALIDATE_VOICE_CONFORMANCE = 'validate_voice_conformance'
+const NEXT_STEP_AFTER_VOICE_CONFORMANCE = 'validate_script'
 const NEXT_STEP_AFTER_STANDALONE_VALIDATION = 'validate_story_resolution'
 const NEXT_STEP_AFTER_STANDALONE_RESOLUTION = 'voice_preflight'
 const NEXT_STEP_AFTER_STANDALONE_PREFLIGHT = 'generate_voices'
@@ -7584,7 +7587,275 @@ export async function POST(req: NextRequest) {
       })
     }
 
-    if (step === NEXT_STEP_AFTER_STANDALONE_SCRIPT) {
+    // ── validate_voice_conformance ───────────────────────────────────────────────────
+    // Scans the generated script for banned phrases from the story's voice_profile.
+    // Inserted AFTER generate_script and BEFORE validate_script.
+    //   - No voice_profile_id: skip (advance directly to validate_script).
+    //   - Violations + attempts < 2: reset to generate_script, increment attempt counter.
+    //   - Violations + attempts >= 2: advance but set needs_attention=true.
+    if (step === STEP_VALIDATE_VOICE_CONFORMANCE) {
+      await recordStageStarted(lockedJob, 'validate_voice_conformance')
+
+      const storyId = lockedJob.story_id || (lockedJob.state_json as any)?.storyId
+      if (!storyId) {
+        return bad('validate_voice_conformance: story_id missing', 422, { jobId: lockedJob.id })
+      }
+
+      // Load the story to get voice_profile_id and the current script
+      const { data: vcStory, error: vcStoryError } = await supabase
+        .from('stories')
+        .select('id,script,voice_profile_id')
+        .eq('id', storyId)
+        .single()
+
+      if (vcStoryError || !vcStory) {
+        return bad(`validate_voice_conformance: story not found: ${vcStoryError?.message || 'no data'}`, 404, { jobId: lockedJob.id })
+      }
+
+      // No voice profile — skip straight to validate_script
+      if (!vcStory.voice_profile_id) {
+        console.log(`[voice-conformance] skip — story ${storyId} has no voice_profile_id`)
+        const skipLogs = appendLog(lockedJob, 'validate_voice_conformance skipped — no voice_profile_id', {
+          storyId,
+          nextStep: NEXT_STEP_AFTER_VOICE_CONFORMANCE,
+        })
+
+        await recordStageCompleted(lockedJob, 'validate_voice_conformance')
+
+        const { data: skippedJob, error: skipUpdateError } = await supabase
+          .from('production_jobs')
+          .update({
+            status: 'queued',
+            current_step: NEXT_STEP_AFTER_VOICE_CONFORMANCE,
+            step_index: Math.max(Number(lockedJob.step_index || 0), 0) + 1,
+            error_json: null,
+            logs: skipLogs,
+            locked_at: null,
+            locked_by: null,
+          })
+          .match(ownedJobFence(lockedJob, lockHolderId))
+          .select('*')
+          .single()
+
+        if (skipUpdateError) throw new Error(`Failed to advance voice conformance skip: ${skipUpdateError.message}`)
+
+        return NextResponse.json({
+          success: true,
+          jobId: skippedJob.id,
+          currentStep: step,
+          nextStep: skippedJob.current_step,
+          storyId,
+          voiceConformance: { skipped: true, reason: 'no voice_profile_id' },
+        })
+      }
+
+      // Load the voice profile
+      const { data: vcProfile, error: vcProfileError } = await supabase
+        .from('voice_profiles')
+        .select('*')
+        .eq('id', vcStory.voice_profile_id)
+        .maybeSingle()
+
+      if (vcProfileError || !vcProfile) {
+        // Voice profile row missing — skip (non-blocking; schema allows this)
+        console.warn(`[voice-conformance] voice_profile row not found for id=${vcStory.voice_profile_id}, skipping`)
+        const skipLogs = appendLog(lockedJob, 'validate_voice_conformance skipped — voice_profile row not found', {
+          storyId,
+          voiceProfileId: vcStory.voice_profile_id,
+          nextStep: NEXT_STEP_AFTER_VOICE_CONFORMANCE,
+        })
+
+        await recordStageCompleted(lockedJob, 'validate_voice_conformance')
+
+        const { data: skippedJob2, error: skipUpdateError2 } = await supabase
+          .from('production_jobs')
+          .update({
+            status: 'queued',
+            current_step: NEXT_STEP_AFTER_VOICE_CONFORMANCE,
+            step_index: Math.max(Number(lockedJob.step_index || 0), 0) + 1,
+            error_json: null,
+            logs: skipLogs,
+            locked_at: null,
+            locked_by: null,
+          })
+          .match(ownedJobFence(lockedJob, lockHolderId))
+          .select('*')
+          .single()
+
+        if (skipUpdateError2) throw new Error(`Failed to advance voice conformance skip (missing row): ${skipUpdateError2.message}`)
+
+        return NextResponse.json({
+          success: true,
+          jobId: skippedJob2.id,
+          currentStep: step,
+          nextStep: skippedJob2.current_step,
+          storyId,
+          voiceConformance: { skipped: true, reason: 'voice_profile row not found' },
+        })
+      }
+
+      const script = String(vcStory.script || '')
+      const attempts = Number((lockedJob.state_json as any)?.voiceConformanceAttempts ?? 0)
+
+      const vcResult = await runVoiceConformanceGate({
+        script,
+        voiceProfile: vcProfile as VoiceProfile,
+        storyId,
+        attempts,
+      })
+
+      if (vcResult.passed) {
+        // Clean pass — advance to validate_script
+        const passLogs = appendLog(lockedJob, 'validate_voice_conformance passed', {
+          storyId,
+          styleSlug: vcProfile.style_slug,
+          nextStep: NEXT_STEP_AFTER_VOICE_CONFORMANCE,
+        })
+
+        await recordStageCompleted(lockedJob, 'validate_voice_conformance')
+
+        const { data: passedJob, error: passUpdateError } = await supabase
+          .from('production_jobs')
+          .update({
+            status: 'queued',
+            current_step: NEXT_STEP_AFTER_VOICE_CONFORMANCE,
+            step_index: Math.max(Number(lockedJob.step_index || 0), 0) + 1,
+            state_json: { ...((lockedJob.state_json as any) || {}), voiceConformanceAttempts: attempts },
+            error_json: null,
+            logs: passLogs,
+            locked_at: null,
+            locked_by: null,
+          })
+          .match(ownedJobFence(lockedJob, lockHolderId))
+          .select('*')
+          .single()
+
+        if (passUpdateError) throw new Error(`Failed to advance voice conformance pass: ${passUpdateError.message}`)
+
+        return NextResponse.json({
+          success: true,
+          jobId: passedJob.id,
+          currentStep: step,
+          nextStep: passedJob.current_step,
+          storyId,
+          voiceConformance: { passed: true, violations: [], attempts },
+        })
+      }
+
+      const violationSummary = vcResult.violations
+        .map((v) => `"${v.bannedItem}" (×${v.count})`)
+        .join(', ')
+
+      if (vcResult.shouldRegenerate) {
+        // Violations + attempts < 2: reset to generate_script
+        const nextAttempts = attempts + 1
+
+        // Clear the script so generate_script will re-generate from scratch
+        await supabase
+          .from('stories')
+          .update({ script: null, status: 'brief_complete' })
+          .eq('id', storyId)
+
+        const retryLogs = appendLog(lockedJob,
+          `validate_voice_conformance FAIL — resetting to generate_script (attempt ${nextAttempts}/2)`, {
+            storyId,
+            styleSlug: vcProfile.style_slug,
+            violations: violationSummary,
+            attempts: nextAttempts,
+            nextStep: NEXT_STEP_AFTER_CREATE,
+          })
+
+        await recordStageFailed(lockedJob, 'validate_voice_conformance', `voice_conformance violations: ${violationSummary}`)
+
+        const { data: retryJob, error: retryUpdateError } = await supabase
+          .from('production_jobs')
+          .update({
+            status: 'queued',
+            current_step: NEXT_STEP_AFTER_CREATE,
+            state_json: {
+              ...((lockedJob.state_json as any) || {}),
+              voiceConformanceAttempts: nextAttempts,
+              voiceConformanceLastViolations: vcResult.violations,
+            },
+            error_json: null,
+            logs: retryLogs,
+            locked_at: null,
+            locked_by: null,
+          })
+          .match(ownedJobFence(lockedJob, lockHolderId))
+          .select('*')
+          .single()
+
+        if (retryUpdateError) throw new Error(`Failed to reset voice conformance retry: ${retryUpdateError.message}`)
+
+        return NextResponse.json({
+          success: true,
+          jobId: retryJob.id,
+          currentStep: step,
+          nextStep: retryJob.current_step,
+          storyId,
+          voiceConformance: { passed: false, violations: vcResult.violations, shouldRegenerate: true, attempts: nextAttempts },
+        })
+      }
+
+      // Exhausted (attempts >= 2): advance to validate_script with needs_attention=true
+      console.warn(
+        `[voice-conformance] exhausted story=${storyId} profile=${vcProfile.style_slug} ` +
+        `violations=[${violationSummary}] — advancing with needs_attention=true`,
+      )
+
+      await markStoryNeedsAttention(
+        storyId,
+        `Voice conformance exhausted after ${attempts} attempts. Violations: ${violationSummary}. ` +
+        `Style: ${vcProfile.style_slug} v${vcProfile.version}.`,
+      )
+
+      const exhaustedLogs = appendLog(lockedJob,
+        `validate_voice_conformance exhausted — advancing to validate_script with needs_attention`, {
+          storyId,
+          styleSlug: vcProfile.style_slug,
+          violations: violationSummary,
+          attempts,
+          nextStep: NEXT_STEP_AFTER_VOICE_CONFORMANCE,
+        })
+
+      await recordStageCompleted(lockedJob, 'validate_voice_conformance')
+
+      const { data: exhaustedJob, error: exhaustedUpdateError } = await supabase
+        .from('production_jobs')
+        .update({
+          status: 'queued',
+          current_step: NEXT_STEP_AFTER_VOICE_CONFORMANCE,
+          step_index: Math.max(Number(lockedJob.step_index || 0), 0) + 1,
+          state_json: {
+            ...((lockedJob.state_json as any) || {}),
+            voiceConformanceAttempts: attempts,
+            voiceConformanceLastViolations: vcResult.violations,
+            voiceConformanceExhausted: true,
+          },
+          error_json: null,
+          logs: exhaustedLogs,
+          locked_at: null,
+          locked_by: null,
+        })
+        .match(ownedJobFence(lockedJob, lockHolderId))
+        .select('*')
+        .single()
+
+      if (exhaustedUpdateError) throw new Error(`Failed to advance exhausted voice conformance: ${exhaustedUpdateError.message}`)
+
+      return NextResponse.json({
+        success: true,
+        jobId: exhaustedJob.id,
+        currentStep: step,
+        nextStep: exhaustedJob.current_step,
+        storyId,
+        voiceConformance: { passed: false, violations: vcResult.violations, exhausted: true, attempts },
+      })
+    }
+    // ── end validate_voice_conformance ─────────────────────────────────────────────────
+
+    if (step === NEXT_STEP_AFTER_VOICE_CONFORMANCE) {
       const input = lockedJob.input_json && typeof lockedJob.input_json === 'object' ? lockedJob.input_json : {}
       const queueItem = input.queueItem || {}
       const type = storyTypeFor(lockedJob, queueItem)
@@ -10874,7 +11145,7 @@ export async function POST(req: NextRequest) {
     }
 
     if (step !== 'create_story_row') {
-      return bad('Only create_story_row, generate_script, validate_script, validate_story_resolution, voice_preflight, generate_voices, generate_belle_assets, validate_belle_assets, validate_belle_quality, repair_belle_quality, generate_music, render_final_mix, complete_story_package, ready_for_review, generate_episode_script, score_validate_package, series_voice_preflight, series_generate_voices, series_generate_belle_assets, series_generate_music, and series_render_final_mix are implemented in this run-next slice', 422, {
+      return bad('Only create_story_row, generate_script, validate_voice_conformance, validate_script, validate_story_resolution, voice_preflight, generate_voices, generate_belle_assets, validate_belle_assets, validate_belle_quality, repair_belle_quality, generate_music, render_final_mix, complete_story_package, ready_for_review, generate_episode_script, score_validate_package, series_voice_preflight, series_generate_voices, series_generate_belle_assets, series_generate_music, and series_render_final_mix are implemented in this run-next slice', 422, {
         jobId: lockedJob.id,
         currentStep: lockedJob.current_step,
       })
