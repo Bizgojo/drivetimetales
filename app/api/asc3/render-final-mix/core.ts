@@ -1059,14 +1059,14 @@ export async function runRenderFinalMix(storyId: string): Promise<{
     // Upload story_body.mp3 (segments only — for queue mode personalization)
     const bodyBuffer = await fs.readFile(storyBodyPath)
     const bodyStoragePath = `asc3/${storyId}/story_body.mp3`
-    const { error: bodyUploadErr } = await supabase.storage.from('audio').upload(bodyStoragePath, bodyBuffer, { contentType: 'audio/mpeg', cacheControl: 'no-cache', upsert: true })
+    const { error: bodyUploadErr } = await supabase.storage.from('audio').upload(bodyStoragePath, bodyBuffer, { contentType: 'audio/mpeg', cacheControl: '31536000', upsert: true })
     if (bodyUploadErr) throw new Error(`Body upload error: ${bodyUploadErr.message}`)
     const storyBodyUrl = `${BASE_STORAGE}/${bodyStoragePath}`
 
     if (outroWithMusicPath) {
       const outroWithMusicBuffer = await fs.readFile(outroWithMusicPath)
       const outroWithMusicStoragePath = `asc3/${storyId}/outro_with_music.mp3`
-      const { error: outroWithMusicUploadErr } = await supabase.storage.from('audio').upload(outroWithMusicStoragePath, outroWithMusicBuffer, { contentType: 'audio/mpeg', cacheControl: 'no-cache', upsert: true })
+      const { error: outroWithMusicUploadErr } = await supabase.storage.from('audio').upload(outroWithMusicStoragePath, outroWithMusicBuffer, { contentType: 'audio/mpeg', cacheControl: '31536000', upsert: true })
       if (outroWithMusicUploadErr) throw new Error(`Treated outro upload error: ${outroWithMusicUploadErr.message}`)
       outroWithMusicStorageUrl = `${BASE_STORAGE}/${outroWithMusicStoragePath}`
     }
@@ -1074,7 +1074,7 @@ export async function runRenderFinalMix(storyId: string): Promise<{
     // Upload final_mix.mp3 (full mix for backward compat)
     const mixBuffer = await fs.readFile(outputPath)
     const mixPath = `asc3/${storyId}/final_mix.mp3`
-    const { error: uploadErr } = await supabase.storage.from('audio').upload(mixPath, mixBuffer, { contentType: 'audio/mpeg', cacheControl: 'no-cache', upsert: true })
+    const { error: uploadErr } = await supabase.storage.from('audio').upload(mixPath, mixBuffer, { contentType: 'audio/mpeg', cacheControl: '31536000', upsert: true })
     if (uploadErr) throw new Error(`Upload error: ${uploadErr.message}`)
 
     // ── POST-UPLOAD VERIFICATION (HAL-PIPE-002 fix) ──────────────────────────
