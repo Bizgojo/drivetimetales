@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
-import { buildCoverPrompt } from '@/lib/coverPrompt'
 import { sanitizeSeriesTitle } from '@/lib/seriesTitle'
 
 export const runtime = 'nodejs'
@@ -14,7 +13,6 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
 
-const OPENAI_API_KEY = process.env.OPENAI_API_KEY!
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY!
 
 async function generateDescription(script: string, title: string, genre: string): Promise<string> {
@@ -73,30 +71,156 @@ async function overlayText(imageBuffer: Buffer, title: string, author: string): 
   return sharp(imageBuffer).resize(size, size).composite([{ input: Buffer.from(svg), blend: 'over' }]).jpeg({ quality: 90 }).toBuffer()
 }
 
-const IMAGE_MODEL = process.env.OPENAI_IMAGE_MODEL || 'gpt-image-1'
+// ─── Style mapping from essence/style_reference + genre ─────────────────────
+function deriveVisualStyle(essence: string | null, styleRef: string | null, genre: string): string {
+  const combined = ((essence || '') + ' ' + (styleRef || '')).toLowerCase()
+  const g = genre.toLowerCase()
+  if ((g.includes('mystery') || g.includes('thriller')) && (combined.includes('highsmith') || combined.includes('psychological'))) {
+    return 'dark, psychological, muted palette, noir lighting'
+  }
+  if (g.includes('sci-fi') || g.includes('science fiction') || combined.includes('space') || combined.includes('near-future')) {
+    return 'cinematic, atmospheric, deep space or near-future'
+  }
+  if (combined.includes('cosmic') || combined.includes('documentary') || combined.includes('science')) {
+    return 'sweeping, documentary, deep-field imagery'
+  }
+  if (g.includes('thriller') && (combined.includes('child') || combined.includes('stark'))) {
+    return 'stark, high-contrast, lone figure in landscape'
+  }
+  if (g.includes('western') || combined.includes('western')) {
+    return 'dusty, wide-angle, golden hour'
+  }
+  return `cinematic, dramatic lighting, ${genre} atmosphere`
+}
 
-async function generateCover(script: string, title: string, author: string, genre: string): Promise<string> {
-  const dallePrompt = buildCoverPrompt({ title, author, genre, script })
+// ─── DB-driven dynamic prompt builder ───────────────────────────────────────
+async function buildDynamicCoverPrompt(
+  storyId: string,
+  story: any,
+  genre: string
+): Promise<string> {
+  let seriesTitle: string | null = null
+  let seriesCategory: string | null = null
+  let seriesDescription: string | null = null
+  let authorStyleRef: string | null = null
+  let voiceEssence: string | null = null
 
+  if (story?.series_id) {
+    const { data: seriesRow } = await supabase
+      .from('series')
+      .select('title, category, description')
+      .eq('id', story.series_id)
+      .single()
+    if (seriesRow) {
+      seriesTitle = seriesRow.title || null
+      seriesCategory = seriesRow.category || null
+      seriesDescription = seriesRow.description || null
+    }
+  }
+
+  if (story?.author) {
+    const { data: authorRow } = await supabase
+      .from('authors')
+      .select('id, name, style_reference')
+      .ilike('name', `%${story.author}%`)
+      .limit(1)
+      .single()
+    if (authorRow) {
+      authorStyleRef = authorRow.style_reference || null
+      const { data: vpRow } = await supabase
+        .from('voice_profiles')
+        .select('essence')
+        .eq('author_id', authorRow.id)
+        .limit(1)
+        .single()
+      if (vpRow) voiceEssence = vpRow.essence || null
+    }
+  }
+
+  const effectiveTitle = seriesTitle || story?.title || 'Untitled'
+  const effectiveGenre = seriesCategory || genre
+  const effectiveDescription = seriesDescription || story?.description || ''
+  const visualStyle = deriveVisualStyle(voiceEssence, authorStyleRef, effectiveGenre)
+
+  return `Cover art for an audio drama series titled '${effectiveTitle}'. Genre: ${effectiveGenre}. Style: ${visualStyle}. Description: ${String(effectiveDescription).replace(/\s+/g, ' ').trim().slice(0, 400)}. Square format, dramatic, cinematic lighting, no text, no logos.`
+}
+
+// ─── Claude-powered image generation ────────────────────────────────────────
+// Step 1: Claude (text) enriches the prompt → Step 2: DALL-E renders pixels.
+// Swap renderer when Anthropic ships native image generation.
+async function generateCoverWithClaude(
+  storyId: string,
+  story: any,
+  title: string,
+  author: string,
+  genre: string
+): Promise<string> {
+  // Series cover skip: if series already has a cover, reuse it
+  if (story?.series_id) {
+    const { data: seriesRow } = await supabase
+      .from('series')
+      .select('cover_url')
+      .eq('id', story.series_id)
+      .single()
+    if (seriesRow?.cover_url) {
+      console.log(`[produce-story] Series cover exists — reusing: ${seriesRow.cover_url}`)
+      // Return the existing URL encoded as a base64-like signal so the caller can detect it
+      return `__series_cover__${seriesRow.cover_url}`
+    }
+  }
+
+  // Build dynamic prompt from DB
+  const basePrompt = await buildDynamicCoverPrompt(storyId, story, genre)
+  const scriptExcerpt = (story?.script || '').slice(0, 600)
+  const fullPrompt = scriptExcerpt
+    ? `${basePrompt} Episode excerpt: ${scriptExcerpt.replace(/\s+/g, ' ').trim()}`
+    : basePrompt
+
+  // Step 1: Claude enriches the prompt
+  let enrichedPrompt = fullPrompt
+  try {
+    const claudeRes = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'x-api-key': ANTHROPIC_API_KEY,
+        'anthropic-version': '2023-06-01',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'claude-opus-4-6',
+        max_tokens: 512,
+        messages: [{
+          role: 'user',
+          content: `You are an art director for audiobook cover illustrations. Given a cover brief, output ONLY a single richly detailed image generation prompt (no preamble, no commentary, no quotes). The prompt must be vivid, specific, and optimised for image generation. Keep it under 900 characters.\n\nBrief:\n${fullPrompt}`,
+        }],
+      }),
+    })
+    if (claudeRes.ok) {
+      const cj = await claudeRes.json() as { content?: { type: string; text: string }[] }
+      const ct = cj.content?.find((b: any) => b.type === 'text')?.text?.trim()
+      if (ct) { enrichedPrompt = ct; console.log('[produce-story] Claude-enriched prompt:', ct.slice(0, 180)) }
+    } else {
+      console.warn('[produce-story] Claude prompt enhancement failed:', claudeRes.status)
+    }
+  } catch (e) {
+    console.warn('[produce-story] Claude prompt enhancement error:', e)
+  }
+
+  // Step 2: Render via DALL-E
   const imageRequest: Record<string, unknown> = {
-    model: IMAGE_MODEL,
-    prompt: dallePrompt.slice(0, 4000),
+    model: 'gpt-image-1',
+    prompt: enrichedPrompt.slice(0, 4000),
     n: 1,
     size: '1024x1024',
-  }
-  if (IMAGE_MODEL.startsWith('gpt-image')) {
-    imageRequest.quality = 'high'
-  } else {
-    imageRequest.quality = 'hd'
-    imageRequest.response_format = 'url'
+    quality: 'high',
   }
 
   const res = await fetch('https://api.openai.com/v1/images/generations', {
     method: 'POST',
-    headers: { Authorization: `Bearer ${OPENAI_API_KEY}`, 'Content-Type': 'application/json' },
+    headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}`, 'Content-Type': 'application/json' },
     body: JSON.stringify(imageRequest),
   })
-  if (!res.ok) throw new Error(`${IMAGE_MODEL} error: ${res.status} - ${await res.text()}`)
+  if (!res.ok) throw new Error(`Image renderer error: ${res.status} - ${await res.text()}`)
   const json = await res.json() as any
 
   const b64Json = json.data?.[0]?.b64_json
@@ -107,7 +231,7 @@ async function generateCover(script: string, title: string, author: string, genr
   }
 
   const imageUrl = json.data?.[0]?.url
-  if (!imageUrl) throw new Error(`${IMAGE_MODEL} returned no image data`)
+  if (!imageUrl) throw new Error('Image renderer returned no image data')
   const imgRes = await fetch(imageUrl)
   const rawBuffer = Buffer.from(await imgRes.arrayBuffer())
   const imgBuffer = await overlayText(rawBuffer, title, author)
@@ -208,19 +332,39 @@ export async function POST(req: NextRequest) {
       steps.cover = { status: 'skipped', message: 'SKIP_COVER_GENERATION=true' }
     } else {
     try {
-      // Retry DALL-E up to 3 times on 500 errors
+      // Fetch story row (including series_id) for dynamic prompt + skip logic
+      const { data: storyRow } = await supabase
+        .from('stories')
+        .select('id, title, author, genre, description, script, series_id')
+        .eq('id', realStoryId)
+        .single()
+      const storyForCover = storyRow || { id: realStoryId, title, author, genre, description: '', script, series_id: null }
+
+      // Retry up to 3 times
       let base64 = ''
       for (let attempt = 1; attempt <= 3; attempt++) {
-        try { base64 = await generateCover(script, title, author, genre); break }
+        try { base64 = await generateCoverWithClaude(realStoryId, storyForCover, title, author, genre); break }
         catch (e) { if (attempt === 3) throw e; await new Promise(r => setTimeout(r, 2000 * attempt)) }
       }
-      const imgBuffer = Buffer.from(base64, 'base64')
-      const storagePath = `stories/${realStoryId}/cover_${Date.now()}.jpg`
-      const { error: uploadErr } = await supabase.storage.from('audio').upload(storagePath, imgBuffer, { contentType: 'image/jpeg', upsert: true })
-      if (uploadErr) throw new Error(uploadErr.message)
-      const { data: { publicUrl } } = supabase.storage.from('audio').getPublicUrl(storagePath)
-      updates.cover_url = publicUrl
-      steps.cover = { status: 'done', message: publicUrl }
+
+      // Handle series cover reuse signal
+      if (base64.startsWith('__series_cover__')) {
+        const seriesCoverUrl = base64.replace('__series_cover__', '')
+        updates.cover_url = seriesCoverUrl
+        steps.cover = { status: 'done', message: `series-cover-reused: ${seriesCoverUrl}` }
+      } else {
+        const imgBuffer = Buffer.from(base64, 'base64')
+        const storagePath = `stories/${realStoryId}/cover_${Date.now()}.jpg`
+        const { error: uploadErr } = await supabase.storage.from('audio').upload(storagePath, imgBuffer, { contentType: 'image/jpeg', upsert: true })
+        if (uploadErr) throw new Error(uploadErr.message)
+        const { data: { publicUrl } } = supabase.storage.from('audio').getPublicUrl(storagePath)
+        // Propagate to series if applicable
+        if (storyForCover.series_id) {
+          await supabase.from('series').update({ cover_url: publicUrl }).eq('id', storyForCover.series_id)
+        }
+        updates.cover_url = publicUrl
+        steps.cover = { status: 'done', message: publicUrl }
+      }
     } catch (e) { steps.cover = { status: 'error', message: String(e) } }
     }
 
