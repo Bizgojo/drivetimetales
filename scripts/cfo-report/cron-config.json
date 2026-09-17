@@ -1,0 +1,47 @@
+{
+  "_comment": "CFO Morning Report cron schedule — DO NOT register these in OpenClaw until Marc approves the PR. See README.md for registration instructions.",
+  "jobs": [
+    {
+      "name": "cfo-mercury-pull",
+      "schedule": "0 6 * * *",
+      "tz": "America/New_York",
+      "script": "scripts/cfo-report/mercury.ts",
+      "description": "Pull Mercury banking data (balance, cards, transactions)"
+    },
+    {
+      "name": "cfo-stripe-rollup",
+      "schedule": "5 6 * * *",
+      "tz": "America/New_York",
+      "script": "scripts/cfo-report/stripe.ts",
+      "description": "Pull Stripe MRR, subscriber count, trials, 24h revenue — BLOCKED until STRIPE_SECRET_KEY is added"
+    },
+    {
+      "name": "cfo-meta-el-pull",
+      "schedule": "10 6 * * *",
+      "tz": "America/New_York",
+      "script": "scripts/cfo-report/meta.ts",
+      "description": "Pull Meta ad spend MTD — BLOCKED until META_ACCESS_TOKEN is populated"
+    },
+    {
+      "name": "cfo-hal-status",
+      "schedule": "15 6 * * *",
+      "tz": "America/New_York",
+      "script": "scripts/cfo-report/hal-status.ts",
+      "description": "Query Supabase for active episode pipeline status"
+    },
+    {
+      "name": "cfo-compile",
+      "schedule": "30 6 * * *",
+      "tz": "America/New_York",
+      "script": "scripts/cfo-report/compile.ts",
+      "description": "Aggregate all data sources, run calculations, build report object"
+    },
+    {
+      "name": "cfo-deliver",
+      "schedule": "0 7 * * *",
+      "tz": "America/New_York",
+      "script": "scripts/cfo-report/deliver.ts",
+      "description": "Send Telegram message to Marc + store report in cfo_reports table"
+    }
+  ]
+}
