@@ -204,6 +204,9 @@ export async function POST(req: NextRequest) {
     try { const p = await generateProse(script, title, author, genre); updates.prose_text = p; steps.prose = { status: 'done', message: `${p.split(' ').length} words` } }
     catch (e) { steps.prose = { status: 'error', message: String(e) } }
 
+    if (process.env.SKIP_COVER_GENERATION === 'true') {
+      steps.cover = { status: 'skipped', message: 'SKIP_COVER_GENERATION=true' }
+    } else {
     try {
       // Retry DALL-E up to 3 times on 500 errors
       let base64 = ''
@@ -219,6 +222,7 @@ export async function POST(req: NextRequest) {
       updates.cover_url = publicUrl
       steps.cover = { status: 'done', message: publicUrl }
     } catch (e) { steps.cover = { status: 'error', message: String(e) } }
+    }
 
     try { const id = await resolveAuthorId(author); if (id) { updates.author_id = id; steps.author = { status: 'done', message: author } } else steps.author = { status: 'error', message: `Not found: ${author}` } }
     catch (e) { steps.author = { status: 'error', message: String(e) } }
