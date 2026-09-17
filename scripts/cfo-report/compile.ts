@@ -17,6 +17,35 @@ import { fetchStripeData, type StripeData, type StripeStale } from './stripe'
 import { fetchElevenLabsData, type ElevenLabsData, type ElevenLabsStale } from './elevenlabs'
 import { fetchMetaData, type MetaData, type MetaStale } from './meta'
 import { fetchHalStatus, type HalStatusData, type HalStatusStale } from './hal-status'
+import * as fs from 'fs'
+import * as path from 'path'
+
+// ─── AI Cost Overrides (Anthropic + OpenAI — no billing API available) ───────
+// Bart updates scripts/cfo-report/ai-cost-overrides.json each morning from
+// the Anthropic Console and OpenAI billing page. Compiler reads it here.
+// If the file's date != today, values are used but flagged STALE.
+interface AiCostOverrides {
+  date: string          // YYYY-MM-DD
+  anthropicMtd: number
+  openAiMtd: number
+  source: string
+  updatedBy?: string
+}
+
+function loadAiCostOverrides(): { data: AiCostOverrides | null; stale: boolean; staleDays: number } {
+  try {
+    const filePath = path.join(__dirname, 'ai-cost-overrides.json')
+    const raw = fs.readFileSync(filePath, 'utf8')
+    const data = JSON.parse(raw) as AiCostOverrides
+    const today = new Date().toISOString().slice(0, 10)
+    const staleDays = Math.floor(
+      (new Date(today).getTime() - new Date(data.date).getTime()) / (1000 * 60 * 60 * 24)
+    )
+    return { data, stale: staleDays > 0, staleDays }
+  } catch {
+    return { data: null, stale: true, staleDays: 999 }
+  }
+}
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -155,15 +184,24 @@ function compileLedger(params: {
 }): CfoLedger {
   const workings: string[] = []
 
-  // These need to be manually updated or pulled from Airtable/expense tracker
-  // For now: placeholder values — replace with Airtable integration in v2
-  const anthropicMtd = 0 // from finance page manual entry or Anthropic billing API
-  const openAiMtd = 0
-  const elMtd = 315.33 // EL plan subscription (overage tracked separately)
-  const infraMtd = 20 // Vercel Pro
+  // ── AI costs: read from Console-verified override file ──────────────────────
+  // Anthropic and OpenAI billing APIs are not accessible with project API keys.
+  // Bart updates scripts/cfo-report/ai-cost-overrides.json each morning.
+  const aiOverrides = loadAiCostOverrides()
+  const anthropicMtd = aiOverrides.data?.anthropicMtd ?? 0
+  const openAiMtd    = aiOverrides.data?.openAiMtd    ?? 0
+  const aiSource = aiOverrides.data
+    ? aiOverrides.stale
+      ? `STALE (last verified ${aiOverrides.data.date}, ${aiOverrides.staleDays}d ago)`
+      : `Console-verified ${aiOverrides.data.date} — ${aiOverrides.data.source}`
+    : 'UNVERIFIED — ai-cost-overrides.json missing'
+  const elMtd    = 315.33 // EL plan subscription (overage tracked separately)
+  const infraMtd = 20     // Vercel Pro
 
   const totalAI = anthropicMtd + openAiMtd + elMtd
-  workings.push(`totalAI = anthropicMtd(${anthropicMtd}) + openAiMtd(${openAiMtd}) + elMtd(${elMtd}) = ${totalAI}`)
+  workings.push(`anthropicMtd = $${anthropicMtd.toFixed(2)} [${aiSource}]`)
+  workings.push(`openAiMtd    = $${openAiMtd.toFixed(2)} [${aiSource}]`)
+  workings.push(`totalAI = anthropicMtd(${anthropicMtd}) + openAiMtd(${openAiMtd}) + elMtd(${elMtd}) = ${totalAI.toFixed(2)}`)
 
   const totalSpend = totalAI + infraMtd
   workings.push(`totalSpend = totalAI(${totalAI}) + infraMtd(${infraMtd}) = ${totalSpend}`)
