@@ -62,6 +62,7 @@ const NAV_GROUPS = [
   ]},
   { id: 'finance', label: 'Finance', icon: '💰', items: [
     { href: '/admin/finance', label: 'Revenue & Costs' },
+    { href: '/admin/cfo-report', label: '📊 CFO Morning Report' },
   ]},
 ]
 

@@ -1,0 +1,8 @@
+{
+  "_comment": "Updated daily by Bart from Anthropic Console + OpenAI billing page. Compiler reads this at 06:30 compile step. If date != today, values are marked STALE in report.",
+  "date": "2026-09-17",
+  "anthropicMtd": 2357.92,
+  "openAiMtd": 288.16,
+  "source": "Anthropic Console + OpenAI billing page",
+  "updatedBy": "Marc Postlewaite"
+}
