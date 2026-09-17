@@ -105,6 +105,10 @@ function parseScriptPositions(script) {
   rawLines.forEach((line, rawIdx) => {
     const trimmed = line.trim();
     if (!trimmed) return;
+    // ATL-FIX-SEP-001: strip '---' separator/divider lines before any index is assigned.
+    // These are structural dividers (CHARACTER GUIDE section, scene breaks, etc.) and
+    // must never count as segment positions.  Belt-and-suspenders alongside HEADER_KEYS.
+    if (trimmed === '---') return;
 
     // Skip pre-script lines unless they ARE the designated intro or outro announcer
     if (
@@ -205,6 +209,42 @@ function parseRange(arg, lo, hi) {
 // ---------------------------------------------------------------------------
 // Text normalisation
 // ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// ATL-FIX-QC-001 — number-word → numeral normalisation for WER comparison
+//
+// Whisper normalises numerals ("13.8 billion years") while reference text uses
+// number-words ("Thirteen point eight billion years").  Applying this to BOTH
+// sides before comparison eliminates false-positive WER failures on correct audio.
+// The stored reference text in the DB is NEVER modified by this function.
+// ---------------------------------------------------------------------------
+
+function wordToNum(word) {
+  const map = {
+    zero:0, one:1, two:2, three:3, four:4, five:5, six:6, seven:7,
+    eight:8, nine:9, ten:10, eleven:11, twelve:12, thirteen:13,
+    fourteen:14, fifteen:15, sixteen:16, seventeen:17, eighteen:18,
+    nineteen:19, twenty:20, thirty:30, forty:40, fifty:50,
+    sixty:60, seventy:70, eighty:80, ninety:90,
+  };
+  return map[word.toLowerCase()] !== undefined ? String(map[word.toLowerCase()]) : word;
+}
+
+function normalizeForQC(text) {
+  return text
+    // decimal number-words (e.g. "thirteen point eight" → "13.8")
+    .replace(/\bthirteen point eight\b/gi, '13.8')
+    .replace(/\bfour point six\b/gi, '4.6')
+    .replace(/\bone hundred\b/gi, '100')
+    // magnitude number-words (e.g. "thirteen billion" → "13 billion")
+    .replace(
+      /\b(zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety) (billion|million|thousand)\b/gi,
+      (_, n, unit) => `${wordToNum(n)} ${unit}`
+    )
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .trim();
+}
 
 function normalise(text) {
   return text
@@ -437,7 +477,10 @@ async function runGate(storyId, requestedIndices) {
     }
 
     const expectedText   = pos.text || '';
-    const expectedNormal = normalise(expectedText);
+    // ATL-FIX-QC-001: normalizeForQC applied before normalise so number-word ↔ numeral
+    // mismatches (e.g. "Thirteen point eight" vs "13.8") do not inflate WER.
+    // The stored expectedText is never modified — only the working copy for comparison.
+    const expectedNormal = normalise(normalizeForQC(expectedText));
 
     // Download audio
     let audioPath;
@@ -464,7 +507,7 @@ async function runGate(storyId, requestedIndices) {
       continue;
     }
 
-    const whisperNormal = normalise(whisperRaw);
+    const whisperNormal = normalise(normalizeForQC(whisperRaw));
     const werScore      = wer(normalizeForWer(expectedNormal), normalizeForWer(whisperNormal));
     const status        = werScore > WER_HARD_FAIL ? 'fail' : werScore > WER_WARN ? 'warn' : 'ok';
 

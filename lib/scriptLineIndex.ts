@@ -87,6 +87,10 @@ export function parseScriptPositions(script: string): ScriptPosition[] {
   rawLines.forEach((line, rawIdx) => {
     const trimmed = line.trim()
     if (!trimmed) return   // blank line — never counted
+    // ATL-FIX-SEP-001: strip '---' separator/divider lines before any index is assigned.
+    // These are structural dividers (CHARACTER GUIDE section, scene breaks, etc.) and
+    // must never count as segment positions.  Belt-and-suspenders alongside HEADER_KEYS.
+    if (trimmed === '---') return
 
     // Skip pre-script lines unless they ARE the designated intro or outro announcer
     if (
