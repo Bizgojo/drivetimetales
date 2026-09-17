@@ -231,10 +231,21 @@ function compileLedger(params: {
 
   // Break-even: assume ~$14.99/mo plan, 30% Apple/Google take, $0.30 Stripe fee
   const netRevPerSub = 14.99 * 0.70 - 0.30 // ≈ $10.19
+
+  // Break-even #1 — MTD total spend (this month's actuals, incl. R&D AI)
   let breakEvenSubs: number | null = null
   if (netRevPerSub > 0) {
     breakEvenSubs = Math.ceil(totalSpend / netRevPerSub)
-    workings.push(`breakEvenSubs = ceil(totalSpend(${totalSpend}) / netRevPerSub(${netRevPerSub.toFixed(2)})) = ${breakEvenSubs}`)
+    workings.push(`breakEvenSubs (MTD actuals) = ceil(totalSpend(${totalSpend.toFixed(2)}) / netRevPerSub(${netRevPerSub.toFixed(2)})) = ${breakEvenSubs}`)
+  }
+
+  // Break-even #2 — Steady-state run-rate (EL + Infra only; excludes one-time R&D AI)
+  // This is the floor needed once AI R&D spend normalises
+  const steadyStateCost = elMtd + infraMtd
+  let breakEvenSubsSteadyState: number | null = null
+  if (netRevPerSub > 0) {
+    breakEvenSubsSteadyState = Math.ceil(steadyStateCost / netRevPerSub)
+    workings.push(`breakEvenSubs (steady-state EL+Infra) = ceil(steadyState(${steadyStateCost.toFixed(2)}) / netRevPerSub(${netRevPerSub.toFixed(2)})) = ${breakEvenSubsSteadyState}`)
   }
 
   return {
@@ -251,6 +262,8 @@ function compileLedger(params: {
     dailyBurn,
     runway,
     breakEvenSubs,
+    breakEvenSubsSteadyState,
+    steadyStateCost,
     netRevPerSub,
     workings,
   }
@@ -378,7 +391,11 @@ export async function compileCfoReport(dryRun = false): Promise<CfoReport> {
     : 'Cannot calculate — bank data stale'
 
   const breakEvenStr = ledger.breakEvenSubs !== null
-    ? `${ledger.breakEvenSubs} paying subscribers needed to cover monthly costs ($${ledger.totalSpend.toFixed(2)}/mo) at $${ledger.netRevPerSub.toFixed(2)} net/sub`
+    ? [
+        `MTD actuals: ${ledger.breakEvenSubs} subs @ $${ledger.totalSpend.toFixed(2)}/mo`,
+        `Steady-state (EL+Infra, excl. R&D AI): ${ledger.breakEvenSubsSteadyState ?? 'N/A'} subs @ $${ledger.steadyStateCost.toFixed(2)}/mo`,
+        `Net rev/sub: $${ledger.netRevPerSub.toFixed(2)}`,
+      ].join(' \u00b7 ')
     : 'Cannot calculate'
 
   const keyRisks: string[] = []
