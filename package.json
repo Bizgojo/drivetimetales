@@ -4,7 +4,9 @@
   "scripts": {
     "dev": "next dev --hostname 0.0.0.0",
     "build": "next build",
-    "start": "next start"
+    "start": "next start",
+    "cfo:dry": "tsx --env-file=.env.local scripts/cfo-report/compile.ts --dry-run",
+    "cfo:run": "tsx --env-file=.env.local scripts/cfo-report/compile.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.71.2",
@@ -47,6 +49,7 @@
     "postcss": "8.4.39",
     "tailwindcss": "3.4.4",
     "ts-jest": "^29.4.11",
+    "tsx": "^4.23.13",
     "typescript": "5.5.3",
     "ws": "^8.19.0"
   }
