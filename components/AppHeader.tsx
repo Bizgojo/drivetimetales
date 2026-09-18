@@ -24,7 +24,15 @@ export default function AppHeader() {
     // to /go (ad teaser) when they arrived via the onboarding funnel.
     // Redirect to /home explicitly instead.
     if (pathname?.startsWith('/player/')) {
-      router.push('/home')
+      // APP-HEADER-PLAYER-001 (revised): step back through real history
+      // (Player -> Series -> Library -> Home). Only force /home when the user
+      // arrived via the /go ad teaser (onboarding funnel) or there is no history.
+      const cameFromGo = (document.referrer || '').includes('/go')
+      if (cameFromGo || window.history.length <= 1) {
+        router.push('/home')
+      } else {
+        router.back()
+      }
       return
     }
     if (pathname === '/' || window.history.length <= 1) {
