@@ -136,6 +136,7 @@ export default function LibraryPage() {
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [authWaitExpired, setAuthWaitExpired] = useState(false)
+  const [libraryReady, setLibraryReady] = useState(false)
   const [activeGenre, setActiveGenre] = useState('All')
   const [showMoreGenres, setShowMoreGenres] = useState(false)
   const [genreSlots, setGenreSlots] = useState<string[]>([])
@@ -304,6 +305,7 @@ export default function LibraryPage() {
           if (!cancelled && libraryData) {
             setUserLibrary(mergeLibraryWithLocalProgress(libraryData as LibraryRow[], user.id))
           }
+          setLibraryReady(true)
 
           const { data: reviewsData, error: reviewsError } = await supabase
             .from('reviews')
@@ -320,7 +322,7 @@ export default function LibraryPage() {
           setLoadError(err instanceof Error ? err.message : 'Library failed to load')
         }
       } finally {
-        if (!cancelled) setLoading(false)
+        if (!cancelled) { setLoading(false); setLibraryReady(true) }
       }
     })()
 
@@ -690,7 +692,7 @@ export default function LibraryPage() {
     return { inPlaylist, progress, completed, isNotForMe, reviewed }
   }
 
-  if (loading || (authLoading && !authWaitExpired)) {
+  if (loading || !libraryReady || (authLoading && !authWaitExpired)) {
     return (
       <div style={{ minHeight: '100vh', backgroundColor: '#0a0a0a' }}>
         <div style={{ padding: '40px 16px', color: 'white', textAlign: 'center', fontSize: '14px' }}>

@@ -60,13 +60,20 @@ export function buildSeriesPlaybackTarget(
   const playEpisode = inProgressEpisode || firstUncompletedEpisode || playlist[0]
   const playProgress = playEpisode ? progressByStoryId.get(playEpisode.id) : null
 
+  // RESUME-FIX: series counts as in-progress if a live episode is mid-play OR
+  // the user has completed at least one episode but not the whole series
+  // (finished EP1, EP2 not yet started -> still "Continue", not "Play series").
+  const anyCompleted = playlist.some((episode) => progressByStoryId.get(episode.id)?.completed)
+  const allCompleted = playlist.length > 0 && playlist.every((episode) => progressByStoryId.get(episode.id)?.completed)
+  const seriesInProgress = !!inProgressEpisode || (anyCompleted && !allCompleted)
+
   return {
     episodeId: playEpisode?.id || null,
     resumeSeconds:
       playProgress && !playProgress.completed && (playProgress.progress || 0) > 15
         ? Math.max(0, (playProgress.progress || 0))
         : 0,
-    isInProgress: !!inProgressEpisode,
+    isInProgress: seriesInProgress,
     playlist,
   }
 }
