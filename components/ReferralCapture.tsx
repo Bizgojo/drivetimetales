@@ -4,7 +4,8 @@
 // Mounts once in the root layout (next to UtmCapture). Renders nothing.
 //  1. On every pathname change: stash ?ref=CODE (localStorage + cookie) so it
 //     survives /welcome redirects and the Google/magic-link round-trip.
-//  2. Whenever a session exists and a code is stored: claim it via
+//  2. Whenever a session exists and a code is stored (except on /signup,
+//     which claims after the Stripe handoff starts): claim it via
 //     /api/referral/claim (process_referral). Retryable failures (users row
 //     not created yet, network) keep the code and retry with backoff.
 // Same pattern/rationale as UtmCapture: usePathname + window.location, no
@@ -27,6 +28,9 @@ export default function ReferralCapture() {
   }, [pathname])
 
   useEffect(() => {
+    // /signup owns claim timing: it claims only after Stripe checkout starts,
+    // because a failed checkout rolls the new account back (user/delete).
+    if (pathname === '/signup') return
     if (!accessToken || !readStoredReferral()) return
     let cancelled = false
     let timer: ReturnType<typeof setTimeout> | undefined

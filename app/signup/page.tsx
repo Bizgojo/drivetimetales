@@ -203,27 +203,6 @@ function SignUpContent() {
       console.error('[signup] attribution block threw (non-fatal):', utmErr)
     }
 
-    // REFERRAL-SIGNUP-001: record the referral (process_referral) BEFORE the
-    // Stripe handoff navigates away. Bounded so a slow claim never blocks
-    // checkout; anything unfinished stays stored and ReferralCapture retries
-    // when the user returns signed in.
-    if (referralCode) {
-      try {
-        const { data: { session: newSession } } = await supabaseBrowser.auth.getSession()
-        if (newSession?.access_token) {
-          const token = newSession.access_token
-          await Promise.race([
-            // Second try covers ReferralCapture's SIGNED_IN claim racing
-            // /api/user/create (user_row_pending) — the row exists by now.
-            claimStoredReferral(token).then(r => (r.done ? r : claimStoredReferral(token))),
-            new Promise(resolve => setTimeout(resolve, 4000)),
-          ])
-        }
-      } catch (refErr) {
-        console.error('[signup] referral claim failed (non-fatal):', refErr)
-      }
-    }
-
     try {
       // Referral overrides A/B trial (give them the better offer).
       // SECURITY: the checkout server now determines trial days from source=
@@ -262,6 +241,27 @@ function SignUpContent() {
           utm_source: attribution.utm_source || undefined,
           utm_campaign: attribution.utm_campaign || undefined,
         }, randomEventId('ic'))
+        // REFERRAL-SIGNUP-001: record the referral only once checkout is
+        // actually starting — if checkout fails, the rollback below deletes
+        // the account, and a referral recorded before that would leave the
+        // referrer's referral_count inflated. Bounded so a slow claim never
+        // blocks the Stripe handoff; anything unfinished stays stored and
+        // ReferralCapture retries when the user returns signed in.
+        if (referralCode) {
+          try {
+            const { data: { session: newSession } } = await supabaseBrowser.auth.getSession()
+            if (newSession?.access_token) {
+              const token = newSession.access_token
+              await Promise.race([
+                // Second try covers a user_row_pending race with /api/user/create.
+                claimStoredReferral(token).then(r => (r.done ? r : claimStoredReferral(token))),
+                new Promise(resolve => setTimeout(resolve, 4000)),
+              ])
+            }
+          } catch (refErr) {
+            console.error('[signup] referral claim failed (non-fatal):', refErr)
+          }
+        }
         window.location.href = data.url
       }
       else {
