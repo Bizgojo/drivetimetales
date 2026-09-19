@@ -5,6 +5,7 @@ import { AuthProvider } from '@/contexts/AuthContext'
 import PWABackGuard from '@/components/PWABackGuard';
 import UtmCapture from '@/components/UtmCapture';
 import ReferralCapture from '@/components/ReferralCapture';
+import OfflineBootstrap from '@/components/offline/OfflineBootstrap';
 import AppShell from '@/components/AppShell';
 import MetaPixel from '@/components/MetaPixel';
 import TikTokPixel from '@/components/TikTokPixel';
@@ -53,6 +54,7 @@ export default function RootLayout({
         <AuthProvider>
         <UtmCapture />
         <ReferralCapture />
+        <OfflineBootstrap />
           <PWABackGuard />
           <AppShell>{children}</AppShell>
         </AuthProvider>

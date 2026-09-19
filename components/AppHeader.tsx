@@ -2,7 +2,7 @@
 
 import Image from 'next/image'
 import { usePathname, useRouter } from 'next/navigation'
-import { User } from 'lucide-react'
+import { Download, User } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
 
 function getInitial(user: ReturnType<typeof useAuth>['user']) {
@@ -85,14 +85,27 @@ export default function AppHeader() {
           </span>
         </button>
 
-        <button
-          type="button"
-          onClick={() => router.push('/account')}
-          className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full bg-orange-500 text-lg font-bold text-white transition-colors hover:bg-orange-400"
-          aria-label={user ? 'Go to account' : 'Sign in or view account'}
-        >
-          {initial ? initial : <User className="h-6 w-6" aria-hidden="true" />}
-        </button>
+        <div className="flex items-center">
+          {/* OFFLINE-DL-001: Downloads entry point (signed-in users) */}
+          {user && (
+            <button
+              type="button"
+              onClick={() => router.push('/downloads')}
+              className="mr-2 flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full border border-orange-500/50 text-orange-400 transition-colors hover:bg-orange-500/10"
+              aria-label="Downloads"
+            >
+              <Download className="h-5 w-5" aria-hidden="true" />
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() => router.push('/account')}
+            className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full bg-orange-500 text-lg font-bold text-white transition-colors hover:bg-orange-400"
+            aria-label={user ? 'Go to account' : 'Sign in or view account'}
+          >
+            {initial ? initial : <User className="h-6 w-6" aria-hidden="true" />}
+          </button>
+        </div>
       </div>
     </header>
   )

@@ -9,6 +9,7 @@ import { trackPlayStart, trackPlayEnd, trackSpuriousEndedRecovered, type PlaySta
 import { useAuth } from '@/contexts/AuthContext'
 import ReviewModal from '@/components/ReviewModal'
 import InstallAppBanner from '@/components/InstallAppBanner'
+import DownloadButton from '@/components/offline/DownloadButton'
 import { requestInstallReoffer } from '@/lib/installReoffer'
 import {
   attachMediaSession, claimMediaSession, refreshMediaHandlers, releaseMediaSession, setMediaPlaybackState,
@@ -2639,6 +2640,8 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
           )}
           <h1 style={{ fontSize: playerSeriesTitle ? '18px' : '20px', fontWeight:800, margin:0, color:'white', textAlign:'center', lineHeight:1.2 }}>{story.title}</h1>
           <p style={{ color:'white', fontSize:'13px', margin:'3px 0 0', textAlign:'center', opacity:0.7 }}>by {story.author || 'Endless Tales'}</p>
+          {/* OFFLINE-DL-001: download this episode for no-signal playback */}
+          <DownloadButton storyId={storyId} />
           {/* Segment progress indicator removed — internal pipeline detail, not user-facing */}
           {/* Now Playing overlay — shown during playlist advance */}
           {nowPlayingLabel && (

@@ -1,0 +1,401 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0f172a">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<link rel="manifest" href="/manifest.json">
+<title>Endless Tales — Downloads</title>
+<!--
+  OFFLINE-DL-001: static offline player. Plain JS, NO Next.js code, so it
+  works with no signal: public/sw.js precaches this file and routes every
+  offline navigation here. Reads the downloads written by lib/offline/store.ts
+  (IndexedDB 'et-offline' v1 — keep the schema in sync with that file) and
+  plays them from blob: URLs.
+  License rule mirrors lib/offline/license.ts canPlayOffline(): free stories
+  always play; paid ones only while license.validUntil is in the future.
+  Progress is written to localStorage 'et_player_progress:<userId>' in the
+  lib/playerProgress.ts format, which the app merges when back online.
+-->
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: #020617; color: #fff; font: 16px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+         padding: max(16px, env(safe-area-inset-top)) 16px max(24px, env(safe-area-inset-bottom)); }
+  .wrap { max-width: 520px; margin: 0 auto; }
+  h1 { font-size: 20px; margin: 4px 0 2px; }
+  h1 span { color: #f97316; }
+  .muted { color: #94a3b8; font-size: 14px; }
+  .banner { border-radius: 12px; padding: 12px 14px; margin: 12px 0; font-size: 14px; }
+  .banner.warn { background: #422006; border: 1px solid #f97316; }
+  .banner.info { background: #0f172a; border: 1px solid #334155; }
+  .now { background: #0f172a; border: 1px solid #1e293b; border-radius: 16px; padding: 16px; margin: 14px 0; }
+  .now[hidden] { display: none; }
+  .cover { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 12px; background: #1e293b; }
+  .title { font-size: 20px; font-weight: 800; margin: 12px 0 2px; }
+  .bar { height: 10px; background: #1e293b; border-radius: 5px; margin: 14px 0 4px; cursor: pointer; }
+  .bar > div { height: 100%; width: 0; background: #f97316; border-radius: 5px; }
+  .times { display: flex; justify-content: space-between; color: #94a3b8; font-size: 13px; }
+  .controls { display: flex; justify-content: center; align-items: center; gap: 18px; margin-top: 14px; }
+  button { font: inherit; color: #fff; border: 0; cursor: pointer; }
+  .skip { width: 64px; height: 64px; border-radius: 50%; background: #1e293b; font-size: 15px; font-weight: 700; }
+  .play { width: 92px; height: 92px; border-radius: 50%; background: #f97316; font-size: 34px; }
+  .list { list-style: none; padding: 0; margin: 8px 0 0; }
+  .ep { display: flex; gap: 12px; align-items: center; padding: 10px; border-radius: 12px; background: #0f172a; margin-bottom: 8px; }
+  .ep img { width: 56px; height: 56px; border-radius: 8px; object-fit: cover; background: #1e293b; flex: none; }
+  .ep .meta { flex: 1; min-width: 0; }
+  .ep .t { font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .ep button { background: #f97316; border-radius: 10px; padding: 10px 14px; font-weight: 700; }
+  .ep button[disabled] { background: #334155; color: #94a3b8; cursor: default; }
+  a { color: #f97316; }
+  .empty { text-align: center; padding: 40px 12px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Endless <span>Tales</span> · Downloads</h1>
+  <div class="muted" id="status">Loading your downloads…</div>
+  <div id="licenseNote"></div>
+
+  <section class="now" id="now" hidden>
+    <img class="cover" id="nowCover" alt="">
+    <div class="title" id="nowTitle"></div>
+    <div class="muted" id="nowSub"></div>
+    <div class="bar" id="bar"><div id="barFill"></div></div>
+    <div class="times"><span id="tCur">0:00</span><span id="tTot">0:00</span></div>
+    <div class="controls">
+      <button class="skip" id="back" aria-label="Back 15 seconds">−15</button>
+      <button class="play" id="playBtn" aria-label="Play">▶</button>
+      <button class="skip" id="fwd" aria-label="Forward 30 seconds">+30</button>
+    </div>
+  </section>
+
+  <ul class="list" id="list"></ul>
+  <p class="muted" style="margin-top:18px">Back online? <a href="/home">Open Endless Tales</a> — opening the app while online keeps your downloads active.</p>
+</div>
+<audio id="audio" preload="auto" playsinline></audio>
+
+<script>
+(function () {
+  'use strict'
+  var DB_NAME = 'et-offline', DB_VERSION = 1
+  var SEEK_BACK = 15, SEEK_FWD = 30
+  var audio = document.getElementById('audio')
+  var $ = function (id) { return document.getElementById(id) }
+
+  var state = {
+    episodes: [], license: null, current: null,   // current: { ep, urls[], durs[], index, total, coverUrl }
+    objectUrls: [], lastSave: 0
+  }
+
+  // ── IndexedDB (read-only here) ────────────────────────────────────────────
+  function openDb() {
+    return new Promise(function (resolve, reject) {
+      var req = indexedDB.open(DB_NAME, DB_VERSION)
+      req.onupgradeneeded = function () {
+        var db = req.result
+        if (!db.objectStoreNames.contains('episodes')) db.createObjectStore('episodes', { keyPath: 'storyId' })
+        if (!db.objectStoreNames.contains('blobs')) db.createObjectStore('blobs')
+        if (!db.objectStoreNames.contains('meta')) db.createObjectStore('meta')
+      }
+      req.onsuccess = function () { resolve(req.result) }
+      req.onerror = function () { reject(req.error) }
+    })
+  }
+  var dbp = null
+  function get(store, key) {
+    dbp = dbp || openDb()
+    return dbp.then(function (db) {
+      return new Promise(function (resolve, reject) {
+        var r = db.transaction(store).objectStore(store)[key === undefined ? 'getAll' : 'get'](key)
+        r.onsuccess = function () { resolve(r.result) }
+        r.onerror = function () { reject(r.error) }
+      })
+    })
+  }
+
+  // ── License (mirrors lib/offline/license.ts canPlayOffline) ────────────────
+  function canPlay(ep) {
+    if (ep.isFree) return true
+    var l = state.license
+    return !!(l && l.validUntil && new Date(l.validUntil).getTime() > Date.now())
+  }
+  function fmtDate(iso) {
+    try { return new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) } catch (e) { return iso }
+  }
+  function fmtTime(s) {
+    s = Math.max(0, Math.floor(s || 0))
+    var h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60
+    return (h ? h + ':' + String(m).padStart(2, '0') : m) + ':' + String(sec).padStart(2, '0')
+  }
+
+  // ── Progress (lib/playerProgress.ts format) ─────────────────────────────────
+  function progressKey(ep) { return 'et_player_progress:' + (ep.userId || 'guest') }
+  function readProgress(ep) {
+    try {
+      var map = JSON.parse(localStorage.getItem(progressKey(ep)) || '{}')
+      return map[ep.storyId] || null
+    } catch (e) { return null }
+  }
+  function saveProgress(ep, seconds, completed) {
+    try {
+      var key = progressKey(ep)
+      var map = JSON.parse(localStorage.getItem(key) || '{}')
+      if (!map || typeof map !== 'object' || Array.isArray(map)) map = {}
+      var existing = map[ep.storyId] || {}
+      map[ep.storyId] = {
+        storyId: ep.storyId,
+        progress: Math.max(Math.floor(seconds), Math.floor(Number(existing.progress) || 0)),
+        completed: Boolean(completed || existing.completed),
+        durationSecs: state.current && state.current.total ? Math.floor(state.current.total) : (existing.durationSecs || null),
+        updatedAt: new Date().toISOString()
+      }
+      localStorage.setItem(key, JSON.stringify(map))
+    } catch (e) { /* storage full / private mode — playback must continue */ }
+  }
+
+  // ── Playback over the frozen segment queue ──────────────────────────────────
+  function globalTime() {
+    var c = state.current
+    if (!c) return 0
+    var t = 0
+    for (var i = 0; i < c.index; i++) t += c.durs[i] || 0
+    return t + (audio.currentTime || 0)
+  }
+  function loadSegment(i, offset, play) {
+    var c = state.current
+    c.index = i
+    audio.src = c.urls[i]
+    audio.onloadedmetadata = function () {
+      audio.onloadedmetadata = null
+      if (offset) audio.currentTime = Math.min(offset, Math.max(0, audio.duration - 0.5))
+      if (play) audio.play().catch(function () { render() })
+    }
+    audio.load()
+  }
+  function seekGlobal(t) {
+    var c = state.current
+    if (!c) return
+    t = Math.max(0, Math.min(t, c.total - 0.5))
+    var acc = 0
+    for (var i = 0; i < c.urls.length; i++) {
+      var d = c.durs[i] || 0
+      if (t < acc + d || i === c.urls.length - 1) {
+        if (i === c.index) { audio.currentTime = t - acc } else { loadSegment(i, t - acc, !audio.paused) }
+        break
+      }
+      acc += d
+    }
+    syncMedia()
+  }
+  function measure(url) {
+    return new Promise(function (resolve) {
+      var a = new Audio()
+      a.preload = 'metadata'
+      a.onloadedmetadata = function () { resolve(isFinite(a.duration) ? a.duration : 0) }
+      a.onerror = function () { resolve(0) }
+      a.src = url
+    })
+  }
+  function releaseUrls() {
+    state.objectUrls.forEach(function (u) { URL.revokeObjectURL(u) })
+    state.objectUrls = []
+  }
+
+  function start(ep, autoplay) {
+    if (!canPlay(ep)) { render(); return Promise.resolve() }
+    if (state.current) saveProgress(state.current.ep, globalTime(), false)
+    audio.pause()
+    releaseUrls()
+    return Promise.all(ep.segments.map(function (s) { return get('blobs', s.key) })).then(function (blobs) {
+      if (blobs.some(function (b) { return !b })) { $('status').textContent = 'This download is incomplete — remove it and download again while online.'; return }
+      var urls = blobs.map(function (b) { var u = URL.createObjectURL(b); state.objectUrls.push(u); return u })
+      var coverP = ep.coverKey ? get('blobs', ep.coverKey) : Promise.resolve(null)
+      return Promise.all([Promise.all(urls.map(measure)), coverP]).then(function (res) {
+        var durs = res[0], cover = res[1]
+        var coverUrl = cover ? URL.createObjectURL(cover) : '/icons/icon-512x512.png'
+        if (cover) state.objectUrls.push(coverUrl)
+        var total = durs.reduce(function (a, b) { return a + b }, 0) || (ep.durationMins || 0) * 60
+        state.current = { ep: ep, urls: urls, durs: durs, index: 0, total: total, coverUrl: coverUrl }
+        var saved = readProgress(ep)
+        var resume = saved && !saved.completed && saved.progress < total - 5 ? saved.progress : 0
+        setupMediaSession()
+        seekToStart(resume, autoplay)
+        render()
+      })
+    })
+  }
+  function seekToStart(t, play) {
+    var c = state.current, acc = 0
+    for (var i = 0; i < c.urls.length; i++) {
+      if (t < acc + (c.durs[i] || 0) || i === c.urls.length - 1) { loadSegment(i, t - acc, play); return }
+      acc += c.durs[i] || 0
+    }
+  }
+
+  function playable() { return state.episodes.filter(canPlay) }
+  function neighbour(delta) {
+    var list = playable(), c = state.current
+    if (!c) return null
+    var i = list.findIndex(function (e) { return e.storyId === c.ep.storyId })
+    return list[i + delta] || null
+  }
+
+  audio.addEventListener('ended', function () {
+    var c = state.current
+    if (!c) return
+    if (c.index < c.urls.length - 1) { loadSegment(c.index + 1, 0, true); return }
+    saveProgress(c.ep, c.total, true)
+    var next = neighbour(1)
+    if (next) start(next, true)
+    else { render(); syncMedia() }
+  })
+  audio.addEventListener('timeupdate', function () {
+    var now = Date.now()
+    if (state.current && now - state.lastSave > 5000) { state.lastSave = now; saveProgress(state.current.ep, globalTime(), false) }
+    renderProgress()
+  })
+  ;['play', 'pause', 'seeked', 'durationchange'].forEach(function (e) {
+    audio.addEventListener(e, function () {
+      if (e === 'pause' && state.current) saveProgress(state.current.ep, globalTime(), false)
+      render(); syncMedia()
+    })
+  })
+  document.addEventListener('visibilitychange', function () {
+    if (document.visibilityState === 'hidden' && state.current) saveProgress(state.current.ep, globalTime(), false)
+  })
+
+  // ── MediaSession (same actions as lib/mediaSession.ts, CAR-MEDIA-001) ──────
+  function setHandler(a, h) { try { navigator.mediaSession.setActionHandler(a, h) } catch (e) {} }
+  function setupMediaSession() {
+    if (!('mediaSession' in navigator) || !state.current) return
+    var ep = state.current.ep
+    var src = new URL(state.current.coverUrl, location.origin).href
+    navigator.mediaSession.metadata = new MediaMetadata({
+      title: ep.title,
+      artist: ep.seriesName || ep.author || '',
+      album: 'Endless Tales',
+      artwork: [96, 128, 192, 256, 384, 512].map(function (s) { return { src: src, sizes: s + 'x' + s } })
+    })
+    setHandler('play', function () { audio.play().catch(function () {}) })
+    setHandler('pause', function () { audio.pause() })
+    setHandler('seekbackward', function (d) { seekGlobal(globalTime() - ((d && d.seekOffset) || SEEK_BACK)) })
+    setHandler('seekforward', function (d) { seekGlobal(globalTime() + ((d && d.seekOffset) || SEEK_FWD)) })
+    setHandler('seekto', function (d) { if (d && typeof d.seekTime === 'number') seekGlobal(d.seekTime) })
+    setHandler('nexttrack', function () { var n = neighbour(1); if (n) start(n, true); else seekGlobal(globalTime() + SEEK_FWD) })
+    setHandler('previoustrack', function () {
+      if (globalTime() > 5) { seekGlobal(0); return }
+      var p = neighbour(-1); if (p) start(p, true); else seekGlobal(0)
+    })
+    console.log('[mediaSession] metadata set: "' + ep.title + '" — ' + (ep.seriesName || ep.author || '') + ' (Endless Tales); handlers: play, pause, previoustrack, nexttrack, seekbackward, seekforward, seekto')
+  }
+  function syncMedia() {
+    if (!('mediaSession' in navigator) || !state.current) return
+    navigator.mediaSession.playbackState = audio.paused ? 'paused' : 'playing'
+    try {
+      var total = state.current.total
+      if (total > 0) navigator.mediaSession.setPositionState({ duration: total, position: Math.min(globalTime(), total), playbackRate: 1 })
+    } catch (e) {}
+  }
+
+  // ── UI ──────────────────────────────────────────────────────────────────────
+  $('playBtn').onclick = function () { if (audio.paused) audio.play().catch(function () {}); else audio.pause() }
+  $('back').onclick = function () { seekGlobal(globalTime() - SEEK_BACK) }
+  $('fwd').onclick = function () { seekGlobal(globalTime() + SEEK_FWD) }
+  $('bar').onclick = function (e) {
+    var c = state.current, r = this.getBoundingClientRect()
+    if (c && r.width) seekGlobal(((e.clientX - r.left) / r.width) * c.total)
+  }
+
+  function renderProgress() {
+    var c = state.current
+    if (!c) return
+    var t = globalTime()
+    $('barFill').style.width = (c.total ? Math.min(100, (t / c.total) * 100) : 0) + '%'
+    $('tCur').textContent = fmtTime(t)
+    $('tTot').textContent = fmtTime(c.total)
+  }
+
+  function render() {
+    var l = state.license, n = state.episodes.length
+    var paid = state.episodes.some(function (e) { return !e.isFree })
+    $('status').textContent = n ? (navigator.onLine ? '' : 'You’re offline — downloaded episodes still play. ') + n + ' downloaded episode' + (n === 1 ? '' : 's') : ''
+    var note = ''
+    if (paid && l && l.validUntil && new Date(l.validUntil).getTime() > Date.now()) {
+      note = '<div class="banner info">Offline access is active until <b>' + fmtDate(l.validUntil) + '</b>. Open Endless Tales while online to extend it.</div>'
+    } else if (paid) {
+      note = '<div class="banner warn">Your offline access has expired. Connect to the internet and open Endless Tales to keep listening to your downloads.</div>'
+    }
+    $('licenseNote').innerHTML = note
+
+    var c = state.current
+    $('now').hidden = !c
+    if (c) {
+      $('nowCover').src = c.coverUrl
+      $('nowTitle').textContent = c.ep.title
+      $('nowSub').textContent = [c.ep.seriesName, c.ep.episodeNumber ? 'Episode ' + c.ep.episodeNumber : null, c.ep.author].filter(Boolean).join(' · ')
+      $('playBtn').textContent = audio.paused ? '▶' : '⏸'
+      $('playBtn').setAttribute('aria-label', audio.paused ? 'Play' : 'Pause')
+      renderProgress()
+    }
+
+    var list = $('list')
+    list.innerHTML = ''
+    if (!n) {
+      list.innerHTML = '<li class="empty muted">No downloads yet. While online, open an episode in Endless Tales and tap <b>Download</b>.</li>'
+      return
+    }
+    state.episodes.forEach(function (ep) {
+      var li = document.createElement('li')
+      li.className = 'ep'
+      var img = document.createElement('img')
+      img.alt = ''
+      if (listCovers[ep.storyId]) img.src = listCovers[ep.storyId]
+      else if (ep.coverKey) get('blobs', ep.coverKey).then(function (b) { if (b) { img.src = listCovers[ep.storyId] = URL.createObjectURL(b) } })
+      var meta = document.createElement('div')
+      meta.className = 'meta'
+      var t = document.createElement('div'); t.className = 't'; t.textContent = ep.title
+      var s = document.createElement('div'); s.className = 'muted'
+      var p = readProgress(ep)
+      s.textContent = [ep.seriesName ? ep.seriesName + (ep.episodeNumber ? ' · Ep ' + ep.episodeNumber : '') : ep.author,
+                       p && p.completed ? 'Finished' : (p && p.progress ? fmtTime(p.progress) + ' in' : null)].filter(Boolean).join(' · ')
+      meta.appendChild(t); meta.appendChild(s)
+      var b = document.createElement('button')
+      var ok = canPlay(ep)
+      var isCur = c && c.ep.storyId === ep.storyId
+      b.textContent = !ok ? 'Expired' : isCur ? (audio.paused ? 'Resume' : 'Playing') : 'Play'
+      b.disabled = !ok
+      b.onclick = function () { if (isCur) { audio.play().catch(function () {}) } else { start(ep, true) } }
+      li.appendChild(img); li.appendChild(meta); li.appendChild(b)
+      list.appendChild(li)
+    })
+  }
+
+  var listCovers = {} // storyId → object URL, created once (render() runs on every play/pause)
+
+  // Order: series episodes in episode order, grouped by series; then standalones.
+  function sortEpisodes(a, b) {
+    var sa = a.seriesName || '￿' + a.title, sb = b.seriesName || '￿' + b.title
+    if (sa !== sb) return sa < sb ? -1 : 1
+    return (a.episodeNumber || 0) - (b.episodeNumber || 0)
+  }
+
+  if (!('indexedDB' in window)) { $('status').textContent = 'This browser can’t store downloads.'; return }
+  Promise.all([get('episodes'), get('meta', 'license')]).then(function (res) {
+    state.episodes = (res[0] || []).sort(sortEpisodes)
+    state.license = res[1] || null
+    render()
+    var wanted = decodeURIComponent((location.hash || '').slice(1))
+    var ep = state.episodes.find(function (e) { return e.storyId === wanted })
+    if (ep) start(ep, false)
+  }).catch(function (e) {
+    console.error('[offline-player] failed to read downloads', e)
+    $('status').textContent = 'Couldn’t read your downloads on this device.'
+  })
+  window.addEventListener('online', render)
+  window.addEventListener('offline', render)
+})()
+</script>
+</body>
+</html>
