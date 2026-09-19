@@ -107,8 +107,15 @@ END;
 $$ LANGUAGE plpgsql;
 
 -- ============================================
--- FUNCTION: Process referral and award credits
+-- FUNCTION: Process referral (RECORD ONLY — no payout)
 -- ============================================
+-- REFERRAL-SIGNUP-001 (2026-09-19): the app no longer uses credits. This
+-- function only RECORDS a completed referral. The reward (free days for BOTH
+-- sides, amounts from referral_offers) is paid by the app in
+-- app/api/referral/claim/route.ts, which flips referrer_credited /
+-- referred_credited as it grants each side. Offer choice: the referrer's own
+-- default_offer_id if it is an active free_days offer, else the default
+-- active free_days offer (matches what /signup's invite banner shows).
 
 CREATE OR REPLACE FUNCTION process_referral(
   p_referrer_code VARCHAR(20),
@@ -117,95 +124,65 @@ CREATE OR REPLACE FUNCTION process_referral(
 RETURNS JSONB AS $$
 DECLARE
   v_referrer_id UUID;
+  v_referrer_offer_id UUID;
+  v_offer_id UUID;
   v_referral_id UUID;
-  v_new_referral_count INTEGER;
-  v_new_tier VARCHAR(20);
-  v_tier_bonus INTEGER;
 BEGIN
-  -- Find referrer by code
-  SELECT id INTO v_referrer_id FROM users WHERE referral_code = UPPER(p_referrer_code);
-  
+  -- Find referrer by code, case-insensitively: legacy codes from the old
+  -- /refer fallback were mixed case (e.g. 'Marc7QX'). Oldest account wins
+  -- if two codes differ only by case.
+  SELECT id, default_offer_id INTO v_referrer_id, v_referrer_offer_id
+  FROM users WHERE UPPER(referral_code) = UPPER(p_referrer_code)
+  ORDER BY created_at
+  LIMIT 1;
+
   IF v_referrer_id IS NULL THEN
     RETURN jsonb_build_object('success', false, 'error', 'Invalid referral code');
   END IF;
-  
+
   -- Can't refer yourself
   IF v_referrer_id = p_referred_user_id THEN
     RETURN jsonb_build_object('success', false, 'error', 'Cannot refer yourself');
   END IF;
-  
+
   -- Check if user already referred
   IF EXISTS (SELECT 1 FROM referrals WHERE referred_id = p_referred_user_id) THEN
     RETURN jsonb_build_object('success', false, 'error', 'User already referred by someone');
   END IF;
-  
-  -- Create referral record
-  INSERT INTO referrals (referrer_id, referred_id, status)
-  VALUES (v_referrer_id, p_referred_user_id, 'pending')
-  RETURNING id INTO v_referral_id;
-  
-  -- Update referred user's referred_by
-  UPDATE users SET referred_by = v_referrer_id WHERE id = p_referred_user_id;
-  
-  -- Award credits to referred user (3 credits)
-  UPDATE users SET credits = credits + 3 WHERE id = p_referred_user_id;
-  
-  -- Log the reward
-  INSERT INTO referral_rewards (user_id, referral_id, reward_type, credits_awarded, description)
-  VALUES (p_referred_user_id, v_referral_id, 'referred_credits', 3, 'Welcome bonus from referral');
-  
-  -- Update referral status
-  UPDATE referrals SET referred_credited = true WHERE id = v_referral_id;
-  
-  -- Award credits to referrer (3 credits)
-  UPDATE users SET 
-    credits = credits + 3,
-    referral_count = referral_count + 1,
-    referral_credits_earned = referral_credits_earned + 3
-  WHERE id = v_referrer_id
-  RETURNING referral_count INTO v_new_referral_count;
-  
-  -- Log the reward
-  INSERT INTO referral_rewards (user_id, referral_id, reward_type, credits_awarded, description)
-  VALUES (v_referrer_id, v_referral_id, 'referrer_credits', 3, 'Referral reward for new signup');
-  
-  -- Update referral status
-  UPDATE referrals SET 
-    referrer_credited = true, 
-    status = 'completed',
-    completed_at = NOW()
-  WHERE id = v_referral_id;
-  
-  -- Check for tier upgrades
-  SELECT tier_name, bonus_credits INTO v_new_tier, v_tier_bonus
-  FROM referral_tiers 
-  WHERE min_referrals <= v_new_referral_count
-  ORDER BY min_referrals DESC
-  LIMIT 1;
-  
-  -- Update tier if changed
-  IF v_new_tier IS NOT NULL THEN
-    UPDATE users SET referral_tier = v_new_tier WHERE id = v_referrer_id;
-    
-    -- Award tier bonus if this is a tier milestone (3, 5, 10)
-    IF v_new_referral_count IN (3, 5, 10) AND v_tier_bonus > 0 THEN
-      UPDATE users SET credits = credits + v_tier_bonus WHERE id = v_referrer_id;
-      
-      INSERT INTO referral_rewards (user_id, referral_id, reward_type, credits_awarded, tier_at_time, description)
-      VALUES (v_referrer_id, v_referral_id, 'tier_bonus', v_tier_bonus, v_new_tier, 'Tier milestone bonus');
-    END IF;
+
+  -- Offer: referrer's own active free_days offer, else the default one
+  IF v_referrer_offer_id IS NOT NULL THEN
+    SELECT id INTO v_offer_id FROM referral_offers
+    WHERE id = v_referrer_offer_id AND is_active AND offer_type = 'free_days';
   END IF;
-  
+  IF v_offer_id IS NULL THEN
+    SELECT id INTO v_offer_id FROM referral_offers
+    WHERE is_default AND is_active AND offer_type = 'free_days'
+    ORDER BY created_at DESC
+    LIMIT 1;
+  END IF;
+
+  -- Record the referral (UNIQUE(referred_id) guards concurrent calls)
+  INSERT INTO referrals (referrer_id, referred_id, offer_id, status, completed_at)
+  VALUES (v_referrer_id, p_referred_user_id, v_offer_id, 'completed', NOW())
+  RETURNING id INTO v_referral_id;
+
+  UPDATE users SET referred_by = v_referrer_id WHERE id = p_referred_user_id;
+  UPDATE users SET referral_count = COALESCE(referral_count, 0) + 1 WHERE id = v_referrer_id;
+
   RETURN jsonb_build_object(
-    'success', true, 
+    'success', true,
     'referral_id', v_referral_id,
-    'referrer_credits', 3,
-    'referred_credits', 3,
-    'new_tier', v_new_tier,
-    'tier_bonus', COALESCE(v_tier_bonus, 0)
+    'referrer_id', v_referrer_id,
+    'offer_id', v_offer_id
   );
 END;
 $$ LANGUAGE plpgsql;
+
+-- Only the app's service role may call this (it writes referred_by for an
+-- arbitrary user id). PostgreSQL grants EXECUTE to PUBLIC by default.
+REVOKE EXECUTE ON FUNCTION process_referral(VARCHAR, UUID) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION process_referral(VARCHAR, UUID) TO service_role;
 
 -- ============================================
 -- TRIGGER: Auto-generate referral code for new users

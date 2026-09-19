@@ -4,6 +4,7 @@ import './globals.css';
 import { AuthProvider } from '@/contexts/AuthContext'
 import PWABackGuard from '@/components/PWABackGuard';
 import UtmCapture from '@/components/UtmCapture';
+import ReferralCapture from '@/components/ReferralCapture';
 import AppShell from '@/components/AppShell';
 import MetaPixel from '@/components/MetaPixel';
 import TikTokPixel from '@/components/TikTokPixel';
@@ -51,6 +52,7 @@ export default function RootLayout({
       <body className="bg-gray-950 text-white min-h-screen antialiased">
         <AuthProvider>
         <UtmCapture />
+        <ReferralCapture />
           <PWABackGuard />
           <AppShell>{children}</AppShell>
         </AuthProvider>

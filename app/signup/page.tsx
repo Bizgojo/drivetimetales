@@ -4,6 +4,8 @@ import { useState, useEffect, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
 import { supabase } from '@/lib/supabase'
+import { supabaseBrowser } from '@/lib/supabase-browser'
+import { claimStoredReferral, normalizeReferralCode, readStoredReferral } from '@/lib/referral'
 import { buildAttributionUpdatePayload, hasUtmAttribution, normalizePromoCode, readSignupAttribution, readStoredUtm } from '@/lib/utm'
 import { normalizeEmail } from '@/lib/email'
 import { applyPromoTrialDays } from '@/lib/promo'
@@ -57,10 +59,7 @@ function SignUpContent() {
   const [loading, setLoading] = useState(false)
   const [referralCode, setReferralCode] = useState<string | null>(null)
   const [referrerName, setReferrerName] = useState<string | null>(null)
-  const [referrerId, setReferrerId] = useState<string | null>(null)
-  const [referrerEmail, setReferrerEmail] = useState<string | null>(null)
   const [offer, setOffer] = useState<Offer | null>(null)
-  const [referralId, setReferralId] = useState<string | null>(null)
   const [trialDays, setTrialDays] = useState(7)
   const [trialVariant, setTrialVariant] = useState<'A' | 'B'>('A')
   const [billingCycle, setBillingCycle] = useState<'monthly' | 'annual'>('monthly')
@@ -110,8 +109,10 @@ function SignUpContent() {
     const { days, variant } = getTrialVariant()
     setTrialDays(urlSource === 'go' ? GO_BASE_TRIAL_DAYS : days)
     setTrialVariant(variant)
-    const ref = searchParams.get('ref')
-    if (ref) { setReferralCode(ref); trackOpenAndFetchReferrer(ref) }
+    // REFERRAL-SIGNUP-001: URL first, else the code ReferralCapture stored
+    // earlier in the visit (e.g. landed on /welcome?ref=, browsed, came back).
+    const ref = normalizeReferralCode(searchParams.get('ref')) || readStoredReferral()
+    if (ref) { setReferralCode(ref); fetchReferrer(ref) }
     setPromoCode(normalizePromoCode(searchParams.get('promo') || searchParams.get('code')))
   }, [searchParams])
 
@@ -141,29 +142,17 @@ function SignUpContent() {
     return () => { cancelled = true; controller.abort(); clearTimeout(timer) }
   }, [promoCode])
 
-  async function sendNotification(data: any) {
-    try {
-      await fetch('/api/referral/notify', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) })
-    } catch (e) { console.error('Notification failed:', e) }
-  }
-
-  async function trackOpenAndFetchReferrer(code: string) {
-    const { data: referrer } = await supabase.from('users').select('id, email, first_name, display_name, default_offer_id').eq('referral_code', code).single()
+  // Referrer lookup for the invite banner + offer. Read-only: the referral
+  // itself is recorded by process_referral via /api/referral/claim after the
+  // account exists (REFERRAL-SIGNUP-001). The old client-side inserts into
+  // `referrals` ran as anon with a NULL referred_id and never succeeded.
+  async function fetchReferrer(code: string) {
+    const { data: referrer } = await supabase.from('users').select('id, first_name, display_name, default_offer_id').eq('referral_code', code).single()
     if (referrer) {
-      const name = referrer.first_name || referrer.display_name || 'A friend'
-      setReferrerName(name); setReferrerId(referrer.id); setReferrerEmail(referrer.email)
+      setReferrerName(referrer.first_name || referrer.display_name || 'A friend')
       let offerId = referrer.default_offer_id
       if (!offerId) { const { data: defaultOffer } = await supabase.from('referral_offers').select('id').eq('is_default', true).eq('is_active', true).single(); if (defaultOffer) offerId = defaultOffer.id }
       if (offerId) { const { data: offerData } = await supabase.from('referral_offers').select('*').eq('id', offerId).single(); if (offerData) setOffer(offerData) }
-      const { data: existingReferral } = await supabase.from('referrals').select('id, opened_at').eq('referrer_id', referrer.id).is('referred_id', null).order('created_at', { ascending: false }).limit(1).single()
-      if (existingReferral && !existingReferral.opened_at) {
-        await supabase.from('referrals').update({ opened_at: new Date().toISOString() }).eq('id', existingReferral.id)
-        setReferralId(existingReferral.id)
-        await sendNotification({ referralId: existingReferral.id, type: 'referral_opened', referrerEmail: referrer.email, referrerName: name })
-      } else if (!existingReferral) {
-        const { data: newReferral } = await supabase.from('referrals').insert({ referrer_id: referrer.id, offer_id: offerId, status: 'invited', opened_at: new Date().toISOString() }).select('id').single()
-        if (newReferral) { setReferralId(newReferral.id); await sendNotification({ referralId: newReferral.id, type: 'referral_opened', referrerEmail: referrer.email, referrerName: name }) }
-      } else { setReferralId(existingReferral.id) }
     }
   }
 
@@ -214,15 +203,6 @@ function SignUpContent() {
       console.error('[signup] attribution block threw (non-fatal):', utmErr)
     }
 
-    // Handle referral tracking
-    if (referralId && referrerId) {
-      await supabase.from('referrals').update({ referred_id: user.id, referred_email: normalizedEmail, status: 'signed_up' }).eq('id', referralId)
-      if (referrerEmail) await sendNotification({ referralId, type: 'referral_signed_up', referrerEmail, referrerName: referrerName || 'Friend', referredName: firstName })
-    } else if (referrerId && !referralId) {
-      const { data: newRef } = await supabase.from('referrals').insert({ referrer_id: referrerId, referred_id: user.id, referred_email: normalizedEmail, offer_id: offer?.id, status: 'signed_up', opened_at: new Date().toISOString() }).select('id').single()
-      if (referrerEmail && newRef) await sendNotification({ referralId: newRef.id, type: 'referral_signed_up', referrerEmail, referrerName: referrerName || 'Friend', referredName: firstName })
-    }
-
     try {
       // Referral overrides A/B trial (give them the better offer).
       // SECURITY: the checkout server now determines trial days from source=
@@ -261,6 +241,27 @@ function SignUpContent() {
           utm_source: attribution.utm_source || undefined,
           utm_campaign: attribution.utm_campaign || undefined,
         }, randomEventId('ic'))
+        // REFERRAL-SIGNUP-001: record the referral only once checkout is
+        // actually starting — if checkout fails, the rollback below deletes
+        // the account, and a referral recorded before that would leave the
+        // referrer's referral_count inflated. Bounded so a slow claim never
+        // blocks the Stripe handoff; anything unfinished stays stored and
+        // ReferralCapture retries when the user returns signed in.
+        if (referralCode) {
+          try {
+            const { data: { session: newSession } } = await supabaseBrowser.auth.getSession()
+            if (newSession?.access_token) {
+              const token = newSession.access_token
+              await Promise.race([
+                // Second try covers a user_row_pending race with /api/user/create.
+                claimStoredReferral(token).then(r => (r.done ? r : claimStoredReferral(token))),
+                new Promise(resolve => setTimeout(resolve, 4000)),
+              ])
+            }
+          } catch (refErr) {
+            console.error('[signup] referral claim failed (non-fatal):', refErr)
+          }
+        }
         window.location.href = data.url
       }
       else {

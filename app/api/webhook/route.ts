@@ -5,6 +5,7 @@ import { Resend } from 'resend'
 import { isActivatableStatus, planFields } from '@/lib/webhookGuards'
 import { sendServerEvent } from '@/lib/tracking/capi'
 import { startTrialEventId, subscribeEventId } from '@/lib/tracking/events'
+import { payReferrerAfterFirstPayment } from '@/lib/referralPayout'
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, { apiVersion: '2023-10-16' })
 
@@ -216,6 +217,25 @@ export async function POST(request: NextRequest) {
         }
       } catch (fpdCatch) {
         console.error('[webhook] first_paid_date block threw (non-fatal):', fpdCatch)
+      }
+
+      // REFERRAL-SIGNUP-001 (Option A): pay the REFERRER only once the referred
+      // friend has actually paid. amount_paid > 0 is required — Stripe also
+      // sends invoice.paid for the $0 trial-start invoice, which must NOT pay
+      // out (a throwaway signup that cancels in trial earns nothing).
+      // Exactly-once via referrals.referrer_credited false→true, so the
+      // earliest non-zero paid invoice (= first payment) pays and every later
+      // invoice / webhook retry is a no-op. Non-fatal: if the grant fails the
+      // flag is reverted and the next paid invoice retries.
+      if ((invoice.amount_paid || 0) > 0) {
+        try {
+          const payout = await payReferrerAfterFirstPayment(supabase, userId)
+          if (payout?.days) {
+            console.log(`[webhook] referral ${payout.referralId}: referrer ${payout.referrerId} +${payout.days} free days (friend ${userId} first payment, invoice ${invoice.id})`)
+          }
+        } catch (refErr) {
+          console.error('[webhook] referrer payout failed (non-fatal, retries on next paid invoice):', refErr)
+        }
       }
 
       break
