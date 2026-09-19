@@ -242,7 +242,7 @@ function LandingContent() {
             fontWeight: 300, color: 'rgba(240,236,228,0.82)', lineHeight: 1.6,
             maxWidth: '540px', margin: '0 auto 2.5rem'
           }}>
-            Hundreds of stories across every genre — mystery, comedy, sci-fi, history, horror, classics, and more. Hundreds of 15–20 minute episodes in series you can binge, plus hundreds of 30–90 minute standalone stories. Crafted for truckers, commuters, and road trippers. Hands-free. Eyes on the road. Mind somewhere extraordinary.
+            Dozens of audio stories across every genre — mystery, comedy, sci-fi, history, horror, classics, and more — with new ones added every week. Binge-worthy 15–20 minute episodes in series, plus standalone stories. Crafted for truckers, commuters, and road trippers. Hands-free. Eyes on the road. Mind somewhere extraordinary.
           </p>
 
           <div className="land-fade4" style={{
@@ -311,7 +311,7 @@ function LandingContent() {
           gap: '1.5rem', maxWidth: '960px', margin: '0 auto'
         }}>
           {[
-            { icon: '🎧', title: 'Hundreds of Stories', desc: 'Hundreds of 15–20 minute episodes across series you can binge, plus hundreds of standalone stories from 30 to 90 minutes. Mystery, comedy, sci-fi, horror, classics, educational — whatever you\'re in the mood for.' },
+            { icon: '🎧', title: 'New Stories Every Week', desc: 'Dozens of audio stories and counting — 15–20 minute episodes across series you can binge, plus standalone stories, with new ones added every week. Mystery, comedy, sci-fi, horror, classics, educational — whatever you\'re in the mood for.' },
             { icon: '🎭', title: 'Full-Cast Productions', desc: 'Professional voice actors, original music scores, and cinematic sound effects. Every story is a complete audio experience, not just someone reading aloud.' },
             { icon: '🛣️', title: 'Hands-Free Controls', desc: 'Large buttons, simple gestures, sticky playback bar. Designed so you never need to look at your phone while driving.' },
             { icon: '📚', title: 'Something for Everyone', desc: 'Learn something new with our educational series. Laugh out loud with comedy. Get lost in a thriller. Rediscover the classics. New stories added every week.' },
@@ -461,7 +461,7 @@ function LandingContent() {
         <p style={{
           color: 'rgba(240,236,228,0.82)', fontSize: '1.05rem', fontWeight: 300,
           maxWidth: '500px', margin: '0 auto 2.5rem', lineHeight: 1.6
-        }}>Join thousands of drivers who turned dead miles into the best part of their day.</p>
+        }}>Turn dead miles into the best part of your day.</p>
         <Link href={ctaHref} className="land-cta" style={{
           display: 'inline-flex', alignItems: 'center', gap: '10px',
           background: '#f0a030', color: '#0a0a0f',

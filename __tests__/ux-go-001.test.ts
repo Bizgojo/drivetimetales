@@ -105,7 +105,7 @@ describe('UX-GO-001 CTA-002: completion state copy (byte-exact)', () => {
   })
 
   test('completion copy default (STANDALONE-safe — bare /go): Marc msg 3015 heading + button, footnote REMOVED (CTA-004)', () => {
-    expect(GO_CTA_COPY_COMPLETED.heading).toBe("And that's the story — there are hundreds more.")
+    expect(GO_CTA_COPY_COMPLETED.heading).toBe("And that's the story — there are dozens more, with new ones every week.")
     // Marc verbatim (msg 3015) — replaces the earlier build's
     // 'Hear what happens next →'.
     expect(GO_CTA_COPY_COMPLETED.buttonLabel).toBe("Hear what happens next →")
@@ -133,7 +133,7 @@ describe('UX-GO-001 CTA-002: completion state copy (byte-exact)', () => {
     // Grave configures NO completedHeading → standalone-safe fallback.
     expect(GO_SAMPLE_STORY.completedHeading).toBeUndefined()
     expect(getGoCtaCopy(true, GO_SAMPLE_STORY)).toBe(GO_CTA_COPY_COMPLETED)
-    expect(getGoCtaCopy(true, GO_SAMPLE_STORY).heading).toBe("And that's the story — there are hundreds more.")
+    expect(getGoCtaCopy(true, GO_SAMPLE_STORY).heading).toBe("And that's the story — there are dozens more, with new ones every week.")
     // No story at all (defensive) → same standalone-safe default.
     expect(getGoCtaCopy(true)).toBe(GO_CTA_COPY_COMPLETED)
   })

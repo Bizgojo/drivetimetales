@@ -58,16 +58,16 @@ export default function AboutPage() {
         {/* Stats */}
         <div className="grid grid-cols-3 gap-3 mb-6">
           <div className="bg-gray-900 border border-gray-800 rounded-xl p-3 text-center">
-            <p className="text-2xl font-bold text-orange-400">500+</p>
-            <p className="text-white text-xs">Stories</p>
+            <p className="text-lg font-bold text-orange-400">Dozens</p>
+            <p className="text-white text-xs">of audio stories</p>
           </div>
           <div className="bg-gray-900 border border-gray-800 rounded-xl p-3 text-center">
-            <p className="text-2xl font-bold text-orange-400">12</p>
-            <p className="text-white text-xs">Categories</p>
+            <p className="text-lg font-bold text-orange-400">Weekly</p>
+            <p className="text-white text-xs">new stories</p>
           </div>
           <div className="bg-gray-900 border border-gray-800 rounded-xl p-3 text-center">
-            <p className="text-2xl font-bold text-orange-400">50K+</p>
-            <p className="text-white text-xs">Listeners</p>
+            <p className="text-lg font-bold text-orange-400">Hands-free</p>
+            <p className="text-white text-xs">built for driving</p>
           </div>
         </div>
 
