@@ -33,6 +33,7 @@
 // =============================================================================
 
 import { useState, useRef, useCallback, useEffect } from 'react'
+import { attachMediaSession, MEDIA_ALBUM } from '@/lib/mediaSession'
 import { useSearchParams } from 'next/navigation'
 
 // ─── Bell promo audio URLs (Supabase public storage, status=audio_ready) ─────
@@ -189,6 +190,9 @@ export default function GoInvitationContent({ arm: armProp }: GoInvitationConten
 
   const audioRef   = useRef<HTMLAudioElement | null>(null)
   const welcomeRef = useRef<HTMLAudioElement | null>(null)
+
+  // CAR-MEDIA-001: lock-screen / Bluetooth controls for the promo audio.
+  useEffect(() => attachMediaSession(audioRef.current, () => ({ title: 'Your first listen', artist: MEDIA_ALBUM, album: MEDIA_ALBUM, artworkUrl: getCoverUrl(arm) })), [arm])
 
   // ── "Listen in…" pressed → load + play arm's first promo ────────────────────
   const handleStart = useCallback(() => {

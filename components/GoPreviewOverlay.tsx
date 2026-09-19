@@ -22,6 +22,7 @@
 'use client'
 
 import { useState, useEffect, useCallback, useRef } from 'react'
+import { attachMediaSession, MEDIA_ALBUM } from '@/lib/mediaSession'
 import Image from 'next/image'
 
 // =============================================================================
@@ -122,6 +123,13 @@ export default function GoPreviewOverlay({
   const startedFiredRef = useRef(false)
   const completedFiredRef = useRef(false)
   const rafRef = useRef<number | null>(null)
+
+  // CAR-MEDIA-001: claim the lock-screen / car controls only once the preview
+  // is audible — a muted autoplay preview must not take over the controls.
+  useEffect(() => {
+    if (isMuted) return
+    return attachMediaSession(audioRef.current, { title: 'Preview', artist: MEDIA_ALBUM, album: MEDIA_ALBUM, artworkUrl: coverUrl })
+  }, [isMuted, coverUrl])
 
   // Fetch + parse the WebVTT captions file
   useEffect(() => {
