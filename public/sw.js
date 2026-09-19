@@ -1,4 +1,9 @@
-// Endless Tales Service Worker v8
+// Endless Tales Service Worker v9
+// v9 (OFFLINE-DL-001, 2026-09-19): offline downloads. Precaches the static
+// /offline-player.html (plain JS, no Next chunks — the chunk policy below is
+// unchanged) and routes every offline navigation to it; downloaded audio
+// lives in IndexedDB, not here. Download fetches carry ?et_offline_dl=1 and
+// are skipped by the audio handler so a download isn't stored twice.
 // Full offline support: app shell + audio caching
 // v7 (WALK-BUG-0713, 2026-07-13): cache-name bump to force-purge stale shells.
 // Devices whose SW predated the isNextScriptChunk exemption were serving old
@@ -20,6 +25,7 @@ const SHELL_CACHE  = 'et-shell-v7'
 const AUDIO_CACHE  = 'et-audio-v1'
 
 // App shell pages to cache on install
+const OFFLINE_PLAYER_URL = '/offline-player.html'
 const SHELL_URLS = [
   '/offline.html',
   '/home',
@@ -71,8 +77,8 @@ self.addEventListener('install', e => {
   e.waitUntil(
     caches.open(SHELL_CACHE)
       .then(cache => {
-        // Cache offline page first (must succeed), then try shell pages
-        return cache.add('/offline.html').then(() =>
+        // Cache offline pages first (must succeed), then try shell pages
+        return cache.addAll(['/offline.html', OFFLINE_PLAYER_URL]).then(() =>
           Promise.allSettled(SHELL_URLS.slice(1).map(url =>
             fetch(url, { cache: 'reload' })
               .then(res => { if (res.ok) cache.put(url, res) })
@@ -115,8 +121,10 @@ self.addEventListener('fetch', e => {
     url.includes('hot-update')
   ) return
 
-  // Audio files: range-aware cache-first (ORION-SW-RANGE-001)
-  if (isAudioRequest(url) && isAudioDomain(url)) {
+  // Audio files: range-aware cache-first (ORION-SW-RANGE-001).
+  // OFFLINE-DL-001: download fetches (marked et_offline_dl=1) go straight to
+  // the network — lib/offline/download.ts stores them in IndexedDB itself.
+  if (isAudioRequest(url) && isAudioDomain(url) && !url.includes('et_offline_dl=1')) {
     e.respondWith(serveAudio(e.request))
     return
   }
@@ -156,12 +164,11 @@ self.addEventListener('fetch', e => {
           return response
         })
         .catch(async () => {
-          // Offline: serve from cache
-          const cached = await caches.match(e.request)
-          if (cached) return cached
-          // Fallback to cached home page for any app route
-          const home = await caches.match('/home')
-          if (home) return home
+          // OFFLINE-DL-001: offline → the static downloads player. Cached Next
+          // pages can't run offline (script chunks are never cached), so the
+          // old cached-/home fallback only ever showed a dead shell.
+          const player = await caches.match(OFFLINE_PLAYER_URL)
+          if (player) return player
           // Last resort: offline page
           return caches.match('/offline.html')
             .then(r => r || new Response('Offline', { status: 503 }))

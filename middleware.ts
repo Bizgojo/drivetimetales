@@ -20,6 +20,8 @@ const PUBLIC_ROUTES = new Set([
   '/go',
   '/listen', // GVL-EAVESDROP-001: acquisition landing page, anonymous visitors only
   '/terms', '/privacy',
+  // OFFLINE-DL-001: the Downloads screen only reads this device's IndexedDB.
+  '/downloads',
   '/sw.js',
 ])
 
@@ -30,7 +32,9 @@ const ADDITIONAL_PUBLIC_PREFIXES = ['/promo/']
 // was 307-redirecting /manifest.json to signin HTML, breaking PWA install
 // (console: 'Manifest: syntax error') for signed-out visitors (found in
 // pre-launch audit, 2026-07-12).
-const PUBLIC_PREFIXES = ['/api/', '/_next/', '/images/', '/icons/', '/favicon', '/podcast', '/player/', '/manifest.json', '/sw.js', '/offline.html']
+// OFFLINE-DL-001: /offline-player.html is precached by the service worker —
+// it must never redirect to /signin (it has to load with no session / no signal).
+const PUBLIC_PREFIXES = ['/api/', '/_next/', '/images/', '/icons/', '/favicon', '/podcast', '/player/', '/manifest.json', '/sw.js', '/offline.html', '/offline-player.html']
 
 const SUBSCRIPTION_REQUIRED_PREFIXES = [
   '/home',

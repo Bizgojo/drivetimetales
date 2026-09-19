@@ -44,7 +44,9 @@ describe('ORION-SW-RANGE-001: range-aware audio serving', () => {
   })
 
   test('SW version bumped to v8 with the range fix documented', () => {
-    expect(sw).toMatch(/Service Worker v8/)
+    // v8 introduced the range fix; later versions (v9 OFFLINE-DL-001) keep it.
+    const version = Number(/Service Worker v(\d+)/.exec(sw)?.[1])
+    expect(version).toBeGreaterThanOrEqual(8)
     expect(sw).toMatch(/ORION-SW-RANGE-001/)
   })
 })
