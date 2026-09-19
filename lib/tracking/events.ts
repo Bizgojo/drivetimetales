@@ -32,7 +32,7 @@ export type TrackedEventName =
 
 // Meta paid-conversion event name — DECIDED BY MARC 2026-07-13 10:46 EDT:
 // standard 'Purchase' (Susan's optimization-strength recommendation) with
-// value/currency from the actual invoice (7.99 monthly), sent by the webhook.
+// value/currency from the actual invoice (e.g. 9.99 monthly), sent by the webhook.
 // Internal tracked-event name stays 'Subscribe'; only the Meta wire name
 // changes here.
 export const META_PAID_CONVERSION_EVENT: 'Subscribe' | 'Purchase' = 'Purchase'

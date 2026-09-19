@@ -116,7 +116,7 @@ function GoLandingContent() {
   }, [revealAfterSec])
 
   // CTA href: promo + full utm_* set from the current URL → /signup.
-  // source=go tells the /signup page to display + grant a 14-day trial for
+  // source=go tells the /signup page to display + grant the /go trial (GO_BASE_TRIAL_DAYS) for
   // this funnel (PR #9 server-side fix — DO NOT pass trialDays= client-side,
   // that is a billing injection vector fixed in app/api/checkout/route.ts).
   const ctaHref = (() => {
@@ -190,7 +190,7 @@ function GoLandingContent() {
 
   // ATL-PROMO-UI-001 pattern: server-truth promo validation for honest trial
   // display. Valid → real trial length + "applied" badge. Invalid, missing,
-  // or endpoint down/slow → quietly keep the 14-day default (this funnel's
+  // or endpoint down/slow → quietly keep the GO_BASE_TRIAL_DAYS default (this funnel's
   // Stripe checkout grants 14 days — Marc msg 2868). Never blocking.
   useEffect(() => {
     if (!promoCode) { setPromoStatus('none'); return }
@@ -208,7 +208,7 @@ function GoLandingContent() {
           setPromoStatus('invalid')
         }
       })
-      .catch(() => { /* fail quiet — default 14-day display */ })
+      .catch(() => { /* fail quiet — default GO_BASE_TRIAL_DAYS display */ })
       .finally(() => clearTimeout(timer))
     return () => { cancelled = true; controller.abort(); clearTimeout(timer) }
   }, [promoCode])

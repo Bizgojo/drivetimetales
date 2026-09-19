@@ -18,6 +18,7 @@ import Link from 'next/link'
 import { useSearchParams, useRouter } from 'next/navigation'
 import { supabaseBrowser as supabase } from '@/lib/supabase-browser'
 import { buildSignupCtaHref, captureUtmFromUrl } from '@/lib/utm'
+import { ANNUAL_PRICE_LABEL, MONTHLY_PRICE_LABEL, TRIAL_LABEL } from '@/lib/pricing'
 
 function LandingContent() {
   const router = useRouter()
@@ -260,7 +261,7 @@ function LandingContent() {
               ▶ &nbsp;Start your free trial
             </Link>
             <span style={{ fontSize: '0.85rem', color: 'rgba(240,236,228,0.55)' }}>
-              7-day free trial · credit card required · use a code for 14 days · cancel anytime
+              {TRIAL_LABEL} · credit card required · then {MONTHLY_PRICE_LABEL} · cancel anytime
             </span>
             <Link href="/guest" style={{
               color: 'rgba(240,236,228,0.72)', fontSize: '0.9rem',
@@ -316,7 +317,7 @@ function LandingContent() {
             { icon: '🛣️', title: 'Hands-Free Controls', desc: 'Large buttons, simple gestures, sticky playback bar. Designed so you never need to look at your phone while driving.' },
             { icon: '📚', title: 'Something for Everyone', desc: 'Learn something new with our educational series. Laugh out loud with comedy. Get lost in a thriller. Rediscover the classics. New stories added every week.' },
             { icon: '🎵', title: 'Road Trip Playlists', desc: "Heading cross-country? Build a playlist of multiple stories and series to carry you through the whole trip. Hours of entertainment, queued and ready." },
-            { icon: '💰', title: 'Simple Access', desc: "Start with a 7-day free trial, then keep listening with one subscription. Have a code? It extends your trial to 14 days. Cancel anytime before the trial ends and you won't be charged." },
+            { icon: '💰', title: 'Simple Access', desc: `Start with a ${TRIAL_LABEL}, then keep listening for ${MONTHLY_PRICE_LABEL} or ${ANNUAL_PRICE_LABEL}. Cancel anytime before the trial ends and you won't be charged.` },
           ].map((f, i) => (
             <div key={i} className="land-card" style={{
               background: '#12121a', border: '1px solid rgba(255,255,255,0.05)',
@@ -348,7 +349,7 @@ function LandingContent() {
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 0, maxWidth: '600px', margin: '3rem auto 0' }}>
           {[
-            { num: '1', title: 'Start Your Free Trial', desc: "Create your account, choose a plan, and start a 7-day free trial. Have a promo code? Enter it to get 14 days. Credit card required — no charge if you cancel before the trial ends." },
+            { num: '1', title: 'Start Your Free Trial', desc: `Create your account, choose monthly or annual, and start a ${TRIAL_LABEL}. Credit card required — no charge if you cancel before the trial ends.` },
             { num: '2', title: 'Browse the Library', desc: 'Filter by genre, length, or mood. Find stories that match your drive time.' },
             { num: '3', title: 'Hit Play and Drive', desc: 'Tap play, set your phone down, and let the story carry you to your destination.' },
           ].map((s, i) => (

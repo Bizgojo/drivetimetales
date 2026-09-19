@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { MONTHLY_PRICE_USD } from '@/lib/pricing'
 
 export const dynamic = 'force-dynamic'
 
@@ -32,7 +33,7 @@ export async function POST(req: NextRequest) {
       medium: medium || null,
       campaign: campaign || null,
       referrer: referrer || null,
-      locked_price: 7.99,
+      locked_price: MONTHLY_PRICE_USD,
     })
 
     if (error?.code === '23505') {

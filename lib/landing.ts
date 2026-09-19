@@ -8,24 +8,20 @@
 // the default 14-day copy (GO_BASE_TRIAL_DAYS) — quietly, never blocking
 // the page.
 
+import { MONTHLY_PRICE_DISPLAY, TRIAL_DAYS } from './pricing'
 import { applyPromoTrialDays } from './promo'
 
-// ATL-GO-LISTEN-001 final rev (Marc msg 2868): the /go ad funnel's Stripe
-// checkout grants a 14-day trial (verified in smoke tests), so ALL trial
-// copy on /go — including the fail-quiet default when /api/promo/validate
-// is slow or down — must say 14-day. /go-ONLY base: signup/subscribe keep
-// BASE_TRIAL_DAYS (7) from lib/promo.ts; do not point them here.
-export const GO_BASE_TRIAL_DAYS = 7 // changed 14→7 (Marc auth 2026-08-16; TRIAL_DAYS=7 is canon)
+// /go ad funnel trial. ALL trial copy on /go — including the fail-quiet
+// default when /api/promo/validate is slow or down — derives from this, and
+// checkout grants it server-side for source=go.
+// History: 14 (Marc msg 2868) → 7 (2026-08-16) → 14 flat on every path
+// (PRICING-TRIAL-001, 2026-09-19) — now the shared TRIAL_DAYS in lib/pricing.ts.
+export const GO_BASE_TRIAL_DAYS = TRIAL_DAYS
 
-// UX-GO-001 revision (Marc verdict, msg 3015, 2026-07-19): the card line now
-// states the post-trial price. FLAG: no dollar-amount plan config exists in
-// this codebase — subscription prices are Stripe env price IDs only
-// (lib/stripe.ts PRODUCTS.subscriptions carries no amounts; the dollar figure
-// lives in the Stripe dashboard) and every other surface hardcodes "$7.99"
-// (signup, subscribe, manage-subscription fallback, retention emails). So
-// this is a HARDCODE (accepted by Marc), centralized + test-pinned here as
-// /go's single source.
-export const GO_MONTHLY_PRICE_DISPLAY = '$7.99'
+// UX-GO-001 revision (Marc verdict, msg 3015, 2026-07-19): the card line
+// states the post-trial price. PRICING-TRIAL-001: now sourced from
+// lib/pricing.ts (the app-wide price single source) instead of a /go hardcode.
+export const GO_MONTHLY_PRICE_DISPLAY = MONTHLY_PRICE_DISPLAY
 
 // ============================================================================
 // SUS/ATL-LANDING-002 rev C: /go story variants (Greenville A/B test).
@@ -474,7 +470,7 @@ export function getTrialDisplay(
     // UX-GO-001 / CTA-001 Option A, revised per Marc verdict (msg 3015,
     // 2026-07-19) — Marc verbatim FINAL for BOTH /go CTA surfaces (sheet +
     // static footer): "Card required — you won't be charged before your
-    // 14-day free trial ends. Then just $7.99/month. Cancel anytime." Days
+    // N-day free trial ends. Then just $X/month. Cancel anytime." Days
     // come from the same fail-quiet GO_BASE_TRIAL_DAYS/promo math as `days`
     // — never hardcoded; price from GO_MONTHLY_PRICE_DISPLAY (see its flag).
     subtext: `Card required — you won't be charged before your ${days}-day free trial ends. Then just ${GO_MONTHLY_PRICE_DISPLAY}/month. Cancel anytime.`,

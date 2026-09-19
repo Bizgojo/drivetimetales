@@ -49,13 +49,13 @@ describe('UX-GO-001 CTA-001 Option A: card-required trial copy', () => {
     const d = getTrialDisplay(null, 'none', null)
     expect(d.days).toBe(GO_BASE_TRIAL_DAYS)
     expect(d.subtext).toBe(
-      "Card required — you won't be charged before your 14-day free trial ends. Then just $7.99/month. Cancel anytime."
+      "Card required — you won't be charged before your 14-day free trial ends. Then just $9.99/month. Cancel anytime."
     )
   })
 
   test('invalid promo / validation down: same fail-quiet 14-day line', () => {
     expect(getTrialDisplay('BOGUS', 'invalid', null).subtext).toBe(
-      "Card required — you won't be charged before your 14-day free trial ends. Then just $7.99/month. Cancel anytime."
+      "Card required — you won't be charged before your 14-day free trial ends. Then just $9.99/month. Cancel anytime."
     )
   })
 
@@ -63,12 +63,13 @@ describe('UX-GO-001 CTA-001 Option A: card-required trial copy', () => {
     const d = getTrialDisplay('LONG30', 'valid', 30)
     expect(d.days).toBe(30)
     expect(d.subtext).toBe(
-      "Card required — you won't be charged before your 30-day free trial ends. Then just $7.99/month. Cancel anytime."
+      "Card required — you won't be charged before your 30-day free trial ends. Then just $9.99/month. Cancel anytime."
     )
   })
 
-  test('price: single source GO_MONTHLY_PRICE_DISPLAY (hardcode flagged — no plan-price config exists)', () => {
-    expect(GO_MONTHLY_PRICE_DISPLAY).toBe('$7.99')
+  // PRICING-TRIAL-001: /go price now comes from the app-wide lib/pricing.ts.
+  test('price: GO_MONTHLY_PRICE_DISPLAY is the app-wide MONTHLY_PRICE_DISPLAY ($9.99)', () => {
+    expect(GO_MONTHLY_PRICE_DISPLAY).toBe('$9.99')
     // The subtext template interpolates the constant, not a literal price.
     const landingSrc = fs.readFileSync(path.join(__dirname, '..', 'lib', 'landing.ts'), 'utf8')
     expect(landingSrc).toContain('${GO_MONTHLY_PRICE_DISPLAY}/month')

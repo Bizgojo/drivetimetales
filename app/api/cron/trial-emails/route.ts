@@ -2,6 +2,11 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { Resend } from 'resend'
 import { renderDay1InstallEmail, shell, ctaButton } from '@/lib/emails/retentionTemplates'
+import { MONTHLY_PRICE_DISPLAY, TRIAL_DAYS } from '@/lib/pricing'
+
+// Reminder days, counted from trial start (see schedule note in GET).
+const ENDS_IN_TWO_DAYS = TRIAL_DAYS - 2
+const ENDS_TOMORROW = TRIAL_DAYS - 1
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -36,7 +41,7 @@ function emailDay2(name: string, safeTitle: string | null, safeStoryId: string |
       html: shell(`
         <p style="${P}">Hi ${name}, it's Belle.</p>
         <p style="${P}">You started <strong style="color:#ffffff;">${safeTitle}</strong> — it's still there, right where you left off.</p>
-        <p style="${P}">Your free week is running, and it covers everything: every series, every standalone. No card, nothing to cancel.</p>
+        <p style="${P}">Your free trial is running, and it covers everything: every series, every standalone. No card, nothing to cancel.</p>
         <p style="${P}">Come back when you've got a quiet half hour.</p>
         ${ctaButton('Pick up where you left off', safeStoryId !== null ? `${APP_PLAYER_BASE_URL}/${safeStoryId}` : APP_LIBRARY_URL)}
         <p style="${P_SIG}">— Belle</p>
@@ -45,10 +50,10 @@ function emailDay2(name: string, safeTitle: string | null, safeStoryId: string |
   }
   // no-story variant
   return {
-    subject: `Your free week is running, ${name}`,
+    subject: `Your free trial is running, ${name}`,
     html: shell(`
       <p style="${P}">Hi ${name}, it's Belle.</p>
-      <p style="${P}">The whole library is open to you this week — every series, every standalone. No card, nothing to cancel.</p>
+      <p style="${P}">The whole library is open to you for your whole trial — every series, every standalone. No card, nothing to cancel.</p>
       <p style="${P}">Most people find their favourite in the first couple of days. If you haven't started anything yet, have a wander.</p>
       ${ctaButton('Browse the library', APP_LIBRARY_URL)}
       <p style="${P_SIG}">— Belle</p>
@@ -68,9 +73,9 @@ function emailDay5(name: string, safeTitle: string | null, safeStoryId: string |
       subject: `Two days left to finish ${safeTitle}`,
       html: shell(`
         <p style="${P}">Hi ${name}, it's Belle.</p>
-        <p style="${P}">You're partway through <strong style="color:#ffffff;">${safeTitle}</strong>, and your free week ends in two days.</p>
+        <p style="${P}">You're partway through <strong style="color:#ffffff;">${safeTitle}</strong>, and your free trial ends in two days.</p>
         <p style="${P}">Nothing will be charged and there's nothing to cancel — your access just ends, and the story stays exactly where you left it.</p>
-        <p style="${P}">If you'd like to keep going, it's $7.99 a month and the whole library stays open.</p>
+        <p style="${P}">If you'd like to keep going, it's ${MONTHLY_PRICE_DISPLAY} a month and the whole library stays open.</p>
         ${ctaButton(`Finish ${safeTitle}`, safeStoryId !== null ? `${APP_PLAYER_BASE_URL}/${safeStoryId}` : APP_LIBRARY_URL)}
         <p style="${P_SIG}">— Belle</p>
       `)
@@ -81,9 +86,9 @@ function emailDay5(name: string, safeTitle: string | null, safeStoryId: string |
     subject: `Two days left, ${name}`,
     html: shell(`
       <p style="${P}">Hi ${name}, it's Belle.</p>
-      <p style="${P}">Your free week ends in two days, and there's still time to find something.</p>
+      <p style="${P}">Your free trial ends in two days, and there's still time to find something.</p>
       <p style="${P}">Nothing will be charged and there's nothing to cancel — your access simply ends.</p>
-      <p style="${P}">If you'd like to keep the library open, it's $7.99 a month.</p>
+      <p style="${P}">If you'd like to keep the library open, it's ${MONTHLY_PRICE_DISPLAY} a month.</p>
       ${ctaButton('Browse the library', APP_LIBRARY_URL)}
       <p style="${P_SIG}">— Belle</p>
     `)
@@ -102,9 +107,9 @@ function emailDay6(name: string, safeTitle: string | null, safeStoryId: string |
       subject: `Last day with ${safeTitle}`,
       html: shell(`
         <p style="${P}">Hi ${name}, it's Belle.</p>
-        <p style="${P}">Your free week ends tomorrow, and <strong style="color:#ffffff;">${safeTitle}</strong> is still waiting.</p>
+        <p style="${P}">Your free trial ends tomorrow, and <strong style="color:#ffffff;">${safeTitle}</strong> is still waiting.</p>
         <p style="${P}">You won't be charged for anything — you just won't be able to keep listening. If you come back, the story will be where you left it.</p>
-        <p style="${P}">$7.99 a month keeps it all open.</p>
+        <p style="${P}">${MONTHLY_PRICE_DISPLAY} a month keeps it all open.</p>
         ${ctaButton(`Finish ${safeTitle}`, safeStoryId !== null ? `${APP_PLAYER_BASE_URL}/${safeStoryId}` : APP_LIBRARY_URL)}
         <p style="${P_SIG}">— Belle</p>
       `)
@@ -112,12 +117,12 @@ function emailDay6(name: string, safeTitle: string | null, safeStoryId: string |
   }
   // no-story variant
   return {
-    subject: `Last day of your free week`,
+    subject: `Last day of your free trial`,
     html: shell(`
       <p style="${P}">Hi ${name}, it's Belle.</p>
-      <p style="${P}">Your free week ends tomorrow.</p>
+      <p style="${P}">Your free trial ends tomorrow.</p>
       <p style="${P}">You won't be charged for anything — you simply won't be able to keep listening after that.</p>
-      <p style="${P}">$7.99 a month keeps the whole library open.</p>
+      <p style="${P}">${MONTHLY_PRICE_DISPLAY} a month keeps the whole library open.</p>
       ${ctaButton('Browse the library', APP_LIBRARY_URL)}
       <p style="${P_SIG}">— Belle</p>
     `)
@@ -211,10 +216,13 @@ export async function GET(request: NextRequest) {
   for (const user of users) {
     try {
       const trialEnd = new Date(user.subscription_ends_at)
-      // Gate grants 7-day trial. Thresholds updated to 2/5/6 per ATL-GATE-002.
+      // Trial length = TRIAL_DAYS (lib/pricing.ts). ATL-GATE-002 schedule,
+      // anchored to the trial END so the copy stays true for any length:
+      // day 2 "trial is running", TRIAL_DAYS-2 "ends in two days",
+      // TRIAL_DAYS-1 "ends tomorrow" (= 2/5/6 for 7 days, 2/12/13 for 14).
       const start = user.trial_started_at
         ? new Date(user.trial_started_at)
-        : new Date(trialEnd.getTime() - 7 * 24 * 60 * 60 * 1000)
+        : new Date(trialEnd.getTime() - TRIAL_DAYS * 24 * 60 * 60 * 1000)
       const daysSinceStart = Math.floor((now.getTime() - start.getTime()) / (1000 * 60 * 60 * 24))
       const name = user.first_name || user.display_name || 'there'
       const email = user.email
@@ -224,7 +232,7 @@ export async function GET(request: NextRequest) {
       // Only query when this user is actually in a send window.
       let safeTitle: string | null = null
       let safeStoryId: string | null = null
-      if (daysSinceStart === 2 || daysSinceStart === 5 || daysSinceStart === 6) {
+      if (daysSinceStart === 2 || daysSinceStart === ENDS_IN_TWO_DAYS || daysSinceStart === ENDS_TOMORROW) {
         try {
           const { data: libraryRow } = await supabase
             .from('user_library')
@@ -253,10 +261,10 @@ export async function GET(request: NextRequest) {
       if (daysSinceStart === 2) {
         template = emailDay2(name, safeTitle, safeStoryId)
         results.day2++
-      } else if (daysSinceStart === 5) {
+      } else if (daysSinceStart === ENDS_IN_TWO_DAYS) {
         template = emailDay5(name, safeTitle, safeStoryId)
         results.day5++
-      } else if (daysSinceStart === 6) {
+      } else if (daysSinceStart === ENDS_TOMORROW) {
         template = emailDay6(name, safeTitle, safeStoryId)
         results.day6++
       }

@@ -12,6 +12,8 @@
 //
 // If checkout's rules change, change these helpers too (and vice versa).
 
+import { TRIAL_DAYS } from './pricing'
+
 export interface PromoCodeRow {
   code?: string | null
   is_active?: boolean | null
@@ -20,8 +22,8 @@ export interface PromoCodeRow {
   subscription_days?: number | null
 }
 
-/** Default base trial shown/granted when no promo/referral applies. */
-export const BASE_TRIAL_DAYS = 7
+/** Default base trial shown/granted when no promo/referral applies (lib/pricing.ts). */
+export const BASE_TRIAL_DAYS = TRIAL_DAYS
 
 /**
  * Exact same usability criteria as checkout:

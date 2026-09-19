@@ -6,6 +6,7 @@ import { isActivatableStatus, planFields } from '@/lib/webhookGuards'
 import { sendServerEvent } from '@/lib/tracking/capi'
 import { startTrialEventId, subscribeEventId } from '@/lib/tracking/events'
 import { payReferrerAfterFirstPayment } from '@/lib/referralPayout'
+import { ANNUAL_PRICE_LABEL, MONTHLY_PRICE_LABEL, TRIAL_DAYS } from '@/lib/pricing'
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, { apiVersion: '2023-10-16' })
 
@@ -104,17 +105,24 @@ export async function POST(request: NextRequest) {
             if (userData?.email) {
               const resend = new Resend(process.env.RESEND_API_KEY)
               const displayName = userData.first_name || userData.display_name || 'Friend'
-              const isAnnual = ((session as any).amount_total || 0) > 1000
+              // PRICING-TRIAL-001: billing cycle from the subscription's price
+              // interval — amount_total is $0 at trial start, so the old
+              // `amount_total > 1000` check labelled every annual signup "Monthly".
+              const isAnnual = billingCycle === 'annual'
               const planLabel = isFoundingMember ? 'Founding Member' : isAnnual ? 'Annual' : 'Monthly'
               const priceLabel = isAnnual
-                ? (isFoundingMember ? '$29.99/year' : '$59.99/year')
-                : (isFoundingMember ? '$2.99/month' : '$7.99/month')
+                ? (isFoundingMember ? '$29.99/year' : ANNUAL_PRICE_LABEL)
+                : (isFoundingMember ? '$2.99/month' : MONTHLY_PRICE_LABEL)
+              // Actual granted trial (a promo/referral can exceed TRIAL_DAYS).
+              const grantedTrialDays = subscription.trial_end && subscription.trial_start
+                ? Math.round((subscription.trial_end - subscription.trial_start) / 86400)
+                : TRIAL_DAYS
               await resend.emails.send({
                 from: 'Endless Tales <hello@endless-tales.com>',
                 replyTo: 'hello.endlesstales@gmail.com',
                 to: userData.email,
                 subject: `Welcome to Endless Tales, ${displayName}!`,
-                html: `<!DOCTYPE html><html><head><meta charset="utf-8"></head><body style="margin:0;padding:0;background:#0f0f1a;font-family:-apple-system,sans-serif;"><div style="max-width:560px;margin:0 auto;padding:40px 24px;"><div style="text-align:center;margin-bottom:32px;"><img src="https://app.endless-tales.com/images/et-logo.png" alt="Endless Tales" style="height:48px;" /><div style="font-size:22px;font-weight:900;color:#fff;margin-top:8px;">Endless <span style="color:#f97316;">Tales</span></div></div><div style="background:#1a1a2e;border-radius:16px;padding:32px 28px;border:1px solid rgba(249,115,22,0.2);"><h1 style="color:#fff;font-size:22px;font-weight:800;text-align:center;margin:0 0 12px;">You are in, ${displayName}!</h1><p style="color:rgba(255,255,255,0.75);font-size:15px;line-height:1.7;margin:0 0 20px;text-align:center;">Your 14-day free trial has started. After that you are on the <strong style="color:#f97316;">${planLabel} plan</strong> at ${priceLabel}.</p><div style="text-align:center;margin-bottom:24px;"><a href="https://app.endless-tales.com/home" style="display:inline-block;background:#f97316;color:white;text-decoration:none;padding:14px 32px;border-radius:10px;font-size:15px;font-weight:800;">Start Listening</a></div><div style="background:rgba(249,115,22,0.1);border:1px solid rgba(249,115,22,0.3);border-radius:10px;padding:16px 20px;"><div style="color:#f97316;font-size:12px;font-weight:700;text-transform:uppercase;margin-bottom:8px;">Your trial includes</div><div style="color:rgba(255,255,255,0.85);font-size:14px;line-height:1.8;">Full access to all audio stories. New stories added weekly. Cancel anytime before day 14 and you will not be charged.${isFoundingMember ? ' Your Founding Member price is locked for life.' : ''}</div></div></div><p style="color:rgba(255,255,255,0.3);font-size:12px;margin-top:28px;text-align:center;">Questions? Reply to this email.</p></div></body></html>`,
+                html: `<!DOCTYPE html><html><head><meta charset="utf-8"></head><body style="margin:0;padding:0;background:#0f0f1a;font-family:-apple-system,sans-serif;"><div style="max-width:560px;margin:0 auto;padding:40px 24px;"><div style="text-align:center;margin-bottom:32px;"><img src="https://app.endless-tales.com/images/et-logo.png" alt="Endless Tales" style="height:48px;" /><div style="font-size:22px;font-weight:900;color:#fff;margin-top:8px;">Endless <span style="color:#f97316;">Tales</span></div></div><div style="background:#1a1a2e;border-radius:16px;padding:32px 28px;border:1px solid rgba(249,115,22,0.2);"><h1 style="color:#fff;font-size:22px;font-weight:800;text-align:center;margin:0 0 12px;">You are in, ${displayName}!</h1><p style="color:rgba(255,255,255,0.75);font-size:15px;line-height:1.7;margin:0 0 20px;text-align:center;">Your ${grantedTrialDays}-day free trial has started. After that you are on the <strong style="color:#f97316;">${planLabel} plan</strong> at ${priceLabel}.</p><div style="text-align:center;margin-bottom:24px;"><a href="https://app.endless-tales.com/home" style="display:inline-block;background:#f97316;color:white;text-decoration:none;padding:14px 32px;border-radius:10px;font-size:15px;font-weight:800;">Start Listening</a></div><div style="background:rgba(249,115,22,0.1);border:1px solid rgba(249,115,22,0.3);border-radius:10px;padding:16px 20px;"><div style="color:#f97316;font-size:12px;font-weight:700;text-transform:uppercase;margin-bottom:8px;">Your trial includes</div><div style="color:rgba(255,255,255,0.85);font-size:14px;line-height:1.8;">Full access to all audio stories. New stories added weekly. Cancel anytime before day 14 and you will not be charged.${isFoundingMember ? ' Your Founding Member price is locked for life.' : ''}</div></div></div><p style="color:rgba(255,255,255,0.3);font-size:12px;margin-top:28px;text-align:center;">Questions? Reply to this email.</p></div></body></html>`,
               })
               console.log(`[webhook] Welcome email sent to ${userData.email} — ${planLabel}`)
             }

@@ -7,6 +7,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { Resend } from 'resend'
+import { TRIAL_LABEL } from '@/lib/pricing'
 
 export async function POST(req: NextRequest) {
   const resend = new Resend(process.env.RESEND_API_KEY)
@@ -47,7 +48,7 @@ export async function POST(req: NextRequest) {
                 <div style="color:rgba(255,255,255,0.6);font-size:13px;margin-top:4px;">We'll send you a link the moment we go live</div>
               </div>
               <p style="color:rgba(255,255,255,0.65);font-size:14px;line-height:1.6;margin:0;text-align:center;">
-                Your 14-day free trial will be waiting. Card required. Cancel anytime. Just great stories.
+                Your ${TRIAL_LABEL} will be waiting. Card required. Cancel anytime. Just great stories.
               </p>
             </div>
 

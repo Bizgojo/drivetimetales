@@ -34,10 +34,10 @@ const BUCKET = 'audio'
 const BASE_URL = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/${BUCKET}`
 
 const STANDALONE_TEMPLATE =
-  "That's a taste of it, [NAME] — and I'd hate to leave you there. Your free week has ended, but a subscription opens this story and everything else in the library. Tap subscribe and I'll take you right back to it."
+  "That's a taste of it, [NAME] — and I'd hate to leave you there. Your free trial has ended, but a subscription opens this story and everything else in the library. Tap subscribe and I'll take you right back to it."
 
 const SERIES_TEMPLATE =
-  "That's where episode one ends, [NAME]. There's more of this story — and I'd like to keep telling it to you. Your free week is over, but a subscription opens the rest of this series and everything else in the library. Tap subscribe and we'll pick up right where we left off."
+  "That's where episode one ends, [NAME]. There's more of this story — and I'd like to keep telling it to you. Your free trial is over, but a subscription opens the rest of this series and everything else in the library. Tap subscribe and we'll pick up right where we left off."
 
 async function generateAudio(text: string): Promise<Buffer> {
   const body = JSON.stringify({
