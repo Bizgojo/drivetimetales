@@ -12,6 +12,7 @@
 //   5. On submit: account created, auto-continue Ep4
 
 import { useState, useEffect, useRef, useCallback } from 'react'
+import { attachMediaSession, MEDIA_ALBUM } from '@/lib/mediaSession'
 import { createGoListenTracker, GoListenTracker, newSessionId } from '@/lib/goListen'
 import type { EpisodeData } from './page'
 
@@ -330,6 +331,15 @@ export default function EavesdropClient({ episodes, arm, utmSource, utmCampaign 
 
   // Current episode for display
   const currentEp = episodes[currentEpIndex] ?? ep1
+
+  // CAR-MEDIA-001: lock-screen / Bluetooth controls; re-attached per episode
+  // so the car display follows the episode that's playing.
+  useEffect(() => attachMediaSession(audioRef.current, {
+    title: currentEp?.episodeTitle ?? currentEp?.title ?? 'Wearing My Face',
+    artist: 'Wearing My Face',
+    album: MEDIA_ALBUM,
+    artworkUrl: currentEp?.coverImageUrl ?? currentEp?.coverUrl ?? null,
+  }), [currentEpIndex]) // eslint-disable-line react-hooks/exhaustive-deps
   const hookText = getHookText(ep1)
 
   // Cover image — prefer cover_image_url then cover_url

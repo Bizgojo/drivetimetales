@@ -13,6 +13,7 @@ Supports ?partner=slug for QR code partner promotions.
 'use client'
 
 import React, { useEffect, useState, Suspense } from 'react'
+import { attachMediaSession, MEDIA_ALBUM } from '@/lib/mediaSession'
 import Link from 'next/link'
 import { useSearchParams, useRouter } from 'next/navigation'
 import { supabaseBrowser as supabase } from '@/lib/supabase-browser'
@@ -548,8 +549,15 @@ function AudioSampleSection() {
     }
     const handleLoaded = () => setDuration(audio.duration)
     const handleEnded = () => { setIsPlaying(false); setProgress(0); setCurrentTime(0) }
+    // Keep the button in sync when the lock screen / car pauses or resumes.
+    const handlePlay = () => setIsPlaying(true)
+    const handlePause = () => setIsPlaying(false)
+    // CAR-MEDIA-001: lock-screen / Bluetooth controls for the landing sample.
+    const detachMedia = attachMediaSession(audio, { title: 'Got a long drive ahead?', artist: 'Free sample', album: MEDIA_ALBUM })
 
     audio.addEventListener('timeupdate', handleTimeUpdate)
+    audio.addEventListener('play', handlePlay)
+    audio.addEventListener('pause', handlePause)
     audio.addEventListener('loadedmetadata', handleLoaded)
     audio.addEventListener('ended', handleEnded)
 
@@ -557,6 +565,9 @@ function AudioSampleSection() {
       audio.removeEventListener('timeupdate', handleTimeUpdate)
       audio.removeEventListener('loadedmetadata', handleLoaded)
       audio.removeEventListener('ended', handleEnded)
+      audio.removeEventListener('play', handlePlay)
+      audio.removeEventListener('pause', handlePause)
+      detachMedia()
       audio.pause()
     }
   }, [])

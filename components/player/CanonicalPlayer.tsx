@@ -10,6 +10,10 @@ import { useAuth } from '@/contexts/AuthContext'
 import ReviewModal from '@/components/ReviewModal'
 import InstallAppBanner from '@/components/InstallAppBanner'
 import { requestInstallReoffer } from '@/lib/installReoffer'
+import {
+  attachMediaSession, claimMediaSession, refreshMediaHandlers, releaseMediaSession, setMediaPlaybackState,
+  setMediaPosition, updateMediaTrack, MEDIA_ALBUM, SEEK_BACKWARD_SECONDS, SEEK_FORWARD_SECONDS, type MediaActionHandlers,
+} from '@/lib/mediaSession'
 import { isEntitled } from '@/lib/entitlement'
 import type { AutoAdvanceCandidate, AutoAdvanceDisabledReason, PlayerMode, PlayerStory } from './playerTypes'
 import { clearLocalPlayerProgress, getLocalPlayerProgress, mergePlayerProgress, saveLocalPlayerProgress } from '@/lib/playerProgress'
@@ -279,6 +283,9 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
       // Play Belle's ~9s welcome line, then seamlessly into EP2 audio
       const welcomeAudio = new Audio(onboardWelcomeUrl)
       onboardAudioRef.current = welcomeAudio
+      // CAR-MEDIA-001: own the car/lock-screen controls while Belle speaks;
+      // released on 'ended', handing control to the story's claim.
+      attachMediaSession(welcomeAudio, { title: 'A welcome from Belle', artist: MEDIA_ALBUM, artworkUrl: (story as any)?.cover_url })
       welcomeAudio.onended = () => {
         if (user?.id) {
           supabase.from('users').update({ welcome_played: true }).eq('id', user.id).then(() => {})
@@ -1773,7 +1780,18 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
     if (!rect.width) return
 
     const ratio = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width))
-    let nextTime = ratio * actualDuration
+    seekToSeconds(ratio * actualDuration)
+  }
+
+  // Shared by the scrub bar and the car / lock-screen controls (CAR-MEDIA-001).
+  const seekToSeconds = (targetSeconds: number) => {
+    const audio = audioRef.current
+    if (!audio) return
+    const actualDuration = isASC3
+      ? getQueueTotalSeconds()
+      : (Number.isFinite(audio.duration) && audio.duration > 0 ? audio.duration : duration)
+    if (!actualDuration || !Number.isFinite(actualDuration)) return
+    let nextTime = Math.min(Math.max(0, targetSeconds), actualDuration)
     // POST-TRIAL-BELLE-001: clamp seek for lapsed standalone users to 60s max
     if (isLapsedRef.current && !story?.series_id) {
       nextTime = Math.min(nextTime, 60)
@@ -2108,15 +2126,118 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
     if (!belleWallAudioUrl) return
     const audio = new Audio(belleWallAudioUrl)
     belleWallAudioRef.current = audio
+    // CAR-MEDIA-001: Belle's clip owns the controls while it plays; the
+    // cleanup releases them so they never stay stuck on a finished clip.
+    const detachMedia = attachMediaSession(audio, { title: 'A message from Belle', artist: MEDIA_ALBUM, artworkUrl: (story as any)?.cover_url })
     audio.play().catch(() => {})
-    return () => { audio.pause(); audio.src = '' }
+    return () => { detachMedia(); audio.pause(); audio.src = '' }
   }, [belleWallAudioUrl])
+
+  // ── CAR-MEDIA-001: MediaSession (lock screen / Bluetooth / car head unit) ──
+  // The story claims the session on first play and keeps it until unmount.
+  // Handlers are read from a ref at call time, so they always see the
+  // current render's state (queue position, candidates, isPlaying).
+  const mediaClaimRef = useRef<number | null>(null)
+  const mediaHandlersRef = useRef<MediaActionHandlers>({})
+  const mediaSeriesId = (story as any)?.series_id as string | undefined
+  const mediaTrack = story ? {
+    title: story.title,
+    artist: (story as any)?.series_id ? (playerSeriesTitle || (story as any)?.author || '') : ((story as any)?.author || ''),
+    album: MEDIA_ALBUM,
+    artworkUrl: (story as any)?.cover_url || null,
+  } : null
+
+  const leaveForEpisode = (targetId: string) => {
+    audioRef.current?.pause(); musicRef.current?.pause()
+    saveProgress(getProgressSeconds())
+    if (analyticsTrackedRef.current) endAnalyticsSession('navigated_away')
+    router.push(`/player/${targetId}?autoplay=1&playNow=1&seriesContinue=1`)
+  }
+
+  const fetchPreviousSeriesEpisodeId = async (): Promise<string | null> => {
+    const currentEpisodeNumber = episodeNumberFor(story)
+    if (!mediaSeriesId || currentEpisodeNumber === null) return null
+    const { data } = await supabase
+      .from('stories')
+      .select(AUTO_ADVANCE_STORY_SELECT)
+      .eq('series_id', mediaSeriesId)
+      .not('episode_number', 'is', null)
+      .lt('episode_number', currentEpisodeNumber)
+      .order('episode_number', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+    return data && canLoadStory(data) ? (data as any).id : null
+  }
+
+  mediaHandlersRef.current = {
+    play: () => { if (!isPlaying) handlePlayPause() },
+    pause: () => { if (isPlaying) handlePlayPause() },
+    seekbackward: (d) => seekToSeconds(getProgressSeconds() - (d.seekOffset || SEEK_BACKWARD_SECONDS)),
+    seekforward: (d) => seekToSeconds(getProgressSeconds() + (d.seekOffset || SEEK_FORWARD_SECONDS)),
+    seekto: (d) => { if (typeof d.seekTime === 'number') seekToSeconds(d.seekTime) },
+    // Series: real episode navigation (same route as the end-state "Next
+    // episode" button). Standalone: no neighbouring track, so skip ±.
+    nexttrack: () => {
+      if (!mediaSeriesId) { seekToSeconds(getProgressSeconds() + SEEK_FORWARD_SECONDS); return }
+      const known = endStateCandidate || (autoAdvanceCandidate?.reason === 'next_series_episode' ? autoAdvanceCandidate : null)
+      if (known) { leaveForEpisode(known.story.id); return }
+      void fetchDirectSeriesAutoAdvanceCandidate().then(next => {
+        if (next && mountedRef.current) leaveForEpisode(next.story.id)
+      })
+    },
+    // Standard "previous": restart the episode unless we're in its first 5s,
+    // then go to the previous series episode (standalone: restart).
+    previoustrack: () => {
+      if (!mediaSeriesId || getProgressSeconds() > 5) { seekToSeconds(0); return }
+      void fetchPreviousSeriesEpisodeId().then(prevId => {
+        if (!mountedRef.current) return
+        if (prevId) leaveForEpisode(prevId)
+        else seekToSeconds(0)
+      })
+    },
+  }
+
+  // Claim on first play (so merely opening the page doesn't steal the
+  // controls from other audio); release on unmount.
+  useEffect(() => {
+    if (!isPlaying || !mediaTrack || mediaClaimRef.current !== null) return
+    mediaClaimRef.current = claimMediaSession(mediaTrack, () => mediaHandlersRef.current)
+  }, [isPlaying, mediaTrack?.title]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => () => {
+    if (mediaClaimRef.current !== null) releaseMediaSession(mediaClaimRef.current)
+    mediaClaimRef.current = null
+  }, [])
+
+  // Metadata follows the story (in-place episode switches keep the same claim).
+  useEffect(() => {
+    if (mediaClaimRef.current === null || !mediaTrack) return
+    updateMediaTrack(mediaClaimRef.current, mediaTrack)
+  }, [mediaTrack?.title, mediaTrack?.artist, mediaTrack?.artworkUrl]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Series vs standalone changes what next/prev mean — re-register.
+  useEffect(() => {
+    if (mediaClaimRef.current !== null) refreshMediaHandlers(mediaClaimRef.current)
+  }, [mediaSeriesId])
 
   const effTotal = isASC3
     ? (totalDur > 0 ? totalDur : (story?.duration_mins || 0) * 60)
     : (actualAudioDuration || (story?.duration_mins || 0) * 60)
   const effCur   = isASC3 ? cumTime : currentTime
   const pct      = effTotal > 0 ? Math.min(100, (effCur / effTotal) * 100) : 0
+  // Position: the OS extrapolates from (position, playbackRate), so update on
+  // play/pause, seeks and every 5s bucket rather than on every timeupdate.
+  // Uses the same global (multi-segment) position/total as the progress bar.
+  const mediaPositionBucket = Math.floor(effCur / 5)
+  useEffect(() => {
+    const id = mediaClaimRef.current
+    if (id === null) return
+    setMediaPlaybackState(id, isPlaying ? 'playing' : 'paused')
+    // playbackRate must be non-zero (setPositionState throws on 0); paused is
+    // conveyed by playbackState.
+    if (effTotal > 0) setMediaPosition(id, effTotal, Math.min(effCur, effTotal), 1)
+  }, [isPlaying, mediaPositionBucket, effTotal]) // eslint-disable-line react-hooks/exhaustive-deps
+
   const autoAdvanceReasonCopy =
     autoAdvanceCandidate?.reason === 'next_series_episode' ? 'Next episode' :
     autoAdvanceCandidate?.reason === 'same_genre_duration_match' ? 'Same genre, similar length' :

@@ -1,6 +1,7 @@
 'use client'
 
 import { Suspense, useState, useEffect, useRef, useCallback } from 'react'
+import { attachMediaSession, MEDIA_ALBUM } from '@/lib/mediaSession'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
 import { supabase } from '@/lib/supabase'
@@ -358,6 +359,9 @@ function WelcomeAudioCard({ seg1Url, firstName, onDismiss }: WelcomeAudioCardPro
   useEffect(() => {
     const el = new Audio()
     audioRef.current = el
+    // CAR-MEDIA-001: Belle's welcome owns the lock-screen controls while it
+    // plays; released on end/unmount so they never stick on a finished clip.
+    const detachMedia = attachMediaSession(el, { title: 'A welcome from Belle', artist: MEDIA_ALBUM, album: MEDIA_ALBUM })
 
     // Preload Seg 1 (self-contained welcome); if unavailable, dismiss immediately
     if (seg1Url) el.src = seg1Url
@@ -383,7 +387,7 @@ function WelcomeAudioCard({ seg1Url, firstName, onDismiss }: WelcomeAudioCardPro
       })
     }
 
-    return () => { detachAudio() }
+    return () => { detachMedia(); detachAudio() }
   }, []) // intentionally run once on mount only
 
   const label = autoplayBlocked

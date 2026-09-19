@@ -28,6 +28,7 @@
 // the pause + idle reveal triggers (Marc final spec).
 
 import { useEffect, useRef, useState } from 'react'
+import { attachMediaSession, MEDIA_ALBUM } from '@/lib/mediaSession'
 import {
   loadSampleProgress,
   saveSampleProgress,
@@ -78,6 +79,9 @@ export default function GoSamplePlayer({
   const [currentTime, setCurrentTime] = useState(0)
   const [duration, setDuration] = useState(0)
   const [coverFailed, setCoverFailed] = useState(false)
+
+  // CAR-MEDIA-001: lock-screen / Bluetooth controls for the landing sample.
+  useEffect(() => attachMediaSession(audioRef.current, { title, artist: 'Free sample', album: MEDIA_ALBUM, artworkUrl: coverUrl }), [title, coverUrl])
 
   const persist = (seconds: number, force = false) => {
     if (!force && !shouldPersistProgress(lastSavedRef.current, seconds)) return
