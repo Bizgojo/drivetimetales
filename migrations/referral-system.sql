@@ -128,9 +128,13 @@ DECLARE
   v_offer_id UUID;
   v_referral_id UUID;
 BEGIN
-  -- Find referrer by code
+  -- Find referrer by code, case-insensitively: legacy codes from the old
+  -- /refer fallback were mixed case (e.g. 'Marc7QX'). Oldest account wins
+  -- if two codes differ only by case.
   SELECT id, default_offer_id INTO v_referrer_id, v_referrer_offer_id
-  FROM users WHERE referral_code = UPPER(p_referrer_code);
+  FROM users WHERE UPPER(referral_code) = UPPER(p_referrer_code)
+  ORDER BY created_at
+  LIMIT 1;
 
   IF v_referrer_id IS NULL THEN
     RETURN jsonb_build_object('success', false, 'error', 'Invalid referral code');
