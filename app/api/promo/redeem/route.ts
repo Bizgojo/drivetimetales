@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { ensureNamePoolForUser } from '@/lib/personalization/ensureNamePool'
 import { planSignupNameEnsure } from '@/lib/personalization/signupEnsure'
+import { buildFreeDaysGrant } from '@/lib/freeDays'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -45,17 +46,12 @@ export async function POST(req: NextRequest) {
       .eq('id', userId)
       .single()
 
-    const base = userData?.subscription_ends_at && new Date(userData.subscription_ends_at) > now
-      ? new Date(userData.subscription_ends_at)
-      : now
-    const newEndsAt = new Date(base.getTime() + promo.subscription_days * 24 * 60 * 60 * 1000)
+    // Shared with referral rewards (lib/freeDays.ts) — same stacking + access fields.
+    const grant = buildFreeDaysGrant(userData, promo.subscription_days, now)
+    const newEndsAt = new Date(grant.subscription_ends_at)
 
     // Update user subscription
-    await supabase.from('users').update({
-      subscription_type: 'active',
-      subscription_ends_at: newEndsAt.toISOString(),
-      plan: userData?.plan && userData.plan !== 'free' ? userData.plan : 'standard',
-    }).eq('id', userId)
+    await supabase.from('users').update(grant).eq('id', userId)
 
     // PERS-FIX-002: promo/GVL redemption is a signup path — it must key the
     // account and ensure the name pool (idempotent; skips the enqueue when the
