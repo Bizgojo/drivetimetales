@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { ANNUAL_MONTHLY_EQUIVALENT_USD, ANNUAL_PRICE_USD, MONTHLY_PRICE_USD } from '@/lib/pricing'
 
 const AIRTABLE_BASE_URL = 'https://api.airtable.com/v0'
 const CASH_SNAPSHOTS_TABLE_ID = 'tbl96ykBf3hbNJmJi'
@@ -11,9 +12,10 @@ const REVENUE_LAG_DAYS = 28
 const DAYS_TO_PROJECT = 90
 const STRIPE_FEE_RATE = 0.029
 const ASSUMED_MONTHLY_CHURN = 0.07
-const SUBSCRIPTION_MONTHLY = 7.99
-const SUBSCRIPTION_ANNUAL = 59.99
-const ANNUAL_MONTHLY_EQUIVALENT = 4.99
+// PRICING-TRIAL-001: from the app-wide single source (was 7.99 / 59.99 / 4.99).
+const SUBSCRIPTION_MONTHLY = MONTHLY_PRICE_USD
+const SUBSCRIPTION_ANNUAL = ANNUAL_PRICE_USD
+const ANNUAL_MONTHLY_EQUIVALENT = ANNUAL_MONTHLY_EQUIVALENT_USD
 
 type AirtableRecord = {
   id: string

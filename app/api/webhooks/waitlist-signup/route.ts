@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { MONTHLY_PRICE_DISPLAY } from '@/lib/pricing'
 
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN!
 const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID!
@@ -13,7 +14,7 @@ export async function POST(req: NextRequest) {
     const email = record.email || 'unknown'
     const source = record.source || 'direct'
     const campaign = record.campaign || null
-    const lockedPrice = record.locked_price ? `$${record.locked_price}/mo` : '$7.99/mo'
+    const lockedPrice = record.locked_price ? `$${record.locked_price}/mo` : `${MONTHLY_PRICE_DISPLAY}/mo`
     const signedUpAt = record.created_at
       ? new Date(record.created_at).toLocaleString('en-US', { timeZone: 'America/New_York' })
       : new Date().toLocaleString('en-US', { timeZone: 'America/New_York' })

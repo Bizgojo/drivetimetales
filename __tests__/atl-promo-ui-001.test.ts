@@ -92,8 +92,9 @@ describe('ATL-PROMO-UI-001: applyPromoTrialDays (max(base, granted), req #5 disp
     expect(applyPromoTrialDays(21, null)).toBe(21)
   })
 
-  test('BASE_TRIAL_DAYS is 7 (page + checkout default)', () => {
-    expect(BASE_TRIAL_DAYS).toBe(7)
+  // PRICING-TRIAL-001: flat 14-day trial (lib/pricing.ts TRIAL_DAYS).
+  test('BASE_TRIAL_DAYS is 14 (page + checkout default)', () => {
+    expect(BASE_TRIAL_DAYS).toBe(14)
   })
 })
 

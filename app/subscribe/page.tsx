@@ -9,6 +9,7 @@ import { applyPromoTrialDays, BASE_TRIAL_DAYS } from '@/lib/promo'
 import { buildSubscribeCheckoutPayload, buildSubscribeSignupPath } from '@/lib/subscribeFunnel'
 import { trackClientEvent } from '@/lib/tracking/client'
 import { randomEventId } from '@/lib/tracking/events'
+import { MONTHLY_PRICE_DISPLAY } from '@/lib/pricing'
 
 function safeInternalPath(path: string | null) {
   if (!path || !path.startsWith('/') || path.startsWith('//') || path.includes('://')) return ''
@@ -66,7 +67,7 @@ function SubscribeContent() {
           setPromoStatus('invalid')
         }
       })
-      .catch(() => { /* fail quiet — default 7-day display */ })
+      .catch(() => { /* fail quiet — default BASE_TRIAL_DAYS display */ })
       .finally(() => clearTimeout(timer))
     return () => { cancelled = true; controller.abort(); clearTimeout(timer) }
   }, [promoCode])
@@ -160,9 +161,9 @@ function SubscribeContent() {
         </h1>
 
         {/* ORION-RESUB-FUNNEL-001: trial copy is now promo-aware instead of a
-            hardcoded 7-day pitch — a validated code shows its real length. */}
+            hardcoded trial pitch — a validated code shows its real length. */}
         <p style={{ color: 'rgba(255,255,255,0.65)', fontSize: '15px', lineHeight: 1.7, margin: '0 0 28px' }}>
-          Original audio dramas made for people on the move. Start your {trialDays}-day free trial and get full access to every story.{promoStatus !== 'valid' ? ' Have a promo code? Enter it at checkout to extend to 14 days.' : ''}
+          Original audio dramas made for people on the move. Start your {trialDays}-day free trial and get full access to every story.
         </p>
 
         {promoCode && promoStatus === 'valid' && (
@@ -184,7 +185,7 @@ function SubscribeContent() {
           padding: '16px 20px',
           marginBottom: '24px',
         }}>
-          <div style={{ fontSize: '28px', fontWeight: 900, color: '#f97316' }}>$7.99</div>
+          <div style={{ fontSize: '28px', fontWeight: 900, color: '#f97316' }}>{MONTHLY_PRICE_DISPLAY}</div>
           <div style={{ fontSize: '13px', color: 'rgba(255,255,255,0.6)', marginTop: '2px' }}>per month · cancel anytime</div>
           <div style={{ marginTop: '12px', fontSize: '13px', color: 'rgba(255,255,255,0.75)', lineHeight: 1.8 }}>
             ✓ Full access to all stories<br />

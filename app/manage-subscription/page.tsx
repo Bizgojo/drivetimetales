@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
 import { isEntitled } from '@/lib/entitlement'
+import { MONTHLY_PRICE_DISPLAY, MONTHLY_PRICE_USD } from '@/lib/pricing'
 
 interface Invoice {
   id: string
@@ -36,7 +37,7 @@ export default function ManageSubscriptionPage() {
     fetch('/api/subscriber-count')
       .then(r => r.json())
       .then(data => setCurrentPrice(data.price))
-      .catch(() => setCurrentPrice(7.99))
+      .catch(() => setCurrentPrice(MONTHLY_PRICE_USD))
   }, [])
 
   if (authLoading) {
@@ -64,7 +65,7 @@ export default function ManageSubscriptionPage() {
 
   // Determine what price the user is paying (from their plan or DB)
   const userPrice = (user as any).subscription_price ?? null
-  const displayPrice = userPrice ? `$${parseFloat(userPrice).toFixed(2)} / month` : '$7.99 / month'
+  const displayPrice = userPrice ? `$${parseFloat(userPrice).toFixed(2)} / month` : `${MONTHLY_PRICE_DISPLAY} / month`
 
   const cardStyle = { backgroundColor: '#0f172a', borderRadius: '16px', padding: '20px', marginBottom: '16px', border: '1px solid #334155' }
   const labelStyle = { fontSize: '13px', color: '#94a3b8', marginBottom: '12px', textTransform: 'uppercase' as const, letterSpacing: '0.05em' }

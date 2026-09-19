@@ -18,6 +18,7 @@ import {
 import { isEntitled } from '@/lib/entitlement'
 import type { AutoAdvanceCandidate, AutoAdvanceDisabledReason, PlayerMode, PlayerStory } from './playerTypes'
 import { clearLocalPlayerProgress, getLocalPlayerProgress, mergePlayerProgress, saveLocalPlayerProgress } from '@/lib/playerProgress'
+import { MONTHLY_PRICE_LABEL } from '@/lib/pricing'
 import {
   flushReadingProgressKeepalive,
   loadReadingProgress,
@@ -3110,9 +3111,11 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
             maxWidth: '320px',
           }}>
             {trialWallType === 'standalone'
-              ? 'Continue listening for \u00247.99/month \u2014 no credit card required for your first week.'
+              // PRICING-TRIAL-001: the old "no credit card required for your first week"
+              // was false — this button leads to card-required checkout.
+              ? `Continue listening for ${MONTHLY_PRICE_LABEL}. Cancel anytime.`
               : trialWallType === 'series_ep1_end'
-              ? "There\u2019s more of this story. Continue for \u00247.99/month."
+              ? `There\u2019s more of this story. Continue for ${MONTHLY_PRICE_LABEL}.`
               : "Subscribe to unlock the rest of this series and everything in the library."}
           </p>
 

@@ -1,3 +1,4 @@
+import { MONTHLY_PRICE_LABEL } from '@/lib/pricing'
 /**
  * lib/emails/retentionTemplates.ts — RETENTION-PATH-001
  *
@@ -99,7 +100,7 @@ export function renderWelcomeEmail(displayName: string): { subject: string; html
         </div>
       </div>
       <p style="color:rgba(255,255,255,0.5);font-size:13px;line-height:1.6;margin:0;text-align:center;">
-        After your trial, it's just $7.99/month. Questions? Reply to this email.
+        After your trial, it's just ${MONTHLY_PRICE_LABEL}. Questions? Reply to this email.
       </p>
     `),
   }

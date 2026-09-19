@@ -8,6 +8,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { Resend } from 'resend'
 import { createClient } from '@supabase/supabase-js'
+import { MONTHLY_PRICE_LABEL, TRIAL_LABEL } from '@/lib/pricing'
 
 export const maxDuration = 300
 export const runtime = 'nodejs'
@@ -33,7 +34,7 @@ const LAUNCH_EMAIL_HTML = `
       <div style="font-size:36px;text-align:center;margin-bottom:16px;">🚀</div>
       <h1 style="color:#ffffff;font-size:24px;font-weight:800;text-align:center;margin:0 0 16px;">We're live. Your free trial is ready.</h1>
       <p style="color:rgba(255,255,255,0.75);font-size:15px;line-height:1.7;margin:0 0 24px;text-align:center;">
-        Today is the day. Endless Tales is officially open — and your 14-day free trial is waiting for you right now.
+        Today is the day. Endless Tales is officially open — and your ${TRIAL_LABEL} is waiting for you right now.
       </p>
 
       <div style="text-align:center;margin-bottom:24px;">
@@ -44,7 +45,7 @@ const LAUNCH_EMAIL_HTML = `
         <p style="color:rgba(255,255,255,0.6);font-size:13px;line-height:1.7;margin:0;text-align:center;">
           Mystery. Thriller. Romance. Drama. Horror.<br>
           New stories every week. Zero ads. Cancel anytime.<br><br>
-          <strong style="color:#f97316;">$7.99/month after your trial — card required, cancel anytime.</strong>
+          <strong style="color:#f97316;">${MONTHLY_PRICE_LABEL} after your trial — card required, cancel anytime.</strong>
         </p>
       </div>
     </div>

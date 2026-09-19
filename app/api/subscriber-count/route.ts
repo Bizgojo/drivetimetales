@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { MONTHLY_PRICE_USD } from '@/lib/pricing'
 
 export const dynamic = 'force-dynamic'
 
@@ -20,13 +21,13 @@ export async function GET() {
     const total = count ?? 0
     const FOUNDING_OFFSET = 27
     const adjustedTotal = total + FOUNDING_OFFSET
-    const price = 7.99
+    const price = MONTHLY_PRICE_USD
     const spotsLeft = Math.max(0, 500 - adjustedTotal)
     const foundingAvailable = adjustedTotal < 500
 
     return NextResponse.json({ count: adjustedTotal, price, spotsLeft, foundingAvailable })
   } catch (err) {
     console.error('[subscriber-count]', err)
-    return NextResponse.json({ count: 27, price: 7.99, spotsLeft: 473, foundingAvailable: true })
+    return NextResponse.json({ count: 27, price: MONTHLY_PRICE_USD, spotsLeft: 473, foundingAvailable: true })
   }
 }

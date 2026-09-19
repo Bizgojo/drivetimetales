@@ -13,7 +13,8 @@ import { normalizeEmail } from '@/lib/email'
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
-const TRIAL_DAYS = 7
+// PRICING-TRIAL-001: no-card trial length = the app-wide TRIAL_DAYS (14).
+import { TRIAL_DAYS } from '@/lib/pricing'
 
 // Episode 4 — the first post-signup episode (GVL Wearing My Face series)
 const EP4_ID = 'eac2b1ef-6456-46b1-8c17-bbdf32d8ff5d'

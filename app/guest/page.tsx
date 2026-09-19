@@ -6,6 +6,7 @@ import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/contexts/AuthContext'
 import GuestSignupPrompt from '@/components/GuestSignupPrompt'
 import Link from 'next/link'
+import { MONTHLY_PRICE_DISPLAY, TRIAL_DAYS, TRIAL_LABEL } from '@/lib/pricing'
 
 interface Story {
   id: string
@@ -99,7 +100,7 @@ export default function GuestPage() {
         <p style={{ color: 'rgba(240,236,228,0.7)', fontSize: '0.9rem', maxWidth: '320px', margin: '0 auto 1rem', lineHeight: 1.5 }}>
           {GUEST_STORY_GATE - guestStories > 0
             ? `You have ${GUEST_STORY_GATE - guestStories} free ${GUEST_STORY_GATE - guestStories === 1 ? 'story' : 'stories'} left — no signup required.`
-            : 'Start your 14-day free trial to keep listening.'}
+            : `Start your ${TRIAL_LABEL} to keep listening.`}
         </p>
         <div style={{ display: 'flex', justifyContent: 'center', gap: '8px' }}>
           {Array.from({ length: GUEST_STORY_GATE }).map((_, i) => (
@@ -140,7 +141,7 @@ export default function GuestPage() {
         <Link href="/signup" style={{ display: 'block', width: '100%', maxWidth: '380px', background: '#f0a030', color: '#0a0a0f', padding: '14px', borderRadius: '50px', fontSize: '0.95rem', fontWeight: 700, textAlign: 'center', textDecoration: 'none', boxShadow: '0 0 30px rgba(240,160,48,0.3)' }}>
           🎉 Get 2 Weeks Free — Cancel Anytime
         </Link>
-        <p style={{ color: 'rgba(240,236,228,0.4)', fontSize: '0.72rem' }}>Free for 14 days · then $7.99/mo · cancel anytime</p>
+        <p style={{ color: 'rgba(240,236,228,0.4)', fontSize: '0.72rem' }}>Free for {TRIAL_DAYS} days · then {MONTHLY_PRICE_DISPLAY}/mo · cancel anytime</p>
       </div>
     </div>
   )

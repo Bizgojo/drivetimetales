@@ -4,7 +4,7 @@
 // firstName from the form fills [LISTENER_NAME] in Belle B's welcome audio
 // and pre-fills the paywall. Defaults to 'Listener' if blank.
 //
-// Creates a 7-day free trial account (no Stripe). Same pattern as
+// Creates a TRIAL_DAYS (lib/pricing.ts, 14-day) free trial account (no Stripe). Same pattern as
 // app/api/listen/signup/route.ts but simplified for the invitation gate.
 //
 // signup_source: 'bell-invitation' distinguishes these users in analytics.
@@ -34,7 +34,8 @@ import { CANONICAL_BELLE_B_VOICE_ID } from '@/lib/voiceConstants'
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
-const TRIAL_DAYS = 7
+// PRICING-TRIAL-001: no-card trial length = the app-wide TRIAL_DAYS (14).
+import { TRIAL_DAYS } from '@/lib/pricing'
 
 // The arm determines which promo audio plays on the gate page — it does NOT
 // determine what gets seeded post-signup. All three arms land on EP2.

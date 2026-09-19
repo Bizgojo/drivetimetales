@@ -35,6 +35,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
 import { attachMediaSession, MEDIA_ALBUM } from '@/lib/mediaSession'
 import { useSearchParams } from 'next/navigation'
+import { MONTHLY_PRICE_LABEL } from '@/lib/pricing'
 
 // ─── Bell promo audio URLs (Supabase public storage, status=audio_ready) ─────
 const BELL_BASE =
@@ -749,7 +750,7 @@ export default function GoInvitationContent({ arm: armProp }: GoInvitationConten
                 boxShadow: '0 8px 30px rgba(249,115,22,0.35)',
               }}
             >
-              Subscribe · $7.99/month →
+              Subscribe · {MONTHLY_PRICE_LABEL} →
             </a>
             <p style={{ fontSize: '12px', color: 'rgba(255,255,255,0.35)', margin: '12px 0 0', lineHeight: 1.4 }}>
               Free trial is one-time only · Cancel anytime

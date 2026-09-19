@@ -10,6 +10,7 @@ import { buildAttributionUpdatePayload, hasUtmAttribution, normalizePromoCode, r
 import { normalizeEmail } from '@/lib/email'
 import { applyPromoTrialDays } from '@/lib/promo'
 import { GO_BASE_TRIAL_DAYS } from '@/lib/landing'
+import { ANNUAL_MONTHLY_EQUIVALENT_DISPLAY, ANNUAL_PRICE_DISPLAY, ANNUAL_SAVINGS_PERCENT, MONTHLY_PRICE_DISPLAY, TRIAL_DAYS } from '@/lib/pricing'
 import { isEntitledUser } from '@/lib/entitlement'
 import { carryQueryString, AUTHED_REDIRECT_EXCLUDED_PARAMS } from '@/lib/subscribeFunnel'
 import { trackClientEvent } from '@/lib/tracking/client'
@@ -24,12 +25,12 @@ declare global {
 }
 
 
-// Base trial is locked at 7 days for all users. A valid promo code in the
+// Base trial is TRIAL_DAYS (lib/pricing.ts — flat 14, no A/B variant yet) for all users. A valid promo code in the
 // URL can raise the DISPLAYED (and checkout-granted) trial via the
 // /api/promo/validate check below (ATL-PROMO-UI-001) — same max(base, days)
 // math as app/api/checkout/route.ts.
 function getTrialVariant(): { days: number; variant: 'A' | 'B' } {
-  return { days: 7, variant: 'A' }
+  return { days: TRIAL_DAYS, variant: 'A' }
 }
 
 function LoadingFallback() {
@@ -60,7 +61,7 @@ function SignUpContent() {
   const [referralCode, setReferralCode] = useState<string | null>(null)
   const [referrerName, setReferrerName] = useState<string | null>(null)
   const [offer, setOffer] = useState<Offer | null>(null)
-  const [trialDays, setTrialDays] = useState(7)
+  const [trialDays, setTrialDays] = useState(TRIAL_DAYS)
   const [trialVariant, setTrialVariant] = useState<'A' | 'B'>('A')
   const [billingCycle, setBillingCycle] = useState<'monthly' | 'annual'>('monthly')
   const [promoCode, setPromoCode] = useState<string | null>(null)
@@ -118,7 +119,7 @@ function SignUpContent() {
 
   // ATL-PROMO-UI-001: server-truth promo validation for honest trial display.
   // Valid → show real trial length + "applied" line. Invalid → subtle note,
-  // keep 7-day display. Endpoint down/slow → fail quiet, default display.
+  // keep the TRIAL_DAYS display. Endpoint down/slow → fail quiet, default display.
   useEffect(() => {
     if (!promoCode) { setPromoStatus('none'); return }
     let cancelled = false
@@ -338,14 +339,14 @@ function SignUpContent() {
                 onClick={() => setBillingCycle('monthly')}
                 style={{ flex: 1, padding: '0.75rem', border: 'none', backgroundColor: billingCycle === 'monthly' ? '#f97316' : '#0f172a', color: billingCycle === 'monthly' ? 'white' : '#94a3b8', fontSize: '14px', fontWeight: 700, cursor: 'pointer' }}>
                 Monthly<br/>
-                <span style={{ fontSize: '12px', fontWeight: 400 }}>$7.99/mo</span>
+                <span style={{ fontSize: '12px', fontWeight: 400 }}>{MONTHLY_PRICE_DISPLAY}/mo</span>
               </button>
               <button
                 type="button"
                 onClick={() => setBillingCycle('annual')}
                 style={{ flex: 1, padding: '0.75rem', border: 'none', borderLeft: '1px solid #334155', backgroundColor: billingCycle === 'annual' ? '#f97316' : '#0f172a', color: billingCycle === 'annual' ? 'white' : '#94a3b8', fontSize: '14px', fontWeight: 700, cursor: 'pointer' }}>
-                Annual 🏷️ Save 37%<br/>
-                <span style={{ fontSize: '12px', fontWeight: 400 }}>$59.99/yr — just $5/mo</span>
+                Annual 🏷️ Save {ANNUAL_SAVINGS_PERCENT}%<br/>
+                <span style={{ fontSize: '12px', fontWeight: 400 }}>{ANNUAL_PRICE_DISPLAY}/yr — just {ANNUAL_MONTHLY_EQUIVALENT_DISPLAY}/mo</span>
               </button>
             </div>
           </div>
@@ -388,7 +389,7 @@ function SignUpContent() {
 
         <p style={{ color: '#475569', fontSize: '12px', textAlign: 'center', marginTop: '1rem', lineHeight: 1.5 }}>
           By signing up you agree to our <a href="/terms" style={{ color: "#f0a030", textDecoration: "none" }}>Terms of Service</a> and <a href="/privacy" style={{ color: "#f0a030", textDecoration: "none" }}>Privacy Policy</a>.<br/>
-          $7.99/mo or $59.99/yr after trial.
+          {MONTHLY_PRICE_DISPLAY}/mo or {ANNUAL_PRICE_DISPLAY}/yr after your {TRIAL_DAYS}-day free trial.
         </p>
       </div>
     </div>

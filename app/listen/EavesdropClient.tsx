@@ -15,6 +15,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { attachMediaSession, MEDIA_ALBUM } from '@/lib/mediaSession'
 import { createGoListenTracker, GoListenTracker, newSessionId } from '@/lib/goListen'
 import type { EpisodeData } from './page'
+import { TRIAL_LABEL } from '@/lib/pricing'
 
 type Phase =
   | 'hook'        // initial hook card, before button press
@@ -533,7 +534,7 @@ export default function EavesdropClient({ episodes, arm, utmSource, utmCampaign 
                 You&rsquo;re in{firstName ? `, ${firstName}` : ''}.
               </p>
               <p style={{ fontSize: 16, color: '#f5f0e8', fontFamily: 'sans-serif', margin: 0 }}>
-                Your 7-day free week has started. No credit card.
+                Your {TRIAL_LABEL} has started. No credit card.
               </p>
             </div>
             <button
@@ -599,7 +600,7 @@ export default function EavesdropClient({ episodes, arm, utmSource, utmCampaign 
                 You&rsquo;re in{firstName ? `, ${firstName}` : ''}.
               </p>
               <p style={{ fontSize: 16, color: '#f5f0e8', fontFamily: 'sans-serif', margin: 0 }}>
-                Your 7-day free week has started. No credit card.
+                Your {TRIAL_LABEL} has started. No credit card.
               </p>
             </div>
             {/* One-tap login: handleGoToApp generates a fresh token at tap time and navigates. */}
@@ -648,7 +649,7 @@ export default function EavesdropClient({ episodes, arm, utmSource, utmCampaign 
             Want to keep listening?
           </h2>
           <p style={{ fontSize: 16, color: '#f5f0e8', fontFamily: 'sans-serif', marginBottom: 24 }}>
-            Enter your name and email to get a 7-day free trial — no credit card needed.
+            Enter your name and email to get a {TRIAL_LABEL} — no credit card needed.
           </p>
 
           <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>

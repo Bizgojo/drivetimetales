@@ -3,6 +3,7 @@ import Stripe from 'stripe'
 import { createClient } from '@supabase/supabase-js'
 import { normalizeEmail } from '@/lib/email'
 import { GO_BASE_TRIAL_DAYS } from '@/lib/landing'
+import { ANNUAL_PRICE_LABEL, MONTHLY_PRICE_LABEL, TRIAL_DAYS } from '@/lib/pricing'
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, { apiVersion: '2023-10-16' })
 
@@ -13,7 +14,7 @@ const supabase = createClient(
 
 // ATL-FM-RETIRE-001 (2026-07-10, Marc decision from GVL rehearsal finding #2):
 // The Founding Member program is RETIRED. Every monthly signup gets STANDARD
-// ($7.99/mo); annual gets ANNUAL. The FM Stripe prices are archived — do not
+// (lib/pricing.ts: $9.99/month); annual gets ANNUAL ($79.99/year). The FM Stripe prices are archived — do not
 // reintroduce a selection path without an explicit pricing decision from Marc.
 const STANDARD_PRICE_ID = process.env.STRIPE_PRICE_STANDARD!
 const ANNUAL_PRICE_ID = process.env.STRIPE_PRICE_ANNUAL!
@@ -109,10 +110,10 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: 'Annual plan not available' }, { status: 500 })
       }
       priceId = ANNUAL_PRICE_ID
-      priceLabel = 'annual $59.99'
+      priceLabel = `annual ${ANNUAL_PRICE_LABEL}`
     } else {
       priceId = STANDARD_PRICE_ID
-      priceLabel = 'standard $7.99/mo'
+      priceLabel = `standard ${MONTHLY_PRICE_LABEL}`
     }
     console.log(`[checkout] Assigned price: ${priceLabel}`)
 
@@ -169,19 +170,22 @@ export async function POST(req: NextRequest) {
 
     // Server-determined trial days (SECURITY: client trialDays no longer primary).
     // Priority order:
-    //   1. source=go → GO_BASE_TRIAL_DAYS (14) server-side, regardless of client
+    //   1. source=go → GO_BASE_TRIAL_DAYS server-side, regardless of client
     //   2. Allowlisted client trialDays (referral / subscribe paths)
-    //   3. Standard default (7)
-    // Referral and promo max-logic applied on top as before.
+    //   3. Standard default TRIAL_DAYS (lib/pricing.ts)
+    // PRICING-TRIAL-001: TRIAL_DAYS (14) is a FLOOR — no path grants less, even
+    // if an old cached client still sends trialDays=7. Referral and promo
+    // max-logic applied on top as before.
     let trialDays: number
     if (source === 'go') {
-      trialDays = GO_BASE_TRIAL_DAYS // 14 — /go ad-funnel grant (Marc msg 2868)
+      trialDays = GO_BASE_TRIAL_DAYS // /go ad-funnel grant (= TRIAL_DAYS)
       console.log(`[checkout] source=go → trial days set to ${GO_BASE_TRIAL_DAYS} server-side`)
     } else if (trialDaysParam != null && (TRIAL_DAYS_ALLOWLIST as readonly number[]).includes(Number(trialDaysParam))) {
       trialDays = Number(trialDaysParam)
     } else {
-      trialDays = 7 // standard default
+      trialDays = TRIAL_DAYS
     }
+    trialDays = Math.max(trialDays, TRIAL_DAYS)
     if (referralCode) {
       const { data: referrer } = await supabase.from('users').select('id').eq('referral_code', referralCode).single()
       if (referrer) trialDays = Math.max(trialDays, 14)
