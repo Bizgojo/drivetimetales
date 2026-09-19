@@ -34,7 +34,9 @@ const ADDITIONAL_PUBLIC_PREFIXES = ['/promo/']
 // pre-launch audit, 2026-07-12).
 // OFFLINE-DL-001: /offline-player.html is precached by the service worker —
 // it must never redirect to /signin (it has to load with no session / no signal).
-const PUBLIC_PREFIXES = ['/api/', '/_next/', '/images/', '/icons/', '/favicon', '/podcast', '/player/', '/manifest.json', '/sw.js', '/offline.html', '/offline-player.html']
+// /audio/: static public audio (landing "Play Sample") — logged-out visitors
+// were redirected to /signin instead of getting the file.
+const PUBLIC_PREFIXES = ['/api/', '/_next/', '/images/', '/icons/', '/favicon', '/podcast', '/player/', '/manifest.json', '/sw.js', '/offline.html', '/offline-player.html', '/audio/']
 
 const SUBSCRIPTION_REQUIRED_PREFIXES = [
   '/home',

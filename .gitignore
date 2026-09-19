@@ -4,6 +4,8 @@ node_modules/
 Audio Dramas/
 Audio Dramas/
 *.mp3
+# Landing-page sample (app/page.tsx "Play Sample") — must ship with the app.
+!public/audio/Got_a_long_drive_ahead.mp3
 *.wav
 *.m4a
 Audio Dramas/

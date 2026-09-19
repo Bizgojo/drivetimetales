@@ -264,7 +264,8 @@ export const GO_CTA_COPY_DEFAULT: GoCtaCopy = {
  *  button ("Hear what happens next →", Marc verbatim — replaces the earlier build's
  *  "Hear what happens next →") is identical in BOTH cases. */
 export const GO_CTA_COPY_COMPLETED: GoCtaCopy = {
-  heading: "And that's the story — there are hundreds more.",
+  // Honest, low-maintenance count (was "hundreds more" — an over-claim).
+  heading: "And that's the story — there are dozens more, with new ones every week.",
   buttonLabel: "Hear what happens next →",
   // CTA-004: no footnote — "keeps playing while you sign up" is false once
   // the sample has ended.
