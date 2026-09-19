@@ -36,7 +36,9 @@ export default function ReferPage() {
         setReferralCode(userData.referral_code) 
       } else { 
         const rand3 = Math.random().toString(36).substring(2, 5).toUpperCase()
-        const newCode = firstName + rand3
+        // REFERRAL-SIGNUP-001: process_referral matches UPPER(code) — a mixed-case
+        // code (e.g. 'Marc7QX') could never be redeemed. Uppercase alphanumeric only.
+        const newCode = firstName.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6) + rand3
         await supabase.from('users').update({ referral_code: newCode }).eq('id', user?.id)
         setReferralCode(newCode) 
       }
