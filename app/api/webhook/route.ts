@@ -7,6 +7,7 @@ import { sendServerEvent } from '@/lib/tracking/capi'
 import { startTrialEventId, subscribeEventId } from '@/lib/tracking/events'
 import { payReferrerAfterFirstPayment } from '@/lib/referralPayout'
 import { ANNUAL_PRICE_LABEL, MONTHLY_PRICE_LABEL, TRIAL_DAYS } from '@/lib/pricing'
+import { resolveCancelledAt } from '@/lib/cancelState'
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, { apiVersion: '2023-10-16' })
 
@@ -284,6 +285,11 @@ export async function POST(request: NextRequest) {
       console.log(`[webhook] subscription updated — user ${userId}, status: ${status}, plan: ${planName}`)
 
       const billingCycleSu = getBillingCycle(subscription)
+      // CANCEL-STATE-001: a pending cancellation (cancel_at_period_end=true)
+      // still reports an ACTIVE status until the period ends, so record it
+      // here; a resubscribe (flag back to false) clears it. Access is
+      // unchanged — subscription_type stays 'active' until the period ends.
+      const cancelledAtSu = resolveCancelledAt(subscription)
       const { error } = await supabase.from('users').update({
         // On deactivation, plan drops to 'free' but is_founding_member is left
         // untouched (historical flag; pricing lock decisions live elsewhere).
@@ -291,7 +297,11 @@ export async function POST(request: NextRequest) {
         subscription_type: isActive ? 'active' : null,
         subscription_ends_at: isActive ? periodEnd : null,
         billing_cycle: isActive ? billingCycleSu : null,
+        cancelled_at: cancelledAtSu,
       }).eq('id', userId)
+      if (cancelledAtSu) {
+        console.log(`[webhook] pending cancellation recorded — user ${userId}, access until ${periodEnd}`)
+      }
 
       if (error) console.error('Error updating subscription:', error)
       break
