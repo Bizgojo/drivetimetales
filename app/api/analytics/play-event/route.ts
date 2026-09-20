@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
+import { sendServerEvent } from '@/lib/tracking/capi'
+import { playStartEventId } from '@/lib/tracking/events'
+import type { SupabaseClient } from '@supabase/supabase-js'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -52,6 +55,25 @@ async function currentUser() {
   const { data, error } = await authClient.auth.getUser()
   if (error || !data.user) return null
   return data.user
+}
+
+/**
+ * CAPI-PLAYSTART-001: has this listening session already recorded a start?
+ * Called AFTER this request's insert, so the session's first start sees
+ * exactly 1 row; a duplicate/retried start sees 2+ and skips the send.
+ * Fails OPEN (sends) on a query error — Meta also dedups on event_id, so a
+ * rare double send collapses to one event anyway.
+ */
+async function isFirstStartForSession(supabase: SupabaseClient, sessionId: string): Promise<boolean> {
+  const { count, error } = await supabase
+    .from('play_events')
+    .select('id', { count: 'exact', head: true })
+    .eq('session_id', sessionId)
+  if (error) {
+    console.warn('[analytics/play-event] session dedupe check failed:', error.message)
+    return true
+  }
+  return (count ?? 1) <= 1
 }
 
 function numberOrNull(value: unknown) {
@@ -123,6 +145,33 @@ export async function POST(req: NextRequest) {
         console.warn('[analytics/play-event] start failed:', error.message)
         return NextResponse.json({ error: 'Failed to record play start' }, { status: 500 })
       }
+
+      // CAPI-PLAYSTART-001: server-side PlayStart (Meta CAPI + TikTok Events).
+      // The earliest signal we can optimise on — StartTrial lands after
+      // checkout and Purchase ~14 days later. Hashed identifiers only
+      // (em/external_id are hashed inside sendServerEvent). event_id
+      // play_<sessionId> matches the client pixel fire in
+      // lib/analytics.ts → platforms dedup client+server to ONE event.
+      // Awaited (≤4s, never throws) so Vercel can't kill the request before
+      // the send completes — the player does not await this response.
+      if (await isFirstStartForSession(supabase, sessionId)) {
+        await sendServerEvent({
+          name: 'PlayStart',
+          eventId: playStartEventId(sessionId),
+          email: user.email || null,
+          externalId: user.id,
+          sourceUrl: `${new URL(req.url).origin}/player/${storyId}`,
+          customData: {
+            story_id: storyId,
+            series_id: stringOrNull(body?.seriesId) || undefined,
+            episode_number: numberOrNull(body?.episodeNumber) ?? undefined,
+            genre: row.genre || undefined,
+            start_source: startSource || 'gesture',
+            content_name: 'Endless Tales Story',
+          },
+        })
+      }
+
       return NextResponse.json({ success: true, id: data?.id || null })
     }
 
