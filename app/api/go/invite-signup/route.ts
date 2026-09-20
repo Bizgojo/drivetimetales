@@ -36,6 +36,7 @@ export const dynamic = 'force-dynamic'
 
 // PRICING-TRIAL-001: no-card trial length = the app-wide TRIAL_DAYS (14).
 import { TRIAL_DAYS } from '@/lib/pricing'
+import { resolveRequestOrigin } from '@/lib/requestOrigin'
 
 // The arm determines which promo audio plays on the gate page — it does NOT
 // determine what gets seeded post-signup. All three arms land on EP2.
@@ -294,7 +295,7 @@ export async function POST(req: NextRequest) {
         // Helper: fire wall_submit tracking + Lead CAPI (non-fatal, shared across all cases)
         const fireTracking = async () => { // LEAD-CAPI-001: async so await sendServerEvent inside is valid
           if (sessionId && typeof sessionId === 'string' && sessionId.length > 0) {
-            const appBase = process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3001'
+            const appBase = resolveRequestOrigin(req) // ORIGIN-RUNTIME-001 (was VERCEL_URL → Vercel protection wall)
             void fetch(`${appBase}/api/go-listen`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
@@ -464,9 +465,7 @@ export async function POST(req: NextRequest) {
 
     // 3. Fire wall_submit tracking event (fire-and-forget — never blocks response)
     if (sessionId && typeof sessionId === 'string' && sessionId.length > 0) {
-      const appBase = process.env.VERCEL_URL
-        ? `https://${process.env.VERCEL_URL}`
-        : 'http://localhost:3001'
+      const appBase = resolveRequestOrigin(req) // ORIGIN-RUNTIME-001 (was VERCEL_URL → Vercel protection wall)
       void fetch(`${appBase}/api/go-listen`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -485,9 +484,9 @@ export async function POST(req: NextRequest) {
     // DEDUP-001: use the shared eventId sent by the client so the server CAPI event
     // matches the client pixel event. Meta deduplicates on eventID; without a shared
     // ID both events are counted, inflating Lead count by ~2× and halving apparent CPL.
-    const appBase = process.env.VERCEL_URL
-      ? `https://${process.env.VERCEL_URL}`
-      : 'http://localhost:3001'
+    // ORIGIN-RUNTIME-001: event_source_url must be the page the visitor
+    // actually saw — VERCEL_URL reported a *.vercel.app URL to Meta.
+    const appBase = resolveRequestOrigin(req)
     const capiEventId = (typeof leadEventId === 'string' && leadEventId.length > 0)
       ? leadEventId
       : randomEventId('lead')

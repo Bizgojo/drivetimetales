@@ -15,6 +15,7 @@ export const dynamic = 'force-dynamic'
 
 // PRICING-TRIAL-001: no-card trial length = the app-wide TRIAL_DAYS (14).
 import { TRIAL_DAYS } from '@/lib/pricing'
+import { resolveRequestOrigin } from '@/lib/requestOrigin'
 
 // Episode 4 — the first post-signup episode (GVL Wearing My Face series)
 const EP4_ID = 'eac2b1ef-6456-46b1-8c17-bbdf32d8ff5d'
@@ -220,10 +221,14 @@ export async function POST(req: NextRequest) {
     // (fire-and-forget — tracking never blocks signup response)
     if (sessionId && typeof sessionId === 'string') {
       const variant = `listen-arm${armNum}` as const
-      // Server-side fire: use the app's own base URL (localhost in dev, VERCEL_URL in prod)
-      const appBase = process.env.VERCEL_URL
-        ? `https://${process.env.VERCEL_URL}`
-        : 'http://localhost:3001'
+      // ORIGIN-RUNTIME-001 (2026-09-20): the app's own base URL = the RUNTIME
+      // request origin (same rule as /auth/callback + /api/auth/google).
+      // Was VERCEL_URL, the deployment-specific *.vercel.app host on every
+      // deploy including production: this self-call then hit Vercel's
+      // Deployment Protection wall instead of the app, so wall_submit was
+      // silently dropped. The old dev fallback pointed at :3001 while the dev
+      // server runs on :3000, so it never worked locally either.
+      const appBase = resolveRequestOrigin(req)
       void fetch(`${appBase}/api/go-listen`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
