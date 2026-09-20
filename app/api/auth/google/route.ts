@@ -6,19 +6,30 @@
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import { NextResponse } from 'next/server'
+import { isLocalOrigin, resolveRequestOrigin } from '@/lib/requestOrigin'
 
 export async function GET(request: Request) {
   const url = new URL(request.url)
   const returnTo = url.searchParams.get('returnTo') || '/home'
   const origin = url.origin
-  // On Vercel preview deployments NEXT_PUBLIC_APP_URL is baked to the
-  // production URL at build time.  VERCEL_URL is injected per-deployment
-  // (server-only) and always points to the current deployment — use it
-  // so OAuth redirect_uri matches the preview origin, not production.
-  const appUrl = process.env.VERCEL_URL
-    ? `https://${process.env.VERCEL_URL}`
-    : (process.env.NEXT_PUBLIC_APP_URL || origin)
-  const isLocalhost = appUrl.includes('localhost')
+  // OAUTH-ORIGIN-001 (2026-09-20): use the RUNTIME request origin — the same
+  // fix already applied to /auth/callback (AUTH-CALLBACK-ORIGIN-001).
+  //
+  // PREVIOUS BUG: VERCEL_URL is the deployment-specific *.vercel.app host on
+  // EVERY deployment, production included, so production sign-ins asked
+  // Supabase to return the user to a .vercel.app origin. That is a DIFFERENT
+  // origin from the one they started on (app.endless-tales.com), which breaks
+  // two things: the PKCE cookies set below live on the request host, and
+  // anything else stored per-origin — including the referral code captured by
+  // components/ReferralCapture (localStorage + cookie), so a Google signup
+  // from an invite link could never claim its referral.
+  //
+  // The runtime origin is always where the user actually is: the production
+  // domain in production, the preview host on a preview deployment, localhost
+  // in dev — so redirect_to, the PKCE cookies and the stored referral code all
+  // share one origin.
+  const appUrl = resolveRequestOrigin(request)
+  const isLocalhost = isLocalOrigin(appUrl)
   const redirectTo = `${appUrl}/auth/callback`
   const cookieOptions = {
     sameSite: isLocalhost ? 'lax' : 'none',

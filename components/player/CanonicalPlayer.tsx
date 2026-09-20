@@ -11,6 +11,7 @@ import ReviewModal from '@/components/ReviewModal'
 import InstallAppBanner from '@/components/InstallAppBanner'
 import DownloadButton from '@/components/offline/DownloadButton'
 import { requestInstallReoffer } from '@/lib/installReoffer'
+import { welcomeClipCompleted } from '@/lib/welcomePlayback'
 import {
   attachMediaSession, claimMediaSession, refreshMediaHandlers, releaseMediaSession, setMediaPlaybackState,
   setMediaPosition, updateMediaTrack, MEDIA_ALBUM, SEEK_BACKWARD_SECONDS, SEEK_FORWARD_SECONDS, type MediaActionHandlers,
@@ -289,7 +290,10 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
       // released on 'ended', handing control to the story's claim.
       attachMediaSession(welcomeAudio, { title: 'A welcome from Belle', artist: MEDIA_ALBUM, artworkUrl: (story as any)?.cover_url })
       welcomeAudio.onended = () => {
-        if (user?.id) {
+        // WELCOME-PLAYED-GUARD-001: only mark it played if the clip really
+        // reached its end. A spurious/empty 'ended' (iOS) must leave the flag
+        // false so the listener is offered the welcome again.
+        if (user?.id && welcomeClipCompleted(welcomeAudio)) {
           supabase.from('users').update({ welcome_played: true }).eq('id', user.id).then(() => {})
         }
         startStory()
@@ -2342,9 +2346,23 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
                 audioRef.current.play().catch(() => {})
               }
             } else {
-              // Welcome finished — mark played, start story
+              // Welcome finished — mark played, start story.
+              // WELCOME-PLAYED-GUARD-001: this branch runs ABOVE the
+              // spurious-'ended' guards below, so verify the clip actually
+              // reached its end before burning the one-shot flag. When it
+              // didn't (false 'ended', never-started element), fall through to
+              // the story anyway — never dead-end playback — but leave
+              // welcome_played false so the welcome is offered again.
               inWelcomeRef.current = false
-              if (user?.id) {
+              const welcomeHeard = welcomeClipCompleted(audioRef.current)
+              if (!welcomeHeard) {
+                console.warn('[player] welcome ended without playing — leaving welcome_played false', {
+                  storyId,
+                  at: audioRef.current?.currentTime,
+                  duration: audioRef.current?.duration,
+                })
+              }
+              if (user?.id && welcomeHeard) {
                 supabase.from('users').update({ welcome_played: true }).eq('id', user.id).then(() => {})
               }
               // Start the actual story

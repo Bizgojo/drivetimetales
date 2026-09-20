@@ -12,6 +12,7 @@
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import { NextResponse } from 'next/server'
+import { isLocalOrigin, resolveRequestOrigin } from '@/lib/requestOrigin'
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url)
@@ -30,8 +31,11 @@ export async function GET(request: Request) {
   // whatever domain the user is actually on — app.endless-tales.com for
   // production, the preview .vercel.app URL for previews, localhost for dev.
   // This is always correct and never routes through Vercel's auth wall.
-  const origin = new URL(request.url).origin
-  const isLocalhost = origin.includes('localhost')
+  // OAUTH-ORIGIN-001: same runtime-host rule, now header-aware — the dev
+  // server reports 0.0.0.0 as the request URL while the browser is on
+  // localhost, which flipped these cookies to secure/none on plain http.
+  const origin = resolveRequestOrigin(request)
+  const isLocalhost = isLocalOrigin(origin)
   const cookieOptions = {
     sameSite: isLocalhost ? 'lax' : 'none',
     secure: !isLocalhost,
