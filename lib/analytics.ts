@@ -5,6 +5,8 @@
  */
 
 import { supabase } from './supabase'
+import { trackClientEvent } from '@/lib/tracking/client'
+import { guestPlayStartEventId, playStartEventId } from '@/lib/tracking/events'
 
 // ORION-ANALYTICS-GAP-001 (2026-07-15): 'tab_hidden' (session left open, audio
 // paused, tab went hidden) and 'playback_error' (terminal player error — stall
@@ -153,6 +155,10 @@ export async function trackPlayStart(params: {
   genre?: string
   author?: string
   narrator?: string
+  // CAPI-PLAYSTART-001: ad-platform custom data (optional; omitted for standalones).
+  seriesId?: string | null
+  episodeNumber?: number | null
+  storyTitle?: string | null
   durationMins?: number
   // ORION-ANALYTICS-GAP-001: defaults to 'gesture' so every existing caller
   // keeps its exact behavior; autoplay/auto-advance starts pass their source.
@@ -165,6 +171,29 @@ export async function trackPlayStart(params: {
     currentSnapshot = { ...params, startedAt }
 
     const startSource: PlayStartSource = params.startSource || 'gesture'
+
+    // CAPI-PLAYSTART-001: browser pixel twin of the server PlayStart sent by
+    // /api/analytics/play-event. Signed-in listens share the SAME event_id
+    // (play_<sessionId>) so Meta/TikTok dedup client+server to one
+    // event — same pattern as StartTrial. Guests have no server twin (that
+    // route requires auth), so they fire client-only under a guest id.
+    // Once per session: trackPlayStart is called once per listening session.
+    try {
+      trackClientEvent('PlayStart', {
+        content_name: params.storyTitle || 'Endless Tales Story',
+        content_id: params.storyId,
+        story_id: params.storyId,
+        series_id: params.seriesId || undefined,
+        episode_number: params.episodeNumber ?? undefined,
+        genre: params.genre,
+        start_source: startSource,
+      }, params.userId
+        ? playStartEventId(currentSessionId)
+        : guestPlayStartEventId(currentSessionId))
+    } catch (pixelErr) {
+      console.warn('[analytics] PlayStart pixel failed (non-fatal):', pixelErr)
+    }
+
     const { device_type, device_os, browser } = getDeviceInfo()
     const { origin: acquisitionOrigin, referrer_url } = getOrigin()
     // Non-gesture starts encode the start source in `origin` (no jsonb column
@@ -202,6 +231,9 @@ export async function trackPlayStart(params: {
         author: params.author || null,
         narrator: params.narrator || null,
         durationMins: params.durationMins || null,
+        // CAPI-PLAYSTART-001: custom data for the server-side PlayStart.
+        seriesId: params.seriesId || null,
+        episodeNumber: params.episodeNumber ?? null,
         device: { device_type, device_os, browser },
         origin,
         referrerUrl: referrer_url || null,

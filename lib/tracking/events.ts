@@ -29,6 +29,9 @@ export type TrackedEventName =
   | 'StartTrial'
   | 'Subscribe'
   | 'Lead'
+  // CAPI-PLAYSTART-001: custom event — the earliest high-volume signal we
+  // have. Sent to Meta/TikTok under this exact name (no standard mapping).
+  | 'PlayStart'
 
 // Meta paid-conversion event name — DECIDED BY MARC 2026-07-13 10:46 EDT:
 // standard 'Purchase' (Susan's optimization-strength recommendation) with
@@ -86,6 +89,23 @@ export function startTrialEventId(checkoutSessionId: string): string {
 
 export function subscribeEventId(invoiceId: string): string {
   return `sub_${invoiceId}`
+}
+
+/**
+ * CAPI-PLAYSTART-001 dedup key for a listen: one per play session.
+ * The client mints the session id (a random UUID) and posts it to
+ * /api/analytics/play-event, so both sides derive the SAME id — same pattern
+ * as StartTrial's st_<checkout_session_id>.
+ * Deliberately session-only: the user id would otherwise travel to Meta in
+ * PLAINTEXT inside event_id, while user_data.external_id sends it hashed.
+ */
+export function playStartEventId(sessionId: string): string {
+  return `play_${sessionId}`
+}
+
+/** Guest listens have no server twin — session-scoped so retries don't double-count. */
+export function guestPlayStartEventId(sessionId: string): string {
+  return `play_guest_${sessionId}`
 }
 
 // Client-only events (ViewContent, InitiateCheckout) have no server twin; a

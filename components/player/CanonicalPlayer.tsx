@@ -623,6 +623,10 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
       author: (story as any)?.author,
       narrator: (story as any)?.narrator_voice_name,
       durationMins: (story as any)?.duration_mins,
+      // CAPI-PLAYSTART-001 custom data
+      seriesId: (story as any)?.series_id || null,
+      episodeNumber: (story as any)?.episode_number ?? null,
+      storyTitle: story?.title || null,
       startSource,
     }).catch(() => {})
   }
