@@ -1088,6 +1088,26 @@ function hasSeriesClosureLanguage(text: string): boolean {
 }
 
 /**
+ * FIX-BELLE-SERIES-TEMPLATE-001: True when the outro contains emotional residue or
+ * reflection (not mere plot summary). Required for series non-finale outros.
+ */
+function hasEmotionalResidueOrReflection(text: string): boolean {
+  const emotionalMarkers = /\b(gasping|wonder|wondering|haunt|heartbreak|awe|dread|terror|unease|tension|longing|yearning|revelation|shocking|stunned|moment|leaves you|left you|you won't forget|forever changed)\b/i
+  const reflectionMarkers = /\b(question|questioning|ponder|mystery|answer|truth|secret|revealed|reveal|understand|realize|realization|consequence|cost|choice|decision)\b/i
+  return emotionalMarkers.test(text) || reflectionMarkers.test(text)
+}
+
+/**
+ * FIX-BELLE-SERIES-TEMPLATE-001: True when the outro acknowledges companion
+ * presence (Belle as narrator/guide or listener as co-participant). Required
+ * for series non-finale outros.
+ */
+function hasCompanionPresence(text: string): boolean {
+  const companionMarkers = /\b(i'?m belle|belle here|you won't|you will|you can't|alongside|join|discover|tune in|listen|next episode|stay tuned|coming back|keep listening|return)\b/i
+  return companionMarkers.test(text)
+}
+
+/**
  * Check whether intro text names the episode number.
  * Accepts digit form (\b3\b) and written cardinal/ordinal for episodes 1-20.
  */
@@ -1213,6 +1233,15 @@ async function validateIntroOutroPositionRules(
     }
     if (hasSeriesClosureLanguage(outro)) {
       issues.push('non-finale outro must not present final-series closure language')
+    }
+    // FIX-BELLE-SERIES-TEMPLATE-001: Check for emotional residue + companion presence
+    if (!hasEmotionalResidueOrReflection(outro)) {
+      issues.push('non-finale outro must include emotional residue or reflection (not plot summary only)')
+      requireLlmJudgment = true
+    }
+    if (!hasCompanionPresence(outro)) {
+      issues.push('non-finale outro must acknowledge companion presence (Belle or listener, not clinical recap)')
+      requireLlmJudgment = true
     }
     if (!hasNextEpisodeTeaseLang(outro)) {
       issues.push('non-finale outro must tease or point toward the next episode')
