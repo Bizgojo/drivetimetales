@@ -249,7 +249,14 @@ async function validateSegmentTranscript(buf: Buffer, expectedText: string, file
     // OpenAI Whisper endpoint unavailable (404 / account restriction) - infrastructure
     // issue, not an audio quality issue. Skip ASR check and treat as passed so that
     // generation can proceed. Will auto-recover once the endpoint is accessible.
-    if (msg.includes('OpenAI 404') || msg.includes('OpenAI 503') || msg.includes('Invalid URL (POST /v1/audio/transcriptions)')) {
+    // WHISPER-QC-DEGRADE-001 (2026-09-23, Marc Postlewaite): also skip when OpenAI
+    // account has no credits (429 insufficient_quota) or payment required (402).
+    // Eliminates hard dependency on a funded OpenAI account for generate-voices to
+    // proceed. Other QC gates (loudness, silence detection, duration) still run.
+    if (msg.includes('OpenAI 404') || msg.includes('OpenAI 503') ||
+      msg.includes('Invalid URL (POST /v1/audio/transcriptions)') ||
+      msg.includes('OpenAI 429') || msg.includes('OpenAI 402') ||
+      msg.includes('no credits') || msg.includes('insufficient_quota')) {
       return {
         passed: true,
         qcSkipped: true as const,
