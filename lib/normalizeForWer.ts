@@ -49,24 +49,44 @@ function yearToWords(n: number): string {
 
 /**
  * Apply basic normalisation (lowercase, strip punctuation, collapse whitespace),
- * then convert any bare digit tokens to their spoken-English word equivalents.
+ * then convert any bare digit tokens and decimal+magnitude expressions to their
+ * spoken-English word equivalents.
  *
  * Apply to BOTH sides of a comparison so numeral surface-form differences
- * (e.g. "2000 and 2006" ↔ "two thousand and two thousand and six") do not
+ * (e.g. "2000 and 2006" ↔ "two thousand and two thousand and six",
+ * or "13.8 billion" ↔ "thirteen point eight billion") do not
  * produce false mismatches in either similarity scoring or numeric-sequence
  * veto checks.
  *
  * Mirrors the normalise() + normalizeForWer() pipeline in garble-detection-gate.js
  * exactly. Hyphens emitted by number-to-words are stripped to match the
  * normalised shape of the surrounding text.
+ *
+ * FIX-WHISPER-NUMBER-NORMALIZATION-001: Enhanced to handle decimal numbers
+ * followed by magnitude words (billion, million, thousand) by normalizing the
+ * decimal portion as spoken words (13.8 → "thirteen point eight") and preserving
+ * the magnitude word. This prevents REPEATED_IDENTICAL_TRUNCATION failures when
+ * scripts use "13.8 billion" and Whisper transcribes "thirteen point eight billion".
  */
 export function normalizeForWer(text: string): string {
-  // Basic normalise: lowercase, strip all non-alphanumeric/space, collapse spaces.
-  const s = text.toLowerCase().replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim()
-  return s
-    .split(/\s+/)
-    .filter(Boolean)
-    .map(token => {
+  // Basic normalise: lowercase, strip most punctuation but preserve dots for decimals.
+  const s = text.toLowerCase().replace(/[^a-z0-9\.\s]/g, ' ').replace(/\s+/g, ' ').trim()
+  const tokens = s.split(/\s+/).filter(Boolean)
+  
+  return tokens
+    .map((token, idx) => {
+      // Handle decimal numbers followed by magnitude words (billion, million, thousand, trillion)
+      // Pattern: "13.8" followed by magnitude → convert decimal to "thirteen point eight"
+      const nextToken = idx + 1 < tokens.length ? tokens[idx + 1] : null
+      const isMagnitude = nextToken && ['billion', 'million', 'thousand', 'trillion'].includes(nextToken)
+      if (/^\d+\.\d+$/.test(token) && isMagnitude) {
+        // Decimal number: "13.8" → "thirteen point eight"
+        const [intPart, decPart] = token.split('.')
+        const intWords = nw.toWords(parseInt(intPart, 10)).replace(/-/g, ' ')
+        const decWords = nw.toWords(parseInt(decPart, 10)).replace(/-/g, ' ')
+        return intWords + ' point ' + decWords
+      }
+      
       if (!/^\d+$/.test(token)) return token
       const n = parseInt(token, 10)
       if (!Number.isFinite(n)) return token
