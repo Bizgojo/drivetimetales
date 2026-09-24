@@ -68,6 +68,8 @@ const HOOK_WARN_WORD_LIMIT = 30
 
 /** For SFX check: scripts pre-dating the [SFX:...] template are legacy. */
 // A script is "new" (non-legacy) if it contains at least one [SFX:...] marker
+/** FIX-HOOK-GATE-SFX-EXEMPTION-001: Origin 2.0 (science non-fiction) pre-dates SFX template. */
+const ORIGIN_2_0_SERIES_ID = 'df27ac64-414e-40c3-8419-cdf3cc3818b0'
 // OR if it was generated after the template change (we detect by presence of tags).
 
 /** Target SFX count range for new scripts. */
@@ -395,7 +397,20 @@ async function checkHook(script: string): Promise<HookCheckResult> {
  * A script is "legacy" if it contains NO [SFX:...] markers at all.
  * New scripts must have 3–6 SFX markers to PASS.
  */
-function checkSfx(script: string): SfxCheckResult {
+/**
+ * FIX-HOOK-GATE-SFX-EXEMPTION-001: Exempt Origin 2.0 series from SFX requirement.
+ * @param seriesId  (Optional) Series ID; if matches ORIGIN_2_0_SERIES_ID, SFX check is 'na'
+ */
+function checkSfx(script: string, seriesId?: string | null): SfxCheckResult {
+  // FIX-HOOK-GATE-SFX-EXEMPTION-001: If this is Origin 2.0, exempt from SFX requirement
+  if (seriesId === ORIGIN_2_0_SERIES_ID) {
+    return {
+      status: 'na',
+      sfxCount: 0,
+      hasLegacyScript: true,
+      detail: `Series ${ORIGIN_2_0_SERIES_ID} (Origin 2.0 — science non-fiction) is exempt from SFX requirement by design. Check is N/A.`,
+    }
+  }
   const sfxMatches = script.match(/\[SFX:[^\]]*\]/gi) || []
   const sfxCount = sfxMatches.length
 
@@ -797,6 +812,8 @@ export interface RunHookGateInput {
   scriptUpdatedAt?: string | null
   /** Populated by stories.segments_generated_at (set by generate-voices on completion) */
   segmentsGeneratedAt?: string | null
+  /** FIX-HOOK-GATE-SFX-EXEMPTION-001: Series ID for origin/series-level exemptions (optional) */
+  seriesId?: string | null
 }
 
 /**
@@ -811,6 +828,7 @@ export async function runHookGate(input: RunHookGateInput): Promise<HookGateResu
     stateJson = {},
     scriptUpdatedAt,
     segmentsGeneratedAt,
+    seriesId,
   } = input
 
   // ── Run all checks in parallel where possible ───────────────────────────
@@ -849,7 +867,7 @@ export async function runHookGate(input: RunHookGateInput): Promise<HookGateResu
           'LLM hook rubric required before RfR — see HOOK-GATE-001 compensating check.',
       }
     : await checkHook(script)
-  const sfxCheck = checkSfx(script)
+  const sfxCheck = checkSfx(script, seriesId)
   // Belle check: skip for LANDING-STORY-001 (no Belle B by design)
   const belleCheck: BelleCheckResult = isBelleExempt
     ? {
