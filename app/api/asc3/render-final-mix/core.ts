@@ -345,7 +345,7 @@ export async function runRenderFinalMix(storyId: string): Promise<{
     if (files.length === 0) return { success: false, error: 'No audio files found' }
     const { data: storyRow } = await supabase
       .from('stories')
-      .select('script')
+      .select('script, sfx_disabled')
       .eq('id', storyId)
       .single()
 
@@ -704,8 +704,17 @@ export async function runRenderFinalMix(storyId: string): Promise<{
     // between spoken lines, never under dialogue. No per-clip loudnorm; the body
     // loudnorm pass below levels the whole stream (per-SFX gain trims can be
     // added later if an effect sits too hot or too quiet).
+    // SFX-DISABLED-001 (2026-09-23, Marc Postlewaite): when stories.sfx_disabled=true,
+    // skip all sfx_*.mp3 assembly entirely. Used for series where SFX cues were
+    // intentionally stripped from the script before voice generation (e.g. Sunset of
+    // Competition — all 26 episodes). The flag short-circuits discovery so no SFX files
+    // are downloaded or injected into the body timeline.
+    const sfxIsDisabled = storyRow?.sfx_disabled === true
+    if (sfxIsDisabled) {
+      console.log(' [SFX-DISABLED-001] sfx_disabled=true — skipping sfx_*.mp3 assembly')
+    }
     const sfxPattern = /^sfx_(\d{4})\.mp3$/
-    const parsedSfx = files
+    const parsedSfx = sfxIsDisabled ? [] : files
       .map(f => { const m = f.name.match(sfxPattern); return m ? { file: f, sfxNumber: Number(m[1]) } : null })
       .filter((item): item is { file: typeof files[number], sfxNumber: number } => item !== null)
       .sort((a, b) => a.sfxNumber - b.sfxNumber)
