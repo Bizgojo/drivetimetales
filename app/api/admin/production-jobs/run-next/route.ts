@@ -1103,7 +1103,7 @@ function hasEmotionalResidueOrReflection(text: string): boolean {
  * for series non-finale outros.
  */
 function hasCompanionPresence(text: string): boolean {
-  const companionMarkers = /\b(i'?m belle|belle here|you won't|you will|you can't|alongside|join|discover|tune in|listen|next episode|stay tuned|coming back|keep listening|return)\b/i
+  const companionMarkers = /\b(i'?m belle|belle here|you won't|you will|you can't|alongside|join|discover|tune in|listen|next episode|stay tuned|coming back|keep listening|return|we'll|we're|we've|we|our)\b/i
   return companionMarkers.test(text)
 }
 
