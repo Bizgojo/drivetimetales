@@ -6319,30 +6319,8 @@ async function runSeriesVoicePreflight(job: ProductionJob, origin: string) {
   const state = job.state_json && typeof job.state_json === 'object' ? job.state_json : {}
   const seriesId = job.series_id || state.seriesId
   if (!seriesId) throw new Error('Series job is missing series_id')
-  
-  // ATL-PIPE-SCORE-ADVISORY-FOLLOW-001: Allow advisory-mode completions through.
-  // The score_validate_package step now supports soft-fail (advisory) mode where:
-  // - LLM package validation returns pass=false (warnings/quality issues)
-  // - Job is marked packageValidationAdvisory=true
-  // - Job continues to series_voice_preflight instead of failing
-  // 
-  // Only block when:
-  // 1. score_validate_package never ran (packageReport is null/missing)
-  // 2. score_validate_package threw a real error (API error, timeout, auth failure)
-  //
-  // Allow through when:
-  // 1. packageReport.pass === true (normal validation pass)
-  // 2. packageValidationAdvisory === true (soft-fail, needs_attention marked but continues)
-  const hasAdvisoryCompletion = state.seriesValidation?.packageValidationAdvisory === true
-  const hasNormalPass = state.seriesValidation?.packageReport?.pass === true
-  const validationNeverRan = !state.seriesValidation?.packageReport
-  
-  if (validationNeverRan) {
-    throw new Error('Series package validation must complete before series_voice_preflight')
-  }
-  
-  if (!hasNormalPass && !hasAdvisoryCompletion) {
-    throw new Error('Series package validation must pass or complete as advisory before series_voice_preflight')
+  if (state.seriesValidation?.packageReport?.pass !== true) {
+    throw new Error('Series package validation must pass before series_voice_preflight')
   }
 
   const episodes = await loadSeriesEpisodes(String(seriesId))
@@ -7449,70 +7427,29 @@ export async function POST(req: NextRequest) {
           })
         }
 
-        // ATL-PIPE-SCORE-ADVISORY-001: LLM package quality score failures are now SOFT ADVISORIES.
-        // Do NOT fail the job. Instead:
-        // 1. Log the package validation issues
-        // 2. Mark stories for attention (needs_attention = true)
-        // 3. Allow the job to proceed to the next step
-        // 4. Only hard-fail on actual API errors (timeout, auth, etc.)
-        //
-        // Rationale: Package-level quality concerns should not block production.
-        // Marc reviews stories in production and can approve or reject them.
-        // The validation report is captured for Marc's review.
-        
         await markStoriesNeedAttention(
           (result.state.seriesValidation?.failedEpisodes || []).map((episode: any) => episode.storyId),
-          `Series validation advisory: ${descriptionFailure?.classification?.reason || 'Package-level quality score returned false.'}`
+          `Series validation needs attention: ${descriptionFailure?.classification?.reason || 'Validation failed without an autonomous-safe repair.'}`
         )
 
-        // Also mark series for attention if package-level validation failed
-        if (result.seriesId) {
-          const { error: seriesMarkError } = await supabase
-            .from('series')
-            .update({
-              needs_attention: true,
-              needs_attention_reason: `Package validation advisory: ${result.packageReport?.summary || 'LLM quality gate returned warnings.'}`
-                .slice(0, 1000),
-              needs_attention_at: nowIso(),
-            })
-            .eq('id', result.seriesId)
-
-          if (seriesMarkError) {
-            console.warn(`Failed to mark series needs_attention ${result.seriesId}: ${seriesMarkError.message}`)
-          }
-        }
-
-        // Log the advisory to console for pipeline visibility
-        console.log('[ATL-PIPE-SCORE-ADVISORY-001] Series package validation returned issues (soft advisory, not blocking)', {
-          seriesId: result.seriesId,
-          packageReport: result.packageReport,
-          descriptionFailure,
-          failedEpisodes: result.state.seriesValidation?.failedEpisodes || [],
-        })
-
-        // Continue to next step despite soft advisory
-        const advisoryLogs = appendLog({ ...lockedJob, logs }, 'Series package validation advisory (soft): issues logged, job continues to next step', {
-          seriesId: result.seriesId,
-          packageReport: result.packageReport,
-          failedEpisodes: result.state.seriesValidation?.failedEpisodes || [],
-          metadataIssues: result.state.seriesValidation?.metadataIssues || [],
-        })
-
-        const { data: advisoryJob, error: advisoryUpdateError } = await supabase
+        const { data: failedJob, error: updateError } = await supabase
           .from('production_jobs')
           .update({
-            status: 'queued',
-            current_step: NEXT_STEP_AFTER_SERIES_VALIDATION,
-            step_index: (lockedJob.step_index || 0) + 1,
-            state_json: {
-              ...result.state,
-              seriesValidation: {
-                ...(result.state.seriesValidation || {}),
-                packageValidationAdvisory: true,
-                packageReport: result.packageReport || null,
-              },
+            status: 'failed',
+            current_step: NEXT_STEP_AFTER_SERIES_SCRIPTS,
+            state_json: result.state,
+            error_json: {
+              step,
+              seriesId: result.seriesId,
+              episodeResult: result.episodeResult,
+              failedEpisodes: result.state.seriesValidation?.failedEpisodes || [],
+              metadataIssues: result.state.seriesValidation?.metadataIssues || [],
+              packageReport: result.packageReport || null,
+              descriptionRetryExhausted: Boolean(descriptionFailure && descriptionRetryCount >= MAX_SERIES_DESCRIPTION_RETRIES),
+              descriptionRetryCount,
+              at: nowIso(),
             },
-            logs: advisoryLogs,
+            logs,
             locked_at: null,
             locked_by: null,
           })
@@ -7520,21 +7457,20 @@ export async function POST(req: NextRequest) {
           .select('*')
           .single()
 
-        if (advisoryUpdateError) {
-          throw new Error(`Failed to save series validation advisory state: ${advisoryUpdateError.message}`)
-        }
+        if (updateError) throw new Error(`Failed to save series validation failure: ${updateError.message}`)
 
         return NextResponse.json({
-          success: true,
-          action: 'series_validation_advisory',
-          jobId: advisoryJob.id,
+          success: false,
+          jobId: failedJob.id,
           currentStep: step,
-          nextStep: NEXT_STEP_AFTER_SERIES_VALIDATION,
+          status: failedJob.status,
           seriesId: result.seriesId,
-          packageReport: result.packageReport,
-          logs: advisoryLogs,
-          note: 'Series package validation returned quality warnings (soft advisory). Stories marked for attention. Job continues to production.',
-        })
+          episodeResult: result.episodeResult,
+          failedEpisodes: result.state.seriesValidation?.failedEpisodes || [],
+          metadataIssues: result.state.seriesValidation?.metadataIssues || [],
+          packageReport: result.packageReport || null,
+          logs,
+        }, { status: 422 })
       }
 
       const { data: updatedJob, error: updateError } = await supabase
