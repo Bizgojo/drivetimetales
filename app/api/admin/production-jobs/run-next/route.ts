@@ -1103,7 +1103,7 @@ function hasEmotionalResidueOrReflection(text: string): boolean {
  * for series non-finale outros.
  */
 function hasCompanionPresence(text: string): boolean {
-  const companionMarkers = /\b(i'?m belle|belle here|you won't|you will|you can't|alongside|join|discover|tune in|listen|next episode|stay tuned|coming back|keep listening|return)\b/i
+  const companionMarkers = /\b(i'?m belle|belle here|you won't|you will|you can't|alongside|join|discover|tune in|listen|next episode|stay tuned|coming back|keep listening|return|we'll|we're|we've|we|our)\b/i
   return companionMarkers.test(text)
 }
 
@@ -6616,16 +6616,44 @@ async function runSeriesVoiceSegment(job: ProductionJob, origin: string): Promis
   const isFirstEpisodeInvocation = !episodeProgress.lastUpdatedAt && !episodeProgress.presentCount
   const purgeExisting = isFirstEpisodeInvocation
 
-  const response = await fetch(`${origin}/api/admin/generate-voices`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      storyId,
-      retryMissingOnly: true,
-      segmentNumber,
-      purgeExisting,  // HOOK-GATE-STALE-001
-    }),
-  })
+  // PER-SEGMENT RETRY WRAPPER: retry individual segment ElevenLabs API calls
+  // (loudness QC, transcript ambiguity) up to 3 times with 1-2s backoff.
+  // Only after 3 consecutive failures does the entire series job fail.
+  const MAX_SEGMENT_RETRIES = 3
+  let response: Response | null = null
+  let lastSegmentError: Error | null = null
+  
+  for (let attempt = 1; attempt <= MAX_SEGMENT_RETRIES; attempt++) {
+    try {
+      if (attempt > 1) {
+        const delayMs = 1000 + Math.random() * 1000 // 1-2s backoff
+        console.log(`[SERIES-VOICE-RETRY] Ep${number} seg${segmentNumber} attempt ${attempt}/${MAX_SEGMENT_RETRIES}, waiting ${delayMs.toFixed(0)}ms`)
+        await new Promise(r => setTimeout(r, delayMs))
+      }
+      response = await fetch(`${origin}/api/admin/generate-voices`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          storyId,
+          retryMissingOnly: true,
+          segmentNumber,
+          purgeExisting,  // HOOK-GATE-STALE-001
+        }),
+      })
+      // Success — exit retry loop
+      break
+    } catch (error) {
+      lastSegmentError = error instanceof Error ? error : new Error(String(error))
+      console.warn(`[SERIES-VOICE-RETRY] Ep${number} seg${segmentNumber} attempt ${attempt}/${MAX_SEGMENT_RETRIES} failed: ${lastSegmentError.message}`)
+      if (attempt === MAX_SEGMENT_RETRIES) {
+        throw lastSegmentError
+      }
+    }
+  }
+
+  if (!response) {
+    throw new Error(`Series voice segment fetch failed for Ep${number} seg${segmentNumber}: no response after ${MAX_SEGMENT_RETRIES} retries`)
+  }
   const report = await readJsonOrDiagnostic(response, '/api/admin/generate-voices')
   const errorText = String(report?.error || '')
   const skippedNonSegment = response.status === 404 && /No parsed script line found/i.test(errorText)
