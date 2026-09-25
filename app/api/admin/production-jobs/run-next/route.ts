@@ -7427,29 +7427,70 @@ export async function POST(req: NextRequest) {
           })
         }
 
+        // ATL-PIPE-SCORE-ADVISORY-001: LLM package quality score failures are now SOFT ADVISORIES.
+        // Do NOT fail the job. Instead:
+        // 1. Log the package validation issues
+        // 2. Mark stories for attention (needs_attention = true)
+        // 3. Allow the job to proceed to the next step
+        // 4. Only hard-fail on actual API errors (timeout, auth, etc.)
+        //
+        // Rationale: Package-level quality concerns should not block production.
+        // Marc reviews stories in production and can approve or reject them.
+        // The validation report is captured for Marc's review.
+        
         await markStoriesNeedAttention(
           (result.state.seriesValidation?.failedEpisodes || []).map((episode: any) => episode.storyId),
-          `Series validation needs attention: ${descriptionFailure?.classification?.reason || 'Validation failed without an autonomous-safe repair.'}`
+          `Series validation advisory: ${descriptionFailure?.classification?.reason || 'Package-level quality score returned false.'}`
         )
 
-        const { data: failedJob, error: updateError } = await supabase
+        // Also mark series for attention if package-level validation failed
+        if (result.seriesId) {
+          const { error: seriesMarkError } = await supabase
+            .from('series')
+            .update({
+              needs_attention: true,
+              needs_attention_reason: `Package validation advisory: ${result.packageReport?.summary || 'LLM quality gate returned warnings.'}`
+                .slice(0, 1000),
+              needs_attention_at: nowIso(),
+            })
+            .eq('id', result.seriesId)
+
+          if (seriesMarkError) {
+            console.warn(`Failed to mark series needs_attention ${result.seriesId}: ${seriesMarkError.message}`)
+          }
+        }
+
+        // Log the advisory to console for pipeline visibility
+        console.log('[ATL-PIPE-SCORE-ADVISORY-001] Series package validation returned issues (soft advisory, not blocking)', {
+          seriesId: result.seriesId,
+          packageReport: result.packageReport,
+          descriptionFailure,
+          failedEpisodes: result.state.seriesValidation?.failedEpisodes || [],
+        })
+
+        // Continue to next step despite soft advisory
+        const advisoryLogs = appendLog({ ...lockedJob, logs }, 'Series package validation advisory (soft): issues logged, job continues to next step', {
+          seriesId: result.seriesId,
+          packageReport: result.packageReport,
+          failedEpisodes: result.state.seriesValidation?.failedEpisodes || [],
+          metadataIssues: result.state.seriesValidation?.metadataIssues || [],
+        })
+
+        const { data: advisoryJob, error: advisoryUpdateError } = await supabase
           .from('production_jobs')
           .update({
-            status: 'failed',
-            current_step: NEXT_STEP_AFTER_SERIES_SCRIPTS,
-            state_json: result.state,
-            error_json: {
-              step,
-              seriesId: result.seriesId,
-              episodeResult: result.episodeResult,
-              failedEpisodes: result.state.seriesValidation?.failedEpisodes || [],
-              metadataIssues: result.state.seriesValidation?.metadataIssues || [],
-              packageReport: result.packageReport || null,
-              descriptionRetryExhausted: Boolean(descriptionFailure && descriptionRetryCount >= MAX_SERIES_DESCRIPTION_RETRIES),
-              descriptionRetryCount,
-              at: nowIso(),
+            status: 'queued',
+            current_step: NEXT_STEP_AFTER_SERIES_VALIDATION,
+            step_index: (lockedJob.step_index || 0) + 1,
+            state_json: {
+              ...result.state,
+              seriesValidation: {
+                ...(result.state.seriesValidation || {}),
+                packageValidationAdvisory: true,
+                packageReport: result.packageReport || null,
+              },
             },
-            logs,
+            logs: advisoryLogs,
             locked_at: null,
             locked_by: null,
           })
@@ -7457,20 +7498,21 @@ export async function POST(req: NextRequest) {
           .select('*')
           .single()
 
-        if (updateError) throw new Error(`Failed to save series validation failure: ${updateError.message}`)
+        if (advisoryUpdateError) {
+          throw new Error(`Failed to save series validation advisory state: ${advisoryUpdateError.message}`)
+        }
 
         return NextResponse.json({
-          success: false,
-          jobId: failedJob.id,
+          success: true,
+          action: 'series_validation_advisory',
+          jobId: advisoryJob.id,
           currentStep: step,
-          status: failedJob.status,
+          nextStep: NEXT_STEP_AFTER_SERIES_VALIDATION,
           seriesId: result.seriesId,
-          episodeResult: result.episodeResult,
-          failedEpisodes: result.state.seriesValidation?.failedEpisodes || [],
-          metadataIssues: result.state.seriesValidation?.metadataIssues || [],
-          packageReport: result.packageReport || null,
-          logs,
-        }, { status: 422 })
+          packageReport: result.packageReport,
+          logs: advisoryLogs,
+          note: 'Series package validation returned quality warnings (soft advisory). Stories marked for attention. Job continues to production.',
+        })
       }
 
       const { data: updatedJob, error: updateError } = await supabase
