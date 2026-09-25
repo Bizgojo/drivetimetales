@@ -6319,8 +6319,30 @@ async function runSeriesVoicePreflight(job: ProductionJob, origin: string) {
   const state = job.state_json && typeof job.state_json === 'object' ? job.state_json : {}
   const seriesId = job.series_id || state.seriesId
   if (!seriesId) throw new Error('Series job is missing series_id')
-  if (state.seriesValidation?.packageReport?.pass !== true) {
-    throw new Error('Series package validation must pass before series_voice_preflight')
+  
+  // ATL-PIPE-SCORE-ADVISORY-FOLLOW-001: Allow advisory-mode completions through.
+  // The score_validate_package step now supports soft-fail (advisory) mode where:
+  // - LLM package validation returns pass=false (warnings/quality issues)
+  // - Job is marked packageValidationAdvisory=true
+  // - Job continues to series_voice_preflight instead of failing
+  // 
+  // Only block when:
+  // 1. score_validate_package never ran (packageReport is null/missing)
+  // 2. score_validate_package threw a real error (API error, timeout, auth failure)
+  //
+  // Allow through when:
+  // 1. packageReport.pass === true (normal validation pass)
+  // 2. packageValidationAdvisory === true (soft-fail, needs_attention marked but continues)
+  const hasAdvisoryCompletion = state.seriesValidation?.packageValidationAdvisory === true
+  const hasNormalPass = state.seriesValidation?.packageReport?.pass === true
+  const validationNeverRan = !state.seriesValidation?.packageReport
+  
+  if (validationNeverRan) {
+    throw new Error('Series package validation must complete before series_voice_preflight')
+  }
+  
+  if (!hasNormalPass && !hasAdvisoryCompletion) {
+    throw new Error('Series package validation must pass or complete as advisory before series_voice_preflight')
   }
 
   const episodes = await loadSeriesEpisodes(String(seriesId))
