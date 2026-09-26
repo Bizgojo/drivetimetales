@@ -891,11 +891,11 @@ export async function runRenderFinalMix(storyId: string): Promise<{
       // duck-then-RISE-then-fade. Ducks to DUCK_VOL at the start of Belle's
       // outro, rises gradually across her full spoken duration to reach
       // RISE_TARGET at the exact moment she finishes, then fades to silence.
-      const V2_DUCK_VOL = 0.13           // MUSIC-002: duck level at start of Belle's outro (was 0.019)
+      const V2_DUCK_VOL = 0.0           // MUSIC-002: duck level at start of Belle's outro (was 0.019)
       const V2_DUCK_RAMP = 0.5           // s — duck ramp from swell peak to DUCK_VOL.
                                          // NOT specified by MUSIC-002 itself — carried over from the
                                          // prior implementation. Flag to Marc if this needs its own value.
-      const V2_RISE_TARGET = 0.50        // MUSIC-002: gain at the exact moment Belle finishes speaking
+      const V2_RISE_TARGET = 0.0        // MUSIC-002: gain at the exact moment Belle finishes speaking
       const V2_TAIL_FADE = 3.0           // s — fade RISE_TARGET to silence after Belle ends (unchanged — already matched MUSIC-002)
 
       const outroDurSecs = outroDurForShape
