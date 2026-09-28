@@ -8,9 +8,12 @@ import {
   countRecentFailures,
   retryCapWindowStartMs,
   transientDispatchHold,
-  TRANSIENT_HOLD_WINDOW_MS,
+  transientEscalation,
+  TRANSIENT_BACKOFF_MS,
+  TRANSIENT_ESCALATE_WINDOW_MS,
   type JobStatusRow,
 } from '@/lib/dispatchGuards'
+import { ACCOUNT_WIDE_CAUSES, type TransientCause } from '@/lib/transientFailure'
 import { findQueueDuplicates, type QueueDedupRow } from '@/lib/dispatchDedup'
 import { failureDestinationForStory, ONE_REPAIR_PASS_REASON } from '@/lib/workflowTransitions'
 import { syncPremiseIndexForTransition } from '@/lib/premiseIndex'
@@ -172,6 +175,39 @@ async function handleDispatchQueue(request: NextRequest) {
   const deduped: Array<{ id: string; title: string }> = []
   let needsAttentionSkipped = 0
 
+  // ── TRANSIENT-FAILURE-001: global pause on account-wide outside failures ──
+  // A dead ElevenLabs/Anthropic/OpenAI key or empty balance fails EVERY job the
+  // same way. Pause the whole dispatch cycle for TRANSIENT_BACKOFF_MS after the
+  // newest such failure so N queued stories can't each burn a retry.
+  {
+    const globalSince = new Date(Date.now() - TRANSIENT_BACKOFF_MS).toISOString()
+    const { data: recentTransient, error: recentTransientError } = await supabase
+      .from('production_jobs')
+      .select('updated_at,error_json')
+      .eq('status', 'failed')
+      .gte('updated_at', globalSince)
+      .eq('error_json->>transient', 'true')
+      .order('updated_at', { ascending: false })
+      .limit(20)
+    if (recentTransientError) {
+      console.warn('[dispatch-queue] Global transient check failed (continuing):', recentTransientError.message)
+    } else {
+      const accountWide = (recentTransient || []).find((row) =>
+        ACCOUNT_WIDE_CAUSES.has(String((row.error_json as any)?.transient_cause || '') as TransientCause),
+      )
+      if (accountWide) {
+        const retryAfterIso = new Date(Date.parse(accountWide.updated_at) + TRANSIENT_BACKOFF_MS).toISOString()
+        const cause = String((accountWide.error_json as any)?.transient_cause)
+        console.warn('[dispatch-queue] Paused: account-wide outside failure', cause, 'retry after', retryAfterIso)
+        return json({
+          success: true,
+          dispatchedCount: 0,
+          paused: { reason: 'global_transient_backoff', cause, retryAfterIso },
+        })
+      }
+    }
+  }
+
   // ── Duplicate-title detection (PIPE-AUDIT-001 item 3) ──────────────────────
   // Series-scoped matching only (see lib/dispatchDedup.ts). Duplicates are
   // FLAGGED for human confirmation (needs_attention) — never auto-moved to
@@ -294,7 +330,7 @@ async function handleDispatchQueue(request: NextRequest) {
       // transient failures can be told apart from story defects.
       const seriesLookbackStart = new Date(Math.min(
         Date.parse(effectiveWindowStart),
-        Math.max(Date.now() - TRANSIENT_HOLD_WINDOW_MS, seriesResetMs),
+        Math.max(Date.now() - TRANSIENT_ESCALATE_WINDOW_MS, seriesResetMs),
       )).toISOString()
       const { data: seriesFailureRows, error: seriesFailuresError } = await supabase
         .from('production_jobs')
@@ -387,6 +423,21 @@ async function handleDispatchQueue(request: NextRequest) {
 
       // TRANSIENT-FAILURE-001: recent outside failures (key, credits, rate
       // limit, outage, lost runner) → wait, don't park, don't flag.
+      const seriesEscalation = transientEscalation((seriesFailureRows || []) as JobStatusRow[], Date.now(), seriesResetMs)
+      if (seriesEscalation) {
+        // Outside cause still unfixed after many retries → tell a human.
+        // Flag only (no repair_queue move): clearing the flag resumes production.
+        const reason = `Outside failure keeps recurring (${seriesEscalation.cause}, ${seriesEscalation.transientFailures} failed jobs in 48h). Fix the outside cause (API key / balance / provider), then clear needs_attention. Episodes were NOT moved.`
+        const { error: escalateError } = await supabase
+          .from('stories')
+          .update({ needs_attention: true, needs_attention_reason: reason, needs_attention_at: now })
+          .eq('series_id', seriesId)
+          .eq('workflow_state', 'stories_in_queue')
+          .or('needs_attention.is.null,needs_attention.eq.false')
+        if (escalateError) console.error('[dispatch-queue] Failed to flag series for recurring transient failure:', seriesId, escalateError)
+        skipped.push({ seriesId, reason: 'transient_escalated', ...seriesEscalation })
+        continue
+      }
       const seriesTransientHold = transientDispatchHold((seriesFailureRows || []) as JobStatusRow[], Date.now(), seriesResetMs)
       if (seriesTransientHold) {
         console.log('[dispatch-queue] Series waiting after transient failure:', seriesId, seriesTransientHold)
@@ -585,7 +636,7 @@ async function handleDispatchQueue(request: NextRequest) {
       const storyResetMs = Date.parse(story.dispatch_failure_reset_at || '') || 0
       const storyLookbackStart = new Date(Math.min(
         Date.parse(storyFailureWindowStart),
-        Math.max(Date.now() - TRANSIENT_HOLD_WINDOW_MS, storyResetMs),
+        Math.max(Date.now() - TRANSIENT_ESCALATE_WINDOW_MS, storyResetMs),
       )).toISOString()
       const { data: storyFailureRows, error: storyFailuresError } = await supabase
         .from('production_jobs')
@@ -634,6 +685,17 @@ async function handleDispatchQueue(request: NextRequest) {
       }
 
       // TRANSIENT-FAILURE-001: recent outside failures → wait, don't park.
+      const storyEscalation = transientEscalation((storyFailureRows || []) as JobStatusRow[], Date.now(), storyResetMs)
+      if (storyEscalation) {
+        const reason = `Outside failure keeps recurring (${storyEscalation.cause}, ${storyEscalation.transientFailures} failed jobs in 48h). Fix the outside cause (API key / balance / provider), then clear needs_attention. Story was NOT moved.`
+        const { error: escalateError } = await supabase
+          .from('stories')
+          .update({ needs_attention: true, needs_attention_reason: reason, needs_attention_at: now })
+          .eq('id', story.id)
+        if (escalateError) console.error('[dispatch-queue] Failed to flag story for recurring transient failure:', story.id, escalateError)
+        skipped.push({ storyId: story.id, reason: 'transient_escalated', ...storyEscalation })
+        continue
+      }
       const storyTransientHold = transientDispatchHold((storyFailureRows || []) as JobStatusRow[], Date.now(), storyResetMs)
       if (storyTransientHold) {
         console.log('[dispatch-queue] Story waiting after transient failure:', story.id, storyTransientHold)
@@ -651,14 +713,22 @@ async function handleDispatchQueue(request: NextRequest) {
         resetAtIso: story.dispatch_failure_reset_at ?? null,
         ignoreBeforeIso: process.env.RETRY_CAP_IGNORE_FAILURES_BEFORE || null,
       })).toISOString()
-      const { count: failCount } = await supabase
+      const { count: failCount, error: failCountError } = await supabase
         .from('production_jobs')
         .select('id', { count: 'exact', head: true })
         .eq('story_id', story.id)
         .eq('status', 'failed')
         .gte('updated_at', capWindowStart)
-        // TRANSIENT-FAILURE-001: outside failures never count toward the cap.
+        // TRANSIENT-FAILURE-001: outside failures (incl. legacy lost-runner
+        // rows) never count toward the cap. NULL-safe: rows without the key stay.
         .or('error_json->>transient.is.null,error_json->>transient.neq.true')
+        .or('error_json->>kind.is.null,error_json->>kind.neq.zombie_stalled')
+
+      if (failCountError) {
+        console.error('[dispatch-queue] Retry-cap lookup failed:', story.id, failCountError)
+        skipped.push({ storyId: story.id, reason: 'failure_lookup_failed', error: failCountError.message })
+        continue
+      }
 
       if ((failCount ?? 0) >= RETRY_CAP) {
         const reason = `Retry cap reached: ${failCount} failed jobs since ${capWindowStart} (cap ${RETRY_CAP}/7d). Manual review required — clear the flag via content-approval clear_needs_attention to reset the counter with an audit trail.`

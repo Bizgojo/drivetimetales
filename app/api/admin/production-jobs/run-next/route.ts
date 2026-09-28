@@ -8,7 +8,7 @@ import { recordProductionLearningEvent } from '@/lib/productionLearning'
 import { isBelleBVoiceId } from '@/lib/voiceConstants'
 import { runRenderFinalMix } from '../../../asc3/render-final-mix/core'
 import { buildStructuredError, type StructuredErrorJsonKind } from '@/lib/pipeline-runner/types'
-import { classifyTransientFailure, transientErrorFields } from '@/lib/transientFailure'
+import { classifyTransientFailure, stripQuotedScriptText, transientErrorFields } from '@/lib/transientFailure'
 import { classifyTrueState } from '@/lib/pipelineTruth'
 import { getPlaybookByKind } from '@/lib/repairPlaybooks'
 import { loadActiveMission } from '@/lib/missionContext'
@@ -2448,7 +2448,8 @@ async function failJob(job: ProductionJob, error: unknown) {
   // TRANSIENT-FAILURE-001: outside failures (bad key, no credits, rate limit,
   // outage, network) are not story defects — tag them so dispatch retries
   // after a back-off instead of flagging/parking the story.
-  const transientCause = classifyTransientFailure(message, structuredErrorDetail)
+  // Message only — structured detail can carry script text (Belle repairs etc.).
+  const transientCause = classifyTransientFailure(stripQuotedScriptText(message))
 
   // Build structured error_json to ensure classification is always possible
   const errorJson = buildStructuredError(
@@ -8576,8 +8577,8 @@ export async function POST(req: NextRequest) {
         const playbook = getPlaybookByKind(failureKind)
         // TRANSIENT-FAILURE-001: e.g. "ElevenLabs error 401" at segment 1.
         const voiceTransientCause = classifyTransientFailure(
-          failureMsg,
-          ((result.report?.failures || [])[0] || {})?.error,
+          stripQuotedScriptText(failureMsg),
+          stripQuotedScriptText(((result.report?.failures || [])[0] || {})?.error),
         )
 
         // ── ATL-DIAG-001: Promote generate_voices failure details to top-level ──
@@ -8755,9 +8756,9 @@ export async function POST(req: NextRequest) {
               // TRANSIENT-FAILURE-001: e.g. "ElevenLabs error 401" at segment 1.
               ...(() => {
                 const cause = classifyTransientFailure(
-                  result.report?.error,
-                  result.report?.message,
-                  ((result.report?.failures || [])[0] || {})?.error,
+                  stripQuotedScriptText(result.report?.error),
+                  stripQuotedScriptText(result.report?.message),
+                  stripQuotedScriptText(((result.report?.failures || [])[0] || {})?.error),
                 )
                 return cause ? transientErrorFields(cause) : {}
               })(),

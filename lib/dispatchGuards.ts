@@ -111,6 +111,32 @@ export type JobStatusRow = { status?: string | null; updated_at?: string | null;
 export const TRANSIENT_BACKOFF_MS = 30 * 60 * 1000           // 30 minutes
 export const TRANSIENT_HOLD_THRESHOLD = 4                     // transient failures...
 export const TRANSIENT_HOLD_WINDOW_MS = 12 * 60 * 60 * 1000   // ...within 12 hours
+// If the outside cause is still not fixed after this many transient failures
+// in this window, tell a human (needs_attention with the cause) — still no
+// parking in repair_queue, so clearing the flag resumes production.
+export const TRANSIENT_ESCALATE_THRESHOLD = 12
+export const TRANSIENT_ESCALATE_WINDOW_MS = 48 * 60 * 60 * 1000 // 48 hours
+
+/**
+ * Recurring outside failure that nobody fixed: returns the count and the most
+ * recent cause once TRANSIENT_ESCALATE_THRESHOLD transient failures sit inside
+ * TRANSIENT_ESCALATE_WINDOW_MS (floored by a human reset), else null.
+ */
+export function transientEscalation(
+  jobs: JobStatusRow[],
+  nowMs: number,
+  floorMs: number = 0,
+): { transientFailures: number; cause: string } | null {
+  const windowStart = Math.max(nowMs - TRANSIENT_ESCALATE_WINDOW_MS, floorMs)
+  const rows = jobs
+    .filter((job) => cleanStatus(job.status) === 'failed' && isTransientJobRow(job))
+    .map((job) => ({ t: Date.parse(job.updated_at || ''), ej: job.error_json as Record<string, unknown> | null }))
+    .filter((r) => Number.isFinite(r.t) && r.t >= windowStart)
+    .sort((a, b) => a.t - b.t)
+  if (rows.length < TRANSIENT_ESCALATE_THRESHOLD) return null
+  const newest = rows[rows.length - 1].ej || {}
+  return { transientFailures: rows.length, cause: String(newest.transient_cause || newest.kind || 'unknown') }
+}
 
 /** Keep only failures that are story defects (drops transient ones). */
 export function permanentFailuresOnly<T extends JobStatusRow>(jobs: T[]): T[] {

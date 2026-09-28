@@ -11,19 +11,23 @@
  */
 
 import {
+  ACCOUNT_WIDE_CAUSES,
   classifyTransientFailure,
   isTransientJobRow,
+  stripQuotedScriptText,
   transientErrorFields,
 } from '@/lib/transientFailure'
 import {
   TRANSIENT_BACKOFF_MS,
   TRANSIENT_HOLD_THRESHOLD,
   TRANSIENT_HOLD_WINDOW_MS,
+  TRANSIENT_ESCALATE_THRESHOLD,
   countRecentFailures,
   countRetryCapFailures,
   failureCircuitOpen,
   permanentFailuresOnly,
   transientDispatchHold,
+  transientEscalation,
 } from '@/lib/dispatchGuards'
 
 const NOW = Date.parse('2026-09-26T18:30:00Z')
@@ -180,5 +184,60 @@ describe('transientDispatchHold — back off instead of parking', () => {
     }
     expect(attempts).toBeLessThanOrEqual(8)
     expect(attempts).toBeGreaterThanOrEqual(6)
+  })
+})
+
+describe('review fixes — dialogue can never look like an outage', () => {
+  test('plain-English "fetch failed" / "socket hang up" in dialogue stays PERMANENT', () => {
+    expect(classifyTransientFailure('Transcript mismatch at segment 12: the fetch failed to load')).toBeNull()
+    expect(classifyTransientFailure('Belle intro line: "Then the socket hang up happened"')).toBeNull()
+  })
+
+  test('quoted script text is stripped before classifying', () => {
+    const qc = 'QC mismatch: expected "Your credit balance is too low, Marcus." partial output "Your credit"'
+    expect(stripQuotedScriptText(qc)).toBe('QC mismatch: expected "…" partial output "…"')
+    expect(classifyTransientFailure(stripQuotedScriptText(qc))).toBeNull()
+  })
+
+  test('provider error bodies survive stripping', () => {
+    const el = 'ElevenLabs error 401: {"detail":{"status":"invalid_api_key"}}'
+    expect(classifyTransientFailure(stripQuotedScriptText(el))).toBe('elevenlabs_auth_or_quota')
+    const anthropic = '400 {"type":"error","error":{"type":"invalid_request_error","message":"Your credit balance is too low to access the Anthropic API."}}'
+    expect(classifyTransientFailure(stripQuotedScriptText(anthropic))).toBe('anthropic_auth_or_credit')
+  })
+
+  test('account-wide causes pause dispatch globally; network blips do not', () => {
+    expect(ACCOUNT_WIDE_CAUSES.has('elevenlabs_auth_or_quota')).toBe(true)
+    expect(ACCOUNT_WIDE_CAUSES.has('anthropic_auth_or_credit')).toBe(true)
+    expect(ACCOUNT_WIDE_CAUSES.has('network')).toBe(false)
+    expect(ACCOUNT_WIDE_CAUSES.has('zombie_stalled')).toBe(false)
+  })
+})
+
+describe('review fixes — an unfixed outside cause is escalated to a human', () => {
+  const withCause = (minutesAgo: number) => ({
+    status: 'failed',
+    updated_at: iso(minutesAgo),
+    error_json: { transient: true, transient_cause: 'elevenlabs_auth_or_quota' },
+  })
+
+  test(`below ${TRANSIENT_ESCALATE_THRESHOLD} transient failures in 48h → no escalation`, () => {
+    const jobs = Array.from({ length: TRANSIENT_ESCALATE_THRESHOLD - 1 }, (_, i) => withCause(i * 180))
+    expect(transientEscalation(jobs, NOW)).toBeNull()
+  })
+
+  test(`${TRANSIENT_ESCALATE_THRESHOLD} in 48h → escalate with the cause`, () => {
+    const jobs = Array.from({ length: TRANSIENT_ESCALATE_THRESHOLD }, (_, i) => withCause(i * 180))
+    expect(transientEscalation(jobs, NOW)).toEqual({ transientFailures: TRANSIENT_ESCALATE_THRESHOLD, cause: 'elevenlabs_auth_or_quota' })
+  })
+
+  test('a human clear (floor) resets the escalation count', () => {
+    const jobs = Array.from({ length: TRANSIENT_ESCALATE_THRESHOLD }, (_, i) => withCause(i * 180 + 10))
+    expect(transientEscalation(jobs, NOW, NOW - 5 * 60_000)).toBeNull()
+  })
+
+  test('real defects never count toward escalation', () => {
+    const jobs = Array.from({ length: 20 }, (_, i) => permanent(i * 60))
+    expect(transientEscalation(jobs, NOW)).toBeNull()
   })
 })

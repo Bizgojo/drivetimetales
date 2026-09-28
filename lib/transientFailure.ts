@@ -59,9 +59,34 @@ const RULES: Rule[] = [
   // Upstream gateway errors (any provider).
   { cause: 'provider_overloaded', pattern: /\b(502 Bad Gateway|503 Service Unavailable|504 Gateway Timeout)\b/i },
 
-  // Network-level failures before any response arrived.
-  { cause: 'network', pattern: /\b(ECONNRESET|ECONNREFUSED|ETIMEDOUT|ENOTFOUND|EAI_AGAIN|UND_ERR_[A-Z_]+)\b|fetch failed|socket hang up/i },
+  // Network-level failures before any response arrived. Case-sensitive and
+  // anchored to the runtime's exact error text so dialogue such as
+  // "the fetch failed" can never match.
+  { cause: 'network', pattern: /\b(ECONNRESET|ECONNREFUSED|ETIMEDOUT|ENOTFOUND|EAI_AGAIN|UND_ERR_[A-Z_]+)\b|TypeError: fetch failed|Error: socket hang up/ },
 ]
+
+/**
+ * Causes that affect the whole account (every job will fail the same way
+ * until a human fixes a key or balance). Dispatch pauses globally on these.
+ */
+export const ACCOUNT_WIDE_CAUSES: ReadonlySet<TransientCause> = new Set<TransientCause>([
+  'elevenlabs_auth_or_quota',
+  'anthropic_auth_or_credit',
+  'openai_quota',
+])
+
+/**
+ * Remove quoted script/transcript text from a QC failure message before
+ * classifying it, so story dialogue can never look like an outside failure.
+ * e.g. 'expected "The fetch failed." partial output "..."' → 'expected "…" partial output "…"'
+ */
+export function stripQuotedScriptText(text: unknown): string {
+  const s = typeof text === 'string' ? text : text == null ? '' : safeStringify(text)
+  return s.replace(
+    /\b(expected|detected|partial output|transcript(?:ion)?|heard|got|text|line|dialogue)(\s*[:=]?\s*)"[^"]*"/gi,
+    '$1$2"…"',
+  )
+}
 
 /** Classify a failure message. Returns the cause, or null when PERMANENT. */
 export function classifyTransientFailure(...texts: Array<unknown>): TransientCause | null {
