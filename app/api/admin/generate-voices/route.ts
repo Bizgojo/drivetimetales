@@ -10,6 +10,7 @@ import { CANONICAL_BELLE_B_VOICE_ID, RESERVED_BELLE_B_VOICE_IDS, isBelleBVoiceId
 // ATL-PARSER-001: shared script line-index parser — both GV and render-final-mix
 // delegate all counting to this function so [PAUSE] drift can never recur.
 import { parseScriptPositions, isWordlessSpokenText, SCENE_BREAK_PAUSE_SECONDS } from '@/lib/scriptLineIndex'
+import { isAudioTooShortForText, minPlausibleSpeechSeconds } from '@/lib/speechDuration'
 // CASTING-ALIAS-001: structured error builder for character_description_missing gate
 import { buildStructuredError } from '@/lib/pipeline-runner/types'
 import { buildProductionLearningFeedback } from '@/lib/productionLearning'
@@ -2385,7 +2386,24 @@ async function generateVoiceLine(rawText: string, voiceId: string, storyId: stri
             && detectedNorm.length / Math.max(expectedNorm.length, 1) >= 0.30
             && lastLoudnessPassedBuf !== null
 
-          if (isPrefixAcceptable || isSuffixMatchAcceptable) {
+          // TRUNCATION-DURATION-001: the rescue above assumes Whisper stopped early.
+          // Verify the audio is long enough to hold the whole line; if not, the
+          // audio itself is cut off (ElevenLabs stopped) — do NOT accept it, fall
+          // through to the split rescue, which voices the line in pieces.
+          let audioGenuinelyTruncated = false
+          if ((isPrefixAcceptable || isSuffixMatchAcceptable) && lastLoudnessPassedBuf !== null) {
+            const audioSeconds = await getAudioDurationBuffer(lastLoudnessPassedBuf)
+            audioGenuinelyTruncated = isAudioTooShortForText(audioSeconds, transcriptFailure.expectedText || '')
+            if (audioGenuinelyTruncated) {
+              console.warn(
+                `  ✂️ REAL_TRUNCATION [TRUNCATION-DURATION-001] ${fileName} speaker="${speaker}" ` +
+                `audio=${audioSeconds.toFixed(2)}s < min plausible ${minPlausibleSpeechSeconds(transcriptFailure.expectedText || '').toFixed(2)}s ` +
+                `for the full line - the audio itself is cut off, not Whisper. Not accepting; trying split rescue.`
+              )
+            }
+          }
+
+          if ((isPrefixAcceptable || isSuffixMatchAcceptable) && !audioGenuinelyTruncated) {
             const acceptRule = isPrefixAcceptable ? 'ATL-PIPE-007 prefix' : 'ATL-PIPE-017 suffix'
             console.warn(
               `  ⚠️ REPEATED_IDENTICAL_TRUNCATION [${ruleCase}] ${fileName} speaker="${speaker}" ` +
