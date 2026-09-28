@@ -177,6 +177,10 @@ export type StructuredErrorJson = {
   safe_resume_point?: string | null
   /** Related production_learning_events row id. */
   learning_incident_id?: string | null
+  /** TRANSIENT-FAILURE-001: outside failure (key/credits/rate limit/outage) — not a story defect. */
+  transient?: boolean
+  /** TRANSIENT-FAILURE-001: which outside cause (see lib/transientFailure.ts). */
+  transient_cause?: string | null
   /** ISO timestamp of the failure. */
   at: string
 }

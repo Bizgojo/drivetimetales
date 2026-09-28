@@ -216,9 +216,14 @@ async function updateCircuitBreaker(
   if (consecutiveFailures >= CIRCUIT_BREAKER_THRESHOLD - 1) {
     const { data: job } = await supabase
       .from('production_jobs')
-      .select('state_json')
+      .select('state_json,error_json')
       .eq('id', jobId)
       .single()
+    // TRANSIENT-FAILURE-001: keep an outside-failure tag if one was recorded.
+    const priorErrorJson = (job?.error_json as Record<string, unknown> | null) ?? null
+    const keepTransient = priorErrorJson?.transient === true
+      ? { transient: true, transient_cause: priorErrorJson.transient_cause ?? null, marc_required: false }
+      : {}
 
     const existingState = (job?.state_json as Record<string, unknown>) ?? {}
 
@@ -246,6 +251,7 @@ async function updateCircuitBreaker(
             step: failedStep,
             marc_required: true,
             at: nowIso(),
+            ...keepTransient,
           },
         } : {}),
       })
