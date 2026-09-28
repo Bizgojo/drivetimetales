@@ -48,7 +48,7 @@ const RULES: Rule[] = [
   { cause: 'elevenlabs_auth_or_quota', pattern: /\b(quota_exceeded|detected_unusual_activity|invalid_api_key|missing_permissions)\b/i },
 
   // Anthropic: empty credit balance, bad key, rate limit, overloaded.
-  { cause: 'anthropic_auth_or_credit', pattern: /credit balance is too low/i },
+  { cause: 'anthropic_auth_or_credit', pattern: /credit balance is too low to access the Anthropic API/i },
   { cause: 'anthropic_auth_or_credit', pattern: /authentication_error|invalid x-api-key/i },
   { cause: 'provider_rate_limit', pattern: /rate_limit_error/i },
   { cause: 'provider_overloaded', pattern: /overloaded_error|\b529\b[^\n]{0,20}overloaded/i },

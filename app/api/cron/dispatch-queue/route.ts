@@ -187,8 +187,9 @@ async function handleDispatchQueue(request: NextRequest) {
       .eq('status', 'failed')
       .gte('updated_at', globalSince)
       .eq('error_json->>transient', 'true')
+      .in('error_json->>transient_cause', Array.from(ACCOUNT_WIDE_CAUSES))
       .order('updated_at', { ascending: false })
-      .limit(20)
+      .limit(1)
     if (recentTransientError) {
       console.warn('[dispatch-queue] Global transient check failed (continuing):', recentTransientError.message)
     } else {

@@ -191,6 +191,7 @@ describe('review fixes — dialogue can never look like an outage', () => {
   test('plain-English "fetch failed" / "socket hang up" in dialogue stays PERMANENT', () => {
     expect(classifyTransientFailure('Transcript mismatch at segment 12: the fetch failed to load')).toBeNull()
     expect(classifyTransientFailure('Belle intro line: "Then the socket hang up happened"')).toBeNull()
+    expect(classifyTransientFailure('{"text":"Sorry sir, your credit balance is too low."}')).toBeNull()
   })
 
   test('quoted script text is stripped before classifying', () => {
