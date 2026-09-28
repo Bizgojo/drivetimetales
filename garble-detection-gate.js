@@ -69,6 +69,12 @@ const HEADER_KEYS = [
   'CHARACTER GUIDE', '---',
 ];
 
+// WORDLESS-LINE-001 — mirrors lib/scriptLineIndex.ts (MUST stay in sync).
+const SCENE_BREAK_PAUSE_SECONDS = '1.5';
+function isWordlessSpokenText(text) {
+  return !/[\p{L}\p{N}]/u.test(String(text == null ? '' : text));
+}
+
 function isAnnouncerSpeaker(speaker) {
   const s = speaker.trim().toUpperCase();
   return s === 'ANNOUNCER' || s === 'BELLE B' || s === 'SANDY';
@@ -157,6 +163,10 @@ function parseScriptPositions(script) {
     if (bracketDm) {
       const speaker = bracketDm[1].trim();
       const text    = bracketDm[2].trim();
+      if (!isAnnouncerSpeaker(speaker) && isWordlessSpokenText(text)) {
+        positions.push({ index: lineIndex++, kind: 'silence', speaker: 'PAUSE', text: SCENE_BREAK_PAUSE_SECONDS, isExpected: true, rawLineNumber: rawIdx + 1 });
+        return;
+      }
       positions.push({ index: lineIndex++, kind: 'voice', speaker, text, isExpected: !isAnnouncerSpeaker(speaker), rawLineNumber: rawIdx + 1 });
       return;
     }
@@ -172,6 +182,10 @@ function parseScriptPositions(script) {
     if (dm) {
       const speaker = dm[1].trim();
       const text    = dm[2].trim();
+      if (!isAnnouncerSpeaker(speaker) && isWordlessSpokenText(text)) {
+        positions.push({ index: lineIndex++, kind: 'silence', speaker: 'PAUSE', text: SCENE_BREAK_PAUSE_SECONDS, isExpected: true, rawLineNumber: rawIdx + 1 });
+        return;
+      }
       positions.push({ index: lineIndex++, kind: 'voice', speaker, text, isExpected: !isAnnouncerSpeaker(speaker), rawLineNumber: rawIdx + 1 });
     }
   });

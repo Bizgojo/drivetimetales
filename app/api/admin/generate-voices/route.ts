@@ -9,7 +9,7 @@ import { createHash } from 'crypto'
 import { CANONICAL_BELLE_B_VOICE_ID, RESERVED_BELLE_B_VOICE_IDS, isBelleBVoiceId } from '@/lib/voiceConstants'
 // ATL-PARSER-001: shared script line-index parser — both GV and render-final-mix
 // delegate all counting to this function so [PAUSE] drift can never recur.
-import { parseScriptPositions } from '@/lib/scriptLineIndex'
+import { parseScriptPositions, isWordlessSpokenText, SCENE_BREAK_PAUSE_SECONDS } from '@/lib/scriptLineIndex'
 // CASTING-ALIAS-001: structured error builder for character_description_missing gate
 import { buildStructuredError } from '@/lib/pipeline-runner/types'
 import { buildProductionLearningFeedback } from '@/lib/productionLearning'
@@ -1771,6 +1771,11 @@ function parseScript(script: string): ScriptLine[] {
     if (bracketDm) {
       const speaker = bracketDm[1].trim(); const text = bracketDm[2].trim()
       const isAnnouncer = speaker === 'ANNOUNCER' || speaker === 'BELLE B' || speaker === 'SANDY'
+      // WORDLESS-LINE-001: "NARRATOR: ---" is a scene break — never send it to ElevenLabs.
+      if (!isAnnouncer && isWordlessSpokenText(text)) {
+        lines.push({ index: lineIndex, speaker: 'PAUSE', text: SCENE_BREAK_PAUSE_SECONDS, type: 'pause', isIntro: false, isOutro: false, rawLineNumber: rawIdx + 1, sourceLine: line })
+        return
+      }
       const isIntro = isAnnouncer && rawIdx === firstAnnouncerIdx
       const isOutro = isAnnouncer && rawIdx === lastAnnouncerIdx
       let type: ScriptLine['type'] = 'character'
@@ -1783,6 +1788,11 @@ function parseScript(script: string): ScriptLine[] {
     if (dm) {
       const speaker = dm[1].trim(); const text = dm[2].trim()
       const isAnnouncer = speaker === 'ANNOUNCER' || speaker === 'BELLE B' || speaker === 'SANDY'
+      // WORDLESS-LINE-001: "NARRATOR: ---" is a scene break — never send it to ElevenLabs.
+      if (!isAnnouncer && isWordlessSpokenText(text)) {
+        lines.push({ index: lineIndex, speaker: 'PAUSE', text: SCENE_BREAK_PAUSE_SECONDS, type: 'pause', isIntro: false, isOutro: false, rawLineNumber: rawIdx + 1, sourceLine: line })
+        return
+      }
       const isIntro = isAnnouncer && rawIdx === firstAnnouncerIdx
       const isOutro = isAnnouncer && rawIdx === lastAnnouncerIdx
       let type: ScriptLine['type'] = 'character'
