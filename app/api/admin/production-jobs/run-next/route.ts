@@ -8,6 +8,7 @@ import { recordProductionLearningEvent } from '@/lib/productionLearning'
 import { isBelleBVoiceId } from '@/lib/voiceConstants'
 import { runRenderFinalMix } from '../../../asc3/render-final-mix/core'
 import { buildStructuredError, type StructuredErrorJsonKind } from '@/lib/pipeline-runner/types'
+import { classifyTransientFailure, transientErrorFields } from '@/lib/transientFailure'
 import { classifyTrueState } from '@/lib/pipelineTruth'
 import { getPlaybookByKind } from '@/lib/repairPlaybooks'
 import { loadActiveMission } from '@/lib/missionContext'
@@ -2220,6 +2221,10 @@ async function detectAndMarkZombieJobs(excludeJobId?: string): Promise<string[]>
         status: 'failed',
         error_json: {
           kind: 'zombie_stalled',
+          // TRANSIENT-FAILURE-001: a lost runner is not a story defect —
+          // dispatch re-creates the job after a back-off, no manual restart.
+          transient: true,
+          transient_cause: 'zombie_stalled',
           step: zombie.current_step,
           storyId: zombie.story_id || null,
           seriesId: zombie.series_id || null,
@@ -2440,6 +2445,11 @@ async function failJob(job: ProductionJob, error: unknown) {
     ? String((error as { structuredErrorKind?: unknown }).structuredErrorKind || '')
     : ''
 
+  // TRANSIENT-FAILURE-001: outside failures (bad key, no credits, rate limit,
+  // outage, network) are not story defects — tag them so dispatch retries
+  // after a back-off instead of flagging/parking the story.
+  const transientCause = classifyTransientFailure(message, structuredErrorDetail)
+
   // Build structured error_json to ensure classification is always possible
   const errorJson = buildStructuredError(
     (structuredErrorKind || 'unknown_step') as StructuredErrorJsonKind,
@@ -2450,6 +2460,7 @@ async function failJob(job: ProductionJob, error: unknown) {
       seriesId: job.series_id,
       marc_required: true,  // Unknown failures always require Marc
       ...(structuredErrorDetail !== undefined ? { detail: structuredErrorDetail } : {}),
+      ...(transientCause ? transientErrorFields(transientCause) : {}),
     }
   )
 
@@ -2471,6 +2482,13 @@ async function failJob(job: ProductionJob, error: unknown) {
   if (!failedRows || failedRows.length === 0) {
     console.warn(lockLostMessage(normalizeStep(job.current_step), job.id))
     return { message, logs, lockLost: true }
+  }
+
+  // TRANSIENT-FAILURE-001: a transient failure must not flag the story —
+  // needs_attention blocks dispatch until a human clears it.
+  if (transientCause) {
+    console.warn(`[TRANSIENT-FAILURE-001] Job ${job.id} failed transiently (${transientCause}); story not flagged, dispatch will retry after back-off.`)
+    return { message, logs, transient: transientCause }
   }
 
   const state = job.state_json && typeof job.state_json === 'object' ? job.state_json : {}
@@ -8556,6 +8574,11 @@ export async function POST(req: NextRequest) {
           : isSilenceBuffer ? 'silence_buffer'
           : 'unknown_qc'
         const playbook = getPlaybookByKind(failureKind)
+        // TRANSIENT-FAILURE-001: e.g. "ElevenLabs error 401" at segment 1.
+        const voiceTransientCause = classifyTransientFailure(
+          failureMsg,
+          ((result.report?.failures || [])[0] || {})?.error,
+        )
 
         // ── ATL-DIAG-001: Promote generate_voices failure details to top-level ──
         // Key fields (speaker, segment path, expected/detected text, retry
@@ -8611,6 +8634,7 @@ export async function POST(req: NextRequest) {
             autonomous_repair: !isTranscriptAmbiguous,
             ...diagFields,
             detail: { voiceGenerationReport: result.report },
+            ...(voiceTransientCause ? transientErrorFields(voiceTransientCause) : {}),
           }
         )
         const { data: failedJob, error: updateError } = await supabase
@@ -8728,6 +8752,15 @@ export async function POST(req: NextRequest) {
               segmentNumber: result.segmentNumber,
               voiceGenerationReport: result.report,
               at: nowIso(),
+              // TRANSIENT-FAILURE-001: e.g. "ElevenLabs error 401" at segment 1.
+              ...(() => {
+                const cause = classifyTransientFailure(
+                  result.report?.error,
+                  result.report?.message,
+                  ((result.report?.failures || [])[0] || {})?.error,
+                )
+                return cause ? transientErrorFields(cause) : {}
+              })(),
             },
             logs,
             locked_at: null,

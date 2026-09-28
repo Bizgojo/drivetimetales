@@ -7,6 +7,8 @@ import {
   failureCircuitOpen,
   countRecentFailures,
   retryCapWindowStartMs,
+  transientDispatchHold,
+  TRANSIENT_HOLD_WINDOW_MS,
   type JobStatusRow,
 } from '@/lib/dispatchGuards'
 import { findQueueDuplicates, type QueueDedupRow } from '@/lib/dispatchDedup'
@@ -287,12 +289,23 @@ async function handleDispatchQueue(request: NextRequest) {
       const effectiveWindowStart = seriesResetMs > Date.parse(failureWindowStart)
         ? new Date(seriesResetMs).toISOString()
         : failureWindowStart
-      const { data: recentSeriesFailures, error: seriesFailuresError } = await supabase
+      // TRANSIENT-FAILURE-001: look back far enough for the transient hold
+      // window too (still floored by a human reset), and load error_json so
+      // transient failures can be told apart from story defects.
+      const seriesLookbackStart = new Date(Math.min(
+        Date.parse(effectiveWindowStart),
+        Math.max(Date.now() - TRANSIENT_HOLD_WINDOW_MS, seriesResetMs),
+      )).toISOString()
+      const { data: seriesFailureRows, error: seriesFailuresError } = await supabase
         .from('production_jobs')
-        .select('id,status,updated_at')
+        .select('id,status,updated_at,error_json')
         .eq('series_id', seriesId)
         .eq('status', 'failed')
-        .gte('updated_at', effectiveWindowStart)
+        .gte('updated_at', seriesLookbackStart)
+      // Circuit keeps its original window (2h, floored by the reset stamp).
+      const recentSeriesFailures = (seriesFailureRows || []).filter(
+        (row) => Date.parse(row.updated_at || '') >= Date.parse(effectiveWindowStart),
+      )
 
       if (seriesFailuresError) {
         console.error('[dispatch-queue] Failed to load recent series failures:', seriesId, seriesFailuresError)
@@ -369,6 +382,15 @@ async function handleDispatchQueue(request: NextRequest) {
 
         console.warn('[dispatch-queue] Failure circuit OPEN — series moved to repair_queue/cold_storage:', seriesId, reason)
         skipped.push({ seriesId, reason: 'failure_circuit_open', failedJobsInWindow: failCount, movedTo: 'repair_queue', movedToColdStorage: coldStorageIds.length, movedToRepairQueue: repairQueueIds.length })
+        continue
+      }
+
+      // TRANSIENT-FAILURE-001: recent outside failures (key, credits, rate
+      // limit, outage, lost runner) → wait, don't park, don't flag.
+      const seriesTransientHold = transientDispatchHold((seriesFailureRows || []) as JobStatusRow[], Date.now(), seriesResetMs)
+      if (seriesTransientHold) {
+        console.log('[dispatch-queue] Series waiting after transient failure:', seriesId, seriesTransientHold)
+        skipped.push({ seriesId, ...seriesTransientHold })
         continue
       }
 
@@ -558,12 +580,23 @@ async function handleDispatchQueue(request: NextRequest) {
       // (a new failing job every dispatch cycle) and must stop immediately,
       // long before the 5-in-7-days cap trips.
       const storyFailureWindowStart = new Date(Date.now() - DISPATCH_FAILURE_WINDOW_MS).toISOString()
-      const { data: recentStoryFailures, error: storyFailuresError } = await supabase
+      // TRANSIENT-FAILURE-001: wider lookback (floored by a human reset) +
+      // error_json, so transient failures can be told apart from defects.
+      const storyResetMs = Date.parse(story.dispatch_failure_reset_at || '') || 0
+      const storyLookbackStart = new Date(Math.min(
+        Date.parse(storyFailureWindowStart),
+        Math.max(Date.now() - TRANSIENT_HOLD_WINDOW_MS, storyResetMs),
+      )).toISOString()
+      const { data: storyFailureRows, error: storyFailuresError } = await supabase
         .from('production_jobs')
-        .select('id,status,updated_at')
+        .select('id,status,updated_at,error_json')
         .eq('story_id', story.id)
         .eq('status', 'failed')
-        .gte('updated_at', storyFailureWindowStart)
+        .gte('updated_at', storyLookbackStart)
+      // Circuit keeps its original 2h window.
+      const recentStoryFailures = (storyFailureRows || []).filter(
+        (row) => Date.parse(row.updated_at || '') >= Date.parse(storyFailureWindowStart),
+      )
 
       if (storyFailuresError) {
         console.error('[dispatch-queue] Failed to load recent story failures:', story.id, storyFailuresError)
@@ -600,6 +633,14 @@ async function handleDispatchQueue(request: NextRequest) {
         continue
       }
 
+      // TRANSIENT-FAILURE-001: recent outside failures → wait, don't park.
+      const storyTransientHold = transientDispatchHold((storyFailureRows || []) as JobStatusRow[], Date.now(), storyResetMs)
+      if (storyTransientHold) {
+        console.log('[dispatch-queue] Story waiting after transient failure:', story.id, storyTransientHold)
+        skipped.push({ storyId: story.id, ...storyTransientHold })
+        continue
+      }
+
       // ── PIPE-AUDIT-001 item 4: retry cap with reset floor ────────────────
       // Failures older than the per-story dispatch_failure_reset_at (set with
       // audit trail when a human clears flags) or the global
@@ -616,6 +657,8 @@ async function handleDispatchQueue(request: NextRequest) {
         .eq('story_id', story.id)
         .eq('status', 'failed')
         .gte('updated_at', capWindowStart)
+        // TRANSIENT-FAILURE-001: outside failures never count toward the cap.
+        .or('error_json->>transient.is.null,error_json->>transient.neq.true')
 
       if ((failCount ?? 0) >= RETRY_CAP) {
         const reason = `Retry cap reached: ${failCount} failed jobs since ${capWindowStart} (cap ${RETRY_CAP}/7d). Manual review required — clear the flag via content-approval clear_needs_attention to reset the counter with an audit trail.`

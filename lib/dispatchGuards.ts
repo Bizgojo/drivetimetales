@@ -16,6 +16,8 @@
  *     render as active.
  */
 
+import { isTransientJobRow } from './transientFailure'
+
 // Non-terminal statuses — a job in one of these states blocks new dispatch
 // for the same series/story.
 export const NON_TERMINAL_JOB_STATUSES = ['queued', 'running', 'waiting_for_external'] as const
@@ -71,6 +73,7 @@ export function countRetryCapFailures(
   const start = retryCapWindowStartMs(nowMs, opts)
   return jobs.filter((job) => {
     if (cleanStatus(job.status) !== 'failed') return false
+    if (isTransientJobRow(job)) return false // TRANSIENT-FAILURE-001
     const failedAt = Date.parse(job.updated_at || '')
     return Number.isFinite(failedAt) && failedAt >= start
   }).length
@@ -93,7 +96,63 @@ export function isUiActiveJobStatus(status: unknown): boolean {
   return (UI_ACTIVE_JOB_STATUSES as readonly string[]).includes(cleanStatus(status))
 }
 
-export type JobStatusRow = { status?: string | null; updated_at?: string | null }
+export type JobStatusRow = { status?: string | null; updated_at?: string | null; error_json?: unknown }
+
+// ── TRANSIENT-FAILURE-001 (Marc GO 2026-09-28) ──────────────────────────────
+// Transient failures (bad key, no credits, rate limit, outage, lost runner —
+// see lib/transientFailure.ts) are NOT story defects. They never count toward
+// the failure circuit or the retry cap and never park a story. Instead
+// dispatch backs off:
+//   - wait TRANSIENT_BACKOFF_MS after the newest transient failure, and
+//   - pause entirely while TRANSIENT_HOLD_THRESHOLD transient failures sit
+//     inside TRANSIENT_HOLD_WINDOW_MS (max ~8 attempts/day on a dead key).
+// Both release on their own once the failures age out, or immediately when a
+// human clears the story (dispatch_failure_reset_at floors the window).
+export const TRANSIENT_BACKOFF_MS = 30 * 60 * 1000           // 30 minutes
+export const TRANSIENT_HOLD_THRESHOLD = 4                     // transient failures...
+export const TRANSIENT_HOLD_WINDOW_MS = 12 * 60 * 60 * 1000   // ...within 12 hours
+
+/** Keep only failures that are story defects (drops transient ones). */
+export function permanentFailuresOnly<T extends JobStatusRow>(jobs: T[]): T[] {
+  return jobs.filter((job) => !isTransientJobRow(job))
+}
+
+export type TransientHold = {
+  reason: 'transient_backoff' | 'transient_hold'
+  transientFailures: number
+  retryAfterIso: string
+}
+
+/**
+ * Decide whether dispatch should wait because of recent TRANSIENT failures.
+ * Returns null when dispatch may proceed. Never parks or flags anything.
+ * `floorMs` = dispatch_failure_reset_at (a human clear resets the hold).
+ */
+export function transientDispatchHold(
+  jobs: JobStatusRow[],
+  nowMs: number,
+  floorMs: number = 0,
+): TransientHold | null {
+  const windowStart = Math.max(nowMs - TRANSIENT_HOLD_WINDOW_MS, floorMs)
+  const times = jobs
+    .filter((job) => cleanStatus(job.status) === 'failed' && isTransientJobRow(job))
+    .map((job) => Date.parse(job.updated_at || ''))
+    .filter((t) => Number.isFinite(t) && t >= windowStart)
+    .sort((a, b) => a - b)
+  if (times.length === 0) return null
+
+  if (times.length >= TRANSIENT_HOLD_THRESHOLD) {
+    // Released when enough of them age out of the window.
+    const releaseAt = times[times.length - TRANSIENT_HOLD_THRESHOLD] + TRANSIENT_HOLD_WINDOW_MS
+    return { reason: 'transient_hold', transientFailures: times.length, retryAfterIso: new Date(releaseAt).toISOString() }
+  }
+
+  const newest = times[times.length - 1]
+  if (nowMs - newest < TRANSIENT_BACKOFF_MS) {
+    return { reason: 'transient_backoff', transientFailures: times.length, retryAfterIso: new Date(newest + TRANSIENT_BACKOFF_MS).toISOString() }
+  }
+  return null
+}
 
 /** True when at least one job in the list is non-terminal (dispatch must skip). */
 export function hasActiveJob(jobs: JobStatusRow[]): boolean {
@@ -112,6 +171,7 @@ export function countRecentFailures(
   const cutoff = nowMs - windowMs
   return jobs.filter((job) => {
     if (cleanStatus(job.status) !== 'failed') return false
+    if (isTransientJobRow(job)) return false // TRANSIENT-FAILURE-001
     const failedAt = Date.parse(job.updated_at || '')
     return Number.isFinite(failedAt) && failedAt >= cutoff
   }).length
