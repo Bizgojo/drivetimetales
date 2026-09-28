@@ -47,6 +47,20 @@ const HEADER_KEYS = [
   'CHARACTER GUIDE', '---',
 ]
 
+/**
+ * WORDLESS-LINE-001 (Marc GO 2026-09-28): a speaker line with no letters or
+ * digits (e.g. "NARRATOR: ---", "NARRATOR: * * *", "NARRATOR: …") is a scene
+ * break written as dialogue, not a line to speak. Sent to ElevenLabs, "---"
+ * produced random noises ("guitar", "Bye", "Alright") — the 8 artifacts in
+ * Origin 2.0 EP03. Such lines become a short PAUSE at the SAME index, so
+ * segment numbering never shifts for any existing story.
+ */
+export const SCENE_BREAK_PAUSE_SECONDS = '1.5'
+
+export function isWordlessSpokenText(text: string | null | undefined): boolean {
+  return !/[\p{L}\p{N}]/u.test(String(text ?? ''))
+}
+
 function isAnnouncerSpeaker(speaker: string): boolean {
   const s = speaker.trim().toUpperCase()
   return s === 'ANNOUNCER' || s === 'BELLE B' || s === 'SANDY'
@@ -178,6 +192,11 @@ export function parseScriptPositions(script: string): ScriptPosition[] {
       const speaker = bracketDm[1].trim()
       const text    = bracketDm[2].trim()
       const isAnnouncer = isAnnouncerSpeaker(speaker)
+      if (!isAnnouncer && isWordlessSpokenText(text)) {
+        // WORDLESS-LINE-001: scene break → silence at the same index.
+        positions.push({ index: lineIndex++, kind: 'silence', speaker: 'PAUSE', text: SCENE_BREAK_PAUSE_SECONDS, isExpected: true, rawLineNumber: rawIdx + 1 })
+        return
+      }
       positions.push({
         index: lineIndex++,
         kind: 'voice',
@@ -203,6 +222,11 @@ export function parseScriptPositions(script: string): ScriptPosition[] {
       const speaker = dm[1].trim()
       const text    = dm[2].trim()
       const isAnnouncer = isAnnouncerSpeaker(speaker)
+      if (!isAnnouncer && isWordlessSpokenText(text)) {
+        // WORDLESS-LINE-001: scene break → silence at the same index.
+        positions.push({ index: lineIndex++, kind: 'silence', speaker: 'PAUSE', text: SCENE_BREAK_PAUSE_SECONDS, isExpected: true, rawLineNumber: rawIdx + 1 })
+        return
+      }
       positions.push({
         index: lineIndex++,
         kind: 'voice',

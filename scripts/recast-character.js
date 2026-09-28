@@ -133,6 +133,11 @@ function parseScriptLines(script) {
     if (dm) {
       const speaker = dm[1].trim()
       const isAnn = ANNOUNCER_RE.test(speaker + ':')
+      // WORDLESS-LINE-001: "NARRATOR: ---" is a scene break, never re-voice it.
+      if (!isAnn && !/[\p{L}\p{N}]/u.test(dm[2])) {
+        lines.push({ index: lineIndex++, speaker: 'PAUSE', type: 'pause' })
+        return
+      }
       const type = isAnn ? 'announcer' : speaker === 'NARRATOR' ? 'narrator' : 'character'
       lines.push({ index: lineIndex++, speaker, type, text: dm[2].trim(), rawIdx })
     }
