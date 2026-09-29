@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
 // ATL-SFX-WIRE-001: manifest gate (Rule 8) + unconditional save on passing render
+import { outroMusicClipArgs } from '@/lib/outroMusicClip'
 import { loadManifest, validateManifestGate, saveManifest, emptyManifest } from '@/lib/sfxAssetLock'
 // ATL-PARSER-001: shared line-index parser — single source of truth for segment numbering
 import { parseScriptPositions } from '@/lib/scriptLineIndex'
@@ -921,12 +922,12 @@ export async function runRenderFinalMix(storyId: string): Promise<{
       outroWithMusicPath = path.join(tmpDir, 'outro_with_music.mp3')
 
       // Extract outro music with Variant B + tail volume shape
-      await execFileAsync(FFMPEG_PATH, [
-        '-stream_loop', '-1', '-ss', String(musicOffset), '-t', String(outroBed), '-i', musicPath,
-        '-filter_complex',
-        `[0:a]atrim=duration=${outroBed},asetpts=PTS-STARTPTS,volume='${outroVolExpr}':eval=frame[out]`,
-        '-map', '[out]', '-ar', '44100', '-ac', '2', '-b:a', '192k', '-y', outroMusicClipPath
-      ])
+      // OUTRO-MUSIC-WRAP-001: cut inside the filter graph so a loop wrap past the
+      // end of a short music file cannot stretch the clip (EP06 dead-air bug).
+      await execFileAsync(FFMPEG_PATH, outroMusicClipArgs({
+        musicPath, offsetSec: musicOffset, durationSec: outroBed,
+        volumeExpr: outroVolExpr, outPath: outroMusicClipPath,
+      }))
 
       // Delay Belle by DUCK_RAMP so music ducks to bed level before Belle speaks
       await execFileAsync(FFMPEG_PATH, [
