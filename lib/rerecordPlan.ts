@@ -53,8 +53,20 @@ export function summarizeGarble(report: { results?: GarbleRow[] } | null | undef
     ok: count('ok'),
     warn: count('warn'),
     fail: count('fail'),
+    missing: count('missing'),
+    /** warn rows with no WER = local Whisper crashed, the segment was never checked */
+    unscored: rows.filter((r) => r.status === 'warn' && (r.wer === null || r.wer === undefined)).length,
     failRows: rows
       .filter((r) => r.status === 'fail')
       .map((r) => ({ segName: r.segName || `segment_${String(r.segIndex).padStart(4, '0')}`, wer: r.wer ?? null })),
   }
+}
+
+/** Why a garble report cannot be trusted as "checked", or null when it can. */
+export function garbleReportProblem(report: { results?: GarbleRow[] } | null | undefined): string | null {
+  const s = summarizeGarble(report)
+  if (s.unscored > 0) return `local Whisper failed on ${s.unscored} segment(s) — audio not checked`
+  if (s.missing > 0) return `${s.missing} segment file(s) missing at garble check`
+  if (s.ok + s.warn + s.fail === 0) return 'garble check scored no segments'
+  return null
 }

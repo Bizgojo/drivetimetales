@@ -6,6 +6,7 @@ import {
   expectedSegmentNames,
   failedSegmentNumbers,
   filesToBackUp,
+  garbleReportProblem,
   parseGarbleReportPath,
   summarizeGarble,
 } from '@/lib/rerecordPlan'
@@ -92,6 +93,8 @@ describe('failedSegmentNumbers / summarizeGarble', () => {
       ok: 1,
       warn: 1,
       fail: 2,
+      missing: 1,
+      unscored: 0,
       failRows: [
         { segName: 'segment_0031', wer: 0.62 },
         { segName: 'segment_0062', wer: 0.45 },
@@ -101,6 +104,27 @@ describe('failedSegmentNumbers / summarizeGarble', () => {
 
   test('missing/empty report is safe', () => {
     expect(failedSegmentNumbers(null)).toEqual([])
-    expect(summarizeGarble(undefined)).toEqual({ ok: 0, warn: 0, fail: 0, failRows: [] })
+    expect(summarizeGarble(undefined)).toEqual({ ok: 0, warn: 0, fail: 0, missing: 0, unscored: 0, failRows: [] })
+  })
+})
+
+describe('garbleReportProblem — an unchecked episode is never reported clean', () => {
+  test('local Whisper crash rows (warn, wer null) are a problem', () => {
+    const r = { results: [{ segIndex: 0, status: 'ok', wer: 0 }, { segIndex: 1, status: 'warn', wer: null }] }
+    expect(garbleReportProblem(r)).toMatch(/Whisper failed on 1/)
+  })
+  test('missing segment files are a problem', () => {
+    expect(garbleReportProblem({ results: [{ segIndex: 0, status: 'ok', wer: 0 }, { segIndex: 1, status: 'missing', wer: null }] })).toMatch(/missing/)
+  })
+  test('nothing scored is a problem', () => {
+    expect(garbleReportProblem({ results: [] })).toMatch(/no segments/)
+  })
+  test('scored ok/warn/fail rows are trustworthy (fails are handled by the touch-up)', () => {
+    expect(garbleReportProblem({ results: [
+      { segIndex: 0, status: 'ok', wer: 0 },
+      { segIndex: 1, status: 'warn', wer: 0.2 },
+      { segIndex: 2, status: 'fail', wer: 0.6 },
+      { segIndex: 3, status: 'skipped', wer: null },
+    ] })).toBeNull()
   })
 })
