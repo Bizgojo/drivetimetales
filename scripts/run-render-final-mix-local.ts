@@ -36,7 +36,8 @@ import * as dotenv from 'dotenv'
 import * as path from 'path'
 import { createClient } from '@supabase/supabase-js'
 import { parseScriptPositions } from '../lib/scriptLineIndex'
-import { runRenderFinalMix } from '../app/api/asc3/render-final-mix/core'
+// core.ts creates its Supabase client at import time, so it is imported
+// dynamically in main() AFTER .env.local is loaded (RENDER-LOCAL-ENV-001).
 
 dotenv.config({ path: path.join(__dirname, '../.env.local') })
 
@@ -143,6 +144,7 @@ async function main(): Promise<void> {
   console.log(`\n[ATL-LOCALMIX-001] Preflight passed. Invoking render-final-mix core...`)
   const t0 = Date.now()
 
+  const { runRenderFinalMix } = await import('../app/api/asc3/render-final-mix/core')
   const result = await runRenderFinalMix(storyId)
 
   const elapsedSec = ((Date.now() - t0) / 1000).toFixed(1)
