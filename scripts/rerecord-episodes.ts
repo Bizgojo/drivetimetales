@@ -25,12 +25,17 @@
  *
  * EPISODE FAILS (logged, batch moves to the next episode): a segment that
  * still fails generate-voices after one retry, missing segments, garble report
- * not trustworthy. Two episode fails in a row stop the batch.
+ * not trustworthy, or a render failure recognized as specific to this story's
+ * audio/script/assets (classifyRenderFailure in lib/rerecordPlan.ts — e.g. a
+ * silent/truncated outro, a missing or empty segment file, a post-render
+ * quality check). Two episode fails in a row stop the batch.
  *
  * STOPS THE WHOLE BATCH (exit 1) on: Belle not generated, OpenAI Whisper QC
  * skipped (transcriptQcSkippedSegments or a qcskip sidecar), an account-level
- * API error (401/402/429/5xx/network), a render that fails/times out, local
- * Whisper broken, or ElevenLabs credits used beyond --max-credits.
+ * API error (401/402/429/5xx/network), a render failure NOT recognized as
+ * story-specific (timeout, crash, DB/network/disk problem — may affect every
+ * remaining episode), local Whisper broken, or ElevenLabs credits used beyond
+ * --max-credits.
  *
  * Never publishes, never changes workflow_state, never deletes backups.
  *
@@ -49,6 +54,7 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import { parseScriptPositions } from '../lib/scriptLineIndex'
 import {
   BACKUP_PREFIXES,
+  classifyRenderFailure,
   expectedSegmentNames,
   failedSegmentNumbers,
   filesToBackUp,
@@ -198,7 +204,14 @@ function render(id: string) {
   const r = runChild('render', 'npx', ['tsx', 'scripts/run-render-final-mix-local.ts', id], RENDER_TIMEOUT_MS)
   if (!r.ok) {
     log(r.out.split('\n').slice(-40).join('\n'))
-    throw new BatchStop(`Render failed or timed out for ${id}`)
+    // RERECORD-RUNNER-002: a defect specific to this story's audio/script/assets
+    // (e.g. a silent outro, a missing segment file) moves on to the next episode.
+    // Anything not recognized as story-specific stops the whole batch — it may be
+    // an outage or environment problem affecting every remaining episode too.
+    if (classifyRenderFailure(r.out) === 'episode') {
+      throw new EpisodeFail(`Render failed for ${id} (story-specific — see log above)`)
+    }
+    throw new BatchStop(`Render failed or timed out for ${id} (not recognized as story-specific)`)
   }
 }
 
