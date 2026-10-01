@@ -5538,16 +5538,25 @@ export default function AdminStoriesPage() {
                           </>
                         )}
                         {activePipelineTab === 'approved_ready' && (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              if (selectedIsSeries && selectedGroup.type === 'series') publishSeries(selectedGroup)
-                              else publishStory(selectedFirst)
-                            }}
-                            style={actionButtonStyle('primary')}
-                          >
-                            Publish to App
-                          </button>
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (selectedIsSeries && selectedGroup.type === 'series') publishSeries(selectedGroup)
+                                else publishStory(selectedFirst)
+                              }}
+                              style={actionButtonStyle('primary')}
+                            >
+                              Publish to App
+                            </button>
+                            <button
+                              type="button"
+                              onClick={moveSelectedToColdStorage}
+                              style={actionButtonStyle('secondary')}
+                            >
+                              Move to Cold Storage
+                            </button>
+                          </>
                         )}
                         {activePipelineTab === 'published' && selectedIsSeries && selectedGroup.type === 'series' && (
                           <button type="button" onClick={() => requestMoveSeriesToReadyForReview(selectedGroup)} style={actionButtonStyle('danger')}>Unpublish Series</button>
