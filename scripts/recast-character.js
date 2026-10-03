@@ -375,15 +375,35 @@ async function main() {
   audit.phases.dataRepair = { deletedAssignment: true, insertedAssignment: true, rosterUpdated: !!story.series_id }
 
   // ── Phase 3: Segment re-render ───────────────────────────────────────────────
+  // FIX-1 F2: backup-before-delete + restore-on-failure + halt-on-failure.
+  // The old code deleted each segment then called generate-voices; a crash or
+  // API failure in between left the episode segment-less, and the mix rebuild
+  // proceeded with holes on a mere warning. Now: snapshot each segment to local
+  // tmp BEFORE delete; on regen failure restore the snapshot so storage is left
+  // as-found; if ANY segment failed to re-render, HALT before Phase 4 — a mix
+  // is never built with holes or with stale-voice segments passed off as recast.
   console.log(`\n▶ Phase 3 — Segment re-render (${charLines.length} segments)`)
   // storyFolder already computed in Phase 1
   const segResults = []
+  const recastBackupDir = fs.mkdtempSync(path.join(os.tmpdir(), `recast-${storyId}-`))
 
   for (let i = 0; i < charLines.length; i++) {
     const line = charLines[i]
     const fname = segFile(line)
     const storagePath = `asc3/${storyFolder}/${fname}`
     process.stdout.write(`  [${i+1}/${charLines.length}] ${fname}... `)
+
+    // Snapshot current bytes locally BEFORE touching storage (best-effort:
+    // a missing source just means there is nothing to restore).
+    const backupPath = path.join(recastBackupDir, fname)
+    let hadBackup = false
+    try {
+      const { data: origData, error: origErr } = await sb.storage.from('audio').download(storagePath)
+      if (!origErr && origData) {
+        fs.writeFileSync(backupPath, Buffer.from(await origData.arrayBuffer()))
+        hadBackup = true
+      }
+    } catch (e) { console.warn(`(backup warn: ${e.message}) `) }
 
     // Delete stale segment to force regeneration
     const { error: rmErr } = await sb.storage.from('audio').remove([storagePath])
@@ -403,15 +423,31 @@ async function main() {
         else { console.log(`✗ (${resp.status}: ${body.error || JSON.stringify(body).slice(0,80)})`) }
       } catch (e) { console.log(`✗ (network: ${e.message})`) }
     }
-    segResults.push({ segName: fname, lineIndex: line.index, success })
+    let restored = false
+    if (!success && hadBackup) {
+      // Regen failed — restore the snapshot so storage is left as-found.
+      // (Restored bytes are pre-recast voice; they do NOT count as recast.)
+      try {
+        const backupBuf = fs.readFileSync(backupPath)
+        const { error: restErr } = await sb.storage.from('audio').upload(storagePath, backupBuf, { contentType: 'audio/mpeg', upsert: true })
+        if (!restErr) { restored = true; console.log(`  ↩ restored pre-recast backup for ${fname}`) }
+        else { console.warn(`  ⚠ restore failed for ${fname}: ${restErr.message}`) }
+      } catch (e) { console.warn(`  ⚠ restore failed for ${fname}: ${e.message}`) }
+    }
+    segResults.push({ segName: fname, lineIndex: line.index, success, restored })
   }
 
   const successCount = segResults.filter(r => r.success).length
-  console.log(`  ${successCount}/${charLines.length} segments re-rendered successfully`)
-  audit.phases.segmentRerender = { attempted: charLines.length, succeeded: successCount, results: segResults }
+  const restoredCount = segResults.filter(r => r.restored).length
+  console.log(`  ${successCount}/${charLines.length} segments re-rendered successfully${restoredCount > 0 ? `, ${restoredCount} restored to pre-recast bytes` : ''}`)
+  audit.phases.segmentRerender = { attempted: charLines.length, succeeded: successCount, restored: restoredCount, results: segResults }
 
-  if (successCount < charLines.length) {
-    console.warn(`  ⚠ ${charLines.length - successCount} segment(s) failed — mix rebuild will proceed with available segments`)
+  const failedSegs = segResults.filter(r => !r.success)
+  if (failedSegs.length > 0) {
+    const unrestored = failedSegs.filter(r => !r.restored)
+    console.error(`  ❌ ${failedSegs.length} segment(s) failed to re-render (${restoredCount} restored to pre-recast bytes, ${unrestored.length} still missing: ${unrestored.map(r => r.segName).join(', ') || 'none'}) — HALTING before mix rebuild. Storage left as-found; re-run after fixing the cause (restored segments retry cleanly).`)
+    writeAuditLog(audit)
+    process.exit(1)
   }
 
   // ── Phase 4: Rebuild mix ─────────────────────────────────────────────────────
