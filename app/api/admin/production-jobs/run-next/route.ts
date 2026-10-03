@@ -9565,6 +9565,15 @@ export async function POST(req: NextRequest) {
           if (qualityExhausted) {
             await markStoryNeedsAttention(result.storyId || lockedJob.story_id, `Belle auto-repair retries exhausted (${priorQualityBlocks}/${MAX_BELLE_BLOCKED_RETRIES}) at validate_belle_quality: ${llmIssues.join('; ')}. Manual fix needed.`)
           }
+          // ATLAS OCT3: close any prior asset-repair cycle so repairStandaloneBelleQuality
+          // uses the CURRENT quality report (not a stale asset report) and gets a fresh
+          // attempt budget for this new defect class. Pure quality loops keep counting
+          // toward the repair attempt cap; the outer block cap still bounds total cycles.
+          const prevBlockState = (lockedJob.state_json as Record<string, unknown>) || {}
+          const crossingFromAssetCycle = prevBlockState.belleAssetValidationFailed === true
+          const prevQualityRepair = (result.state?.belleQualityRepair && typeof result.state.belleQualityRepair === 'object')
+            ? (result.state.belleQualityRepair as Record<string, unknown>)
+            : {}
           const { data: qualityBlockedJob, error: qualityBlockErr } = await supabase
             .from('production_jobs')
             .update({
@@ -9574,9 +9583,11 @@ export async function POST(req: NextRequest) {
               step_index: Math.max(Number(lockedJob.step_index || 0), 0),
               state_json: {
                 ...result.state,
+                belleAssetValidationFailed: false,
                 belleQualityFailedReport: result.report,
                 belleQualityBlockCount: qualityBlockCount,
                 belleBlockHistory: qualityBlockHistory,
+                ...(crossingFromAssetCycle ? { belleQualityRepair: { ...prevQualityRepair, attempts: 0, cycleResetAt: nowIso(), cycleResetReason: 'asset-cycle to quality-cycle transition' } } : {}),
               },
               error_json: qualityBlockedErrorJson,
               logs: qualityBlockLogs,
