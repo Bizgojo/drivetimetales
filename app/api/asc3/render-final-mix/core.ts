@@ -7,6 +7,27 @@ import { parseScriptPositions } from '@/lib/scriptLineIndex'
 // BELL-FREEZE-GUARD-001 v1.1: frozen promo guard (ATL-GUARD-HOLE-FIX-001)
 import { checkFrozenGuard, type Decision } from '@/lib/guards/frozenGuard'
 import { promises as fs, statfsSync } from 'node:fs'
+import { createHash } from 'node:crypto'
+import { sbwoFatalError } from '@/lib/storage/section10'
+
+// FIX-1 (storage idempotency, §10): byte-level post-upload verification.
+// The Supabase SDK can return error:null on a partial write — name-presence
+// checks are not enough. Download the object back and compare size + sha256.
+async function verifyUploadedBytes(
+  storagePath: string,
+  expected: Buffer,
+  label: string,
+): Promise<void> {
+  const { data, error } = await supabase.storage.from('audio').download(storagePath)
+  if (error) throw new Error(`${label} verification download failed: ${error.message}`)
+  const actual = Buffer.from(await data.arrayBuffer())
+  if (actual.length !== expected.length) {
+    throw new Error(`${label} size mismatch: got ${actual.length}, want ${expected.length}`)
+  }
+  const aHash = createHash('sha256').update(actual).digest('hex')
+  const eHash = createHash('sha256').update(expected).digest('hex')
+  if (aHash !== eHash) throw new Error(`${label} sha256 mismatch: got ${aHash.slice(0, 12)}…, want ${eHash.slice(0, 12)}…`)
+}
 import path from 'path'
 import os from 'os'
 import { execFile } from 'child_process'
@@ -1087,6 +1108,7 @@ export async function runRenderFinalMix(storyId: string): Promise<{
     const bodyStoragePath = `asc3/${storyId}/story_body.mp3`
     const { error: bodyUploadErr } = await supabase.storage.from('audio').upload(bodyStoragePath, bodyBuffer, { contentType: 'audio/mpeg', cacheControl: '31536000', upsert: true })
     if (bodyUploadErr) throw new Error(`Body upload error: ${bodyUploadErr.message}`)
+    await verifyUploadedBytes(bodyStoragePath, bodyBuffer, 'story_body.mp3')
     const storyBodyUrl = `${BASE_STORAGE}/${bodyStoragePath}`
 
     if (outroWithMusicPath) {
@@ -1094,6 +1116,7 @@ export async function runRenderFinalMix(storyId: string): Promise<{
       const outroWithMusicStoragePath = `asc3/${storyId}/outro_with_music.mp3`
       const { error: outroWithMusicUploadErr } = await supabase.storage.from('audio').upload(outroWithMusicStoragePath, outroWithMusicBuffer, { contentType: 'audio/mpeg', cacheControl: '31536000', upsert: true })
       if (outroWithMusicUploadErr) throw new Error(`Treated outro upload error: ${outroWithMusicUploadErr.message}`)
+      await verifyUploadedBytes(outroWithMusicStoragePath, outroWithMusicBuffer, 'outro_with_music.mp3')
       outroWithMusicStorageUrl = `${BASE_STORAGE}/${outroWithMusicStoragePath}`
     }
 
@@ -1105,11 +1128,11 @@ export async function runRenderFinalMix(storyId: string): Promise<{
         cacheControl: '31536000',
         upsert: true,
       })
-      if (sbwoErr) console.warn(`  story_body_with_outro upload failed: ${sbwoErr.message}`)
-      else {
-        storyBodyWithOutroStorageUrl = `${BASE_STORAGE}/asc3/${storyId}/story_body_with_outro.mp3`
-        console.log(`  story_body_with_outro.mp3: uploaded → ${storyBodyWithOutroStorageUrl}`)
-      }
+      // §10 Q6: story_body_with_outro failure is FATAL — never warn-and-continue.
+      if (sbwoErr) throw sbwoFatalError(sbwoErr.message)
+      await verifyUploadedBytes(storagePath, storyBodyWithOutroBuffer, 'story_body_with_outro.mp3')
+      storyBodyWithOutroStorageUrl = `${BASE_STORAGE}/asc3/${storyId}/story_body_with_outro.mp3`
+      console.log(`  story_body_with_outro.mp3: uploaded → ${storyBodyWithOutroStorageUrl}`)
     }
 
     // Upload final_mix.mp3 (full mix for backward compat)
@@ -1117,6 +1140,7 @@ export async function runRenderFinalMix(storyId: string): Promise<{
     const mixPath = `asc3/${storyId}/final_mix.mp3`
     const { error: uploadErr } = await supabase.storage.from('audio').upload(mixPath, mixBuffer, { contentType: 'audio/mpeg', cacheControl: '31536000', upsert: true })
     if (uploadErr) throw new Error(`Upload error: ${uploadErr.message}`)
+    await verifyUploadedBytes(mixPath, mixBuffer, 'final_mix.mp3')
 
     // ── POST-UPLOAD VERIFICATION (HAL-PIPE-002 fix) ──────────────────────────
     // The Supabase SDK can return error:null even when the file was not actually
