@@ -165,6 +165,22 @@ function log(msg) {
   console.log(`[${new Date().toISOString()}] ${msg}`);
 }
 
+// FIX-1 F1+F3: post-upload byte verification for corrected-mix uploads.
+// A partial write with error:null (the SDK behavior core.ts warns about)
+// must never pass silently — download the object back and compare sizes.
+// Runs after validation gates pass, before the final_mix.mp3 block could
+// ever matter (that block throws pre-upload; this verifies the corrected
+// file that WAS uploaded). Fail-loud: size mismatch throws, no URL printed.
+async function verifyStorageUpload(sb, storagePath, expectedBytes) {
+  const { data, error } = await sb.storage.from('audio').download(storagePath);
+  if (error) throw new Error(`Upload verify failed (download): ${storagePath}: ${error.message}`);
+  const got = Buffer.from(await data.arrayBuffer()).length;
+  if (got !== expectedBytes) {
+    throw new Error(`Upload verify FAILED (size mismatch): ${storagePath}: got ${got}, want ${expectedBytes}`);
+  }
+  log(`  ✓ Upload verified: ${storagePath} (${got} bytes)`);
+}
+
 function getDur(f) {
   const r = spawnSync(FFP, ['-v', 'quiet', '-show_entries', 'format=duration', '-of', 'default=noprint_wrappers=1:nokey=1', f]);
   return parseFloat((r.stdout || '').toString().trim()) || 0;
@@ -485,6 +501,7 @@ async function runStoryBodyMode({ story, sb, FOLDER, storageFiles, tmp, outputFi
     cacheControl: '31536000',
   });
   if (upErr) throw new Error('Upload failed: ' + upErr.message);
+  await verifyStorageUpload(sb, storagePath, buf.length);
 
   const { data: { publicUrl } } = sb.storage.from('audio').getPublicUrl(storagePath);
 
@@ -1014,6 +1031,7 @@ async function runSegmentsMode({ story, sb, FOLDER, storageFiles, tmp, outputFil
     cacheControl: '31536000',
   });
   if (upErr) throw new Error('Upload failed: ' + upErr.message);
+  await verifyStorageUpload(sb, storagePath, buf.length);
 
   const { data: { publicUrl } } = sb.storage.from('audio').getPublicUrl(storagePath);
 
