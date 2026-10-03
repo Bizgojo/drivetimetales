@@ -96,6 +96,13 @@ const NEXT_STEP_AFTER_STANDALONE_BELLE = 'validate_belle_assets'
 const NEXT_STEP_AFTER_STANDALONE_BELLE_VALIDATION = 'validate_belle_quality'
 const NEXT_STEP_AFTER_STANDALONE_BELLE_REPAIR = 'repair_belle_quality'
 const NEXT_STEP_AFTER_STANDALONE_BELLE_QUALITY = 'generate_music'
+
+// ATLAS OCT3: advisory-bypass removal. Former advisory defects now BLOCK with
+// routable (marc_required=false) error kinds and auto-resume to
+// repair_belle_quality. After MAX_BELLE_BLOCKED_RETRIES repair cycles the
+// story is flagged needs_attention and the job stays failed.
+const MAX_BELLE_BLOCKED_RETRIES = 2
+const BELLE_BLOCKED_KINDS = ['belle_asset_blocked', 'belle_quality_blocked'] as const
 const NEXT_STEP_AFTER_STANDALONE_MUSIC = 'render_final_mix'
 const NEXT_STEP_AFTER_STANDALONE_RENDER = 'complete_story_package'
 const NEXT_STEP_AFTER_STANDALONE_PACKAGE = 'ready_for_review'
@@ -2248,6 +2255,106 @@ async function detectAndMarkZombieJobs(excludeJobId?: string): Promise<string[]>
   }
 
   return markedIds
+}
+
+// ATLAS OCT3: auto-send-back path for blocked Belle jobs.
+// A job failed with kind belle_asset_blocked / belle_quality_blocked carries
+// marc_required=false + autonomous_repair=true + safe_resume_point. The next
+// run-next tick re-queues it to repair_belle_quality (Hal rewrites BELLE B
+// INTRO/OUTRO sections only — never story body/narration); on repair success
+// the job auto-reprocesses from generate_belle_assets forward. Retries capped
+// at MAX_BELLE_BLOCKED_RETRIES; exhaustion flags the story needs_attention
+// and the job stays failed.
+function blockedBelleResumeInfo(job: ProductionJob): { kind: string; retryCount: number; maxRetries: number; resumePoint: string } | null {
+  if (job.status !== 'failed') return null
+  const err = job.error_json && typeof job.error_json === 'object' ? (job.error_json as Record<string, unknown>) : null
+  if (!err) return null
+  const kind = String(err.kind || '')
+  if (!(BELLE_BLOCKED_KINDS as readonly string[]).includes(kind)) return null
+  if (err.marc_required !== false || err.autonomous_repair !== true) return null
+  const resumePoint = String(err.safe_resume_point || '')
+  if (!resumePoint) return null
+  return {
+    kind,
+    retryCount: Number(err.retry_count ?? 0),
+    maxRetries: Number(err.max_retries ?? MAX_BELLE_BLOCKED_RETRIES),
+    resumePoint,
+  }
+}
+
+async function tryResumeBlockedBelleJob(explicitJobId?: string): Promise<{ resumedId: string | null; exhaustedId: string | null }> {
+  let candidate: ProductionJob | null = null
+  if (explicitJobId) {
+    const { data } = await supabase.from('production_jobs').select('*').eq('id', explicitJobId).maybeSingle()
+    candidate = (data as ProductionJob | null) ?? null
+  } else {
+    const { data } = await supabase
+      .from('production_jobs')
+      .select('*')
+      .eq('status', 'failed')
+      .not('job_type', 'like', 'TEST_%')
+      .order('updated_at', { ascending: true })
+      .limit(25)
+    const rows = (Array.isArray(data) ? data : []) as ProductionJob[]
+    candidate = rows.find(j => blockedBelleResumeInfo(j) !== null) ?? null
+  }
+  if (!candidate) return { resumedId: null, exhaustedId: null }
+  const info = blockedBelleResumeInfo(candidate)
+  if (!info) return { resumedId: null, exhaustedId: null }
+  const state = candidate.state_json && typeof candidate.state_json === 'object' ? (candidate.state_json as Record<string, unknown>) : {}
+  const storyId = candidate.story_id || (state.storyId as string | undefined) || null
+  const maxAllowed = Math.min(info.maxRetries, MAX_BELLE_BLOCKED_RETRIES)
+
+  // Retry budget spent — flag the story and stop. No standing human step beyond Marc's normal review.
+  if (info.retryCount > maxAllowed) {
+    const reason = `Belle auto-repair retries exhausted (${info.retryCount - 1}/${maxAllowed}) at ${info.kind}. Manual fix needed: correct BELLE B INTRO/OUTRO in script, delete stale Belle audio, reset job to generate_belle_assets.`
+    await markStoryNeedsAttention(storyId, reason)
+    const exhaustedLogs = appendLog(candidate, `Belle blocked-repair exhausted — story flagged needs_attention`, {
+      kind: info.kind,
+      storyId,
+      needsAttention: true,
+    })
+    await supabase
+      .from('production_jobs')
+      .update({
+        error_json: { ...(candidate.error_json as object), exhausted: true, needsAttention: true, fixRecommendation: reason },
+        logs: exhaustedLogs,
+        locked_at: null,
+        locked_by: null,
+      })
+      .eq('id', candidate.id)
+      .eq('status', 'failed')
+    return { resumedId: null, exhaustedId: candidate.id }
+  }
+
+  // Re-queue to the Hal rewrite step. The blocked error is preserved in state
+  // history + logs; error_json is cleared for the fresh repair attempt.
+  const resumeLogs = appendLog(candidate, `Auto-resume blocked Belle job (repair ${info.retryCount}/${maxAllowed}): re-queued to ${info.resumePoint}`, {
+    kind: info.kind,
+    storyId,
+    resumePoint: info.resumePoint,
+  })
+  const { data: resumed, error } = await supabase
+    .from('production_jobs')
+    .update({
+      status: 'queued',
+      current_step: info.resumePoint,
+      state_json: {
+        ...state,
+        belleBlockedResumedAt: nowIso(),
+        belleBlockedResumeCount: Number((state as Record<string, unknown>).belleBlockedResumeCount ?? 0) + 1,
+      },
+      error_json: null,
+      logs: resumeLogs,
+      locked_at: null,
+      locked_by: null,
+    })
+    .eq('id', candidate.id)
+    .eq('status', 'failed')
+    .select('id')
+    .maybeSingle()
+  if (error || !resumed) return { resumedId: null, exhaustedId: null }
+  return { resumedId: candidate.id, exhaustedId: null }
 }
 
 async function selectCandidate(jobId: string) {
@@ -7209,6 +7316,21 @@ export async function POST(req: NextRequest) {
     // ATL-PIPE-MODEL-001: validation/QC steps run on a cheaper model than generation.
     const validationModel = String(body.validationModel || STEP_MODELS.validate)
 
+    // ATLAS OCT3: auto-send-back — revive one blocked Belle job (failed with a
+    // routable belle_*_blocked error) by re-queueing it to repair_belle_quality.
+    // Explicit-jobId callers revive only the requested job; the cron path
+    // revives the oldest eligible production job (never TEST_ jobs).
+    try {
+      const resume = await tryResumeBlockedBelleJob(requestedJobId || undefined)
+      if (resume.exhaustedId) {
+        console.log(`[run-next] Belle blocked-repair exhausted for job ${resume.exhaustedId.slice(0, 8)} — story flagged needs_attention`)
+      } else if (resume.resumedId) {
+        console.log(`[run-next] Auto-resumed blocked Belle job ${resume.resumedId.slice(0, 8)} to repair_belle_quality`)
+      }
+    } catch (resumeErr) {
+      console.warn('[run-next] blocked-Belle auto-resume failed (non-fatal):', resumeErr instanceof Error ? resumeErr.message : String(resumeErr))
+    }
+
     // ── ONE JOB PER WORKER GUARD ──────────────────────────────────────────
     // If this worker already holds a running job (fresh lock, not stale),
     // redirect to that job instead of picking up a second one.
@@ -8995,54 +9117,118 @@ export async function POST(req: NextRequest) {
         )
 
         // RFR Sprint: classify defect before deciding whether to block or continue.
-        // Advisory defects (hook quality, low specificity) log and advance.
+        // ATLAS OCT3: advisory bypass REMOVED. Advisory-class defects (hook quality,
+        // low specificity) now BLOCK with a routable error and auto-resume to repair.
         // Severe defects (missing title, placeholder, broken sentence) block and repair.
         if (isTextOnlyFailure) {
           const MAX_BELLE_RETRIES = 2
           const failureKind = classifyBelleIssues(issues)
 
-          // Advisory bypass: non-severe defects advance to next step with a warning log.
+          // ATLAS OCT3: former advisory bypass. Non-severe defects BLOCK (status
+          // failed, kind belle_asset_blocked, marc_required=false) instead of
+          // advancing. Auto-resume re-queues to repair_belle_quality; the job
+          // reprocesses from generate_belle_assets when the rewrite lands.
           if (!isBelleSevereDefect(failureKind, issues)) {
-            const advisoryLogs = appendLog(lockedJob, `Belle quality advisory (non-blocking): ${failureKind} - ${issues.join('; ')}`, {
+            const playbook = getPlaybookByKind('belle_asset_blocked')
+            const priorBlocks = Number((lockedJob.state_json as any)?.belleAssetBlockCount ?? 0)
+            const blockCount = priorBlocks + 1
+            const exhausted = blockCount > MAX_BELLE_BLOCKED_RETRIES
+            const blockHistory = [
+              ...(((lockedJob.state_json as any)?.belleBlockHistory as unknown[]) || []),
+              { kind: 'belle_asset_blocked', step, issues, at: nowIso(), blockCount },
+            ]
+
+            const { data: learningIncident } = await supabase
+              .from('production_learning_events')
+              .insert({
+                job_id: lockedJob.id,
+                story_id: result.storyId || lockedJob.story_id || null,
+                series_id: lockedJob.series_id || null,
+                series_title: (lockedJob.state_json as any)?.seriesTitle || null,
+                episode_title: (lockedJob.state_json as any)?.storyTitle || null,
+                stage: 'validate_belle_assets',
+                failure_type: 'belle_asset_blocked',
+                root_cause: issues.join('; '),
+                fix_applied: exhausted
+                  ? `Blocked-repair retries exhausted (${priorBlocks}/${MAX_BELLE_BLOCKED_RETRIES}); story flagged needs_attention`
+                  : `Blocked (repair ${blockCount}/${MAX_BELLE_BLOCKED_RETRIES}): auto-resume to repair_belle_quality`,
+                fix_type: exhausted ? 'marc_review_required' : 'autonomous_repair',
+                prevention_rule: 'validate_belle_assets blocks advisory-class defects instead of advisory-advancing (ATLAS-OCT3)',
+                reusable: true,
+                confidence: 0.85,
+              })
+              .select('id')
+              .single()
+
+            const blockedErrorJson = buildStructuredError('belle_asset_blocked', `Belle asset validation blocked: ${issues.join('; ')}`, step, {
               storyId: result.storyId,
-              advisoryOnly: true,
-              failureKind,
-              issueCount: issues.length,
-              nextStep: NEXT_STEP_AFTER_STANDALONE_BELLE_VALIDATION,
+              marc_required: false,
+              autonomous_repair: !exhausted,
+              retry_count: blockCount,
+              max_retries: MAX_BELLE_BLOCKED_RETRIES,
+              safe_resume_point: NEXT_STEP_AFTER_STANDALONE_BELLE_REPAIR,
+              rootCause: issues.join('; '),
+              fixRecommendation: exhausted
+                ? 'Manually fix Belle intro/outro in script, delete stale Belle audio, reset job to generate_belle_assets.'
+                : `Auto-resume to repair_belle_quality (repair ${blockCount}/${MAX_BELLE_BLOCKED_RETRIES}); Hal rewrites BELLE B INTRO/OUTRO sections only.`,
+              detail: {
+                issues,
+                underlyingKind: failureKind,
+                introText: result.report.introText ?? null,
+                outroText: result.report.outroText ?? null,
+                playbookId: playbook?.id || null,
+                learningIncidentId: learningIncident?.id || null,
+              },
             })
-            const { data: advisedJob, error: advErr } = await supabase
+            const blockLogs = appendLog(lockedJob, exhausted
+              ? `Belle asset validation BLOCKED (advisory bypass removed) — retries exhausted, story flagged needs_attention: ${issues.join('; ')}`
+              : `Belle asset validation BLOCKED (advisory bypass removed) — auto-routing to repair_belle_quality: ${issues.join('; ')}`, {
+              storyId: result.storyId,
+              failureKind,
+              blockedKind: 'belle_asset_blocked',
+              issueCount: issues.length,
+              blockCount,
+              exhausted,
+              nextStep: exhausted ? null : NEXT_STEP_AFTER_STANDALONE_BELLE_REPAIR,
+            })
+            if (exhausted) {
+              await markStoryNeedsAttention(result.storyId || lockedJob.story_id, `Belle auto-repair retries exhausted (${priorBlocks}/${MAX_BELLE_BLOCKED_RETRIES}) at validate_belle_assets: ${issues.join('; ')}. Manual fix needed.`)
+            }
+            const { data: blockedJob, error: blockErr } = await supabase
               .from('production_jobs')
               .update({
                 story_id: result.storyId,
-                status: 'queued',
-                current_step: NEXT_STEP_AFTER_STANDALONE_BELLE_VALIDATION,
-                step_index: Math.max(Number(lockedJob.step_index || 0), 0) + 1,
+                status: 'failed',
+                current_step: NEXT_STEP_AFTER_STANDALONE_BELLE,
+                step_index: Math.max(Number(lockedJob.step_index || 0), 0),
                 state_json: {
                   ...result.state,
-                  belleAssetValidation: {
-                    ...result.state.belleAssetValidation,
-                    status: 'advisory_passed',
-                    advisoryOnly: true,
-                  },
-                  belleAdvisoryIssues: issues,
-                  belleAdvisoryKind: failureKind,
+                  belleAssetValidationFailed: true,
+                  belleAssetFailedReport: result.report,
+                  belleAssetBlockCount: blockCount,
+                  belleBlockHistory: blockHistory,
                 },
-                error_json: null,
-                logs: advisoryLogs,
+                error_json: blockedErrorJson,
+                logs: blockLogs,
                 locked_at: null, locked_by: null,
               })
               .match(ownedJobFence(lockedJob, lockHolderId)).select('*').single()
-            if (advErr) throw new Error(`Advisory advance failed: ${advErr.message}`)
+            if (blockErr) throw new Error(`Belle asset block failed: ${blockErr.message}`)
             return NextResponse.json({
-              success: true,
-              action: 'advisory_advance',
-              jobId: advisedJob!.id,
+              success: false,
+              action: 'belle_blocked',
+              jobId: blockedJob!.id,
               currentStep: step,
-              nextStep: advisedJob!.current_step,
+              status: blockedJob!.status,
               storyId: result.storyId,
-              advisoryIssues: issues,
-              logs: advisoryLogs,
-            })
+              blockedKind: 'belle_asset_blocked',
+              failureKind,
+              blockCount,
+              exhausted,
+              marcRequired: false,
+              blockedIssues: issues,
+              logs: blockLogs,
+            }, { status: 422 })
           }
 
           const belleAssetRepairCount = Number((lockedJob.state_json as any)?.belleAssetRepairCount ?? 0)
@@ -9304,41 +9490,117 @@ export async function POST(req: NextRequest) {
         const llmKind = classifyBelleIssues(llmIssues)
         const isLlmSevere = isBelleSevereDefect(llmKind, llmIssues)
 
-        // Advisory bypass: non-severe LLM issues log and advance without repair cycle.
+        // ATLAS OCT3: former advisory bypass. Non-severe LLM issues BLOCK (status
+        // failed, kind belle_quality_blocked, marc_required=false, scores
+        // preserved) instead of advancing. Auto-resume re-queues to
+        // repair_belle_quality; the job reprocesses from generate_belle_assets.
         if (!isLlmSevere) {
-          const advisoryLogs = appendLog(lockedJob, `Belle quality advisory (non-blocking): LLM score ${result.report.introScore ?? '?'}/10 - ${llmIssues.join('; ')}`, {
+          const qualityPlaybook = getPlaybookByKind('belle_quality_blocked')
+          const priorQualityBlocks = Number((lockedJob.state_json as any)?.belleQualityBlockCount ?? 0)
+          const qualityBlockCount = priorQualityBlocks + 1
+          const qualityExhausted = qualityBlockCount > MAX_BELLE_BLOCKED_RETRIES
+          const qualityBlockHistory = [
+            ...(((lockedJob.state_json as any)?.belleBlockHistory as unknown[]) || []),
+            { kind: 'belle_quality_blocked', step, issues: llmIssues, introScore: result.report.introScore, outroScore: result.report.outroScore, at: nowIso(), blockCount: qualityBlockCount },
+          ]
+
+          const { data: qualityLearningIncident } = await supabase
+            .from('production_learning_events')
+            .insert({
+              job_id: lockedJob.id,
+              story_id: result.storyId || lockedJob.story_id || null,
+              series_id: lockedJob.series_id || null,
+              series_title: (lockedJob.state_json as any)?.seriesTitle || null,
+              episode_title: (lockedJob.state_json as any)?.storyTitle || null,
+              stage: 'validate_belle_quality',
+              failure_type: 'belle_quality_blocked',
+              root_cause: llmIssues.join('; '),
+              fix_applied: qualityExhausted
+                ? `Blocked-repair retries exhausted (${priorQualityBlocks}/${MAX_BELLE_BLOCKED_RETRIES}); story flagged needs_attention`
+                : `Blocked (repair ${qualityBlockCount}/${MAX_BELLE_BLOCKED_RETRIES}): auto-resume to repair_belle_quality`,
+              fix_type: qualityExhausted ? 'marc_review_required' : 'autonomous_repair',
+              prevention_rule: 'validate_belle_quality blocks advisory-class defects instead of advisory-advancing (ATLAS-OCT3)',
+              reusable: true,
+              confidence: 0.85,
+            })
+            .select('id')
+            .single()
+
+          const qualityBlockedErrorJson = buildStructuredError('belle_quality_blocked', `Belle quality validation blocked (intro ${result.report.introScore ?? '?'}/10, outro ${result.report.outroScore ?? '?'}/10): ${llmIssues.join('; ')}`, step, {
             storyId: result.storyId,
-            advisoryOnly: true,
-            llmKind,
+            marc_required: false,
+            autonomous_repair: !qualityExhausted,
+            retry_count: qualityBlockCount,
+            max_retries: MAX_BELLE_BLOCKED_RETRIES,
+            safe_resume_point: NEXT_STEP_AFTER_STANDALONE_BELLE_REPAIR,
+            rootCause: llmIssues.join('; '),
+            fixRecommendation: qualityExhausted
+              ? 'Manually fix Belle intro/outro in script, delete stale Belle audio, reset job to generate_belle_assets.'
+              : `Auto-resume to repair_belle_quality (repair ${qualityBlockCount}/${MAX_BELLE_BLOCKED_RETRIES}); Hal rewrites BELLE B INTRO/OUTRO sections only.`,
+            detail: {
+              issues: llmIssues,
+              underlyingKind: llmKind,
+              introScore: result.report.introScore ?? null,
+              outroScore: result.report.outroScore ?? null,
+              introText: result.report.introText ?? null,
+              outroText: result.report.outroText ?? null,
+              suggestedFixes: result.report.suggestedFixes ?? null,
+              playbookId: qualityPlaybook?.id || null,
+              learningIncidentId: qualityLearningIncident?.id || null,
+            },
+          })
+          const qualityBlockLogs = appendLog(lockedJob, qualityExhausted
+            ? `Belle quality validation BLOCKED (advisory bypass removed) — retries exhausted, story flagged needs_attention: LLM score ${result.report.introScore ?? '?'}/10 - ${llmIssues.join('; ')}`
+            : `Belle quality validation BLOCKED (advisory bypass removed) — auto-routing to repair_belle_quality: LLM score ${result.report.introScore ?? '?'}/10 - ${llmIssues.join('; ')}`, {
+            storyId: result.storyId,
+            failureKind: llmKind,
+            blockedKind: 'belle_quality_blocked',
             introScore: result.report.introScore,
             outroScore: result.report.outroScore,
-            nextStep: NEXT_STEP_AFTER_STANDALONE_BELLE_QUALITY,
+            issueCount: llmIssues.length,
+            blockCount: qualityBlockCount,
+            exhausted: qualityExhausted,
+            nextStep: qualityExhausted ? null : NEXT_STEP_AFTER_STANDALONE_BELLE_REPAIR,
           })
-          const { data: advisedJob, error: advErr } = await supabase
+          if (qualityExhausted) {
+            await markStoryNeedsAttention(result.storyId || lockedJob.story_id, `Belle auto-repair retries exhausted (${priorQualityBlocks}/${MAX_BELLE_BLOCKED_RETRIES}) at validate_belle_quality: ${llmIssues.join('; ')}. Manual fix needed.`)
+          }
+          const { data: qualityBlockedJob, error: qualityBlockErr } = await supabase
             .from('production_jobs')
             .update({
               story_id: result.storyId,
-              status: 'queued',
-              current_step: NEXT_STEP_AFTER_STANDALONE_BELLE_QUALITY,
-              step_index: Math.max(Number(lockedJob.step_index || 0), 0) + 1,
-              state_json: { ...result.state, belleQualityAdvisory: { kind: llmKind, issues: llmIssues, introScore: result.report.introScore } },
-              error_json: null,
-              logs: advisoryLogs,
+              status: 'failed',
+              current_step: NEXT_STEP_AFTER_STANDALONE_BELLE_VALIDATION,
+              step_index: Math.max(Number(lockedJob.step_index || 0), 0),
+              state_json: {
+                ...result.state,
+                belleQualityFailedReport: result.report,
+                belleQualityBlockCount: qualityBlockCount,
+                belleBlockHistory: qualityBlockHistory,
+              },
+              error_json: qualityBlockedErrorJson,
+              logs: qualityBlockLogs,
               locked_at: null, locked_by: null,
             })
             .match(ownedJobFence(lockedJob, lockHolderId)).select('*').single()
-          if (advErr) throw new Error(`Belle quality advisory advance failed: ${advErr.message}`)
+          if (qualityBlockErr) throw new Error(`Belle quality block failed: ${qualityBlockErr.message}`)
           return NextResponse.json({
-            success: true,
-            action: 'advisory_advance',
-            jobId: advisedJob!.id,
+            success: false,
+            action: 'belle_blocked',
+            jobId: qualityBlockedJob!.id,
             currentStep: step,
-            nextStep: advisedJob!.current_step,
+            status: qualityBlockedJob!.status,
             storyId: result.storyId,
-            advisoryIssues: llmIssues,
+            blockedKind: 'belle_quality_blocked',
+            failureKind: llmKind,
+            blockCount: qualityBlockCount,
+            exhausted: qualityExhausted,
+            marcRequired: false,
+            blockedIssues: llmIssues,
             introScore: result.report.introScore,
-            logs: advisoryLogs,
-          })
+            outroScore: result.report.outroScore,
+            logs: qualityBlockLogs,
+          }, { status: 422 })
         }
 
         const repairAttempts = Number(result.state?.belleQualityRepair?.attempts || 0)

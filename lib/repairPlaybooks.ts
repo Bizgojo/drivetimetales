@@ -581,6 +581,53 @@ export const REPAIR_PLAYBOOKS: RepairPlaybook[] = [
     linkedIncident: 'ATL-PIPE-010',
   },
 
+  // ── ATLAS OCT3: advisory-bypass removal — blocked (routable, marc_required=false)
+  // kinds. Auto-resume re-queues the failed job to repair_belle_quality; after
+  // MAX retries the story is flagged needs_attention and the job stays failed.
+  {
+    id: 'pb-021-belle-asset-blocked',
+    failureKind: 'belle_asset_blocked',
+    title: 'Belle asset validation advisory-class defect blocked — auto-routed to repair',
+    autonomous: true,
+    marcRequired: false,
+    priority: 'high',
+    steps: [
+      {
+        kind: 'belle_repair',
+        description: 'Hal rewrites the Belle intro/outro per the reported violation (BELLE B INTRO/OUTRO sections only — never story body/narration). Repair prompt requires: concrete hook, story title. Max 2 blocked-repair cycles.',
+      },
+      {
+        kind: 'autonomous_repair',
+        description: 'Failed job is autonomously re-queued to repair_belle_quality (safe_resume_point), then auto-reprocessed from generate_belle_assets forward. No human step.',
+      },
+    ],
+    prevention: 'BELLE_QUALITY_REPAIR_PROMPT requires concrete hook + exact story title; validate_belle_assets blocks instead of advisory-advancing.',
+    verificationCheck: 'validate_belle_assets passes after repair. belleAssetValidation.status is passed.',
+    linkedIncident: 'ATLAS-OCT3',
+  },
+
+  {
+    id: 'pb-022-belle-quality-blocked',
+    failureKind: 'belle_quality_blocked',
+    title: 'Belle quality validation advisory-class defect blocked — auto-routed to repair',
+    autonomous: true,
+    marcRequired: false,
+    priority: 'high',
+    steps: [
+      {
+        kind: 'belle_repair',
+        description: 'Hal rewrites the Belle intro/outro per the reported LLM quality issues (BELLE B INTRO/OUTRO sections only — never story body/narration). Intro/outro scores preserved in the blocked error detail.',
+      },
+      {
+        kind: 'autonomous_repair',
+        description: 'Failed job is autonomously re-queued to repair_belle_quality (safe_resume_point), then auto-reprocessed from generate_belle_assets forward. No human step.',
+      },
+    ],
+    prevention: 'validate_belle_quality blocks instead of advisory-advancing; repair prompt requires concrete hook, title, narrator credit.',
+    verificationCheck: 'validate_belle_quality passes after repair with introScore >= 7 and outroScore >= 7.',
+    linkedIncident: 'ATLAS-OCT3',
+  },
+
   // ── ATL-PIPE-008: validate_script failure playbooks ─────────────────────
 
   {
