@@ -3588,18 +3588,20 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: false, error: `Failed to list existing story segments: ${listAudioError.message}` }, { status: 500 })
     }
 
-    const staleSegmentPaths = (existingAudioFiles || [])
-      .filter(file => segmentFilePattern.test(file.name))
-      .map(file => `${storyAudioFolder}/${file.name}`)
-
-    if (staleSegmentPaths.length > 0) {
-      const { error: deleteAudioError } = await supabase.storage.from('audio').remove(staleSegmentPaths)
-      if (deleteAudioError) {
-        console.error('  ❌ Failed to delete stale story segments:', deleteAudioError)
-        return NextResponse.json({ success: false, error: `Failed to delete stale story segments: ${deleteAudioError.message}` }, { status: 500 })
-      }
-    }
-    console.log(`  Deleted stale story segments: ${staleSegmentPaths.length > 0 ? staleSegmentPaths.map(file => file.split('/').pop()).join(', ') : 'none'}`)
+    // FIX-1 F2 (site #5): overwrite-by-regen replaces purge-before-regen.
+    // The old code deleted ALL existing segment_*.mp3 up front, so a crash
+    // between purge and regen left the episode segment-less with no resume
+    // signal. Every writer in the loop below overwrites in place (voice via
+    // generateVoiceLine upsert, silence + locked-SFX via upsert:true), so the
+    // upfront delete bought nothing. Snapshot pre-existing names now; leftovers
+    // are swept only AFTER a fully-successful regen (see below) — a crash
+    // mid-regen now leaves old-but-complete segments, never a hole.
+    const preExistingSegmentNames = new Set(
+      (existingAudioFiles || [])
+        .filter(file => segmentFilePattern.test(file.name))
+        .map(file => file.name)
+    )
+    console.log(`  [FIX1-F2] Overwrite-by-regen: keeping ${preExistingSegmentNames.size} pre-existing segment(s) in place, leftover sweep after successful regen`)
 
     const qcSkippedSegments: string[] = []
     const failures: VoiceInventoryFailure[] = []
@@ -3811,6 +3813,39 @@ export async function POST(req: NextRequest) {
     // completes clean (no missing, no escalations). The audio-consistency gate
     // compares this against script_updated_at to detect stale audio.
     const fullGenSuccess = failed === 0 && inventory.missingSegments.length === 0 && escalations.length === 0
+    // FIX-1 F2 (site #5): leftover sweep — the deferred half of overwrite-by-regen.
+    // Runs ONLY on full success: every expected segment was just (over)written, so
+    // pre-existing names outside the expected set are provably stale (shortened
+    // script, newly-skipped lines). Scoped to segment_*.mp3 — parity with the old
+    // purge, which never touched sfx_*.mp3. Sweep failure is fail-loud: regen
+    // succeeded but stale survivors remain, so success is NOT stamped.
+    if (fullGenSuccess) {
+      const expectedSegmentNames = new Set<string>()
+      for (const line of storyLines) {
+        if (nonDialogueSpeakers.has(line.speaker.toUpperCase())) continue
+        if (line.type === 'sfx') continue // sfx_*.mp3 out of sweep scope (purge parity)
+        expectedSegmentNames.add(`segment_${line.index.toString().padStart(4, '0')}.mp3`)
+      }
+      const leftoverPaths = [...preExistingSegmentNames]
+        .filter(name => !expectedSegmentNames.has(name))
+        .map(name => `${storyAudioFolder}/${name}`)
+      if (leftoverPaths.length > 0) {
+        const { error: sweepError } = await supabase.storage.from('audio').remove(leftoverPaths)
+        if (sweepError) {
+          console.error('  ❌ [FIX1-F2] Leftover sweep failed:', sweepError)
+          return NextResponse.json({ success: false, error: `Leftover sweep failed: ${sweepError.message}` }, { status: 500 })
+        }
+        const { data: sweepCheck, error: sweepCheckErr } = await supabase.storage.from('audio').list(storyAudioFolder, { limit: 500 })
+        const survivors = sweepCheckErr
+          ? [`list-failed:${sweepCheckErr.message}`]
+          : (sweepCheck || []).map((f: any) => f.name).filter((n: string) => leftoverPaths.some(p => p.endsWith(`/${n}`)))
+        if (survivors.length > 0) {
+          console.error(`  ❌ [FIX1-F2] Leftover sweep unverified, survivors: ${survivors.join(', ')}`)
+          return NextResponse.json({ success: false, error: `Leftover sweep unverified, survivors: ${survivors.join(', ')}` }, { status: 500 })
+        }
+        console.log(`  🧹 [FIX1-F2] Swept ${leftoverPaths.length} leftover stale segment(s) after successful regen: ${leftoverPaths.map(p => p.split('/').pop()).join(', ')}`)
+      }
+    }
     if (fullGenSuccess) {
       const { error: stampError } = await supabase
         .from('stories')
