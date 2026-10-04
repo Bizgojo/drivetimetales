@@ -23,6 +23,9 @@ import { parseScriptPositions } from '@/lib/scriptLineIndex'
 // GATE 4 (GATE-GAPS-SPEC-20261004 §4): wire the existing deterministic duplicate-segment
 // detector into R. Single import site (no per-call require), CJS module via esModuleInterop.
 import { checkDuplicateSegments } from '@/lib/validation-gate/check1-duplicate-segments'
+// GATE 5 (GATE-GAPS-SPEC-20261004 §5): generation-side numeral scan — blocks
+// digit-form numerals BEFORE any ElevenLabs call at voice_preflight.
+import { numeralPreTtsScan, buildNumeralPreflightFailure } from '@/lib/numeralPreTtsScan'
 import { runVoiceMapGate } from '@/lib/voiceMapGate'
 import { runVoiceConformanceGate, type VoiceProfile } from '@/lib/voiceConformanceGate'
 import { buildContinuityPins, verifyContinuityPins } from '@/lib/continuityPin'
@@ -3993,6 +3996,39 @@ async function runStandaloneVoicePreflight(job: ProductionJob, origin: string) {
     }
   }
 
+  // ── GATE 5 (GATE-GAPS-SPEC-20261004 §5): numeral pre-TTS scan ───────────────
+  // Runs on the story script BEFORE the ElevenLabs preflight/generate_voices call.
+  // Digit-form numerals ("4.6", "13.8", "2,000") are a Class B story defect: TTS
+  // misreads them. BLOCKING (Rule 2) — fail voice_preflight and send back to
+  // generate_script for Hal correction (same resume as other preflight fails).
+  {
+    const numeralScan = numeralPreTtsScan(storyForNarrator.script || '')
+    if (!numeralScan.passed) {
+      const numeralReport = buildNumeralPreflightFailure(numeralScan.failures)
+      return {
+        passed: false,
+        skipped: false,
+        narratorIssues: [] as string[],
+        storyId: String(storyId),
+        report: numeralReport,
+        state: {
+          ...state,
+          storyId: String(storyId),
+          voicePreflightPassed: false,
+          voicePreflightStoryId: String(storyId),
+          voicePreflight: null,
+          voicePreflightAt: nowIso(),
+          numeralPreTts: {
+            passed: false,
+            failureCount: numeralScan.failures.length,
+            failures: numeralScan.failures.slice(0, 20),
+            checkedAt: nowIso(),
+          },
+        },
+      }
+    }
+  }
+
   // ── Generate-voices preflight (ElevenLabs metadata check) ────────────────────
   const { responseOk, report } = await runGenerateVoicesPreflightRequest(origin, String(storyId))
   const passed = responseOk && report.success === true
@@ -6808,6 +6844,55 @@ async function runSeriesVoicePreflight(job: ProductionJob, origin: string) {
     }
   }
 
+  // ── GATE 5 (GATE-GAPS-SPEC-20261004 §5): numeral pre-TTS scan (per episode) ──
+  // Same scan as the standalone path, run on this episode's script BEFORE the
+  // ElevenLabs preflight/generate_voices call. Digit-form numerals are a Class B
+  // story defect — BLOCKING (Rule 2). Fails the series preflight for this episode
+  // (recorded in failedEpisodes); Hal corrects the episode script and re-submits.
+  {
+    const numeralScan = numeralPreTtsScan((nextEpisode as any).script || '')
+    if (!numeralScan.passed) {
+      const numeralReport = buildNumeralPreflightFailure(numeralScan.failures)
+      const failedEpisodeEntry = {
+        storyId,
+        title: nextEpisode.title,
+        episodeNumber: number,
+        passed: false,
+        narratorIssues: [] as string[],
+        numeralFailures: numeralScan.failures.slice(0, 20),
+        checkedAt: nowIso(),
+        report: numeralReport,
+      }
+      const nextFailedEpisodes = [
+        ...failedEpisodes.filter((episode: any) => String(episode.storyId) !== storyId),
+        failedEpisodeEntry,
+      ]
+      return {
+        passed: false,
+        failed: true,
+        complete: false,
+        seriesId: String(seriesId),
+        episodeResult: failedEpisodeEntry as any,
+        report: numeralReport,
+        narratorIssues: [] as string[],
+        nextStep: NEXT_STEP_AFTER_SERIES_VALIDATION,
+        state: {
+          ...state,
+          seriesId: String(seriesId),
+          seriesVoicePreflight: {
+            episodeCount: episodes.length,
+            checkedEpisodes,
+            failedEpisodes: nextFailedEpisodes,
+            nextEpisodeNumber: number,
+            reportsByEpisode,
+            narratorsByEpisode,
+            narratorIssues: [] as string[],
+          },
+        },
+      }
+    }
+  }
+
   // ── Generate-voices preflight ──────────────────────────────────────────────
   const { responseOk, report } = await runGenerateVoicesPreflightRequest(origin, storyId)
   const passed = responseOk && report.success === true
@@ -8713,7 +8798,12 @@ export async function POST(req: NextRequest) {
       if (!result.passed) {
         const MAX_RETRIES = 2
 
-        // Classify failure type: narrator mismatch, unlabeled lines, or unknown
+        // Classify failure type: numeral pre-TTS, narrator mismatch, unlabeled lines, or unknown
+        // GATE 5 (GATE-GAPS-SPEC-20261004 §5): digit-form numeral defect.
+        const isNumeralPreTts = (result.report as any)?.kind === 'numeral_pre_tts'
+        const numeralFailures = Array.isArray((result.report as any)?.failures)
+          ? (result.report as any).failures
+          : []
         const hasNarratorIssue = result.narratorIssues && result.narratorIssues.length > 0
         const hasUnlabeledLines = blockingReasons.some(r => /unlabeled.*line/i.test(r)) || (result.report as any)?.unlabeledLineCount > 0
         const unlabeledLineCount = (result.report as any)?.unlabeledLineCount || 0
@@ -8723,7 +8813,15 @@ export async function POST(req: NextRequest) {
         let isAutonomousRetryable = false
         let recommendedAction = ''
 
-        if (hasNarratorIssue) {
+        if (isNumeralPreTts) {
+          // GATE 5: Class B story/metadata defect — send back to generate_script
+          // for Hal to spell out numerals. BLOCKING, autonomous-retryable (cap 2),
+          // then needs_attention on the affected story via the exhaustion path.
+          failureKind = 'numeral_pre_tts'
+          isAutonomousRetryable = true
+          recommendedAction = (result.report as any)?.hint
+            || 'Spell out numerals in words (4.6 → four point six) and re-submit.'
+        } else if (hasNarratorIssue) {
           failureKind = 'narrator_mismatch'
           isAutonomousRetryable = false  // narrator mismatch requires DB/manual fix, not retry
           recommendedAction = `Narrator mismatch: ${result.narratorIssues![0]}. Update NARRATOR header or narrator_voice_name in DB.`
@@ -8845,6 +8943,19 @@ export async function POST(req: NextRequest) {
           })
         }
 
+        // GATE 5 (GATE-GAPS-SPEC-20261004 §5): on exhaustion of the numeral defect,
+        // mark needs_attention on the affected story only (Class B story defect).
+        if (isNumeralPreTts) {
+          await markStoryNeedsAttention(
+            result.storyId,
+            `Voice preflight needs attention: digit-form numerals in script. ${recommendedAction}`
+          )
+        }
+
+        // Kinds that resume to generate_script (Hal re-generates the script).
+        const resumesToGenerateScript =
+          failureKind === 'script_unlabeled_lines' || failureKind === 'numeral_pre_tts'
+
         // No auto-retry: fail with structured error_json
         const errorJsonPayload = buildStructuredError(
           failureKind,
@@ -8857,8 +8968,8 @@ export async function POST(req: NextRequest) {
             marc_required: failureKind !== 'narrator_mismatch',  // narrator can be DB-fixed by Atlas
             autonomous_repair: false,
             retry_count: retryCount,
-            max_retries: failureKind === 'script_unlabeled_lines' ? MAX_RETRIES : undefined,
-            safe_resume_point: failureKind === 'script_unlabeled_lines' ? 'generate_script' : undefined,
+            max_retries: resumesToGenerateScript ? MAX_RETRIES : undefined,
+            safe_resume_point: resumesToGenerateScript ? 'generate_script' : undefined,
             fixRecommendation: recommendedAction,
             rootCause: firstBlocker,
             detail: {
@@ -8866,6 +8977,7 @@ export async function POST(req: NextRequest) {
               blockingReasons,
               unlabeledLineCount,
               examples: unlabeledExamples.slice(0, 3),
+              numeralFailures: isNumeralPreTts ? numeralFailures.slice(0, 5) : undefined,
               learningIncidentId: learningIncident?.id || null,
             },
           }
