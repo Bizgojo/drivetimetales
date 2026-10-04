@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { ACTIVE_PLAYLIST_KEY, PLAYLIST_UPDATED_FLAG, clearActivePlaylist } from '@/lib/playlistState'
+import { ACTIVE_PLAYLIST_KEY, PLAYLIST_UPDATED_FLAG } from '@/lib/playlistState'
 
 interface PlaylistItem {
   type: 'single' | 'series'
@@ -20,6 +20,7 @@ interface SavedPlaylist {
   stories?: PlaylistItem[]
   remaining_mins: number
   completed?: number
+  started?: boolean
 }
 
 function formatRemainingMinutes(minutes: number) {
@@ -60,7 +61,6 @@ export default function YourPlaylist({ onIdsLoaded }: { onIdsLoaded?: (ids: stri
           : (parsed.stories || []).map((s: any) => ({ type: s.type || 'single', ...s }))
       const completed = Number(parsed.completed || 0)
       if (items.length === 0 || completed >= items.length) {
-        clearActivePlaylist()
         setPlaylist(null)
         onIdsLoaded?.([])
         return
@@ -69,7 +69,8 @@ export default function YourPlaylist({ onIdsLoaded }: { onIdsLoaded?: (ids: stri
         id: parsed.id || 'legacy',
         items,
         remaining_mins: parsed.remaining_mins || items.reduce((s: number, x: any) => s + (x.type === 'series' ? (x.total_mins || 0) : (x.duration_mins || 0)), 0),
-        completed
+        completed,
+        started: Boolean(parsed.started)
       })
       onIdsLoaded?.(playlistStoryIds(items))
     } catch (err) {
@@ -112,12 +113,6 @@ export default function YourPlaylist({ onIdsLoaded }: { onIdsLoaded?: (ids: stri
       document.removeEventListener('visibilitychange', handleVisibility)
     }
   }, [])
-
-  function clear() {
-    clearActivePlaylist()
-    setPlaylist(null)
-    onIdsLoaded?.([])
-  }
 
   if (!playlist || !playlist.items || playlist.items.length === 0) return null
 
@@ -162,47 +157,60 @@ export default function YourPlaylist({ onIdsLoaded }: { onIdsLoaded?: (ids: stri
         )}
       </div>
       <div
-        onClick={() => router.push('/player/playlist?autoplay=1&playlist=1')}
         style={{
           background: '#1e293b',
           borderRadius: '13px',
           border: '1px solid rgba(148,163,184,0.06)',
-          display: 'flex',
           overflow: 'hidden',
-          position: 'relative',
-          cursor: 'pointer',
-          alignItems: 'flex-start',
         }}
       >
-        {/* Playlist icon */}
-        <div style={{ width: 76, height: 76, flexShrink: 0, margin: '9px 0 9px 9px', borderRadius: 7, background: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <img src="/images/playlist_icon.png" alt="Playlist" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 7 }} />
-        </div>
-
-        {/* Body */}
-        <div style={{ flex: 1, padding: '9px 36px 9px 9px', minWidth: 0 }}>
-          <div style={{ fontWeight: 700, fontSize: 13, color: 'white', lineHeight: 1.2, marginBottom: 2 }}>
-            {remaining} {remaining === 1 ? 'Item' : 'Items'} · {formatRemainingMinutes(totalMins)}
+        <div style={{ display: 'flex', alignItems: 'flex-start', padding: '9px 9px 0' }}>
+          {/* Playlist icon */}
+          <div style={{ width: 76, height: 76, flexShrink: 0, borderRadius: 7, background: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <img src="/images/playlist_icon.png" alt="Playlist" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 7 }} />
           </div>
-          {completed > 0 && (
-            <div style={{ fontSize: 10, color: '#64748b', marginBottom: 4 }}>
-              {completed} of {items.length} completed
+
+          {/* Body */}
+          <div style={{ flex: 1, padding: '0 0 9px 9px', minWidth: 0 }}>
+            <div style={{ fontWeight: 700, fontSize: 13, color: 'white', lineHeight: 1.2, marginBottom: 2 }}>
+              {remaining} {remaining === 1 ? 'Story' : 'Stories'} · {formatRemainingMinutes(totalMins)}
             </div>
-          )}
-          <div style={{ overflow: 'hidden', maxHeight: 36 }}>
-            {nextTitles.map((title, i) => (
-              <div key={i} style={{ fontSize: 11, color: '#94a3b8', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', lineHeight: 1.4 }}>
-                {i === 0 ? '▶ ' : '· '}{title}
+            {completed > 0 && (
+              <div style={{ fontSize: 10, color: '#64748b', marginBottom: 4 }}>
+                {completed} of {items.length} completed
               </div>
-            ))}
+            )}
+            <div style={{ overflow: 'hidden', maxHeight: 36 }}>
+              {nextTitles.map((title, i) => (
+                <div key={i} style={{ fontSize: 11, color: '#94a3b8', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', lineHeight: 1.4 }}>
+                  {i === 0 ? '▶ ' : '· '}{title}
+                </div>
+              ))}
+            </div>
           </div>
         </div>
 
-        {/* Delete button */}
-        <button
-          onClick={e => { e.stopPropagation(); clear() }}
-          style={{ position: 'absolute', top: 8, right: 8, width: 24, height: 24, background: 'rgba(100,116,139,0.4)', border: '1px solid rgba(148,163,184,0.2)', borderRadius: '50%', color: '#94a3b8', fontSize: 14, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-        >x</button>
+        {/* Marc 2026-10-04: two explicit actions — Play/Continue and My Downloads
+            (replaces the old click-anywhere-to-play + top-right "x" clear).
+            Play/Continue reacts to `started` (set once playback begins in
+            playlist mode — see lib/playlistState.ts markPlaylistStarted),
+            not the dead `completed` counter. */}
+        <div style={{ display: 'flex', gap: 8, padding: '9px' }}>
+          <button
+            type="button"
+            onClick={() => router.push('/player/playlist?autoplay=1&playlist=1')}
+            style={{ flex: 1, padding: '10px', background: playlist.started ? '#22c55e' : '#f97316', color: 'white', border: 'none', borderRadius: 10, fontSize: 13, fontWeight: 800, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}
+          >
+            ▶ {playlist.started ? 'Continue' : 'Play'}
+          </button>
+          <button
+            type="button"
+            onClick={() => router.push('/playlist')}
+            style={{ flex: 1, padding: '10px', background: '#3b82f6', color: 'white', border: 'none', borderRadius: 10, fontSize: 13, fontWeight: 800, cursor: 'pointer' }}
+          >
+            My Downloads
+          </button>
+        </div>
       </div>
       <style>{`
         @keyframes playlistUpdated {

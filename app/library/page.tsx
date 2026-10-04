@@ -8,6 +8,7 @@ import ReviewModal from '@/components/ReviewModal'
 import { buildSeriesPlaybackTarget, storeSeriesPlayback } from '@/lib/seriesPlayback'
 import { getAllLocalPlayerProgress, mergePlayerProgress } from '@/lib/playerProgress'
 import LibraryStoryCard, { formatMinutes } from '@/components/LibraryStoryCard'
+import { downloadQueuedItemOffline, removeQueuedItemOffline, type QueueDownloadTarget } from '@/lib/offline/queueDownload'
 import {
   ACTIVE_PLAYLIST_KEY,
   LIBRARY_PLAYLIST_KEY,
@@ -128,7 +129,7 @@ function parsePlaylistKeys(raw: string | null): string[] | null {
 
 export default function LibraryPage() {
   const router = useRouter()
-  const { user, loading: authLoading } = useAuth()
+  const { user, session, loading: authLoading } = useAuth()
 
   const [stories, setStories] = useState<Story[]>([])
   const [userLibrary, setUserLibrary] = useState<LibraryRow[]>([])
@@ -407,7 +408,9 @@ export default function LibraryPage() {
     return items
   }, [stories, libraryLookup])
 
-  // Filter by genre, then sort standalones before series while keeping not-for-me at the bottom
+  // Filter by genre, then sort by episode count first (fewest first; singles
+  // count as 1), total story length second (shortest first) — Marc 2026-10-04.
+  // Not-for-me items still sink to the bottom regardless of count/length.
   const filteredItems = useMemo(() => {
     const filtered =
       activeGenre === 'All'
@@ -415,10 +418,9 @@ export default function LibraryPage() {
         : cardItems.filter((i) => (i.genre || '').toLowerCase() === activeGenre.toLowerCase())
     return filtered.slice().sort((a, b) => {
       if (a.notForMe !== b.notForMe) return a.notForMe ? 1 : -1
-      if (a.type !== b.type) return a.type === 'single' ? -1 : 1
-      if (a.type === 'single') return a.durationForSort - b.durationForSort
-      const epDiff = (a.episodeCount || 0) - (b.episodeCount || 0)
-      if (epDiff !== 0) return epDiff
+      const aCount = a.type === 'single' ? 1 : a.episodeCount || 0
+      const bCount = b.type === 'single' ? 1 : b.episodeCount || 0
+      if (aCount !== bCount) return aCount - bCount
       return a.durationForSort - b.durationForSort
     })
   }, [cardItems, activeGenre])
@@ -509,8 +511,28 @@ export default function LibraryPage() {
     return mins
   }, [validPlaylist, cardItems])
 
+  // QUEUE-OFFLINE-001 (Marc, 2026-10-04): queueing a story/series auto-saves
+  // it for offline playback (all episodes, for a series); un-queueing removes
+  // the offline copy. Best-effort — a failed/capped save never blocks the
+  // queue action itself.
   function togglePlaylist(key: string) {
+    const adding = !playlist.includes(key)
     setPlaylist((p) => (p.includes(key) ? p.filter((k) => k !== key) : [...p, key]))
+
+    const item = cardItems.find((i) => i.key === key)
+    if (!item) return
+    const target: QueueDownloadTarget =
+      item.type === 'single' && item.story
+        ? { type: 'single', id: item.story.id }
+        : { type: 'series', episodeIds: (item.episodePlaylist || []).map((e) => e.id) }
+
+    if (adding) {
+      if (user && session?.access_token) {
+        downloadQueuedItemOffline(target, { accessToken: session.access_token, firstName: (user as any)?.first_name || null }).catch(() => {})
+      }
+    } else {
+      removeQueuedItemOffline(target).catch(() => {})
+    }
   }
 
   function navigateToPlayer(targetUrl: string, payload: Record<string, unknown>) {
@@ -584,6 +606,38 @@ export default function LibraryPage() {
       }
     }, 700)
   }
+
+  // Marc 2026-10-04: "More Info" on a single-story card → its own detail page
+  // (mirrors openSeries' hard-navigation fallback).
+  function openStory(storyId: string) {
+    const targetUrl = `/story/${storyId}`
+    router.push(targetUrl)
+    window.setTimeout(() => {
+      if (window.location.pathname === '/library') {
+        console.warn('[Library] More Info router.push did not leave Library; falling back to hard navigation', { targetUrl, storyId })
+        window.location.assign(targetUrl)
+      }
+    }, 700)
+  }
+
+  const [playlistStarted, setPlaylistStarted] = useState(false)
+  useEffect(() => {
+    function syncStarted() {
+      try {
+        const raw = localStorage.getItem(ACTIVE_PLAYLIST_KEY)
+        setPlaylistStarted(Boolean(raw && JSON.parse(raw)?.started))
+      } catch {
+        setPlaylistStarted(false)
+      }
+    }
+    syncStarted()
+    window.addEventListener('et_playlist_saved', syncStarted)
+    window.addEventListener('et_playlist_cleared', syncStarted)
+    return () => {
+      window.removeEventListener('et_playlist_saved', syncStarted)
+      window.removeEventListener('et_playlist_cleared', syncStarted)
+    }
+  }, [])
 
   function playPlaylistFromBar() {
     if (validPlaylist.length === 0) return
@@ -850,6 +904,10 @@ export default function LibraryPage() {
                 else if (item.type === 'single' && item.story) playSingle(item.story.id)
               }}
               onTogglePlaylist={() => togglePlaylist(item.key)}
+              onMoreInfo={() => {
+                if (item.type === 'series' && item.seriesId) openSeries(item.seriesId)
+                else if (item.type === 'single' && item.story) openStory(item.story.id)
+              }}
               onRate={() => {
                 if (item.type === 'single' && item.story) {
                   setReviewTarget({
@@ -866,62 +924,30 @@ export default function LibraryPage() {
         })}
       </div>
 
-      {/* Playlist bar */}
+      {/* QUEUE-OFFLINE-001 (Marc, 2026-10-04): informational-only status bar —
+          no buttons, distinct color so it reads as "stuff is downloaded",
+          not an action bar. Tap-through to /playlist (My Downloads) for
+          remove/reorder. */}
       {validPlaylist.length > 0 && (
         <div
+          onClick={() => router.push('/playlist')}
           style={{
             position: 'fixed',
             bottom: 0,
             left: 0,
             right: 0,
-            background: '#172b4f',
-            borderTop: '1px solid rgba(147,197,253,0.8)',
+            background: '#ffffff',
+            borderTop: '1px solid rgba(0,0,0,0.12)',
             borderRadius: '14px 14px 0 0',
-            padding: '9px 12px',
-            boxShadow: '0 -8px 24px rgba(37,99,235,0.28), 0 -2px 12px rgba(0,0,0,0.45)',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px',
+            padding: '12px 16px',
+            boxShadow: '0 -8px 24px rgba(0,0,0,0.2), 0 -2px 12px rgba(0,0,0,0.12)',
             zIndex: 40,
+            cursor: 'pointer',
           }}
         >
-          <div style={{ flex: 1 }}>
-            <div style={{ color: 'white', fontSize: '13px', fontWeight: 700 }}>Your playlist</div>
-            <div style={{ color: 'white', fontSize: '12px', fontWeight: 600 }}>
-              {validPlaylist.length} {validPlaylist.length === 1 ? 'story' : 'stories'} ·{' '}
-              {formatMinutes(playlistTotalMins)}
-            </div>
+          <div style={{ color: '#000', fontSize: '13px', fontWeight: 700 }}>
+            {validPlaylist.length} {validPlaylist.length === 1 ? 'story' : 'stories'} ({formatMinutes(playlistTotalMins)}) downloaded to your playlist for offline playing
           </div>
-          <button
-            onClick={savePlaylistToHome}
-            style={{
-              background: '#2563eb',
-              color: 'white',
-              border: 'none',
-              padding: '6px 10px',
-              borderRadius: '6px',
-              fontSize: '11px',
-              fontWeight: 500,
-              cursor: 'pointer',
-            }}
-          >
-            Save to home
-          </button>
-          <button
-            onClick={playPlaylistFromBar}
-            style={{
-              background: '#f97316',
-              color: 'white',
-              border: 'none',
-              padding: '6px 12px',
-              borderRadius: '6px',
-              fontSize: '11px',
-              fontWeight: 500,
-              cursor: 'pointer',
-            }}
-          >
-            ▶ Play now
-          </button>
         </div>
       )}
 

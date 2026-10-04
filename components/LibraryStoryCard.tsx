@@ -10,12 +10,15 @@ implementation. Library keeps its exact look; RecommendedForYou (and future
 card surfaces) map their data into these props.
 
 Visual canon (do not fork):
-- type pill: purple "Series · N eps" / blue "Single Story" (+ optional red flag)
+- type pill: purple/blue "N Episode(s)" — prominent episode-count pill, both
+  types (Marc 2026-10-04: replaces old "Series · N eps" / "Single Story" text)
 - duration: "Xhr-Ymin total · Avg. Zmin" for series, plain minutes for singles
 - author/genre in green, amber stars + (count)
 - description capped at 70 chars
-- buttons: orange Play now/Play series, green Continue, light-orange Play Again,
-  blue "+ Queue"/"✓ Remove", amber "View Episodes" (series), red Rate prompt
+- buttons (always 3, both types — Marc 2026-10-04): orange Play now/Play
+  series, green Continue, light-orange Play Again; middle blue "+ Queue"/
+  red Rate prompt; right amber "More Info" (→ SS2 series page or single-story
+  detail page)
 ================================================================================
 */
 
@@ -71,6 +74,7 @@ export default function LibraryStoryCard({
   onCoverClick,
   onTogglePlaylist,
   onRate,
+  onMoreInfo,
 }: {
   item: CanonCardItem
   state: CanonCardState
@@ -78,6 +82,7 @@ export default function LibraryStoryCard({
   onCoverClick: () => void
   onTogglePlaylist: () => void
   onRate: () => void
+  onMoreInfo: () => void
 }) {
   const isSeries = item.type === 'series'
   const duration = isSeries
@@ -146,13 +151,17 @@ export default function LibraryStoryCard({
               style={{
                 background: isSeries ? '#a855f7' : '#2563eb',
                 color: 'white',
-                fontSize: '10px',
-                padding: '2px 7px',
+                fontSize: '13px',
+                padding: '3px 10px',
                 borderRadius: '8px',
-                fontWeight: 500,
+                fontWeight: 900,
+                letterSpacing: '0.01em',
+                boxShadow: '0 0 0 1px rgba(255,255,255,0.25)',
               }}
             >
-              {isSeries ? `Series · ${item.episodeCount} eps` : 'Single Story'}
+              {isSeries
+                ? `${item.episodeCount} Episode${item.episodeCount === 1 ? '' : 's'}`
+                : '1 Episode'}
             </span>
             {item.flag && (
               <span
@@ -267,49 +276,49 @@ export default function LibraryStoryCard({
                 <span style={{ fontSize: '14px' }}>☹</span>
               </button>
             ) : (
-              <>
-                <button
-                  type="button"
-                  onClick={onTogglePlaylist}
-                  style={{
-                    flex: 1,
-                    background: '#3b82f6',
-                    color: 'white',
-                    border: 'none',
-                    padding: '2px 6px',
-                    borderRadius: '6px',
-                    fontSize: '11px',
-                    lineHeight: 1,
-                    minHeight: '32px',
-                    fontWeight: 500,
-                    cursor: 'pointer',
-                  }}
-                >
-                  {state.inPlaylist ? '✓ Remove' : '+ Queue'}
-                </button>
-                {isSeries && (
-                  <button
-                    type="button"
-                    onClick={onCoverClick}
-                    style={{
-                      flex: 1,
-                      background: '#eab308',
-                      color: '#000',
-                      border: '1px solid rgba(234,179,8,0.9)',
-                      padding: '2px 6px',
-                      borderRadius: '6px',
-                      fontSize: '11px',
-                      lineHeight: 1,
-                      minHeight: '32px',
-                      fontWeight: 500,
-                      cursor: 'pointer',
-                    }}
-                  >
-                    View Episodes
-                  </button>
-                )}
-              </>
+              <button
+                type="button"
+                onClick={onTogglePlaylist}
+                style={{
+                  flex: 1,
+                  // Marc 2026-10-04: lighter blue once queued, so the card visibly
+                  // shows "already queued" vs. the full-strength "+ Queue" blue.
+                  background: state.inPlaylist ? '#93c5fd' : '#3b82f6',
+                  color: state.inPlaylist ? '#1e3a8a' : 'white',
+                  border: 'none',
+                  padding: '2px 6px',
+                  borderRadius: '6px',
+                  fontSize: '11px',
+                  lineHeight: 1,
+                  minHeight: '32px',
+                  fontWeight: 500,
+                  cursor: 'pointer',
+                }}
+              >
+                {state.inPlaylist ? '✓ Remove' : '+ Queue'}
+              </button>
             )}
+            {/* Marc 2026-10-04: third button, every card, both types — replaces
+                the old series-only "View Episodes" button */}
+            <button
+              type="button"
+              onClick={onMoreInfo}
+              style={{
+                flex: 1,
+                background: '#eab308',
+                color: '#000',
+                border: '1px solid rgba(234,179,8,0.9)',
+                padding: '2px 6px',
+                borderRadius: '6px',
+                fontSize: '11px',
+                lineHeight: 1,
+                minHeight: '32px',
+                fontWeight: 500,
+                cursor: 'pointer',
+              }}
+            >
+              More Info
+            </button>
           </div>
 
           {/* Row 7: progress bar */}
