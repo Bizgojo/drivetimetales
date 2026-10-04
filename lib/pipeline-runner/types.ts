@@ -102,6 +102,8 @@ export type StructuredErrorJsonKind =
   | 'script_quality_editorial'           // AI validator: protagonist/description mismatch, hook, ending (retryable)
   | 'script_story_resolution'            // AI validator: climax offscreen, protagonist passive (retryable)
   | 'script_validator_unknown'           // AI validator: unclassified failure (not auto-retryable, marc_required)
+  // GATE 4 (GATE-GAPS-SPEC-20261004 §4): check-1 duplicate/triplicate segment detector blocking failure (deterministic, autonomous-retryable)
+  | 'duplicate_segments'                 // >=2 identical voice segments (DUPLICATE) or >=3 (TRIPLICATE) detected pre-validate; blocks, re-queues to generate_script
   // ATL-PIPE-009: voice_preflight script structural failure
   | 'script_unlabeled_lines'             // story body contains prose not starting with NARRATOR:/CHARACTER: (retryable)
   // ATL-PIPE-012: ready_for_review gate failures

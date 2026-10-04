@@ -20,6 +20,9 @@ import { runHookGateForStory, detectBelleQualityRepairEmpty } from '@/lib/hookGa
 import { runStoryQualityGate } from '@/lib/storyQualityGate'
 import { runGarbleGate } from '@/lib/garbleGate'
 import { parseScriptPositions } from '@/lib/scriptLineIndex'
+// GATE 4 (GATE-GAPS-SPEC-20261004 §4): wire the existing deterministic duplicate-segment
+// detector into R. Single import site (no per-call require), CJS module via esModuleInterop.
+import { checkDuplicateSegments } from '@/lib/validation-gate/check1-duplicate-segments'
 import { runVoiceMapGate } from '@/lib/voiceMapGate'
 import { runVoiceConformanceGate, type VoiceProfile } from '@/lib/voiceConformanceGate'
 import { buildContinuityPins, verifyContinuityPins } from '@/lib/continuityPin'
@@ -181,13 +184,26 @@ function findShortDialogueLines(script: string): Array<{speaker: string, text: s
 
 function classifyValidateScriptFailure(
   report: string,
-  isCardCopy = false
+  isCardCopy = false,
+  isDuplicate = false
 ): {
   kind: StructuredErrorJsonKind
   isAutonomousRetryable: boolean
   marcRequired: boolean
   recommendedAction: string
 } {
+  // GATE 4 (GATE-GAPS-SPEC-20261004 §4): check-1 duplicate/triplicate path.
+  // Deterministic + free, mirrors card-copy ordering (runs before AI validator).
+  // BLOCKING in v1; autonomous-retryable → shares validateScriptRetryCount, resumes to generate_script.
+  if (isDuplicate) {
+    return {
+      kind: 'duplicate_segments',
+      isAutonomousRetryable: true,
+      marcRequired: false,
+      recommendedAction: 'Duplicate/triplicate voice segments detected. Re-generate the script so that each voice line is unique; identical dialogue repeated across segments produces repeated audio and must not reach generate_voices.',
+    }
+  }
+
   // Card-copy path (deterministic, always retryable)
   if (isCardCopy) {
     const hasBlockedWord = /blocked word|DESCRIPTION_PAST_TENSE|forbidden|past.tense|\blost\b/i.test(report)
@@ -3664,6 +3680,64 @@ ${cardCopyIssues.map((issue) => `- ${issue}`).join('\n')}`
       passed: false,
       skipped: false,
       isCardCopyFailure: true,        // ATL-PIPE-008: signal deterministic card-copy failure
+      storyId: String(storyId),
+      report,
+      story: updated,
+      state: {
+        ...state,
+        storyId: String(storyId),
+        storyTitle: updated.title,
+        storyStatus: updated.status,
+        validatorResult: 'FAIL',
+        validatorReport: report,
+        validatorPassedAt: null,
+        validateScriptSkipped: false,
+      },
+    }
+  }
+
+  // GATE 4 (GATE-GAPS-SPEC-20261004 §4): Check-1 duplicate-segment detector.
+  // Deterministic + free — runs FIRST, before the LLM validator (mirrors the
+  // voice-conformance-before-validate and card-copy-before-validate ordering).
+  // BLOCKING (Rule 2): any finding returned by the lib is already filtered by
+  // MIN_DUPLICATE_LENGTH, so TRIPLICATE always blocks and DUPLICATE blocks in v1
+  // (no warn bypass). Failure feeds the existing autonomous-retry branch via the
+  // isDuplicateSegmentFailure signal; shares validateScriptRetryCount, resumes to
+  // generate_script. needs_attention is set on the affected story only on exhaustion.
+  const dupResult = checkDuplicateSegments(story.script)
+  if (!dupResult.passed && Array.isArray(dupResult.findings) && dupResult.findings.length > 0) {
+    const topFindings = dupResult.findings.slice(0, 5)
+    const findingLines = topFindings.map((f: any) => {
+      const segs = (f.occurrences || [])
+        .map((o: any) => `${o.segmentLabel} (${o.speaker}, line ${o.rawLineNumber})`)
+        .join(', ')
+      return `- ${f.severity} (${f.count}×): "${f.originalText}" @ ${segs}`
+    })
+    const report = `❌ VALIDATOR RESULT: FAIL
+Do not send to production. Duplicate/triplicate voice segments detected (CHECK-1):
+${findingLines.join('\n')}`
+
+    const { data: updated, error: updateError } = await supabase
+      .from('stories')
+      .update({
+        validator_result: 'FAIL',
+        validator_report: report,
+        validator_passed_at: null,
+        status: 'validator_failed',
+      })
+      .eq('id', storyId)
+      .select('id,title,status,description,validator_result,validator_report,validator_passed_at')
+      .single()
+
+    if (updateError || !updated) {
+      throw new Error(updateError?.message || 'Failed to save duplicate-segment validator failure')
+    }
+
+    return {
+      passed: false,
+      skipped: false,
+      isDuplicateSegmentFailure: true,  // GATE 4: signal deterministic check-1 failure
+      duplicateFindings: topFindings,
       storyId: String(storyId),
       report,
       story: updated,
@@ -8294,7 +8368,10 @@ export async function POST(req: NextRequest) {
         const MAX_RETRIES = 2
         const reportText = typeof result.report === 'string' ? result.report : JSON.stringify(result.report || '')
         const isCardCopy = result.isCardCopyFailure === true
-        const classification = classifyValidateScriptFailure(reportText, isCardCopy)
+        // GATE 4 (GATE-GAPS-SPEC-20261004 §4): route check-1 duplicate failures to the
+        // 'duplicate_segments' kind (deterministic, autonomous-retryable, shares counter).
+        const isDuplicateSegments = (result as any).isDuplicateSegmentFailure === true
+        const classification = classifyValidateScriptFailure(reportText, isCardCopy, isDuplicateSegments)
         const retryCount = Number((lockedJob.state_json as any)?.validateScriptRetryCount ?? 0)
         const canAutoRetry = classification.isAutonomousRetryable && retryCount < MAX_RETRIES
         const playbook = getPlaybookByKind(classification.kind)
