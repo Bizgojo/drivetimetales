@@ -106,6 +106,8 @@ export type StructuredErrorJsonKind =
   | 'duplicate_segments'                 // >=2 identical voice segments (DUPLICATE) or >=3 (TRIPLICATE) detected pre-validate; blocks, re-queues to generate_script
   // ATL-PIPE-009: voice_preflight script structural failure
   | 'script_unlabeled_lines'             // story body contains prose not starting with NARRATOR:/CHARACTER: (retryable)
+  // GATE 5 (GATE-GAPS-SPEC-20261004 §5): digit-form numeral found in script body at voice_preflight; blocks before TTS, Class B story defect, re-queues to generate_script (retryable)
+  | 'numeral_pre_tts'                     // digit-form numeral ("4.6", "13.8", "2,000") in a voice line — TTS misreads; spell out in words
   // ATL-PIPE-012: ready_for_review gate failures
   | 'rfr_outro_narrator_missing'         // Standalone/finale outro is missing required narrator credit
   | 'rfr_visibility_failed'             // Story is_hidden=true or published_on is set — visibility gate failed
