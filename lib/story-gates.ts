@@ -365,6 +365,181 @@ function deriveRecommendedAction(
   return 'Audit Required'
 }
 
+// ── PUBLISH-ORDERING GATE (P) — GATE-GAPS-SPEC §1 ─────────────────────────────
+// Canon Rule 2: blocking, no warn mode (publish is audience-visible).
+// Canon Rule 1: structural precondition — evaluate BEFORE any write; on
+// failure ZERO rows are written. Canon Rule 4: runs BEFORE any publish_mode
+// check (mode untouched by this gate).
+// Pure functions — no DB, no I/O. Route calls evaluateSeriesPublishOrder().
+import { personalizationPublishBlockers as _persBlockers } from './personalization/publishGuard'
+
+export interface PublishOrderEpisode {
+  id: string
+  title?: string | null
+  episode_number?: number | null
+  series_number?: number | null
+  status?: string | null
+  is_hidden?: boolean | null
+  // publish-readiness fields (mirrors publish-story route helpers)
+  author?: string | null
+  genre?: string | null
+  audio_url?: string | null
+  cover_url?: string | null
+  description?: string | null
+  duration_mins?: number | null
+  workflow_state?: string | null
+  review_status?: string | null
+  announcement_url?: string | null
+  announcement_text?: string | null
+  script?: string | null
+  [key: string]: unknown
+}
+
+export interface PublishOrderBlock {
+  storyId: string
+  title: string
+  episodeNumber: number | null
+  reasons: string[]
+}
+
+function _clean(v: unknown): string { return String(v ?? '').trim() }
+
+function _numberOrNull(v: unknown): number | null {
+  const n = Number(v)
+  return Number.isFinite(n) && n > 0 ? n : null
+}
+
+export function episodeRank(ep: PublishOrderEpisode): number {
+  const n = _numberOrNull(ep.episode_number) ?? _numberOrNull(ep.series_number)
+  return n ?? Number.POSITIVE_INFINITY
+}
+
+export function sortEpisodesForPublish<T extends PublishOrderEpisode>(eps: T[]): T[] {
+  return [...eps].sort((a, b) => {
+    const r = episodeRank(a) - episodeRank(b)
+    return r !== 0 ? r : String(a.id).localeCompare(String(b.id))
+  })
+}
+
+function _effectiveWorkflowState(ep: PublishOrderEpisode): string {
+  const ws = _clean(ep.workflow_state)
+  if (ws === 'approved_ready' || ws === 'cold_storage' || ws === 'unpublished_library' || ws === 'repair_queue' || ws === 'being_repaired') return ws
+  if (ep.status === 'published' && ep.is_hidden === false) return 'published'
+  if (ep.status === 'published' && ep.is_hidden === true) return 'unpublished_library'
+  if (ws) return ws
+  if (ep.review_status === 'approved') return 'approved_ready'
+  if (ep.review_status === 'not_approved') return 'cold_storage'
+  return 'ready_for_review'
+}
+
+function _publishMissingFields(ep: PublishOrderEpisode): string[] {
+  const missing: string[] = []
+  if (!_clean(ep.title)) missing.push('title')
+  if (!_clean(ep.author)) missing.push('author')
+  if (!_clean(ep.genre)) missing.push('genre')
+  if (!_clean(ep.audio_url)) missing.push('audio_url')
+  if (!_clean(ep.cover_url)) missing.push('cover_url')
+  if (!_clean(ep.description)) missing.push('description')
+  if (!_numberOrNull(ep.duration_mins)) missing.push('duration_mins')
+  return missing
+}
+
+export interface ContiguityResult { ok: boolean; error?: string; numbers?: number[] }
+
+export function assertSeriesContiguity(eps: PublishOrderEpisode[]): ContiguityResult {
+  const numbers = eps.map(episodeRank).filter(n => Number.isFinite(n)) as number[]
+  if (numbers.length !== eps.length) {
+    return { ok: false, error: 'one or more episodes lack an episode_number/series_number' }
+  }
+  const sorted = [...numbers].sort((a, b) => a - b)
+  for (let i = 0; i < sorted.length; i++) {
+    if (sorted[i] !== i + 1) {
+      return { ok: false, error: `episode numbers must form 1..${sorted.length} with no gaps/duplicates; got [${sorted.join(',')}]`, numbers: sorted }
+    }
+  }
+  return { ok: true, numbers: sorted }
+}
+
+export interface PublishableResult { publishable: boolean; reasons: string[] }
+
+/**
+ * ep publishable iff: (a) zero missing fields, (b) workflow approved_ready,
+ * (c) every earlier ep published + unhidden, (d) personalization blockers clear.
+ */
+export function isEpisodePublishable(
+  ep: PublishOrderEpisode,
+  earlierEps: PublishOrderEpisode[],
+  batchPublishableIds?: Set<string>
+): PublishableResult {
+  const reasons = [
+    ..._publishMissingFields(ep).map(f => `missing ${f}`),
+    ...(() => {
+      const ws = _effectiveWorkflowState(ep)
+      return ws === 'approved_ready' ? [] : [`workflow_state is ${ws}, expected approved_ready`]
+    })(),
+    ..._persBlockers(ep as { announcement_url?: string | null; announcement_text?: string | null; script?: string | null }),
+  ]
+  for (const earlier of earlierEps) {
+    const live = earlier.status === 'published' && earlier.is_hidden === false
+    // Batch carve-out (series bulk UPDATE publishes atomically, order preserved):
+    // an earlier ep going live in this same batch satisfies ordering.
+    // Default (no set passed) is the strict predicate: earlier must be live.
+    const inBatch = batchPublishableIds?.has(String(earlier.id)) ?? false
+    if (!live && !inBatch) {
+      const n = episodeRank(earlier)
+      reasons.push(`earlier episode ${Number.isFinite(n) ? `Ep${n} ` : ''}(${earlier.id}) is not published+visible (status=${_clean(earlier.status) || 'empty'}, is_hidden=${earlier.is_hidden})`)
+    }
+  }
+  return { publishable: reasons.length === 0, reasons }
+}
+
+export type SeriesPublishCode = 'ok' | 'series_episode_number_gap' | 'series_publish_out_of_order' | 'series_not_publishable'
+
+export interface SeriesPublishEvaluation {
+  code: SeriesPublishCode
+  blocked: PublishOrderBlock[]
+  orderingBlocked: boolean
+}
+
+/** Route-level decision helper: contiguity first, then per-ep predicate in rank order. */
+export function evaluateSeriesPublishOrder(episodes: PublishOrderEpisode[]): SeriesPublishEvaluation {
+  const ordered = sortEpisodesForPublish(episodes)
+  const contig = assertSeriesContiguity(ordered)
+  if (!contig.ok) {
+    return {
+      code: 'series_episode_number_gap',
+      orderingBlocked: true,
+      blocked: [{
+        storyId: '',
+        title: 'series numbering',
+        episodeNumber: null,
+        reasons: [contig.error ?? 'episode number gap'],
+      }],
+    }
+  }
+  const blocked: PublishOrderBlock[] = []
+  let orderingBlocked = false
+  const batchOk = new Set<string>()
+  ordered.forEach((ep, k) => {
+    const earlier = ordered.slice(0, k)
+    const res = isEpisodePublishable(ep, earlier, batchOk)
+    if (!res.publishable) {
+      const n = episodeRank(ep)
+      if (res.reasons.some(r => r.startsWith('earlier episode'))) orderingBlocked = true
+      blocked.push({
+        storyId: ep.id,
+        title: _clean(ep.title) || `Episode ${Number.isFinite(n) ? n : '?'}` as string,
+        episodeNumber: Number.isFinite(n) ? n : null,
+        reasons: res.reasons,
+      })
+    } else {
+      batchOk.add(String(ep.id))
+    }
+  })
+  if (blocked.length === 0) return { code: 'ok', blocked: [], orderingBlocked: false }
+  return { code: orderingBlocked ? 'series_publish_out_of_order' : 'series_not_publishable', blocked, orderingBlocked }
+}
+
 // ── QC checklist evaluation ──────────────────────────────────────────────────
 
 export type ChecklistStatus = 'pass' | 'fail' | 'unverified'

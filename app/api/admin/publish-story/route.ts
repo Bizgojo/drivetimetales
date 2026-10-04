@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { personalizationPublishBlockers } from '@/lib/personalization/publishGuard'
 import { syncPremiseIndexForTransition } from '@/lib/premiseIndex'
+import { evaluateSeriesPublishOrder, isEpisodePublishable, sortEpisodesForPublish, assertSeriesContiguity } from '@/lib/story-gates'
 
 export const runtime = 'nodejs'
 
@@ -74,25 +75,30 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ success: false, error: 'Series not found' }, { status: 404 })
       }
 
-      const blocked = episodes.map((episode: any) => {
-        const missing = publishMissingFields(episode)
-        const workflowState = effectiveWorkflowState(episode)
-        const reasons = [
-          ...missing.map((field) => `missing ${field}`),
-          ...(workflowState === 'approved_ready' ? [] : [`workflow_state is ${workflowState}, expected approved_ready`]),
-          // PERS-FIX-002: publish-time personalization guard — no episode may
-          // ship with a NULL announcement_url or a legacy [LISTENER_NAME] token.
-          ...personalizationPublishBlockers(episode),
-        ]
-        return reasons.length === 0 ? null : {
-          storyId: episode.id,
-          title: episode.title || `Episode ${episode.episode_number || episode.series_number || '?'}`,
-          episodeNumber: episode.episode_number || episode.series_number || null,
-          reasons,
+      // PUBLISH-ORDERING GATE (GATE-GAPS-SPEC 1, Canon Rule 1 precondition):
+      // contiguity + in-order predicate evaluated BEFORE any write. Zero rows
+      // written on failure. Ordering blocks -> 422; field/workflow-only -> 400.
+      const orderEval = evaluateSeriesPublishOrder(episodes as any[])
+      if (orderEval.code !== 'ok') {
+        const blocked = orderEval.blocked
+        if (orderEval.code === 'series_episode_number_gap') {
+          return NextResponse.json({
+            success: false,
+            code: 'series_episode_number_gap',
+            error: 'Series publish aborted; episode numbering has a gap or duplicate (must form 1..N).',
+            seriesId,
+            blocked,
+          }, { status: 422 })
         }
-      }).filter(Boolean)
-
-      if (blocked.length > 0) {
+        if (orderEval.code === 'series_publish_out_of_order') {
+          return NextResponse.json({
+            success: false,
+            code: 'series_publish_out_of_order',
+            error: 'Series publish aborted; one or more episodes would publish out of order (an earlier episode is not published+visible).',
+            seriesId,
+            blocked,
+          }, { status: 422 })
+        }
         return NextResponse.json({
           success: false,
           error: 'Series publish aborted; one or more episodes are not publishable.',
@@ -153,7 +159,7 @@ export async function POST(req: NextRequest) {
 
     const { data: existingStory, error: existingError } = await supabase
       .from('stories')
-      .select('id, title, author, genre, audio_url, cover_url, description, duration_mins, announcement_url, announcement_text, script')
+      .select('id, series_id, episode_number, series_number, status, is_hidden, review_status, workflow_state, title, author, genre, audio_url, cover_url, description, duration_mins, announcement_url, announcement_text, script')
       .eq('id', storyId)
       .single()
 
@@ -201,6 +207,32 @@ export async function POST(req: NextRequest) {
         },
         { status: 400 }
       )
+    }
+
+    // PUBLISH-ORDERING GATE single-story path (GATE-GAPS-SPEC 1): same predicate
+    // against siblings; block EpN if any lower-numbered ep is unpublished.
+    // Rule 1 precondition — runs BEFORE the UPDATE below.
+    if ((existingStory as any).series_id) {
+      const { data: siblings, error: sibError } = await supabase
+        .from('stories')
+        .select('id,series_id,episode_number,series_number,status,is_hidden,review_status,workflow_state,title,author,genre,audio_url,cover_url,description,duration_mins,announcement_url,announcement_text,script')
+        .eq('series_id', (existingStory as any).series_id)
+      if (sibError) {
+        return NextResponse.json({ success: false, error: sibError.message }, { status: 500 })
+      }
+      // Evaluate the target ep with its post-publish field values merged in.
+      const merged = { ...(existingStory as any), title: effectiveTitle, author: effectiveAuthor, genre: effectiveGenre, audio_url: effectiveAudioUrl, cover_url: effectiveCoverUrl, description: effectiveDescription, duration_mins: effectiveDurationMins }
+      const fam = ((siblings as any[]) || []).map((row: any) => (row.id === merged.id ? merged : row))
+      const _ordered = sortEpisodesForPublish(fam as any[])
+      const _c = assertSeriesContiguity(_ordered)
+      if (!_c.ok) {
+        return NextResponse.json({ success: false, code: 'series_episode_number_gap', error: _c.error, seriesId: (existingStory as any).series_id, blocked: [{ storyId: storyId, episodeNumber: (merged as any).episode_number ?? (merged as any).series_number ?? null, reasons: [_c.error ?? 'episode number gap'] }] }, { status: 422 })
+      }
+      const _rank = _ordered.findIndex((e: any) => e.id === merged.id)
+      const _res = isEpisodePublishable(_ordered[_rank] as any, _ordered.slice(0, _rank) as any[])
+      if (!_res.publishable && _res.reasons.some((r: string) => r.startsWith('earlier episode'))) {
+        return NextResponse.json({ success: false, code: 'series_publish_out_of_order', error: 'Single-story publish aborted; an earlier episode in this series is not published+visible.', seriesId: (existingStory as any).series_id, blocked: [{ storyId, episodeNumber: (merged as any).episode_number ?? (merged as any).series_number ?? null, reasons: _res.reasons }] }, { status: 422 })
+      }
     }
 
     const payload: Record<string, any> = {
