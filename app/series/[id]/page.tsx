@@ -267,15 +267,28 @@ export default function SeriesDetailPage() {
         const btnLabel = allCompleted ? 'Play Again' : anyInProgress ? 'Continue Where You Left Off' : 'Play Series'
         const btnColor = allCompleted ? '#3b82f6' : anyInProgress ? '#22c55e' : '#f97316'
         const btnShadow = allCompleted ? '0 4px 12px rgba(59,130,246,0.35)' : anyInProgress ? '0 4px 12px rgba(34,197,94,0.35)' : '0 4px 12px rgba(249,115,22,0.35)'
+        // ATL UI-CARDS Item 4: split the single full-width action into TWO
+        // equal-width buttons — Left "Play Series" (unchanged behavior), Right
+        // "Read eBook" opening the eBook reader (SS3 layout). The Read eBook
+        // button is hidden entirely when the series has no eBook content.
+        const hasEbook = proseChapters.length > 0
         return (
-          <div style={{ padding: '14px 16px 0' }}>
+          <div style={{ padding: '14px 16px 0', display: 'flex', gap: 10 }}>
             <button
               onClick={handlePlayAll}
-              style={{ width: '100%', padding: '14px', background: btnColor, color: 'white', border: 'none', borderRadius: 12, fontFamily: 'var(--font-outfit, sans-serif)', fontSize: 15, fontWeight: 800, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, boxShadow: btnShadow }}
+              style={{ flex: 1, padding: '14px', background: btnColor, color: 'white', border: 'none', borderRadius: 12, fontFamily: 'var(--font-outfit, sans-serif)', fontSize: 15, fontWeight: 800, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, boxShadow: btnShadow }}
             >
               <svg width="12" height="14" viewBox="0 0 12 14" fill="white"><path d="M1 1l10 6-10 6V1z"/></svg>
               {btnLabel}
             </button>
+            {hasEbook && (
+              <button
+                onClick={() => setSeriesReaderOpen(true)}
+                style={{ flex: 1, padding: '14px', background: 'rgba(15,23,42,0.9)', color: 'white', border: '1px solid rgba(148,163,184,0.3)', borderRadius: 12, fontFamily: 'var(--font-outfit, sans-serif)', fontSize: 15, fontWeight: 800, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}
+              >
+                📖 Read eBook
+              </button>
+            )}
           </div>
         )
       })()}
@@ -329,17 +342,8 @@ export default function SeriesDetailPage() {
                 {ep.description && (
                   <p style={{ fontSize: 10, color: 'white', lineHeight: 1.5, margin: 0, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{ep.description}</p>
                 )}
-                {ep.prose_text && (
-                  <button
-                    onClick={event => {
-                      event.stopPropagation()
-                      setSeriesReaderOpen(true)
-                    }}
-                    style={{ alignSelf: 'flex-start', marginTop: 7, border: '1px solid rgba(249,115,22,0.24)', background: 'rgba(249,115,22,0.1)', color: '#fed7aa', borderRadius: 999, padding: '4px 9px', fontSize: 9, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.06em', cursor: 'pointer' }}
-                  >
-                    Read It
-                  </button>
-                )}
+                {/* ATL UI-CARDS Item 5: per-episode "Read It" button removed. eBook
+                   access moved to the top "Read eBook" action (Item 4). */}
               </div>
 
               {/* Action pill — right side */}

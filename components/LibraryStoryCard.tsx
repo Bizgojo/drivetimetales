@@ -71,6 +71,7 @@ export default function LibraryStoryCard({
   onCoverClick,
   onTogglePlaylist,
   onRate,
+  onMoreInfo,
 }: {
   item: CanonCardItem
   state: CanonCardState
@@ -78,6 +79,9 @@ export default function LibraryStoryCard({
   onCoverClick: () => void
   onTogglePlaylist: () => void
   onRate: () => void
+  // ATL UI-CARDS: Right "More Info" button. series -> SS2 detail; single -> new
+  // single-story detail page. Falls back to onCoverClick if not provided.
+  onMoreInfo?: () => void
 }) {
   const isSeries = item.type === 'series'
   const duration = isSeries
@@ -140,19 +144,26 @@ export default function LibraryStoryCard({
             gap: '3px',
           }}
         >
-          {/* Row 1: type pill + special pill + duration */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+          {/* Row 1: episode-count pill + special pill + duration */}
+          {/* ATL UI-CARDS Item 2: pill shows just the episode count, enlarged and
+             high-contrast so it is the most prominent element in the text area. */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
             <span
               style={{
                 background: isSeries ? '#a855f7' : '#2563eb',
                 color: 'white',
-                fontSize: '10px',
-                padding: '2px 7px',
-                borderRadius: '8px',
-                fontWeight: 500,
+                fontSize: '13px',
+                padding: '3px 11px',
+                borderRadius: '9px',
+                fontWeight: 800,
+                letterSpacing: '0.01em',
+                boxShadow: '0 1px 4px rgba(0,0,0,0.35)',
               }}
             >
-              {isSeries ? `Series · ${item.episodeCount} eps` : 'Single Story'}
+              {(() => {
+                const count = isSeries ? (item.episodeCount || 0) : 1
+                return `${count} ${count === 1 ? 'Episode' : 'Episodes'}`
+              })()}
             </span>
             {item.flag && (
               <span
@@ -240,6 +251,8 @@ export default function LibraryStoryCard({
                 '▶ Play now'
               )}
             </button>
+            {/* ATL UI-CARDS Item 1 (Middle): existing 2nd button — Rate when the
+               story is completed-unreviewed, otherwise +Queue / Remove. */}
             {showRate ? (
               <button
                 type="button"
@@ -267,49 +280,49 @@ export default function LibraryStoryCard({
                 <span style={{ fontSize: '14px' }}>☹</span>
               </button>
             ) : (
-              <>
-                <button
-                  type="button"
-                  onClick={onTogglePlaylist}
-                  style={{
-                    flex: 1,
-                    background: '#3b82f6',
-                    color: 'white',
-                    border: 'none',
-                    padding: '2px 6px',
-                    borderRadius: '6px',
-                    fontSize: '11px',
-                    lineHeight: 1,
-                    minHeight: '32px',
-                    fontWeight: 500,
-                    cursor: 'pointer',
-                  }}
-                >
-                  {state.inPlaylist ? '✓ Remove' : '+ Queue'}
-                </button>
-                {isSeries && (
-                  <button
-                    type="button"
-                    onClick={onCoverClick}
-                    style={{
-                      flex: 1,
-                      background: '#eab308',
-                      color: '#000',
-                      border: '1px solid rgba(234,179,8,0.9)',
-                      padding: '2px 6px',
-                      borderRadius: '6px',
-                      fontSize: '11px',
-                      lineHeight: 1,
-                      minHeight: '32px',
-                      fontWeight: 500,
-                      cursor: 'pointer',
-                    }}
-                  >
-                    View Episodes
-                  </button>
-                )}
-              </>
+              <button
+                type="button"
+                onClick={onTogglePlaylist}
+                style={{
+                  flex: 1,
+                  background: '#3b82f6',
+                  color: 'white',
+                  border: 'none',
+                  padding: '2px 6px',
+                  borderRadius: '6px',
+                  fontSize: '11px',
+                  lineHeight: 1,
+                  minHeight: '32px',
+                  fontWeight: 500,
+                  cursor: 'pointer',
+                }}
+              >
+                {state.inPlaylist ? '✓ Remove' : '+ Queue'}
+              </button>
             )}
+
+            {/* ATL UI-CARDS Item 1 (Right): NEW "More Info" button on ALL variants.
+               series -> SS2 series detail; single -> new single-story detail page.
+               Both resolved by the page via onMoreInfo (falls back to onCoverClick). */}
+            <button
+              type="button"
+              onClick={onMoreInfo || onCoverClick}
+              style={{
+                flex: 1,
+                background: '#eab308',
+                color: '#000',
+                border: '1px solid rgba(234,179,8,0.9)',
+                padding: '2px 6px',
+                borderRadius: '6px',
+                fontSize: '11px',
+                lineHeight: 1,
+                minHeight: '32px',
+                fontWeight: 600,
+                cursor: 'pointer',
+              }}
+            >
+              More Info
+            </button>
           </div>
 
           {/* Row 7: progress bar */}

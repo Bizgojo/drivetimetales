@@ -413,11 +413,13 @@ export default function LibraryPage() {
       activeGenre === 'All'
         ? cardItems
         : cardItems.filter((i) => (i.genre || '').toLowerCase() === activeGenre.toLowerCase())
+    // ATL UI-CARDS Item 3: sort ascending by episode count (fewest first),
+    // tie-break ascending by total story length (shortest first). Singles count
+    // as 1 episode. not-for-me items remain pinned at the bottom.
+    const epCount = (i: CardItem) => (i.type === 'single' ? 1 : i.episodeCount || 0)
     return filtered.slice().sort((a, b) => {
       if (a.notForMe !== b.notForMe) return a.notForMe ? 1 : -1
-      if (a.type !== b.type) return a.type === 'single' ? -1 : 1
-      if (a.type === 'single') return a.durationForSort - b.durationForSort
-      const epDiff = (a.episodeCount || 0) - (b.episodeCount || 0)
+      const epDiff = epCount(a) - epCount(b)
       if (epDiff !== 0) return epDiff
       return a.durationForSort - b.durationForSort
     })
@@ -848,6 +850,12 @@ export default function LibraryPage() {
               onCoverClick={() => {
                 if (item.type === 'series' && item.seriesId) openSeries(item.seriesId)
                 else if (item.type === 'single' && item.story) playSingle(item.story.id)
+              }}
+              onMoreInfo={() => {
+                // ATL UI-CARDS Item 1: Right "More Info". series -> SS2; single -> new
+                // single-story detail page at /story/[id].
+                if (item.type === 'series' && item.seriesId) openSeries(item.seriesId)
+                else if (item.type === 'single' && item.story) router.push(`/story/${item.story.id}`)
               }}
               onTogglePlaylist={() => togglePlaylist(item.key)}
               onRate={() => {
