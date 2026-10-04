@@ -1682,7 +1682,7 @@ function findUnlabeledStoryBodyLines(script: string) {
   // with [END EPISODE N], a structural marker that is never a spoken line.
   // Accept it (and the canonical end marker) via regex — mirrors
   // lib/scriptLineIndex.ts, which already skips all bare bracket lines.
-  const structuralEndMarkerRe = /^\[END (AUDIO DRAMA SCRIPT|EPISODE \d+)\]$/i
+  const structuralEndMarkerRe = /^\[END (AUDIO DRAMA SCRIPT|EPISODE \d+(?:\s*[\u2014\u2013-]\s*.+)?)\]$/i
   const speakerLabelRe = /^([A-Z][A-ZÀ-Ú0-9\s'.()/&-]+?):\s*(.+)$/
   const bracketCueRe = /^\[(BEAT|PAUSE(?::\d+(?:\.\d+)?)?|SFX:\s*.+)\]$/i
 

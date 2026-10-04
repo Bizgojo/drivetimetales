@@ -14,7 +14,7 @@
 
 // ─── Mirror of findUnlabeledStoryBodyLines core filter (production logic) ───
 
-const structuralEndMarkerRe = /^\[END (AUDIO DRAMA SCRIPT|EPISODE \d+)\]$/i
+const structuralEndMarkerRe = /^\[END (AUDIO DRAMA SCRIPT|EPISODE \d+(?:\s*[\u2014\u2013-]\s*.+)?)\]$/i
 const speakerLabelRe = /^([A-Z][A-ZÀ-Ú0-9\s'.()/&-]+?):\s*(.+)$/
 const bracketCueRe = /^\[(BEAT|PAUSE(?::\d+(?:\.\d+)?)?|SFX:\s*.+)\]$/i
 const allowedSectionMarkers = new Set([
@@ -41,6 +41,9 @@ describe('END-EPISODE-MARKER-001', () => {
     '[END EPISODE 2]',
     '[END EPISODE 12]',
     '[END AUDIO DRAMA SCRIPT]',
+    '[END EPISODE 3 \u2014 SERIES FINALE]',
+    '[END EPISODE 3 - SERIES FINALE]',
+    '[END EPISODE 3 \u2013 Part Two]',
   ])('structural marker passes: %s', (line) => {
     expect(isSkippedBodyLine(line)).toBe(true)
   })
