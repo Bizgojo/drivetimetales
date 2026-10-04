@@ -3421,11 +3421,29 @@ export async function POST(req: NextRequest) {
         }
         // Refresh the file list after purge so classifySegmentInventory sees clean state
         const { data: refreshedFiles, error: refreshError } = await supabase.storage.from('audio').list(storyAudioFolder, { limit: 500 })
-        if (!refreshError) {
-          // Replace existingAudioFiles with the refreshed list for the inventory below
-          ;(existingAudioFiles as unknown as any[]).length = 0
-          for (const f of (refreshedFiles || [])) (existingAudioFiles as unknown as any[]).push(f)
+        // FIX-1 F2 (site #4): the refresh was silently skipped on error, letting
+        // the inventory run against a stale pre-purge listing (deleted segments
+        // seen as present → skipped regen → holes). Fail loud instead.
+        if (refreshError) {
+          console.error('  ❌ [HOOK-GATE-STALE-001] Post-purge listing failed:', refreshError)
+          return NextResponse.json(
+            { success: false, error: `HOOK-GATE-STALE-001 post-purge listing failed: ${refreshError.message}` },
+            { status: 500 },
+          )
         }
+        // FIX-1 F2 (site #4): survivor check — a partial remove (multi-path
+        // delete with per-object failures) must not pass as a clean purge.
+        const survivors = (refreshedFiles || []).filter(file => segmentFilePattern.test(file.name))
+        if (survivors.length > 0) {
+          console.error(`  ❌ [HOOK-GATE-STALE-001] Purge unverified, survivors: ${survivors.map(f => f.name).join(', ')}`)
+          return NextResponse.json(
+            { success: false, error: `HOOK-GATE-STALE-001 purge unverified, survivors: ${survivors.map(f => f.name).join(', ')}` },
+            { status: 500 },
+          )
+        }
+        // Replace existingAudioFiles with the refreshed list for the inventory below
+        ;(existingAudioFiles as unknown as any[]).length = 0
+        for (const f of (refreshedFiles || [])) (existingAudioFiles as unknown as any[]).push(f)
       }
 
       // FIX (AC-1, AC-2): reject stale segments whose stored size is ≤ stale threshold.
