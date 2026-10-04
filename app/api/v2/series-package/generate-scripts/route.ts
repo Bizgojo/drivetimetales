@@ -246,6 +246,7 @@ Series rules:
 - Carry forward consequences from prior episodes.
 - Do not repeat prior episode scenes except as brief context.
 - ${isFinale ? 'This is the finale. Resolve the season arc completely.' : 'This is not the finale. End on a specific cliffhanger with forward momentum. Do not use "to be continued" phrasing.'}
+- Close the script body with [END EPISODE ${episodeNumber}] on its own final line. This structural marker is never spoken. (END-EPISODE-MARKER-001)
 
 Additional rules:
 - DESCRIPTION must be 70 characters or fewer and present tense only so it fits two lines on story cards. Reject past-tense story-card phrasing such as "vanished", "was", "were", "had", "found", "discovered", "left", "moved", "sealed", "signed", "forged", "buried", or "hidden".
