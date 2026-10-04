@@ -117,6 +117,15 @@ const NEXT_STEP_AFTER_SERIES_MUSIC  = 'series_render_final_mix'
 const NEXT_STEP_AFTER_SERIES_RENDER = 'complete_story_package'
 const MAX_SERIES_DESCRIPTION_RETRIES = 2
 const MAX_SERIES_BELLE_RETRIES = 3
+// GATE 3 (MUSIC-CAP-001, spec §3): hard cap on music generation attempts per
+// story/episode. The music poll loop (asc3/generate-music) has no attempt
+// counter and was silently re-queued without bound (hole C6). State lives in
+// production_jobs.state_json.musicRetry (standalone: {count}; series:
+// {byEpisode:{<epNum>:count}}). Absent counter = 0; no migration. On the 4th
+// attempt we refuse WITHOUT a provider fetch. Manual Marc requeue resets the
+// counter (explicit, not auto). Same discipline as MAX_SERIES_BELLE_RETRIES
+// and the series-render cap (MAX_SERIES_RENDER_ATTEMPTS).
+const MAX_MUSIC_RETRIES = 3
 const NARRATIVE_HOOK_FALLBACK_MODEL = 'claude-haiku-4-5'
 // ATL-PIPE-MODEL-001: per-step model routing. Prose is the product - script
 // GENERATION and prose repair/regeneration stay on Opus; VALIDATION/QC steps
@@ -4497,6 +4506,12 @@ async function runStandaloneMusicGeneration(job: ProductionJob, origin: string) 
   if (error || !story) throw new Error(error?.message || 'Story not found')
   if (!story.script) throw new Error('script missing')
 
+  // GATE 3 (MUSIC-CAP-001, spec §3): standalone music attempt counter.
+  // Shape: state.musicRetry.count. Absent = 0 (no migration).
+  const prevMusicRetry = state.musicRetry && typeof state.musicRetry === 'object'
+    ? state.musicRetry : {}
+  const musicAttempts = Number(prevMusicRetry.count ?? 0)
+
   const prompt = musicPromptFor(story.script, story.title || '', story.genre || '')
   const existingUrl = String(story.background_music_url || '').trim()
   if (existingUrl && !existingUrl.startsWith('pending:')) {
@@ -4535,6 +4550,40 @@ async function runStandaloneMusicGeneration(job: ProductionJob, origin: string) 
     console.warn(`[generate_music] background_music.mp3 missing from storage despite DB url - regenerating`)
   }
 
+  // GATE 3: cap check BEFORE any provider fetch. If attempts are exhausted,
+  // refuse WITHOUT fetching the provider. The dispatch handler converts this
+  // into a music_retry_exhausted failure. Manual Marc requeue resets count.
+  if (musicAttempts >= MAX_MUSIC_RETRIES) {
+    return {
+      success: false,
+      skippedExisting: false,
+      retryExhausted: true,
+      storyId: String(storyId),
+      backgroundMusicUrl: '',
+      prompt,
+      report: {
+        success: false,
+        error: `music generation exhausted ${MAX_MUSIC_RETRIES} attempts`,
+        kind: 'music_retry_exhausted',
+      },
+      state: {
+        ...state,
+        storyId: String(storyId),
+        musicRetry: { ...prevMusicRetry, count: musicAttempts },
+        musicGeneration: {
+          prompt,
+          status: 'failed',
+          backgroundMusicUrl: null,
+          routeResponse: { success: false, kind: 'music_retry_exhausted' },
+          skippedExisting: false,
+          failedAt: nowIso(),
+        },
+      },
+    }
+  }
+
+  // GATE 3: increment the attempt counter immediately BEFORE the provider fetch.
+  const nextMusicAttempts = musicAttempts + 1
   const response = await fetch(`${origin}/api/asc3/generate-music`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -4547,6 +4596,7 @@ async function runStandaloneMusicGeneration(job: ProductionJob, origin: string) 
   return {
     success,
     skippedExisting: false,
+    retryExhausted: false,
     storyId: String(storyId),
     backgroundMusicUrl,
     prompt,
@@ -4554,6 +4604,13 @@ async function runStandaloneMusicGeneration(job: ProductionJob, origin: string) 
     state: {
       ...state,
       storyId: String(storyId),
+      // Success resets the counter to 0; failure persists the incremented count.
+      musicRetry: {
+        ...prevMusicRetry,
+        count: success ? 0 : nextMusicAttempts,
+        lastAttemptAt: nowIso(),
+        ...(success ? {} : { lastError: String(report?.error || `HTTP ${response.status}`) }),
+      },
       musicGeneration: {
         prompt,
         status: success ? 'complete' : 'failed',
@@ -7071,29 +7128,63 @@ async function runSeriesMusicGeneration(job: ProductionJob, origin: string) {
   const episodes = await loadSeriesEpisodes(String(seriesId))
   const prev = state.seriesMusicGeneration && typeof state.seriesMusicGeneration === 'object'
     ? state.seriesMusicGeneration : {}
-  const doneByEp: Record<string, boolean> = prev.doneByEp || {}
+  const doneByEp: Record<string, boolean | string> = prev.doneByEp || {}
+
+  // GATE 3 (MUSIC-CAP-001, spec §3): per-episode music attempt counter.
+  // Shape: state.musicRetry.byEpisode[<epNum>] = count. Absent = 0 (no migration).
+  const prevMusicRetry = state.musicRetry && typeof state.musicRetry === 'object'
+    ? state.musicRetry : {}
+  const byEpisode: Record<string, number> = prevMusicRetry.byEpisode &&
+    typeof prevMusicRetry.byEpisode === 'object' ? { ...prevMusicRetry.byEpisode } : {}
 
   let processedEp: number | null = null
   let musicUrl: string | null = null
   let lastError: string | null = null
+  let musicRetryExhausted: number | null = null
+  let exhaustedStoryId: string | null = null
+  let lastRetryError: string | null = null
 
   for (const ep of episodes) {
     const num = episodeNumber(ep, 0)
     const key = String(num)
+    // doneByEp[key] is truthy when complete OR 'refused' (exhausted) — either
+    // way this episode is finished for this pass; skip to the next.
     if (doneByEp[key]) continue
 
     const storyId = String(ep.id)
+
+    // GATE 3: cap check BEFORE any provider fetch. If this episode has already
+    // consumed its attempts, refuse it (no fetch), flag ONLY this episode's own
+    // story needs_attention, and continue to the next episode. Siblings are
+    // unaffected — Ep3 still proceeds even if Ep2 is exhausted.
+    const epAttempts = Number(byEpisode[key] ?? 0)
+    if (epAttempts >= MAX_MUSIC_RETRIES) {
+      doneByEp[key] = 'refused'
+      musicRetryExhausted = num
+      exhaustedStoryId = storyId
+      lastRetryError = String(prevMusicRetry.lastError || `music generation exhausted ${MAX_MUSIC_RETRIES} attempts`)
+      // Flag the affected story ONLY (not the series, not sibling episodes).
+      await markStoryNeedsAttention(storyId,
+        `music_retry_exhausted: Ep${num} exhausted ${MAX_MUSIC_RETRIES} music generation attempts. Last error: ${String(lastRetryError).slice(0, 400)}`)
+      continue // other episodes unaffected
+    }
+
     // Fetch story to build music prompt
     const { data: story } = await supabase.from('stories').select('id,title,genre,script,background_music_url').eq('id', storyId).single()
     // Skip if music already generated
     const existingUrl = String(story?.background_music_url || '').trim()
     if (existingUrl && !existingUrl.startsWith('pending:')) {
       doneByEp[key] = true
+      byEpisode[key] = 0 // success — reset this episode's counter
       processedEp = num
       musicUrl = existingUrl
       break
     }
     const prompt = story?.script ? musicPromptFor(story.script, story.title || '', story.genre || '') : ''
+    // GATE 3: increment the attempt counter immediately BEFORE the provider
+    // fetch, so a crash mid-poll still counts the attempt and we never spin
+    // the provider past the cap.
+    byEpisode[key] = epAttempts + 1
     const r = await fetch(`${origin}/api/asc3/generate-music`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -7102,19 +7193,38 @@ async function runSeriesMusicGeneration(job: ProductionJob, origin: string) {
     const report = await readJsonOrDiagnostic(r, '/api/asc3/generate-music')
     const ok = r.ok && report?.success === true
     doneByEp[key] = ok
+    if (ok) byEpisode[key] = 0 // success resets this episode's counter
     processedEp = num
     musicUrl = report?.url || report?.musicUrl || null
-    if (!ok) lastError = String(report?.error || `HTTP ${r.status}`)
+    if (!ok) {
+      lastError = String(report?.error || `HTTP ${r.status}`)
+      lastRetryError = lastError
+    }
     break // one episode per call
   }
 
-  const allDone = episodes.every(ep => doneByEp[String(episodeNumber(ep, 0))])
+  // allDone: every episode is either complete (true) or refused/exhausted.
+  // A refused episode must not block the series from advancing — it is a
+  // terminal state for that episode pending manual Marc requeue.
+  const allDone = episodes.every(ep => Boolean(doneByEp[String(episodeNumber(ep, 0))]))
   return {
     allDone,
     processedEp,
     musicUrl,
     lastError,
-    state: { ...state, seriesId: String(seriesId), seriesMusicGeneration: { doneByEp, allDone, lastUpdatedAt: nowIso() } },
+    musicRetryExhausted,
+    exhaustedStoryId,
+    state: {
+      ...state,
+      seriesId: String(seriesId),
+      seriesMusicGeneration: { doneByEp, allDone, lastUpdatedAt: nowIso() },
+      musicRetry: {
+        ...prevMusicRetry,
+        byEpisode,
+        lastAttemptAt: nowIso(),
+        ...(lastRetryError ? { lastError: lastRetryError } : {}),
+      },
+    },
   }
 }
 
@@ -10093,6 +10203,34 @@ export async function POST(req: NextRequest) {
       })
 
       if (!result.success) {
+        // GATE 3 (MUSIC-CAP-001): surface music_retry_exhausted when the
+        // standalone attempt counter hit the cap (refused without a provider
+        // fetch). Also flag the affected story needs_attention (affected story
+        // ONLY — standalone has no siblings). Manual Marc requeue resets count.
+        const retryExhausted = (result as any).retryExhausted === true
+        if (retryExhausted) {
+          await markStoryNeedsAttention(result.storyId,
+            `music_retry_exhausted: standalone story exhausted ${MAX_MUSIC_RETRIES} music generation attempts.`)
+        }
+        const musicErrorJson = retryExhausted
+          ? {
+              step,
+              kind: 'music_retry_exhausted',
+              storyId: result.storyId,
+              musicPrompt: result.prompt,
+              musicGenerationReport: result.report,
+              attempts: MAX_MUSIC_RETRIES,
+              marc_required: true,
+              safe_resume_point: 'generate_music',
+              at: nowIso(),
+            }
+          : {
+              step,
+              storyId: result.storyId,
+              musicPrompt: result.prompt,
+              musicGenerationReport: result.report,
+              at: nowIso(),
+            }
         const { data: failedJob, error: updateError } = await supabase
           .from('production_jobs')
           .update({
@@ -10100,13 +10238,7 @@ export async function POST(req: NextRequest) {
             status: 'failed',
             current_step: NEXT_STEP_AFTER_STANDALONE_BELLE_QUALITY,
             state_json: result.state,
-            error_json: {
-              step,
-              storyId: result.storyId,
-              musicPrompt: result.prompt,
-              musicGenerationReport: result.report,
-              at: nowIso(),
-            },
+            error_json: musicErrorJson,
             logs,
             locked_at: null,
             locked_by: null,
@@ -10123,6 +10255,7 @@ export async function POST(req: NextRequest) {
           currentStep: step,
           status: failedJob.status,
           storyId: result.storyId,
+          ...(retryExhausted ? { kind: 'music_retry_exhausted', marcRequired: true } : {}),
           musicPrompt: result.prompt,
           musicGenerationReport: result.report,
           logs,
@@ -11543,14 +11676,26 @@ export async function POST(req: NextRequest) {
       const origin = new URL(req.url).origin
       const result = await runSeriesMusicGeneration(lockedJob, origin)
       const nextStep = result.allDone ? NEXT_STEP_AFTER_SERIES_MUSIC : NEXT_STEP_AFTER_SERIES_BELLE
+      // GATE 3 (MUSIC-CAP-001): when an episode exhausts its music attempt cap it
+      // is refused (no provider fetch) and flagged needs_attention on its OWN
+      // story only (done inside runSeriesMusicGeneration). The job stays queued
+      // so remaining/sibling episodes continue; the refused episode is terminal
+      // pending manual Marc requeue (which resets its counter). Surface the kind
+      // for observability but do NOT fail the series.
+      const musicExhaustedEp = (result as any).musicRetryExhausted as number | null
       const logs = appendLog(lockedJob,
-        result.allDone ? 'Series music complete for all episodes' : `Music generated for Ep${result.processedEp}`,
-        { processedEp: result.processedEp, musicUrl: result.musicUrl, allDone: result.allDone, error: result.lastError || undefined })
+        result.allDone ? 'Series music complete for all episodes'
+          : musicExhaustedEp != null ? `Music generation exhausted for Ep${musicExhaustedEp} (${MAX_MUSIC_RETRIES} attempts) — story flagged needs_attention; other episodes continue`
+          : `Music generated for Ep${result.processedEp}`,
+        { processedEp: result.processedEp, musicUrl: result.musicUrl, allDone: result.allDone, musicRetryExhausted: musicExhaustedEp ?? undefined, error: result.lastError || undefined })
+      const musicExhaustedErrorJson = musicExhaustedEp != null
+        ? { kind: 'music_retry_exhausted', episodeNumber: musicExhaustedEp, storyId: (result as any).exhaustedStoryId || null, attempts: MAX_MUSIC_RETRIES, safe_resume_point: 'generate_music', marc_required: true, at: nowIso() }
+        : null
       const { data: updatedJob, error: updateError } = await supabase.from('production_jobs')
-        .update({ status: 'queued', current_step: nextStep, state_json: result.state, error_json: null, logs, locked_at: null, locked_by: null })
+        .update({ status: 'queued', current_step: nextStep, state_json: result.state, error_json: musicExhaustedErrorJson, logs, locked_at: null, locked_by: null })
         .match(ownedJobFence(lockedJob, lockHolderId)).select('*').single()
       if (updateError) throw new Error(`Failed to save series music state: ${updateError.message}`)
-      return NextResponse.json({ success: !result.lastError, jobId: updatedJob.id, currentStep: step, nextStep: updatedJob.current_step, processedEp: result.processedEp, allDone: result.allDone, musicUrl: result.musicUrl, error: result.lastError || undefined, logs })
+      return NextResponse.json({ success: !result.lastError, jobId: updatedJob.id, currentStep: step, nextStep: updatedJob.current_step, processedEp: result.processedEp, allDone: result.allDone, musicUrl: result.musicUrl, ...(musicExhaustedEp != null ? { musicRetryExhausted: [musicExhaustedEp], kind: 'music_retry_exhausted' } : {}), error: result.lastError || undefined, logs })
     }
 
     if (step === NEXT_STEP_AFTER_SERIES_MUSIC) {
