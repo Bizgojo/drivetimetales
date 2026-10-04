@@ -123,6 +123,10 @@ export type StructuredErrorJsonKind =
   | 'belle_quality_listener_missing'     // intro missing [LISTENER_NAME] placeholder (auto-repairable)
   | 'belle_quality_repair_failed'        // repair produced text that still fails deterministic checks (retry up to 2)
   | 'belle_quality_unknown'              // unclassified Belle failure (marc_required after retries)
+  // ATLAS OCT3: advisory-bypass removal — former advisory defects now block with
+  // routable (marc_required=false) kinds; auto-resume re-queues to repair_belle_quality.
+  | 'belle_asset_blocked'                // validate_belle_assets advisory-class defect blocked (auto-repairable, capped retries)
+  | 'belle_quality_blocked'              // validate_belle_quality advisory-class defect blocked (auto-repairable, capped retries)
   // Legacy aliases kept for backward compat with existing error_json rows
   | 'script_blocked_word'
   | 'script_editorial_quality'
