@@ -22,6 +22,7 @@ import { runGarbleGate } from '@/lib/garbleGate'
 import { parseScriptPositions } from '@/lib/scriptLineIndex'
 import { runVoiceMapGate } from '@/lib/voiceMapGate'
 import { runVoiceConformanceGate, type VoiceProfile } from '@/lib/voiceConformanceGate'
+import { buildContinuityPins, verifyContinuityPins } from '@/lib/continuityPin'
 
 export const runtime = 'nodejs'
 // maxDuration governed by vercel.json (800s) - do not override here
@@ -5753,6 +5754,13 @@ async function generateOneSeriesEpisodeScript(job: ProductionJob, model: string)
   const priorEpisodes = episodes
     .filter((episode: any) => episodeNumber(episode, 0) < targetEpisodeNumber && episode.script)
   const continuityBundle = buildContinuityBundle(priorEpisodes)
+  // GATE 2 — CONTINUITY PIN: pin a sha256 of each prior episode's script at the
+  // moment this downstream ep consumes it. Re-verified at score_validate_package
+  // (package-arc final step). If an earlier ep's stories.script is corrected after
+  // this ep consumed it, the pin mismatches and the package fails closed.
+  // NOTE: Belle text edits mutate Belle asset rows, NOT stories.script, so they
+  // never change this hash and never trip the pin. Spec §2, GATE-GAPS-SPEC-20261004.
+  const continuityPinsUsed = buildContinuityPins(priorEpisodes)
   const brief = targetEpisode.brief_json || {}
 
   await enforcePremiseGateBeforeStage2({
@@ -5813,6 +5821,7 @@ async function generateOneSeriesEpisodeScript(job: ProductionJob, model: string)
       episode_number: targetEpisodeNumber,
       series_id: String(seriesId),
       continuity_bundle_used: continuityBundle,
+      continuity_pins_used: continuityPinsUsed,
       summary: {
         title: generatedTitle,
         description,
@@ -6394,6 +6403,89 @@ async function scoreValidateSeriesPackage(job: ProductionJob, model: string) {
   )
   if (!allEpisodesPassed) {
     throw new Error('Series validation state is inconsistent: no next episode found, but not all episodes passed')
+  }
+
+  // GATE 2 — CONTINUITY PIN (package-arc final step). Recompute current prior-script
+  // hashes and compare against the pins each downstream ep captured at generation
+  // time. ANY mismatch => hard fail closed naming the ep + hash pair. This runs
+  // BEFORE package validation passes and is NOT skippable for preview/LANDING
+  // packages (LANDING-STORY-001 skip only applies to the finale-arc LLM check).
+  // Legacy/pre-landing eps with no pins log pins_absent (warn), never fail.
+  // Belle text edits touch Belle asset rows, not stories.script, so they do not
+  // trip pins. Spec §2, GATE-GAPS-SPEC-20261004.
+  const pinVerify = verifyContinuityPins(refreshedEpisodes)
+  if (pinVerify.pins_absent) {
+    console.warn('[continuity-pin] pins_absent for legacy episodes (warn, not fail)', {
+      seriesId: String(seriesId),
+      pins_absent: true,
+      episodes: pinVerify.pinsAbsentEpisodes,
+    })
+  }
+  if (!pinVerify.ok) {
+    const first = pinVerify.mismatches[0]
+    const summary = pinVerify.mismatches
+      .map((m) => `Ep${m.episodeNumber} prior=${m.priorStoryId} expected=${m.expectedHash.slice(0, 12)} actual=${m.actualHash === 'missing' ? 'missing' : m.actualHash.slice(0, 12)}`)
+      .join('; ')
+    const continuityPinError = buildStructuredError(
+      'continuity_pin_mismatch',
+      `Continuity pin mismatch: an earlier episode's script changed after a downstream episode consumed it. ${summary}`,
+      NEXT_STEP_AFTER_SERIES_SCRIPTS,
+      {
+        seriesId: String(seriesId),
+        storyId: first.storyId,
+        episodeNumber: first.episodeNumber,
+        marc_required: true,
+        autonomous_repair: false,
+        safe_resume_point: 'generate_script',
+        detail: { mismatches: pinVerify.mismatches, pins_absent: pinVerify.pins_absent, pinsAbsentEpisodes: pinVerify.pinsAbsentEpisodes },
+        fixRecommendation: 'Regenerate the affected downstream episode(s) via the episode-correction loop (Marc approval required; no auto-retry per Canon Rule 3).',
+      },
+    )
+    const continuityPinReport = {
+      pass: false,
+      issues: pinVerify.mismatches.map((m) => `Ep${m.episodeNumber}: prior script ${m.priorStoryId} changed post-consumption (expected ${m.expectedHash}, actual ${m.actualHash})`),
+      confidence: 1,
+      summary: `continuity_pin_mismatch: ${pinVerify.mismatches.length} pin(s) failed. ${summary}`,
+      rawReport: null,
+      continuityPinError,
+      continuityPinMismatches: pinVerify.mismatches,
+    }
+    return {
+      passed: false,
+      failed: true,
+      complete: false,
+      episodeResult: null,
+      seriesId: String(seriesId),
+      episodes: refreshedEpisodes,
+      nextStep: NEXT_STEP_AFTER_SERIES_SCRIPTS,
+      packageReport: continuityPinReport,
+      continuityPinError,
+      state: {
+        ...state,
+        seriesId: String(seriesId),
+        seriesValidation: {
+          episodeCount: refreshedEpisodes.length,
+          validatedEpisodes: refreshedEpisodes.map((episode: any) => ({
+            storyId: episode.id,
+            title: episode.title,
+            episodeNumber: episodeNumber(episode, 0),
+            validatorResult: 'PASS',
+            skipped: true,
+            report: episode.validator_report || '',
+          })),
+          failedEpisodes,
+          nextEpisodeNumber: null,
+          metadataIssues,
+          packageReport: continuityPinReport,
+          continuityPinMismatch: {
+            at: nowIso(),
+            mismatches: pinVerify.mismatches,
+            pins_absent: pinVerify.pins_absent,
+            pinsAbsentEpisodes: pinVerify.pinsAbsentEpisodes,
+          },
+        },
+      },
+    }
   }
 
   // LANDING-STORY-001: skip package-level finale-arc-closure check for preview packages.
@@ -7579,7 +7671,19 @@ export async function POST(req: NextRequest) {
             status: 'failed',
             current_step: NEXT_STEP_AFTER_SERIES_SCRIPTS,
             state_json: result.state,
-            error_json: {
+            // GATE 2 — CONTINUITY PIN: when the package failed because a prior
+            // script was corrected post-consumption, surface the canonical
+            // structured error (kind='continuity_pin_mismatch', marc_required=true,
+            // no auto-retry per Canon Rule 3) as the primary error_json.
+            error_json: (result as any).continuityPinError
+              ? {
+                  ...(result as any).continuityPinError,
+                  episodeResult: result.episodeResult,
+                  failedEpisodes: result.state.seriesValidation?.failedEpisodes || [],
+                  metadataIssues: result.state.seriesValidation?.metadataIssues || [],
+                  packageReport: result.packageReport || null,
+                }
+              : {
               step,
               seriesId: result.seriesId,
               episodeResult: result.episodeResult,

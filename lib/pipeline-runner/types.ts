@@ -117,6 +117,8 @@ export type StructuredErrorJsonKind =
   | 'premise_collision'                  // brief bounced for rework; override only by Marc's recorded word (marc_required, not retryable)
   // CASTING-ALIAS-001: speaker in script has no character description for casting
   | 'character_description_missing'      // speaker appears in script body but has no CHARACTER GUIDE entry and no established series/story voice (marc_required, never auto-retryable)
+  // GATE 2 (GATE-GAPS-SPEC-20261004 §2): prior episode's script was corrected after a downstream ep consumed it in its continuity bundle (marc_required, no auto-retry per Canon Rule 3)
+  | 'continuity_pin_mismatch'
   // ATL-PIPE-010: Belle intro/outro validation and repair failure kinds
   | 'belle_quality_hook_missing'         // standalone intro lacks concrete narrative hook (auto-repairable)
   | 'belle_quality_title_missing'        // standalone intro/outro missing story title (auto-repairable)
