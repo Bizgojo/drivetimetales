@@ -245,6 +245,7 @@ async function renderOrReuseOpenerClip(userId: string, storyId: string, preferre
         upsert: true,
       })
       if (uploadError) throw new Error(`Failed to upload opener clip: ${uploadError.message}`)
+      await verifyStorageUpload(storagePath, buffer, 'opener-clip')
     })
     const audioUrl = `${BASE_STORAGE}/${storagePath}`
     const { data: clip, error: upsertError } = await supabase
@@ -262,6 +263,20 @@ async function renderOrReuseOpenerClip(userId: string, storyId: string, preferre
   } finally {
     await fs.rm(tmpDir, { recursive: true, force: true }).catch(() => {})
   }
+}
+
+// FIX-1 F1 (sites #2/#3): byte-verify storage uploads (size + sha256).
+// The SDK can return error:null on a partial write — verify, fail loud.
+async function verifyStorageUpload(storagePath: string, expected: Buffer, label: string): Promise<void> {
+  const { data, error } = await supabase.storage.from('audio').download(storagePath)
+  if (error) throw new Error(`${label} verify download failed ${storagePath}: ${error.message}`)
+  const actual = Buffer.from(await data.arrayBuffer())
+  if (actual.length !== expected.length) {
+    throw new Error(`${label} verify FAILED (size) ${storagePath}: got ${actual.length}, want ${expected.length}`)
+  }
+  const aHash = createHash('sha256').update(actual).digest('hex')
+  const eHash = createHash('sha256').update(expected).digest('hex')
+  if (aHash !== eHash) throw new Error(`${label} verify FAILED (sha256) ${storagePath}: got ${aHash.slice(0, 12)}…, want ${eHash.slice(0, 12)}…`)
 }
 
 async function markOpenerUsed(clip: UserOpenerClip) {
@@ -336,6 +351,7 @@ async function renderPersonalizedAudio(story: StoryAudioRow, userId: string, pre
         upsert: true,
       })
       if (uploadError) throw new Error(`Failed to upload personalized final mix: ${uploadError.message}`)
+      await verifyStorageUpload(storagePath, buffer, 'personalized-mix')
     })
     return { finalMixUrl: publicUrl, cached: false }
   } finally {
