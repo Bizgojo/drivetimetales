@@ -37,6 +37,7 @@ Prior standing rules referenced throughout remain in force and are not contradic
 | PIPELINE-CANON-001 · Rule 4 | Publish-Mode Switch (initial `direct`, option A) | APPROVED | 2026-10-04 |
 | EPISODE-ADDITION RULE | Episodes Publish Complete, As One Unit | APPROVED | 2026-10-04 |
 | EPISODE-NUMBERING RULE | Start at 1, Count Up, No Gaps, No Zero | APPROVED | 2026-10-04 |
+| EBOOK-COMPLETENESS RULE | Every Story Has a Complete eBook | APPROVED | 2026-10-04 |
 
 ---
 
@@ -289,3 +290,43 @@ A single, human-first numbering convention (start at 1, count up, no gaps) makes
 - **Rule 4 (publish-mode switch):** unchanged. Numbering is independent of `publish_mode`; both `rfr` and `direct` publish the same 1..N sequence. Mode governs *whether* a hold occurs, never *what number* an episode carries.
 - **Publish-ordering gate (Gate 1):** this item makes the gate's predicate uniform. Because every story — including single-episode stories — starts at 1 and is contiguous, the publish-ordering predicate can treat a single story as the degenerate case of the general 1..N rule (N=1) with no special-casing for "storyless" or "zero" episodes.
 - **EPISODE-ADDITION RULE:** **direct reinforcement.** Later additions continue numbering from the last published episode number (N+1, N+2, …) and **never reset to 0**. This item supplies the floor and contiguity guarantee the ADDITION rule's "continue the sequence" clause depends on: additions extend 1..N into 1..M contiguously, never introducing a 0 and never leaving a gap between the original tail and the appended batch.
+
+
+---
+
+# EBOOK-COMPLETENESS RULE
+
+**Status: APPROVED 2026-10-04, effective now.** Ordered by Marc 2026-10-04 12:38 EDT; open questions resolved 2026-10-04 13:09 EDT; approved as drafted 2026-10-04 14:35 EDT. Standing pipeline law in the same five-part format as PIPELINE-CANON-001 Rules 1–4.
+
+### Statement
+
+> Every story — single-episode or multi-episode series — must have a complete eBook/reader-text version before it is considered finished. No story is complete or publishable without one. The eBook version is the readable text counterpart of the audio: it must cover the full story (every published episode of the release), not a partial or excerpt. A story missing its eBook/reader-text content is an incomplete artifact and is **blocked at both the ready_for_review gate and the publish gate** — it cannot reach review, and it cannot go live, until the eBook content exists and covers the whole story.
+
+### Rationale
+
+The product promises a readable companion to the audio; shipping audio without its reader-text leaves a half-built artifact that the library UI (card eBook affordance, SS2 "Read eBook," single-story detail page) exposes as broken or empty. Catching the gap at the pipeline level — rather than discovering it in the live app — keeps every published story whole and keeps the reader-text and audio in lockstep from the first release.
+
+### Scope
+
+- Applies to **new production only** — stories entering or moving through the pipeline on or after this rule's effective date. It is **not retroactive**: already-published stories are grandfathered and are not forced back into the pipeline for missing eBook content. (Backfilling the published catalog, if desired, is a separate Marc-ordered effort, not this gate.)
+- Covers both single-episode stories and multi-episode series: a series' eBook content must cover **every episode in the release** (consistent with EPISODE-ADDITION's publish-complete-as-one-unit requirement).
+- "Complete eBook/reader-text version" means readable text that covers the full story being published — not an excerpt, synopsis, or partial transcript.
+- Enforced at **two** gates, both blocking: (1) the **ready_for_review** gate — a story cannot enter review without its eBook content; (2) the **publish** gate — a story cannot go live without it. Passing one does not waive the other.
+- Does **not** govern eBook formatting, styling, or rendering in the app (that is UI/app work, handled separately); it governs only the **existence and completeness** of the reader-text content as a pipeline precondition.
+- Does **not** cover corrections to already-published eBook content (those follow the standing Episode Correction Loop).
+
+### Defaults
+
+- **Default posture:** blocking at both gates. Absent eBook/reader-text content = fail, at ready_for_review and at publish.
+- **Default coverage requirement:** the eBook must cover the full published set — for a series, all episodes in the release; for a single story, the whole story.
+- **Default for additions:** when a later batch of episodes is appended (per EPISODE-ADDITION), the addition's eBook content must cover the new episodes before the addition batch can pass review or publish — the completeness check runs on the batch being released, not only the original release.
+- **Default on ambiguity:** if it is unclear whether a story's eBook content is complete (e.g., present but shorter than the audio would imply), treat it as **non-compliant and blocked** until confirmed complete — never advanced on assumption. Failed verification commands are UNVERIFIED, never negative findings — same standard as PIPELINE-CANON-001.
+
+### Interactions with Rules 1–4 (PIPELINE-CANON-001) + EPISODE-ADDITION + EPISODE-NUMBERING
+
+- **Rule 1 (block classification):** a missing or incomplete eBook detected at a gate is a **Class B** (story/content defect) — the fix is to produce the missing reader-text (Hal or the appropriate content path) and auto-reprocess, not to patch the gate. It is Class A only if the pipeline itself dropped eBook content it should have carried.
+- **Rule 2 (quality gates block, not warn):** **direct reinforcement.** The eBook-completeness check is **blocking** by default at both gates — it never warns-and-continues. This rule is itself an instance of Rule 2's default-blocking posture.
+- **Rule 3 (strict ordering / series flips together):** the completeness check is per-release-unit. Because a series flips live together, its eBook content must cover the whole series before the unit passes — no episode publishes audio-only while its reader-text lags.
+- **Rule 4 (publish-mode switch):** enforced under both modes. In `rfr` mode the ready_for_review gate catches a missing eBook before Marc's review; in `direct` mode the publish gate still blocks a missing eBook before go-live. Neither mode waives the check — and because `direct` mode declines the post-live safety net (Rule 4, option A), the publish-gate block is the last line of defense and is non-negotiable.
+- **EPISODE-ADDITION RULE:** the completeness requirement travels with the release unit. An appended batch must carry eBook content for its new episodes before the batch passes review or publish, exactly as the original release did.
+- **EPISODE-NUMBERING RULE:** no direct interaction — numbering governs what number each episode carries; this rule governs whether each release has its reader-text. Both are per-release preconditions that must hold before publish.
