@@ -68,6 +68,19 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
 
+// FIX-1 F1 (sites #6/#7/#8): post-upload size verification for small
+// deterministic-content writes (silence buffers, locked-SFX restore).
+// Size-only (not sha) keeps this cheap on a hot loop; content is either
+// ffmpeg-deterministic or hash-trusted upstream. Fail loud, never warn.
+async function verifySmallAudioUpload(sb: typeof supabase, storagePath: string, expectedBytes: number, label: string): Promise<void> {
+  const { data, error } = await sb.storage.from('audio').download(storagePath)
+  if (error) throw new Error(`${label} verify download failed ${storagePath}: ${error.message}`)
+  const got = Buffer.from(await data.arrayBuffer()).length
+  if (got !== expectedBytes) {
+    throw new Error(`${label} verify FAILED (size) ${storagePath}: got ${got}, want ${expectedBytes}`)
+  }
+}
+
 // CORRECTION-PERSIST-001: correction audit log types + helpers
 interface CorrectionEntry {
   type: 'voice_recast' | 'pronoun_fix' | 'sfx_removal' | 'outro_fix' | 'segment_rebuild' | string
@@ -3466,6 +3479,8 @@ export async function POST(req: NextRequest) {
           const silBuffer = await generateSilenceBuffer(duration)
           const { error: uploadError } = await supabase.storage.from('audio').upload(silPath, silBuffer, { contentType: 'audio/mpeg', upsert: true })
           if (uploadError) throw new Error(`Upload error: ${uploadError.message}`)
+          // FIX-1 F1 (site #6): byte-verify deterministic silence write, fail loud.
+          await verifySmallAudioUpload(supabase, silPath, silBuffer.length, 'silence-retry')
           generatedSegments.push({ index: targetLine.index, speaker: targetLine.speaker, type: targetLine.type, duration: String(duration), url: `${BASE_STORAGE}/${silPath}` })
         } else if (targetLine.type === 'narrator' || targetLine.type === 'character') {
           let voiceId = resolvedNarratorVoiceId
@@ -3651,7 +3666,13 @@ export async function POST(req: NextRequest) {
         const silFileName = 'segment_' + line.index.toString().padStart(4, '0') + '.mp3'
         const silPath = 'asc3/' + storyId + '/' + silFileName
         const silBuffer = await generateSilenceBuffer(duration)
-        await supabase.storage.from('audio').upload(silPath, silBuffer, { contentType: 'audio/mpeg', upsert: true })
+        // FIX-1 F1 (site #7): this upload previously ignored errors entirely —
+        // capture + verify, fail loud like every other writer.
+        {
+          const { error: silUploadError } = await supabase.storage.from('audio').upload(silPath, silBuffer, { contentType: 'audio/mpeg', upsert: true })
+          if (silUploadError) throw new Error(`Silence upload failed ${silPath}: ${silUploadError.message}`)
+          await verifySmallAudioUpload(supabase, silPath, silBuffer.length, 'silence-fullregen')
+        }
         const silUrl = process.env.NEXT_PUBLIC_SUPABASE_URL + '/storage/v1/object/public/audio/' + silPath
         results.segments.push({ index: line.index, speaker: line.speaker, type: line.type, duration: String(duration), url: silUrl })
         continue
@@ -3672,7 +3693,13 @@ export async function POST(req: NextRequest) {
           const [cueId, entry] = sfxLockedEntry
           try {
             const lockedBuf = await restoreLockedSfxCue(cueId, entry, sfxActivePath)
-            await supabase.storage.from('audio').upload(sfxActivePath, lockedBuf, { contentType: 'audio/mpeg', upsert: true })
+            // FIX-1 F1 (site #8): locked-SFX restore upload previously unchecked —
+            // content is hash-trusted upstream, but the write itself gets verified.
+            {
+              const { error: sfxUploadError } = await supabase.storage.from('audio').upload(sfxActivePath, lockedBuf, { contentType: 'audio/mpeg', upsert: true })
+              if (sfxUploadError) throw new Error(`Locked-SFX upload failed ${sfxActivePath}: ${sfxUploadError.message}`)
+              await verifySmallAudioUpload(supabase, sfxActivePath, lockedBuf.length, 'locked-sfx')
+            }
             console.log(`[ATL-SFX-WIRE-001] SFX reused byte-for-byte: ${cueId} → ${sfxFileName}`)
             results.segments.push({ index: line.index, speaker: 'SFX', type: 'sfx', url: `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/audio/${sfxActivePath}`, reusedFromLocked: true })
             continue
