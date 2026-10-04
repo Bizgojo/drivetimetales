@@ -8,7 +8,7 @@
 3. Optional `[MUSIC:OUT]`/`[MUSIC:IN]` silence markers (max 2 per story).
 4. Belle bridge line after standalone outros (one sentence, conditional).
 5. Series episodes default to 12–18 minutes.
-6. **Series Release Rule:** Episode 1 never publishes without Episode 2 live; 3-episode series publish complete.
+6. **Series Release Rule (revised per canon):** episodes run strictly one at a time in order — run, lock, then advance; never bundled, never parallel. A series flips to published together only after every episode has passed its gate. Superseded by PIPELINE-CANON-001 Rule 3 (approved 2026-10-04).
 7. Grading moves to six dimensions / 30 points (Investment added) — gates 22+ publish, 26+ gold.
 8. Voice ID confirmed: **GMhgX8fCR9GUtd3kmlKC** (improved Belle voice, May 2026). Retired IDs, never to be used: wewocdDkjSLm9ZwjO7TD, KWDD3Wyq30ZF5NEL01EJ.
 9. **Outro music (v1.5, evening reconciliation):** three-phase outro — music swells, ducks to 25% UNDER Belle's outro, fades to silence over 3 seconds after she finishes. Supersedes the v1.4 clean-silence outro.
@@ -175,9 +175,8 @@ The review bot will FAIL or FLAG any story where: the main hook is unclear or we
 - Finale: follows standalone ending rules — full resolution and satisfaction.
 - Runtime default: **12–18 minutes** per episode unless the Brief justifies longer. 20–25 minutes is reserved for standalones, finales, and episodes that earn it.
 
-### Series Release Rule (v1.4) — NON-NEGOTIABLE
-- **Episode 1 never publishes unless Episode 2 is produced, approved, and published in the same release.**
-- Three-episode series publish complete. Longer series may release weekly after Episodes 1–2 are live.
+### Series Release Rule (revised per canon — v1.4 rule superseded by PIPELINE-CANON-001 Rule 3, approved 2026-10-04)
+- **Episodes run strictly one at a time in order — run, lock, then advance; never bundled, never parallel. A series flips to published together only after every episode has passed its gate.**
 - A cliffhanger with no next episode available converts retention into frustration. Never strand a listener on a cliff.
 
 ### Characters
@@ -199,7 +198,7 @@ The review bot will FAIL or FLAG any story where: the main hook is unclear or we
 ---
 
 ## GRADING (v1.4 — full rubric in MASTER_BIBLE v3.0 §4)
-Six dimensions, 1–5 each, 30 points: Hook · Clarity · Pacing · Audio Quality · Landing · **Investment** ("Did I care what happened to this person? Did I feel something at the ending?"). Publish at **22+/30**; gold standard at **26+/30**. Marc approval required before any publish.
+Six dimensions, 1–5 each, 30 points: Hook · Clarity · Pacing · Audio Quality · Landing · **Investment** ("Did I care what happened to this person? Did I feel something at the ending?"). Publish at **22+/30**; gold standard at **26+/30**. Marc approval required before any publish — unless publish_mode=direct per PIPELINE-CANON-001 Rule 4; rfr mode restores it.
 
 ---
 

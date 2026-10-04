@@ -85,11 +85,13 @@ SECTION 3 — PUBLISHING POLICY (Orion enforces from now on)
       written approval.
   3b. PUBLISH GATE: 30-point rubric (Hook, Clarity, Pacing,
       Audio, Landing, Investment). Publish at 22+, gold at 26+.
-  3c. SERIES RELEASE RULE (non-negotiable): Episode 1 never
-      publishes unless Episode 2 is approved and live in the
-      same release. 3-episode series publish complete. Applies
-      to Lost Signal and the catalog-gap batch.
-  3d. Marc approval before any publish. Unchanged.
+  3c. SERIES RELEASE RULE (revised per canon): Episodes run
+      strictly one at a time in order — run, lock, then
+      advance; never bundled, never parallel. A series flips
+      to published together only after every episode has
+      passed its gate. Superseded by PIPELINE-CANON-001
+      Rule 3 (approved 2026-10-04).
+  3d. Marc approval before any publish. Unchanged — unless publish_mode=direct per PIPELINE-CANON-001 Rule 4; rfr mode restores it.
 
 SECTION 4 — AGENT TASKINGS
 HAL (Content Director):

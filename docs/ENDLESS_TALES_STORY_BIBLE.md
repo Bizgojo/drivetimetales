@@ -108,7 +108,7 @@ Endless Tales is a series platform first. Standalones serve four purposes: disco
 **Preferred series lengths:**
 | Length | Use case |
 |---|---|
-| 3 episodes | Tight genre premise, high concept, minimal setup — published complete (Series Release Rule, Spec v1.5) |
+| 3 episodes | Tight genre premise, high concept, minimal setup — per sequential series gate (Rule 3) |
 | 5 episodes | Standard series unit — most protagonists and worlds fit here |
 | 7 episodes | Complex multi-thread stories, deeper world-building, ensembles |
 | 13 episodes | Full season format — major franchise-candidate series only |
@@ -122,7 +122,7 @@ Series shorter than 3 or longer than 13 require explicit Marc approval. Series e
 4. **The Finale Resolution** — the emotional type of the ending (justice, sacrifice, transformation, revelation…).
 5. **The Cliffhanger Chain** — for each non-finale episode, one sentence describing the specific hook. **Required before Episode 1 enters production.** A series without a defined cliffhanger chain is not ready to produce.
 
-The Series Release Rule (Episode 1 never publishes without Episode 2 live; 3-episode series publish complete) is owned by Spec v1.5 and is non-negotiable.
+The sequential series gate (PIPELINE-CANON-001 Rule 3, approved 2026-10-04) governs series release — episodes run one at a time in order; ownership moved from Spec v1.5.
 
 ---
 

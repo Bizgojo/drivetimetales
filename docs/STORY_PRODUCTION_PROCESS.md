@@ -32,7 +32,7 @@
 4. For standalones: fill NEXT_LISTEN if the author has a series or recurring protagonist (this triggers Belle's bridge line)
 5. Save as `Brief_[StoryTitle].md` in `~/Projects/drivetimetales/docs/Briefs/`
 
-**Series batch reminder:** the Series Release Rule means Episode 1 cannot publish without Episode 2 live, and 3-episode series publish complete — brief and produce series as a batch, not one episode at a time.
+**Series batch reminder:** brief series as a batch, but produce/run episodes strictly one at a time in order per PIPELINE-CANON-001 Rule 3 (sequential series gate).
 
 ---
 
@@ -121,7 +121,7 @@ Same problem in 3+ stories → Pattern Log → bring to Claude to update the rul
 ## STEP 8 — PUBLISH
 **Your time: 1 minute**
 
-**Series Release Rule check first:** if this is Episode 1, Episode 2 must be approved and ready to go live in the same release. Three-episode series go live complete. Never strand a listener on a cliff.
+**Sequential series gate check first:** episodes publish strictly one at a time in order — each episode publishes after passing its own gate per PIPELINE-CANON-001 Rule 3. Never strand a listener on a cliff.
 
 Tell Hal: *"Approved. Set is_hidden = false for story UUID [UUID]"* (listing all UUIDs releasing together for a series).
 

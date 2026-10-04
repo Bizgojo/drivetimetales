@@ -22,7 +22,7 @@ Brief → Script → Preflight → Voice Generation → Mix → Package → Revi
 | Mix | ASC | final_mix.mp3 exists, nonzero duration |
 | Package | ASC | cover, prose, series_id, duration_mins all set |
 | Review | Marc | Story appears in Approval Console |
-| Publish | Marc | Marc explicitly approves — is_hidden set to false |
+| Publish | Marc | Marc explicitly approves — is_hidden set to false (rfr mode; direct mode per PIPELINE-CANON-001 Rule 4 skips per-story approval) |
 
 **No stage may proceed if the prior stage has not passed its gate condition.**
 

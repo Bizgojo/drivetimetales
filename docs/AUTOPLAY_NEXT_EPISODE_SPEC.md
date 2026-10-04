@@ -8,7 +8,7 @@
 
 ## 1. PURPOSE
 
-A series cliffhanger creates tension; this feature converts it. When a series episode ends, the next episode begins automatically after a short, cancellable countdown — zero taps, which matters doubly for drivers who shouldn't touch the phone. This is the single highest-leverage binge mechanic in the retention research, and it is the converter for the Series Release Rule (Episode 2 is always live when Episode 1 is).
+A series cliffhanger creates tension; this feature converts it. When a series episode ends, the next episode begins automatically after a short, cancellable countdown — zero taps, which matters doubly for drivers who shouldn't touch the phone. This is the single highest-leverage binge mechanic in the retention research, and it is the converter for the sequential series gate (Rule 3) (Episode 2 is always live when Episode 1 is).
 
 ---
 
@@ -16,7 +16,7 @@ A series cliffhanger creates tension; this feature converts it. When a series ep
 
 1. The finished story is a **series episode** and **not the finale** (standalones and finales NEVER trigger autoplay).
 2. The audio element fired its natural **`ended`** event — the full final mix played to completion, including the Belle B outro. Pausing, scrubbing, or abandoning mid-story never triggers it. (A listener who scrubs to the end and lets it finish still counts as ended — do not try to distinguish.)
-3. A **next episode exists and is published/visible**: same series, episode number = current + 1, not hidden. Under the Series Release Rule this should always be true for non-finales; if the lookup finds nothing, fail silent — behave exactly like a standalone ending (Section 6).
+3. A **next episode exists and is published/visible**: same series, episode number = current + 1, not hidden. Under the sequential series gate (Rule 3) this should always be true for non-finales; if the lookup finds nothing, fail silent — behave exactly like a standalone ending (Section 6).
 4. The lookup result is cached/prefetched **before** the story ends (fetch it when the player loads or when playback passes ~90%), so the countdown never waits on a network call.
 
 ---
@@ -57,7 +57,7 @@ When the `ended` event fires (before or in parallel with the countdown):
 |---|---|
 | Standalone ends | Normal end-of-story behavior. No overlay, ever. |
 | Series FINALE ends | Normal end-of-story behavior. Belle B's formal series close is the last word — no overlay. |
-| Non-finale but next episode missing/hidden | Silent fallback to normal end-of-story behavior. Additionally log a console/analytics warning — this is a Series Release Rule violation worth surfacing. |
+| Non-finale but next episode missing/hidden | Silent fallback to normal end-of-story behavior. Additionally log a console/analytics warning — this is a sequential series gate (Rule 3) violation worth surfacing. |
 | User pauses or scrubs mid-story | Nothing. Only the `ended` event matters. |
 | User cancels countdown | Normal end-of-story behavior (/library). |
 

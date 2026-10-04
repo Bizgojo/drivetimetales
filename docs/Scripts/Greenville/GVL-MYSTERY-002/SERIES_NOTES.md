@@ -1,7 +1,7 @@
 # GVL-MYSTERY-002 — "Between the Mile Markers" — SERIES NOTES
 **Status:** DRAFT scripts complete — awaiting Orion review, then Voice Casting Sheet approval (Marc) before ANY voice generation.
 **Written:** 2026-07-14 (Hal, on Marc's greenlight 14:17 EDT)
-**Author:** Dex Carver · **Narrator:** Ray Dolan · **Genre:** Mystery · 3 episodes, publish complete per Series Release Rule (Spec v1.5).
+**Author:** Dex Carver · **Narrator:** Ray Dolan · **Genre:** Mystery · 3 episodes, per sequential series gate (Rule 3).
 **Setting:** Swamp Rabbit Trail corridor, Greenville SC (Furman → Travelers Rest). Real geography; all characters fictional. **Zero Falls Park scenes** (verified).
 **Timeline:** Fully linear — Day 1 (Ep1, Tue), Day 2 (Ep2, Wed), Day 3 (Ep3, Thu pre-dawn → Fri dawn). No jumps; Ep3's dawn echo is staging symmetry only.
 

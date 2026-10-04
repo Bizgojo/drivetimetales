@@ -199,7 +199,9 @@ RECURRED (Aug 29, 2026): same false-negative pattern hit again during verificati
   Completed (Aug 27, 2026): Directive stays in place and lifts ONLY once all 26 Sunset episodes are fully corrected and ear-approved by Marc. Not tied to Phase 9's stress-test — Sunset completion alone is the trigger.
 
 - [COMPLETED] **Orion publish-authority policy.** Est. 2–4 hrs
-  Completed (Aug 27, 2026): Orion gets NO autonomous publish authority until BOTH Phase 4 (Vega's correctness gates) AND Phase 10 (the creative judge) are built AND PROVEN — not merely built. Until then, every publish still requires Marc's explicit word.
+  Revised per canon (approved 2026-10-04): publish authority is now governed by `publish_mode`. Current value: **direct** (option (a) — no ear-check ever). Marc controls the mode with a one-line instruction; the set value persists until he changes it. Switching to `rfr` restores the per-story hold (every publish requires Marc's explicit word until Phases 4 + 10 are built and proven).
+
+  Superseded by PIPELINE-CANON-001 Rule 4 (approved 2026-10-04).
 
 - [COMPLETED] **Susan/Vega/Maya staffing decision.** Est. 1–2 hrs
   Completed (Aug 27, 2026): DECIDED Option 1 — staff all three as real, distinct active roles, not folded into Orion/Atlas/Hal. Triggers/cadence set: Vega starts immediately alongside Phase 4's build. Maya starts immediately on Phase 2's build side only (autonomous operation gated on Hal directive lifting + Phase 11's Lex check). Susan starts immediately, not phase-gated (standing daily Bell campaign-health check).

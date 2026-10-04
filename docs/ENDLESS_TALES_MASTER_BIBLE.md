@@ -96,11 +96,11 @@ Every brief is NEDS-scored BEFORE production (Curiosity 0–3, Stakes 0–2, Esc
 
 # 6. RELEASE & APP POLICY (decided June 10, 2026)
 
-1. **Series Release Rule — NON-NEGOTIABLE:** Episode 1 never publishes unless Episode 2 is produced, approved, and live in the same release. Three-episode series publish complete. Longer series may release weekly once Eps 1–2 are live. Never strand a listener on a cliff.
+1. **Series Release Rule (revised per canon):** episodes run strictly one at a time in order — run, lock, then advance; never bundled, never parallel. A series flips to published together only after every episode has passed its gate. Superseded by PIPELINE-CANON-001 Rule 3 (approved 2026-10-04). Never strand a listener on a cliff.
 2. **Autoplay next episode — LAUNCH GATE:** public launch does not happen without it. After a series episode's Belle B outro: "Next episode in 5…" countdown with visible cancel, then autoplay. Built in parallel with smoke tests.
 3. **Weekly release cadence** once live — consistency builds habit; irregular publishing is a measured churn driver.
 4. **Drop-off analytics — COMMITTED, first analytics build once beta has listeners:** per-story admin histogram of last playback position for non-completers (user_library.progress already stores it). Findings feed the Pattern Log. Not built before beta listeners exist.
-5. Marc approval required before any story publishes (Hal stages, §9).
+5. Marc approval required before any story publishes (Hal stages, §9) — unless publish_mode=direct per PIPELINE-CANON-001 Rule 4; rfr mode restores it.
 
 ---
 
@@ -125,8 +125,8 @@ One live version only. Superseded versions are archival only, never active, neve
 # 9. HAL — AUTOMATION STAGES (from North Star, unchanged)
 
 - **Stage 1 (current):** Hal generates and produces stories only when Marc explicitly starts the process.
-- **Stage 2 (after 30–50 approved stories):** Hal may run batches unattended; every story still requires Marc review before publishing.
-- **Stage 3 (after beta reliability proven):** Hal may recommend publishing and prepare release batches; Marc still approves.
+- **Stage 2 (after 30–50 approved stories):** Hal may run batches unattended; every story still requires Marc review before publishing — unless publish_mode=direct per PIPELINE-CANON-001 Rule 4.
+- **Stage 3 (after beta reliability proven):** Hal may recommend publishing and prepare release batches; Marc still approves — unless publish_mode=direct per PIPELINE-CANON-001 Rule 4.
 - **Stage 4 (future only):** auto-publish of low-risk stories only after review gates, QA, listener feedback, and retention metrics are all proven.
 - Standing restrictions: Hal does not push code to GitHub and does not create database tables.
 
@@ -137,7 +137,7 @@ One live version only. Superseded versions are archival only, never active, neve
 1. **Now:** commit the canonical document set; archive superseded docs. Three good smoke tests.
 2. **Build alongside smoke tests:** name-stitch system (belle_name_audio, intro parts, stitch endpoint) and anchor SFX + music-marker support in render-final-mix — per PERSONALIZATION_AND_SFX_IMPLEMENTATION v1.0. Supabase migrations need Marc's approval, localhost first.
 3. **Pilot:** two stories produced fully under v1.4 rules; Marc grades in the car on the 30-point rubric; both must pass 22+ with Audio ≥ 4. Pass → v1.4 is the production standard.
-4. **Content buildout (Phase 2 of North Star):** series-first, honoring the Series Release Rule — 5–7 short series (3 eps, published complete), 2 flagship series (5–7 eps), 8–10 standalones with bridge lines, every major genre covered.
+4. **Content buildout (Phase 2 of North Star):** series-first, honoring the sequential series gate (Rule 3) — 5–7 short series (3 eps), 2 flagship series (5–7 eps), 8–10 standalones with bridge lines, every major genre covered.
 5. **Autoplay next episode** built before beta ends — it is a launch gate.
 6. **Beta:** 25–50 founding members at $2.99; collect critiques; build drop-off analytics once listeners exist.
 7. **Public launch** when beta listens are reliable and complaint-free. Then paid ad testing per North Star CAC targets ($20–40 initial, <$15 long-term); never scale ads without a repeatable winning campaign.

@@ -63,7 +63,7 @@ IS_FINALE: false
 ~~~
 *(Options: `true` | `false`)*
 
-> **Series Release Rule reminder:** Episode 1 never publishes unless Episode 2 is approved and live in the same release. Three-episode series publish complete. Plan the brief batch accordingly.
+> **Sequential series gate (Rule 3) reminder:** episodes run strictly one at a time in order — run, lock, then advance. Plan the brief batch accordingly.
 
 ---
 
@@ -322,7 +322,7 @@ SERIES_CLIFFHANGER_CHAIN:
   ...  [one line per non-finale episode — REQUIRED before Ep1 production]
 ~~~
 
-Preferred series lengths: 3, 5, 7, or 13 episodes (others need Marc's explicit approval). Remember the Series Release Rule: Ep1 never publishes without Ep2 live; 3-episode series publish complete.
+Preferred series lengths: 3, 5, 7, or 13 episodes (others need Marc's explicit approval). Remember the sequential series gate (Rule 3): episodes run one at a time in order.
 
 ## PART 7 — NEDS PRE-SCORE (the brief gate)
 
