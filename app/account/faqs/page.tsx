@@ -26,6 +26,10 @@ const faqs: FAQ[] = [
     question: "How do I invite a friend?",
     answer: "Sharing is easy! Go to Account > Invite a Friend, and you'll find a link you can send via text, email, or any app. Your friend gets to check out Endless Tales, and you'll both feel great about it. The more the merrier — great stories are even better when shared.",
   },
+  {
+    question: "How do I play a story without an internet connection?",
+    answer: "Tap '+ Queue' on any story or series. It's automatically downloaded and added to Your Playlist for offline listening — no extra steps. Manage or remove downloads anytime from the blue 'My Downloads' button.",
+  },
 ];
 
 export default function FAQsPage() {

@@ -9,7 +9,6 @@ import { trackPlayStart, trackPlayEnd, trackSpuriousEndedRecovered, type PlaySta
 import { useAuth } from '@/contexts/AuthContext'
 import ReviewModal from '@/components/ReviewModal'
 import InstallAppBanner from '@/components/InstallAppBanner'
-import DownloadButton from '@/components/offline/DownloadButton'
 import { requestInstallReoffer } from '@/lib/installReoffer'
 import { welcomeClipCompleted } from '@/lib/welcomePlayback'
 import {
@@ -17,6 +16,10 @@ import {
   setMediaPosition, updateMediaTrack, MEDIA_ALBUM, SEEK_BACKWARD_SECONDS, SEEK_FORWARD_SECONDS, type MediaActionHandlers,
 } from '@/lib/mediaSession'
 import { isEntitled } from '@/lib/entitlement'
+// QUEUE-OFFLINE-001 (Marc, 2026-10-04): playlist-mode "started" flag (Play -> Continue)
+// and per-episode cleanup once an episode finishes (removed from playlist + offline store).
+import { markPlaylistStarted, removeEpisodeFromActivePlaylist } from '@/lib/playlistState'
+import { deleteEpisode } from '@/lib/offline/store'
 import type { AutoAdvanceCandidate, AutoAdvanceDisabledReason, PlayerMode, PlayerStory } from './playerTypes'
 import { clearLocalPlayerProgress, getLocalPlayerProgress, mergePlayerProgress, saveLocalPlayerProgress } from '@/lib/playerProgress'
 import { MONTHLY_PRICE_LABEL } from '@/lib/pricing'
@@ -185,6 +188,11 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
   const proseSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const proseResumeAppliedRef = useRef(false)
   const proseLastSavedKeyRef = useRef('')
+  // Marc 2026-10-04: "Read eBook" buttons on the series/single-story detail
+  // pages navigate here with ?openReader=1 instead of reimplementing this
+  // reader — this is the one canonical prose reader. Guard ref so it only
+  // auto-opens once per navigation, not on every proseAvailable re-render.
+  const openReaderAppliedRef = useRef(false)
   const [seriesBookTitle, setSeriesBookTitle] = useState('')
   const [seriesProseChapters, setSeriesProseChapters] = useState<Array<{ id: string; title: string; episode_number: number; prose_text: string }>>([])
   const [authorData, setAuthorData]   = useState<any | null>(null)
@@ -840,7 +848,14 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
 
     // Playlist mode has its own advance path — not series continuation
     if (mode === 'playlist') {
-      localStorage.removeItem('dtt_active_playlist')
+      // QUEUE-OFFLINE-001 (Marc, 2026-10-04): a finished episode comes off the
+      // playlist and its offline copy is deleted — not the whole saved playlist.
+      // (Previously this unconditionally wiped dtt_active_playlist in full.)
+      // removeEpisodeFromActivePlaylist already clears dtt_active_playlist itself
+      // when the last item is removed — don't blindly wipe it after, or any
+      // other still-queued stories would be lost along with this episode.
+      try { removeEpisodeFromActivePlaylist(storyId, user?.id || null) } catch {}
+      deleteEpisode(storyId).catch(() => {})
       localStorage.removeItem('dtt_playlist_index')
       isAdvancingRef.current = false
       setCatalogExhausted(true)
@@ -1497,6 +1512,10 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
           setIsPlaying(true)
           setAutoplayBlocked(false)
           startAnalyticsSession(autoStartSource)
+          // QUEUE-OFFLINE-001 (Marc, 2026-10-04): the home-card "Play" button
+          // lands here (autoplay=1&playlist=1), not handlePlayPause — mark
+          // "started" here too, or Continue never appears after a pause.
+          if (mode === 'playlist') markPlaylistStarted()
         })
         .catch((error) => {
           console.warn('[player] series continuation autoplay blocked:', error)
@@ -1719,6 +1738,10 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
         setIsPlaying(true)
         setAutoplayBlocked(false)
         setShowSeriesContinueOverlay(false)
+        // QUEUE-OFFLINE-001 (Marc, 2026-10-04): mark the playlist "started" once
+        // playback actually begins, so the Your Playlist card shows Continue
+        // instead of Play after the user has played then paused.
+        if (mode === 'playlist') markPlaylistStarted()
         if (!user && !sessionStartRef.current) { sessionStartRef.current = Date.now() }
         if (user?.id) supabase.from('user_library').upsert({ user_id: user.id, story_id: storyId, not_for_me: false, last_played: new Date().toISOString() }, { onConflict: 'user_id,story_id' }).then(() => {})
         // Analytics: track play start (only once per session) — user-gesture path
@@ -2032,6 +2055,20 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
   useEffect(() => {
     if (activeModal !== 'prose') proseResumeAppliedRef.current = false
   }, [activeModal])
+
+  // Marc 2026-10-04 (UI-CARDS-EBOOK-NAV): "Read eBook" on the series page and
+  // single-story detail page both navigate to /player/{id}?openReader=1
+  // rather than forking a second reader implementation. Opens the existing
+  // prose modal once the story/series prose has loaded; does nothing if the
+  // param is absent or there's no prose to show.
+  useEffect(() => {
+    if (openReaderAppliedRef.current) return
+    const params = new URLSearchParams(window.location.search)
+    if (params.get('openReader') !== '1') return
+    if (!proseAvailable) return
+    openReaderAppliedRef.current = true
+    setActiveModal('prose')
+  }, [proseAvailable])
 
   useEffect(() => {
     if (!proseAvailable || totalProseParagraphs <= 0) return
@@ -2663,8 +2700,10 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
           )}
           <h1 style={{ fontSize: playerSeriesTitle ? '18px' : '20px', fontWeight:800, margin:0, color:'white', textAlign:'center', lineHeight:1.2 }}>{story.title}</h1>
           <p style={{ color:'white', fontSize:'13px', margin:'3px 0 0', textAlign:'center', opacity:0.7 }}>by {story.author || 'Endless Tales'}</p>
-          {/* OFFLINE-DL-001: download this episode for no-signal playback */}
-          <DownloadButton storyId={storyId} />
+          {/* QUEUE-OFFLINE-001 (Marc, 2026-10-04): manual per-episode download
+              button removed — queueing a story now auto-saves it offline
+              (see lib/offline/queueDownload.ts). Manage/remove saved
+              episodes from the "My Downloads" page in the header. */}
           {/* Segment progress indicator removed — internal pipeline detail, not user-facing */}
           {/* Now Playing overlay — shown during playlist advance */}
           {nowPlayingLabel && (
@@ -3037,17 +3076,17 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
                     >
                       {isSeriesReadIt ? (
                         <>
-                          <h1 style={{ fontSize: proseFontSize + 9 + 'px', lineHeight: 1.12, color: proseDark ? '#f8f1e7' : '#1a1a1a', margin:'0 0 28px', letterSpacing:0, fontWeight:700 }}>{proseBookTitle}</h1>
+                          <h1 style={{ fontSize: proseFontSize + 9 + 'px', lineHeight: 1.12, color: proseDark ? 'white' : '#1a1a1a', margin:'0 0 28px', letterSpacing:0, fontWeight:700 }}>{proseBookTitle}</h1>
                           {seriesProseSections.map((chapter, chapterIndex) => (
                             <section key={chapter.id} style={{ marginTop: chapterIndex === 0 ? 0 : 42, paddingTop: chapterIndex === 0 ? 0 : 28, borderTop: chapterIndex === 0 ? 'none' : proseDark ? '1px solid rgba(255,255,255,0.09)' : '1px solid rgba(0,0,0,0.12)' }}>
                               <div style={{ fontFamily:'Inter, system-ui, sans-serif', fontSize:'11px', fontWeight:900, color: proseDark ? '#fb923c' : '#9a3412', letterSpacing:'0.12em', textTransform:'uppercase', marginBottom:8 }}>
                                 Chapter {chapterIndex + 1}
                               </div>
-                              <h2 style={{ fontSize: proseFontSize + 5 + 'px', lineHeight:1.18, color: proseDark ? '#f8f1e7' : '#1a1a1a', margin:'0 0 22px', letterSpacing:0, fontWeight:700 }}>
+                              <h2 style={{ fontSize: proseFontSize + 5 + 'px', lineHeight:1.18, color: proseDark ? 'white' : '#1a1a1a', margin:'0 0 22px', letterSpacing:0, fontWeight:700 }}>
                                 {chapter.title}
                               </h2>
                               {chapter.paragraphs.map((para: string, i: number) => (
-                                <p key={`${chapter.id}-${i}`} data-para-index={chapter.startIndex + i} style={{ fontSize: proseFontSize + 'px', lineHeight:1.85, color: proseDark ? '#e2d9c8' : '#2c2c2c', margin:'0 0 20px', textIndent: i === 0 ? 0 : '1.5em', letterSpacing:'0.01em' }}>{para}</p>
+                                <p key={`${chapter.id}-${i}`} data-para-index={chapter.startIndex + i} style={{ fontSize: proseFontSize + 'px', lineHeight:1.85, color: proseDark ? 'white' : '#2c2c2c', margin:'0 0 20px', textIndent: i === 0 ? 0 : '1.5em', letterSpacing:'0.01em' }}>{para}</p>
                               ))}
                             </section>
                           ))}
@@ -3057,13 +3096,13 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
                           const first = para.charAt(0)
                           const rest  = para.slice(1)
                           return (
-                            <p key={0} data-para-index={i} style={{ fontSize: proseFontSize + 'px', lineHeight:1.85, color: proseDark ? '#e2d9c8' : '#2c2c2c', margin:'0 0 20px', letterSpacing:'0.01em', overflow:'hidden' }}>
-                              <span style={{ float:'left', fontSize:(proseFontSize * 3.6) + 'px', lineHeight:0.82, fontWeight:700, color: proseDark ? '#e2d9c8' : '#1a1a1a', marginRight:'5px', marginTop:'4px', fontFamily:'Literata, Georgia, serif' }}>{first}</span>
+                            <p key={0} data-para-index={i} style={{ fontSize: proseFontSize + 'px', lineHeight:1.85, color: proseDark ? 'white' : '#2c2c2c', margin:'0 0 20px', letterSpacing:'0.01em', overflow:'hidden' }}>
+                              <span style={{ float:'left', fontSize:(proseFontSize * 3.6) + 'px', lineHeight:0.82, fontWeight:700, color: proseDark ? 'white' : '#1a1a1a', marginRight:'5px', marginTop:'4px', fontFamily:'Literata, Georgia, serif' }}>{first}</span>
                               {rest}
                             </p>
                           )
                         }
-                        return <p key={i} data-para-index={i} style={{ fontSize: proseFontSize + 'px', lineHeight:1.85, color: proseDark ? '#e2d9c8' : '#2c2c2c', margin:'0 0 20px', textIndent:'1.5em', letterSpacing:'0.01em' }}>{para}</p>
+                        return <p key={i} data-para-index={i} style={{ fontSize: proseFontSize + 'px', lineHeight:1.85, color: proseDark ? 'white' : '#2c2c2c', margin:'0 0 20px', textIndent:'1.5em', letterSpacing:'0.01em' }}>{para}</p>
                       })}
                     </div>
 

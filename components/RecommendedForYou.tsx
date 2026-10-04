@@ -5,6 +5,7 @@ import { useAuth } from '@/contexts/AuthContext'
 import { useRouter } from 'next/navigation'
 import LibraryStoryCard from '@/components/LibraryStoryCard'
 import { buildSeriesPlaybackTarget } from '@/lib/seriesPlayback'
+import { downloadQueuedItemOffline, removeQueuedItemOffline, type QueueDownloadTarget } from '@/lib/offline/queueDownload'
 
 interface Story {
   id: string; title: string; genre: string; author: string
@@ -42,7 +43,7 @@ function isLaunchInventory(story: Story) {
 }
 
 export default function RecommendedForYou({ excludeIds = [] }: { excludeIds?: string[] }) {
-  const { user } = useAuth()
+  const { user, session } = useAuth()
   const router = useRouter()
   const [displayItems, setDisplayItems] = useState<DisplayItem[]>([])
   const [loading, setLoading] = useState(true)
@@ -68,7 +69,10 @@ export default function RecommendedForYou({ excludeIds = [] }: { excludeIds?: st
     }
   }, [playlistKey])
 
-  function togglePlaylist(key: string) {
+  // QUEUE-OFFLINE-001 (Marc, 2026-10-04): same auto-download-on-queue
+  // behavior as Library — one shared queue, one shared rule.
+  function togglePlaylist(key: string, target: QueueDownloadTarget) {
+    const adding = !playlist.includes(key)
     setPlaylist(prev => {
       const next = prev.includes(key) ? prev.filter(k => k !== key) : [...prev, key]
       try {
@@ -77,6 +81,14 @@ export default function RecommendedForYou({ excludeIds = [] }: { excludeIds?: st
       } catch {}
       return next
     })
+
+    if (adding) {
+      if (user && session?.access_token) {
+        downloadQueuedItemOffline(target, { accessToken: session.access_token, firstName: (user as any)?.first_name || null }).catch(() => {})
+      }
+    } else {
+      removeQueuedItemOffline(target).catch(() => {})
+    }
   }
 
   useEffect(() => { load() }, [user?.id, excludeIds.join(',')])
@@ -278,7 +290,8 @@ export default function RecommendedForYou({ excludeIds = [] }: { excludeIds?: st
                 state={{ inPlaylist: playlist.includes(key), progress: 0, completed: false, isNotForMe: false, reviewed: false }}
                 onPlay={() => { if (playId) router.push(`/player/${playId}?autoplay=1&playNow=1`) }}
                 onCoverClick={() => router.push(`/series/${g.id}`)}
-                onTogglePlaylist={() => togglePlaylist(key)}
+                onTogglePlaylist={() => togglePlaylist(key, { type: 'series', episodeIds: g.episodes.map((e) => e.id) })}
+                onMoreInfo={() => router.push(`/series/${g.id}`)}
                 onRate={() => {}}
               />
             )
@@ -302,7 +315,8 @@ export default function RecommendedForYou({ excludeIds = [] }: { excludeIds?: st
               state={{ inPlaylist: playlist.includes(key), progress: 0, completed: false, isNotForMe: false, reviewed: false }}
               onPlay={() => router.push(`/player/${st.id}?autoplay=1&playNow=1`)}
               onCoverClick={() => router.push(`/player/${st.id}?autoplay=1&playNow=1`)}
-              onTogglePlaylist={() => togglePlaylist(key)}
+              onTogglePlaylist={() => togglePlaylist(key, { type: 'single', id: st.id })}
+              onMoreInfo={() => router.push(`/story/${st.id}`)}
               onRate={() => {}}
             />
           )
