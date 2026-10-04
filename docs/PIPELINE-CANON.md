@@ -35,7 +35,7 @@ Prior standing rules referenced throughout remain in force and are not contradic
 | PIPELINE-CANON-001 · Rule 2 | Quality Gates Block, Not Warn | APPROVED | 2026-10-04 |
 | PIPELINE-CANON-001 · Rule 3 | Episode Strict-Ordering / Sequential Gate | APPROVED | 2026-10-04 |
 | PIPELINE-CANON-001 · Rule 4 | Publish-Mode Switch (initial `direct`, option A) | APPROVED | 2026-10-04 |
-| EPISODE-ADDITION RULE | Episodes Publish Complete, As One Unit | **PENDING MARC SIGN-OFF — not yet effective** | — |
+| EPISODE-ADDITION RULE | Episodes Publish Complete, As One Unit | APPROVED | 2026-10-04 |
 | EPISODE-NUMBERING RULE | Start at 1, Count Up, No Gaps, No Zero | APPROVED | 2026-10-04 |
 
 ---
@@ -206,8 +206,8 @@ In `rfr` mode, the ear-gate is pre-live as today.
 
 # EPISODE-ADDITION RULE
 
-**Status: PENDING MARC SIGN-OFF — not yet effective.** Ordered by Marc 2026-10-04 11:52 EDT.
-Included here for completeness; it changes nothing and is not standing law until Marc signs.
+**Status: APPROVED 2026-10-04, effective now.** Ordered by Marc 2026-10-04 11:52 EDT.
+Standing pipeline law in the same five-part format as PIPELINE-CANON-001 Rules 1–4.
 
 ### Statement
 
