@@ -297,6 +297,7 @@ type RowActionHandlers = {
   rowBusy: Record<string, boolean>
   rowError: Record<string, string>
   onGenreChange: (storyId: string, genre: string) => void
+  onSeriesGenreChange: (seriesId: string, storyIds: string[], genre: string) => void
   onRemoveToRfR: (story: PublishedStory) => void
   onSendToColdStorage: (story: PublishedStory) => void
 }
@@ -319,6 +320,7 @@ function PublishedRowView({ row, expanded, onToggle, actions }: { row: Published
               <div style={{ color: textPrimary, fontWeight: 800, fontSize: '13px' }}>{isSeries ? row.title : displayTitle(story)}</div>
               {isSeries && <div style={{ color: textSecondary, fontSize: '11px', marginTop: '2px' }}>{row.stories.length} episodes</div>}
               {!isSeries && story.title !== displayTitle(story) && <div style={{ color: textSecondary, fontSize: '11px', marginTop: '2px' }}>{story.title}</div>}
+              {isSeries && actions.rowError[row.seriesId] && <div style={{ color: '#b91c1c', fontSize: '11px', marginTop: '2px', fontWeight: 700 }}>{actions.rowError[row.seriesId]}</div>}
               {!isSeries && actions.rowError[story.id] && <div style={{ color: '#b91c1c', fontSize: '11px', marginTop: '2px', fontWeight: 700 }}>{actions.rowError[story.id]}</div>}
             </div>
           </div>
@@ -326,7 +328,14 @@ function PublishedRowView({ row, expanded, onToggle, actions }: { row: Published
         <td style={tdStyle}>{isSeries ? 'Series' : 'Standalone'}</td>
         <td style={tdStyle}>
           {isSeries
-            ? (story.genre || '—')
+            ? (
+              <GenreSelect
+                story={story}
+                genreOptions={actions.genreOptions}
+                busy={Boolean(actions.rowBusy[row.seriesId])}
+                onChange={g => actions.onSeriesGenreChange(row.seriesId, row.stories.map(s => s.id), g)}
+              />
+            )
             : <GenreSelect story={story} genreOptions={actions.genreOptions} busy={Boolean(actions.rowBusy[story.id])} onChange={g => actions.onGenreChange(story.id, g)} />}
         </td>
         <td style={tdStyle}>{story.author || '—'}</td>
@@ -349,9 +358,7 @@ function PublishedRowView({ row, expanded, onToggle, actions }: { row: Published
             {actions.rowError[episode.id] && <div style={{ color: '#b91c1c', fontSize: '11px', marginTop: '2px', fontWeight: 700 }}>{actions.rowError[episode.id]}</div>}
           </td>
           <td style={tdStyle}>Episode</td>
-          <td style={tdStyle}>
-            <GenreSelect story={episode} genreOptions={actions.genreOptions} busy={Boolean(actions.rowBusy[episode.id])} onChange={g => actions.onGenreChange(episode.id, g)} />
-          </td>
+          <td style={tdStyle}>{episode.genre || '—'}</td>
           <td style={tdStyle}>{episode.author || '—'}</td>
           {columns.slice(4).map(column => <td key={column.key} style={{ ...tdStyle, textAlign: 'right' }}>{metricCell(episode, column.key)}</td>)}
           <td style={tdStyle}>
@@ -434,6 +441,33 @@ export default function PublishedStoriesPage() {
       setRowErrorMessage(storyId, err instanceof Error ? err.message : 'Genre update failed')
     } finally {
       setBusy(storyId, false)
+    }
+  }
+
+  async function handleSeriesGenreChange(seriesId: string, storyIds: string[], genre: string) {
+    setRowErrorMessage(seriesId, '')
+    setBusy(seriesId, true)
+    // A series shares one genre across all its episodes, so this updates every
+    // episode's story row, not just the one the dropdown lives on.
+    const previous = new Map(storyIds.map(id => [id, stories.find(s => s.id === id)?.genre ?? null]))
+    setStories(prev => prev.map(s => storyIds.includes(s.id) ? { ...s, genre } : s))
+    try {
+      for (const storyId of storyIds) {
+        const res = await fetch('/api/admin/update-story-genre', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ storyId, genre }),
+        })
+        const result = await res.json().catch(() => ({}))
+        if (!res.ok || !result.success) {
+          throw new Error(result.error || `Genre update failed (HTTP ${res.status})`)
+        }
+      }
+    } catch (err) {
+      setStories(prev => prev.map(s => previous.has(s.id) ? { ...s, genre: previous.get(s.id) ?? null } : s))
+      setRowErrorMessage(seriesId, err instanceof Error ? err.message : 'Genre update failed for one or more episodes')
+    } finally {
+      setBusy(seriesId, false)
     }
   }
 
@@ -634,6 +668,7 @@ export default function PublishedStoriesPage() {
                   rowBusy,
                   rowError,
                   onGenreChange: handleGenreChange,
+                  onSeriesGenreChange: handleSeriesGenreChange,
                   onRemoveToRfR: handleRemoveToRfR,
                   onSendToColdStorage: handleSendToColdStorage,
                 }}
