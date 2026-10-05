@@ -213,6 +213,13 @@ export async function POST(req: NextRequest) {
     const session = await stripe.checkout.sessions.create({
       customer: customerId,
       payment_method_types: ['card'],
+      // CARD-ON-FILE-001 (2026-10-05, Marc GO): card-on-file is now the STANDARD
+      // for every signup funnel. 'always' forces Stripe Checkout to capture a
+      // payment method even though the subscription starts in a trial — without
+      // it, Stripe's default for a 100%-off/trial session can skip card capture
+      // and we'd be back to a no-card trial. This is the single line that makes
+      // the trial auto-charge at trial end (via subscription_data.trial_period_days).
+      payment_method_collection: 'always',
       line_items: [
         {
           price: priceId,
