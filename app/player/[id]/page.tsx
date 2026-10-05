@@ -9,8 +9,14 @@ function PlayerContent() {
   const searchParams = useSearchParams()
   const storyId = params.id as string
   const resumeParam = searchParams.get('resume')
+  // MARC-PLAYLIST-AUTOADVANCE-001 (2026-10-05): a playlist's auto-advance
+  // navigates here (not /player/playlist) so the dynamic [id] segment changes
+  // and the player actually re-mounts for the next episode/story. Without
+  // this, landing here always forced mode="story" and dropped playlist
+  // queue tracking the moment one episode finished.
+  const isPlaylist = searchParams.get('playlist') === '1'
 
-  return <CanonicalPlayer storyId={storyId} resumeParam={resumeParam} mode="story" />
+  return <CanonicalPlayer storyId={storyId} resumeParam={resumeParam} mode={isPlaylist ? 'playlist' : 'story'} />
 }
 
 export default function PlayerPage() {
