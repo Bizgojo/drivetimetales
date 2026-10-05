@@ -167,12 +167,28 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
   // trialWallVisible: true when the wall overlay is shown
   const [trialWallVisible, setTrialWallVisible] = useState(false)
   // trialWallType: which wall variant ('standalone' = 60s cutoff, 'series_ep1_end' = full EP1 played,
-  // 'series_ep2plus' = blocked immediately)
-  const [trialWallType, setTrialWallType] = useState<'standalone' | 'series_ep1_end' | 'series_ep2plus' | null>(null)
+  // 'series_ep2plus' = blocked immediately).
+  // GO-REROUTE-V2 (Marc, 2026-10-05): 'onboard_card_capture' is a NEW, DISTINCT
+  // variant — it is NOT a lapsed-user wall. It fires for an in-trial onboarding
+  // user with NO card on file when they finish EP2, and its CTA starts hosted
+  // Checkout to vault a card. All existing lapsed-user variants above are
+  // untouched; this one never changes their trigger or copy.
+  const [trialWallType, setTrialWallType] = useState<'standalone' | 'series_ep1_end' | 'series_ep2plus' | 'onboard_card_capture' | null>(null)
   // Belle audio URL for the wall (loaded asynchronously — wall shows immediately without it)
   const [belleWallAudioUrl, setBelleWallAudioUrl] = useState<string | null>(null)
   const belleWallAudioRef = useRef<HTMLAudioElement | null>(null)
   const trialWallFiredRef = useRef(false) // prevent duplicate 60s triggers
+
+  // GO-REROUTE-V2: onboarding no-card detection + card-wall state.
+  // noCardTrialRef is true ONLY for an in-trial user who signed up email-only at
+  // /go (subscription_type === 'trial', no stripe_subscription_id) — i.e. no card
+  // vaulted yet. Set during load() from the same users-table read that decides
+  // access. Card-on-file users (subscription_type 'active' / stripe_subscription_id
+  // present) leave this false, so they NEVER see the card wall.
+  const noCardTrialRef = useRef(false)
+  const onboardCardWallFiredRef = useRef(false) // prevent duplicate EP2-end fires
+  const [onboardCheckoutError, setOnboardCheckoutError] = useState(false)
+  const [onboardCheckoutPending, setOnboardCheckoutPending] = useState(false)
 
   // ── Pills state ────────────────────────────────────────────────────────────
   const [activeModal, setActiveModal] = useState<'author' | 'narrator' | 'prose' | null>(null)
@@ -821,6 +837,91 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
     }
   }
 
+  // ── GO-REROUTE-V2: EP2-end card-capture wall ──────────────────────────────
+  // Marc (2026-10-05): the card ask moved from the up-front /go wall to AFTER the
+  // EP2 taste. A brand-new onboarding user (arrived at EP2 via ?onboard=1,
+  // in-trial, NO card on file) who reaches the END of EP2 is at peak intent —
+  // show the EXISTING trial-wall overlay with a card-capture CTA that starts
+  // hosted Checkout to vault a card, converting an email-only trial into a
+  // card-on-file trial.
+  //
+  // This reuses the POST-TRIAL-BELLE-001 overlay via a NEW trialWallType
+  // ('onboard_card_capture'). It is a DIFFERENT trigger from the lapsed-user
+  // walls: lapsed = trial ENDED; this = in-trial, no-card, EP2 just completed.
+  // The lapsed paths ('standalone'/'series_ep1_end'/'series_ep2plus') are never
+  // touched by this code.
+  //
+  // Returns true if it fired the card wall (so callers skip auto-advance).
+  //
+  // ▼▼▼ SINGLE ADJUSTABLE TRIGGER POINT ▼▼▼
+  // Default policy (this build) = fire at EP2 natural end.
+  // STRATEGOS RECOMMENDATION (2026-10-05, logged): move the ask to the EP2→EP3
+  // CLIFFHANGER rather than flat EP2-end — ride the unresolved hook (30s-hook
+  // canon + 75% retention = narrative pull converts curiosity→card better than a
+  // flat "trial over", and far better than a mid-EP2 pct interrupt). Pending Marc.
+  // Make-or-break metric = EP2-reach (68% never activated); the gate must be paired
+  // with reach-driving reminders or B is structurally capped at the EP2-reach rate.
+  // To change WHEN it fires, change only where maybeFireOnboardCardWall() is CALLED
+  // (the two natural-end sites) and/or the eligibility predicate below — the wall
+  // UI and checkout handler stay the same.
+  const maybeFireOnboardCardWall = (): boolean => {
+    // Eligibility (ALL must hold):
+    //  - isOnboardingRef: this player session is the EP2 onboarding landing
+    //    (?onboard=1). The onboarding flow only ever sets ?onboard=1 on the EP2
+    //    player, so this is the "just finished EP2" signal.
+    //  - noCardTrialRef: in-trial user with no card vaulted (see load()).
+    //  - not already fired this session.
+    if (!isOnboardingRef.current) return false
+    if (!noCardTrialRef.current) return false
+    if (onboardCardWallFiredRef.current) return false
+    onboardCardWallFiredRef.current = true
+    setIsPlaying(false)
+    try { audioRef.current?.pause() } catch {}
+    try { musicRef.current?.pause() } catch {}
+    setPlaybackEnded(true)
+    setTrialWallVisible(true)
+    setTrialWallType('onboard_card_capture')
+    return true
+  }
+  // ▲▲▲ SINGLE ADJUSTABLE TRIGGER POINT ▲▲▲
+
+  // GO-REROUTE-V2: card-capture CTA. Auth is ALREADY established here (the user
+  // is logged in in the player), so — unlike the old up-front version — there is
+  // NO magic-token round-trip. We just POST /api/checkout and redirect to the
+  // hosted Checkout url, exactly like app/signup/page.tsx (~214). returnTo sends
+  // them back to the player with onboard disabled (card now on file).
+  const startOnboardCardCheckout = async () => {
+    if (onboardCheckoutPending) return
+    setOnboardCheckoutError(false)
+    setOnboardCheckoutPending(true)
+    try {
+      const res = await fetch('/api/checkout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: user?.id,
+          email: user?.email,
+          source: 'go', // server sets GO_BASE_TRIAL_DAYS for the trial
+          // Land back on this EP2 player with onboarding off (card vaulted).
+          returnTo: `/player/${storyId}?onboard=0`,
+        }),
+      })
+      const data = (await res.json().catch(() => ({}))) as { url?: string }
+      if (res.ok && data.url) {
+        window.location.href = data.url
+        return
+      }
+      // Non-ok / no url — do NOT trap the user: they already have trial access.
+      console.warn('[go-reroute-v2] /api/checkout returned no url; letting user continue', { status: res.status })
+      setOnboardCheckoutError(true)
+    } catch (err) {
+      console.warn('[go-reroute-v2] /api/checkout request failed; letting user continue', err)
+      setOnboardCheckoutError(true)
+    } finally {
+      setOnboardCheckoutPending(false)
+    }
+  }
+
   const maybeAutoAdvanceFromNaturalEnd = async (source: 'natural_ended') => {
     if (source !== 'natural_ended') return
     if (!mountedRef.current) return
@@ -1241,9 +1342,25 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
             // subscribers were bounced to /subscribe from the player.
             const { data: dbUser } = await supabaseBrowser
               .from('users')
-              .select('plan, subscription_type, subscription_ends_at')
+              // GO-REROUTE-V2: also read stripe_subscription_id so we can tell an
+              // email-only /go trial (no card) apart from a card-on-file trial.
+              .select('plan, subscription_type, subscription_ends_at, stripe_subscription_id')
               .eq('id', user.id)
               .single()
+
+            // GO-REROUTE-V2 (Marc, 2026-10-05): detect the "onboarding no-card
+            // trial" user. The /go email-only signup writes subscription_type
+            // 'trial' with NO Stripe subscription (app/api/listen/signup). A user
+            // who went through hosted Checkout instead has subscription_type
+            // 'active' + stripe_subscription_id (set by the Stripe webhook). So a
+            // no-card trial ⇔ type === 'trial' AND no stripe_subscription_id.
+            // This is the ONLY cohort the EP2-end card wall targets — active subs
+            // and card-on-file trials leave this false and never see it.
+            noCardTrialRef.current = (
+              dbUser?.subscription_type === 'trial' &&
+              !dbUser?.stripe_subscription_id
+            )
+
             // ATL-POST-SUB-LOOP-001: also honor the shared entitlement predicate
             // (subscription_type written by the Stripe webhook) so an entitled
             // user with a stale plan value is never bounced to /subscribe.
@@ -1626,6 +1743,9 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
         setTrialWallType('series_ep1_end')
         return
       }
+      // GO-REROUTE-V2: EP2-end card wall for onboarding no-card users (ASC3 path).
+      // Checked AFTER the lapsed branch so lapsed behavior is unchanged.
+      if (maybeFireOnboardCardWall()) return
       // PLAYER-UX-001 (Bug 3): same deferred-playbackEnded pattern as onEnded
       if (!autoAdvanceEnabledRef.current) setPlaybackEnded(true)
       maybeAutoAdvanceFromNaturalEnd('natural_ended')
@@ -2155,7 +2275,9 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
   // The wall is shown IMMEDIATELY on trialWallVisible=true; Belle audio is a non-blocking
   // enhancement. If fetch fails or is slow, the wall still shows its message and button.
   useEffect(() => {
-    if (!trialWallVisible || !trialWallType || trialWallType === 'series_ep2plus') return
+    // GO-REROUTE-V2: 'onboard_card_capture' is an in-trial card ask, NOT a lapsed
+    // wall — it must not fetch/play the lapsed-user Belle wall audio.
+    if (!trialWallVisible || !trialWallType || trialWallType === 'series_ep2plus' || trialWallType === 'onboard_card_capture') return
     const wallKind = trialWallType === 'standalone' ? 'standalone' : 'series'
     let aborted = false
     ;(async () => {
@@ -2511,6 +2633,9 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
               setTrialWallType('series_ep1_end')
               return
             }
+            // GO-REROUTE-V2: EP2-end card wall for onboarding no-card users (final-mix path).
+            // Checked AFTER the lapsed branch so lapsed behavior is unchanged.
+            if (maybeFireOnboardCardWall()) return
             // PLAYER-UX-001 (Bug 3): defer setPlaybackEnded(true) until after the
             // auto-advance check. This prevents the brief "Play Again" interstitial
             // that appeared before auto-advance navigated to the next episode.
@@ -3191,6 +3316,9 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
               ? "That\u2019s a taste of it."
               : trialWallType === 'series_ep1_end'
               ? "That\u2019s where episode one ends."
+              : trialWallType === 'onboard_card_capture'
+              // GO-REROUTE-V2: EP2-end card ask (in-trial onboarding, no card yet)
+              ? "You\u2019re two episodes in."
               : "There\u2019s more of this story."}
           </p>
 
@@ -3207,45 +3335,111 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
               ? `Continue listening for ${MONTHLY_PRICE_LABEL}. Cancel anytime.`
               : trialWallType === 'series_ep1_end'
               ? `There\u2019s more of this story. Continue for ${MONTHLY_PRICE_LABEL}.`
+              : trialWallType === 'onboard_card_capture'
+              // GO-REROUTE-V2: keep the trial, add a card so it continues
+              // seamlessly. They already have access — this is an upgrade ask,
+              // not a block.
+              ? (onboardCheckoutError
+                  ? "We couldn\u2019t open checkout just now — your trial is still active. You can keep listening and add a card later."
+                  : `Add a card to keep the story going after your free trial — ${MONTHLY_PRICE_LABEL} after it ends. Cancel anytime.`)
               : "Subscribe to unlock the rest of this series and everything in the library."}
           </p>
 
-          {/* Subscribe button — always visible, never disabled */}
-          <a
-            href="/subscribe"
-            style={{
-              display: 'block',
-              width: '100%',
-              maxWidth: '320px',
-              padding: '18px 24px',
-              background: '#f97316',
-              color: 'white',
-              fontSize: '17px',
-              fontWeight: 800,
-              borderRadius: '14px',
-              textDecoration: 'none',
-              textAlign: 'center',
-              marginBottom: '16px',
-            }}
-          >
-            Start Your Free Week
-          </a>
+          {/* GO-REROUTE-V2: card-capture CTA fires hosted Checkout in-session
+              (user is already authenticated here). Every other wall type keeps
+              the original /subscribe link — untouched. */}
+          {trialWallType === 'onboard_card_capture' ? (
+            <>
+              <button
+                onClick={() => { void startOnboardCardCheckout() }}
+                disabled={onboardCheckoutPending}
+                data-testid="onboard-card-cta"
+                style={{
+                  display: 'block',
+                  width: '100%',
+                  maxWidth: '320px',
+                  padding: '18px 24px',
+                  background: '#f97316',
+                  color: 'white',
+                  fontSize: '17px',
+                  fontWeight: 800,
+                  borderRadius: '14px',
+                  border: 'none',
+                  textAlign: 'center',
+                  marginBottom: '16px',
+                  cursor: onboardCheckoutPending ? 'default' : 'pointer',
+                  opacity: onboardCheckoutPending ? 0.7 : 1,
+                }}
+              >
+                {onboardCheckoutPending
+                  ? 'Opening checkout\u2026'
+                  : onboardCheckoutError
+                  ? 'Try again'
+                  : 'Add a card & keep listening'}
+              </button>
 
-          {/* Back link */}
-          <button
-            onClick={() => { disableAutoAdvanceForSession('navigation'); returnToSource('/library') }}
-            style={{
-              background: 'transparent',
-              border: 'none',
-              color: 'rgba(255,255,255,0.45)',
-              fontSize: '13px',
-              fontWeight: 600,
-              cursor: 'pointer',
-              padding: '8px',
-            }}
-          >
-            Back to Library
-          </button>
+              {/* Graceful escape: they ALREADY have trial access, so a checkout
+                  outage must never trap them. Dismiss the wall and let them
+                  continue (e.g. to the next episode / library). */}
+              <button
+                onClick={() => {
+                  setTrialWallVisible(false)
+                  disableAutoAdvanceForSession('navigation')
+                  returnToSource('/home')
+                }}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  color: 'rgba(255,255,255,0.45)',
+                  fontSize: '13px',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  padding: '8px',
+                }}
+              >
+                Not now — keep my free trial
+              </button>
+            </>
+          ) : (
+            <>
+              {/* Subscribe button — always visible, never disabled */}
+              <a
+                href="/subscribe"
+                style={{
+                  display: 'block',
+                  width: '100%',
+                  maxWidth: '320px',
+                  padding: '18px 24px',
+                  background: '#f97316',
+                  color: 'white',
+                  fontSize: '17px',
+                  fontWeight: 800,
+                  borderRadius: '14px',
+                  textDecoration: 'none',
+                  textAlign: 'center',
+                  marginBottom: '16px',
+                }}
+              >
+                Start Your Free Week
+              </a>
+
+              {/* Back link */}
+              <button
+                onClick={() => { disableAutoAdvanceForSession('navigation'); returnToSource('/library') }}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  color: 'rgba(255,255,255,0.45)',
+                  fontSize: '13px',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  padding: '8px',
+                }}
+              >
+                Back to Library
+              </button>
+            </>
+          )}
 
           {/* Belle audio plays once URL arrives — audio element is handled by the
               belleWallAudioUrl useEffect above; nothing to render here. */}
