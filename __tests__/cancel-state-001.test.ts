@@ -46,8 +46,11 @@ describe('call sites', () => {
     expect(src).toContain("import { resolveCancelledAt } from '@/lib/cancelState'")
     expect(src).toContain('const cancelledAtSu = resolveCancelledAt(subscription)')
     expect(src).toContain('cancelled_at: cancelledAtSu,')
-    // Still active until the period ends.
-    expect(src).toContain("subscription_type: isActive ? 'active' : null,")
+    // Still active until the period ends. CARD-ON-FILE-001 renamed the access
+    // gate from isActive → keepsAccess (now also keeps access during past_due);
+    // a pending cancellation is still an access-preserving status, so
+    // subscription_type stays 'active' here.
+    expect(src).toContain("subscription_type: keepsAccess ? 'active' : null,")
   })
   it('a fresh activation still clears cancelled_at', () => {
     expect(read('app/api/webhook/route.ts')).toContain('cancelled_at: null,')
