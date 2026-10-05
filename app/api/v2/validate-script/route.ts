@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import Anthropic from '@anthropic-ai/sdk'
 import { logAnthropicCall } from '@/app/lib/anthropic-logger'
+import { validateCardCopy, extractHeader } from '@/lib/validateCardCopy'
 
 export const runtime = 'nodejs'
 
@@ -15,52 +16,8 @@ function bad(message: string, status = 400) {
   return NextResponse.json({ success: false, error: message }, { status })
 }
 
-const TITLE_MAX_CHARS = 28
-const DESCRIPTION_MAX_CHARS = 70
-const DESCRIPTION_PAST_TENSE_RE = /\b(vanished|was|were|had|found|discovered|left|moved|sealed|signed|forged|buried|hidden)\b/i
-
-function countWords(s: string) {
-  return s.trim().split(/\s+/).filter(Boolean).length
-}
-
-function extractHeader(script: string, key: string): string {
-  const m = script.match(new RegExp(`^${key}:\\s*(.+)$`, 'm'))
-  return m?.[1]?.trim() || ''
-}
-
 function normalizeHeaderValue(value: string): string {
   return value.trim().replace(/\s+/g, ' ')
-}
-
-function validateCardCopy(script: string) {
-  const title = extractHeader(script, 'TITLE')
-  const description = extractHeader(script, 'DESCRIPTION')
-  const issues: string[] = []
-  const titleWords = countWords(title)
-
-  if (!title) {
-    issues.push('TITLE is required.')
-  } else {
-    if (titleWords < 1 || titleWords > 5) {
-      issues.push(`TITLE must be 1 to 5 words. Current: ${titleWords} words.`)
-    }
-    if (title.length > TITLE_MAX_CHARS) {
-      issues.push(`TITLE must be ${TITLE_MAX_CHARS} characters or fewer so it fits one line on story cards. Current: ${title.length} characters.`)
-    }
-  }
-
-  if (!description) {
-    issues.push('DESCRIPTION is required.')
-  } else {
-    if (description.length > DESCRIPTION_MAX_CHARS) {
-      issues.push(`DESCRIPTION must be ${DESCRIPTION_MAX_CHARS} characters or fewer so it fits two lines on story cards. Current: ${description.length} characters.`)
-    }
-    if (DESCRIPTION_PAST_TENSE_RE.test(description)) {
-      issues.push('DESCRIPTION contains forbidden past-tense story-card phrasing.')
-    }
-  }
-
-  return issues
 }
 
 const VALIDATOR_PROMPT = `You are validating an Endless Tales production script.
@@ -68,7 +25,7 @@ const VALIDATOR_PROMPT = `You are validating an Endless Tales production script.
 Use the CURRENT rules:
 - Belle B is the announcer.
 - Belle B is never narrator or character.
-- No SFX in the published story body.
+- SFX cues are ALLOWED inside the audio-drama script body. [SFX: ...] lines (e.g. [SFX: a door latch clicking open]) are the intended production format: the audio pipeline parses them into real sound-effect segments. Do NOT fail a script for containing [SFX: ...] lines in the body. The only SFX restriction is that SFX must never appear in the reader-facing DESCRIPTION / story-card text.
 - The title must be 1 to 5 words and 28 characters or fewer.
 - DESCRIPTION must be 70 characters or fewer and present tense only.
 - DESCRIPTION fails if it uses past-tense constructions or past-tense story-card phrasing such as "vanished", "was", "were", "had", "found", "discovered", "left", "moved", "sealed", "signed", "forged", "buried", or "hidden".
