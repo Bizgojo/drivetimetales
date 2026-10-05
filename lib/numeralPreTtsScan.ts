@@ -18,8 +18,11 @@
  *     ("4.6", "13.8", "2,000")
  *   - scale-word / symbol adjacency (million|billion|thousand|hundred|dozen|
  *     percent|°|%) within 2 tokens after a digit hit → included in the span
- *   - Exclusions: HEADER_KEYS block, SUNO PROMPT, years are NOT excluded
- *     (TTS reads "2026" badly too — spell out)
+ *   - Exclusions: HEADER_KEYS block, SUNO PROMPT, version/brand numerals ("2.0"),
+ *     and bare 4-digit years ("1776", "1780", "2026") — see YEAR-DIGITS-001.
+ *     Years are written as digits and pronounced as years by EL default
+ *     normalization ("seventeen seventy-six"), so they PASS. Grouped thousands
+ *     ("2,000"), decimals ("4.6"), and clock-time fragments still fail.
  *   - Segment-granular: reuses parseScriptPositions; reports per parsed voice line
  *
  * v2 reserved: allowlist (unused in v1; e.g. legit model numbers).
@@ -83,6 +86,31 @@ export function isVersionBrandNumeral(span: string): boolean {
   return VERSION_NUMERAL_RE.test(span.trim())
 }
 
+// YEAR-DIGITS-001 (Marc standing rule, 2026-10-05): Years are written as DIGITS
+// and pronounced as years — "1776" is read "seventeen seventy-six", NOT spelled
+// out as "one thousand seven hundred seventy-six". ElevenLabs' default text
+// normalization (eleven_multilingual_v2) reads bare 4-digit year tokens in
+// year-form, so forcing Hal to spell years out (the old gate behavior) was wrong
+// and produced unnatural scripts. A bare 4-digit year token therefore PASSES.
+//
+// Scope is deliberately tight to avoid swallowing non-year quantities:
+//   - exactly 4 digits, no grouping comma, no decimal point
+//   - leading digit 1 or 2 (range 1000–2999) — covers all plausible story years
+//   - NOT part of a larger span (no scale word/symbol folded in)
+// So "2,000" (grouped thousands), "4.6" (decimal), "23"/"48" (clock-time halves,
+// which the scanner already sees as separate 2-digit tokens), "42", "300", and
+// 5-digit+ numbers all still FAIL and must be spelled out.
+const YEAR_NUMERAL_RE = /^[12]\d{3}$/
+
+/**
+ * True when a standalone digit span is a bare 4-digit year (1000–2999). Only the
+ * plain 4-digit integer shape is whitelisted; grouped thousands ("2,000"),
+ * decimals, and clock-time digit fragments are unaffected and still flagged.
+ */
+export function isYearNumeral(span: string): boolean {
+  return YEAR_NUMERAL_RE.test(span.trim())
+}
+
 /**
  * Pure numeral scan over a single spoken text fragment.
  * Returns the list of offending spans (digit numeral + any adjacent scale token).
@@ -129,6 +157,15 @@ export function scanTextForDigitNumerals(text: string): string[] {
     // symbol was attached (e.g. "2.0 million", "2.0%"), it is a real quantity and
     // must still be flagged — so we only short-circuit the untouched "<major>.0" span.
     if (span === match[0] && isVersionBrandNumeral(span)) {
+      continue
+    }
+
+    // YEAR-DIGITS-001: skip bare 4-digit years ("1780", "1987", "2026") only when
+    // the span is the untouched year token with no scale word/symbol folded in.
+    // A scale word/symbol adjacency (e.g. "2000 years", "1900s" folded) would make
+    // span !== match[0] and still flag. Grouped thousands ("2,000") never match
+    // YEAR_NUMERAL_RE because of the comma, so they still fail correctly.
+    if (span === match[0] && isYearNumeral(span)) {
       continue
     }
 
