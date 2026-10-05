@@ -80,12 +80,38 @@ describe('GATE 5 — numeral pre-TTS scan (spec §5)', () => {
     expect(r.failures).toEqual([])
   })
 
-  // ── Years are NOT excluded (spec §5) ───────────────────────────────────────
-  test('years ("2026") are flagged — not excluded in v1', () => {
+  // ── YEAR-DIGITS-001 (Marc standing rule, 2026-10-05) ───────────────────────
+  // Years are written as DIGITS and pronounced as years ("1776" -> "seventeen
+  // seventy-six"). Bare 4-digit years (1000-2999) PASS the gate. This inverts the
+  // old v1 behavior that flagged years.
+  test('bare 4-digit years ("2026", "1776", "1780", "1987") are NOT flagged', () => {
+    expect(scanTextForDigitNumerals('It all began back in 2026, they say.')).toEqual([])
+    expect(scanTextForDigitNumerals('Signed in 1776 by the founders.')).toEqual([])
+    expect(scanTextForDigitNumerals('Alderton Hall was built in 1780.')).toEqual([])
+    expect(scanTextForDigitNumerals('The Burgundy was a 1987.')).toEqual([])
     const script = buildScript(['NARRATOR: It all began back in 2026, they say.'])
     const r = numeralPreTtsScan(script)
-    expect(r.passed).toBe(false)
-    expect(r.failures[0].offendingText).toBe('2026')
+    expect(r.passed).toBe(true)
+    expect(r.failures).toEqual([])
+  })
+
+  test('a year with an adjacent scale word/symbol is STILL flagged (real quantity)', () => {
+    // scale-word adjacency folds the year into a larger span (span !== match[0])
+    // so the year carve-out does not apply — it is a quantity, not a calendar year.
+    expect(scanTextForDigitNumerals('it took 2000 hundred moons')).toEqual(['2000 hundred'])
+    expect(scanTextForDigitNumerals('up 2000 percent')).toEqual(['2000 percent'])
+  })
+
+  test('non-year numbers near the year range are still flagged', () => {
+    // grouped thousands keep the comma so they never match the year shape
+    expect(scanTextForDigitNumerals('about 2,000 people attended')).toEqual(['2,000'])
+    // 3-digit and 5-digit integers are not years
+    expect(scanTextForDigitNumerals('there were 300 of them')).toEqual(['300'])
+    expect(scanTextForDigitNumerals('the ledger showed 19870 entries')).toEqual(['19870'])
+    // out-of-range 4-digit (leading 3+) are not plausible story years
+    expect(scanTextForDigitNumerals('room 3500 down the hall')).toEqual(['3500'])
+    // decimals that happen to start year-like are still flagged
+    expect(scanTextForDigitNumerals('a reading of 1987.5 on the dial')).toEqual(['1987.5'])
   })
 
   // SEEDLIGHT FIX: version/brand numerals ("2.0") are NOT flagged.
