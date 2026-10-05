@@ -408,12 +408,12 @@ export default function PublishedStoriesPage() {
     setRowBusy(prev => ({ ...prev, [storyId]: busy }))
   }
 
-  function setError(storyId: string, message: string) {
+  function setRowErrorMessage(storyId: string, message: string) {
     setRowError(prev => ({ ...prev, [storyId]: message }))
   }
 
   async function handleGenreChange(storyId: string, genre: string) {
-    setError(storyId, '')
+    setRowErrorMessage(storyId, '')
     setBusy(storyId, true)
     // Optimistic local update so the dropdown reflects the pick immediately.
     const previous = stories.find(s => s.id === storyId)?.genre ?? null
@@ -427,11 +427,11 @@ export default function PublishedStoriesPage() {
       const result = await res.json().catch(() => ({}))
       if (!res.ok || !result.success) {
         setStories(prev => prev.map(s => s.id === storyId ? { ...s, genre: previous } : s))
-        setError(storyId, result.error || `Genre update failed (HTTP ${res.status})`)
+        setRowErrorMessage(storyId, result.error || `Genre update failed (HTTP ${res.status})`)
       }
     } catch (err) {
       setStories(prev => prev.map(s => s.id === storyId ? { ...s, genre: previous } : s))
-      setError(storyId, err instanceof Error ? err.message : 'Genre update failed')
+      setRowErrorMessage(storyId, err instanceof Error ? err.message : 'Genre update failed')
     } finally {
       setBusy(storyId, false)
     }
@@ -451,7 +451,7 @@ export default function PublishedStoriesPage() {
 
   async function handleRemoveToRfR(story: PublishedStory) {
     if (!window.confirm(`Remove "${displayTitle(story)}" from the app and send it back to Ready for Review?`)) return
-    setError(story.id, '')
+    setRowErrorMessage(story.id, '')
     setBusy(story.id, true)
     try {
       // Governed transition chain (published can only step to
@@ -461,20 +461,20 @@ export default function PublishedStoriesPage() {
       await setWorkflowState(story.id, 'ready_for_review')
       await fetchPublishedStories()
     } catch (err) {
-      setError(story.id, err instanceof Error ? err.message : 'Failed to remove from app')
+      setRowErrorMessage(story.id, err instanceof Error ? err.message : 'Failed to remove from app')
       setBusy(story.id, false)
     }
   }
 
   async function handleSendToColdStorage(story: PublishedStory) {
     if (!window.confirm(`Send "${displayTitle(story)}" to Cold Storage?\n\nThis retires it from the app. It can be retrieved later from Cold Storage in Production Approval.`)) return
-    setError(story.id, '')
+    setRowErrorMessage(story.id, '')
     setBusy(story.id, true)
     try {
       await setWorkflowState(story.id, 'cold_storage', { retire: true })
       await fetchPublishedStories()
     } catch (err) {
-      setError(story.id, err instanceof Error ? err.message : 'Failed to send to Cold Storage')
+      setRowErrorMessage(story.id, err instanceof Error ? err.message : 'Failed to send to Cold Storage')
       setBusy(story.id, false)
     }
   }
