@@ -421,6 +421,62 @@ export async function trackSpuriousEndedRecovered(params: {
 }
 
 /**
+ * REACH-REMINDERS-001 / #290 — card-wall-view instrumentation.
+ *
+ * Called ONCE when the onboard_card_capture EP2-end wall is DISPLAYED
+ * (components/player/CanonicalPlayer.tsx maybeFireOnboardCardWall). Writes a
+ * zero-length marker row to play_events via the existing pipeline so we can
+ * measure card-wall-view rate without a new table/pipeline:
+ *
+ *   stop_reason = 'ep2_card_wall_shown'   (excluded from listening/reach metrics)
+ *   origin      = 'onboard_card_wall'
+ *
+ * Fire-and-forget; never blocks or crashes the player. The EP2-end wall only
+ * shows for authenticated in-trial users, so userId is expected to be present;
+ * a guest fallback mirrors trackPlayStart (RLS may silently drop — acceptable).
+ */
+export async function trackCardWallView(params: {
+  userId: string | undefined
+  storyId: string
+}): Promise<void> {
+  try {
+    const sessionId = currentSessionId || generateUUID()
+    const nowIso = new Date().toISOString()
+    const { device_type, device_os, browser } = getDeviceInfo()
+
+    if (params.userId) {
+      const apiResult = await postPlayEvent({
+        action: 'wall_view',
+        sessionId,
+        storyId: params.storyId,
+        device: { device_type, device_os, browser },
+        isOffline: isOffline(),
+      })
+      if (apiResult?.success) return
+    }
+
+    // Guest / API-failure fallback — same pattern as the diagnostic beacon.
+    await supabase.from('play_events').insert({
+      user_id: params.userId || null,
+      story_id: params.storyId,
+      session_id: sessionId,
+      started_at: nowIso,
+      ended_at: nowIso,
+      seconds_played: 0,
+      progress_pct: 0,
+      stop_reason: 'ep2_card_wall_shown',
+      origin: 'onboard_card_wall',
+      device_type,
+      device_os,
+      browser,
+      is_offline: isOffline(),
+    })
+  } catch (e) {
+    console.warn('[analytics] trackCardWallView failed:', e)
+  }
+}
+
+/**
  * Update aggregated user preferences after a play session.
  */
 async function updateUserPreferences(userId: string): Promise<void> {

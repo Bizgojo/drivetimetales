@@ -59,7 +59,26 @@ export function ctaButton(label: string, url: string): string {
     </div>`
 }
 
-export function shell(inner: string): string {
+/**
+ * REACH-REMINDERS-001 (CAN-SPAM): standard footer unsubscribe line.
+ * When an unsubscribeUrl is supplied, the footer renders a real one-click
+ * unsubscribe link (lib/emails/unsubscribe.ts). When it is omitted (e.g. the
+ * transactional welcome email, or a caller without a user id), the footer keeps
+ * the original account-notice copy so existing sends are unchanged.
+ */
+function footer(unsubscribeUrl?: string): string {
+  const unsub = unsubscribeUrl
+    ? `<br><a href="${unsubscribeUrl}" target="_blank" style="color:rgba(255,255,255,0.4);text-decoration:underline;">Unsubscribe from these emails</a>`
+    : ''
+  return `
+    <div style="text-align:center;margin-top:28px;">
+      <p style="color:rgba(255,255,255,0.3);font-size:12px;margin:0;line-height:1.6;">
+        You're receiving this because you created an account at endless-tales.com.${unsub}
+      </p>
+    </div>`
+}
+
+export function shell(inner: string, unsubscribeUrl?: string): string {
   return `<!DOCTYPE html>
 <html>
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"></head>
@@ -69,11 +88,7 @@ export function shell(inner: string): string {
     <div style="background:#1a1a2e;border-radius:16px;padding:32px 28px;border:1px solid rgba(249,115,22,0.2);">
       ${inner}
     </div>
-    <div style="text-align:center;margin-top:28px;">
-      <p style="color:rgba(255,255,255,0.3);font-size:12px;margin:0;line-height:1.6;">
-        You're receiving this because you created an account at endless-tales.com.
-      </p>
-    </div>
+    ${footer(unsubscribeUrl)}
   </div>
 </body>
 </html>`
@@ -154,6 +169,54 @@ export function renderTrialEndingReminderEmail(
         Questions? Just reply to this email — a real person reads these.
       </p>
     `),
+  }
+}
+
+/**
+ * REACH-REMINDERS-001 (Marc GO, 2026-10-05) — EP2-reach reminder email.
+ *
+ * Nudges a signed-up Bell user back to the EP2 player. Sent from the extended
+ * trial-emails cron on day-offsets +1/+3/+6 from trial_started_at (max 3),
+ * segment recomputed at each send:
+ *
+ *   segment='never'   → never opened EP2  → "ride the hook, press play"
+ *   segment='partway' → started, unfinished → "you're partway, finish it"
+ *
+ * Every CTA deep-links to BELL_EP2_PLAYER_URL (passed in as ctaUrl). The footer
+ * carries a one-click unsubscribe link (CAN-SPAM) when unsubscribeUrl is given.
+ * Belle voice, matched to the existing day-2/5/6 trial copy.
+ */
+export function renderReachEp2Email(
+  name: string,
+  segment: 'never' | 'partway',
+  ctaUrl: string,
+  unsubscribeUrl?: string,
+): { subject: string; html: string } {
+  const safeName = name || 'there'
+  const P = 'color:rgba(255,255,255,0.8);font-size:15px;line-height:1.7;margin:0 0 16px;'
+  const P_SIG = 'color:rgba(255,255,255,0.6);font-size:15px;font-style:italic;margin:20px 0 0;'
+  if (segment === 'partway') {
+    return {
+      subject: `You're partway through Episode 2, ${safeName}`,
+      html: shell(`
+        <p style="${P}">Hi ${safeName}, it's Belle.</p>
+        <p style="${P}">You started <strong style="color:#ffffff;">Episode 2</strong> — and then life happened. It's still cued up, right where you left off.</p>
+        <p style="${P}">It's a short one to finish, and the ending is the part that stays with people. No card, nothing to cancel — just press play.</p>
+        ${ctaButton('Finish Episode 2 →', ctaUrl)}
+        <p style="${P_SIG}">— Belle</p>
+      `, unsubscribeUrl),
+    }
+  }
+  // segment === 'never'
+  return {
+    subject: `Your story is waiting, ${safeName}`,
+    html: shell(`
+      <p style="${P}">Hi ${safeName}, it's Belle.</p>
+      <p style="${P}">You signed up, but you haven't pressed play on <strong style="color:#ffffff;">Episode 2</strong> yet — and that's the one that hooks everyone.</p>
+      <p style="${P}">It's cued up and ready. Give it the first few minutes on your next drive or walk; if it doesn't grab you, nothing's lost. No card, nothing to cancel.</p>
+      ${ctaButton('Start Episode 2 →', ctaUrl)}
+      <p style="${P_SIG}">— Belle</p>
+    `, unsubscribeUrl),
   }
 }
 

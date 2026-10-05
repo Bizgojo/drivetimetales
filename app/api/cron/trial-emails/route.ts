@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { Resend } from 'resend'
-import { renderDay1InstallEmail, shell, ctaButton } from '@/lib/emails/retentionTemplates'
+import { renderDay1InstallEmail, renderReachEp2Email, shell, ctaButton } from '@/lib/emails/retentionTemplates'
+import { unsubscribeUrl } from '@/lib/emails/unsubscribe'
 import { MONTHLY_PRICE_DISPLAY, TRIAL_DAYS } from '@/lib/pricing'
 
 // Reminder days, counted from trial start (see schedule note in GET).
@@ -21,6 +22,19 @@ const APP_PLAYER_BASE_URL = 'https://app.endless-tales.com/player'
 // directly to the EP2 player so bounced signups have a one-tap path back.
 const BELL_EP2_STORY_ID = '759dc525-185c-450f-b249-17e4a525ba60'
 const BELL_EP2_PLAYER_URL = `${APP_PLAYER_BASE_URL}/${BELL_EP2_STORY_ID}`
+
+// ── REACH-REMINDERS-001 constants ──────────────────────────────────────────
+// Day-offsets from trial_started_at on which a reach reminder may fire. Only
+// these three days fire, so a user receives at most 3 reach emails, ever.
+const REACH_REMINDER_DAYS = new Set([1, 3, 6])
+// "Reached EP2" tie-breaker: user_library.progress (seconds) at/above this is
+// treated as a genuine EP2 play even when play_events is thin (autoplay starts
+// were historically under-recorded — see scope R1).
+const REACH_PROGRESS_THRESHOLD = 30
+// play_events rows to exclude from the "reached" signal (diagnostics only).
+const DIAGNOSTIC_BEACON_ORIGIN = 'diagnostic_beacon'
+const SPURIOUS_ENDED_STOP_REASON = 'spurious_ended_recovered'
+const EP2_CARD_WALL_SHOWN_STOP_REASON = 'ep2_card_wall_shown' // #290 instrumentation marker
 
 // ── Shared text styles for trial-retention email bodies ───────────────────
 const P = 'color:rgba(255,255,255,0.8);font-size:15px;line-height:1.7;margin:0 0 16px;'
@@ -129,6 +143,90 @@ function emailDay6(name: string, safeTitle: string | null, safeStoryId: string |
   }
 }
 
+// ── REACH-REMINDERS-001 helpers ─────────────────────────────────────────────
+
+/**
+ * Pre-DDL-safe opt-out fetch. Returns the set of user ids with
+ * email_opt_out = true, OR null if the column does not exist yet (migration
+ * not applied). A null result means "cannot determine opt-out" — callers then
+ * behave EXACTLY as the pre-REACH code did (suppress nobody on the opt-out
+ * axis), so live trial/day-1 sends never break while the migration lags.
+ */
+async function fetchOptedOutUserIds(): Promise<Set<string> | null> {
+  try {
+    const { data, error } = await supabase
+      .from('users')
+      .select('id')
+      .eq('email_opt_out', true)
+    if (error) {
+      // 42703 = undefined_column (column does not exist yet).
+      console.warn('[trial-emails] email_opt_out unavailable (migration pending?):', error.message)
+      return null
+    }
+    return new Set((data || []).map((r) => r.id as string))
+  } catch (err) {
+    console.warn('[trial-emails] opt-out fetch threw:', err)
+    return null
+  }
+}
+
+/**
+ * Decide a Bell user's EP2 reach segment at send time.
+ *  - returns 'never'   → no genuine EP2 play (press-play copy)
+ *  - returns 'partway' → opened EP2 but did not finish (finish-it copy)
+ *  - returns null      → finished EP2, or signal says reached+done → SUPPRESS
+ *
+ * "Reached" = a non-diagnostic play_events row on EP2 OR user_library.progress
+ * >= REACH_PROGRESS_THRESHOLD (the autoplay-under-recording tie-breaker, R1).
+ * "Finished" = a 'completed' play_event on EP2 OR user_library.completed.
+ * Recomputed every run, so a user who finished since the last send drops out.
+ */
+async function computeReachSegment(userId: string): Promise<'never' | 'partway' | null> {
+  let reached = false
+  let finished = false
+
+  // play_events signal (authenticated player), diagnostics excluded.
+  try {
+    const { data: pe } = await supabase
+      .from('play_events')
+      .select('stop_reason, origin')
+      .eq('user_id', userId)
+      .eq('story_id', BELL_EP2_STORY_ID)
+    for (const row of pe || []) {
+      const origin = (row as { origin: string | null }).origin
+      const stop = (row as { stop_reason: string | null }).stop_reason
+      if (origin === DIAGNOSTIC_BEACON_ORIGIN) continue
+      if (stop === SPURIOUS_ENDED_STOP_REASON) continue
+      if (stop === EP2_CARD_WALL_SHOWN_STOP_REASON) continue // view marker, not a play
+      reached = true
+      if (stop === 'completed') finished = true
+    }
+  } catch (err) {
+    console.warn('[trial-emails] reach play_events lookup failed for', userId, err)
+  }
+
+  // user_library fallback / tie-breaker.
+  try {
+    const { data: lib } = await supabase
+      .from('user_library')
+      .select('progress, completed')
+      .eq('user_id', userId)
+      .eq('story_id', BELL_EP2_STORY_ID)
+      .maybeSingle()
+    if (lib) {
+      const progress = Number((lib as { progress: number | null }).progress ?? 0)
+      const completed = Boolean((lib as { completed: boolean | null }).completed)
+      if (progress >= REACH_PROGRESS_THRESHOLD) reached = true
+      if (completed) finished = true
+    }
+  } catch (err) {
+    console.warn('[trial-emails] reach user_library lookup failed for', userId, err)
+  }
+
+  if (finished) return null        // reached the goal → never email again
+  return reached ? 'partway' : 'never'
+}
+
 // ── Cron handler ───────────────────────────────────────────────────────────
 
 export async function GET(request: NextRequest) {
@@ -139,7 +237,18 @@ export async function GET(request: NextRequest) {
   }
 
   const now = new Date()
-  const results = { day1: 0, day2: 0, day5: 0, day6: 0, errors: 0 }
+  const results = { day1: 0, day2: 0, day5: 0, day6: 0, reach: 0, errors: 0 }
+
+  // REACH-REMINDERS-001: enforce ONE Belle email per user per run. Any user id
+  // added here by a higher-priority block is skipped by lower-priority blocks.
+  // Priority (Marc, 2026-10-05): trial-ending (day 2/5/6) > reach > install(day-1).
+  const emailedThisRun = new Set<string>()
+
+  // REACH-REMINDERS-001 (CAN-SPAM): opt-out suppression, applied to EVERY send
+  // path below (trial, reach, install). Pre-DDL-safe: null = column absent =
+  // suppress nobody on this axis (identical to pre-REACH behavior).
+  const optedOut = await fetchOptedOutUserIds()
+  const isOptedOut = (id: string): boolean => (optedOut ? optedOut.has(id) : false)
 
   // ── Day-1 home-screen install email (RETENTION-PATH-001) ─────────────────
   // All users created 24-48h ago who haven't received it yet, regardless of
@@ -147,6 +256,12 @@ export async function GET(request: NextRequest) {
   // find the app again without a home-screen icon.
   // Requires migration 20260709170000_day1_email_sent_at.sql; if the column
   // is missing this block logs and skips without breaking day-3/10/13 sends.
+  //
+  // REACH-REMINDERS-001: this is now the LOWEST-priority block. It is defined
+  // here but CALLED last (after the trial and reach blocks) so that a user who
+  // already received a higher-priority Belle email this run is skipped, and so
+  // opted-out users are suppressed.
+  const runDay1InstallBlock = async (): Promise<void> => {
   try {
     const windowEnd = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString()
     const windowStart = new Date(now.getTime() - 48 * 60 * 60 * 1000).toISOString()
@@ -163,6 +278,10 @@ export async function GET(request: NextRequest) {
     } else {
       for (const user of day1Users || []) {
         if (!user.email) continue
+        // REACH-REMINDERS-001: skip if already emailed this run (higher priority)
+        // or opted out.
+        if (emailedThisRun.has(user.id)) continue
+        if (isOptedOut(user.id)) continue
         try {
           const name = user.first_name || user.display_name || 'there'
           // BELL-DAY1-LINK-001: bell-invitation signups get a direct EP2 link;
@@ -186,6 +305,7 @@ export async function GET(request: NextRequest) {
             .update({ day1_email_sent_at: new Date().toISOString() })
             .eq('id', user.id)
           if (stampError) console.error('[trial-emails] Day-1 stamp failed for', user.id, stampError.message)
+          emailedThisRun.add(user.id)
           results.day1++
           console.log(`[trial-emails] Day-1 install email sent to ${user.email}`)
         } catch (err) {
@@ -197,6 +317,7 @@ export async function GET(request: NextRequest) {
   } catch (err) {
     console.error('[trial-emails] Day-1 block error:', err)
     results.errors++
+  }
   }
 
   // Fetch all trialing users with subscription_start set
@@ -227,6 +348,9 @@ export async function GET(request: NextRequest) {
       const name = user.first_name || user.display_name || 'there'
       const email = user.email
       if (!email) continue
+      // REACH-REMINDERS-001 (CAN-SPAM): opted-out users are suppressed from the
+      // existing trial sends too (not just reach). Pre-DDL-safe (see isOptedOut).
+      if (isOptedOut(user.id)) continue
 
       // ── Story lookup for variant selection ───────────────────────────────────
       // Only query when this user is actually in a send window.
@@ -257,19 +381,20 @@ export async function GET(request: NextRequest) {
       }
 
       let template: { subject: string; html: string } | null = null
+      let kind: 'day2' | 'day5' | 'day6' | null = null
 
       if (daysSinceStart === 2) {
         template = emailDay2(name, safeTitle, safeStoryId)
-        results.day2++
+        kind = 'day2'
       } else if (daysSinceStart === ENDS_IN_TWO_DAYS) {
         template = emailDay5(name, safeTitle, safeStoryId)
-        results.day5++
+        kind = 'day5'
       } else if (daysSinceStart === ENDS_TOMORROW) {
         template = emailDay6(name, safeTitle, safeStoryId)
-        results.day6++
+        kind = 'day6'
       }
 
-      if (template) {
+      if (template && kind) {
         await resend.emails.send({
           from: 'Belle at Endless Tales <hello@endless-tales.com>',
           replyTo: 'hello.endlesstales@gmail.com',
@@ -277,6 +402,11 @@ export async function GET(request: NextRequest) {
           subject: template.subject,
           html: template.html,
         })
+        // REACH-REMINDERS-001: trial-ending is top priority — mark the user so the
+        // reach and day-1 blocks skip them this run (one Belle email per run).
+        // Count AFTER a successful send (prevents counting a throwing send).
+        emailedThisRun.add(user.id)
+        results[kind]++
         console.log(`[trial-emails] Day ${daysSinceStart} email sent to ${email}`)
       }
     } catch (err) {
@@ -284,6 +414,88 @@ export async function GET(request: NextRequest) {
       results.errors++
     }
   }
+
+  // ── REACH-REMINDERS-001: EP2-reach reminder block (SECOND priority) ───────
+  // Bell signups in an active no-card trial who have NOT finished EP2, nudged
+  // back to the EP2 player on day-offsets +1/+3/+6 from trial_started_at
+  // (max 3 ever). Runs AFTER the trial block (so trial-ending wins) and BEFORE
+  // the day-1 install block (so reach wins over install).
+  //
+  // PRE-DDL-SAFE: the cohort query selects last_reach_reminder_at. If that
+  // column is absent (migration pending), the SELECT errors — we detect it,
+  // log, and SKIP the entire reach block, leaving all existing sends intact.
+  try {
+    const { data: reachCohort, error: reachError } = await supabase
+      .from('users')
+      .select('id, email, first_name, display_name, trial_started_at, last_reach_reminder_at')
+      .eq('signup_source', 'bell-invitation')
+      .eq('subscription_type', 'trial')
+      .gt('subscription_ends_at', now.toISOString())
+      .not('is_test_account', 'is', true)
+      .not('email', 'is', null)
+
+    if (reachError) {
+      // 42703 undefined_column (last_reach_reminder_at / subscription_type) or
+      // any other error → skip the reach block entirely, never break the run.
+      console.warn('[trial-emails] reach cohort query failed (migration pending?):', reachError.message)
+    } else {
+      // Re-send guard window: a same-day cron retry must not double-send. A send
+      // stamps last_reach_reminder_at; within 20h we treat the user as already
+      // reminded this cycle.
+      const resendGuardMs = 20 * 60 * 60 * 1000
+      for (const user of reachCohort || []) {
+        try {
+          if (!user.email) continue
+          if (emailedThisRun.has(user.id)) continue          // trial-ending already won
+          if (isOptedOut(user.id)) continue                  // CAN-SPAM suppression
+          if (!user.trial_started_at) continue
+
+          const start = new Date(user.trial_started_at)
+          const daysSinceStart = Math.floor((now.getTime() - start.getTime()) / (1000 * 60 * 60 * 24))
+          if (!REACH_REMINDER_DAYS.has(daysSinceStart)) continue  // only +1/+3/+6 fire (max 3)
+
+          // Re-send guard: stamped within the last 20h → skip (retry safety).
+          if (user.last_reach_reminder_at) {
+            const last = new Date(user.last_reach_reminder_at).getTime()
+            if (Number.isFinite(last) && now.getTime() - last < resendGuardMs) continue
+          }
+
+          // Segment recomputed at send time; null = finished EP2 → suppress.
+          const segment = await computeReachSegment(user.id)
+          if (segment === null) continue
+
+          const name = user.first_name || user.display_name || 'there'
+          const template = renderReachEp2Email(name, segment, BELL_EP2_PLAYER_URL, unsubscribeUrl(user.id))
+          await resend.emails.send({
+            from: 'Belle at Endless Tales <hello@endless-tales.com>',
+            replyTo: 'hello.endlesstales@gmail.com',
+            to: user.email,
+            subject: template.subject,
+            html: template.html,
+          })
+          // Stamp AFTER a successful send (same posture as day-1); a missed
+          // stamp risks at most one duplicate, never a silent skip.
+          const { error: stampError } = await supabase
+            .from('users')
+            .update({ last_reach_reminder_at: new Date().toISOString() })
+            .eq('id', user.id)
+          if (stampError) console.error('[trial-emails] reach stamp failed for', user.id, stampError.message)
+          emailedThisRun.add(user.id)
+          results.reach++
+          console.log(`[reach-reminder] sent seg=${segment} day=${daysSinceStart} user=${user.id}`)
+        } catch (err) {
+          console.error('[trial-emails] reach send error for user', user.id, err)
+          results.errors++
+        }
+      }
+    }
+  } catch (err) {
+    console.error('[trial-emails] reach block error:', err)
+    results.errors++
+  }
+
+  // ── Day-1 install (LOWEST priority) — runs last so trial + reach win ──────
+  await runDay1InstallBlock()
 
   console.log('[trial-emails] Done:', results)
   return NextResponse.json({ success: true, results })
