@@ -848,6 +848,14 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
 
     // Playlist mode has its own advance path — not series continuation
     if (mode === 'playlist') {
+      // MARC-PLAYLIST-AUTOADVANCE-001 (2026-10-05): find what's next in the
+      // queue (next episode of the same series, or the next story entirely)
+      // BEFORE the finished episode is removed below — its position in the
+      // still-intact list tells us exactly what follows it.
+      const pl = playlistRef.current
+      const ci = pl.findIndex((item) => item.id === storyId)
+      const next = ci >= 0 ? pl[ci + 1] : undefined
+
       // QUEUE-OFFLINE-001 (Marc, 2026-10-04): a finished episode comes off the
       // playlist and its offline copy is deleted — not the whole saved playlist.
       // (Previously this unconditionally wiped dtt_active_playlist in full.)
@@ -856,6 +864,16 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
       // other still-queued stories would be lost along with this episode.
       try { removeEpisodeFromActivePlaylist(storyId, user?.id || null) } catch {}
       deleteEpisode(storyId).catch(() => {})
+
+      if (next?.id) {
+        // Keep playing straight through the queue — don't stop and wait for
+        // a tap. The next player mount re-derives its own queue position
+        // from the (now-shorter) saved playlist.
+        isAdvancingRef.current = false
+        router.push(`/player/${next.id}?autoplay=1&playlist=1&playNow=1`)
+        return
+      }
+
       localStorage.removeItem('dtt_playlist_index')
       isAdvancingRef.current = false
       setCatalogExhausted(true)
