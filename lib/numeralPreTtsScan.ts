@@ -59,6 +59,30 @@ const DIGIT_NUMERAL_RE = /\b\d[\d,]*(?:\.\d+)?\b/g
 const SCALE_WORD_RE = /^(million|billion|thousand|hundred|dozen|percent)$/i
 const SCALE_SYMBOL_RE = /[°%]/
 
+// SEEDLIGHT FIX (numeral_pre_tts false-positive, 2026-10-04):
+// Version / brand numerals like "2.0" in a title or series name (e.g. "Origin 2.0")
+// are NOT unspoken narration numerals — TTS reads "two point oh" correctly and Hal
+// legitimately writes them this way in brand/title lines. The old matcher flagged
+// "2.0" as a blocking pre-TTS numeral, which then drove the destructive autonomous
+// retry that cleared a PASS-validated script and regenerated a new story
+// ("The Seedlight" incident, learning id ce49ed18).
+//
+// Scope is deliberately tight: only the classic "<major>.0" version shape
+// (e.g. "2.0", "3.0", "10.0"). Genuine mispronounced decimals from narration
+// ("4.6", "13.8"), grouped thousands ("2,000"), and bare integers/years
+// ("42", "2026") are UNAFFECTED and still flagged.
+const VERSION_NUMERAL_RE = /^(?:[1-9]\d?)\.0$/
+
+/**
+ * True when a standalone digit span looks like a version / brand numeral
+ * ("2.0", "3.0", "10.0") rather than an unspoken narration quantity. Only the
+ * "<major>.0" shape is whitelisted so we do not accidentally pass real decimals
+ * like "4.6" or "13.8" that TTS would mispronounce.
+ */
+export function isVersionBrandNumeral(span: string): boolean {
+  return VERSION_NUMERAL_RE.test(span.trim())
+}
+
 /**
  * Pure numeral scan over a single spoken text fragment.
  * Returns the list of offending spans (digit numeral + any adjacent scale token).
@@ -98,6 +122,14 @@ export function scanTextForDigitNumerals(text: string): string[] {
     const glued = text.slice(match.index + match[0].length).match(/^\s*[°%]/)
     if (glued && !SCALE_SYMBOL_RE.test(span)) {
       span = (span + glued[0]).trim()
+    }
+
+    // SEEDLIGHT FIX: skip version/brand numerals ("2.0") only when the span is the
+    // bare version token with no scale word/symbol folded in. If a scale word or
+    // symbol was attached (e.g. "2.0 million", "2.0%"), it is a real quantity and
+    // must still be flagged — so we only short-circuit the untouched "<major>.0" span.
+    if (span === match[0] && isVersionBrandNumeral(span)) {
+      continue
     }
 
     spans.push(span)

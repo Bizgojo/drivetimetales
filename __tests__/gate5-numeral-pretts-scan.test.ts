@@ -88,6 +88,27 @@ describe('GATE 5 — numeral pre-TTS scan (spec §5)', () => {
     expect(r.failures[0].offendingText).toBe('2026')
   })
 
+  // SEEDLIGHT FIX: version/brand numerals ("2.0") are NOT flagged.
+  // Regression guard for the numeral_pre_tts false-positive (learning id ce49ed18):
+  // "2.0" in "Origin 2.0" must pass so it never triggers the destructive retry that
+  // cleared a PASS-validated script and invented a new story ("The Seedlight").
+  test('version/brand numeral "2.0" (e.g. "Origin 2.0") is NOT flagged', () => {
+    expect(scanTextForDigitNumerals('Origin 2.0 changes everything.')).toEqual([])
+    expect(scanTextForDigitNumerals('version 10.0 shipped today')).toEqual([])
+    const script = buildScript(['BELLE B: Welcome back to Origin 2.0, the next chapter.'])
+    const r = numeralPreTtsScan(script)
+    expect(r.passed).toBe(true)
+    expect(r.failures).toEqual([])
+  })
+
+  test('version numeral with a scale word/symbol is STILL flagged (not whitelisted)', () => {
+    // Only the bare "<major>.0" shape is skipped; a real quantity must still flag.
+    expect(scanTextForDigitNumerals('growth of 2.0 million users')).toEqual(['2.0 million'])
+    expect(scanTextForDigitNumerals('up 2.0% today')).toEqual(['2.0%'])
+    // And genuine mispronounced decimals remain flagged.
+    expect(scanTextForDigitNumerals('a score of 2.5 was logged')).toEqual(['2.5'])
+  })
+
   // ── Header / SUNO block ignored ────────────────────────────────────────────
   test('header block ignored: TITLE / DESCRIPTION / SUNO PROMPT digits do not flag', () => {
     const script = buildScript(

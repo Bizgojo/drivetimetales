@@ -8866,19 +8866,45 @@ export async function POST(req: NextRequest) {
         if (canAutoRetry) {
           const nextRetryCount = retryCount + 1
 
-          // Clear script so generate_script regenerates
-          await supabase
-            .from('stories')
-            .update({
-              script: null,
-              script_json: null,
-              validator_result: null,
-              validator_report: null,
-              status: 'draft',
-            })
-            .eq('id', result.storyId)
+          // SEEDLIGHT FIX (numeral_pre_tts false-positive, 2026-10-04):
+          // A numeral_pre_tts finding must NEVER destroy a PASS-validated script.
+          // The old code unconditionally nulled script + script_json for every
+          // autonomous-retryable kind, so a false-positive numeral hit (e.g. "2.0"
+          // in "Origin 2.0") wiped the validated script and generate_script then
+          // invented a brand-new story ("The Seedlight", learning id ce49ed18).
+          //
+          // Guard: for numeral_pre_tts we do a NON-destructive retry — we leave
+          // stories.script and script_json intact (and preserve a PASS validator
+          // result) and simply re-queue to generate_script so Hal can spell out any
+          // genuine numerals in place. For all other kinds (e.g. unlabeled lines)
+          // the historical clear-and-regenerate behavior is unchanged.
+          const preservePassValidatedScript = isNumeralPreTts
 
-          const retryLogs = appendLog(lockedJob, `Auto-retry ${nextRetryCount}/${MAX_RETRIES}: unlabeled lines detected, re-queuing to generate_script`, {
+          if (!preservePassValidatedScript) {
+            // Clear script so generate_script regenerates (non-numeral kinds only)
+            await supabase
+              .from('stories')
+              .update({
+                script: null,
+                script_json: null,
+                validator_result: null,
+                validator_report: null,
+                status: 'draft',
+              })
+              .eq('id', result.storyId)
+          } else {
+            // Numeral false-positive guard: do not clear a validated script.
+            // Only move the story back to draft so generate_script can re-run as an
+            // in-place correction; script/script_json/validator_* are left untouched.
+            await supabase
+              .from('stories')
+              .update({ status: 'draft' })
+              .eq('id', result.storyId)
+          }
+
+          const retryLogs = appendLog(lockedJob, preservePassValidatedScript
+            ? `Auto-retry ${nextRetryCount}/${MAX_RETRIES}: numeral_pre_tts — re-queuing to generate_script WITHOUT clearing validated script (Seedlight guard)`
+            : `Auto-retry ${nextRetryCount}/${MAX_RETRIES}: unlabeled lines detected, re-queuing to generate_script`, {
             source: 'autonomous-runner',
             storyId: result.storyId,
             failureKind,
