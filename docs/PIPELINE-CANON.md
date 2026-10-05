@@ -38,6 +38,7 @@ Prior standing rules referenced throughout remain in force and are not contradic
 | EPISODE-ADDITION RULE | Episodes Publish Complete, As One Unit | APPROVED | 2026-10-04 |
 | EPISODE-NUMBERING RULE | Start at 1, Count Up, No Gaps, No Zero | APPROVED | 2026-10-04 |
 | EBOOK-COMPLETENESS RULE | Every Story Has a Complete eBook | APPROVED | 2026-10-04 |
+| EBOOK-STYLE RULE | eBooks Read as a Genuine Book, Not a Transcript | APPROVED | 2026-10-04 |
 
 ---
 
@@ -330,3 +331,43 @@ The product promises a readable companion to the audio; shipping audio without i
 - **Rule 4 (publish-mode switch):** enforced under both modes. In `rfr` mode the ready_for_review gate catches a missing eBook before Marc's review; in `direct` mode the publish gate still blocks a missing eBook before go-live. Neither mode waives the check — and because `direct` mode declines the post-live safety net (Rule 4, option A), the publish-gate block is the last line of defense and is non-negotiable.
 - **EPISODE-ADDITION RULE:** the completeness requirement travels with the release unit. An appended batch must carry eBook content for its new episodes before the batch passes review or publish, exactly as the original release did.
 - **EPISODE-NUMBERING RULE:** no direct interaction — numbering governs what number each episode carries; this rule governs whether each release has its reader-text. Both are per-release preconditions that must hold before publish.
+
+
+---
+
+# EBOOK-STYLE RULE
+
+**Status: APPROVED 2026-10-04, effective now.** Ordered by Marc 2026-10-04 15:02 EDT; scope amended (use-original-book-directly) 2026-10-04 15:34 EDT; approved 2026-10-04 15:56 EDT. Standing pipeline law in the same five-part format as the other PIPELINE-CANON.md entries.
+
+### Statement
+
+> Every Endless Tales eBook must read as a genuine, standalone book — the literary work the audio was adapted from — not a transcript of the audio and not copy mechanically derived from the script or segments. Although production is audio-first (the script and audio are made before the book text is finalized), the eBook must be written, or rewritten, to read as prose a reader would accept as the original novel/book: narrative prose, paragraphing, and scene flow appropriate to the page — never stage directions, speaker labels, segment/episode markers, "[NARRATOR]"/"[LISTENER_NAME]" tokens, SFX/music cues, or sentence-for-sentence mirroring of the spoken track. The reader must never be able to tell the audio came first.
+
+### Rationale
+
+The product sells a readable companion that stands on its own as a book. A transcript reads as a transcript — repetitive beats written for the ear, speaker tags, audio scaffolding, and spoken-word cadence that feels wrong on the page — and instantly signals "this was ripped from audio," cheapening the product and breaking the promise that the audio was adapted FROM a book. Making the eBook read as the genuine source book (even though it is produced after the audio) is what makes the catalog feel authored, not transcribed.
+
+### Scope
+
+- Applies to all eBook/reader-text content for every story/series, single or multi-episode, going forward (new production). Pairs with EBOOK-COMPLETENESS (which governs that an eBook exists and covers the whole story); this rule governs HOW it reads.
+- **Use-the-original clause:** when an original, already-published book already exists for a story (e.g. Origin 2.0), use that original authored text directly — do **not** rewrite it. This rule's "write as genuine book prose" requirement applies **only when reader-text must be generated from the script**; it does not apply when authored book content already exists. The existing book IS the eBook. Use-the-original is the default path whenever an authored original exists; generation-from-script is the fallback only when no authored book exists.
+- Covers (generation-from-script case): prose quality and book-appropriate formatting; removal of all audio/script scaffolding (speaker labels, segment/episode markers, narrator tags, personalization tokens, SFX/music cues, aural-only "previously on" recaps); conversion of spoken-cadence repetition into page-appropriate prose.
+- Does **not** change the STORY — same plot, characters, events, and canon as the audio. It governs the TEXT'S FORM AND VOICE, not the narrative content.
+- Does **not** govern app rendering/typography (UI work, separate).
+
+### Defaults
+
+- **Default posture:** an eBook that reads as a transcript or audio-derived copy is NON-COMPLIANT and blocked (ties into EBOOK-COMPLETENESS's gate points — a present-but-transcript eBook fails the style bar).
+- **Default source selection:** when an authored original book exists, use-the-original is the default path — generation-from-script is the fallback only when no authored book exists.
+- **Default production-order posture:** audio-first ordering is expected and is never an excuse for transcript-style output.
+- **Default scaffolding:** zero tolerance for residual script/audio artifacts (tags, markers, tokens, cues) in finished eBook text.
+- **Default on ambiguity:** if it is unclear whether text reads as genuine book prose vs. a dressed-up transcript, treat as non-compliant until confirmed. Failed verification commands are UNVERIFIED, never negative findings — same standard as PIPELINE-CANON-001.
+
+### Interactions with the other canon rules
+
+- **EBOOK-COMPLETENESS RULE:** direct pairing. Completeness = the eBook exists and covers the whole release; this rule = it reads as a genuine book. Both are preconditions; an eBook can be complete yet fail style, or styled yet incomplete — both must pass.
+- **Rule 1 (block classification):** a transcript-style eBook is a Class B (content defect) — fix is a rewrite to book prose (Hal or the content path) + auto-reprocess, not a gate patch. Using an existing authored original instead of generating is likewise a content-path action, never a code patch.
+- **Rule 2 (quality gates block, not warn):** the style check is blocking by default where enforced, never warn-and-continue.
+- **Rule 3 (strict ordering / series flips together):** the whole release's eBook must meet the style bar before the unit passes — no mixed transcript/book quality across a series.
+- **Rule 4 (publish-mode switch):** enforced under both modes; direct mode's declined post-live safety net (Rule 4, option A) makes the pre-publish style bar the last line of defense.
+- **EPISODE-ADDITION / EPISODE-NUMBERING:** appended batches' eBook text meets the same style bar; no direct numbering interaction.
