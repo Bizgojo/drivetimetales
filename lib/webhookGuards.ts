@@ -22,6 +22,23 @@ export function isActivatableStatus(status: string | null | undefined): boolean 
   return status === 'active' || status === 'trialing'
 }
 
+// CARD-ON-FILE-001 (2026-10-05, Marc GO — LENIENT dunning):
+// When card-on-file is the standard, a failed renewal moves the subscription to
+// 'past_due' while Stripe's Smart Retries run. Marc's decision: KEEP ACCESS
+// during past_due (warmer experience; a transient card decline shouldn't lock a
+// paying customer out mid-retry). Only TRULY TERMINAL states ('canceled',
+// 'unpaid', 'incomplete_expired') drop a user to free — those fire via
+// customer.subscription.updated after retries are exhausted (or via
+// customer.subscription.deleted).
+//
+// NOTE: isActivatableStatus is intentionally LEFT UNCHANGED — it still gates the
+// checkout.session.completed replay-safety check (WEBHOOK-REPLAY-001), where
+// 'past_due' must NOT re-activate a stale checkout replay. Access preservation on
+// renewal failure is a separate concern, handled by this helper.
+export function isAccessPreservingStatus(status: string | null | undefined): boolean {
+  return isActivatableStatus(status) || status === 'past_due'
+}
+
 /**
  * Single source of truth for plan naming. Spread the result into every
  * activation write so plan and is_founding_member can never diverge.
