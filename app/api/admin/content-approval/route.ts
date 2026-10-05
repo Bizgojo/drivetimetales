@@ -7,6 +7,7 @@ import { transitionAllowed, shouldIncrementRepairCount } from '@/lib/workflowTra
 import { syncPremiseIndexForTransition } from '@/lib/premiseIndex'
 import { personalizationPublishBlockers } from '@/lib/personalization/publishGuard'
 import { verifyArtifactHttp } from '@/lib/artifactGate'
+import { hasRenderedProduction } from '@/lib/publishReadiness'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -254,6 +255,12 @@ function audioReadiness(story: StoryRow) {
   return {
     audioUrl: bool(story.audio_url),
     storyAudioUrl: bool(story.story_audio_url),
+    // announcementUrl is the Belle intro announcement. It is one of the three
+    // rendered-production URLs (audio_url, cover_url, announcement_url) that MUST
+    // be present before an episode is publish-ready. Tracked as its own flag so
+    // the admin "Ready to Publish" badge can require it explicitly (an episode
+    // with a script but no rendered announcement is NOT publish-ready).
+    announcementUrl: bool(story.announcement_url),
     introAudio: bool(story.announcement_url) || bool(story.intro_audio_url) || bool(story.intro_before_url) || bool(story.intro_after_url),
     outroAudio: bool(story.outro_audio_url),
     backgroundMusic: bool(story.background_music_url),
@@ -281,8 +288,15 @@ function isApprovedReady(story: StoryRow) {
   return story.status === 'audio_ready'
     && story.is_hidden === true
     && displayReviewStatus(story) === 'approved'
-    && bool(story.audio_url)
-    && bool(story.cover_url)
+    // READY-PUBLISH-URLS-001: all three rendered-production URLs must be present
+    // (audio_url, cover_url, announcement_url). Previously announcement_url was
+    // not required here — an approved script with no rendered announcement could
+    // read as "Ready to Publish". Alderton Inheritance slipped through this gap.
+    && hasRenderedProduction({
+      audio_url: story.audio_url,
+      cover_url: story.cover_url,
+      announcement_url: story.announcement_url,
+    })
     && requiredMetadataMissing(story).length === 0
 }
 

@@ -3,6 +3,7 @@
 import { Fragment, useState, useEffect, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
 import { evaluateStoryGate, evaluateQCChecklist, deriveOrionRecommendation } from '@/lib/story-gates'
+import { hasRenderedProduction as hasRenderedProductionRule } from '@/lib/publishReadiness'
 import type { QCChecklistItem } from '@/lib/story-gates'
 import { runnerDisplayName, isTerminalJobStatus } from '@/lib/dispatchGuards'
 
@@ -44,6 +45,7 @@ interface Story {
   status?: string | null
   audio_url?: string | null
   story_audio_url?: string | null
+  announcement_url?: string | null
   intro_audio_url?: string | null
   intro_before_url?: string | null
   intro_after_url?: string | null
@@ -62,6 +64,7 @@ interface Story {
   completion_sort_date?: string | null
   audio_ready?: boolean
   story_audio_ready?: boolean
+  announcement_ready?: boolean
   cover_ready?: boolean
   prose_ready?: boolean
   author_ready?: boolean
@@ -193,6 +196,7 @@ type ApprovalEpisode = {
   audioReadiness: {
     audioUrl: boolean
     storyAudioUrl: boolean
+    announcementUrl?: boolean
     finalMix?: boolean
   }
   packagingReadiness: {
@@ -336,8 +340,40 @@ function isReviewReady(story: Story) {
   return effectiveWorkflowState(story) === 'ready_for_review'
 }
 
+// READY-PUBLISH-URLS-001: an episode is only publish-ready when the three
+// rendered-production artifacts actually exist in the DB: audio_url, cover_url,
+// and announcement_url. Prior logic keyed the "Ready to Publish" badge purely on
+// workflow_state === 'approved_ready', which counts script rows, not finished
+// production — so an approved script with no rendered audio read as publish-ready.
+// Alderton Inheritance (3 eps) slipped through exactly this gap.
+function hasRenderedProduction(story: Story): boolean {
+  return hasRenderedProductionRule({
+    audio_url: story.audio_url,
+    cover_url: story.cover_url,
+    announcement_url: story.announcement_url,
+    audio_ready: story.audio_ready,
+    cover_ready: story.cover_ready,
+    announcement_ready: story.announcement_ready,
+  })
+}
+
+// A story that has a script in the approved/production lane but is missing one or
+// more rendered-production URLs. Surfaced with a visible "Missing audio" state so
+// it is never mistaken for publish-ready again.
+function isMissingAudio(story: Story): boolean {
+  const state = effectiveWorkflowState(story)
+  const inProductionLane =
+    state === 'approved_ready' ||
+    state === 'ready_for_review' ||
+    state === 'stories_in_queue' ||
+    state === 'scripts_ready'
+  if (!inProductionLane) return false
+  if (isPublishedToApp(story)) return false
+  return !hasRenderedProduction(story)
+}
+
 function isApprovedReady(story: Story) {
-  return effectiveWorkflowState(story) === 'approved_ready'
+  return effectiveWorkflowState(story) === 'approved_ready' && hasRenderedProduction(story)
 }
 
 function isNotApproved(story: Story) {
@@ -954,6 +990,7 @@ function mergeReadiness(story: Partial<Story>, episode: ApprovalEpisode, series?
     status: episode.status,
     audio_url: story.audio_url || (episode.audioReadiness.audioUrl ? 'present' : null),
     story_audio_url: story.story_audio_url || (episode.audioReadiness.storyAudioUrl ? 'present' : null),
+    announcement_url: story.announcement_url || (episode.audioReadiness.announcementUrl ? 'present' : null),
     intro_audio_url: story.intro_audio_url || null,
     intro_before_url: story.intro_before_url || null,
     intro_after_url: story.intro_after_url || null,
@@ -972,6 +1009,7 @@ function mergeReadiness(story: Partial<Story>, episode: ApprovalEpisode, series?
     completion_sort_date: episode.completionSortDate || series?.completionSortDate || null,
     audio_ready: episode.audioReadiness.audioUrl,
     story_audio_ready: episode.audioReadiness.storyAudioUrl,
+    announcement_ready: episode.audioReadiness.announcementUrl,
     cover_ready: episode.packagingReadiness.coverUrl,
     prose_ready: episode.packagingReadiness.proseText,
     author_ready: episode.packagingReadiness.authorId,
@@ -2475,6 +2513,11 @@ function StoryReviewCard({
   const workflowState = effectiveWorkflowState(story)
   const lane = visualWorkflowLane(story)
   const visual = WORKFLOW_VISUALS[lane]
+  // READY-PUBLISH-URLS-001: a script in the production lane that has not yet had
+  // its audio/cover/announcement rendered must be visibly flagged — never shown
+  // as publish-ready and never publishable via "Publish Now".
+  const missingAudio = isMissingAudio(story)
+  const rendered = hasRenderedProduction(story)
 
   return (
     <div style={{ padding: '16px', border: '1px solid rgba(148,163,184,0.20)', borderRadius: '16px', background: 'linear-gradient(135deg, rgba(15,23,42,0.98), rgba(17,24,39,0.94))', boxShadow: `0 18px 44px ${visual.glowColor}`, color: '#f8fafc' }}>
@@ -2500,6 +2543,15 @@ function StoryReviewCard({
             <div style={{ padding: '10px', borderRadius: '10px', backgroundColor: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.10)' }}>
               <div style={{ color: '#94a3b8', fontSize: '10px', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Workflow</div>
               <div style={{ color: visual.color, fontSize: '13px', fontWeight: 900, marginTop: '4px' }}>{WORKFLOW_LABELS[workflowState]}</div>
+              {missingAudio && (
+                <div
+                  title="This title has a script but is missing one or more rendered-production assets (audio, cover, or announcement). It is NOT ready to publish."
+                  style={{ display: 'inline-flex', marginTop: '6px', alignItems: 'center', gap: '6px', padding: '4px 8px', borderRadius: '999px', backgroundColor: 'rgba(220,38,38,0.18)', color: '#fca5a5', border: '1px solid rgba(248,113,113,0.5)', fontSize: '11px', fontWeight: 950 }}
+                >
+                  <span style={{ width: '7px', height: '7px', borderRadius: '999px', backgroundColor: '#f87171' }} />
+                  Missing audio
+                </div>
+              )}
             </div>
             <div style={{ padding: '10px', borderRadius: '10px', backgroundColor: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.10)' }}>
               <div style={{ color: '#94a3b8', fontSize: '10px', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Audio</div>
@@ -2525,7 +2577,8 @@ function StoryReviewCard({
           {workflowState !== 'cold_storage' && story.audio_url && <PlayStoryButton story={story} />}
           {['ready_for_review', 'approved_ready', 'unpublished_library', 'published'].includes(workflowState) && <button onClick={() => onEditClick(story)} style={actionButtonStyle('muted')}>Edit Cover</button>}
           {workflowState === 'ready_for_review' && <button onClick={() => onSetWorkflowState(story, 'approved_ready')} style={actionButtonStyle('success')}>Approve for Publishing</button>}
-          {workflowState === 'approved_ready' && <button onClick={() => onPublish(story)} style={actionButtonStyle('primary')}>Publish Now</button>}
+          {workflowState === 'approved_ready' && rendered && <button onClick={() => onPublish(story)} style={actionButtonStyle('primary')}>Publish Now</button>}
+          {workflowState === 'approved_ready' && !rendered && <button disabled title="Blocked: missing rendered audio/cover/announcement" style={{ ...actionButtonStyle('muted'), opacity: 0.55, cursor: 'not-allowed' }}>Publish Now (blocked: missing audio)</button>}
           {['ready_for_review', 'approved_ready', 'unpublished_library', 'published'].includes(workflowState) && <button onClick={() => onOpenRepair(story)} style={actionButtonStyle('muted')}>Move to Repair Shop</button>}
           {workflowState === 'repair_queue' && <button onClick={() => onSetWorkflowState(story, 'ready_for_review')} style={actionButtonStyle('muted')}>Return to Ready for Review</button>}
           {workflowState === 'being_repaired' && <BeingRepairedPanel story={story} onAbandon={(s) => {
@@ -2581,6 +2634,9 @@ function EpisodeReviewRow({
   const workflowState = effectiveWorkflowState(story)
   const lane = visualWorkflowLane(story)
   const visual = WORKFLOW_VISUALS[lane]
+  // READY-PUBLISH-URLS-001: flag/gate episodes missing rendered-production URLs.
+  const missingAudio = isMissingAudio(story)
+  const rendered = hasRenderedProduction(story)
   return (
     <div style={{ padding: '0', border: '1px solid rgba(148,163,184,0.24)', borderRadius: '12px', backgroundColor: '#ffffff', overflow: 'hidden' }}>
       <div style={{ display: 'grid', gridTemplateColumns: '70px minmax(180px, 1.45fr) minmax(120px, 0.7fr) minmax(90px, 0.45fr) minmax(130px, 0.65fr) auto', gap: '0', alignItems: 'center' }}>
@@ -2609,12 +2665,22 @@ function EpisodeReviewRow({
             <span style={{ width: '7px', height: '7px', borderRadius: '999px', backgroundColor: visual.color }} />
             {WORKFLOW_LABELS[workflowState]}
           </div>
+          {missingAudio && (
+            <div
+              title="This episode has a script but is missing one or more rendered-production assets (audio, cover, or announcement). It is NOT ready to publish."
+              style={{ display: 'inline-flex', marginTop: '6px', marginLeft: '6px', alignItems: 'center', gap: '6px', padding: '5px 8px', borderRadius: '999px', backgroundColor: '#fef2f2', color: '#991b1b', border: '1px solid #fecaca', fontSize: '11px', fontWeight: 950 }}
+            >
+              <span style={{ width: '7px', height: '7px', borderRadius: '999px', backgroundColor: '#dc2626' }} />
+              Missing audio
+            </div>
+          )}
         </div>
         <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
           {workflowState !== 'cold_storage' && story.audio_url && <PlayStoryButton story={story} />}
           {['ready_for_review', 'approved_ready', 'unpublished_library', 'published'].includes(workflowState) && <button onClick={() => onEditClick(story)} style={actionButtonStyle('muted')}>Edit Cover</button>}
           {workflowState === 'ready_for_review' && <button onClick={() => onSetWorkflowState(story, 'approved_ready')} style={actionButtonStyle('success')}>Approve for Publishing</button>}
-          {workflowState === 'approved_ready' && <button onClick={() => onPublish(story)} style={actionButtonStyle('primary')}>Publish Now</button>}
+          {workflowState === 'approved_ready' && rendered && <button onClick={() => onPublish(story)} style={actionButtonStyle('primary')}>Publish Now</button>}
+          {workflowState === 'approved_ready' && !rendered && <button disabled title="Blocked: missing rendered audio/cover/announcement" style={{ ...actionButtonStyle('muted'), opacity: 0.55, cursor: 'not-allowed' }}>Publish Now (blocked: missing audio)</button>}
           {workflowState === 'repair_queue' && <button onClick={() => onSetWorkflowState(story, 'ready_for_review')} style={actionButtonStyle('muted')}>Cancel</button>}
           {workflowState === 'unpublished_library' && <button onClick={() => onSetWorkflowState(story, 'ready_for_review')} style={actionButtonStyle('muted')}>Return to Review</button>}
           {workflowState === 'published' && <button onClick={() => {
@@ -2638,6 +2704,7 @@ function EpisodeReviewRow({
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', padding: '8px 12px 12px 82px', backgroundColor: '#f8fafc', borderTop: '1px solid rgba(148,163,184,0.18)', color: '#475569', fontSize: '11px', fontWeight: 800 }}>
         <span>Audio {story.audio_ready ? 'ready' : 'missing'}</span>
         <span>Story audio {story.story_audio_ready ? 'ready' : 'missing'}</span>
+        <span>Announcement {(story.announcement_url || story.announcement_ready) ? 'ready' : 'missing'}</span>
         <span>Cover {story.cover_ready ? 'ready' : 'missing'}</span>
         <span>Prose {story.prose_ready ? 'ready' : 'missing'}</span>
       </div>
@@ -2684,7 +2751,10 @@ function SeriesReviewGroup({
   const coldStorageCount = group.stories.filter(isNotApproved).length
   const repairCount = group.stories.filter((story) => ['repair_queue', 'being_repaired'].includes(effectiveWorkflowState(story))).length
   const blockedCount = group.stories.filter((story) => !story.approval_ready || ['repair_queue', 'being_repaired'].includes(effectiveWorkflowState(story))).length
-  const missingAudioCount = group.stories.filter((story) => !story.audio_ready && !story.story_audio_ready).length
+  // READY-PUBLISH-URLS-001: count episodes that have a script in the production
+  // lane but are missing one or more rendered-production URLs (audio/cover/
+  // announcement). This is the state that must never read as "Ready to Publish".
+  const missingAudioCount = group.stories.filter(isMissingAudio).length
   const missingPackagingCount = group.stories.filter((story) => !story.cover_ready || !story.prose_ready || !story.author_ready || !story.narrator_voice_ready).length
   const statusBlockedCount = group.stories.filter((story) => approvalBlockingSummary(story.approval_blocking_reasons) === 'Needs Review').length
   const renderedCount = group.stories.filter((story) => story.audio_ready || story.story_audio_ready).length
@@ -3211,6 +3281,17 @@ export default function AdminStoriesPage() {
   const publishSeries = async (group: Extract<StoryGroup, { type: 'series' }>) => {
     const seriesId = String(group.stories[0]?.series_id || '').trim()
     if (!seriesId) return
+    // READY-PUBLISH-URLS-001: block series publish if any episode is missing a
+    // rendered-production URL (audio/cover/announcement). A series must not go
+    // live with a script-only episode in it.
+    const notRendered = group.stories.filter(
+      (story) => !isPublishedToApp(story) && effectiveWorkflowState(story) !== 'cold_storage' && !hasRenderedProduction(story)
+    )
+    if (notRendered.length > 0) {
+      alert(`Cannot publish "${group.title}": ${notRendered.length} episode(s) are missing rendered audio/cover/announcement:\n\n` +
+        notRendered.map((s) => `• Ep ${s.episode_number ?? '?'} — ${s.episode_title || s.title}`).join('\n'))
+      return
+    }
     if (!window.confirm(`Publish all ${group.stories.length} episode(s) in "${group.title}" to the app?`)) return
     try {
       const res = await fetch('/api/admin/publish-story', {
@@ -3673,9 +3754,23 @@ export default function AdminStoriesPage() {
   }
 
   async function publishAllApproved() {
-    const approved = stories.filter((story) => effectiveWorkflowState(story) === 'approved_ready')
-    if (approved.length === 0) return
-    if (!window.confirm(`Publish all ${approved.length} Ready to Publish item(s) to the live app?`)) return
+    // READY-PUBLISH-URLS-001: only publish items that are genuinely publish-ready
+    // — approved_ready AND all three rendered-production URLs present. Skipping
+    // the URL check here is how Alderton (approved script, no audio) slipped out.
+    const approved = stories.filter(isApprovedReady)
+    const blockedMissingAudio = stories.filter(
+      (story) => effectiveWorkflowState(story) === 'approved_ready' && !hasRenderedProduction(story)
+    )
+    if (approved.length === 0) {
+      if (blockedMissingAudio.length > 0) {
+        alert(`Nothing published. ${blockedMissingAudio.length} approved item(s) are missing rendered audio/cover/announcement and are NOT publish-ready.`)
+      }
+      return
+    }
+    const blockedNote = blockedMissingAudio.length > 0
+      ? `\n\n⚠️ ${blockedMissingAudio.length} approved item(s) will be SKIPPED — missing rendered audio/cover/announcement.`
+      : ''
+    if (!window.confirm(`Publish all ${approved.length} Ready to Publish item(s) to the live app?${blockedNote}`)) return
     for (const story of approved) {
       const res = await fetch('/api/admin/publish-story', {
         method: 'POST',
