@@ -216,7 +216,7 @@ export default function StoryDetailPage() {
             onClick={() => router.push(`/player/${story.id}?openReader=1`)}
             style={{ flex: 1, padding: '14px', background: '#3b82f6', color: 'white', border: 'none', borderRadius: 12, fontFamily: 'var(--font-outfit, sans-serif)', fontSize: 15, fontWeight: 800, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, boxShadow: '0 4px 12px rgba(59,130,246,0.35)' }}
           >
-            📖 Read eBook
+            📖 Read the eBook
           </button>
         )}
       </div>
