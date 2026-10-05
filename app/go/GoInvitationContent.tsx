@@ -85,12 +85,6 @@ const BELLE_WELCOME_URL =
 // TODO EP2: replace with real EP2 player URL once Bell EP2 is in the stories table.
 const EP2_FALLBACK_URL = '/player/759dc525-185c-450f-b249-17e4a525ba60'
 
-// BELL-ONBOARD-002 destination — the EP2 player with the onboarding gate.
-// Single source of truth for the post-signup landing path, used both for the
-// auth_return_to cookie and (indirectly, via /auth/callback) as the Stripe
-// Checkout success destination.
-const EP2_ONBOARD_PATH = '/player/759dc525-185c-450f-b249-17e4a525ba60?onboard=1'
-
 // ─── Phase type ───────────────────────────────────────────────────────────────
 type Phase =
   | 'hook'        // Arrival: hook text + "Listen in…" button
@@ -319,7 +313,7 @@ export default function GoInvitationContent({ arm: armProp }: GoInvitationConten
           leadEventId,                             // DEDUP-001: shared ID for pixel + CAPI
         }),
       })
-      const data = (await res.json()) as { ok?: boolean; error?: string; returning?: boolean; active?: boolean; firstName?: string; email?: string; magicToken?: string; userId?: string }
+      const data = (await res.json()) as { ok?: boolean; error?: string; returning?: boolean; active?: boolean; firstName?: string; email?: string; magicToken?: string }
       if (!res.ok || !data.ok) {
         setSubmitError(data.error ?? 'Something went wrong. Please try again.')
         setSubmitting(false)
@@ -345,106 +339,42 @@ export default function GoInvitationContent({ arm: armProp }: GoInvitationConten
       // Clear gate sample progress so ContinueListening is unfiltered after signup (Marc 2026-08-11)
       try { Object.keys(localStorage).filter(k => k.startsWith('et_go_sample_progress')).forEach(k => localStorage.removeItem(k)) } catch { /* private mode / quota — never fatal */ }
 
-      // GO-REROUTE-001 (Marc GO, 2026-10-05): card-on-file re-route.
-      // Brand-new signups (data.ok && !data.active && !data.returning) now go
-      // through hosted Stripe Checkout to vault a card UP FRONT before EP2
-      // playback, matching the card-on-file standard (PR #289 backend).
+      // FIX 3: Skip interstitial — navigate directly to home page (Marc canon 2026-08-11).
+      // No welcome audio, no "You're in" screen. Auth-link redirectTo is /home.
       //
-      // AUTH SURVIVAL ACROSS THE STRIPE ROUND-TRIP — the tricky part:
-      // The user's session is ONLY minted at /auth/callback (verifyOtp sets the
-      // Supabase session cookies there). Stripe's success_url cannot mint a
-      // session. So we DO NOT auth before Stripe. Instead:
-      //   1. Set the auth_return_to cookie = EP2 onboard path (BELL-ONBOARD-002).
-      //      max-age bumped to 1800s so it outlives the Stripe round-trip
-      //      (the old 300s was fine for an instant redirect but too tight if the
-      //      user lingers on the Stripe page). SameSite=Lax lets the cookie ride
-      //      the top-level GET navigation back from stripe.com.
-      //   2. Point Stripe's success_url (returnTo) at /auth/callback carrying the
-      //      single-use magicToken. After Checkout, Stripe returns the browser to
-      //      /auth/callback?token_hash=…&type=magiclink&cs=… → verifyOtp mints the
-      //      session → /auth/callback reads auth_return_to and redirects to EP2.
-      //      The magic token is spent exactly once, at the END of the flow — it is
-      //      NOT consumed before Stripe, so it is still valid on return.
-      //
-      // BELLE-SEG1-READER-003 preserved: we still use the server-pre-generated
-      // magicToken (minted after all metadata writes) — just deferred behind the
-      // Stripe redirect instead of fired immediately.
+      // BELLE-SEG1-READER-003: Use server-pre-generated magicToken when available.
+      // The server generates the magic link AFTER writing welcome_seg1_url to metadata,
+      // guaranteeing the JWT minted at auth/callback sees fresh metadata (no 4ms race).
+      // Falls back to the separate auth-link call if the server didn’t return a token.
       const capturedEmail = email.trim()
-      const capturedFirstName = name.trim() || undefined
       void (async () => {
         // BELL-ONBOARD-002: direct new bell-invitation users to EP2 player, not /home.
-        // Set cookie BEFORE any navigation so auth/callback picks it up on return
-        // from Stripe. Extended max-age covers the Checkout round-trip.
-        document.cookie = `auth_return_to=${EP2_ONBOARD_PATH}; path=/; max-age=1800; SameSite=Lax`
+        // Set cookie BEFORE any navigation so auth/callback picks it up.
+        document.cookie = 'auth_return_to=/player/759dc525-185c-450f-b249-17e4a525ba60?onboard=1; path=/; max-age=300; SameSite=Lax'
 
-        // Helper: today's magic-link → EP2 flow, unchanged. Used as the graceful
-        // fallback whenever hosted Checkout can't be reached, so a checkout
-        // outage never leaves a (now-created) account stranded at a dead end.
-        const goStraightToEp2ViaMagicLink = async () => {
-          // Fast path: server pre-generated the magic link after all metadata writes.
-          if (data.magicToken) {
-            window.location.href =
-              `/auth/callback?token_hash=${encodeURIComponent(data.magicToken)}&type=magiclink`
-            return
-          }
-          // Fallback: call auth-link separately (existing users, generateLink failure, etc.)
-          try {
-            const linkRes = await fetch('/api/listen/auth-link', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ email: capturedEmail }),
-            })
-            if (linkRes.ok) {
-              const linkData = (await linkRes.json()) as { magicToken?: string }
-              if (linkData.magicToken) {
-                window.location.href =
-                  `/auth/callback?token_hash=${encodeURIComponent(linkData.magicToken)}&type=magiclink`
-                return
-              }
-            }
-          } catch { /* fallthrough */ }
-          window.location.href = '/home'
-        }
-
-        // Card-on-file re-route requires BOTH a userId (to attach the Stripe
-        // customer/subscription) AND a magicToken (to re-establish the session
-        // AFTER Checkout, via /auth/callback as the success_url). Without the
-        // token we cannot authenticate the user on return, so we fall back to
-        // today's direct magic-link → EP2 flow rather than stranding them at an
-        // unauthenticated player.
-        if (!data.userId || !data.magicToken) {
-          await goStraightToEp2ViaMagicLink()
+        // Fast path: server pre-generated the magic link after all metadata writes.
+        if (data.magicToken) {
+          window.location.href =
+            `/auth/callback?token_hash=${encodeURIComponent(data.magicToken)}&type=magiclink`
           return
         }
-
+        // Fallback: call auth-link separately (existing users, generateLink failure, etc.)
         try {
-          // returnTo = /auth/callback carrying the magic token. Stripe appends
-          // &cs={CHECKOUT_SESSION_ID}; /auth/callback ignores cs and honors the
-          // auth_return_to cookie for the final hop to EP2.
-          const checkoutReturnTo =
-            `/auth/callback?token_hash=${encodeURIComponent(data.magicToken)}&type=magiclink`
-          const checkoutRes = await fetch('/api/checkout', {
+          const linkRes = await fetch('/api/listen/auth-link', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              userId: data.userId,
-              email: capturedEmail,
-              firstName: capturedFirstName,
-              source: 'go',            // server sets GO_BASE_TRIAL_DAYS for the trial
-              returnTo: checkoutReturnTo,
-            }),
+            body: JSON.stringify({ email: capturedEmail }),
           })
-          const checkoutData = (await checkoutRes.json().catch(() => ({}))) as { url?: string }
-          if (checkoutRes.ok && checkoutData.url) {
-            window.location.href = checkoutData.url
-            return
+          if (linkRes.ok) {
+            const linkData = (await linkRes.json()) as { magicToken?: string }
+            if (linkData.magicToken) {
+              window.location.href =
+                `/auth/callback?token_hash=${encodeURIComponent(linkData.magicToken)}&type=magiclink`
+              return
+            }
           }
-          // Non-ok or no url — log and fall back so signup never dead-ends.
-          console.warn('[go-reroute] /api/checkout returned no url; falling back to magic-link → EP2', { status: checkoutRes.status })
-        } catch (err) {
-          console.warn('[go-reroute] /api/checkout request failed; falling back to magic-link → EP2', err)
-        }
-        await goStraightToEp2ViaMagicLink()
+        } catch { /* fallthrough */ }
+        window.location.href = '/home'
       })()
     } catch {
       setSubmitError('Something went wrong. Please try again.')
