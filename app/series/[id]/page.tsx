@@ -268,7 +268,7 @@ export default function SeriesDetailPage() {
           const p = userProgress[ep.id]
           return p && p.progress_seconds > 0 && !p.completed
         })
-        const btnLabel = allCompleted ? 'Play Again' : anyInProgress ? 'Continue Where You Left Off' : 'Play Series'
+        const btnLabel = allCompleted ? 'Play Again' : anyInProgress ? 'Continue Where You Left Off' : 'Listen to Series'
         const btnColor = allCompleted ? '#3b82f6' : anyInProgress ? '#22c55e' : '#f97316'
         const btnShadow = allCompleted ? '0 4px 12px rgba(59,130,246,0.35)' : anyInProgress ? '0 4px 12px rgba(34,197,94,0.35)' : '0 4px 12px rgba(249,115,22,0.35)'
         return (
