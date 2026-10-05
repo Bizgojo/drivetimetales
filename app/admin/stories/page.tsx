@@ -250,7 +250,58 @@ function SortButton({ column, sortKey, sortDirection, onSort }: { column: typeof
   )
 }
 
-function PublishedRowView({ row, expanded, onToggle }: { row: PublishedRow; expanded: boolean; onToggle: () => void }) {
+function GenreSelect({ story, genreOptions, busy, onChange }: { story: PublishedStory; genreOptions: string[]; busy: boolean; onChange: (genre: string) => void }) {
+  const current = story.genre || ''
+  // Keep whatever is currently stored selectable even if it's not (or no
+  // longer) an active genre — e.g. the stray "Learn" value — so it's visible
+  // and choosable-away-from rather than silently disappearing from the list.
+  const options = current && !genreOptions.includes(current) ? [current, ...genreOptions] : genreOptions
+  return (
+    <select
+      value={current}
+      disabled={busy}
+      onChange={e => onChange(e.target.value)}
+      style={{ border: `1px solid ${border}`, borderRadius: '5px', padding: '4px 6px', fontSize: '12px', color: textPrimary, backgroundColor: '#fff', maxWidth: '140px' }}
+    >
+      {!current && <option value="">—</option>}
+      {options.map(g => <option key={g} value={g}>{g}</option>)}
+    </select>
+  )
+}
+
+function RowActions({ story, busy, onRemoveToRfR, onSendToColdStorage }: { story: PublishedStory; busy: boolean; onRemoveToRfR: () => void; onSendToColdStorage: () => void }) {
+  return (
+    <div style={{ display: 'flex', gap: '6px' }}>
+      <button
+        onClick={onRemoveToRfR}
+        disabled={busy}
+        title="Pull from the app and send back to Ready for Review"
+        style={{ border: `1px solid ${border}`, background: '#fff', color: textPrimary, borderRadius: '5px', padding: '5px 8px', fontSize: '11px', fontWeight: 700, cursor: busy ? 'default' : 'pointer', opacity: busy ? 0.5 : 1, whiteSpace: 'nowrap' }}
+      >
+        Remove → RfR
+      </button>
+      <button
+        onClick={onSendToColdStorage}
+        disabled={busy}
+        title="Retire from the app into Cold Storage"
+        style={{ border: '1px solid #fecaca', background: '#fff5f5', color: '#991b1b', borderRadius: '5px', padding: '5px 8px', fontSize: '11px', fontWeight: 700, cursor: busy ? 'default' : 'pointer', opacity: busy ? 0.5 : 1, whiteSpace: 'nowrap' }}
+      >
+        Cold Storage
+      </button>
+    </div>
+  )
+}
+
+type RowActionHandlers = {
+  genreOptions: string[]
+  rowBusy: Record<string, boolean>
+  rowError: Record<string, string>
+  onGenreChange: (storyId: string, genre: string) => void
+  onRemoveToRfR: (story: PublishedStory) => void
+  onSendToColdStorage: (story: PublishedStory) => void
+}
+
+function PublishedRowView({ row, expanded, onToggle, actions }: { row: PublishedRow; expanded: boolean; onToggle: () => void; actions: RowActionHandlers }) {
   const story = row.type === 'series' ? row.aggregate : row.story
   const isSeries = row.type === 'series'
   return (
@@ -268,23 +319,49 @@ function PublishedRowView({ row, expanded, onToggle }: { row: PublishedRow; expa
               <div style={{ color: textPrimary, fontWeight: 800, fontSize: '13px' }}>{isSeries ? row.title : displayTitle(story)}</div>
               {isSeries && <div style={{ color: textSecondary, fontSize: '11px', marginTop: '2px' }}>{row.stories.length} episodes</div>}
               {!isSeries && story.title !== displayTitle(story) && <div style={{ color: textSecondary, fontSize: '11px', marginTop: '2px' }}>{story.title}</div>}
+              {!isSeries && actions.rowError[story.id] && <div style={{ color: '#b91c1c', fontSize: '11px', marginTop: '2px', fontWeight: 700 }}>{actions.rowError[story.id]}</div>}
             </div>
           </div>
         </td>
         <td style={tdStyle}>{isSeries ? 'Series' : 'Standalone'}</td>
-        <td style={tdStyle}>{story.genre || '—'}</td>
+        <td style={tdStyle}>
+          {isSeries
+            ? (story.genre || '—')
+            : <GenreSelect story={story} genreOptions={actions.genreOptions} busy={Boolean(actions.rowBusy[story.id])} onChange={g => actions.onGenreChange(story.id, g)} />}
+        </td>
         <td style={tdStyle}>{story.author || '—'}</td>
         {columns.slice(4).map(column => <td key={column.key} style={{ ...tdStyle, textAlign: 'right' }}>{metricCell(story, column.key)}</td>)}
+        <td style={tdStyle}>
+          {!isSeries && (
+            <RowActions
+              story={story}
+              busy={Boolean(actions.rowBusy[story.id])}
+              onRemoveToRfR={() => actions.onRemoveToRfR(story)}
+              onSendToColdStorage={() => actions.onSendToColdStorage(story)}
+            />
+          )}
+        </td>
       </tr>
       {isSeries && expanded && row.stories.map((episode) => (
         <tr key={episode.id} style={{ backgroundColor: '#f8fafc', borderBottom: `1px solid ${border}` }}>
           <td style={{ padding: '10px 12px 10px 58px', color: textPrimary, fontSize: '12px', fontWeight: 700 }}>
             Episode {episode.series_number || episode.episode_number || '—'}: {displayTitle(episode)}
+            {actions.rowError[episode.id] && <div style={{ color: '#b91c1c', fontSize: '11px', marginTop: '2px', fontWeight: 700 }}>{actions.rowError[episode.id]}</div>}
           </td>
           <td style={tdStyle}>Episode</td>
-          <td style={tdStyle}>{episode.genre || '—'}</td>
+          <td style={tdStyle}>
+            <GenreSelect story={episode} genreOptions={actions.genreOptions} busy={Boolean(actions.rowBusy[episode.id])} onChange={g => actions.onGenreChange(episode.id, g)} />
+          </td>
           <td style={tdStyle}>{episode.author || '—'}</td>
           {columns.slice(4).map(column => <td key={column.key} style={{ ...tdStyle, textAlign: 'right' }}>{metricCell(episode, column.key)}</td>)}
+          <td style={tdStyle}>
+            <RowActions
+              story={episode}
+              busy={Boolean(actions.rowBusy[episode.id])}
+              onRemoveToRfR={() => actions.onRemoveToRfR(episode)}
+              onSendToColdStorage={() => actions.onSendToColdStorage(episode)}
+            />
+          </td>
         </tr>
       ))}
     </>
@@ -306,10 +383,101 @@ export default function PublishedStoriesPage() {
   const [sortKey, setSortKey] = useState<SortKey>('published_on')
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc')
   const [expandedSeries, setExpandedSeries] = useState<Record<string, boolean>>({})
+  const [genreOptions, setGenreOptions] = useState<string[]>([])
+  const [rowBusy, setRowBusy] = useState<Record<string, boolean>>({})
+  const [rowError, setRowError] = useState<Record<string, string>>({})
 
   useEffect(() => {
     fetchPublishedStories()
+    fetchGenreOptions()
   }, [])
+
+  async function fetchGenreOptions() {
+    try {
+      const res = await fetch('/api/admin/genres?active=true', { cache: 'no-store' })
+      const result = await res.json().catch(() => ({}))
+      if (res.ok && result.success) {
+        setGenreOptions((result.genres || []).map((g: any) => g.name).filter(Boolean))
+      }
+    } catch (err) {
+      console.error('[admin/stories] genre list load failed:', err)
+    }
+  }
+
+  function setBusy(storyId: string, busy: boolean) {
+    setRowBusy(prev => ({ ...prev, [storyId]: busy }))
+  }
+
+  function setError(storyId: string, message: string) {
+    setRowError(prev => ({ ...prev, [storyId]: message }))
+  }
+
+  async function handleGenreChange(storyId: string, genre: string) {
+    setError(storyId, '')
+    setBusy(storyId, true)
+    // Optimistic local update so the dropdown reflects the pick immediately.
+    const previous = stories.find(s => s.id === storyId)?.genre ?? null
+    setStories(prev => prev.map(s => s.id === storyId ? { ...s, genre } : s))
+    try {
+      const res = await fetch('/api/admin/update-story-genre', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ storyId, genre }),
+      })
+      const result = await res.json().catch(() => ({}))
+      if (!res.ok || !result.success) {
+        setStories(prev => prev.map(s => s.id === storyId ? { ...s, genre: previous } : s))
+        setError(storyId, result.error || `Genre update failed (HTTP ${res.status})`)
+      }
+    } catch (err) {
+      setStories(prev => prev.map(s => s.id === storyId ? { ...s, genre: previous } : s))
+      setError(storyId, err instanceof Error ? err.message : 'Genre update failed')
+    } finally {
+      setBusy(storyId, false)
+    }
+  }
+
+  async function setWorkflowState(storyId: string, state: string, options: { retire?: boolean } = {}) {
+    const res = await fetch('/api/admin/content-approval?action=set_workflow_state', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ storyId, state, retire: options.retire }),
+    })
+    const result = await res.json().catch(() => ({}))
+    if (!res.ok || !result.success) {
+      throw new Error(result.error || `HTTP ${res.status}`)
+    }
+  }
+
+  async function handleRemoveToRfR(story: PublishedStory) {
+    if (!window.confirm(`Remove "${displayTitle(story)}" from the app and send it back to Ready for Review?`)) return
+    setError(story.id, '')
+    setBusy(story.id, true)
+    try {
+      // Governed transition chain (published can only step to
+      // unpublished_library first, then on to ready_for_review) —
+      // see lib/workflowTransitions.ts.
+      await setWorkflowState(story.id, 'unpublished_library')
+      await setWorkflowState(story.id, 'ready_for_review')
+      await fetchPublishedStories()
+    } catch (err) {
+      setError(story.id, err instanceof Error ? err.message : 'Failed to remove from app')
+      setBusy(story.id, false)
+    }
+  }
+
+  async function handleSendToColdStorage(story: PublishedStory) {
+    if (!window.confirm(`Send "${displayTitle(story)}" to Cold Storage?\n\nThis retires it from the app. It can be retrieved later from Cold Storage in Production Approval.`)) return
+    setError(story.id, '')
+    setBusy(story.id, true)
+    try {
+      await setWorkflowState(story.id, 'cold_storage', { retire: true })
+      await fetchPublishedStories()
+    } catch (err) {
+      setError(story.id, err instanceof Error ? err.message : 'Failed to send to Cold Storage')
+      setBusy(story.id, false)
+    }
+  }
 
   async function fetchPublishedStories() {
     setLoading(true)
@@ -451,6 +619,7 @@ export default function PublishedStoriesPage() {
                   <SortButton column={column} sortKey={sortKey} sortDirection={sortDirection} onSort={handleSort} />
                 </th>
               ))}
+              <th style={{ padding: '11px 12px', textAlign: 'left', whiteSpace: 'nowrap', color: textSecondary, fontWeight: 800, fontSize: '11px' }}>Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -460,11 +629,19 @@ export default function PublishedStoriesPage() {
                 row={row}
                 expanded={Boolean(expandedSeries[row.key])}
                 onToggle={() => setExpandedSeries(prev => ({ ...prev, [row.key]: !prev[row.key] }))}
+                actions={{
+                  genreOptions,
+                  rowBusy,
+                  rowError,
+                  onGenreChange: handleGenreChange,
+                  onRemoveToRfR: handleRemoveToRfR,
+                  onSendToColdStorage: handleSendToColdStorage,
+                }}
               />
             ))}
             {filteredRows.length === 0 && (
               <tr>
-                <td colSpan={columns.length} style={{ padding: '3rem', textAlign: 'center', color: textSecondary }}>
+                <td colSpan={columns.length + 1} style={{ padding: '3rem', textAlign: 'center', color: textSecondary }}>
                   No public app stories match this view.
                 </td>
               </tr>
