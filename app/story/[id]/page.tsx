@@ -230,21 +230,7 @@ export default function StoryDetailPage() {
             onClick={event => event.stopPropagation()}
             style={{ width: '100%', maxWidth: 460, borderRadius: 16, background: '#0f172a', border: '1px solid rgba(148,163,184,0.16)', boxShadow: '0 24px 80px rgba(0,0,0,0.5)', padding: 18 }}
           >
-            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start', marginBottom: 14 }}>
-              <div style={{ display: 'flex', gap: 12, alignItems: 'center', minWidth: 0 }}>
-                <div style={{ width: 54, height: 54, borderRadius: '50%', overflow: 'hidden', background: '#1e293b', flexShrink: 0 }}>
-                  {modalProfile.photo_url ? (
-                    <img src={modalProfile.photo_url} alt={modalProfile.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                  ) : (
-                    <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontSize: 20, fontWeight: 800 }}>{modalProfile.name.slice(0, 1)}</div>
-                  )}
-                </div>
-                <div style={{ minWidth: 0 }}>
-                  <div style={{ fontSize: 10, color: '#f97316', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 3 }}>{activeProfile}</div>
-                  <div style={{ fontFamily: 'var(--font-outfit, sans-serif)', color: 'white', fontSize: 18, fontWeight: 800, lineHeight: 1.1 }}>{modalProfile.name}</div>
-                  {modalProfile.description && <div style={{ color: 'white', fontSize: 12, marginTop: 4 }}>{modalProfile.description}</div>}
-                </div>
-              </div>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
               <button
                 onClick={() => setActiveProfile(null)}
                 aria-label="Close profile"
@@ -252,6 +238,20 @@ export default function StoryDetailPage() {
               >
                 ×
               </button>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', marginBottom: 14 }}>
+              <div style={{ width: 112, height: 112, borderRadius: 12, overflow: 'hidden', backgroundColor: '#1e293b', boxShadow: '0 0 0 1px rgba(255,255,255,0.45), 0 16px 36px rgba(0,0,0,0.35), 0 0 18px rgba(255,255,255,0.18)', marginBottom: 12 }}>
+                {modalProfile.photo_url ? (
+                  <img src={modalProfile.photo_url} alt={modalProfile.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                ) : (
+                  <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontSize: 36, fontWeight: 800 }}>{modalProfile.name.slice(0, 1)}</div>
+                )}
+              </div>
+              <div style={{ textAlign: 'center' }}>
+                <div style={{ fontSize: 10, color: '#f97316', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 3 }}>{activeProfile}</div>
+                <div style={{ fontFamily: 'var(--font-outfit, sans-serif)', color: 'white', fontSize: 18, fontWeight: 800, lineHeight: 1.1 }}>{modalProfile.name}</div>
+                {modalProfile.description && <div style={{ color: 'white', fontSize: 12, marginTop: 4 }}>{modalProfile.description}</div>}
+              </div>
             </div>
             {modalProfile.bio && <p style={{ color: 'white', fontSize: 14, lineHeight: 1.6, margin: 0 }}>{modalProfile.bio}</p>}
           </div>
