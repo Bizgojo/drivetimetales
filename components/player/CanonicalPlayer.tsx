@@ -854,11 +854,16 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
   // Returns true if it fired the card wall (so callers skip auto-advance).
   //
   // ▼▼▼ SINGLE ADJUSTABLE TRIGGER POINT ▼▼▼
-  // Default policy = fire at EP2 natural end. A strategist (Strategos) may move
-  // the ask to an EP3 cliffhanger gate or a mid-EP2 pct trigger. To change WHEN
-  // it fires, change only where maybeFireOnboardCardWall() is CALLED (the two
-  // natural-end sites) and/or the eligibility predicate below — the wall UI and
-  // checkout handler stay the same.
+  // Default policy (this build) = fire at EP2 natural end.
+  // STRATEGOS RECOMMENDATION (2026-10-05, logged): move the ask to the EP2→EP3
+  // CLIFFHANGER rather than flat EP2-end — ride the unresolved hook (30s-hook
+  // canon + 75% retention = narrative pull converts curiosity→card better than a
+  // flat "trial over", and far better than a mid-EP2 pct interrupt). Pending Marc.
+  // Make-or-break metric = EP2-reach (68% never activated); the gate must be paired
+  // with reach-driving reminders or B is structurally capped at the EP2-reach rate.
+  // To change WHEN it fires, change only where maybeFireOnboardCardWall() is CALLED
+  // (the two natural-end sites) and/or the eligibility predicate below — the wall
+  // UI and checkout handler stay the same.
   const maybeFireOnboardCardWall = (): boolean => {
     // Eligibility (ALL must hold):
     //  - isOnboardingRef: this player session is the EP2 onboarding landing
