@@ -77,6 +77,7 @@ Use the CURRENT rules:
 - The script must include BELLE B INTRO and BELLE B OUTRO blocks.
 - Standalone stories must end conclusively.
 - Series non-finales must end on a specific cliffhanger.
+- Narrator-as-voice-actor is VALID and must PASS. When the NARRATOR field names a voice actor and NARRATIVE_VOICE is third_limited or first_person, it is CORRECT for narration lines to be tagged with the CHARACTER name (e.g. NORA VANE:, COLE:) rather than the voice-actor name, as long as the CHARACTER GUIDE marks that character as the narrator. The NARRATOR field identifies the performer; the body tag identifies the voiced character. Do NOT flag this as a narrator/attribution conflict and do NOT fail a script for it. Only flag a genuine conflict: two different characters both delivering narration, or narration tagged to a name that appears in neither the NARRATOR field nor the CHARACTER GUIDE.
 - Difficult Solution Rule: the main problem must feel genuinely difficult at the beginning, the middle must reveal leverage and escalating consequences that make the solution possible, and the ending must feel emotionally and logically earned.
 - Fail endings where the climax happens offscreen, the protagonist does not affect the outcome, the ending resolves through exposition instead of dramatic action, the emotional arc is unresolved, series episode state is not satisfied, or the final solution is passive, too easy, coincidence/deus-ex-machina, or a "villain already dead" anticlimax.
 
