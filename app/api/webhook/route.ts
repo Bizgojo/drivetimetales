@@ -2,12 +2,13 @@ import { NextRequest, NextResponse } from 'next/server'
 import Stripe from 'stripe'
 import { createClient } from '@supabase/supabase-js'
 import { Resend } from 'resend'
-import { isActivatableStatus, planFields } from '@/lib/webhookGuards'
+import { isActivatableStatus, isAccessPreservingStatus, planFields } from '@/lib/webhookGuards'
 import { sendServerEvent } from '@/lib/tracking/capi'
 import { startTrialEventId, subscribeEventId } from '@/lib/tracking/events'
 import { payReferrerAfterFirstPayment } from '@/lib/referralPayout'
 import { ANNUAL_PRICE_LABEL, MONTHLY_PRICE_LABEL, TRIAL_DAYS } from '@/lib/pricing'
 import { resolveCancelledAt } from '@/lib/cancelState'
+import { renderTrialEndingReminderEmail } from '@/lib/emails/retentionTemplates'
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, { apiVersion: '2023-10-16' })
 
@@ -279,10 +280,18 @@ export async function POST(request: NextRequest) {
       const isFoundingMember = subscription.metadata?.isFoundingMember === 'true'
       const planName = getPlanName(isFoundingMember)
       const status = subscription.status // active, trialing, past_due, canceled, etc.
-      const isActive = isActivatableStatus(status)
+      // CARD-ON-FILE-001 (2026-10-05, Marc GO — LENIENT dunning):
+      // Access is preserved for active/trialing AND past_due. Previously only
+      // active/trialing kept access, so the first failed renewal immediately
+      // dropped a paying customer to plan='free'. Now a 'past_due' sub keeps
+      // full access while Stripe's Smart Retries run; only truly terminal states
+      // (canceled / unpaid / incomplete_expired) deactivate. See
+      // lib/webhookGuards.isAccessPreservingStatus.
+      const keepsAccess = isAccessPreservingStatus(status)
+      const isPastDue = status === 'past_due'
       const periodEnd = new Date(subscription.current_period_end * 1000).toISOString()
 
-      console.log(`[webhook] subscription updated — user ${userId}, status: ${status}, plan: ${planName}`)
+      console.log(`[webhook] subscription updated — user ${userId}, status: ${status}, plan: ${planName}, keepsAccess: ${keepsAccess}`)
 
       const billingCycleSu = getBillingCycle(subscription)
       // CANCEL-STATE-001: a pending cancellation (cancel_at_period_end=true)
@@ -290,15 +299,38 @@ export async function POST(request: NextRequest) {
       // here; a resubscribe (flag back to false) clears it. Access is
       // unchanged — subscription_type stays 'active' until the period ends.
       const cancelledAtSu = resolveCancelledAt(subscription)
+
+      // CARD-ON-FILE-001: during 'past_due', Stripe's current_period_end is the
+      // OLD (now-expired) period, because the renewal invoice has not been paid.
+      // hasActiveSubscription() (lib/subscription.ts) gates on
+      // subscription_ends_at being in the FUTURE, so writing the stale periodEnd
+      // would silently revoke access despite subscription_type='active'. To make
+      // LENIENT dunning actually preserve access, we extend subscription_ends_at
+      // to a grace horizon that covers the Smart-Retries window. Keep this in
+      // sync with the Stripe Dashboard retry schedule (see handoff doc): if
+      // Stripe retries for up to ~2 weeks, the grace horizon must cover it.
+      // The 'past_due' status is represented WITHOUT a schema change by reusing
+      // subscription_type='active' + an extended subscription_ends_at; a terminal
+      // cancel/unpaid later flips to free via this same handler (or
+      // subscription.deleted), which clears the grace.
+      const PAST_DUE_GRACE_DAYS = 16 // ≥ Stripe Smart Retries window Marc sets in Dashboard (set a bit longer)
+      const graceEnds = new Date(Date.now() + PAST_DUE_GRACE_DAYS * 24 * 60 * 60 * 1000).toISOString()
+      const endsAtToWrite = isPastDue
+        ? graceEnds
+        : (keepsAccess ? periodEnd : null)
+
       const { error } = await supabase.from('users').update({
         // On deactivation, plan drops to 'free' but is_founding_member is left
         // untouched (historical flag; pricing lock decisions live elsewhere).
-        ...(isActive ? planFields(isFoundingMember) : { plan: 'free' }),
-        subscription_type: isActive ? 'active' : null,
-        subscription_ends_at: isActive ? periodEnd : null,
-        billing_cycle: isActive ? billingCycleSu : null,
+        ...(keepsAccess ? planFields(isFoundingMember) : { plan: 'free' }),
+        subscription_type: keepsAccess ? 'active' : null,
+        subscription_ends_at: endsAtToWrite,
+        billing_cycle: keepsAccess ? billingCycleSu : null,
         cancelled_at: cancelledAtSu,
       }).eq('id', userId)
+      if (isPastDue) {
+        console.log(`[webhook] LENIENT dunning — user ${userId} kept active during past_due, grace access until ${graceEnds}`)
+      }
       if (cancelledAtSu) {
         console.log(`[webhook] pending cancellation recorded — user ${userId}, access until ${periodEnd}`)
       }
@@ -317,8 +349,70 @@ export async function POST(request: NextRequest) {
       if (!userId) break
 
       console.log(`[webhook] payment failed — user ${userId}`)
-      // Don't cut off access immediately — Stripe will retry and send customer.subscription.updated
-      // when it moves to past_due. Just log for now.
+      // CARD-ON-FILE-001 (2026-10-05, Marc GO — LENIENT dunning):
+      // Don't cut off access immediately — Stripe will retry and send
+      // customer.subscription.updated when it moves to past_due, which now KEEPS
+      // access (see the subscription.updated handler + isAccessPreservingStatus).
+      //
+      // DASHBOARD REQUIRED (not code-configurable): the retry cadence and the
+      // "mark invoice uncollectible / cancel subscription after N days" terminal
+      // action are set in the Stripe Dashboard under
+      //   Billing → Settings → Subscriptions and emails → Manage failed payments
+      // (Smart Retries). For LENIENT dunning Marc should set a LONGER retry window
+      // and push the terminal "cancel/mark uncollectible" out to the end of that
+      // window. Keep PAST_DUE_GRACE_DAYS (subscription.updated handler) ≥ that
+      // window so access never lapses mid-retry. See CARD-ON-FILE-BUILD-REPORT.
+      //
+      // A warm "payment issue, you still have access" email is intentionally NOT
+      // sent from here: Stripe's own Smart-Retries dunning emails cover this, and
+      // firing on every retry attempt would multi-email the customer. If Marc
+      // wants a branded warm notice, the single clean trigger is the first
+      // transition to past_due in customer.subscription.updated (one-shot), not
+      // this per-attempt event.
+      break
+    }
+
+    // ─── Trial will end (~3 days out) ────────────────────────────────────────
+    // CARD-ON-FILE-001 (2026-10-05, Marc GO): Stripe fires this ~3 days before a
+    // trialing subscription's trial_end. Card-on-file trials auto-charge at trial
+    // end, so we send ONE warm, honest reminder ("your trial ends in N days, your
+    // card will be charged <price> unless you cancel — here's how"). This is the
+    // card-on-file counterpart to the legacy no-card cron emails; the populations
+    // do not overlap (no-card trials have no Stripe subscription), so nobody is
+    // double-emailed. Non-fatal: email failure never 500s the webhook.
+    case 'customer.subscription.trial_will_end': {
+      const subscription = event.data.object as Stripe.Subscription
+      const userId = subscription.metadata?.userId || subscription.metadata?.user_id
+      if (!userId) break
+
+      try {
+        const { data: userData } = await supabase
+          .from('users')
+          .select('email, first_name, display_name')
+          .eq('id', userId)
+          .single()
+        if (userData?.email) {
+          const resend = new Resend(process.env.RESEND_API_KEY)
+          const name = userData.first_name || userData.display_name || 'there'
+          const billingCycle = getBillingCycle(subscription)
+          const priceLabel = billingCycle === 'annual' ? ANNUAL_PRICE_LABEL : MONTHLY_PRICE_LABEL
+          // Days until the card is charged, from Stripe's trial_end (fallback 3).
+          const daysLeft = subscription.trial_end
+            ? Math.max(1, Math.round((subscription.trial_end - Math.floor(Date.now() / 1000)) / 86400))
+            : 3
+          const template = renderTrialEndingReminderEmail(name, priceLabel, daysLeft)
+          await resend.emails.send({
+            from: 'Belle at Endless Tales <hello@endless-tales.com>',
+            replyTo: 'hello.endlesstales@gmail.com',
+            to: userData.email,
+            subject: template.subject,
+            html: template.html,
+          })
+          console.log(`[webhook] trial_will_end reminder sent to ${userData.email} (${daysLeft}d, ${priceLabel})`)
+        }
+      } catch (emailErr) {
+        console.error('[webhook] trial_will_end reminder failed (non-fatal):', emailErr)
+      }
       break
     }
 

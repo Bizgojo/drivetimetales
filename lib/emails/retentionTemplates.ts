@@ -1,4 +1,6 @@
-import { MONTHLY_PRICE_LABEL } from '@/lib/pricing'
+import { MONTHLY_PRICE_LABEL, ANNUAL_PRICE_LABEL } from '@/lib/pricing'
+
+export const APP_BILLING_URL = 'https://app.endless-tales.com/account/billing'
 /**
  * lib/emails/retentionTemplates.ts — RETENTION-PATH-001
  *
@@ -101,6 +103,55 @@ export function renderWelcomeEmail(displayName: string): { subject: string; html
       </div>
       <p style="color:rgba(255,255,255,0.5);font-size:13px;line-height:1.6;margin:0;text-align:center;">
         After your trial, it's just ${MONTHLY_PRICE_LABEL}. Questions? Reply to this email.
+      </p>
+    `),
+  }
+}
+
+/**
+ * CARD-ON-FILE-001 (2026-10-05, Marc GO) — warm trial-ending reminder.
+ *
+ * Sent ONCE from the Stripe webhook `customer.subscription.trial_will_end`
+ * (~3 days before trial end) for CARD-ON-FILE trials only. Unlike the legacy
+ * no-card trial emails (app/api/cron/trial-emails), these users DO have a card
+ * on file and WILL be charged at trial end — so the copy is honest about the
+ * upcoming charge and gives a clear, friendly cancel path. Warm/lenient tone:
+ * no pressure, easy to cancel, "we hope you stay".
+ *
+ * No double-emailing: the cron no-card emails only reach subscriptions that do
+ * NOT exist in Stripe (no-card trials), while this fires only on real Stripe
+ * subscriptions — the two populations do not overlap.
+ *
+ * @param name       First/display name (falls back to 'there').
+ * @param priceLabel e.g. '$9.99/month' or '$79.99/year' (lib/pricing labels).
+ * @param daysLeft   Days until the card is charged (Stripe fires ~3 days out).
+ */
+export function renderTrialEndingReminderEmail(
+  name: string,
+  priceLabel: string = MONTHLY_PRICE_LABEL,
+  daysLeft: number = 3,
+): { subject: string; html: string } {
+  const safeName = name || 'there'
+  const dayWord = daysLeft === 1 ? 'day' : 'days'
+  return {
+    subject: `Your free trial ends in ${daysLeft} ${dayWord}`,
+    html: shell(`
+      <h1 style="color:#ffffff;font-size:22px;font-weight:800;text-align:center;margin:0 0 12px;">A quick heads-up, ${safeName}</h1>
+      <p style="color:rgba(255,255,255,0.8);font-size:15px;line-height:1.7;margin:0 0 16px;">
+        We hope you've been enjoying Endless Tales. Your free trial ends in
+        <strong style="color:#ffffff;">${daysLeft} ${dayWord}</strong>, and after that your
+        subscription starts at <strong style="color:#f97316;">${priceLabel}</strong> — nothing
+        changes, your whole library just stays open.
+      </p>
+      <p style="color:rgba(255,255,255,0.8);font-size:15px;line-height:1.7;margin:0 0 20px;">
+        No action needed if you'd like to keep listening. If now isn't the right
+        time, you can cancel in a couple of taps before the trial ends and you
+        won't be charged — no hard feelings, and you're always welcome back.
+      </p>
+      ${ctaButton('Keep listening', APP_HOME_URL)}
+      <p style="color:rgba(255,255,255,0.5);font-size:13px;line-height:1.6;margin:0;text-align:center;">
+        Need to cancel or manage your plan? <a href="${APP_BILLING_URL}" target="_blank" style="color:#f97316;text-decoration:underline;">Manage your subscription</a>.<br>
+        Questions? Just reply to this email — a real person reads these.
       </p>
     `),
   }
