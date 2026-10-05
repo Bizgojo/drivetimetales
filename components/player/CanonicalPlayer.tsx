@@ -3074,6 +3074,18 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
                       }}
                       style={{ flex:1, overflowY:'auto', padding:'20px 24px 72px', fontFamily:'Literata, Georgia, "Times New Roman", serif' }}
                     >
+                      {/* Marc 2026-10-04 (EBOOK-COVER-001): the story/series cover photo
+                          as the ebook's front "page", like a real book cover — shown once,
+                          before any chapter/paragraph text. */}
+                      {story.cover_url && (
+                        <div style={{ display:'flex', justifyContent:'center', margin:'4px 0 36px' }}>
+                          <img
+                            src={story.cover_url}
+                            alt={`${proseBookTitle} cover`}
+                            style={{ width:'72%', maxWidth:320, aspectRatio:'2/3', objectFit:'cover', borderRadius:10, boxShadow: proseDark ? '0 12px 32px rgba(0,0,0,0.5)' : '0 12px 32px rgba(0,0,0,0.22)' }}
+                          />
+                        </div>
+                      )}
                       {isSeriesReadIt ? (
                         <>
                           <h1 style={{ fontSize: proseFontSize + 9 + 'px', lineHeight: 1.12, color: proseDark ? 'white' : '#1a1a1a', margin:'0 0 28px', letterSpacing:0, fontWeight:700 }}>{proseBookTitle}</h1>
