@@ -32,6 +32,13 @@ const VALID_START_SOURCES = new Set(['gesture', 'autoplay', 'auto_advance'])
 
 const SPURIOUS_ENDED_STOP_REASON = 'spurious_ended_recovered'
 const DIAGNOSTIC_BEACON_ORIGIN = 'diagnostic_beacon'
+// REACH-REMINDERS-001 / #290 card-wall-view instrumentation: marker row written
+// when the onboard_card_capture EP2-end wall is DISPLAYED. Lets us measure
+// card-wall-view rate (wall shown ÷ EP2 reach). It is NOT a listening session
+// and NOT a play — exclude it from reach/finish/listening metrics by this
+// stop_reason (the reach cohort query already excludes it).
+const CARD_WALL_SHOWN_STOP_REASON = 'ep2_card_wall_shown'
+const CARD_WALL_VIEW_ORIGIN = 'onboard_card_wall'
 
 function adminClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -279,6 +286,39 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: 'Failed to record beacon' }, { status: 500 })
       }
       return NextResponse.json({ success: true, mode: 'beacon' })
+    }
+
+    // REACH-REMINDERS-001 / #290 — card-wall-view marker.
+    // Emitted once when the onboard_card_capture EP2-end wall is shown
+    // (components/player/CanonicalPlayer.tsx maybeFireOnboardCardWall). Reuses
+    // this existing play_events pipeline — no new table. Zero-length marker row:
+    //   stop_reason = 'ep2_card_wall_shown'   (exclude from listening metrics)
+    //   origin      = 'onboard_card_wall'
+    // Measurement: card-wall-view rate = distinct users with this marker on EP2
+    // ÷ distinct users who reached EP2.
+    if (action === 'wall_view') {
+      const device = body?.device || {}
+      const nowIso = new Date().toISOString()
+      const { error } = await supabase.from('play_events').insert({
+        user_id: user.id,
+        story_id: storyId,
+        session_id: sessionId,
+        started_at: nowIso,
+        ended_at: nowIso,
+        seconds_played: 0,
+        progress_pct: 0,
+        stop_reason: CARD_WALL_SHOWN_STOP_REASON,
+        origin: CARD_WALL_VIEW_ORIGIN,
+        device_type: stringOrNull(device.device_type) || 'unknown',
+        device_os: stringOrNull(device.device_os) || 'unknown',
+        browser: stringOrNull(device.browser) || 'unknown',
+        is_offline: Boolean(body?.isOffline),
+      })
+      if (error) {
+        console.warn('[analytics/play-event] wall_view insert failed:', error.message)
+        return NextResponse.json({ error: 'Failed to record wall view' }, { status: 500 })
+      }
+      return NextResponse.json({ success: true, mode: 'wall_view' })
     }
 
     return NextResponse.json({ error: 'Invalid action' }, { status: 400 })

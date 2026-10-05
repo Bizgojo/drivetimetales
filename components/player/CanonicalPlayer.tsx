@@ -5,7 +5,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { supabaseBrowser } from '@/lib/supabase-browser'
-import { trackPlayStart, trackPlayEnd, trackSpuriousEndedRecovered, type PlayStartSource } from '@/lib/analytics'
+import { trackPlayStart, trackPlayEnd, trackSpuriousEndedRecovered, trackCardWallView, type PlayStartSource } from '@/lib/analytics'
 import { useAuth } from '@/contexts/AuthContext'
 import ReviewModal from '@/components/ReviewModal'
 import InstallAppBanner from '@/components/InstallAppBanner'
@@ -881,6 +881,10 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
     setPlaybackEnded(true)
     setTrialWallVisible(true)
     setTrialWallType('onboard_card_capture')
+    // REACH-REMINDERS-001 / #290: emit a card-wall-view event so we can measure
+    // card-wall-view rate. Fire-and-forget; the ...FiredRef guard above makes
+    // this at-most-once per player session, so the marker is not double-counted.
+    try { void trackCardWallView({ userId: user?.id, storyId }) } catch {}
     return true
   }
   // ▲▲▲ SINGLE ADJUSTABLE TRIGGER POINT ▲▲▲
