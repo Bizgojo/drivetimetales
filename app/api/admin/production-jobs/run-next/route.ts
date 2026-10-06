@@ -31,7 +31,7 @@ import { runVoiceConformanceGate, type VoiceProfile } from '@/lib/voiceConforman
 // R1-V3 step map (decision r1-v3-step-map-approved-oct6, 2026-10-06):
 // central per-step model router. STEP_MODELS below derives from it with
 // fallback to the current Claude models when DEEPSEEK_API_KEY is absent.
-import { legacyStepModels, routeStep, resolveModelForStep } from '@/lib/model-router'
+import { legacyStepModels, routeStep, resolveModelForStep, coerceValidationModelToClaude } from '@/lib/model-router'
 import { buildContinuityPins, verifyContinuityPins } from '@/lib/continuityPin'
 
 export const runtime = 'nodejs'
@@ -7773,7 +7773,16 @@ export async function POST(req: NextRequest) {
     lockHolderId = String(body.holderId || WORKER_ID).trim() || WORKER_ID
     const model = String(body.model || STEP_MODELS.generate)
     // ATL-PIPE-MODEL-001 + R1-V3: validation/QC steps route via Lyra/R1 when env present.
-    const validationModel = String(body.validationModel || STEP_MODELS.validate)
+    // ATL-VALMODEL-GUARD-001 (decision alderton-rerun-nooverride-guardpr-oct6-1634):
+    // belt-and-suspenders guard. Every validation function below hands this id
+    // directly to the Anthropic client (anthropic.messages.create). A stray
+    // non-Claude id (e.g. a DeepSeek reasoner id) must NEVER reach that client,
+    // so coerce any non-claude validation model id to the safe Claude fallback
+    // (FALLBACK_VALIDATE_MODEL / claude-sonnet-4-6) here, logging a warning.
+    // Validation-path guard ONLY — generation model is untouched.
+    const validationModel = coerceValidationModelToClaude(
+      String(body.validationModel || STEP_MODELS.validate),
+    )
 
     // ATLAS OCT3: auto-send-back — revive one blocked Belle job (failed with a
     // routable belle_*_blocked error) by re-queueing it to repair_belle_quality.

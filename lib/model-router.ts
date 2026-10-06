@@ -171,6 +171,42 @@ export function resolveModelForStep(stepName: string): string | null {
   return route.model
 }
 
+/**
+ * ATL-VALMODEL-GUARD-001 (decision alderton-rerun-nooverride-guardpr-oct6-1634).
+ * Belt-and-suspenders guard for the validation path: the validation step
+ * resolves to a model id that is ALWAYS handed to the Anthropic client
+ * (anthropic.messages.create). A stray non-Claude id (e.g. the DeepSeek R1
+ * reasoner 'deepseek-reasoner', or any future non-claude id) must NEVER reach
+ * the Anthropic client. This coerces any non-claude validation model id to the
+ * safe Claude fallback (FALLBACK_VALIDATE_MODEL = claude-sonnet-4-6) before the
+ * call is made.
+ *
+ * A model id counts as Claude when it begins with "claude" (case-insensitive,
+ * after trim). Anything else — including empty/whitespace — coerces to the
+ * fallback and logs a warning noting the coercion. Claude ids pass through
+ * unchanged.
+ *
+ * Scope: validation-path guard ONLY. This does not wire DeepSeek into the
+ * validation path and does not touch generation model selection.
+ */
+export function isClaudeModelId(modelId: string | null | undefined): boolean {
+  return /^claude/i.test(String(modelId ?? '').trim())
+}
+
+export function coerceValidationModelToClaude(
+  modelId: string | null | undefined,
+  logger: { warn: (msg: string) => void } = console,
+): string {
+  const raw = String(modelId ?? '').trim()
+  if (isClaudeModelId(raw)) return raw
+  logger.warn(
+    `[ATL-VALMODEL-GUARD-001] Non-Claude validation model id ${JSON.stringify(raw)} ` +
+      `coerced to Claude fallback ${FALLBACK_VALIDATE_MODEL} before Anthropic client call. ` +
+      `(Validation path only; a non-Claude id must never reach anthropic.messages.create.)`,
+  )
+  return FALLBACK_VALIDATE_MODEL
+}
+
 /** Back-compat: legacy { generate, validate } pair derived from the router. */
 export function legacyStepModels(): { generate: string; validate: string } {
   if (!hasDeepSeekEnv()) {
