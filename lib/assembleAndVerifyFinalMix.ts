@@ -45,6 +45,8 @@ import {
   etMixPrefix,
   logTmpPrefetchProbe,
   logTmpSpace,
+  sweepStaleEtMixDirs,
+  ET_MIX_SWEEP_STALE_MS,
 } from './tmpSpace';
 import { runGarbleGate, type GarbleGateOutcome } from './garbleGate';
 import { runVoiceMapGate, type VoiceMapGateOutcome } from './voiceMapGate';
@@ -589,6 +591,15 @@ export async function assembleAndVerifyFinalMix(opts: {
     };
   }
   const FOLDER = folderMatch[1];
+
+  // ATLAS-P3-REPAIR-002: sweep stale et-mix-* dirs from crashed prior
+  // invocations before staging (best-effort; never blocks the render).
+  try {
+    const sweep = await sweepStaleEtMixDirs(ET_MIX_SWEEP_STALE_MS);
+    if (sweep.removed > 0) {
+      console.log(`[assembleAndVerifyFinalMix] [et-mix-sweep] removed ${sweep.removed} stale dir(s): ${sweep.removedNames.join(', ')}`);
+    }
+  } catch { /* sweeper must not block the render */ }
 
   // TMP-SPACE-LOW-001: et-mix-* prefix (sweeper-safe) instead of avfm-.
   const tmp = fs.mkdtempSync(etMixPrefix(`avfm-${storyId.slice(0, 8)}`));

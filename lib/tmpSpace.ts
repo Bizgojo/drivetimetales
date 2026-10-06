@@ -280,6 +280,83 @@ export function assertTmpSpaceOrThrow(
   }
 }
 
+/** Injectable filesystem surface for sweepStaleEtMixDirs (real fs by default). */
+export interface SweepFs {
+  readdir: (dir: string) => string[] | Promise<string[]>;
+  statMtimeMs: (p: string) => number | Promise<number>;
+  rmRecursive: (p: string) => void | Promise<void>;
+}
+
+function defaultSweepFs(): SweepFs {
+  return {
+    readdir: (dir: string) => fs.readdirSync(dir),
+    statMtimeMs: (p: string) => fs.statSync(p).mtimeMs,
+    rmRecursive: (p: string) => fs.rmSync(p, { recursive: true, force: true }),
+  };
+}
+
+export interface SweepResult {
+  scanned: number;
+  removed: number;
+  removedNames: string[];
+  errors: string[];
+}
+
+/**
+ * ATLAS-P3-REPAIR-002: sweeper for stale et-mix-* dirs.
+ *
+ * Removes `et-mix-*` entries under `dir` (default os.tmpdir()) whose mtime
+ * is older than `staleMs`. Only ever touches the ET_MIX_PREFIX namespace —
+ * nothing else in /tmp. Never throws: per-dir failures are collected in
+ * `errors` and the sweep still returns. No DB writes, no network.
+ *
+ * Render entry points (asc3/render-final-mix/core.ts,
+ * lib/assembleAndVerifyFinalMix.ts) call this at startup so a crashed prior
+ * invocation cannot starve the next render of /tmp space.
+ */
+export async function sweepStaleEtMixDirs(
+  staleMs: number,
+  opts?: { dir?: string; nowMs?: number; fs?: SweepFs },
+): Promise<SweepResult> {
+  const base = opts?.dir ?? os.tmpdir();
+  const sweepFs = opts?.fs ?? defaultSweepFs();
+  const now = opts?.nowMs ?? Date.now();
+  const result: SweepResult = { scanned: 0, removed: 0, removedNames: [], errors: [] };
+  let names: string[];
+  try {
+    names = (await sweepFs.readdir(base)) ?? [];
+  } catch (err) {
+    result.errors.push(`readdir ${base}: ${err instanceof Error ? err.message : String(err)}`);
+    return result;
+  }
+  const targets = (Array.isArray(names) ? names : [])
+    .filter(n => typeof n === 'string' && n.startsWith(ET_MIX_PREFIX))
+    .sort();
+  result.scanned = targets.length;
+  for (const name of targets) {
+    const full = path.join(base, name);
+    let mtime: number;
+    try {
+      mtime = await sweepFs.statMtimeMs(full);
+    } catch (err) {
+      result.errors.push(`${name}: stat failed (${err instanceof Error ? err.message : String(err)})`);
+      continue;
+    }
+    if (now - mtime <= staleMs) continue;
+    try {
+      await sweepFs.rmRecursive(full);
+      result.removed += 1;
+      result.removedNames.push(name);
+    } catch (err) {
+      result.errors.push(`${name}: rm failed (${err instanceof Error ? err.message : String(err)})`);
+    }
+  }
+  return result;
+}
+
+/** Default staleness for the render-startup sweep (dirs older than this go). */
+export const ET_MIX_SWEEP_STALE_MS = 30 * 60 * 1000;
+
 /** Build an `et-mix-<label>-*` mkdtemp prefix for a mix temp dir. */
 export function etMixPrefix(label: string): string {
   const clean = String(label || 'job').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'job'

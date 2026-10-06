@@ -218,16 +218,39 @@ async function runGateProcess(args: string[]): Promise<GarbleGateOutcome> {
     }
   }
 
-  const failures: GarbleResult[] = report?.results.filter(r => r.status === 'fail') ?? [];
-  const warnings: GarbleResult[] = report?.results.filter(r => r.status === 'warn') ?? [];
+  // ATLAS-P3-REPAIR-002 fail-closed: a null/unparseable report NEVER passes.
+  // An unverifiable gate is a failed gate — callers must halt, not proceed
+  // to mixing. This replaces the ATL-GARBLE-002 fail-open derivation
+  // (failures=[] when report==null → passed=true).
+  if (!report) {
+    throw new Error(
+      '[garbleGate] Gate produced no parseable report ' +
+      `(exit=${result.status ?? 'unknown'}${reportPath ? `, reportPath=${reportPath}` : ', no report path'}). ` +
+      'Failing closed — gate output is unverifiable, halting before mixing.'
+    );
+  }
 
-  // ATL-GARBLE-002: derive passed from the failures array, not from the exit
-  // code alone.  When the gate exits non-zero but produces no parseable report
-  // (e.g. fatal DB/Whisper error, exit code 2), report is null → failures=[],
-  // and result.status===0 would be false — yielding passed=false with an empty
-  // failures list (the phantom trigger).  Using failures.length keeps the two
-  // fields always consistent: if there are no hard-fail segments, the gate
-  // passes regardless of exit code.
+  if (!Array.isArray(report.results)) {
+    throw new Error('[garbleGate] Gate report has no results array — corrupt report, failing closed.');
+  }
+
+  const failures: GarbleResult[] = report.results.filter(r => r.status === 'fail');
+  const warnings: GarbleResult[] = report.results.filter(r => r.status === 'warn');
+
+  // Fail-closed on unverifiable verdicts: a voice segment that reached a
+  // verdict of ok/warn with a null WER was never actually compared — treat
+  // it as a failure so it surfaces in .failures instead of passing silently.
+  const unverifiable = report.results.filter(
+    r => r.wer == null && (r.status === 'ok' || r.status === 'warn')
+  );
+  for (const u of unverifiable) {
+    failures.push({
+      ...u,
+      status: 'fail',
+      whisperText: `${u.whisperText || ''} [fail-closed: null-WER verdict promoted to fail]`.trim(),
+    });
+  }
+
   const passed = failures.length === 0;
 
   return { passed, failures, warnings, reportPath, report };

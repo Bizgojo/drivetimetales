@@ -29,7 +29,10 @@
 
 'use strict';
 
-process.chdir('/Users/williampostlewaite/Projects/drivetimetales');
+// ATLAS-P3-REPAIR-002 (Marc word 2026-10-06): no hardcoded checkout path.
+// Root resolves from DTT_ROOT env, else this script's own directory (repo root
+// when checked in at top level), else process.cwd().
+process.chdir(process.env.DTT_ROOT || __dirname || process.cwd());
 require('dotenv').config({ path: '.env.local', override: true });
 
 const fs    = require('fs');
@@ -42,8 +45,12 @@ const { createClient } = require('@supabase/supabase-js');
 // Config
 // ---------------------------------------------------------------------------
 
-const WHISPER_BIN   = '/opt/homebrew/bin/whisper';
-const WHISPER_MODEL = 'base.en';
+// ATLAS-P3-REPAIR-002: Whisper is env-driven — no hardcoded Mac path.
+// WHISPER_BIN may be an absolute path or a PATH-resolved name (default
+// 'whisper'). WHISPER_MODEL defaults to 'base.en'. A missing/unrunnable
+// binary is fatal (exit 2, fail-closed) — never a silent pass.
+const WHISPER_BIN   = process.env.WHISPER_BIN || 'whisper';
+const WHISPER_MODEL = process.env.WHISPER_MODEL || 'base.en';
 const WER_HARD_FAIL = 0.40;   // WER > 40% = HARD FAIL
 const WER_WARN      = 0.20;   // WER > 20% = WARNING
 
@@ -197,9 +204,12 @@ function parseScriptPositions(script) {
 // Argument parsing
 // ---------------------------------------------------------------------------
 
+// ATLAS-P3-REPAIR-002: under require() (unit tests) there are no CLI args —
+// skip arg validation; the guarded entry point below will not run either.
 const [,, storyId, rangeArg] = process.argv;
+const IS_CLI = require.main === module;
 
-if (!storyId) {
+if (IS_CLI && !storyId) {
   console.error('Usage: node garble-detection-gate.js <story_id> [segment_or_range]');
   console.error('       Segment numbers are 0-based (canonical ATL-PARSER-001).');
   console.error('  Examples: node garble-detection-gate.js <id>');
@@ -363,8 +373,20 @@ function transcribeWithWhisper(audioPath, tmpDir) {
     { encoding: 'utf8', timeout: 120_000 }
   );
 
-  if (result.status !== 0 || result.error) {
-    throw new Error(`Whisper failed (status ${result.status}): ${result.stderr || result.error}`);
+  // ATLAS-P3-REPAIR-002 fail-closed: distinguish a missing binary (fatal,
+  // exit 2 upstream) from a per-segment transcription failure (fails the
+  // segment, never a warn/pass).
+  if (result.error) {
+    const code = result.error.code || '';
+    if (code === 'ENOENT') {
+      const fatal = new Error(`Whisper binary not found (WHISPER_BIN=${WHISPER_BIN}): ${result.error.message}`);
+      fatal.code = 'WHISPER_BIN_MISSING';
+      throw fatal;
+    }
+    throw new Error(`Whisper failed (status ${result.status}): ${result.stderr || result.error.message || result.error}`);
+  }
+  if (result.status !== 0) {
+    throw new Error(`Whisper failed (status ${result.status}): ${(result.stderr || '').toString().slice(-500)}`);
   }
 
   const base    = path.basename(audioPath, path.extname(audioPath));
@@ -509,13 +531,23 @@ async function runGate(storyId, requestedIndices) {
       throw err;
     }
 
-    // Transcribe with Whisper
+    // Transcribe with Whisper — ATLAS-P3-REPAIR-002 fail-closed: a null or
+    // failed transcription is a HARD FAIL (wer null), never a warn/pass. A
+    // missing binary is fatal for the whole gate (exit 2), not per-segment.
     let whisperRaw;
     try {
       whisperRaw = transcribeWithWhisper(audioPath, tmpDir);
     } catch (err) {
-      console.warn(`  [WARN] Whisper failed for segment_${String(idx).padStart(4,'0')}: ${err.message}`);
-      results.push(makeResult(idx, 'warn', null, expectedText, '[whisper error]'));
+      if (err.code === 'WHISPER_BIN_MISSING') throw err;
+      console.error(`  [FAIL] Whisper failed for segment_${String(idx).padStart(4,'0')}: ${err.message}`);
+      results.push(makeResult(idx, 'fail', null, expectedText, `[whisper error: ${err.message}]`));
+      printResult(results[results.length - 1]);
+      try { fs.unlinkSync(audioPath); } catch {}
+      continue;
+    }
+    if (whisperRaw == null || String(whisperRaw).trim() === '') {
+      console.error(`  [FAIL] Whisper returned empty transcript for segment_${String(idx).padStart(4,'0')}`);
+      results.push(makeResult(idx, 'fail', null, expectedText, '[whisper empty transcript]'));
       printResult(results[results.length - 1]);
       try { fs.unlinkSync(audioPath); } catch {}
       continue;
@@ -547,7 +579,9 @@ async function runGate(storyId, requestedIndices) {
     console.log(`\nGATE RESULT: FAILED — ${fails.length} segment(s) with corrupted audio`);
     console.log('\nFailed segments:');
     for (const f of fails) {
-      console.log(`  ${f.segName}  WER: ${f.wer.toFixed(2)}`);
+      // ATLAS-P3-REPAIR-002: wer may be null on fail-closed segments
+      // (whisper error / empty transcript) — never crash the reporter.
+      console.log(`  ${f.segName}  WER: ${f.wer == null ? 'null (unverifiable)' : f.wer.toFixed(2)}`);
       console.log(`    expected: "${f.expectedText.substring(0, 100)}"`);
       console.log(`    whisper:  "${f.whisperText.substring(0, 100)}"`);
     }
@@ -587,6 +621,9 @@ async function runGate(storyId, requestedIndices) {
 // Entry point
 // ---------------------------------------------------------------------------
 
+// ATLAS-P3-REPAIR-002: CLI entry guarded so unit tests can require the pure
+// helpers below without spawning a gate run (no DB, no Whisper).
+if (IS_CLI) {
 (async () => {
   try {
     let requestedIndices = null;
@@ -609,3 +646,44 @@ async function runGate(storyId, requestedIndices) {
     process.exit(2);
   }
 })();
+}
+
+// ---------------------------------------------------------------------------
+// Test surface (ATLAS-P3-REPAIR-002) — pure helpers, no DB/Whisper/filesystem.
+// ---------------------------------------------------------------------------
+
+/**
+ * Fail-closed gate verdict for a parsed JSON report (or lack of one).
+ * Returns { passed, reason }. A null/unparseable report NEVER passes —
+ * an unverifiable gate is a failed gate.
+ */
+function failClosedVerdict(report) {
+  if (report == null || typeof report !== 'object') {
+    return { passed: false, reason: 'null/unparseable gate report — unverifiable, failing closed' };
+  }
+  const results = Array.isArray(report.results) ? report.results : [];
+  const fails = results.filter(r => r && r.status === 'fail');
+  if (fails.length > 0) {
+    return { passed: false, reason: `${fails.length} hard-fail segment(s)` };
+  }
+  // Null-WER voice results that are not explicit skips/missing are
+  // unverifiable verdicts — fail closed.
+  const unverifiable = results.filter(r => r && r.wer == null && (r.status === 'ok' || r.status === 'warn'));
+  if (unverifiable.length > 0) {
+    return { passed: false, reason: `${unverifiable.length} segment(s) with null WER verdict (unverifiable)` };
+  }
+  return { passed: true, reason: 'no hard fails, all verdicts verifiable' };
+}
+
+if (typeof module !== 'undefined' && module.exports != null) {
+  module.exports = {
+    WHISPER_BIN,
+    WHISPER_MODEL,
+    WER_HARD_FAIL,
+    WER_WARN,
+    wer,
+    normalise,
+    makeResult,
+    failClosedVerdict,
+  };
+}

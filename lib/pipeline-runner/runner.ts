@@ -9,6 +9,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import type { RunnerConfig, RunnerResult, RunnerEvent, StallRecord } from './types'
 import { classifyFailure, retryKey, MAX_LOUDNESS_RETRIES_PER_SEGMENT, MAX_TRANSIENT_RETRIES_PER_KEY } from './classify'
 import { writeRunnerEvent, sendWebhookAlert } from './notify'
+import { ownedJobFence } from '@/lib/jobLockGuard'
 
 const ACTIVE_STATUSES = ['queued', 'running', 'waiting_for_external']
 const LOCK_STALE_MS = 10 * 60 * 1000     // 10 min — matches run-next
@@ -191,6 +192,12 @@ type CircuitBreakerState = {
 /**
  * Update the circuit breaker state for a job.
  *
+ * ATLAS-P3-REPAIR-002 fencing symmetry: every write here is fenced with
+ * ownedJobFence (same predicate as the render writes in run-next) — a stale
+ * runner whose lock was reclaimed mid-flight must NOT mark another worker's
+ * job failed or scribble circuit state onto a superseded row. A 0-row write
+ * returns lockLost=true and the caller stops stepping the job.
+ *
  * @returns Whether the circuit is now open (threshold reached → stop retrying).
  */
 async function updateCircuitBreaker(
@@ -198,7 +205,9 @@ async function updateCircuitBreaker(
   jobId: string,
   failedStep: string | null,
   currentState: CircuitBreakerState,
-): Promise<{ open: boolean; consecutiveFailures: number }> {
+  holderId: string,
+  lockedAt: string | null,
+): Promise<{ open: boolean; consecutiveFailures: number; lockLost: boolean }> {
   let { step, consecutiveFailures } = currentState
 
   if (step === failedStep) {
@@ -210,6 +219,7 @@ async function updateCircuitBreaker(
   }
 
   const circuitOpen = consecutiveFailures >= CIRCUIT_BREAKER_THRESHOLD
+  const fence = ownedJobFence({ id: jobId, locked_by: holderId, locked_at: lockedAt }, holderId)
 
   // Persist updated circuit state in state_json so it survives across runner invocations
   // Only update if we're approaching or at the threshold to reduce write overhead
@@ -227,7 +237,7 @@ async function updateCircuitBreaker(
 
     const existingState = (job?.state_json as Record<string, unknown>) ?? {}
 
-    await supabase
+    const { data: fencedRows } = await supabase
       .from('production_jobs')
       .update({
         state_json: {
@@ -255,14 +265,23 @@ async function updateCircuitBreaker(
           },
         } : {}),
       })
-      .eq('id', jobId)
+      .match(fence)
+      .select('id')
+
+    if (!fencedRows || fencedRows.length === 0) {
+      // Lock lost while failing — another worker reclaimed the job (or the
+      // job left running state). Our verdict is stale; do not retry, do not
+      // re-write. The current lock owner decides the job's fate.
+      console.warn(`[circuit-breaker] Job ${jobId.slice(0, 8)} lock lost during breaker update (fence matched 0 rows) — abandoning, owner decides.`)
+      return { open: false, consecutiveFailures, lockLost: true }
+    }
 
     if (circuitOpen) {
       console.error(`[circuit-breaker] Job ${jobId.slice(0, 8)} OPEN after ${consecutiveFailures} consecutive failures on step "${failedStep}". needs_attention=true.`)
     }
   }
 
-  return { open: circuitOpen, consecutiveFailures }
+  return { open: circuitOpen, consecutiveFailures, lockLost: false }
 }
 
 function baseUrl(): string {
@@ -451,52 +470,119 @@ type RunNextResult = {
   payload: Record<string, unknown>
 }
 
+/** Fetch-failure kinds for run-next calls (ATLAS-P3-REPAIR-002). */
+export type RunNextFetchErrorKind = 'timeout' | 'killed' | 'oom' | 'connection' | 'unknown'
+
+/** Heartbeat cadence while a run-next fetch is in flight (ATLAS-P3-REPAIR-002). */
+export const RUN_NEXT_FETCH_HEARTBEAT_MS = 60_000
+
+/**
+ * ATLAS-P3-REPAIR-002: distinguish WHY a run-next fetch failed so the
+ * failure path can tell a slow render (timeout — likely transient) from a
+ * dead worker (connection) from resource exhaustion (kill/OOM).
+ *
+ * Pure (no I/O) — unit-tested in __tests__/atlas-p3-repair-002.test.ts.
+ */
+export function classifyRunNextFetchError(
+  err: unknown,
+  step: string | null,
+  budgetMs: number,
+): { kind: RunNextFetchErrorKind; message: string } {
+  const msg = err instanceof Error ? err.message : String(err)
+  const name = err instanceof Error ? err.name : ''
+  const causeMsg = err instanceof Error && (err as { cause?: unknown }).cause != null
+    ? String((err as { cause?: unknown }).cause)
+    : ''
+  const hay = `${name} ${msg} ${causeMsg}`
+  const stepLabel = step ?? 'unknown_step'
+  if (/TimeoutError|AbortError|aborted|exceeded.*timeout|timed out/i.test(hay) || /timeout/i.test(name)) {
+    return {
+      kind: 'timeout',
+      message: `run-next fetch timeout: step "${stepLabel}" exceeded its ${budgetMs}ms abort budget (server may still be rendering; job lock decides ownership).`,
+    }
+  }
+  if (/out of memory|heap out of memory|ENOMEM|\bOOM\b/i.test(hay)) {
+    return { kind: 'oom', message: `run-next fetch OOM signature at step "${stepLabel}": ${msg}` }
+  }
+  if (/SIGKILL|SIGTERM|process killed|terminated/i.test(hay)) {
+    return { kind: 'killed', message: `run-next fetch killed at step "${stepLabel}": ${msg}` }
+  }
+  if (/fetch failed|ECONNREFUSED|ENOTFOUND|EAI_AGAIN|ECONNRESET|ETIMEDOUT|socket hang up|UND_ERR_[A-Z_]+|network/i.test(hay)) {
+    return { kind: 'connection', message: `run-next fetch connection error at step "${stepLabel}": ${msg}` }
+  }
+  return { kind: 'unknown', message: `run-next fetch error at step "${stepLabel}": ${msg}` }
+}
+
 async function callRunNext(
   jobId: string,
   holderId: string,
   currentStep: string | null,
+  opts?: { supabase?: SupabaseClient },
 ): Promise<RunNextResult> {
   const url = `${baseUrl()}/api/admin/production-jobs/run-next`
+  // ATL-RUNNER-TIMEOUT-001: per-step abort budget (600s for final-mix
+  // renders, 90s default). See runNextTimeoutMs above.
+  const budgetMs = runNextTimeoutMs(currentStep)
 
-  let response: Response
+  // ATLAS-P3-REPAIR-002 render heartbeat: while blocked in a long fetch the
+  // runner cannot reach its per-step heartbeat refresh — keep the worker row
+  // alive so self-healing does not reclaim this runner's jobs mid-render.
+  // Fire-and-forget; never blocks or fails the call.
+  const heartbeatSupabase = opts?.supabase
+  const heartbeatTimer = heartbeatSupabase
+    ? setInterval(() => {
+        heartbeatSupabase.from('pipeline_runner_state')
+          .update({ last_heartbeat_at: nowIso(), updated_at: nowIso() })
+          .eq('id', holderId)
+          .then(() => {/* in-flight heartbeat refreshed */})
+          .catch(() => {/* non-fatal */})
+      }, RUN_NEXT_FETCH_HEARTBEAT_MS)
+    : undefined
   try {
-    response = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ jobId, holderId }),
-      // ATL-RUNNER-TIMEOUT-001: per-step abort budget (600s for final-mix
-      // renders, 90s default). See runNextTimeoutMs above.
-      signal: AbortSignal.timeout(runNextTimeoutMs(currentStep)),
-    })
-  } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : String(err)
-    return {
-      ok: false,
-      httpStatus: 0,
-      payload: {
+    let response: Response
+    try {
+      response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ jobId, holderId }),
+        signal: AbortSignal.timeout(budgetMs),
+      })
+    } catch (err: unknown) {
+      const classified = classifyRunNextFetchError(err, currentStep, budgetMs)
+      const rawMsg = err instanceof Error ? err.message : String(err)
+      return {
+        ok: false,
+        httpStatus: 0,
+        payload: {
+          success: false,
+          message: classified.message,
+          bodySnippet: rawMsg,
+          fetchErrorKind: classified.kind,
+          fetchStep: currentStep,
+          fetchTimeoutMs: budgetMs,
+        },
+      }
+    }
+
+    const text = await response.text()
+    let payload: Record<string, unknown> = {}
+    try {
+      payload = JSON.parse(text) as Record<string, unknown>
+    } catch {
+      payload = {
         success: false,
-        message: `run-next fetch error: ${msg}`,
-        bodySnippet: msg,
-      },
+        message: 'run-next returned non-JSON response',
+        bodySnippet: text.slice(0, 500),
+      }
     }
-  }
 
-  const text = await response.text()
-  let payload: Record<string, unknown> = {}
-  try {
-    payload = JSON.parse(text) as Record<string, unknown>
-  } catch {
-    payload = {
-      success: false,
-      message: 'run-next returned non-JSON response',
-      bodySnippet: text.slice(0, 500),
+    return {
+      ok: response.ok && payload?.success !== false,
+      httpStatus: response.status,
+      payload,
     }
-  }
-
-  return {
-    ok: response.ok && payload?.success !== false,
-    httpStatus: response.status,
-    payload,
+  } finally {
+    if (heartbeatTimer) clearInterval(heartbeatTimer)
   }
 }
 
@@ -650,10 +736,11 @@ export async function runPipelineLoop(
           .then(() => {/* heartbeat refreshed */})
           .catch(() => {/* non-fatal */})
 
-        // Call run-next
+        // Call run-next (ATLAS-P3-REPAIR-002: pass supabase so the fetch
+        // heartbeat keeps this worker's row alive during long renders)
         let result: RunNextResult
         try {
-          result = await callRunNext(jobId, holderId, currentStep)
+          result = await callRunNext(jobId, holderId, currentStep, { supabase })
         } catch (err: unknown) {
           exitReason = 'error'
           exitMessage = err instanceof Error ? err.message : String(err)
@@ -724,12 +811,29 @@ export async function runPipelineLoop(
         // If the same step fails CIRCUIT_BREAKER_THRESHOLD times in a row,
         // mark the job needs_attention and stop retrying (circuit open).
         const failedStep = classification.context.step ?? currentStep
-        let cbResult: { open: boolean; consecutiveFailures: number } = { open: false, consecutiveFailures: 0 }
+        let cbResult: { open: boolean; consecutiveFailures: number; lockLost: boolean } = { open: false, consecutiveFailures: 0, lockLost: false }
         try {
-          cbResult = await updateCircuitBreaker(supabase, jobId, failedStep, cbState)
+          // ATLAS-P3-REPAIR-002: fence the breaker on our lock (symmetric
+          // with render writes) — latestJob carries the fencing token.
+          cbResult = await updateCircuitBreaker(
+            supabase,
+            jobId,
+            failedStep,
+            cbState,
+            holderId,
+            (latestJob.locked_at as string | null) ?? null,
+          )
           cbState = { step: failedStep, consecutiveFailures: cbResult.consecutiveFailures }
         } catch (cbErr: unknown) {
           console.warn('[circuit-breaker] Update error (non-fatal):', cbErr instanceof Error ? cbErr.message : String(cbErr))
+        }
+
+        if (cbResult.lockLost) {
+          // Another worker owns the job now — stop stepping it. No failure
+          // event (we must not write verdicts onto a job we don't own).
+          exitReason = 'error'
+          exitMessage = `Lock lost on job ${jobId.slice(0, 8)} during circuit-breaker update — job reclaimed by another worker. Stopping.`
+          break
         }
 
         if (cbResult.open) {
