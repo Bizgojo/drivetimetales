@@ -43,6 +43,7 @@ import * as path from 'path';
 import {
   assertTmpSpaceOrThrow,
   etMixPrefix,
+  logTmpPrefetchProbe,
   logTmpSpace,
 } from './tmpSpace';
 import { runGarbleGate, type GarbleGateOutcome } from './garbleGate';
@@ -597,6 +598,12 @@ export async function assembleAndVerifyFinalMix(opts: {
     fs.mkdirSync(segDir);
     const segPaths: string[] = [];
 
+    // ATLAS-TMP-PROBE-001 (Marc GO 2026-10-06): pre-fetch /tmp probe —
+    // numeric free MB + et-mix-* dir listing before the download loop.
+    // Best-effort; never blocks the fetch.
+    try {
+      logTmpPrefetchProbe('avfm pre-fetch');
+    } catch { /* probe must not block the fetch */ }
     console.log(`[assembleAndVerifyFinalMix] Downloading ${segments.length} segments from asc3/${FOLDER}/...`);
     for (let i = 0; i < segments.length; i++) {
       const seg   = segments[i];

@@ -42,6 +42,189 @@ export const ET_MIX_PREFIX = 'et-mix-'
 /** Marker embedded in abort errors so classification needs no errno parsing. */
 export const TMP_SPACE_LOW_MARKER = 'TMP_SPACE_LOW'
 
+/** Log tag for the pre-fetch /tmp probe (ATLAS-TMP-PROBE-001). */
+export const TMP_PREFETCH_PROBE_TAG = '[tmp-probe]'
+
+/** One et-mix-* entry observed by the pre-fetch probe. */
+export interface TmpEtMixEntry {
+  name: string
+  /** Recursive byte size; null when the dir could not be stat'ed. */
+  sizeBytes: number | null
+}
+
+/** Structured result of the pre-fetch /tmp probe. */
+export interface TmpPrefetchProbe {
+  stage: string
+  /** Free MB on the /tmp filesystem; null when unmeasurable. */
+  freeMb: number | null
+  /** et-mix-* dir names + sizes present at probe time. */
+  etMixDirs: TmpEtMixEntry[]
+  /** Peak working-set estimate in bytes; null = placeholder (unknown pre-fetch). */
+  peakEstimateBytes: number | null
+  /** Human note explaining a placeholder estimate. */
+  peakEstimateNote: string | null
+}
+
+/** Injectable filesystem surface for probeTmpBeforeFetch (real fs by default). */
+export interface TmpProbeFs {
+  readdir: (dir: string) => string[] | Promise<string[]>
+  dirSizeBytes: (dir: string) => number | null | Promise<number | null>
+}
+
+function defaultTmpProbeFs(): TmpProbeFs {
+  return {
+    readdir: (dir: string) => fs.readdirSync(dir),
+    dirSizeBytes: (dir: string) => {
+      try {
+        let total = 0
+        const walk = (p: string): void => {
+          const st = fs.statSync(p)
+          if (st.isDirectory()) {
+            for (const child of fs.readdirSync(p)) walk(path.join(p, child))
+          } else {
+            total += st.size
+          }
+        }
+        walk(dir)
+        return total
+      } catch {
+        return null
+      }
+    },
+  }
+}
+
+function mb1(bytes: number): string {
+  return `${(bytes / 1024 / 1024).toFixed(1)}MB`
+}
+
+/**
+ * ATLAS-TMP-PROBE-001 (Marc GO 2026-10-06): pre-fetch /tmp probe.
+ *
+ * Runs BEFORE the fetch/download stage of a mix render. Captures:
+ *   - free MB (numeric) on the /tmp filesystem,
+ *   - et-mix-* dir names + recursive sizes,
+ *   - peak working-set estimate (placeholder when segment sizes are not
+ *     yet known pre-fetch — callers may pass peakEstimateBytes when the
+ *     storage listing already carries sizes).
+ *
+ * Pure + never throws: on any filesystem error the affected field is null
+ * and the probe still returns. No DB writes, no network.
+ */
+export function probeTmpBeforeFetch(
+  stage = 'pre-fetch',
+  opts?: { dir?: string; peakEstimateBytes?: number; peakEstimateNote?: string; fs?: TmpProbeFs },
+): TmpPrefetchProbe {
+  const base = opts?.dir ?? os.tmpdir()
+  const probeFs = opts?.fs ?? defaultTmpProbeFs()
+  let freeMb: number | null = null
+  try {
+    const free = tmpFreeBytes(base)
+    freeMb = free == null ? null : Math.floor(free / 1024 / 1024)
+  } catch {
+    freeMb = null
+  }
+  let etMixDirs: TmpEtMixEntry[] = []
+  try {
+    const names = (probeFs.readdir(base) as unknown) as string[]
+    const list = Array.isArray(names) ? names : []
+    etMixDirs = list
+      .filter((n) => typeof n === 'string' && n.startsWith(ET_MIX_PREFIX))
+      .sort()
+      .map((n) => ({ name: n, sizeBytes: null as number | null }))
+  } catch {
+    etMixDirs = []
+  }
+  // Size each dir individually so one bad dir does not blank the listing.
+  // Thenables (async injected fs) are treated as unknown — use the async
+  // variant for those. Sync path keeps render hot paths pure-sync.
+  etMixDirs = etMixDirs.map((e) => {
+    let sizeBytes: number | null = null
+    try {
+      const s = probeFs.dirSizeBytes(path.join(base, e.name)) as unknown
+      sizeBytes = typeof s === 'number' ? s : null
+    } catch {
+      sizeBytes = null
+    }
+    return { ...e, sizeBytes }
+  })
+  return {
+    stage,
+    freeMb,
+    etMixDirs,
+    peakEstimateBytes: opts?.peakEstimateBytes ?? null,
+    peakEstimateNote:
+      opts?.peakEstimateBytes != null
+        ? (opts?.peakEstimateNote ?? null)
+        : (opts?.peakEstimateNote ?? 'placeholder — segment sizes unknown pre-fetch'),
+  }
+}
+
+/**
+ * Async variant of probeTmpBeforeFetch for injected async filesystems
+ * (tests). Real render code uses the sync probeTmpBeforeFetch.
+ */
+export async function probeTmpBeforeFetchAsync(
+  stage = 'pre-fetch',
+  opts?: { dir?: string; peakEstimateBytes?: number; peakEstimateNote?: string; fs?: TmpProbeFs },
+): Promise<TmpPrefetchProbe> {
+  const probe = probeTmpBeforeFetch(stage, { ...opts, fs: { readdir: () => [], dirSizeBytes: () => null } })
+  const base = opts?.dir ?? os.tmpdir()
+  const probeFs = opts?.fs ?? defaultTmpProbeFs()
+  let names: string[] = []
+  try {
+    names = (await probeFs.readdir(base) as unknown) as string[]
+    if (!Array.isArray(names)) names = []
+  } catch {
+    names = []
+  }
+  const entries = names.filter((n) => typeof n === 'string' && n.startsWith(ET_MIX_PREFIX)).sort()
+  const etMixDirs: TmpEtMixEntry[] = []
+  for (const n of entries) {
+    let sizeBytes: number | null = null
+    try {
+      sizeBytes = (await probeFs.dirSizeBytes(path.join(base, n))) ?? null
+    } catch {
+      sizeBytes = null
+    }
+    etMixDirs.push({ name: n, sizeBytes })
+  }
+  return { ...probe, etMixDirs }
+}
+
+/**
+ * Single-line formatter for the pre-fetch probe. Always embeds the numeric
+ * free-MB value (or `unknown`) and the et-mix dir listing so the line is
+ * self-contained in production_jobs.logs.
+ */
+export function formatTmpPrefetchProbe(probe: TmpPrefetchProbe): string {
+  const free = probe.freeMb == null ? 'unknown' : String(probe.freeMb)
+  const dirs =
+    probe.etMixDirs.length === 0
+      ? 'none'
+      : probe.etMixDirs
+          .map((e) => `${e.name}(${e.sizeBytes == null ? 'unknown' : mb1(e.sizeBytes)})`)
+          .join(', ')
+  const peak =
+    probe.peakEstimateBytes != null
+      ? mb1(probe.peakEstimateBytes)
+      : `unknown(${probe.peakEstimateNote ?? 'placeholder'})`
+  return `${TMP_PREFETCH_PROBE_TAG} ${probe.stage}: free_mb=${free} et_mix_dirs=${probe.etMixDirs.length} [${dirs}] peak_estimate=${peak}`
+}
+
+/**
+ * Run the pre-fetch probe and console.log the formatted line. Returns the
+ * structured probe so callers can persist it to production_jobs.logs.
+ */
+export function logTmpPrefetchProbe(
+  stage = 'pre-fetch',
+  opts?: { dir?: string; peakEstimateBytes?: number; peakEstimateNote?: string },
+): TmpPrefetchProbe {
+  const probe = probeTmpBeforeFetch(stage, opts)
+  console.log(formatTmpPrefetchProbe(probe))
+  return probe
+}
+
 /** Free bytes on the filesystem holding `dir` (defaults to os.tmpdir()). */
 export function tmpFreeBytes(dir: string = os.tmpdir()): number | null {
   try {

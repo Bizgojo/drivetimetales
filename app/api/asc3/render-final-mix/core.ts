@@ -6,6 +6,7 @@ import { loadManifest, validateManifestGate, saveManifest, emptyManifest } from 
 import { parseScriptPositions } from '@/lib/scriptLineIndex'
 // BELL-FREEZE-GUARD-001 v1.1: frozen promo guard (ATL-GUARD-HOLE-FIX-001)
 import { checkFrozenGuard, type Decision } from '@/lib/guards/frozenGuard'
+import { logTmpPrefetchProbe, type TmpPrefetchProbe } from '@/lib/tmpSpace'
 import { promises as fs, statfsSync } from 'node:fs'
 import { createHash } from 'node:crypto'
 import { sbwoFatalError } from '@/lib/storage/section10'
@@ -288,6 +289,7 @@ export async function runRenderFinalMix(storyId: string): Promise<{
   [key: string]: unknown
 }> {
   let tmpDir: string | null = null
+  let tmpPrefetchProbe: TmpPrefetchProbe | null = null
   try {
     console.log(`\n🎛 render-final-mix: ${storyId}`)
     console.log(`  /tmp free at render start: ${getTmpFreeSpaceMb()} MB`)
@@ -455,6 +457,35 @@ export async function runRenderFinalMix(storyId: string): Promise<{
 
     console.log(`  ${segmentFiles.length} segments | music: ${!!musicFile}`)
     console.log(`  Selected story segments: ${segmentFiles.map(f => f.name).join(', ')}`)
+
+    // ATLAS-TMP-PROBE-001 (Marc GO 2026-10-06): pre-fetch /tmp probe — runs
+    // BEFORE the first download below. Logs numeric free MB + et-mix-* dir
+    // names/sizes + peak estimate so ENOSPC triage never flies blind. The
+    // structured probe is returned to the caller (run-next persists it into
+    // production_jobs.logs). Never throws — a failed probe must not block render.
+    try {
+      const fetchNames = new Set([
+        ...segmentFiles.map(f => f.name),
+        'background_music.mp3',
+        introFile?.name,
+        outroFile?.name,
+        introBeforeFile?.name,
+        introAfterFile?.name,
+      ].filter((n): n is string => !!n))
+      let listedBytes = 0
+      let sizesKnown = false
+      for (const f of files) {
+        if (!fetchNames.has(f.name)) continue
+        const size = (f as { metadata?: { size?: number } })?.metadata?.size
+        if (typeof size === 'number' && size > 0) {
+          listedBytes += size
+          sizesKnown = true
+        }
+      }
+      tmpPrefetchProbe = logTmpPrefetchProbe('pre-fetch', sizesKnown
+        ? { peakEstimateBytes: listedBytes * 2, peakEstimateNote: 'staged inputs x2 (concat working copy)' }
+        : {})
+    } catch { /* probe is best-effort; never block the fetch */ }
 
     const stingPath  = path.join(tmpDir, 'sting.mp3')
     const introPath  = path.join(tmpDir, 'intro.mp3')
@@ -1192,10 +1223,11 @@ export async function runRenderFinalMix(storyId: string): Promise<{
       finalAudioUrl: versionedFinalAudioUrl,
       storyBodyUrl,
       durationSecs,
+      tmpPrefetchProbe,
     }
   } catch (err) {
     console.error('render-final-mix error:', err)
-    return { success: false, error: String(err) }
+    return { success: false, error: String(err), tmpPrefetchProbe }
   } finally {
     if (tmpDir) await fs.rm(tmpDir, { recursive: true, force: true }).catch(() => {})
   }

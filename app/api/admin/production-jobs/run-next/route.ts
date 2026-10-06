@@ -7469,6 +7469,10 @@ async function runSeriesRenderFinalMix(job: ProductionJob, origin: string) {
   let finalMixUrl: string | null = null
   let duration: number | null = null
   let lastError: string | null = null
+  // ATLAS-TMP-PROBE-001: pre-fetch /tmp probe from the render call below.
+  // Threaded into the step-handler appendLog so production_jobs.logs carries
+  // numeric free MB + the et-mix dir listing.
+  let tmpPrefetchProbe: unknown = null
 
   for (const ep of episodes) {
     const num = episodeNumber(ep, 0)
@@ -7596,6 +7600,7 @@ async function runSeriesRenderFinalMix(job: ProductionJob, origin: string) {
 
     // Direct module call - eliminates HTTP hop and Vercel edge network timeout risk (ATL P1-B)
     const report = await runRenderFinalMix(storyId)
+    tmpPrefetchProbe = (report as Record<string, unknown> | null | undefined)?.tmpPrefetchProbe ?? null
     const afterRender = await storyFinalMixStatus(storyId)
     const ok = report?.success === true && afterRender.complete
     doneByEp[key] = ok
@@ -7643,6 +7648,7 @@ async function runSeriesRenderFinalMix(job: ProductionJob, origin: string) {
           finalMixUrl,
           duration,
           lastError,
+          tmpPrefetchProbe,
           checkpointQueued: true,
           state: checkpointState,
         }
@@ -7658,6 +7664,7 @@ async function runSeriesRenderFinalMix(job: ProductionJob, origin: string) {
     finalMixUrl,
     duration,
     lastError,
+    tmpPrefetchProbe,
     state: { ...state, seriesId: String(seriesId), seriesRenderFinalMix: { doneByEp, finalMixUrlByEp, allDone, lastUpdatedAt: nowIso() } },
   }
 }
@@ -11934,7 +11941,7 @@ export async function POST(req: NextRequest) {
         result.allDone ? 'Series final render complete for all episodes'
           : result.lastError ? `Series render failed Ep${result.processedEp ?? '?'} (attempt ${seriesRenderAttempts}/${MAX_SERIES_RENDER_ATTEMPTS}): ${result.lastError}`
           : `Final render done for Ep${result.processedEp}`,
-        { processedEp: result.processedEp, finalMixUrl: result.finalMixUrl, durationMins: result.duration, allDone: result.allDone, error: result.lastError || undefined, seriesRenderAttempts })
+        { processedEp: result.processedEp, finalMixUrl: result.finalMixUrl, durationMins: result.duration, allDone: result.allDone, error: result.lastError || undefined, seriesRenderAttempts, tmpPrefetchProbe: (result as Record<string, unknown>).tmpPrefetchProbe ?? undefined })
 
       if ((result as any).checkpointQueued) {
         const { data: updatedJob, error: updateError } = await supabase.from('production_jobs')
