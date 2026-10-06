@@ -28,6 +28,10 @@ import { checkDuplicateSegments } from '@/lib/validation-gate/check1-duplicate-s
 import { numeralPreTtsScan, buildNumeralPreflightFailure } from '@/lib/numeralPreTtsScan'
 import { runVoiceMapGate } from '@/lib/voiceMapGate'
 import { runVoiceConformanceGate, type VoiceProfile } from '@/lib/voiceConformanceGate'
+// R1-V3 step map (decision r1-v3-step-map-approved-oct6, 2026-10-06):
+// central per-step model router. STEP_MODELS below derives from it with
+// fallback to the current Claude models when DEEPSEEK_API_KEY is absent.
+import { legacyStepModels, routeStep, resolveModelForStep } from '@/lib/model-router'
 import { buildContinuityPins, verifyContinuityPins } from '@/lib/continuityPin'
 
 export const runtime = 'nodejs'
@@ -133,17 +137,17 @@ const MAX_SERIES_BELLE_RETRIES = 3
 // and the series-render cap (MAX_SERIES_RENDER_ATTEMPTS).
 const MAX_MUSIC_RETRIES = 3
 const NARRATIVE_HOOK_FALLBACK_MODEL = 'claude-haiku-4-5'
-// ATL-PIPE-MODEL-001: per-step model routing. Prose is the product - script
-// GENERATION and prose repair/regeneration stay on Opus; VALIDATION/QC steps
-// run on Sonnet. body.model / body.validationModel override for canaries.
-const STEP_MODELS = {
-  generate: 'claude-opus-4-6',   // generateStandaloneScript, generateOneSeriesEpisodeScript,
-                                 // repairStandaloneBelleQuality, regenerateSeriesBelleFromFeedback,
-                                 // regenerateSeriesDescriptionFromEpisodeFeedback (customer-facing prose)
-  validate: 'claude-sonnet-4-6', // validateStandaloneScript, validateStandaloneStoryResolution,
-                                 // validateStandaloneBelleQuality, validateSeriesEpisodeScript,
-                                 // validateSeriesPackageWithAi, scoreValidateSeriesPackage
-} as const
+// ATL-PIPE-MODEL-001 + R1-V3 step map (decision r1-v3-step-map-approved-oct6):
+// per-step model routing via lib/model-router. Route A (Strategos/R1) +
+// Route B (Lyra/R1) run on DeepSeek R1; Route C (Hal) prose stays on Sonnet;
+// Atlas deterministic gates + audio plumbing make no LLM call.
+// legacyStepModels() falls back to the pre-R1 Claude models when
+// DEEPSEEK_API_KEY is absent (pre-redeploy safe).
+// body.model / body.validationModel override for canaries.
+const STEP_MODELS = legacyStepModels()
+// Re-export router helpers for step-level call sites in this route.
+// resolveModelForStep(step) -> effective model id (null = deterministic, no LLM).
+// routeStep(step) -> { model, owner }.
 const NARRATIVE_HOOK_FALLBACK_TIMEOUT_MS = 8000
 const VOICE_PREFLIGHT_TIMEOUT_MS = 120_000
 const TITLE_MAX_CHARS = 28
@@ -7674,7 +7678,7 @@ export async function POST(req: NextRequest) {
     const requestedJobId = String(body.jobId || '').trim()
     lockHolderId = String(body.holderId || WORKER_ID).trim() || WORKER_ID
     const model = String(body.model || STEP_MODELS.generate)
-    // ATL-PIPE-MODEL-001: validation/QC steps run on a cheaper model than generation.
+    // ATL-PIPE-MODEL-001 + R1-V3: validation/QC steps route via Lyra/R1 when env present.
     const validationModel = String(body.validationModel || STEP_MODELS.validate)
 
     // ATLAS OCT3: auto-send-back — revive one blocked Belle job (failed with a
