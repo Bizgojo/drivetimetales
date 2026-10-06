@@ -56,6 +56,8 @@ export interface GarbleResult {
   whisperText: string;
 }
 
+export type GarbleGateStatus = 'ok' | 'garbled' | 'unavailable' | 'internal_error';
+
 export interface GarbleGateReport {
   storyId: string;
   storyTitle: string;
@@ -63,6 +65,15 @@ export interface GarbleGateReport {
   model: string;
   thresholds: { warn: number; fail: number };
   gatePassed: boolean;
+  /** ATLAS-GARBLE-VERDICT-001: distinguishes story-garbled ('garbled',
+   *  fail-closed) from gate-broken ('unavailable' | 'internal_error',
+   *  soft-pass with needsAttention). Absent on pre-001 reports. */
+  gateStatus?: GarbleGateStatus;
+  /** True when render may proceed but a human must notice (gate broken,
+   *  or warnings present). Absent on pre-001 reports. */
+  needsAttention?: boolean;
+  /** Structured gate error detail when gateStatus is unavailable/internal_error. */
+  error?: { code: string; message: string } | null;
   summary: {
     ok: number;
     warn: number;
@@ -76,13 +87,28 @@ export interface GarbleGateReport {
 
 export interface GarbleGateOutcome {
   /**
-   * True only if zero hard-fail segments were detected.
-   * Warnings do NOT cause passed=false.
+   * True when render may proceed: zero hard-fail segments AND the gate
+   * produced a verdict (including the gate-broken soft-pass).
    *
    * ⚠️  If passed === false: HALT. Do not mark the story ready_for_review,
-   *     do not publish, do not proceed to mixing.
+   *     do not publish, do not proceed to mixing. (True garble only —
+   *     summary.fail > 0. Gate-broken outcomes pass with needsAttention.)
+   *
+   * ATLAS-GARBLE-VERDICT-001: runGarbleGate NEVER throws. Every failure
+   * mode returns a structured outcome — check .gateStatus to tell
+   * story-garbled ('garbled') from gate-broken ('unavailable' |
+   * 'internal_error').
    */
   passed: boolean;
+
+  /** Structured gate status: 'ok' | 'garbled' | 'unavailable' | 'internal_error'. */
+  gateStatus: GarbleGateStatus;
+
+  /** True when render may proceed but a human must notice (gate broken or warnings). */
+  needsAttention: boolean;
+
+  /** Human-readable gate error detail when the gate itself broke. */
+  gateError: string | null;
 
   /** Segments that hard-failed the WER threshold (>40% word error rate) */
   failures: GarbleResult[];
@@ -166,9 +192,17 @@ async function runSegmentList(
   const allFailures = outcomes.flatMap(o => o.failures);
   const allWarnings = outcomes.flatMap(o => o.warnings);
   const reportPaths = outcomes.map(o => o.reportPath).filter(Boolean);
+  const needsAttention = outcomes.some(o => o.needsAttention);
+  const gateError = outcomes.map(o => o.gateError).filter(Boolean).join('; ') || null;
+  // Worst status wins: garbled > internal_error > unavailable > ok.
+  const rank: Record<GarbleGateStatus, number> = { ok: 0, unavailable: 1, internal_error: 2, garbled: 3 };
+  const gateStatus = outcomes.map(o => o.gateStatus).sort((a, b) => rank[b] - rank[a])[0] ?? 'ok';
 
   return {
     passed:     allFailures.length === 0,
+    gateStatus,
+    needsAttention,
+    gateError,
     failures:   allFailures,
     warnings:   allWarnings,
     reportPath: reportPaths[reportPaths.length - 1] ?? null,
@@ -198,10 +232,13 @@ async function runGateProcess(args: string[]): Promise<GarbleGateOutcome> {
   if (result.stderr) process.stderr.write(result.stderr);
 
   if (result.error) {
-    // ATL-GARBLE-002: throw so callers see a real error rather than a phantom
-    // gate failure (passed=false, failures=[]).  A spawn/timeout failure is an
-    // infrastructure problem, not a garble-detection verdict.
-    throw new Error(`[garbleGate] Gate process error: ${result.error.message}`);
+    // ATLAS-GARBLE-VERDICT-001: a spawn/timeout failure is gate-unavailable —
+    // a structured verdict (soft-pass with needsAttention), never a throw.
+    // runGarbleGate NEVER throws; callers always get an outcome to branch on.
+    return unavailableOutcome(
+      `Gate process error: ${result.error.message}`,
+      storyIdFromArgs(args),
+    );
   }
 
   // Parse JSON report path from stdout
@@ -218,29 +255,71 @@ async function runGateProcess(args: string[]): Promise<GarbleGateOutcome> {
     }
   }
 
-  // ATLAS-P3-REPAIR-002 fail-closed: a null/unparseable report NEVER passes.
-  // An unverifiable gate is a failed gate — callers must halt, not proceed
-  // to mixing. This replaces the ATL-GARBLE-002 fail-open derivation
-  // (failures=[] when report==null → passed=true).
-  if (!report) {
-    throw new Error(
-      '[garbleGate] Gate produced no parseable report ' +
-      `(exit=${result.status ?? 'unknown'}${reportPath ? `, reportPath=${reportPath}` : ', no report path'}). ` +
-      'Failing closed — gate output is unverifiable, halting before mixing.'
+  // ATLAS-GARBLE-VERDICT-001: a missing/unparseable report is gate-broken
+  // (the gate script always writes one when the storyId is known), so it
+  // becomes a structured unavailable verdict — soft-pass with needsAttention —
+  // never a throw. Fail-closed is preserved where it matters: any parsed
+  // report with summary.fail > 0 / status==='fail' segments still blocks.
+  if (!report || !Array.isArray(report.results)) {
+    return unavailableOutcome(
+      `Gate produced no parseable report (exit=${result.status ?? 'unknown'}` +
+      `${reportPath ? `, reportPath=${reportPath}` : ', no report path'}). ` +
+      'Treating as gate-unavailable — render may proceed with needs_attention=true.',
+      storyIdFromArgs(args),
+      reportPath,
+      report,
     );
   }
 
-  if (!Array.isArray(report.results)) {
-    throw new Error('[garbleGate] Gate report has no results array — corrupt report, failing closed.');
-  }
+  // Fail-closed mapping (incl. null-WER promotion) lives in outcomeFromReport.
+  return outcomeFromReport(report, reportPath);
+}
 
-  const failures: GarbleResult[] = report.results.filter(r => r.status === 'fail');
-  const warnings: GarbleResult[] = report.results.filter(r => r.status === 'warn');
+// ---------------------------------------------------------------------------
+// ATLAS-GARBLE-VERDICT-001 — structured gate-broken outcome (never throws)
+// ---------------------------------------------------------------------------
 
-  // Fail-closed on unverifiable verdicts: a voice segment that reached a
-  // verdict of ok/warn with a null WER was never actually compared — treat
-  // it as a failure so it surfaces in .failures instead of passing silently.
-  const unverifiable = report.results.filter(
+/** Extract the storyId (first CLI arg) for outcome labelling. */
+function storyIdFromArgs(args: string[]): string {
+  return args.length > 0 ? args[0] : 'unknown';
+}
+
+/**
+ * Structured gate-unavailable verdict: the gate itself broke (spawn error,
+ * timeout, missing/corrupt report), so no WER verdict exists. Render may
+ * proceed — passed=true — but needsAttention=true forces visibility.
+ * Exported for tests.
+ */
+export function unavailableOutcome(
+  message: string,
+  storyId = 'unknown',
+  reportPath: string | null = null,
+  report: GarbleGateReport | null = null,
+): GarbleGateOutcome {
+  return {
+    passed: true,
+    gateStatus: 'unavailable',
+    needsAttention: true,
+    gateError: message,
+    failures: [],
+    warnings: [],
+    reportPath,
+    report,
+  };
+}
+
+/**
+ * Map a parsed gate report to its outcome verdict (pure, no I/O).
+ * Exported for tests. Fail-closed: any fail-status segment blocks.
+ */
+export function outcomeFromReport(
+  report: GarbleGateReport,
+  reportPath: string | null = null,
+): GarbleGateOutcome {
+  const results = Array.isArray(report.results) ? report.results : [];
+  const failures: GarbleResult[] = results.filter(r => r.status === 'fail');
+  const warnings: GarbleResult[] = results.filter(r => r.status === 'warn');
+  const unverifiable = results.filter(
     r => r.wer == null && (r.status === 'ok' || r.status === 'warn')
   );
   for (const u of unverifiable) {
@@ -250,10 +329,19 @@ async function runGateProcess(args: string[]): Promise<GarbleGateOutcome> {
       whisperText: `${u.whisperText || ''} [fail-closed: null-WER verdict promoted to fail]`.trim(),
     });
   }
-
   const passed = failures.length === 0;
-
-  return { passed, failures, warnings, reportPath, report };
+  const gateStatus: GarbleGateStatus =
+    report.gateStatus ?? (report.gatePassed === false || !passed ? 'garbled' : 'ok');
+  return {
+    passed,
+    gateStatus,
+    needsAttention: report.needsAttention ?? warnings.length > 0,
+    gateError: report.error ? `${report.error.code}: ${report.error.message}` : null,
+    failures,
+    warnings,
+    reportPath,
+    report,
+  };
 }
 
 // Note: CommonJS shim removed — route.ts imports this module via ESM.
