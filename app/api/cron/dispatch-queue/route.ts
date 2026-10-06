@@ -6,6 +6,7 @@ import {
   RETRY_CAP,
   failureCircuitOpen,
   countRecentFailures,
+  hasActiveMixJob,
   retryCapWindowStartMs,
   transientDispatchHold,
   transientEscalation,
@@ -284,7 +285,7 @@ async function handleDispatchQueue(request: NextRequest) {
     const { data: activeSeriesJobs, error: activeSeriesError } = candidateSeriesIds.length
       ? await supabase
           .from('production_jobs')
-          .select('id,series_id,status')
+          .select('id,series_id,status,current_step')
           .in('series_id', candidateSeriesIds)
           .in('status', BLOCKING_JOB_STATUSES)
       : { data: [], error: null }
@@ -297,9 +298,22 @@ async function handleDispatchQueue(request: NextRequest) {
     const activeSeriesIds = new Set(
       ((activeSeriesJobs || []) as Array<{ series_id: string | null }>).map((job) => job.series_id).filter(Boolean),
     )
+    // TMP-SPACE-LOW-001: mix serialization — one mix job per series at a
+    // time. current_step is loaded above so the skip reason names the mix
+    // case explicitly (auditable) instead of the generic active_job_exists.
+    const activeMixSeriesIds = new Set(
+      ((activeSeriesJobs || []) as Array<JobStatusRow & { series_id: string | null }>)
+        .filter((job) => hasActiveMixJob([job]))
+        .map((job) => job.series_id)
+        .filter(Boolean) as string[],
+    )
 
     for (const seriesId of candidateSeriesIds) {
       if (dispatched.length >= dispatchTarget) break
+      if (activeMixSeriesIds.has(seriesId)) {
+        skipped.push({ seriesId, reason: 'active_mix_job_exists' })
+        continue
+      }
       if (activeSeriesIds.has(seriesId)) {
         skipped.push({ seriesId, reason: 'active_job_exists' })
         continue

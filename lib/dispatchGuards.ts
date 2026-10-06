@@ -96,7 +96,7 @@ export function isUiActiveJobStatus(status: unknown): boolean {
   return (UI_ACTIVE_JOB_STATUSES as readonly string[]).includes(cleanStatus(status))
 }
 
-export type JobStatusRow = { status?: string | null; updated_at?: string | null; error_json?: unknown }
+export type JobStatusRow = { status?: string | null; updated_at?: string | null; error_json?: unknown; current_step?: string | null }
 
 // ── TRANSIENT-FAILURE-001 (Marc GO 2026-09-28) ──────────────────────────────
 // Transient failures (bad key, no credits, rate limit, outage, lost runner —
@@ -160,22 +160,30 @@ export function transientDispatchHold(
   floorMs: number = 0,
 ): TransientHold | null {
   const windowStart = Math.max(nowMs - TRANSIENT_HOLD_WINDOW_MS, floorMs)
-  const times = jobs
+  const failed = jobs
     .filter((job) => cleanStatus(job.status) === 'failed' && isTransientJobRow(job))
-    .map((job) => Date.parse(job.updated_at || ''))
-    .filter((t) => Number.isFinite(t) && t >= windowStart)
-    .sort((a, b) => a - b)
-  if (times.length === 0) return null
+    .map((job) => ({ t: Date.parse(job.updated_at || ''), ej: job.error_json as Record<string, unknown> | null }))
+    .filter((r) => Number.isFinite(r.t) && r.t >= windowStart)
+    .sort((a, b) => a.t - b.t)
+  if (failed.length === 0) return null
 
+  const times = failed.map((r) => r.t)
   if (times.length >= TRANSIENT_HOLD_THRESHOLD) {
     // Released when enough of them age out of the window.
     const releaseAt = times[times.length - TRANSIENT_HOLD_THRESHOLD] + TRANSIENT_HOLD_WINDOW_MS
     return { reason: 'transient_hold', transientFailures: times.length, retryAfterIso: new Date(releaseAt).toISOString() }
   }
 
-  const newest = times[times.length - 1]
-  if (nowMs - newest < TRANSIENT_BACKOFF_MS) {
-    return { reason: 'transient_backoff', transientFailures: times.length, retryAfterIso: new Date(newest + TRANSIENT_BACKOFF_MS).toISOString() }
+  // TMP-SPACE-LOW-001: runner_tmp_full backs off on its own escalating
+  // schedule (5m/15m/45m + jitter, attempt count = consecutive transient
+  // failures, never reset here). Every other cause keeps the flat 30m.
+  const newestRow = failed[failed.length - 1]
+  const newest = newestRow.t
+  const newestCause = String(newestRow.ej?.transient_cause ?? '')
+  const backoffMs =
+    newestCause === 'runner_tmp_full' ? tmpFullRetryDelayMs(times.length) : TRANSIENT_BACKOFF_MS
+  if (nowMs - newest < backoffMs) {
+    return { reason: 'transient_backoff', transientFailures: times.length, retryAfterIso: new Date(newest + backoffMs).toISOString() }
   }
   return null
 }
@@ -183,6 +191,53 @@ export function transientDispatchHold(
 /** True when at least one job in the list is non-terminal (dispatch must skip). */
 export function hasActiveJob(jobs: JobStatusRow[]): boolean {
   return jobs.some((job) => isNonTerminalJobStatus(job.status))
+}
+
+// ── TMP-SPACE-LOW-001 (Marc GO 2026-10-06): mix serialization ───────────────
+// Only one mix job per series may run at a time. Two concurrent
+// series_render_final_mix (or render_final_mix) jobs for the same series
+// double the /tmp footprint and caused the ENOSPC outage. Dispatch must skip
+// a series that already has a non-terminal job sitting in a mix step.
+// (The pre-existing active_job_exists guard covers series with ANY active
+// job; this guard names the mix case explicitly so the skip reason is
+// auditable and unit-testable independent of the status snapshot.)
+export const MIX_SERIALIZE_STEPS: ReadonlySet<string> = new Set([
+  'series_render_final_mix',
+  'render_final_mix',
+])
+
+/** True when a job row is non-terminal AND sitting in a mix step. */
+export function isActiveMixJob(job: JobStatusRow): boolean {
+  if (!isNonTerminalJobStatus(job.status)) return false
+  return MIX_SERIALIZE_STEPS.has(String(job.current_step ?? '').trim())
+}
+
+/** True when the series already has a non-terminal mix job (dispatch must skip). */
+export function hasActiveMixJob(jobs: JobStatusRow[]): boolean {
+  return jobs.some(isActiveMixJob)
+}
+
+// ── TMP-SPACE-LOW-001: escalating back-off for runner_tmp_full ─────────────
+// A full /tmp clears as other jobs finish and clean up, so retries escalate
+// 5m → 15m → 45m (+jitter) instead of the flat 30m transient back-off.
+// The attempt COUNT is preserved (callers pass the consecutive-failure
+// count; it is never reset here) and no cap is raised: RETRY_CAP (5) and
+// MAX_TRANSIENT_RETRIES_PER_KEY are untouched.
+export const TMP_FULL_RETRY_DELAYS_MS = [5 * 60 * 1000, 15 * 60 * 1000, 45 * 60 * 1000] as const
+/** +/- fraction of added jitter (0–20% on top of the base delay). */
+export const TMP_FULL_RETRY_JITTER_FRACTION = 0.2
+
+/**
+ * Delay before the next retry for a runner_tmp_full failure.
+ * `attempt` is 1-based and preserved across retries (never reset to 1 by
+ * this function); attempts beyond the schedule pin to the last tier.
+ * `rand` defaults to Math.random and is injectable for tests.
+ */
+export function tmpFullRetryDelayMs(attempt: number, rand: () => number = Math.random): number {
+  const idx = Math.min(Math.max(Math.floor(attempt) - 1, 0), TMP_FULL_RETRY_DELAYS_MS.length - 1)
+  const base = TMP_FULL_RETRY_DELAYS_MS[idx]
+  const r = Math.min(Math.max(rand(), 0), 1)
+  return Math.floor(base * (1 + r * TMP_FULL_RETRY_JITTER_FRACTION))
 }
 
 /**

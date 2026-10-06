@@ -40,6 +40,11 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 
+import {
+  assertTmpSpaceOrThrow,
+  etMixPrefix,
+  logTmpSpace,
+} from './tmpSpace';
 import { runGarbleGate, type GarbleGateOutcome } from './garbleGate';
 import { runVoiceMapGate, type VoiceMapGateOutcome } from './voiceMapGate';
 import { runBelleStructureGate, type BelleGateOutcome } from './belleStructureGate';
@@ -584,7 +589,8 @@ export async function assembleAndVerifyFinalMix(opts: {
   }
   const FOLDER = folderMatch[1];
 
-  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'avfm-'));
+  // TMP-SPACE-LOW-001: et-mix-* prefix (sweeper-safe) instead of avfm-.
+  const tmp = fs.mkdtempSync(etMixPrefix(`avfm-${storyId.slice(0, 8)}`));
   try {
     // ── 6a. Download segments ───────────────────────────────────────────────
     const segDir   = path.join(tmp, 'segs');
@@ -608,6 +614,17 @@ export async function assembleAndVerifyFinalMix(opts: {
     const downloaded = fs.readdirSync(segDir).filter(f => f.endsWith('.mp3')).length;
     if (downloaded !== segments.length) {
       throw new Error(`Segment count mismatch: listed ${segments.length}, downloaded ${downloaded}`);
+    }
+
+    // ── 6b-tmp. TMP-SPACE-LOW-001: log free space + peak estimate, abort
+    // early when free < 50 MB instead of dying mid-ffmpeg with ENOSPC.
+    // Peak estimate ≈ staged segments + one full concat copy of them.
+    {
+      const stagedBytes = segPaths.reduce((sum, p) => {
+        try { return sum + fs.statSync(p).size; } catch { return sum; }
+      }, 0);
+      logTmpSpace('after download', { peakEstimateBytes: stagedBytes * 2, dir: tmp });
+      assertTmpSpaceOrThrow('post-download pre-concat');
     }
 
     // ── 6b-lx. LOUDNESS-001 gate (PRE-mix, post-download) ─────────────────────
@@ -686,6 +703,8 @@ export async function assembleAndVerifyFinalMix(opts: {
     const assembledDur  = getDur(concatOut);
     const assembledSize = (fs.statSync(concatOut).size / 1024 / 1024).toFixed(1);
     console.log(`[assembleAndVerifyFinalMix] Assembled: ${assembledSize} MB, ${(assembledDur / 60).toFixed(2)} min`);
+    // TMP-SPACE-LOW-001: free-space checkpoint after assembly.
+    logTmpSpace('after assembly', { dir: tmp });
 
     // ── 6d. Sting detector gate (POST-assembly, PRE-upload) ──────────────────
     // Verifies: sting present at start, before Belle's first line, exactly once.
@@ -792,7 +811,9 @@ export async function assembleAndVerifyFinalMix(opts: {
     console.error(`[assembleAndVerifyFinalMix] Assembly error: ${msg}`);
     return { success: false, scanReport, errors: [msg] };
   } finally {
+    // TMP-SPACE-LOW-001: post-cleanup checkpoint — warns when free < 200 MB.
     try { fs.rmSync(tmp, { recursive: true }); } catch {}
+    logTmpSpace('post-cleanup');
   }
 }
 
