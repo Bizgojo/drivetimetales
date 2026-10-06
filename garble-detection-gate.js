@@ -21,10 +21,18 @@
  *   node garble-detection-gate.js 410d82dc-1dbd-4470-b8e8-a45f1c615597 103
  *   node garble-detection-gate.js 410d82dc-1dbd-4470-b8e8-a45f1c615597 1-50
  *
- * Exit codes:
- *   0 — All checked segments OK (warnings allowed)
- *   1 — One or more HARD FAILs detected (garbled audio)
- *   2 — Fatal error (DB failure, missing env, bad args)
+ * Exit codes (ATLAS-GARBLE-VERDICT-001, Marc word 2026-10-06):
+ *   0 — Pass (all checked segments OK, warnings allowed) OR gate-unavailable
+ *       soft-pass (Whisper missing, DB unreachable, internal error). In the
+ *       soft-pass case a JSON report IS still written with
+ *       gateStatus='unavailable'|'internal_error', gatePassed=true,
+ *       needsAttention=true so render may proceed with attention. Check
+ *       report.gateStatus — never assume exit 0 means audio was verified.
+ *   1 — TRUE GARBLE ONLY: one or more HARD FAILs detected (summary.fail > 0).
+ *       A JSON report is always written. Fail-closed: do not mix.
+ *   2 — Fatal error with no story context (missing env, bad args) — no
+ *       report possible. With a known storyId the gate NEVER exits 2;
+ *       infrastructure failures become soft-pass reports (exit 0) instead.
  */
 
 'use strict';
@@ -57,12 +65,26 @@ const WER_WARN      = 0.20;   // WER > 20% = WARNING
 const SUPABASE_URL  = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SERVICE_KEY   = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-if (!SUPABASE_URL || !SERVICE_KEY) {
-  console.error('[FATAL] Missing NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY');
-  process.exit(2);
+// ATLAS-GARBLE-VERDICT-001: never exit(2) at load — even a missing-env
+// startup must produce a structured unavailable report when the storyId is
+// known. Client construction is deferred-safe (null when unusable); use
+// sites throw coded GATE_DB_UNAVAILABLE errors handled by the CLI catch.
+let sb = null;
+try {
+  if (SUPABASE_URL && SERVICE_KEY) sb = createClient(SUPABASE_URL, SERVICE_KEY);
+} catch (e) {
+  sb = null;
 }
 
-const sb = createClient(SUPABASE_URL, SERVICE_KEY);
+function requireDb() {
+  if (!SUPABASE_URL || !SERVICE_KEY || !sb) {
+    throw Object.assign(
+      new Error('Missing NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY — gate unavailable'),
+      { code: 'GATE_DB_UNAVAILABLE' }
+    );
+  }
+  return sb;
+}
 
 // ---------------------------------------------------------------------------
 // ATL-PARSER-001 — Canonical script position parser (ported from lib/scriptLineIndex.ts)
@@ -373,9 +395,9 @@ function transcribeWithWhisper(audioPath, tmpDir) {
     { encoding: 'utf8', timeout: 120_000 }
   );
 
-  // ATLAS-P3-REPAIR-002 fail-closed: distinguish a missing binary (fatal,
-  // exit 2 upstream) from a per-segment transcription failure (fails the
-  // segment, never a warn/pass).
+  // ATLAS-P3-REPAIR-002 fail-closed: distinguish a missing binary (coded
+  // WHISPER_BIN_MISSING — whole-gate unavailable soft-pass upstream) from a
+  // per-segment transcription failure (fails the segment, never a warn/pass).
   if (result.error) {
     const code = result.error.code || '';
     if (code === 'ENOENT') {
@@ -406,7 +428,7 @@ async function downloadSegment(storyId, segIndex, destDir) {
   const storagePath = `asc3/${storyId}/${segName}`;
   const localPath  = path.join(destDir, segName);
 
-  const { data, error } = await sb.storage.from('audio').download(storagePath);
+  const { data, error } = await requireDb().storage.from('audio').download(storagePath);
   if (error) throw Object.assign(new Error(error.message), { code: 'NOT_FOUND', segName });
 
   const buf = Buffer.from(await data.arrayBuffer());
@@ -458,15 +480,20 @@ async function runGate(storyId, requestedIndices) {
   console.log(`Thresholds: WARN >=${(WER_WARN*100).toFixed(0)}% WER | FAIL >=${(WER_HARD_FAIL*100).toFixed(0)}% WER\n`);
 
   // 1. Fetch script
-  const { data: storyData, error: storyError } = await sb
+  const { data: storyData, error: storyError } = await requireDb()
     .from('stories')
     .select('title, script')
     .eq('id', storyId)
     .single();
 
   if (storyError || !storyData) {
-    console.error(`[FATAL] Cannot fetch story ${storyId}: ${storyError?.message}`);
-    process.exit(2);
+    // ATLAS-GARBLE-VERDICT-001: DB fetch failure is gate-unavailable, not a
+    // crash — throw with a coded error so the CLI entry point writes a
+    // structured soft-pass report (needsAttention) instead of exiting 2.
+    throw Object.assign(
+      new Error(`Cannot fetch story ${storyId}: ${storyError?.message || 'no data'}`),
+      { code: 'GATE_DB_UNAVAILABLE' }
+    );
   }
 
   console.log(`Title:    "${storyData.title}"`);
@@ -533,7 +560,8 @@ async function runGate(storyId, requestedIndices) {
 
     // Transcribe with Whisper — ATLAS-P3-REPAIR-002 fail-closed: a null or
     // failed transcription is a HARD FAIL (wer null), never a warn/pass. A
-    // missing binary is fatal for the whole gate (exit 2), not per-segment.
+    // missing binary throws WHISPER_BIN_MISSING for the whole gate
+    // (unavailable soft-pass upstream, ATLAS-GARBLE-VERDICT-001), not per-segment.
     let whisperRaw;
     try {
       whisperRaw = transcribeWithWhisper(audioPath, tmpDir);
@@ -595,8 +623,6 @@ async function runGate(storyId, requestedIndices) {
   // JSON report
   // ---------------------------------------------------------------------------
 
-  const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-  const reportPath = `/tmp/garble-gate-${storyId}-${ts}.json`;
   const report = {
     storyId,
     storyTitle: storyData.title,
@@ -605,12 +631,18 @@ async function runGate(storyId, requestedIndices) {
     parser: 'ATL-PARSER-001 (0-based canonical)',
     thresholds: { warn: WER_WARN, fail: WER_HARD_FAIL },
     gatePassed: fails.length === 0,
+    // ATLAS-GARBLE-VERDICT-001: gateStatus distinguishes story-garbled
+    // ('garbled', fail-closed) from gate-broken ('unavailable' /
+    // 'internal_error', soft-pass with needsAttention). A completed scan is
+    // always 'ok' or 'garbled' — never unavailable.
+    gateStatus: fails.length > 0 ? 'garbled' : 'ok',
+    needsAttention: fails.length > 0 || warns.length > 0,
+    error: null,
     summary: { ok: oks.length, warn: warns.length, fail: fails.length, skipped: skipped.length, missing: missing.length, total: results.length },
     results: results.map(r => ({ segIndex: r.segIndex, segName: r.segName, status: r.status, wer: r.wer, expectedText: r.expectedText, whisperText: r.whisperText })),
   };
 
-  fs.writeFileSync(reportPath, JSON.stringify(report, null, 2));
-  console.log(`\nJSON report: ${reportPath}`);
+  const reportPath = writeGateReport(storyId, report);
 
   try { fs.rmSync(tmpDir, { recursive: true }); } catch {}
 
@@ -630,8 +662,10 @@ if (IS_CLI) {
 
     if (rangeArg) {
       // Need the total count to bound the range
-      const { data, error } = await sb.from('stories').select('script').eq('id', storyId).single();
-      if (error) { console.error(`[FATAL] ${error.message}`); process.exit(2); }
+      const { data, error } = await requireDb().from('stories').select('script').eq('id', storyId).single();
+      if (error) {
+        throw Object.assign(new Error(`Cannot fetch story ${storyId}: ${error.message}`), { code: 'GATE_DB_UNAVAILABLE' });
+      }
       const positions = parseScriptPositions(data.script);
       const maxIdx = positions.length > 0 ? positions[positions.length - 1].index : 0;
       requestedIndices = parseRange(rangeArg, 0, maxIdx);
@@ -641,11 +675,99 @@ if (IS_CLI) {
     process.exit(passed ? 0 : 1);
 
   } catch (err) {
-    console.error('\n[FATAL]', err.message);
-    if (process.env.DEBUG) console.error(err.stack);
-    process.exit(2);
+    // ATLAS-GARBLE-VERDICT-001: the gate NEVER crashes without a verdict.
+    // Infrastructure failures (missing Whisper binary, DB unreachable,
+    // storage errors, unexpected exceptions) become a structured soft-pass
+    // report — gateStatus 'unavailable' | 'internal_error', gatePassed=true,
+    // needsAttention=true — so render may proceed with attention. Exit 0
+    // (never 1 with no report); exit 1 is reserved for TRUE GARBLE with a
+    // full segment-level report. Fail-closed is preserved: any
+    // summary.fail > 0 still exits 1 via the runGate path above.
+    console.error('\n[GATE-UNAVAILABLE]', err && err.message ? err.message : String(err));
+    if (process.env.DEBUG && err && err.stack) console.error(err.stack);
+    try {
+      const code = classifyGateError(err);
+      const report = buildUnavailableReport(storyId, code, err && err.message ? String(err.message).slice(0, 500) : 'unknown error');
+      writeGateReport(storyId, report);
+      console.log(`\nGATE RESULT: UNAVAILABLE (${code}) — no WER verdict; render may proceed with needs_attention=true`);
+      process.exit(0);
+    } catch (reportErr) {
+      console.error('[FATAL] Could not write gate-unavailable report:', reportErr && reportErr.message ? reportErr.message : String(reportErr));
+      process.exit(2);
+    }
   }
 })();
+}
+
+// ---------------------------------------------------------------------------
+// ATLAS-GARBLE-VERDICT-001 — always-write-report helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Classify an infrastructure failure into a structured gate status.
+ * 'unavailable' = known-missing dependency (Whisper binary, DB, storage).
+ * 'internal_error' = anything else unexpected.
+ */
+function classifyGateError(err) {
+  const code = err && err.code ? String(err.code) : '';
+  const msg = err && err.message ? String(err.message) : '';
+  if (
+    code === 'WHISPER_BIN_MISSING' ||
+    code === 'GATE_DB_UNAVAILABLE' ||
+    /whisper binary not found/i.test(msg) ||
+    /cannot fetch story/i.test(msg) ||
+    /fetch failed|socket hang up|ECONNREFUSED|ENOTFOUND|ETIMEDOUT/i.test(msg)
+  ) {
+    return 'unavailable';
+  }
+  return 'internal_error';
+}
+
+/**
+ * Build a structured gate-broken report: no WER verdict exists, but the
+ * gate still speaks. gatePassed=true (soft-pass so render may proceed),
+ * needsAttention=true (a human must notice the gate did not verify audio).
+ * summary.fail is 0 — this is NOT garble; nothing here may be read as a
+ * story-audio verdict.
+ */
+function buildUnavailableReport(storyId, gateStatus, message, storyTitle) {
+  return {
+    storyId,
+    storyTitle: storyTitle || '',
+    runAt: new Date().toISOString(),
+    model: WHISPER_MODEL,
+    parser: 'ATL-PARSER-001 (0-based canonical)',
+    thresholds: { warn: WER_WARN, fail: WER_HARD_FAIL },
+    gatePassed: true,
+    gateStatus: gateStatus === 'internal_error' ? 'internal_error' : 'unavailable',
+    needsAttention: true,
+    error: { code: gateStatus === 'internal_error' ? 'GATE_INTERNAL_ERROR' : 'GATE_UNAVAILABLE', message: String(message || 'gate unavailable') },
+    summary: { ok: 0, warn: 0, fail: 0, skipped: 0, missing: 0, total: 0 },
+    results: [],
+  };
+}
+
+/**
+ * Write a gate report to disk and print the `JSON report:` line the TS
+ * wrapper parses. Always returns the path written. Falls back from
+ * os.tmpdir() to process.cwd() so a bad tmp path can never silence the
+ * gate — a report is ALWAYS produced when the storyId is known.
+ */
+function writeGateReport(storyId, report) {
+  const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+  const fileName = `garble-gate-${storyId}-${ts}.json`;
+  const candidates = [path.join(os.tmpdir(), fileName), path.join(process.cwd(), fileName)];
+  let lastErr = null;
+  for (const p of candidates) {
+    try {
+      fs.writeFileSync(p, JSON.stringify(report, null, 2));
+      console.log(`\nJSON report: ${p}`);
+      return p;
+    } catch (e) {
+      lastErr = e;
+    }
+  }
+  throw new Error(`Cannot write gate report for ${storyId}: ${lastErr && lastErr.message ? lastErr.message : lastErr}`);
 }
 
 // ---------------------------------------------------------------------------
@@ -680,6 +802,9 @@ if (typeof module !== 'undefined' && module.exports != null) {
     WHISPER_BIN,
     WHISPER_MODEL,
     WER_HARD_FAIL,
+    classifyGateError,
+    buildUnavailableReport,
+    writeGateReport,
     WER_WARN,
     wer,
     normalise,

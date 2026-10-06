@@ -5103,10 +5103,20 @@ async function runStandaloneRenderFinalMix(job: ProductionJob, origin: string) {
     if (garbleOutcome.warnings.length > 0) {
       console.warn(`[GARBLE-001] ${garbleOutcome.warnings.length} segment(s) borderline (20-40% WER), continuing:`, garbleOutcome.warnings.map(f => f.segName))
     }
+    // ATLAS-GARBLE-VERDICT-001: gate-broken soft-pass — the gate produced no
+    // WER verdict (Whisper missing, DB unreachable, internal error). Render
+    // may proceed, but flag it loudly so a human notices the audio went
+    // unverified. True garble (passed=false) still halts above.
+    if (garbleOutcome.needsAttention) {
+      console.warn(
+        `[GARBLE-001] Gate ${garbleOutcome.gateStatus} for ${storyId} — no verified WER verdict; proceeding with needs_attention=true` +
+        (garbleOutcome.gateError ? `: ${garbleOutcome.gateError.slice(0, 300)}` : ''),
+      )
+    }
   } catch (e) {
-    // GARBLE-001 gate itself crashed (Whisper unavailable, etc). Per the module's own
-    // header: "If it returns passed=false, halt." A crash is not a pass — do not
-    // silently continue. Fail closed, matching GARBLE-001's fail-closed intent.
+    // Defensive only (ATLAS-GARBLE-VERDICT-001: runGarbleGate never throws —
+    // gate breakage returns a soft-pass outcome handled above). A truly
+    // unexpected throw is not a pass: fail closed.
     const errorReport = {
       success: false,
       kind: 'garble_gate_error',
@@ -7642,10 +7652,18 @@ async function runSeriesRenderFinalMix(job: ProductionJob, origin: string) {
       if (garbleOutcome.warnings.length > 0) {
         console.warn(`[GARBLE-001] ${garbleOutcome.warnings.length} segment(s) borderline (20-40% WER), continuing:`, garbleOutcome.warnings.map(f => f.segName))
       }
+      // ATLAS-GARBLE-VERDICT-001: gate-broken soft-pass — no WER verdict
+      // (Whisper missing, DB unreachable, internal error). Render may
+      // proceed with needs_attention=true. True garble still halts above.
+      if (garbleOutcome.needsAttention) {
+        console.warn(
+          `[GARBLE-001] Gate ${garbleOutcome.gateStatus} for ${storyId} — no verified WER verdict; proceeding with needs_attention=true` +
+          (garbleOutcome.gateError ? `: ${garbleOutcome.gateError.slice(0, 300)}` : ''),
+        )
+      }
     } catch (e) {
-      // GARBLE-001 gate itself crashed (Whisper unavailable, etc). Per the module's own
-      // header: "If it returns passed=false, halt." A crash is not a pass — do not
-      // silently continue. Fail closed, matching GARBLE-001's fail-closed intent.
+      // Defensive only (ATLAS-GARBLE-VERDICT-001: runGarbleGate never throws).
+      // A truly unexpected throw is not a pass: fail closed.
       const errorReport = {
         success: false,
         kind: 'garble_gate_error',
