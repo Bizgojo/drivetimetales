@@ -112,14 +112,49 @@ async function listFolder(sb: SupabaseClient, folder: string): Promise<string[]>
   return (data || []).filter((f: any) => f.id !== null).map((f) => f.name)
 }
 
+// FIX-1 (§10 retention 14d/90d: backups are never hard-deleted here; they age
+// out via a separate sweep — retain <14d, archive <90d, purge only after 90d).
+async function downloadBytes(sb: SupabaseClient, storagePath: string): Promise<Buffer> {
+  const { data, error } = await sb.storage.from(BUCKET).download(storagePath)
+  if (error) throw new BatchStop(`Storage download failed ${storagePath}: ${error.message}`)
+  return Buffer.from(await (data as Blob).arrayBuffer())
+}
+
+async function verifyCopy(sb: SupabaseClient, from: string, to: string): Promise<void> {
+  const [src, dst] = await Promise.all([downloadBytes(sb, from), downloadBytes(sb, to)])
+  if (src.length !== dst.length) {
+    throw new BatchStop(`Storage copy size mismatch ${from} (${src.length}) -> ${to} (${dst.length})`)
+  }
+}
+
 async function moveFile(sb: SupabaseClient, from: string, to: string) {
+  // FIX-1 F3: Supabase move is non-atomic copy+delete — snapshot source size,
+  // move, then verify destination exists with matching size and source is gone.
+  let srcSize: number | null = null
+  try {
+    srcSize = (await downloadBytes(sb, from)).length
+  } catch { srcSize = null }
   const { error } = await sb.storage.from(BUCKET).move(from, to)
   if (error) throw new BatchStop(`Storage move failed ${from} -> ${to}: ${error.message}`)
+  const { data: dstList, error: dstErr } = await sb.storage.from(BUCKET).list(to.split('/').slice(0, -1).join('/') || '', { limit: 1000 })
+  if (dstErr) throw new BatchStop(`Storage move unverifiable ${from} -> ${to}: ${dstErr.message}`)
+  const dstName = to.split('/').pop()!
+  if (!(dstList || []).some((f: any) => f?.name === dstName)) {
+    throw new BatchStop(`Storage move destination missing ${from} -> ${to}`)
+  }
+  if (srcSize !== null) {
+    const dstBytes = await downloadBytes(sb, to)
+    if (dstBytes.length !== srcSize) {
+      throw new BatchStop(`Storage move size mismatch ${from} (${srcSize}) -> ${to} (${dstBytes.length})`)
+    }
+  }
 }
 
 async function copyFile(sb: SupabaseClient, from: string, to: string) {
   const { error } = await sb.storage.from(BUCKET).copy(from, to)
   if (error) throw new BatchStop(`Storage copy failed ${from} -> ${to}: ${error.message}`)
+  // FIX-1 F3: the backup copy is the safety net — verify before proceeding.
+  await verifyCopy(sb, from, to)
 }
 
 async function removeFiles(sb: SupabaseClient, paths: string[]) {
@@ -250,6 +285,18 @@ async function processEpisode(sb: SupabaseClient, id: string, stamp: string, dry
   for (const name of MIX_FILES) if (files.includes(name)) await copyFile(sb, `${folder}/${name}`, `${backupDir}/${name}`)
   for (const name of backup) await moveFile(sb, `${folder}/${name}`, `${backupDir}/${name}`)
   await removeFiles(sb, qcskips.map((n) => `${folder}/${n}`))
+
+  // FIX-1 verified-backup gate: nothing proceeds to voice regen until every
+  // expected backup is present in the backup dir. (§10: backups age out via
+  // retention sweep, never deleted here.)
+  {
+    const backupFiles = await listFolder(sb, backupDir).catch(() => [] as string[])
+    const missing = [...MIX_FILES.filter((n) => files.includes(n)), ...backup].filter((n) => !backupFiles.includes(n))
+    if (missing.length > 0) {
+      throw new BatchStop(`Verified-backup gate FAILED for ${ep}: missing in ${backupDir}: ${missing.join(', ')}`)
+    }
+    log(`  verified backup: ${backupFiles.length} files in ${backupDir}`)
+  }
 
   // B — Belle intro/outro (hard gate)
   const belle = await postGenerateVoices({ storyId: id, generateBelleOnly: true })

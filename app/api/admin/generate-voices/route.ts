@@ -68,6 +68,19 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
 
+// FIX-1 F1 (sites #6/#7/#8): post-upload size verification for small
+// deterministic-content writes (silence buffers, locked-SFX restore).
+// Size-only (not sha) keeps this cheap on a hot loop; content is either
+// ffmpeg-deterministic or hash-trusted upstream. Fail loud, never warn.
+async function verifySmallAudioUpload(sb: typeof supabase, storagePath: string, expectedBytes: number, label: string): Promise<void> {
+  const { data, error } = await sb.storage.from('audio').download(storagePath)
+  if (error) throw new Error(`${label} verify download failed ${storagePath}: ${error.message}`)
+  const got = Buffer.from(await data.arrayBuffer()).length
+  if (got !== expectedBytes) {
+    throw new Error(`${label} verify FAILED (size) ${storagePath}: got ${got}, want ${expectedBytes}`)
+  }
+}
+
 // CORRECTION-PERSIST-001: correction audit log types + helpers
 interface CorrectionEntry {
   type: 'voice_recast' | 'pronoun_fix' | 'sfx_removal' | 'outro_fix' | 'segment_rebuild' | string
@@ -3414,11 +3427,29 @@ export async function POST(req: NextRequest) {
         }
         // Refresh the file list after purge so classifySegmentInventory sees clean state
         const { data: refreshedFiles, error: refreshError } = await supabase.storage.from('audio').list(storyAudioFolder, { limit: 500 })
-        if (!refreshError) {
-          // Replace existingAudioFiles with the refreshed list for the inventory below
-          ;(existingAudioFiles as unknown as any[]).length = 0
-          for (const f of (refreshedFiles || [])) (existingAudioFiles as unknown as any[]).push(f)
+        // FIX-1 F2 (site #4): the refresh was silently skipped on error, letting
+        // the inventory run against a stale pre-purge listing (deleted segments
+        // seen as present → skipped regen → holes). Fail loud instead.
+        if (refreshError) {
+          console.error('  ❌ [HOOK-GATE-STALE-001] Post-purge listing failed:', refreshError)
+          return NextResponse.json(
+            { success: false, error: `HOOK-GATE-STALE-001 post-purge listing failed: ${refreshError.message}` },
+            { status: 500 },
+          )
         }
+        // FIX-1 F2 (site #4): survivor check — a partial remove (multi-path
+        // delete with per-object failures) must not pass as a clean purge.
+        const survivors = (refreshedFiles || []).filter(file => segmentFilePattern.test(file.name))
+        if (survivors.length > 0) {
+          console.error(`  ❌ [HOOK-GATE-STALE-001] Purge unverified, survivors: ${survivors.map(f => f.name).join(', ')}`)
+          return NextResponse.json(
+            { success: false, error: `HOOK-GATE-STALE-001 purge unverified, survivors: ${survivors.map(f => f.name).join(', ')}` },
+            { status: 500 },
+          )
+        }
+        // Replace existingAudioFiles with the refreshed list for the inventory below
+        ;(existingAudioFiles as unknown as any[]).length = 0
+        for (const f of (refreshedFiles || [])) (existingAudioFiles as unknown as any[]).push(f)
       }
 
       // FIX (AC-1, AC-2): reject stale segments whose stored size is ≤ stale threshold.
@@ -3472,6 +3503,8 @@ export async function POST(req: NextRequest) {
           const silBuffer = await generateSilenceBuffer(duration)
           const { error: uploadError } = await supabase.storage.from('audio').upload(silPath, silBuffer, { contentType: 'audio/mpeg', upsert: true })
           if (uploadError) throw new Error(`Upload error: ${uploadError.message}`)
+          // FIX-1 F1 (site #6): byte-verify deterministic silence write, fail loud.
+          await verifySmallAudioUpload(supabase, silPath, silBuffer.length, 'silence-retry')
           generatedSegments.push({ index: targetLine.index, speaker: targetLine.speaker, type: targetLine.type, duration: String(duration), url: `${BASE_STORAGE}/${silPath}` })
         } else if (targetLine.type === 'narrator' || targetLine.type === 'character') {
           let voiceId = resolvedNarratorVoiceId
@@ -3594,18 +3627,20 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: false, error: `Failed to list existing story segments: ${listAudioError.message}` }, { status: 500 })
     }
 
-    const staleSegmentPaths = (existingAudioFiles || [])
-      .filter(file => segmentFilePattern.test(file.name))
-      .map(file => `${storyAudioFolder}/${file.name}`)
-
-    if (staleSegmentPaths.length > 0) {
-      const { error: deleteAudioError } = await supabase.storage.from('audio').remove(staleSegmentPaths)
-      if (deleteAudioError) {
-        console.error('  ❌ Failed to delete stale story segments:', deleteAudioError)
-        return NextResponse.json({ success: false, error: `Failed to delete stale story segments: ${deleteAudioError.message}` }, { status: 500 })
-      }
-    }
-    console.log(`  Deleted stale story segments: ${staleSegmentPaths.length > 0 ? staleSegmentPaths.map(file => file.split('/').pop()).join(', ') : 'none'}`)
+    // FIX-1 F2 (site #5): overwrite-by-regen replaces purge-before-regen.
+    // The old code deleted ALL existing segment_*.mp3 up front, so a crash
+    // between purge and regen left the episode segment-less with no resume
+    // signal. Every writer in the loop below overwrites in place (voice via
+    // generateVoiceLine upsert, silence + locked-SFX via upsert:true), so the
+    // upfront delete bought nothing. Snapshot pre-existing names now; leftovers
+    // are swept only AFTER a fully-successful regen (see below) — a crash
+    // mid-regen now leaves old-but-complete segments, never a hole.
+    const preExistingSegmentNames = new Set(
+      (existingAudioFiles || [])
+        .filter(file => segmentFilePattern.test(file.name))
+        .map(file => file.name)
+    )
+    console.log(`  [FIX1-F2] Overwrite-by-regen: keeping ${preExistingSegmentNames.size} pre-existing segment(s) in place, leftover sweep after successful regen`)
 
     const qcSkippedSegments: string[] = []
     const failures: VoiceInventoryFailure[] = []
@@ -3655,7 +3690,13 @@ export async function POST(req: NextRequest) {
         const silFileName = 'segment_' + line.index.toString().padStart(4, '0') + '.mp3'
         const silPath = 'asc3/' + storyId + '/' + silFileName
         const silBuffer = await generateSilenceBuffer(duration)
-        await supabase.storage.from('audio').upload(silPath, silBuffer, { contentType: 'audio/mpeg', upsert: true })
+        // FIX-1 F1 (site #7): this upload previously ignored errors entirely —
+        // capture + verify, fail loud like every other writer.
+        {
+          const { error: silUploadError } = await supabase.storage.from('audio').upload(silPath, silBuffer, { contentType: 'audio/mpeg', upsert: true })
+          if (silUploadError) throw new Error(`Silence upload failed ${silPath}: ${silUploadError.message}`)
+          await verifySmallAudioUpload(supabase, silPath, silBuffer.length, 'silence-fullregen')
+        }
         const silUrl = process.env.NEXT_PUBLIC_SUPABASE_URL + '/storage/v1/object/public/audio/' + silPath
         results.segments.push({ index: line.index, speaker: line.speaker, type: line.type, duration: String(duration), url: silUrl })
         continue
@@ -3676,7 +3717,13 @@ export async function POST(req: NextRequest) {
           const [cueId, entry] = sfxLockedEntry
           try {
             const lockedBuf = await restoreLockedSfxCue(cueId, entry, sfxActivePath)
-            await supabase.storage.from('audio').upload(sfxActivePath, lockedBuf, { contentType: 'audio/mpeg', upsert: true })
+            // FIX-1 F1 (site #8): locked-SFX restore upload previously unchecked —
+            // content is hash-trusted upstream, but the write itself gets verified.
+            {
+              const { error: sfxUploadError } = await supabase.storage.from('audio').upload(sfxActivePath, lockedBuf, { contentType: 'audio/mpeg', upsert: true })
+              if (sfxUploadError) throw new Error(`Locked-SFX upload failed ${sfxActivePath}: ${sfxUploadError.message}`)
+              await verifySmallAudioUpload(supabase, sfxActivePath, lockedBuf.length, 'locked-sfx')
+            }
             console.log(`[ATL-SFX-WIRE-001] SFX reused byte-for-byte: ${cueId} → ${sfxFileName}`)
             results.segments.push({ index: line.index, speaker: 'SFX', type: 'sfx', url: `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/audio/${sfxActivePath}`, reusedFromLocked: true })
             continue
@@ -3817,6 +3864,39 @@ export async function POST(req: NextRequest) {
     // completes clean (no missing, no escalations). The audio-consistency gate
     // compares this against script_updated_at to detect stale audio.
     const fullGenSuccess = failed === 0 && inventory.missingSegments.length === 0 && escalations.length === 0
+    // FIX-1 F2 (site #5): leftover sweep — the deferred half of overwrite-by-regen.
+    // Runs ONLY on full success: every expected segment was just (over)written, so
+    // pre-existing names outside the expected set are provably stale (shortened
+    // script, newly-skipped lines). Scoped to segment_*.mp3 — parity with the old
+    // purge, which never touched sfx_*.mp3. Sweep failure is fail-loud: regen
+    // succeeded but stale survivors remain, so success is NOT stamped.
+    if (fullGenSuccess) {
+      const expectedSegmentNames = new Set<string>()
+      for (const line of storyLines) {
+        if (nonDialogueSpeakers.has(line.speaker.toUpperCase())) continue
+        if (line.type === 'sfx') continue // sfx_*.mp3 out of sweep scope (purge parity)
+        expectedSegmentNames.add(`segment_${line.index.toString().padStart(4, '0')}.mp3`)
+      }
+      const leftoverPaths = [...preExistingSegmentNames]
+        .filter(name => !expectedSegmentNames.has(name))
+        .map(name => `${storyAudioFolder}/${name}`)
+      if (leftoverPaths.length > 0) {
+        const { error: sweepError } = await supabase.storage.from('audio').remove(leftoverPaths)
+        if (sweepError) {
+          console.error('  ❌ [FIX1-F2] Leftover sweep failed:', sweepError)
+          return NextResponse.json({ success: false, error: `Leftover sweep failed: ${sweepError.message}` }, { status: 500 })
+        }
+        const { data: sweepCheck, error: sweepCheckErr } = await supabase.storage.from('audio').list(storyAudioFolder, { limit: 500 })
+        const survivors = sweepCheckErr
+          ? [`list-failed:${sweepCheckErr.message}`]
+          : (sweepCheck || []).map((f: any) => f.name).filter((n: string) => leftoverPaths.some(p => p.endsWith(`/${n}`)))
+        if (survivors.length > 0) {
+          console.error(`  ❌ [FIX1-F2] Leftover sweep unverified, survivors: ${survivors.join(', ')}`)
+          return NextResponse.json({ success: false, error: `Leftover sweep unverified, survivors: ${survivors.join(', ')}` }, { status: 500 })
+        }
+        console.log(`  🧹 [FIX1-F2] Swept ${leftoverPaths.length} leftover stale segment(s) after successful regen: ${leftoverPaths.map(p => p.split('/').pop()).join(', ')}`)
+      }
+    }
     if (fullGenSuccess) {
       const { error: stampError } = await supabase
         .from('stories')

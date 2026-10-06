@@ -34,6 +34,7 @@
  */
 
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
+import { createHash } from 'node:crypto';
 import { spawnSync } from 'child_process';
 import * as fs from 'fs';
 import * as os from 'os';
@@ -757,6 +758,23 @@ export async function assembleAndVerifyFinalMix(opts: {
       cacheControl: '0',
     });
     if (upErr) throw new Error(`Upload failed: ${upErr.message}`);
+    // FIX-1 F1+F3 (site #1): byte-verify the live final mix after upload.
+    // The SDK can return error:null on a partial write — a corrupt live
+    // object must fail loud here, not ship. Size + sha256 vs the local buf.
+    {
+      const { data: verifyData, error: verifyErr } = await sb.storage.from('audio').download(storagePath);
+      if (verifyErr) throw new Error(`Final-mix verify download failed ${storagePath}: ${verifyErr.message}`);
+      const actual = Buffer.from(await verifyData.arrayBuffer());
+      if (actual.length !== buf.length) {
+        throw new Error(`Final-mix verify FAILED (size) ${storagePath}: got ${actual.length}, want ${buf.length}`);
+      }
+      const aHash = createHash('sha256').update(actual).digest('hex');
+      const eHash = createHash('sha256').update(buf).digest('hex');
+      if (aHash !== eHash) {
+        throw new Error(`Final-mix verify FAILED (sha256) ${storagePath}: got ${aHash.slice(0, 12)}…, want ${eHash.slice(0, 12)}…`);
+      }
+      console.log(`[assembleAndVerifyFinalMix] ✓ Upload verified: ${storagePath} (${actual.length} bytes, sha ${eHash.slice(0, 12)}…)`);
+    }
 
     const { data: { publicUrl } } = sb.storage.from('audio').getPublicUrl(storagePath);
 
