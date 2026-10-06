@@ -1,4 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
+// R1-V3 step map (decision r1-v3-step-map-approved-oct6): story-idea ->
+// Strategos/R1. Uses DeepSeek R1 direct when DEEPSEEK_API_KEY is present,
+// else falls back to the existing OpenRouter call (pre-redeploy safe).
+import { routeStep, hasDeepSeekEnv } from '@/lib/model-router'
+import { chatR1 } from '@/lib/deepseek/deepseek-r1'
 
 function clean(input: string) {
   return String(input || '').replace(/\s+/g, ' ').trim()
@@ -109,6 +114,27 @@ Author target: ${authorTarget}
 Notes: ${notes}
 `.trim()
 
+    // Route A check (logs owner only, never any key value).
+    const route = routeStep('story-idea')
+    console.log(`generate-story-idea route: owner=${route.owner} provider=${route.provider} model=${route.model}`)
+
+    let content = '{}'
+    if (hasDeepSeekEnv()) {
+      // Strategos/R1 direct path.
+      try {
+        const r1 = await chatR1(
+          [
+            { role: 'system', content: 'You generate concise story-queue ideas for an audio fiction admin tool. Return only valid JSON.' },
+            { role: 'user', content: prompt },
+          ],
+          { temperature: 0.9 },
+        )
+        content = r1.content || '{}'
+      } catch (e) {
+        console.error('generate-story-idea deepseek-r1 failure, falling back to OpenRouter:', e instanceof Error ? e.message : String(e))
+      }
+    }
+    if (content === '{}') {
     try {
       const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
         method: 'POST',
@@ -133,7 +159,6 @@ Notes: ${notes}
         return NextResponse.json(fallbackIdea(genre, duration, settingSeed, authorTarget))
       }
 
-      let content = '{}'
       try {
         const data = JSON.parse(txt)
         content = data?.choices?.[0]?.message?.content || '{}'
@@ -141,6 +166,11 @@ Notes: ${notes}
         console.error('generate-story-idea parse error:', txt)
         return NextResponse.json(fallbackIdea(genre, duration, settingSeed, authorTarget))
       }
+    } catch (e) {
+      console.error('generate-story-idea fetch failure:', e)
+      return NextResponse.json(fallbackIdea(genre, duration, settingSeed, authorTarget))
+    }
+    } // end OpenRouter fallback branch (skipped when R1 already returned content)
 
       try {
         const parsed = JSON.parse(content)
@@ -154,10 +184,6 @@ Notes: ${notes}
         console.error('generate-story-idea content JSON error:', content)
         return NextResponse.json(fallbackIdea(genre, duration, settingSeed, authorTarget))
       }
-    } catch (e) {
-      console.error('generate-story-idea fetch failure:', e)
-      return NextResponse.json(fallbackIdea(genre, duration, settingSeed, authorTarget))
-    }
   } catch (err: any) {
     console.error('generate-story-idea fatal:', err)
     return NextResponse.json(fallbackIdea('Thriller', '15 min', '', ''))
