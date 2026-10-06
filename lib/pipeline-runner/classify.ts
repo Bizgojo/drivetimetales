@@ -207,6 +207,40 @@ export function classifyFailure(
     }
   }
 
+  // ATLAS-P3-REPAIR-002: pinned fetch-error kinds from the runner's
+  // classifyRunNextFetchError (fetchErrorKind on the payload). A timeout is
+  // the expected shape of a slow-but-healthy render outliving the client
+  // abort budget — transient, never Marc. Killed/OOM/connection mean the
+  // worker or network died — also transient (retry after back-off), but
+  // surfaced distinctly so operators can tell them apart in logs.
+  const pinnedFetchKind = String(payload?.fetchErrorKind ?? '')
+  if (pinnedFetchKind === 'timeout') {
+    // NOTE: runner.ts RUN_NEXT_TIMEOUT_DEFAULT_MS is 90_000 — duplicated
+    // here as a literal to avoid a classify↔runner import cycle.
+    const budget = Number(payload?.fetchTimeoutMs ?? 90_000)
+    return {
+      kind: 'transient',
+      retryable: true,
+      needsMarc: false,
+      reason: `run-next fetch timeout at step "${context.step ?? 'unknown'}" (client abort budget ${budget}ms exceeded; server may still be rendering).`,
+      recommendedAction: 'Autopilot retries once; the job lock decides ownership — a reclaimed lock resumes cleanly, a live render completes normally.',
+      context,
+    }
+  }
+  if (pinnedFetchKind === 'killed' || pinnedFetchKind === 'oom' || pinnedFetchKind === 'connection') {
+    return {
+      kind: 'transient',
+      retryable: true,
+      needsMarc: false,
+      reason: `run-next fetch ${pinnedFetchKind} at step "${context.step ?? 'unknown'}".`,
+      recommendedAction:
+        pinnedFetchKind === 'oom'
+          ? 'Runner showed OOM signatures — reduce render concurrency or raise runner memory before retrying.'
+          : 'Autopilot retries once. If it repeats, inspect runner/network health.',
+      context,
+    }
+  }
+
   // ── Text-pattern classification (for remaining steps) ────────────────────
   const text = failureText(payload, job)
 

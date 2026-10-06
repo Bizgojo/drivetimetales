@@ -2491,6 +2491,75 @@ async function clearLock(jobId: string, lockHolderId: string, lockedAt?: string 
   await query
 }
 
+// ── ATLAS-P3-REPAIR-002: render heartbeat + zombie claim-check ─────────────
+// Long renders (final-mix concat + loudnorm + upload) run for minutes inside
+// a single run-next invocation. Two hazards:
+//
+//  1. The job row goes quiet for the whole render. Zombie reapers keyed on
+//     updated_at/locked_at staleness can reclaim the job mid-render, and the
+//     render's completion write then lands on a superseded row (or 0 rows).
+//     The heartbeat below touches ONLY state_json.renderHeartbeat via a
+//     fenced write every RENDER_HEARTBEAT_MS — it never moves locked_at (the
+//     fencing token), so in-flight render fences keep matching. If the fence
+//     stops matching the heartbeat stops itself (lock lost).
+//
+//  2. After the render returns, the lock may already be gone (reclaimed and
+//     re-dispatched while we were rendering). assertRenderClaim re-selects the
+//     row and throws the canonical lock-lost error BEFORE any result write,
+//     so output is abandoned loudly instead of resurrecting a dead row.
+
+const RENDER_HEARTBEAT_MS = 60_000
+
+function startRenderHeartbeat(job: ProductionJob, lockHolderId: string, step: string): () => void {
+  let stopped = false
+  const stop = () => { stopped = true; clearInterval(timer) }
+  const tick = async () => {
+    if (stopped) return
+    try {
+      const { data: row } = await supabase
+        .from('production_jobs')
+        .select('state_json')
+        .eq('id', job.id)
+        .maybeSingle()
+      const state = (row?.state_json && typeof row.state_json === 'object' ? row.state_json : {}) as Record<string, unknown>
+      const { data: rows } = await supabase
+        .from('production_jobs')
+        .update({
+          state_json: { ...state, renderHeartbeat: { at: nowIso(), step, holder: lockHolderId } },
+        })
+        .match(ownedJobFence(job, lockHolderId))
+        .select('id')
+      if (!rows || rows.length === 0) stop() // lock lost — stop beating, render will claim-check on return
+    } catch {
+      // Best-effort: a failed heartbeat must never fail the render
+    }
+  }
+  const timer = setInterval(() => { void tick() }, RENDER_HEARTBEAT_MS)
+  return stop
+}
+
+function sameInstant(a: string | null | undefined, b: string | null | undefined): boolean {
+  if (!a || !b) return false
+  const ta = new Date(String(a)).getTime()
+  const tb = new Date(String(b)).getTime()
+  return Number.isFinite(ta) && ta === tb
+}
+
+async function assertRenderClaim(job: ProductionJob, lockHolderId: string, step: string): Promise<void> {
+  const { data: row } = await supabase
+    .from('production_jobs')
+    .select('id,status,locked_by,locked_at')
+    .eq('id', job.id)
+    .maybeSingle()
+  const owned = Boolean(
+    row &&
+    row.status === 'running' &&
+    row.locked_by === lockHolderId &&
+    sameInstant(row.locked_at as string | null, job.locked_at)
+  )
+  if (!owned) throw new Error(lockLostMessage(step, job.id))
+}
+
 async function readJsonOrDiagnostic(response: Response, endpoint: string) {
   const contentType = response.headers.get('content-type') || ''
   const body = await response.text()
@@ -10571,7 +10640,16 @@ export async function POST(req: NextRequest) {
       // ── END Path 2 ──────────────────────────────────────────────────────────
 
       const origin = new URL(req.url).origin
-      const result = await runStandaloneRenderFinalMix(lockedJob, origin)
+      // ATLAS-P3-REPAIR-002: heartbeat during the long render; claim-check
+      // after — abandon loudly if the lock was reclaimed mid-render.
+      const stopHeartbeat = startRenderHeartbeat(lockedJob, lockHolderId, step)
+      let result: Awaited<ReturnType<typeof runStandaloneRenderFinalMix>>
+      try {
+        result = await runStandaloneRenderFinalMix(lockedJob, origin)
+      } finally {
+        stopHeartbeat()
+      }
+      await assertRenderClaim(lockedJob, lockHolderId, step)
       const logs = appendLog(lockedJob, result.success
         ? (result.skippedExisting ? 'Reused existing final mix outputs' : 'Rendered final mix')
         : 'Final mix render failed', {
@@ -11926,7 +12004,16 @@ export async function POST(req: NextRequest) {
 
     if (step === NEXT_STEP_AFTER_SERIES_MUSIC) {
       const origin = new URL(req.url).origin
-      const result = await runSeriesRenderFinalMix(lockedJob, origin)
+      // ATLAS-P3-REPAIR-002: heartbeat during the long render; claim-check
+      // after — abandon loudly if the lock was reclaimed mid-render.
+      const stopSeriesHeartbeat = startRenderHeartbeat(lockedJob, lockHolderId, step)
+      let result: Awaited<ReturnType<typeof runSeriesRenderFinalMix>>
+      try {
+        result = await runSeriesRenderFinalMix(lockedJob, origin)
+      } finally {
+        stopSeriesHeartbeat()
+      }
+      await assertRenderClaim(lockedJob, lockHolderId, step)
       const nextStep = result.allDone ? NEXT_STEP_AFTER_SERIES_RENDER : NEXT_STEP_AFTER_SERIES_MUSIC
 
       // Bounded retry cap for series render failures - prevent infinite zombie loops

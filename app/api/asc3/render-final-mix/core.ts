@@ -6,7 +6,13 @@ import { loadManifest, validateManifestGate, saveManifest, emptyManifest } from 
 import { parseScriptPositions } from '@/lib/scriptLineIndex'
 // BELL-FREEZE-GUARD-001 v1.1: frozen promo guard (ATL-GUARD-HOLE-FIX-001)
 import { checkFrozenGuard, type Decision } from '@/lib/guards/frozenGuard'
-import { logTmpPrefetchProbe, type TmpPrefetchProbe } from '@/lib/tmpSpace'
+import { logTmpPrefetchProbe, sweepStaleEtMixDirs, ET_MIX_SWEEP_STALE_MS, type TmpPrefetchProbe } from '@/lib/tmpSpace'
+import {
+  RENDER_CHUNK_TIMEOUT_MS,
+  RENDER_MIX_TIMEOUT_MS,
+  classifyDownloadError,
+  classifyFfmpegError,
+} from '@/lib/renderFetch'
 import { promises as fs, statfsSync } from 'node:fs'
 import { createHash } from 'node:crypto'
 import { sbwoFatalError } from '@/lib/storage/section10'
@@ -69,15 +75,39 @@ export interface CorrectionEntry {
 let FFMPEG_PATH = 'ffmpeg'
 try { FFMPEG_PATH = eval('require')('@ffmpeg-installer/ffmpeg').path } catch { /* system ffmpeg */ }
 
-const execFileAsync = promisify(execFile)
+const execFileRaw = promisify(execFile)
 
-async function download(url: string, dest: string): Promise<void> {
+// ATLAS-P3-REPAIR-002: every ffmpeg invocation runs under a mix timeout
+// (RENDER_MIX_TIMEOUT_MS) with kill/OOM distinction. Same call shape as the
+// raw promisified execFile — drop-in for existing call sites.
+async function execFileAsync(
+  file: string,
+  args: string[],
+  opts?: Record<string, unknown>,
+): Promise<{ stdout: string; stderr: string }> {
+  const timeoutMs = Number((opts as { timeout?: unknown } | undefined)?.timeout ?? RENDER_MIX_TIMEOUT_MS) || RENDER_MIX_TIMEOUT_MS
+  const started = Date.now()
+  try {
+    const result = await execFileRaw(file, args, { ...(opts ?? {}), timeout: timeoutMs } as never) as { stdout: string; stderr: string }
+    return result
+  } catch (err) {
+    throw classifyFfmpegError(err, `${file} ${args[0] ?? ''} ${args[1] ?? ''}`.trim(), timeoutMs, Date.now() - started).error
+  }
+}
+
+async function download(url: string, dest: string, opts?: { timeoutMs?: number }): Promise<void> {
+  // ATLAS-P3-REPAIR-002 chunk timeout: each attempt gets its own abort
+  // budget (RENDER_CHUNK_TIMEOUT_MS); failures surface distinctly as
+  // DOWNLOAD_TIMEOUT / DOWNLOAD_HTTP_<status> / DOWNLOAD_FETCH_ERROR.
+  const timeoutMs = Number(opts?.timeoutMs ?? RENDER_CHUNK_TIMEOUT_MS) || RENDER_CHUNK_TIMEOUT_MS
   const retryDelaysMs = [300, 800]
   let lastError: unknown = null
 
   for (let attempt = 1; attempt <= 3; attempt += 1) {
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), timeoutMs)
     try {
-      const res = await fetch(url)
+      const res = await fetch(url, { signal: controller.signal })
       if (!res.ok) {
         const isTransient = res.status === 502 || res.status === 503 || res.status === 504
         if (!isTransient || attempt === 3) {
@@ -90,9 +120,11 @@ async function download(url: string, dest: string): Promise<void> {
         return
       }
     } catch (err) {
-      lastError = err
+      lastError = classifyDownloadError(err, url, timeoutMs, attempt).error
       if (attempt === 3) break
-      console.warn(`  Download fetch error; retrying attempt ${attempt + 1}/3: ${url}`, err)
+      console.warn(`  ${lastError instanceof Error ? lastError.message : String(lastError)}; retrying attempt ${attempt + 1}/3`)
+    } finally {
+      clearTimeout(timer)
     }
 
     await new Promise(resolve => setTimeout(resolve, retryDelaysMs[attempt - 1] || 800))
@@ -107,22 +139,14 @@ function getTmpFreeSpaceMb(): number {
   return Math.floor((Number(stats.bavail) * Number(stats.bsize)) / 1024 / 1024)
 }
 
+// ATLAS-P3-REPAIR-002: stale et-mix sweep lives in lib/tmpSpace.ts
+// (sweepStaleEtMixDirs — shared, tested). This alias preserves the local
+// call shape; new code should import the shared sweeper directly.
 async function cleanupEtMixDirsOlderThan(staleMs: number): Promise<void> {
-  const tmpBase = os.tmpdir()
-  const entries = await fs.readdir(tmpBase)
-  await Promise.all(
-    entries
-      .filter(e => e.startsWith('et-mix-'))
-      .map(async e => {
-        const dirPath = path.join(tmpBase, e)
-        try {
-          const stat = await fs.stat(dirPath)
-          if (Date.now() - stat.mtimeMs > staleMs) {
-            await fs.rm(dirPath, { recursive: true, force: true })
-          }
-        } catch { /* ignore per-dir errors */ }
-      })
-  )
+  const sweep = await sweepStaleEtMixDirs(staleMs)
+  if (sweep.removed > 0 || sweep.errors.length > 0) {
+    console.log(`  [et-mix-sweep] scanned=${sweep.scanned} removed=${sweep.removed} errors=${sweep.errors.length}`)
+  }
 }
 
 async function getAudioDuration(filePath: string): Promise<number> {
