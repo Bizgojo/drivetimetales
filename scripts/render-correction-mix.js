@@ -1184,7 +1184,8 @@ async function main() {
   }
 
   // ── Temp workspace ────────────────────────────────────────────────────────
-  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'et-correct-'));
+  // TMP-SPACE-LOW-001: et-mix-* prefix (sweeper-safe).
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'et-mix-correct-'));
   log(`Temp dir: ${tmp}`);
 
   try {

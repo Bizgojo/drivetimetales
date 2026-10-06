@@ -6,6 +6,12 @@ import os from 'os'
 import path from 'path'
 import { promisify } from 'util'
 import { CANONICAL_BELLE_B_VOICE_ID } from '@/lib/voiceConstants'
+import {
+  assertTmpSpaceOrThrow,
+  etMixPrefix,
+  limitedParallel,
+  logTmpSpace,
+} from '@/lib/tmpSpace'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -151,7 +157,8 @@ async function reformatAudio(input: string, output: string) {
 }
 
 async function concatAudio(files: string[], output: string) {
-  const listPath = path.join(os.tmpdir(), `personalized_concat_${Date.now()}_${Math.random().toString(16).slice(2)}.txt`)
+  // TMP-SPACE-LOW-001: et-mix-* prefix (sweeper-safe).
+  const listPath = path.join(os.tmpdir(), `et-mix-concat-${Date.now()}-${Math.random().toString(16).slice(2)}.txt`)
   try {
     await fs.writeFile(listPath, files.map(file => `file '${file.replace(/'/g, "'\\''")}'`).join('\n'))
     await execFileAsync(FFMPEG_PATH, [
@@ -231,7 +238,8 @@ async function renderOrReuseOpenerClip(userId: string, storyId: string, preferre
   if (existingClip?.audio_url && await publicFileExists(existingClip.audio_url)) return existingClip
 
   const spokenText = opener.template_text.replace(/\[LISTENER_NAME\]/g, preferredName)
-  const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'et-opener-'))
+  // TMP-SPACE-LOW-001: et-mix-* prefix (sweeper-safe).
+  const tmpDir = await fs.mkdtemp(etMixPrefix('opener'))
   const openerPath = path.join(tmpDir, 'opener.mp3')
   const debugCtx = { userId, storyId }
   try {
@@ -304,7 +312,8 @@ async function renderPersonalizedAudio(story: StoryAudioRow, userId: string, pre
   if (!bodyUrl) throw new Error('Story is missing story_audio_url')
   if (!outroUrl) throw new Error('Story is missing outro_with_music_url/outro_audio_url')
 
-  const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'et-personalized-mix-'))
+  // TMP-SPACE-LOW-001: et-mix-* prefix (sweeper-safe).
+  const tmpDir = await fs.mkdtemp(etMixPrefix('personalized'))
   const stingRaw = path.join(tmpDir, 'sting.raw.mp3')
   const openerRaw = path.join(tmpDir, 'opener.raw.mp3')
   const bodyRaw = path.join(tmpDir, 'body.raw.mp3')
@@ -318,18 +327,26 @@ async function renderPersonalizedAudio(story: StoryAudioRow, userId: string, pre
   const debugCtx = { userId, storyId: story.id }
   try {
     await withPersonalizeDebug(debugCtx, 'ffmpeg', async () => {
-      await Promise.all([
-        download(STING_URL, stingRaw),
-        download(openerAudioUrl, openerRaw),
-        download(bodyUrl, bodyRaw),
-        download(outroUrl, outroRaw),
+      // TMP-SPACE-LOW-001: downloads capped at RENDER_DOWNLOAD_CONCURRENCY.
+      await limitedParallel([
+        () => download(STING_URL, stingRaw),
+        () => download(openerAudioUrl, openerRaw),
+        () => download(bodyUrl, bodyRaw),
+        () => download(outroUrl, outroRaw),
       ])
-      await Promise.all([
-        reformatAudio(openerRaw, opener44),
-        reformatAudio(bodyRaw, body44),
-        reformatAudio(outroRaw, outro44),
-        generateSilence(gap, INTRO_GAP_SEC),
+      logTmpSpace('personalized after download', { dir: tmpDir })
+      assertTmpSpaceOrThrow('personalized post-download pre-concat')
+      await limitedParallel([
+        () => reformatAudio(openerRaw, opener44),
+        () => reformatAudio(bodyRaw, body44),
+        () => reformatAudio(outroRaw, outro44),
+        () => generateSilence(gap, INTRO_GAP_SEC),
       ])
+      // TMP-SPACE-LOW-001: delete raw downloads immediately after reformat
+      // so the peak footprint never holds raw + reformatted copies at once.
+      await Promise.all(
+        [stingRaw, openerRaw, bodyRaw, outroRaw].map((f) => fs.unlink(f).catch(() => {})),
+      )
 
       const stingDur = await getAudioDuration(stingRaw)
       await execFileAsync(FFMPEG_PATH, [
@@ -341,6 +358,11 @@ async function renderPersonalizedAudio(story: StoryAudioRow, userId: string, pre
         '-y', stingFade,
       ])
       await concatAudio([stingFade, gap, opener44, body44, outro44], finalPath)
+      logTmpSpace('personalized after assembly', { dir: tmpDir })
+      // TMP-SPACE-LOW-001: drop intermediates the moment the mix exists.
+      await Promise.all(
+        [stingFade, gap, opener44, body44, outro44].map((f) => fs.unlink(f).catch(() => {})),
+      )
     })
 
     const buffer = await fs.readFile(finalPath)
@@ -356,6 +378,8 @@ async function renderPersonalizedAudio(story: StoryAudioRow, userId: string, pre
     return { finalMixUrl: publicUrl, cached: false }
   } finally {
     await fs.rm(tmpDir, { recursive: true, force: true }).catch(() => {})
+    // TMP-SPACE-LOW-001: post-cleanup checkpoint — warns when free < 200 MB.
+    logTmpSpace('personalized post-cleanup')
   }
 }
 

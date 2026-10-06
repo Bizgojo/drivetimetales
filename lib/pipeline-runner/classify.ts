@@ -243,6 +243,22 @@ export function classifyFailure(
     }
   }
 
+  // TMP-SPACE-LOW-001 (Marc GO 2026-10-06): runner /tmp exhaustion is
+  // infra-transient — retryable, never Marc. ENOSPC / TMP_SPACE_LOW are
+  // errno/marker tokens (dialogue-safe); "no space left" requires the full
+  // strerror suffix "on device" so plain-English dialogue cannot match.
+  if (/tmp_space_low|\benospc\b|no space left on device/i.test(text)) {
+    return {
+      kind: 'transient',
+      retryable: true,
+      needsMarc: false,
+      reason: 'Runner /tmp disk exhaustion (TMP_SPACE_LOW / ENOSPC).',
+      recommendedAction:
+        'Autopilot retries once; dispatch backs off 5m/15m/45m. If it repeats, free runner disk or reduce render concurrency.',
+      context,
+    }
+  }
+
   if (
     /unexpected token '<'|not valid json|non-json|html|econnreset|etimedout|timeout|fetch failed|socket hang up|storage|supabase|503|502|504/.test(
       text,

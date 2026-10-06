@@ -66,7 +66,8 @@ async function render(storyId) {
   const segs = (files || []).filter(f => f.name.startsWith('segment_') && f.name.endsWith('.mp3')).sort((a, b) => a.name.localeCompare(b.name))
 
   console.log('\n📖  "' + s.title + '" — ' + segs.length + ' segments')
-  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'et-vo-'))
+  // TMP-SPACE-LOW-001: et-mix-* prefix (sweeper-safe).
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'et-mix-vo-'))
 
   const introP = path.join(tmp, 'intro.mp3')
   const outroP = path.join(tmp, 'outro.mp3')

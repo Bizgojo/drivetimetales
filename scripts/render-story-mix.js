@@ -62,6 +62,31 @@ function concatFiles(files, out, label) {
   fs.unlinkSync(lst)
 }
 
+// ── TMP-SPACE-LOW-001 (Marc GO 2026-10-06) ─────────────────────────────────
+const TMP_ABORT_MIN_BYTES = 50 * 1024 * 1024   // abort render below 50 MB free
+const TMP_WARN_BYTES      = 200 * 1024 * 1024  // warn post-cleanup below 200 MB
+function tmpFreeBytes(dir) {
+  try {
+    if (typeof fs.statvfsSync !== 'function') return null
+    const st = fs.statvfsSync(dir || os.tmpdir())
+    return Number(st.bavail) * Number(st.bsize)
+  } catch { return null }
+}
+function logTmpSpace(stage, dir) {
+  const free = tmpFreeBytes(dir)
+  const line = `[tmp-space] render-story-mix ${stage}: free=${free == null ? 'unknown' : (free / 1048576).toFixed(1) + ' MB'}`
+  if (free != null && free < TMP_WARN_BYTES && /cleanup/i.test(stage)) console.warn(line + ' — WARN below 200 MB post-cleanup')
+  else console.log(line)
+  return free
+}
+function assertTmpSpaceOrThrow(stage) {
+  const free = tmpFreeBytes()
+  if (free == null) return
+  if (free < TMP_ABORT_MIN_BYTES) {
+    throw new Error(`TMP_SPACE_LOW: free ${(free / 1048576).toFixed(1)} MB < required 50.0 MB at stage "${stage}" (ENOSPC guard; runner_tmp_full — safe to retry after back-off)`)
+  }
+}
+
 /**
  * Trim IO music to exactly `dur` seconds.
  * fadeIn: short fade-in to avoid hard pop at start
@@ -104,7 +129,8 @@ async function main() {
   if (!segs.length) throw new Error('No segments found in storage folder')
   console.log(`    ${segs.length} segments`)
 
-  const tmp    = fs.mkdtempSync(path.join(os.tmpdir(), 'et-render-'))
+  // TMP-SPACE-LOW-001: et-mix-* prefix (sweeper-safe).
+  const tmp    = fs.mkdtempSync(path.join(os.tmpdir(), 'et-mix-render-'))
   const ioP    = path.join(tmp, 'io.mp3')
   const introP = path.join(tmp, 'intro.mp3')
   const outroP = path.join(tmp, 'outro.mp3')
@@ -132,8 +158,15 @@ async function main() {
 
   normalize(introP, introNorm, 'normalize intro')
   normalize(outroP, outroNorm, 'normalize outro')
+  logTmpSpace('after download', tmp)
+  assertTmpSpaceOrThrow('post-download pre-concat')
   concatFiles(segPaths, storyRaw, 'concat segments')
+  // TMP-SPACE-LOW-001: drop per-segment files the moment the concat exists.
+  for (const p of segPaths) { try { fs.unlinkSync(p) } catch {} }
   normalize(storyRaw, storyNorm, 'normalize story')
+  // TMP-SPACE-LOW-001: drop the pre-normalization concat right after use.
+  try { fs.unlinkSync(storyRaw) } catch {}
+  logTmpSpace('after assembly', tmp)
 
   const introDur = getDur(introNorm)
   const outroDur = getDur(outroNorm)
@@ -214,6 +247,7 @@ async function main() {
 
   console.log(`✅  Live: ${publicUrl}\n`)
   fs.rmSync(tmp, { recursive: true })
+  logTmpSpace('post-cleanup')
 }
 
 main().catch(e => { console.error('\n❌  FATAL:', e.message); process.exit(1) })

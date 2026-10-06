@@ -37,6 +37,7 @@ export type TransientCause =
   | 'provider_overloaded'
   | 'network'
   | 'zombie_stalled'
+  | 'runner_tmp_full'
 
 type Rule = { cause: TransientCause; pattern: RegExp }
 
@@ -63,6 +64,17 @@ const RULES: Rule[] = [
   // anchored to the runtime's exact error text so dialogue such as
   // "the fetch failed" can never match.
   { cause: 'network', pattern: /\b(ECONNRESET|ECONNREFUSED|ETIMEDOUT|ENOTFOUND|EAI_AGAIN|UND_ERR_[A-Z_]+)\b|TypeError: fetch failed|Error: socket hang up/ },
+
+  // TMP-SPACE-LOW-001 (Marc GO 2026-10-06): runner /tmp disk exhaustion.
+  // Infra-transient, NOT a story defect — dispatch backs off and retries
+  // after cleanup instead of tripping the failure circuit or retry cap.
+  // Patterns are anchored to system error tokens so story dialogue can never
+  // match: TMP_SPACE_LOW is our own marker, ENOSPC is the errno, and the
+  // "no space left" form requires the full strerror suffix "on device".
+  // Callers should run stripQuotedScriptText() first (see test file).
+  { cause: 'runner_tmp_full', pattern: /\bTMP_SPACE_LOW\b/ },
+  { cause: 'runner_tmp_full', pattern: /\bENOSPC\b/ },
+  { cause: 'runner_tmp_full', pattern: /no space left on device/i },
 ]
 
 /**
@@ -103,14 +115,19 @@ export function classifyTransientFailure(...texts: Array<unknown>): TransientCau
 
 /** Fields to merge into production_jobs.error_json for a transient failure. */
 export function transientErrorFields(cause: TransientCause) {
+  const fixRecommendation =
+    cause === 'runner_tmp_full'
+      ? 'Transient runner disk exhaustion (/tmp full). ' +
+        'Dispatch retries automatically with escalating back-off (5m/15m/45m); no story change needed. ' +
+        'If it keeps recurring, free runner disk or reduce render concurrency.'
+      : 'Transient outside failure (key, credits, rate limit, outage or lost runner). ' +
+        'Dispatch retries automatically after a back-off; no story change needed. ' +
+        'If it keeps recurring, fix the outside cause (e.g. the API key or balance).'
   return {
     transient: true as const,
     transient_cause: cause,
     marc_required: false,
-    fixRecommendation:
-      'Transient outside failure (key, credits, rate limit, outage or lost runner). ' +
-      'Dispatch retries automatically after a back-off; no story change needed. ' +
-      'If it keeps recurring, fix the outside cause (e.g. the API key or balance).',
+    fixRecommendation,
   }
 }
 
