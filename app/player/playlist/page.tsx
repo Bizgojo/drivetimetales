@@ -88,7 +88,7 @@ function PlaylistPlayerContent() {
     )
   }
 
-  return <CanonicalPlayer storyId={storyId} mode="playlist" />
+  return <CanonicalPlayer storyId={storyId} mode="playlist" onAdvanceInPlace={setStoryId} />
 }
 
 export default function PlaylistPlayerPage() {
