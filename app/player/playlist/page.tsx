@@ -14,10 +14,22 @@ interface LegacyPlaylistItem {
   episodes?: LegacyEpisodeEntry[]
 }
 
-function extractStoryIdFromItem(item: LegacyPlaylistItem | null | undefined) {
-  if (!item) return null
-  if (item.type === 'series') return item.episodes?.find((episode) => episode?.id)?.id || null
-  return item.id || null
+// MARC-PLAYLIST-RESUME-001 (2026-10-07): dtt_playlist_index is written by
+// CanonicalPlayer against the FLATTENED per-episode queue (one entry per
+// episode across all series + singles — see its "Load playlist from
+// localStorage" effect), not against this page's top-level items array
+// (one entry per story/series). Indexing `items` directly with that same
+// number silently landed on the wrong story (or fell back to items[0],
+// looking exactly like "resumed from the beginning") for any playlist
+// containing a multi-episode series. Flatten the same way CanonicalPlayer
+// does before resolving the saved index.
+function flattenPlaylistItems(items: LegacyPlaylistItem[]): string[] {
+  return items.flatMap((item) => {
+    if (item.type === 'series' && Array.isArray(item.episodes)) {
+      return item.episodes.map((episode) => episode?.id).filter((id): id is string => Boolean(id))
+    }
+    return item.id ? [item.id] : []
+  })
 }
 
 function PlaylistPlayerContent() {
@@ -43,9 +55,9 @@ function PlaylistPlayerContent() {
           : (parsed.stories || []).map((item: LegacyPlaylistItem) => ({ type: 'single', ...item }))
       const parsedIndex = savedIndex ? Number.parseInt(savedIndex, 10) : 0
       const launchIndex = Number.isFinite(parsedIndex) && parsedIndex >= 0 ? parsedIndex : 0
-      const item = Array.isArray(items) ? items[launchIndex] || items[0] : null
+      const flatIds = flattenPlaylistItems(items)
 
-      setStoryId(extractStoryIdFromItem(item))
+      setStoryId(flatIds[launchIndex] || flatIds[0] || null)
     } catch (error) {
       console.error('Failed to parse playlist launch data:', error)
       setStoryId(null)

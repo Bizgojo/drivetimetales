@@ -18,6 +18,7 @@ interface PlaylistItem {
   title?: string
   series_name?: string
   author?: string | null
+  genre?: string | null
   duration_mins?: number
   total_mins?: number
   episode_count?: number
@@ -159,6 +160,11 @@ export default function PlaylistPage() {
                 ? <img src={item.cover_url} alt="" style={{ width: 56, height: 56, borderRadius: 8, objectFit: 'cover', flexShrink: 0 }} />
                 : <div style={{ width: 56, height: 56, borderRadius: 8, background: 'rgba(255,255,255,0.12)', flexShrink: 0 }} />}
               <div style={{ flex: 1, minWidth: 0 }}>
+                {item.genre && (
+                  <div style={{ color: '#fb923c', fontSize: 10, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 2 }}>
+                    {item.genre}
+                  </div>
+                )}
                 <div style={{ fontWeight: 700, fontSize: 14, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                   {title}
                 </div>
