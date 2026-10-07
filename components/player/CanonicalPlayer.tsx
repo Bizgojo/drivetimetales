@@ -2185,10 +2185,44 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
       ? 'Continue Reading'
       : 'Read'
 
+  // MARC-EBOOK-BOOKMARK-001 (2026-10-07): a visible mark showing where the
+  // reader quit — reuses the same saved position that drives the "Resuming
+  // on page X" toast (one row per user per book, so there's only ever one
+  // mark; a later save automatically replaces it, nothing to clean up).
+  // No completed book gets a mark — "Read Again" starts clean.
+  const bookmarkParaIndex = readingProgressState && !readingProgressState.completed && readingProgressState.paragraphIndex > 0
+    ? readingProgressState.paragraphIndex
+    : null
+
   const paragraphPageNumber = (paragraphIndex: number) => {
     if (totalProseParagraphs <= 0) return 1
     return Math.max(1, Math.min(totalProseParagraphs, Math.floor(paragraphIndex) + 1))
   }
+
+  // MARC-EBOOK-BOOKMARK-001: the "freeform" red check-mark itself — sits in
+  // the left margin of whichever paragraph is bookmarkParaIndex. Absolutely
+  // positioned against that one <p> (which gets position:'relative' only
+  // when it's the bookmarked one), so it costs nothing on every other
+  // paragraph and needs no scroll-position math.
+  const renderBookmarkMark = () => (
+    <span
+      aria-hidden="true"
+      style={{
+        position: 'absolute',
+        left: -22,
+        top: 1,
+        fontSize: 19,
+        fontWeight: 900,
+        color: '#dc2626',
+        transform: 'rotate(-10deg)',
+        fontFamily: 'Inter, system-ui, sans-serif',
+        pointerEvents: 'none',
+        userSelect: 'none',
+      }}
+    >
+      ✓
+    </span>
+  )
 
   const scrollToProseParagraph = (paragraphIndex: number) => {
     const el = proseScrollRef.current
@@ -3358,24 +3392,38 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
                               <h2 style={{ fontSize: proseFontSize + 5 + 'px', lineHeight:1.18, color: proseDark ? 'white' : '#1a1a1a', margin:'0 0 22px', letterSpacing:0, fontWeight:700 }}>
                                 {chapter.title}
                               </h2>
-                              {chapter.paragraphs.map((para: string, i: number) => (
-                                <p key={`${chapter.id}-${i}`} data-para-index={chapter.startIndex + i} style={{ fontSize: proseFontSize + 'px', lineHeight:1.85, color: proseDark ? 'white' : '#2c2c2c', margin:'0 0 20px', textIndent: i === 0 ? 0 : '1.5em', letterSpacing:'0.01em' }}>{para}</p>
-                              ))}
+                              {chapter.paragraphs.map((para: string, i: number) => {
+                                const globalIndex = chapter.startIndex + i
+                                const isBookmark = globalIndex === bookmarkParaIndex
+                                return (
+                                  <p key={`${chapter.id}-${i}`} data-para-index={globalIndex} style={{ fontSize: proseFontSize + 'px', lineHeight:1.85, color: proseDark ? 'white' : '#2c2c2c', margin:'0 0 20px', textIndent: i === 0 ? 0 : '1.5em', letterSpacing:'0.01em', position: isBookmark ? 'relative' : undefined }}>
+                                    {isBookmark && renderBookmarkMark()}
+                                    {para}
+                                  </p>
+                                )
+                              })}
                             </section>
                           ))}
                         </>
                       ) : standaloneProseParagraphs.map((para: string, i: number) => {
+                        const isBookmark = i === bookmarkParaIndex
                         if (i === 0) {
                           const first = para.charAt(0)
                           const rest  = para.slice(1)
                           return (
-                            <p key={0} data-para-index={i} style={{ fontSize: proseFontSize + 'px', lineHeight:1.85, color: proseDark ? 'white' : '#2c2c2c', margin:'0 0 20px', letterSpacing:'0.01em', overflow:'hidden' }}>
+                            <p key={0} data-para-index={i} style={{ fontSize: proseFontSize + 'px', lineHeight:1.85, color: proseDark ? 'white' : '#2c2c2c', margin:'0 0 20px', letterSpacing:'0.01em', overflow:'hidden', position: isBookmark ? 'relative' : undefined }}>
+                              {isBookmark && renderBookmarkMark()}
                               <span style={{ float:'left', fontSize:(proseFontSize * 3.6) + 'px', lineHeight:0.82, fontWeight:700, color: proseDark ? 'white' : '#1a1a1a', marginRight:'5px', marginTop:'4px', fontFamily:'Literata, Georgia, serif' }}>{first}</span>
                               {rest}
                             </p>
                           )
                         }
-                        return <p key={i} data-para-index={i} style={{ fontSize: proseFontSize + 'px', lineHeight:1.85, color: proseDark ? 'white' : '#2c2c2c', margin:'0 0 20px', textIndent:'1.5em', letterSpacing:'0.01em' }}>{para}</p>
+                        return (
+                          <p key={i} data-para-index={i} style={{ fontSize: proseFontSize + 'px', lineHeight:1.85, color: proseDark ? 'white' : '#2c2c2c', margin:'0 0 20px', textIndent:'1.5em', letterSpacing:'0.01em', position: isBookmark ? 'relative' : undefined }}>
+                            {isBookmark && renderBookmarkMark()}
+                            {para}
+                          </p>
+                        )
                       })}
                     </div>
 
