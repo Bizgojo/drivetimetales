@@ -234,6 +234,12 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
   // reader — this is the one canonical prose reader. Guard ref so it only
   // auto-opens once per navigation, not on every proseAvailable re-render.
   const openReaderAppliedRef = useRef(false)
+  // Marc 2026-10-07: when the reader was opened via the ?openReader=1 deep
+  // link (tapped "Read eBook" from the library/home card), closing it ("x")
+  // should return to wherever that tap came from — not reveal this player
+  // page's own info view underneath. Set alongside openReaderAppliedRef, read
+  // by closeProseReader() below.
+  const openedReaderViaDeepLinkRef = useRef(false)
   const [seriesBookTitle, setSeriesBookTitle] = useState('')
   const [seriesProseChapters, setSeriesProseChapters] = useState<Array<{ id: string; title: string; episode_number: number; prose_text: string }>>([])
   const [authorData, setAuthorData]   = useState<any | null>(null)
@@ -2313,6 +2319,16 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
     if (proseSaveTimerRef.current) clearTimeout(proseSaveTimerRef.current)
     flushCurrentReadingProgress()
     setProseResumeToast(null)
+    // Marc 2026-10-07: if we got here via ?openReader=1 (a card's "Read
+    // eBook" tap), go back to wherever that tap came from (library, home,
+    // etc.) instead of revealing this page's own info view. Opened from
+    // within the player itself (not the deep link) still just closes the
+    // modal as before.
+    if (openedReaderViaDeepLinkRef.current) {
+      openedReaderViaDeepLinkRef.current = false
+      router.back()
+      return
+    }
     setActiveModal(null)
   }
 
@@ -2357,6 +2373,7 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
     if (params.get('openReader') !== '1') return
     if (!proseAvailable) return
     openReaderAppliedRef.current = true
+    openedReaderViaDeepLinkRef.current = true
     setActiveModal('prose')
   }, [proseAvailable])
 

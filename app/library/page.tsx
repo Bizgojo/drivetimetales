@@ -44,6 +44,12 @@ type LibraryRow = {
   not_for_me: boolean | null
 }
 
+type ReadingProgressRow = {
+  story_id: string
+  paragraph_index: number | null
+  completed: boolean | null
+}
+
 type CardItem = {
   key: string
   type: 'single' | 'series'
@@ -67,6 +73,7 @@ type CardItem = {
   episodePlaylist?: Array<{ id: string; episode_number: number }>
   durationForSort: number
   notForMe: boolean
+  readingInProgress: boolean
 }
 
 type ReviewTarget = {
@@ -134,6 +141,7 @@ export default function LibraryPage() {
   const [stories, setStories] = useState<Story[]>([])
   const [userLibrary, setUserLibrary] = useState<LibraryRow[]>([])
   const [userReviewedIds, setUserReviewedIds] = useState<Set<string>>(new Set())
+  const [readingProgressRows, setReadingProgressRows] = useState<ReadingProgressRow[]>([])
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [authWaitExpired, setAuthWaitExpired] = useState(false)
@@ -316,6 +324,20 @@ export default function LibraryPage() {
           if (!cancelled && reviewsData) {
             setUserReviewedIds(new Set(reviewsData.map((r: any) => r.story_id)))
           }
+
+          // Marc 2026-10-07: lets the card's main button go green/"Continue
+          // Reading" off eBook progress alone, same as it already does for
+          // audio — non-fatal if this fails (warn + leave list empty), since
+          // the card still works fine without it, just without that state.
+          const { data: readingData, error: readingError } = await supabase
+            .from('reading_progress')
+            .select('story_id, paragraph_index, completed')
+            .eq('user_id', user.id)
+          if (readingError) {
+            console.warn('[Library] reading_progress lookup failed:', readingError.message)
+          } else if (!cancelled && readingData) {
+            setReadingProgressRows(readingData as ReadingProgressRow[])
+          }
         }
       } catch (err) {
         console.error('[Library] load failed:', err)
@@ -337,6 +359,19 @@ export default function LibraryPage() {
     userLibrary.forEach((r) => m.set(r.story_id, r))
     return m
   }, [userLibrary])
+
+  // Marc 2026-10-07: "has unfinished eBook progress" per story, same shape as
+  // libraryLookup's audio progress — a row exists, past paragraph 0, not
+  // marked completed.
+  const readingLookup = useMemo(() => {
+    const m = new Map<string, ReadingProgressRow>()
+    readingProgressRows.forEach((r) => m.set(r.story_id, r))
+    return m
+  }, [readingProgressRows])
+  const isReadingInProgress = (storyId: string) => {
+    const rp = readingLookup.get(storyId)
+    return !!rp && (rp.paragraph_index || 0) > 0 && !rp.completed
+  }
 
   // Build card items: standalones one each, series collapsed to one card
   const cardItems = useMemo<CardItem[]>(() => {
@@ -363,6 +398,7 @@ export default function LibraryPage() {
           reviewCount: s.review_count,
           durationForSort: s.duration_mins || 0,
           notForMe: !!lib?.not_for_me,
+          readingInProgress: isReadingInProgress(s.id),
         })
       }
     })
@@ -402,11 +438,12 @@ export default function LibraryPage() {
         episodePlaylist: playbackTarget.playlist,
         durationForSort: totalDuration,
         notForMe: allEpisodesNotForMe,
+        readingInProgress: sorted.some((e) => isReadingInProgress(e.id)),
       })
     })
 
     return items
-  }, [stories, libraryLookup])
+  }, [stories, libraryLookup, readingLookup])
 
   // Filter by genre, then sort by episode count first (fewest first; singles
   // count as 1), total story length second (shortest first) — Marc 2026-10-04.
@@ -758,7 +795,7 @@ export default function LibraryPage() {
     }
     const reviewed =
       item.type === 'single' && item.story ? userReviewedIds.has(item.story.id) : false
-    return { inPlaylist, progress, completed, isNotForMe, reviewed }
+    return { inPlaylist, progress, completed, isNotForMe, reviewed, readingInProgress: item.readingInProgress }
   }
 
   if (loading || !libraryReady || (authLoading && !authWaitExpired)) {

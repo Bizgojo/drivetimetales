@@ -66,6 +66,11 @@ export type CanonCardState = {
   completed: boolean
   isNotForMe: boolean
   reviewed: boolean
+  // Marc 2026-10-07: eBook progress exists and isn't finished — distinct from
+  // audio `progress`/`completed` above. When true and there's no audio
+  // progress, the main button goes green "Continue Reading" and opens the
+  // reader instead of playing audio.
+  readingInProgress: boolean
 }
 
 export default function LibraryStoryCard({
@@ -106,6 +111,11 @@ export default function LibraryStoryCard({
     : null
   const showRate = state.completed && !state.reviewed
   const showPlayAgain = !isSeries && state.completed && state.reviewed
+  // Marc 2026-10-07: eBook progress with no audio progress — main button
+  // goes green "Continue Reading" and opens the reader instead of audio.
+  // Audio progress (inProgress) and the post-review Play Again state both
+  // take priority over this, same relative order as before.
+  const readingOnly = !inProgress && !showPlayAgain && state.readingInProgress
 
   return (
     <div
@@ -219,10 +229,10 @@ export default function LibraryStoryCard({
           <div style={{ display: 'flex', gap: '5px', marginTop: '2px' }}>
             <button
               type="button"
-              onClick={onPlay}
+              onClick={readingOnly ? onReadEbook : onPlay}
               style={{
                 flex: 1,
-                background: showPlayAgain ? '#fb923c' : inProgress ? '#16a34a' : '#f97316',
+                background: showPlayAgain ? '#fb923c' : (inProgress || readingOnly) ? '#16a34a' : '#f97316',
                 color: 'white',
                 border: 'none',
                 padding: '2px 6px',
@@ -244,8 +254,10 @@ export default function LibraryStoryCard({
                 </span>
               ) : inProgress ? (
                 '▶ Continue'
+              ) : readingOnly ? (
+                '📖 Continue Reading'
               ) : isSeries ? (
-                '▶ Play series'
+                '🎧 Listen Now'
               ) : (
                 '▶ Play now'
               )}
