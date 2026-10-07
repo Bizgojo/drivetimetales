@@ -59,9 +59,20 @@ interface CanonicalPlayerProps {
   storyId: string
   resumeParam?: string | null
   mode?: PlayerMode
+  // MARC-PLAYLIST-HANDSFREE-001 (2026-10-07): when provided, a playlist
+  // natural-end advance calls this with the next story's id instead of
+  // router.push()-ing to /player/[nextId]. That keeps this same component
+  // instance — and critically the same <audio> DOM element — mounted
+  // across the whole playlist run. A full page navigation unmounts and
+  // recreates the <audio> element, and mobile Safari/Chrome require a
+  // fresh user gesture to autoplay a brand-new media element; they do NOT
+  // require one to keep playing on an element that was already playing
+  // under an earlier gesture. Only /player/playlist/page.tsx (the actual
+  // playlist entry point) supplies this; without it, behavior is unchanged.
+  onAdvanceInPlace?: (nextId: string) => void
 }
 
-export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 'story' }: CanonicalPlayerProps) {
+export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 'story', onAdvanceInPlace }: CanonicalPlayerProps) {
   const router  = useRouter()
   const { user, session, loading: authLoading } = useAuth()
   const userEmail = String(user?.email || '').trim().toLowerCase()
@@ -122,6 +133,16 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
   const sessionStartRef = useRef<number | null>(null)
   const playlistRef      = useRef<{id:string,episode_number:number}[]>([])
   const playlistIndexRef = useRef<number>(-1)
+  // MARC-PLAYLIST-HANDSFREE-001: set true right before an in-place advance;
+  // consumed by the autoplay effect once the new story's audio is ready.
+  const playlistAutoplayPendingRef = useRef(false)
+  // MARC-PLAYLIST-FRESH-001 (2026-10-07): true when this story is becoming
+  // the playlist's active item for the FIRST time in this run (a brand-new
+  // playlist launch, or an advance to a different item) — as opposed to
+  // re-entering the item the run was already on (a pause/stop and return).
+  // Only the former should start at 0:00; see the "Load playlist from
+  // localStorage" effect for how this gets set.
+  const forceFreshStartRef = useRef(false)
   const [nowPlayingLabel, setNowPlayingLabel] = useState<string | null>(null)
   const [totalDur, setTotalDur] = useState(0)
   const welcomeQueueRef = useRef<string[]>([])  // [welcome_A, name_clip, welcome_B]
@@ -972,10 +993,19 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
 
       if (next?.id) {
         // Keep playing straight through the queue — don't stop and wait for
-        // a tap. The next player mount re-derives its own queue position
-        // from the (now-shorter) saved playlist.
+        // a tap.
         isAdvancingRef.current = false
-        router.push(`/player/${next.id}?autoplay=1&playlist=1&playNow=1`)
+        if (onAdvanceInPlace) {
+          // MARC-PLAYLIST-HANDSFREE-001: swap storyId on the SAME mounted
+          // player instead of navigating, so the <audio> element (and the
+          // "user already interacted with this element" autoplay grant it
+          // carries on mobile) survives the transition. The pending-autoplay
+          // effect below presses play once the next story's audio is ready.
+          playlistAutoplayPendingRef.current = true
+          onAdvanceInPlace(next.id)
+        } else {
+          router.push(`/player/${next.id}?autoplay=1&playlist=1&playNow=1`)
+        }
         return
       }
 
@@ -1136,6 +1166,7 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
   useEffect(() => {
     try {
       if (mode === 'playlist') {
+        forceFreshStartRef.current = false
         const raw = localStorage.getItem('dtt_active_playlist') || localStorage.getItem('dtt_playlist')
         const idx = localStorage.getItem('dtt_playlist_index')
         if (!raw) return
@@ -1161,6 +1192,15 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
         playlistIndexRef.current = Number.isFinite(savedIndex) ? savedIndex : 0
         const found = playlist.findIndex((item: any) => item.id === storyId)
         if (found >= 0) {
+          // MARC-PLAYLIST-FRESH-001: compare against the index already saved
+          // BEFORE we overwrite it below. Same index as before (and the run
+          // had already started) = re-entering the current item = resume.
+          // Any other case (never started yet, or a different index) = this
+          // story is newly active this run = start at 0:00.
+          const wasAlreadyCurrentItem = idx !== null && Number(idx) === found
+          if (!parsed.started || !wasAlreadyCurrentItem) {
+            forceFreshStartRef.current = true
+          }
           playlistIndexRef.current = found
           localStorage.setItem('dtt_playlist_index', String(found))
         }
@@ -1192,6 +1232,10 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
       try {
         setLoading(true)
         setAudioErrorMessage('')
+        // MARC-PLAYLIST-FRESH-001: captured once per load(), before anything
+        // below can reset the ref for a *subsequent* in-place advance.
+        const skipResumeForFreshPlaylistItem = mode === 'playlist' && forceFreshStartRef.current
+        forceFreshStartRef.current = false
         stage = 'story-row'
         const { data, error } = await supabase
           .from('stories')
@@ -1219,16 +1263,26 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
           setStory(data)
 
           stage = 'resume-query'
+          // MARC-PLAYLIST-FRESH-001: resumeRef now outlives a single story
+          // when playlist advances happen in-place (same component instance
+          // across the whole run — see onAdvanceInPlace) instead of via a
+          // full page navigation, so it must be explicitly reset per story
+          // rather than relying on a fresh mount to zero it out.
+          resumeRef.current = 0
           const resumeFromUrl = Number(resumeParam || 0)
-          if (Number.isFinite(resumeFromUrl) && resumeFromUrl > 0) {
+          if (!skipResumeForFreshPlaylistItem && Number.isFinite(resumeFromUrl) && resumeFromUrl > 0) {
             resumeRef.current = resumeFromUrl
             setHasProgress(true)
           }
           const localProgress = getLocalPlayerProgress(storyId, user?.id)
-          const localMerged = mergePlayerProgress(null, localProgress)
-          if (!localMerged.completed && localMerged.progress > resumeRef.current) {
-            resumeRef.current = localMerged.progress
-            setHasProgress(true)
+          if (!skipResumeForFreshPlaylistItem) {
+            const localMerged = mergePlayerProgress(null, localProgress)
+            if (!localMerged.completed && localMerged.progress > resumeRef.current) {
+              resumeRef.current = localMerged.progress
+              setHasProgress(true)
+            }
+          } else {
+            setHasProgress(false)
           }
 
           stage = 'series-playlist'
@@ -1435,7 +1489,7 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
             .select('progress,completed,not_for_me').eq('user_id', user.id).eq('story_id', storyId).maybeSingle()
           const localProgress = getLocalPlayerProgress(storyId, user.id)
           const mergedProgress = mergePlayerProgress(lib, localProgress)
-          if (mergedProgress.progress > 0 && !lib?.not_for_me) {
+          if (!skipResumeForFreshPlaylistItem && mergedProgress.progress > 0 && !lib?.not_for_me) {
             resumeRef.current = mergedProgress.completed ? 0 : Math.max(resumeRef.current, mergedProgress.progress)
             setHasProgress(!mergedProgress.completed)
           }
@@ -1661,6 +1715,43 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
           setAutoplayBlocked(true)
           setIsPlaying(false)
           setShowSeriesContinueOverlay(params.get('seriesContinue') === '1')
+        })
+    }
+
+    if (audio.readyState >= 2) {
+      attemptPlay()
+    } else {
+      audio.addEventListener('canplay', attemptPlay, { once: true })
+      return () => audio.removeEventListener('canplay', attemptPlay)
+    }
+  }, [loading, isASC3, queue, audioSrc, storyId])
+
+  // MARC-PLAYLIST-HANDSFREE-001: after an in-place playlist advance
+  // (onAdvanceInPlace swapped storyId without a page navigation — see
+  // maybeAutoAdvanceFromNaturalEnd), this effect presses play once the new
+  // story's audio is actually ready. Mirrors the URL-param autoplay effect
+  // above, but driven by playlistAutoplayPendingRef instead of a URL param,
+  // since there is no new navigation/URL here to read intent from.
+  useEffect(() => {
+    if (!playlistAutoplayPendingRef.current) return
+    if (loading || !audioRef.current) return
+    if (isASC3 && !queue.length) return
+    if (!isASC3 && !audioSrc) return
+
+    const audio = audioRef.current
+    const attemptPlay = () => {
+      playlistAutoplayPendingRef.current = false
+      audio.play()
+        .then(() => {
+          setIsPlaying(true)
+          setAutoplayBlocked(false)
+          startAnalyticsSession('auto_advance')
+          if (mode === 'playlist') markPlaylistStarted()
+        })
+        .catch((error) => {
+          console.warn('[player] in-place playlist advance autoplay blocked:', error)
+          setAutoplayBlocked(true)
+          setIsPlaying(false)
         })
     }
 
