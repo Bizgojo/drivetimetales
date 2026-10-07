@@ -83,33 +83,50 @@ export default function ContinueListening({ onIdsLoaded, excludeStoryId = null }
 
   return (
     <section style={{ padding: '1.5rem 1rem 0' }}>
-      <h2 style={{ color: 'white', fontSize: 18, fontWeight: 800, margin: '0 0 8px' }}>Continue Listening</h2>
-      <div onClick={() => router.push('/player/' + card.story_id + '?autoplay=1&playNow=1&resume=' + resumeAt)} style={{ background: '#1e293b', borderRadius: '13px', border: '1px solid rgba(148,163,184,0.06)', display: 'flex', overflow: 'hidden', position: 'relative', cursor: 'pointer' }}>
-        <div style={{ width: 76, height: 76, flexShrink: 0, margin: '9px 0 9px 9px', borderRadius: 7, overflow: 'hidden', boxShadow: '0 0 10px rgba(255,255,255,0.18)' }}>
-          <img src={card.cover_url || '/images/default-cover.png'} alt={displayTitle} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-        </div>
-        <div style={{ flex: 1, padding: '9px 28px 9px 9px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', minWidth: 0 }}>
-          <div>
-            <div style={{ fontWeight: 700, fontSize: 14, color: 'white', lineHeight: 1.2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{displayTitle}</div>
-            <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{subtitle}</div>
-            {card.series_id && card.series_name && (
-              <Link
-                href={`/series/${card.series_id}`}
-                onClick={e => e.stopPropagation()}
-                style={{ display: 'inline-block', marginTop: 4, fontSize: 10, color: '#f97316', fontWeight: 600, textDecoration: 'none', letterSpacing: '0.02em' }}
-              >
-                All episodes →
-              </Link>
-            )}
+      <h2 style={{ color: 'white', fontSize: 18, fontWeight: 800, margin: '0 0 8px' }}>Continue {displayTitle}</h2>
+      <div style={{ background: '#1e293b', borderRadius: '13px', border: '1px solid rgba(148,163,184,0.06)', overflow: 'hidden', position: 'relative' }}>
+        <div style={{ display: 'flex', padding: '9px' }}>
+          <div style={{ width: 76, height: 76, flexShrink: 0, borderRadius: 7, overflow: 'hidden', boxShadow: '0 0 10px rgba(255,255,255,0.18)' }}>
+            <img src={card.cover_url || '/images/default-cover.png'} alt={displayTitle} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
           </div>
-          <div>
-            <div style={{ fontSize: 11, color: '#ffffff', marginBottom: 4 }}><strong>{minsLeft(card.duration_mins, card.progress)} min</strong> Remaining</div>
-            <div style={{ height: 3, background: '#334155', borderRadius: 2, overflow: 'hidden' }}>
-              <div style={{ height: '100%', width: pct(card.duration_mins, card.progress) + '%', background: '#f97316', borderRadius: 2 }} />
+          <div style={{ flex: 1, padding: '0 28px 0 9px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', minWidth: 0 }}>
+            <div>
+              <div style={{ fontWeight: 700, fontSize: 14, color: 'white', lineHeight: 1.2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{displayTitle}</div>
+              <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{subtitle}</div>
+              {card.series_id && card.series_name && (
+                <Link
+                  href={`/series/${card.series_id}`}
+                  style={{ display: 'inline-block', marginTop: 4, fontSize: 10, color: '#f97316', fontWeight: 600, textDecoration: 'none', letterSpacing: '0.02em' }}
+                >
+                  All episodes →
+                </Link>
+              )}
+            </div>
+            <div>
+              <div style={{ fontSize: 11, color: '#ffffff', marginBottom: 4 }}><strong>{minsLeft(card.duration_mins, card.progress)} min</strong> Remaining</div>
+              <div style={{ height: 3, background: '#334155', borderRadius: 2, overflow: 'hidden' }}>
+                <div style={{ height: '100%', width: pct(card.duration_mins, card.progress) + '%', background: '#f97316', borderRadius: 2 }} />
+              </div>
             </div>
           </div>
+          <button onClick={() => setShowDismiss(true)} style={{ position: 'absolute', top: 8, right: 8, width: 24, height: 24, background: 'rgba(100,116,139,0.4)', border: '1px solid rgba(148,163,184,0.2)', borderRadius: '50%', color: '#94a3b8', fontSize: 14, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>x</button>
         </div>
-        <button onClick={e => { e.stopPropagation(); setShowDismiss(true) }} style={{ position: 'absolute', top: 8, right: 8, width: 24, height: 24, background: 'rgba(100,116,139,0.4)', border: '1px solid rgba(148,163,184,0.2)', borderRadius: '50%', color: '#94a3b8', fontSize: 14, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>x</button>
+        <div style={{ display: 'flex', gap: '8px', padding: '0 9px 9px' }}>
+          <button
+            type="button"
+            onClick={() => router.push('/player/' + card.story_id + '?autoplay=1&playNow=1&resume=' + resumeAt)}
+            style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', background: '#f97316', color: 'white', border: 'none', padding: '10px 6px', borderRadius: '8px', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}
+          >
+            ▶ Continue Listening
+          </button>
+          <button
+            type="button"
+            onClick={() => router.push('/player/' + card.story_id + '?openReader=1')}
+            style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.16)', color: 'white', padding: '10px 6px', borderRadius: '8px', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}
+          >
+            📖 Continue Reading
+          </button>
+        </div>
       </div>
       {showDismiss && <DismissModal label={displayTitle} onConfirm={dismiss} onCancel={() => setShowDismiss(false)} />}
     </section>
