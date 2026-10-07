@@ -114,14 +114,6 @@ export default function LibraryStoryCard({
     description.length > 70 ? description.slice(0, 67) + '…' : description
   const showProgress = !isSeries && state.progress > 0 && !state.completed
   const inProgress = isSeries ? !!item.seriesInProgress : showProgress
-  // Marc 2026-07-13: series Continue button shows "Continue / Episode ##" on
-  // two lines; fall back to "Ep." when the number is 3+ digits so it still fits.
-  const resumeEpisodeNumber = isSeries
-    ? item.episodePlaylist?.find((ep) => ep.id === item.playEpisodeId)?.episode_number || null
-    : null
-  const continueEpisodeLabel = resumeEpisodeNumber
-    ? `${resumeEpisodeNumber >= 100 ? 'Ep.' : 'Episode'} ${resumeEpisodeNumber}`
-    : null
   const showRate = state.completed && !state.reviewed
   const showPlayAgain = !isSeries && state.completed && state.reviewed
   // Marc 2026-10-07: eBook progress with no audio progress — main button
@@ -245,7 +237,7 @@ export default function LibraryStoryCard({
               onClick={readingOnly ? onReadEbook : onPlay}
               style={{
                 flex: 1,
-                background: showPlayAgain ? '#fb923c' : (inProgress || readingOnly) ? '#16a34a' : '#f97316',
+                background: showPlayAgain ? '#fb923c' : (inProgress || readingOnly) ? '#4ade80' : '#f97316',
                 color: '#000',
                 border: 'none',
                 padding: '2px 6px',
@@ -261,14 +253,6 @@ export default function LibraryStoryCard({
                 <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '5px' }}>
                   <HeadsetIcon />
                   Play Again
-                </span>
-              ) : inProgress && isSeries && continueEpisodeLabel ? (
-                <span style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
-                  <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '5px' }}>
-                    <HeadsetIcon />
-                    Continue Listening
-                  </span>
-                  {continueEpisodeLabel}
                 </span>
               ) : inProgress ? (
                 <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '5px' }}>
