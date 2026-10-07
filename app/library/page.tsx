@@ -607,14 +607,29 @@ export default function LibraryPage() {
     }, 700)
   }
 
-  // Marc 2026-10-04: "More Info" on a single-story card → its own detail page
+  // Marc 2026-10-04: cover tap on a single-story card → its own detail page
   // (mirrors openSeries' hard-navigation fallback).
   function openStory(storyId: string) {
     const targetUrl = `/story/${storyId}`
     router.push(targetUrl)
     window.setTimeout(() => {
       if (window.location.pathname === '/library') {
-        console.warn('[Library] More Info router.push did not leave Library; falling back to hard navigation', { targetUrl, storyId })
+        console.warn('[Library] Cover-tap router.push did not leave Library; falling back to hard navigation', { targetUrl, storyId })
+        window.location.assign(targetUrl)
+      }
+    }, 700)
+  }
+
+  // Marc 2026-10-07: "Read eBook" button → reader deep link (same hard-nav
+  // fallback pattern as openStory/openSeries). playerStoryOrEpisodeId is the
+  // single's own story id, or the series' resume episode (item.playEpisodeId
+  // — the same episode audio resumes to).
+  function openEbook(playerStoryOrEpisodeId: string) {
+    const targetUrl = `/player/${playerStoryOrEpisodeId}?openReader=1`
+    router.push(targetUrl)
+    window.setTimeout(() => {
+      if (window.location.pathname === '/library') {
+        console.warn('[Library] Read eBook router.push did not leave Library; falling back to hard navigation', { targetUrl })
         window.location.assign(targetUrl)
       }
     }, 700)
@@ -901,12 +916,12 @@ export default function LibraryPage() {
               }}
               onCoverClick={() => {
                 if (item.type === 'series' && item.seriesId) openSeries(item.seriesId)
-                else if (item.type === 'single' && item.story) playSingle(item.story.id)
+                else if (item.type === 'single' && item.story) openStory(item.story.id)
               }}
               onTogglePlaylist={() => togglePlaylist(item.key)}
-              onMoreInfo={() => {
-                if (item.type === 'series' && item.seriesId) openSeries(item.seriesId)
-                else if (item.type === 'single' && item.story) openStory(item.story.id)
+              onReadEbook={() => {
+                if (item.type === 'series' && item.playEpisodeId) openEbook(item.playEpisodeId)
+                else if (item.type === 'single' && item.story) openEbook(item.story.id)
               }}
               onRate={() => {
                 if (item.type === 'single' && item.story) {

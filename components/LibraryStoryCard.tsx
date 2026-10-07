@@ -16,9 +16,10 @@ Visual canon (do not fork):
 - author/genre in green, amber stars + (count)
 - description capped at 70 chars
 - buttons (always 3, both types — Marc 2026-10-04): orange Play now/Play
-  series, green Continue, light-orange Play Again; middle blue "+ Queue"/
-  red Rate prompt; right amber "More Info" (→ SS2 series page or single-story
-  detail page)
+  series, green Continue, light-orange Play Again; middle blue "Add to
+  Playlist"/"On Playlist" (Marc 2026-10-07, was "+ Queue"/"✓ Remove"); red
+  Rate prompt; right amber "Read eBook" (Marc 2026-10-07, was "More Info" —
+  info-page access moved to the cover tap, see onCoverClick in the caller)
 ================================================================================
 */
 
@@ -74,7 +75,7 @@ export default function LibraryStoryCard({
   onCoverClick,
   onTogglePlaylist,
   onRate,
-  onMoreInfo,
+  onReadEbook,
 }: {
   item: CanonCardItem
   state: CanonCardState
@@ -82,7 +83,7 @@ export default function LibraryStoryCard({
   onCoverClick: () => void
   onTogglePlaylist: () => void
   onRate: () => void
-  onMoreInfo: () => void
+  onReadEbook: () => void
 }) {
   const isSeries = item.type === 'series'
   const duration = isSeries
@@ -295,14 +296,17 @@ export default function LibraryStoryCard({
                   cursor: 'pointer',
                 }}
               >
-                {state.inPlaylist ? '✓ Remove' : '+ Queue'}
+                {state.inPlaylist ? 'On Playlist' : 'Add to Playlist'}
               </button>
             )}
-            {/* Marc 2026-10-04: third button, every card, both types — replaces
-                the old series-only "View Episodes" button */}
+            {/* Marc 2026-10-07: third button is now "Read eBook" — opens the
+                reader directly (deep-links to the resume episode for a
+                series via item.playEpisodeId, same target audio resumes to).
+                Info-page access (old "More Info" destination) moved to the
+                cover tap, see onCoverClick in the caller. */}
             <button
               type="button"
-              onClick={onMoreInfo}
+              onClick={onReadEbook}
               style={{
                 flex: 1,
                 background: '#eab308',
@@ -317,7 +321,7 @@ export default function LibraryStoryCard({
                 cursor: 'pointer',
               }}
             >
-              More Info
+              📖 Read eBook
             </button>
           </div>
 

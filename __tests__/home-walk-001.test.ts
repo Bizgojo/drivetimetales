@@ -282,11 +282,11 @@ describe('WALK-BUG-0713 #7: canonical LibraryStoryCard everywhere', () => {
     expect(libSrc).toContain('<LibraryStoryCard')
   })
 
-  test('canonical card carries the library canon: pills, duration format, +Queue', () => {
-    expect(cardSrc).toContain("isSeries ? `Series · ${item.episodeCount} eps` : 'Single Story'")
+  test('canonical card carries the library canon: pills, duration format, Add to Playlist', () => {
+    expect(cardSrc).toContain("`${item.episodeCount} Episode${item.episodeCount === 1 ? '' : 's'}`")
     expect(cardSrc).toContain('total · Avg.')
-    expect(cardSrc).toContain("state.inPlaylist ? '✓ Remove' : '+ Queue'")
-    expect(cardSrc).toContain('View Episodes')
+    expect(cardSrc).toContain("state.inPlaylist ? 'On Playlist' : 'Add to Playlist'")
+    expect(cardSrc).toContain('Read eBook')
   })
 
   test('Recommended wires +Queue to the same playlist store as Library (keys + events)', () => {
