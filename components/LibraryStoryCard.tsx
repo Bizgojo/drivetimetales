@@ -233,14 +233,14 @@ export default function LibraryStoryCard({
               style={{
                 flex: 1,
                 background: showPlayAgain ? '#fb923c' : (inProgress || readingOnly) ? '#16a34a' : '#f97316',
-                color: 'white',
+                color: '#000',
                 border: 'none',
                 padding: '2px 6px',
                 borderRadius: '6px',
                 fontSize: '11px',
                 lineHeight: 1,
                 minHeight: '32px',
-                fontWeight: 500,
+                fontWeight: 700,
                 cursor: 'pointer',
               }}
             >
@@ -257,7 +257,14 @@ export default function LibraryStoryCard({
               ) : readingOnly ? (
                 '📖 Continue Reading'
               ) : isSeries ? (
-                '🎧 Listen Now'
+                <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '5px' }}>
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#000" strokeWidth="2.75" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+                    <path d="M3 14v-2a9 9 0 0 1 18 0v2" />
+                    <path d="M21 14v4a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3Z" />
+                    <path d="M3 14v4a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3Z" />
+                  </svg>
+                  Listen Now
+                </span>
               ) : (
                 '▶ Play now'
               )}
