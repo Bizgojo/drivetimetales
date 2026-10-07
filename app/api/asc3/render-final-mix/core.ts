@@ -1054,6 +1054,30 @@ export async function runRenderFinalMix(storyId: string): Promise<{
       console.log(`  story_body_with_outro.mp3: produced`)
     }
 
+    // AUDIO-TEXT-SYNC-001: capture where the story body (the span the ebook
+    // prose matches 1:1) sits inside the final mixed file, so reading/listening
+    // can sync off actual content instead of naive whole-file percent (which
+    // is thrown off by the Belle B intro/outro, which prose excludes entirely).
+    // Non-fatal by design — a failure here must never block a render that
+    // otherwise succeeded, so it's computed with its own try/catch and simply
+    // omitted (left null in the DB) on any error.
+    let contentStartMs: number | null = null
+    let contentEndMs: number | null = null
+    try {
+      const storyBodyIdx = finalParts.indexOf(storyBodyPath)
+      let precedingSecs = 0
+      for (let i = 0; i < storyBodyIdx; i++) {
+        precedingSecs += await getAudioDuration(finalParts[i])
+      }
+      contentStartMs = Math.round(precedingSecs * 1000)
+      contentEndMs = Math.round((precedingSecs + storyBodyDur) * 1000)
+      console.log(`  content bounds: start=${contentStartMs}ms end=${contentEndMs}ms (story_body=${storyBodyDur.toFixed(1)}s)`)
+    } catch (boundsErr) {
+      console.warn('  ⚠️ content_start_ms/content_end_ms computation failed (non-fatal, leaving null):', boundsErr)
+      contentStartMs = null
+      contentEndMs = null
+    }
+
     await fs.writeFile(finalConcatFile, finalParts.map(p => `file '${p}'`).join('\n'))
     await execFileAsync(FFMPEG_PATH, [
       '-f', 'concat', '-safe', '0', '-i', finalConcatFile,
@@ -1222,6 +1246,8 @@ export async function runRenderFinalMix(storyId: string): Promise<{
       audio_url: finalAudioUrl,  // store plain URL (no ?v= cache-buster — versioning in response only)
       ...(outroWithMusicStorageUrl ? { outro_with_music_url: outroWithMusicStorageUrl } : {}),
       ...(storyBodyWithOutroStorageUrl ? { story_body_with_outro_url: storyBodyWithOutroStorageUrl } : {}),
+      ...(contentStartMs !== null ? { content_start_ms: contentStartMs } : {}),
+      ...(contentEndMs !== null ? { content_end_ms: contentEndMs } : {}),
       duration_mins: Math.ceil(durationSecs / 60)
     }).eq('id', storyId)
     if (storyUpdateErr) throw new Error(`Failed to update story audio_url: ${storyUpdateErr.message}`)
