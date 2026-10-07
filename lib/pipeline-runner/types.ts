@@ -8,6 +8,8 @@
  *                                            Defaults to https://drivetimetales.vercel.app
  */
 
+import { applyGateRouting } from '@/lib/unifiedGateEngine'
+
 export type RunnerEventKind =
   | 'step_advance'
   | 'failure'
@@ -198,7 +200,16 @@ export type StructuredErrorJson = {
 /**
  * Build a minimal valid StructuredErrorJson.
  * Use this wherever a failure path sets error_json.
+ *
+ * GATE-ENGINE (feat/unified-gate-engine): every failure funnels through here,
+ * so this is the single choke point where marc_required flags with a registered
+ * autonomous route are converted to autonomous retry/fix paths (Canon Rules 1-2).
+ * S-class (safety/legal/catastrophic-corruption/unrecoverable-infra-threatening-
+ * data) and unrouted/unknown kinds still halt with marc_required:true.
+ * Already-autonomous errors (marc_required:false) pass through untouched, and
+ * explicitly-set autonomous fields in opts are never clobbered.
  */
+
 export function buildStructuredError(
   kind: StructuredErrorJsonKind,
   message: string,
@@ -206,12 +217,26 @@ export function buildStructuredError(
   opts: Partial<Omit<StructuredErrorJson, 'kind' | 'message' | 'step' | 'at'>> = {},
 ): StructuredErrorJson {
   const isVague = !message || message.trim() === ''
+  const routed = applyGateRouting(isVague ? 'empty_error_json' : kind, message, {
+    marc_required: opts.marc_required ?? true,
+    autonomous_repair: opts.autonomous_repair,
+    safe_resume_point: opts.safe_resume_point,
+    playbookId: opts.playbookId,
+    max_retries: opts.max_retries,
+    detail: (opts as { detail?: unknown }).detail,
+  })
   return {
     kind: isVague ? 'empty_error_json' : kind,
     message: isVague ? `Failure at step ${step ?? 'unknown'} — no detail available. Classify as empty_error_json.` : message.trim(),
     step,
-    marc_required: opts.marc_required ?? true,
     at: new Date().toISOString(),
     ...opts,
+    // Gate-engine routing wins on marc_required + routed autonomous fields
+    // (opts spread first so explicit caller values for unrelated fields survive).
+    marc_required: routed.marc_required,
+    ...(routed.autonomous_repair !== undefined ? { autonomous_repair: opts.autonomous_repair ?? routed.autonomous_repair } : {}),
+    ...(routed.safe_resume_point ? { safe_resume_point: opts.safe_resume_point ?? routed.safe_resume_point } : {}),
+    ...(routed.playbookId ? { playbookId: opts.playbookId ?? routed.playbookId } : {}),
+    ...(routed.max_retries !== undefined ? { max_retries: opts.max_retries ?? routed.max_retries } : {}),
   }
 }
