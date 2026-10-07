@@ -23,6 +23,19 @@ Visual canon (do not fork):
 ================================================================================
 */
 
+// Marc 2026-10-07: shared "defined" headset glyph for all audio-listening
+// button states (Listen Now / Continue Listening / Play Again) — replaces
+// the plain 🎧 emoji, which rendered too faint/thin to read at this size.
+function HeadsetIcon({ size = 15 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="#000" strokeWidth="2.75" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+      <path d="M3 14v-2a9 9 0 0 1 18 0v2" />
+      <path d="M21 14v4a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3Z" />
+      <path d="M3 14v4a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3Z" />
+    </svg>
+  )
+}
+
 export function formatMinutes(mins: number) {
   if (mins < 60) return `${mins}min`
   const h = Math.floor(mins / 60)
@@ -245,24 +258,28 @@ export default function LibraryStoryCard({
               }}
             >
               {showPlayAgain ? (
-                '▶ Play Again'
+                <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '5px' }}>
+                  <HeadsetIcon />
+                  Play Again
+                </span>
               ) : inProgress && isSeries && continueEpisodeLabel ? (
-                <span>
-                  ▶ Continue
-                  <br />
+                <span style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '5px' }}>
+                    <HeadsetIcon />
+                    Continue Listening
+                  </span>
                   {continueEpisodeLabel}
                 </span>
               ) : inProgress ? (
-                '▶ Continue'
+                <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '5px' }}>
+                  <HeadsetIcon />
+                  Continue Listening
+                </span>
               ) : readingOnly ? (
                 '📖 Continue Reading'
               ) : isSeries ? (
                 <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '5px' }}>
-                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#000" strokeWidth="2.75" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
-                    <path d="M3 14v-2a9 9 0 0 1 18 0v2" />
-                    <path d="M21 14v4a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3Z" />
-                    <path d="M3 14v4a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3Z" />
-                  </svg>
+                  <HeadsetIcon />
                   Listen Now
                 </span>
               ) : (
