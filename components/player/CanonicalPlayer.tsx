@@ -214,6 +214,10 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
   // ── Pills state ────────────────────────────────────────────────────────────
   const [activeModal, setActiveModal] = useState<'author' | 'narrator' | 'prose' | null>(null)
   const [proseDark, setProseDark] = useState(false)
+  // MARC-EBOOK-FONTSIZE-001 (2026-10-07): text size is a per-user default that
+  // carries across every story (until the user changes it again), not a
+  // per-story setting — see the load/persist effects below. Dark/light mode
+  // is deliberately left out of this: it stays exactly as before, session-only.
   const [proseFontSize, setProseFontSize] = useState(17)
   const [prosePage, setProsePage] = useState(1)
   const [proseControlsOpen, setProseControlsOpen] = useState(false)
@@ -2284,6 +2288,25 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
     setProseResumeToast(null)
     setReadingProgressState(null)
   }, [storyId])
+
+  // MARC-EBOOK-FONTSIZE-001: load the user's saved text-size default once
+  // their identity (or guest) is known, then keep it persisted on every
+  // change — so it carries forward to the next story too, not just this one.
+  useEffect(() => {
+    if (authLoading) return
+    try {
+      const stored = window.localStorage.getItem(`et_prose_font_size:${user?.id || 'guest'}`)
+      const parsed = stored ? Number.parseInt(stored, 10) : NaN
+      if (Number.isFinite(parsed) && parsed >= 13 && parsed <= 26) setProseFontSize(parsed)
+    } catch {}
+  }, [authLoading, user?.id])
+
+  useEffect(() => {
+    if (authLoading) return
+    try {
+      window.localStorage.setItem(`et_prose_font_size:${user?.id || 'guest'}`, String(proseFontSize))
+    } catch {}
+  }, [proseFontSize, authLoading, user?.id])
 
   useEffect(() => {
     if (activeModal !== 'prose') proseResumeAppliedRef.current = false
