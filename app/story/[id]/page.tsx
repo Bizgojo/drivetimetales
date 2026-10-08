@@ -4,7 +4,9 @@
 ================================================================================
 Single-story detail page (SS2-equivalent for singles) — Marc 2026-10-04
 ================================================================================
-"More Info" on a single-story LibraryStoryCard routes here. Mirrors the
+Cover tap on a single-story LibraryStoryCard routes here (Marc 2026-10-07:
+moved from the card's old "More Info" button, which is now "Read eBook").
+Mirrors the
 series detail page (app/series/[id]/page.tsx) layout — hero, author/narrator
 pills, action row — but for exactly one story instead of an episode list.
 Action row is two equal-width buttons: Play Now/Continue/Play Again on the

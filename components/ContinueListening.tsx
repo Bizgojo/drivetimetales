@@ -1,7 +1,6 @@
 'use client'
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import Link from 'next/link'
 import { useAuth } from '@/contexts/AuthContext'
 import { supabase } from '@/lib/supabase'
 
@@ -9,10 +8,8 @@ interface ContinueCard {
   story_id: string; title: string; author: string; genre: string
   cover_url: string | null; duration_mins: number; progress: number
   last_played: string; series_name: string | null; series_id: string | null; episode_number: number | null
+  description: string | null
 }
-
-function pct(d: number, p: number) { return Math.min(100, Math.round((p / (d * 60)) * 100)) }
-function minsLeft(d: number, p: number) { return Math.max(0, Math.round(d - p / 60)) }
 
 function DismissModal({ label, onConfirm, onCancel }: { label: string; onConfirm: () => void; onCancel: () => void }) {
   return (
@@ -50,7 +47,7 @@ export default function ContinueListening({ onIdsLoaded, excludeStoryId = null }
     setLoading(true)
     const { data } = await supabase
       .from('user_library')
-      .select('story_id, progress, last_played, completed, hide_from_home, stories(title, author, genre, cover_url, duration_mins, series_id, series_name, episode_number)')
+      .select('story_id, progress, last_played, completed, hide_from_home, stories(title, author, genre, cover_url, duration_mins, series_id, series_name, episode_number, description)')
       .eq('user_id', user!.id)
       .eq('completed', false)
       .eq('hide_from_home', false)
@@ -61,7 +58,7 @@ export default function ContinueListening({ onIdsLoaded, excludeStoryId = null }
     const top = rows[0]
     if (top) {
       const s = top.stories as any
-      setCard({ story_id: top.story_id, title: s.title, author: s.author, genre: s.genre, cover_url: s.cover_url, duration_mins: s.duration_mins, progress: top.progress, last_played: top.last_played, series_name: s.series_name || null, series_id: s.series_id || null, episode_number: s.episode_number || null })
+      setCard({ story_id: top.story_id, title: s.title, author: s.author, genre: s.genre, cover_url: s.cover_url, duration_mins: s.duration_mins, progress: top.progress, last_played: top.last_played, series_name: s.series_name || null, series_id: s.series_id || null, episode_number: s.episode_number || null, description: s.description || null })
       onIdsLoaded?.([top.story_id])
     } else {
       setCard(null)
@@ -78,38 +75,29 @@ export default function ContinueListening({ onIdsLoaded, excludeStoryId = null }
 
   if (loading || !card) return null
   const displayTitle = card.series_name || card.title
-  const subtitle = card.series_name ? ('Ep. ' + (card.episode_number || 1) + ': ' + card.title) : (card.author + ' - ' + card.genre)
   const resumeAt = Math.max(0, card.progress)
+  const description = card.description || ''
+  const truncatedDescription = description.length > 90 ? description.slice(0, 87) + '…' : description
 
   return (
     <section style={{ padding: '1.5rem 1rem 0' }}>
-      <h2 style={{ color: 'white', fontSize: 18, fontWeight: 800, margin: '0 0 8px' }}>Continue Listening</h2>
-      <div onClick={() => router.push('/player/' + card.story_id + '?autoplay=1&playNow=1&resume=' + resumeAt)} style={{ background: '#1e293b', borderRadius: '13px', border: '1px solid rgba(148,163,184,0.06)', display: 'flex', overflow: 'hidden', position: 'relative', cursor: 'pointer' }}>
-        <div style={{ width: 76, height: 76, flexShrink: 0, margin: '9px 0 9px 9px', borderRadius: 7, overflow: 'hidden', boxShadow: '0 0 10px rgba(255,255,255,0.18)' }}>
-          <img src={card.cover_url || '/images/default-cover.png'} alt={displayTitle} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+      <h2 style={{ color: 'white', fontSize: 18, fontWeight: 800, margin: '0 0 8px' }}>Continue {displayTitle}</h2>
+      <div style={{ background: '#1e293b', borderRadius: '13px', border: '1px solid rgba(148,163,184,0.06)', display: 'flex', overflow: 'hidden', position: 'relative' }}>
+        <div style={{ width: 96, flexShrink: 0, alignSelf: 'stretch' }}>
+          <img src={card.cover_url || '/images/default-cover.png'} alt={displayTitle} style={{ display: 'block', width: '100%', height: '100%', objectFit: 'cover' }} />
         </div>
-        <div style={{ flex: 1, padding: '9px 28px 9px 9px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', minWidth: 0 }}>
-          <div>
-            <div style={{ fontWeight: 700, fontSize: 14, color: 'white', lineHeight: 1.2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{displayTitle}</div>
-            <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{subtitle}</div>
-            {card.series_id && card.series_name && (
-              <Link
-                href={`/series/${card.series_id}`}
-                onClick={e => e.stopPropagation()}
-                style={{ display: 'inline-block', marginTop: 4, fontSize: 10, color: '#f97316', fontWeight: 600, textDecoration: 'none', letterSpacing: '0.02em' }}
-              >
-                All episodes →
-              </Link>
-            )}
-          </div>
-          <div>
-            <div style={{ fontSize: 11, color: '#ffffff', marginBottom: 4 }}><strong>{minsLeft(card.duration_mins, card.progress)} min</strong> Remaining</div>
-            <div style={{ height: 3, background: '#334155', borderRadius: 2, overflow: 'hidden' }}>
-              <div style={{ height: '100%', width: pct(card.duration_mins, card.progress) + '%', background: '#f97316', borderRadius: 2 }} />
-            </div>
-          </div>
+        <div style={{ flex: 1, padding: '10px 36px 10px 10px', display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: '8px', minWidth: 0 }}>
+          {truncatedDescription && (
+            <div style={{ fontSize: 12, color: '#cbd5e1', lineHeight: 1.4 }}>{truncatedDescription}</div>
+          )}
+          <button
+            onClick={() => router.push('/player/' + card.story_id + '?autoplay=1&playNow=1&resume=' + resumeAt)}
+            style={{ background: '#4ade80', color: '#000', border: 'none', borderRadius: '8px', padding: '8px', fontSize: '13px', fontWeight: 800, cursor: 'pointer' }}
+          >
+            Continue
+          </button>
         </div>
-        <button onClick={e => { e.stopPropagation(); setShowDismiss(true) }} style={{ position: 'absolute', top: 8, right: 8, width: 24, height: 24, background: 'rgba(100,116,139,0.4)', border: '1px solid rgba(148,163,184,0.2)', borderRadius: '50%', color: '#94a3b8', fontSize: 14, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>x</button>
+        <button onClick={() => setShowDismiss(true)} style={{ position: 'absolute', top: 8, right: 8, width: 24, height: 24, background: 'rgba(100,116,139,0.4)', border: '1px solid rgba(148,163,184,0.2)', borderRadius: '50%', color: '#94a3b8', fontSize: 14, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>x</button>
       </div>
       {showDismiss && <DismissModal label={displayTitle} onConfirm={dismiss} onCancel={() => setShowDismiss(false)} />}
     </section>

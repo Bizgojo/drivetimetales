@@ -15,12 +15,59 @@ Visual canon (do not fork):
 - duration: "Xhr-Ymin total · Avg. Zmin" for series, plain minutes for singles
 - author/genre in green, amber stars + (count)
 - description capped at 70 chars
-- buttons (always 3, both types — Marc 2026-10-04): orange Play now/Play
-  series, green Continue, light-orange Play Again; middle blue "+ Queue"/
-  red Rate prompt; right amber "More Info" (→ SS2 series page or single-story
-  detail page)
+- buttons (always 3, both types — Marc 2026-10-04): orange headset "Listen"
+  (single)/"Listen Now" (series)/"Continue Listening"/"Play Again", green
+  while in-progress, large bold type (Marc 2026-10-08); middle blue "Add to
+  Playlist"/"On Playlist" (Marc 2026-10-07, was "+ Queue"/"✓ Remove"); red
+  Rate prompt; right amber "Read", switching to green "Continue Reading"
+  once eBook progress exists (Marc 2026-10-08, was "Read eBook" — info-page
+  access moved to the cover tap, see onCoverClick in the caller), large
+  bold type
 ================================================================================
 */
+
+// Marc 2026-10-07: shared "defined" headset glyph for all audio-listening
+// button states (Listen Now / Continue Listening / Play Again) — replaces
+// the plain 🎧 emoji, which rendered too faint/thin to read at this size.
+function HeadsetIcon({ size = 15 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="#000" strokeWidth="2.75" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+      <path d="M3 14v-2a9 9 0 0 1 18 0v2" />
+      <path d="M21 14v4a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3Z" />
+      <path d="M3 14v4a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3Z" />
+    </svg>
+  )
+}
+
+// Marc 2026-10-08: all 3 row-6 buttons share ONE size/weight so the row
+// reads as one consistent set — sized as large as fits "Continue Listening"
+// and "Add to Playlist" (the longest labels) on one line without wrapping.
+// Marc 2026-10-08: fixed height (not minHeight) so every button is the
+// SAME size on every card regardless of whether its label wraps to one
+// line or two — content is centered inside that fixed box.
+const cardButtonStyle = {
+  flex: 1,
+  height: '58px',
+  padding: '4px',
+  borderRadius: '6px',
+  fontSize: '12px',
+  lineHeight: 1.25,
+  fontWeight: 800,
+  cursor: 'pointer',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  textAlign: 'center',
+} as const
+// Marc 2026-10-08: headset icon stacked ABOVE the words (not beside them) —
+// lets "Continue Listening" fit without the icon eating into the text width.
+const cardButtonLabelStyle = {
+  display: 'inline-flex',
+  flexDirection: 'column',
+  alignItems: 'center',
+  justifyContent: 'center',
+  gap: '2px',
+} as const
 
 export function formatMinutes(mins: number) {
   if (mins < 60) return `${mins}min`
@@ -65,6 +112,11 @@ export type CanonCardState = {
   completed: boolean
   isNotForMe: boolean
   reviewed: boolean
+  // Marc 2026-10-07: eBook progress exists and isn't finished — distinct from
+  // audio `progress`/`completed` above. When true and there's no audio
+  // progress, the main button goes green "Continue Reading" and opens the
+  // reader instead of playing audio.
+  readingInProgress: boolean
 }
 
 export default function LibraryStoryCard({
@@ -74,7 +126,7 @@ export default function LibraryStoryCard({
   onCoverClick,
   onTogglePlaylist,
   onRate,
-  onMoreInfo,
+  onReadEbook,
 }: {
   item: CanonCardItem
   state: CanonCardState
@@ -82,7 +134,7 @@ export default function LibraryStoryCard({
   onCoverClick: () => void
   onTogglePlaylist: () => void
   onRate: () => void
-  onMoreInfo: () => void
+  onReadEbook: () => void
 }) {
   const isSeries = item.type === 'series'
   const duration = isSeries
@@ -95,16 +147,13 @@ export default function LibraryStoryCard({
     description.length > 70 ? description.slice(0, 67) + '…' : description
   const showProgress = !isSeries && state.progress > 0 && !state.completed
   const inProgress = isSeries ? !!item.seriesInProgress : showProgress
-  // Marc 2026-07-13: series Continue button shows "Continue / Episode ##" on
-  // two lines; fall back to "Ep." when the number is 3+ digits so it still fits.
-  const resumeEpisodeNumber = isSeries
-    ? item.episodePlaylist?.find((ep) => ep.id === item.playEpisodeId)?.episode_number || null
-    : null
-  const continueEpisodeLabel = resumeEpisodeNumber
-    ? `${resumeEpisodeNumber >= 100 ? 'Ep.' : 'Episode'} ${resumeEpisodeNumber}`
-    : null
   const showRate = state.completed && !state.reviewed
   const showPlayAgain = !isSeries && state.completed && state.reviewed
+  // Marc 2026-10-07: eBook progress with no audio progress — main button
+  // goes green "Continue Reading" and opens the reader instead of audio.
+  // Audio progress (inProgress) and the post-review Play Again state both
+  // take priority over this, same relative order as before.
+  const readingOnly = !inProgress && !showPlayAgain && state.readingInProgress
 
   return (
     <div
@@ -218,35 +267,36 @@ export default function LibraryStoryCard({
           <div style={{ display: 'flex', gap: '5px', marginTop: '2px' }}>
             <button
               type="button"
-              onClick={onPlay}
+              onClick={readingOnly ? onReadEbook : onPlay}
               style={{
-                flex: 1,
-                background: showPlayAgain ? '#fb923c' : inProgress ? '#16a34a' : '#f97316',
-                color: 'white',
+                ...cardButtonStyle,
+                background: showPlayAgain ? '#fb923c' : (inProgress || readingOnly) ? '#4ade80' : '#f97316',
+                color: '#000',
                 border: 'none',
-                padding: '2px 6px',
-                borderRadius: '6px',
-                fontSize: '11px',
-                lineHeight: 1,
-                minHeight: '32px',
-                fontWeight: 500,
-                cursor: 'pointer',
               }}
             >
               {showPlayAgain ? (
-                '▶ Play Again'
-              ) : inProgress && isSeries && continueEpisodeLabel ? (
-                <span>
-                  ▶ Continue
-                  <br />
-                  {continueEpisodeLabel}
+                <span style={cardButtonLabelStyle}>
+                  <HeadsetIcon size={14} />
+                  Play Again
                 </span>
               ) : inProgress ? (
-                '▶ Continue'
+                <span style={cardButtonLabelStyle}>
+                  <HeadsetIcon size={14} />
+                  Continue Listening
+                </span>
+              ) : readingOnly ? (
+                '📖 Continue Reading'
               ) : isSeries ? (
-                '▶ Play series'
+                <span style={cardButtonLabelStyle}>
+                  <HeadsetIcon size={14} />
+                  Listen Now
+                </span>
               ) : (
-                '▶ Play now'
+                <span style={cardButtonLabelStyle}>
+                  <HeadsetIcon size={14} />
+                  Listen
+                </span>
               )}
             </button>
             {showRate ? (
@@ -254,70 +304,52 @@ export default function LibraryStoryCard({
                 type="button"
                 onClick={onRate}
                 style={{
-                  flex: 1,
+                  ...cardButtonStyle,
                   background: '#dc2626',
                   color: 'white',
                   border: 'none',
-                  padding: '2px 6px',
-                  borderRadius: '6px',
-                  fontSize: '11px',
-                  lineHeight: 1,
-                  minHeight: '32px',
-                  fontWeight: 500,
-                  cursor: 'pointer',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  gap: '8px',
+                  gap: '6px',
                 }}
               >
-                <span style={{ fontSize: '14px' }}>☺</span>
+                <span style={{ fontSize: '13px' }}>☺</span>
                 <span>Rate this {isSeries ? 'series' : 'story'}</span>
-                <span style={{ fontSize: '14px' }}>☹</span>
+                <span style={{ fontSize: '13px' }}>☹</span>
               </button>
             ) : (
               <button
                 type="button"
                 onClick={onTogglePlaylist}
                 style={{
-                  flex: 1,
+                  ...cardButtonStyle,
                   // Marc 2026-10-04: lighter blue once queued, so the card visibly
                   // shows "already queued" vs. the full-strength "+ Queue" blue.
                   background: state.inPlaylist ? '#93c5fd' : '#3b82f6',
                   color: state.inPlaylist ? '#1e3a8a' : 'white',
                   border: 'none',
-                  padding: '2px 6px',
-                  borderRadius: '6px',
-                  fontSize: '11px',
-                  lineHeight: 1,
-                  minHeight: '32px',
-                  fontWeight: 500,
-                  cursor: 'pointer',
                 }}
               >
-                {state.inPlaylist ? '✓ Remove' : '+ Queue'}
+                {state.inPlaylist ? 'On Playlist' : 'Add to Playlist'}
               </button>
             )}
-            {/* Marc 2026-10-04: third button, every card, both types — replaces
-                the old series-only "View Episodes" button */}
+            {/* Marc 2026-10-07: third button is now "Read eBook" — opens the
+                reader directly (deep-links to the resume episode for a
+                series via item.playEpisodeId, same target audio resumes to).
+                Info-page access (old "More Info" destination) moved to the
+                cover tap, see onCoverClick in the caller. */}
             <button
               type="button"
-              onClick={onMoreInfo}
+              onClick={onReadEbook}
               style={{
-                flex: 1,
-                background: '#eab308',
+                ...cardButtonStyle,
+                background: state.readingInProgress ? '#4ade80' : '#eab308',
                 color: '#000',
-                border: '1px solid rgba(234,179,8,0.9)',
-                padding: '2px 6px',
-                borderRadius: '6px',
-                fontSize: '11px',
-                lineHeight: 1,
-                minHeight: '32px',
-                fontWeight: 500,
-                cursor: 'pointer',
+                border: state.readingInProgress ? 'none' : '1px solid rgba(234,179,8,0.9)',
               }}
             >
-              More Info
+              {state.readingInProgress ? '📖 Continue Reading' : '📖 Read'}
             </button>
           </div>
 

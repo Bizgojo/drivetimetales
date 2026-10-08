@@ -287,11 +287,11 @@ export default function RecommendedForYou({ excludeIds = [] }: { excludeIds?: st
                   description: g.description,
                   seriesInProgress: !!g.is_in_progress,
                 }}
-                state={{ inPlaylist: playlist.includes(key), progress: 0, completed: false, isNotForMe: false, reviewed: false }}
+                state={{ inPlaylist: playlist.includes(key), progress: 0, completed: false, isNotForMe: false, reviewed: false, readingInProgress: false }}
                 onPlay={() => { if (playId) router.push(`/player/${playId}?autoplay=1&playNow=1`) }}
                 onCoverClick={() => router.push(`/series/${g.id}`)}
                 onTogglePlaylist={() => togglePlaylist(key, { type: 'series', episodeIds: g.episodes.map((e) => e.id) })}
-                onMoreInfo={() => router.push(`/series/${g.id}`)}
+                onReadEbook={() => { if (playId) router.push(`/player/${playId}?openReader=1`) }}
                 onRate={() => {}}
               />
             )
@@ -312,11 +312,11 @@ export default function RecommendedForYou({ excludeIds = [] }: { excludeIds?: st
                 avgRating: st.avg_rating,
                 reviewCount: st.review_count,
               }}
-              state={{ inPlaylist: playlist.includes(key), progress: 0, completed: false, isNotForMe: false, reviewed: false }}
+              state={{ inPlaylist: playlist.includes(key), progress: 0, completed: false, isNotForMe: false, reviewed: false, readingInProgress: false }}
               onPlay={() => router.push(`/player/${st.id}?autoplay=1&playNow=1`)}
-              onCoverClick={() => router.push(`/player/${st.id}?autoplay=1&playNow=1`)}
+              onCoverClick={() => router.push(`/story/${st.id}`)}
               onTogglePlaylist={() => togglePlaylist(key, { type: 'single', id: st.id })}
-              onMoreInfo={() => router.push(`/story/${st.id}`)}
+              onReadEbook={() => router.push(`/player/${st.id}?openReader=1`)}
               onRate={() => {}}
             />
           )
