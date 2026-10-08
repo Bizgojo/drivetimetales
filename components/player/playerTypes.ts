@@ -23,6 +23,8 @@ export interface PlayerStory {
   series_name?: string | null;
   is_free?: boolean | null;
   prose_text?: string | null;
+  content_start_ms?: number | null;
+  content_end_ms?: number | null;
   author_id?: string | null;
   narrator_voice_id?: string | null;
   narrator_voice_name?: string | null;
