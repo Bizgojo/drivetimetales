@@ -15,11 +15,13 @@ Visual canon (do not fork):
 - duration: "Xhr-Ymin total · Avg. Zmin" for series, plain minutes for singles
 - author/genre in green, amber stars + (count)
 - description capped at 70 chars
-- buttons (always 3, both types — Marc 2026-10-04): orange Play now/Play
-  series, green Continue, light-orange Play Again; middle blue "Add to
+- buttons (always 3, both types — Marc 2026-10-04): orange headset "Listen"
+  (single)/"Listen Now" (series)/"Continue Listening"/"Play Again", green
+  while in-progress, large bold type (Marc 2026-10-08); middle blue "Add to
   Playlist"/"On Playlist" (Marc 2026-10-07, was "+ Queue"/"✓ Remove"); red
-  Rate prompt; right amber "Read eBook" (Marc 2026-10-07, was "More Info" —
-  info-page access moved to the cover tap, see onCoverClick in the caller)
+  Rate prompt; right amber "Read"/"Continue Reading" once eBook progress
+  exists (Marc 2026-10-08, was "Read eBook" — info-page access moved to the
+  cover tap, see onCoverClick in the caller), large bold type
 ================================================================================
 */
 
@@ -267,7 +269,10 @@ export default function LibraryStoryCard({
                   Listen Now
                 </span>
               ) : (
-                '▶ Play now'
+                <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '6px', fontSize: '16px', fontWeight: 800 }}>
+                  <HeadsetIcon size={18} />
+                  Listen
+                </span>
               )}
             </button>
             {showRate ? (
@@ -341,7 +346,9 @@ export default function LibraryStoryCard({
                 cursor: 'pointer',
               }}
             >
-              📖 Read eBook
+              <span style={{ fontSize: '16px', fontWeight: 800 }}>
+                {state.readingInProgress ? '📖 Continue Reading' : '📖 Read'}
+              </span>
             </button>
           </div>
 
