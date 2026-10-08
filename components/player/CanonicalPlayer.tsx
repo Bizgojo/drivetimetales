@@ -40,7 +40,7 @@ const VOL_SWELL       = 0.10   // brief rise between lines  (10%)
 const DUCK_TARGET     = 0.015  // music while voice is active (1.5%)
 const DUCK_MS         = 250    // ms to duck
 const RAISE_MS        = 600    // ms to raise after voice ends
-const AUTO_ADVANCE_STORY_SELECT = 'id,title,author,genre,audio_url,cover_url,duration_mins,episode_number,series_id,series_name,is_free,prose_text,author_id,narrator_voice_id,narrator_voice_name,status,is_hidden,published_on'
+const AUTO_ADVANCE_STORY_SELECT = 'id,title,author,genre,audio_url,cover_url,duration_mins,episode_number,series_id,series_name,is_free,prose_text,content_start_ms,content_end_ms,author_id,narrator_voice_id,narrator_voice_name,status,is_hidden,published_on'
 const ADMIN_REVIEW_EMAILS = new Set(['marc@endless-tales.com', 'm.postlewaite@gmail.com'])
 
 // ── ORION-PLAYER-ENDSTATE-001 §3 — RE-ARM TOGGLE (Marc ruling A, 2026-07-15) ──
@@ -1249,7 +1249,7 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
         stage = 'story-row'
         const { data, error } = await supabase
           .from('stories')
-          .select('id,title,author,genre,audio_url,cover_url,duration_mins,intro_audio_url,outro_audio_url,background_music_url,episode_number,series_episode_number,series_id,series_name,series_is_finale,is_free,prose_text,author_id,narrator_voice_id,narrator_voice_name,status,is_hidden,published_on')
+          .select('id,title,author,genre,audio_url,cover_url,duration_mins,intro_audio_url,outro_audio_url,background_music_url,episode_number,series_episode_number,series_id,series_name,series_is_finale,is_free,prose_text,content_start_ms,content_end_ms,author_id,narrator_voice_id,narrator_voice_name,status,is_hidden,published_on')
           .eq('id', storyId)
           .maybeSingle()
 
