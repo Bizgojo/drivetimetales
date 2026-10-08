@@ -19,9 +19,10 @@ Visual canon (do not fork):
   (single)/"Listen Now" (series)/"Continue Listening"/"Play Again", green
   while in-progress, large bold type (Marc 2026-10-08); middle blue "Add to
   Playlist"/"On Playlist" (Marc 2026-10-07, was "+ Queue"/"✓ Remove"); red
-  Rate prompt; right amber "Read"/"Continue Reading" once eBook progress
-  exists (Marc 2026-10-08, was "Read eBook" — info-page access moved to the
-  cover tap, see onCoverClick in the caller), large bold type
+  Rate prompt; right amber "Read", switching to green "Continue Reading"
+  once eBook progress exists (Marc 2026-10-08, was "Read eBook" — info-page
+  access moved to the cover tap, see onCoverClick in the caller), large
+  bold type
 ================================================================================
 */
 
@@ -43,11 +44,11 @@ function HeadsetIcon({ size = 15 }: { size?: number }) {
 // and "Add to Playlist" (the longest labels) on one line without wrapping.
 const cardButtonStyle = {
   flex: 1,
-  padding: '3px 4px',
+  padding: '6px 4px',
   borderRadius: '6px',
   fontSize: '12px',
-  lineHeight: 1.15,
-  minHeight: '34px',
+  lineHeight: 1.25,
+  minHeight: '44px',
   fontWeight: 800,
   cursor: 'pointer',
 } as const
@@ -333,9 +334,9 @@ export default function LibraryStoryCard({
               onClick={onReadEbook}
               style={{
                 ...cardButtonStyle,
-                background: '#eab308',
+                background: state.readingInProgress ? '#4ade80' : '#eab308',
                 color: '#000',
-                border: '1px solid rgba(234,179,8,0.9)',
+                border: state.readingInProgress ? 'none' : '1px solid rgba(234,179,8,0.9)',
               }}
             >
               {state.readingInProgress ? '📖 Continue Reading' : '📖 Read'}
