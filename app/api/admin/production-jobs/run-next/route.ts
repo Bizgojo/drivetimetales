@@ -6932,8 +6932,10 @@ async function runSeriesVoicePreflight(job: ProductionJob, origin: string) {
   // ElevenLabs preflight/generate_voices call. Digit-form numerals are a Class B
   // story defect — BLOCKING (Rule 2). Fails the series preflight for this episode
   // (recorded in failedEpisodes); Hal corrects the episode script and re-submits.
+  // ALDERTON-CONTRADICTION-001 (gate-engine): pass the episode number so the
+  // canonical "Episode N" digit the package check requires is not flagged here.
   {
-    const numeralScan = numeralPreTtsScan((nextEpisode as any).script || '')
+    const numeralScan = numeralPreTtsScan((nextEpisode as any).script || '', { episodeNumberPassThrough: number })
     if (!numeralScan.passed) {
       const numeralReport = buildNumeralPreflightFailure(numeralScan.failures)
       const failedEpisodeEntry = {

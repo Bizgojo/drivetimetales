@@ -29,6 +29,7 @@
  */
 
 import { parseScriptPositions, type ScriptPosition } from '@/lib/scriptLineIndex'
+import { isEpisodeNumberPassThrough } from '@/lib/unifiedGateEngine'
 
 export interface NumeralFailure {
   /** padded segment label for expected voice segments; announcer lines use their speaker */
@@ -50,6 +51,15 @@ export interface NumeralScanResult {
 export interface NumeralScanOptions {
   /** v2 reserved — unused in v1 */
   allowlist?: string[]
+  /**
+   * ALDERTON-CONTRADICTION-001 (gate-engine): narrow episode-number-token
+   * pass-through. When set, a bare integer token equal to this episode number
+   * occurring in "Episode N" context (the digit the package check requires in
+   * the canonical series intro) is TTS-safe and is NOT flagged. All other
+   * digit spans still fail. Standalone path leaves this unset (no Episode-N
+   * intro exists there), so standalone behavior is unchanged.
+   */
+  episodeNumberPassThrough?: number
 }
 
 // Any digit-form numeral including decimals and grouped thousands.
@@ -116,7 +126,7 @@ export function isYearNumeral(span: string): boolean {
  * Returns the list of offending spans (digit numeral + any adjacent scale token).
  * Exported for unit testing of the core pattern.
  */
-export function scanTextForDigitNumerals(text: string): string[] {
+export function scanTextForDigitNumerals(text: string, options: NumeralScanOptions = {}): string[] {
   if (!text) return []
   const spans: string[] = []
 
@@ -169,6 +179,12 @@ export function scanTextForDigitNumerals(text: string): string[] {
       continue
     }
 
+    // ALDERTON-CONTRADICTION-001: skip the episode-number token the package
+    // check requires (bare digit in "Episode N" context — TTS reads it correctly).
+    if (span === match[0] && isEpisodeNumberPassThrough(span, text, options.episodeNumberPassThrough)) {
+      continue
+    }
+
     spans.push(span)
   }
 
@@ -185,7 +201,7 @@ export function scanTextForDigitNumerals(text: string): string[] {
  */
 export function numeralPreTtsScan(
   script: string,
-  _options: NumeralScanOptions = {}
+  options: NumeralScanOptions = {}
 ): NumeralScanResult {
   const failures: NumeralFailure[] = []
   if (!script) return { passed: true, failures }
@@ -198,7 +214,7 @@ export function numeralPreTtsScan(
     // lines are never emitted as `voice` positions by parseScriptPositions.
     if (pos.kind !== 'voice') continue
     const text = pos.text || ''
-    const spans = scanTextForDigitNumerals(text)
+    const spans = scanTextForDigitNumerals(text, options)
     if (spans.length === 0) continue
 
     const segmentLabel = pos.isExpected

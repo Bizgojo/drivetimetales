@@ -97,7 +97,10 @@ Where:
 // ---------------------------------------------------------------------------
 
 // Marc-authorized Sep 14 2026 — auto-publish ≥24, block <24 (no review band)
-const QUALITY_GATE_AUTO_PUBLISH_THRESHOLD = 24
+// Exported for the unified gate engine (lib/unifiedGateEngine.ts QUALITY_FLOOR_PUBLISH
+// must equal this — enforced by __tests__/unified-gate-engine.test.ts). Do not change
+// without Marc's word: the Sep-14 quality floor is standing law.
+export const QUALITY_GATE_AUTO_PUBLISH_THRESHOLD = 24
 
 // ---------------------------------------------------------------------------
 // runStoryQualityGate — main pipeline gate
