@@ -42,21 +42,31 @@ function HeadsetIcon({ size = 15 }: { size?: number }) {
 // Marc 2026-10-08: all 3 row-6 buttons share ONE size/weight so the row
 // reads as one consistent set — sized as large as fits "Continue Listening"
 // and "Add to Playlist" (the longest labels) on one line without wrapping.
+// Marc 2026-10-08: fixed height (not minHeight) so every button is the
+// SAME size on every card regardless of whether its label wraps to one
+// line or two — content is centered inside that fixed box.
 const cardButtonStyle = {
   flex: 1,
-  padding: '6px 4px',
+  height: '58px',
+  padding: '4px',
   borderRadius: '6px',
   fontSize: '12px',
   lineHeight: 1.25,
-  minHeight: '44px',
   fontWeight: 800,
   cursor: 'pointer',
-} as const
-const cardButtonLabelStyle = {
-  display: 'inline-flex',
+  display: 'flex',
   alignItems: 'center',
   justifyContent: 'center',
-  gap: '4px',
+  textAlign: 'center',
+} as const
+// Marc 2026-10-08: headset icon stacked ABOVE the words (not beside them) —
+// lets "Continue Listening" fit without the icon eating into the text width.
+const cardButtonLabelStyle = {
+  display: 'inline-flex',
+  flexDirection: 'column',
+  alignItems: 'center',
+  justifyContent: 'center',
+  gap: '2px',
 } as const
 
 export function formatMinutes(mins: number) {
