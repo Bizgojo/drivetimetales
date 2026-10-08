@@ -38,6 +38,26 @@ function HeadsetIcon({ size = 15 }: { size?: number }) {
   )
 }
 
+// Marc 2026-10-08: all 3 row-6 buttons share ONE size/weight so the row
+// reads as one consistent set — sized as large as fits "Continue Listening"
+// and "Add to Playlist" (the longest labels) on one line without wrapping.
+const cardButtonStyle = {
+  flex: 1,
+  padding: '3px 4px',
+  borderRadius: '6px',
+  fontSize: '12px',
+  lineHeight: 1.15,
+  minHeight: '34px',
+  fontWeight: 800,
+  cursor: 'pointer',
+} as const
+const cardButtonLabelStyle = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  gap: '4px',
+} as const
+
 export function formatMinutes(mins: number) {
   if (mins < 60) return `${mins}min`
   const h = Math.floor(mins / 60)
@@ -238,39 +258,32 @@ export default function LibraryStoryCard({
               type="button"
               onClick={readingOnly ? onReadEbook : onPlay}
               style={{
-                flex: 1,
+                ...cardButtonStyle,
                 background: showPlayAgain ? '#fb923c' : (inProgress || readingOnly) ? '#4ade80' : '#f97316',
                 color: '#000',
                 border: 'none',
-                padding: '2px 6px',
-                borderRadius: '6px',
-                fontSize: '11px',
-                lineHeight: 1,
-                minHeight: '32px',
-                fontWeight: 700,
-                cursor: 'pointer',
               }}
             >
               {showPlayAgain ? (
-                <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '5px' }}>
-                  <HeadsetIcon />
+                <span style={cardButtonLabelStyle}>
+                  <HeadsetIcon size={14} />
                   Play Again
                 </span>
               ) : inProgress ? (
-                <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '5px' }}>
-                  <HeadsetIcon />
+                <span style={cardButtonLabelStyle}>
+                  <HeadsetIcon size={14} />
                   Continue Listening
                 </span>
               ) : readingOnly ? (
                 '📖 Continue Reading'
               ) : isSeries ? (
-                <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '5px' }}>
-                  <HeadsetIcon />
+                <span style={cardButtonLabelStyle}>
+                  <HeadsetIcon size={14} />
                   Listen Now
                 </span>
               ) : (
-                <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '6px', fontSize: '16px', fontWeight: 800 }}>
-                  <HeadsetIcon size={18} />
+                <span style={cardButtonLabelStyle}>
+                  <HeadsetIcon size={14} />
                   Listen
                 </span>
               )}
@@ -280,45 +293,31 @@ export default function LibraryStoryCard({
                 type="button"
                 onClick={onRate}
                 style={{
-                  flex: 1,
+                  ...cardButtonStyle,
                   background: '#dc2626',
                   color: 'white',
                   border: 'none',
-                  padding: '2px 6px',
-                  borderRadius: '6px',
-                  fontSize: '11px',
-                  lineHeight: 1,
-                  minHeight: '32px',
-                  fontWeight: 500,
-                  cursor: 'pointer',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  gap: '8px',
+                  gap: '6px',
                 }}
               >
-                <span style={{ fontSize: '14px' }}>☺</span>
+                <span style={{ fontSize: '13px' }}>☺</span>
                 <span>Rate this {isSeries ? 'series' : 'story'}</span>
-                <span style={{ fontSize: '14px' }}>☹</span>
+                <span style={{ fontSize: '13px' }}>☹</span>
               </button>
             ) : (
               <button
                 type="button"
                 onClick={onTogglePlaylist}
                 style={{
-                  flex: 1,
+                  ...cardButtonStyle,
                   // Marc 2026-10-04: lighter blue once queued, so the card visibly
                   // shows "already queued" vs. the full-strength "+ Queue" blue.
                   background: state.inPlaylist ? '#93c5fd' : '#3b82f6',
                   color: state.inPlaylist ? '#1e3a8a' : 'white',
                   border: 'none',
-                  padding: '2px 6px',
-                  borderRadius: '6px',
-                  fontSize: '11px',
-                  lineHeight: 1,
-                  minHeight: '32px',
-                  fontWeight: 500,
-                  cursor: 'pointer',
                 }}
               >
                 {state.inPlaylist ? 'On Playlist' : 'Add to Playlist'}
@@ -333,22 +332,13 @@ export default function LibraryStoryCard({
               type="button"
               onClick={onReadEbook}
               style={{
-                flex: 1,
+                ...cardButtonStyle,
                 background: '#eab308',
                 color: '#000',
                 border: '1px solid rgba(234,179,8,0.9)',
-                padding: '2px 6px',
-                borderRadius: '6px',
-                fontSize: '11px',
-                lineHeight: 1,
-                minHeight: '32px',
-                fontWeight: 500,
-                cursor: 'pointer',
               }}
             >
-              <span style={{ fontSize: '16px', fontWeight: 800 }}>
-                {state.readingInProgress ? '📖 Continue Reading' : '📖 Read'}
-              </span>
+              {state.readingInProgress ? '📖 Continue Reading' : '📖 Read'}
             </button>
           </div>
 
