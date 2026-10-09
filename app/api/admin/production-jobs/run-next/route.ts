@@ -33,6 +33,10 @@ import { runVoiceConformanceGate, type VoiceProfile } from '@/lib/voiceConforman
 // fallback to the current Claude models when DEEPSEEK_API_KEY is absent.
 import { legacyStepModels, routeStep, resolveModelForStep, coerceValidationModelToClaude } from '@/lib/model-router'
 import { buildContinuityPins, verifyContinuityPins } from '@/lib/continuityPin'
+// COVER-PIPELINE-DECOUPLE-001: decoupled cover phase (tasks recorded right
+// after episode briefs/scripts; parallel dispatch; Holly-tolerant assembly).
+import { buildCoverPhaseState } from '@/lib/cover/coverPhase'
+import { partitionAssemblyBlockers } from '@/lib/cover/assemblyTolerance'
 
 export const runtime = 'nodejs'
 // maxDuration governed by vercel.json (800s) - do not override here
@@ -5310,7 +5314,9 @@ function missingSeriesPackageReviewFields(story: any) {
   const missing: string[] = []
   if (story?.status !== 'audio_ready') missing.push('status=audio_ready')
   if (!String(story?.story_audio_url || '').trim()) missing.push('story_audio_url')
-  if (!String(story?.cover_url || '').trim()) missing.push('cover_url')
+  // COVER-PIPELINE-DECOUPLE-001 (Task 6): cover_url is NOT a blocking field.
+  // Partitioned below into a cover_missing warning; episodes assemble with
+  // covers pending (Alderton EP2/EP3 shape).
   if (story?.published_on !== null) missing.push('published_on=null')
   if (story?.review_status !== 'pending') missing.push('review_status=pending')
   return missing
@@ -5326,9 +5332,19 @@ async function verifySeriesPackageEpisode(storyId: string) {
   if (error || !story) throw new Error(error?.message || `Story not found after package completion: ${storyId}`)
 
   const missingFields = missingSeriesPackageReviewFields(story)
+  // COVER-PIPELINE-DECOUPLE-001 (Task 6): missing cover = warning +
+  // cover_missing flag, NOT a blocking error.
+  const { blocking, coverWarnings, coverMissing } = partitionAssemblyBlockers(missingFields)
+  if (!String(story?.cover_url || '').trim() && !coverWarnings.includes('cover_url')) coverWarnings.push('cover_url')
+  const coverMissingFlag = coverMissing || coverWarnings.length > 0
+  if (coverMissingFlag) {
+    console.warn(`[assembly-tolerance] story=${storyId} cover pending (cover_missing) — assembling without blocking`)
+  }
   return {
-    success: missingFields.length === 0,
-    missingFields,
+    success: blocking.length === 0,
+    missingFields: blocking,
+    coverMissing: coverMissingFlag,
+    coverWarnings,
     story: {
       id: story.id,
       title: story.title,
@@ -5351,6 +5367,9 @@ async function runSeriesPackageCompletion(job: ProductionJob, origin: string) {
   const doneByEp: Record<string, boolean> = prev.doneByEp || {}
   const reportsByEp: Record<string, unknown> = prev.reportsByEp || {}
   const verifiedByEp: Record<string, unknown> = prev.verifiedByEp || {}
+  // COVER-PIPELINE-DECOUPLE-001 (Task 6): per-episode cover_missing flags.
+  // Episodes with covers pending still assemble; flags ride along in state.
+  const coverMissingByEp: Record<string, boolean> = prev.coverMissingByEp || {}
   const processedEpisodes: Array<{ episodeNumber: number | null; storyId: string; title: string }> = []
 
   for (const episode of episodes) {
@@ -5374,6 +5393,7 @@ async function runSeriesPackageCompletion(job: ProductionJob, origin: string) {
         reason,
         report,
         processedEpisodes,
+        coverMissingByEp,
         state: {
           ...state,
           seriesId: seriesId || state.seriesId,
@@ -5382,6 +5402,7 @@ async function runSeriesPackageCompletion(job: ProductionJob, origin: string) {
             doneByEp,
             reportsByEp,
             verifiedByEp,
+            coverMissingByEp,
             failedEpisode: episode,
             failureReason: reason,
             allDone: false,
@@ -5393,6 +5414,12 @@ async function runSeriesPackageCompletion(job: ProductionJob, origin: string) {
 
     const verification = await verifySeriesPackageEpisode(episode.storyId)
     verifiedByEp[key] = verification
+    // COVER-PIPELINE-DECOUPLE-001 (Task 6): record the cover_missing flag and
+    // keep assembling — a pending cover never fails verification anymore.
+    if ((verification as { coverMissing?: boolean }).coverMissing) {
+      coverMissingByEp[key] = true
+      console.warn(`[assembly-tolerance] series=${seriesId} episode=${episode.storyId} assembling with cover_missing`)
+    }
     if (!verification.success) {
       const reason = `Package verification failed: missing ${verification.missingFields.join(', ')}`
       return {
@@ -5403,6 +5430,7 @@ async function runSeriesPackageCompletion(job: ProductionJob, origin: string) {
         report,
         verification,
         processedEpisodes,
+        coverMissingByEp,
         state: {
           ...state,
           seriesId: seriesId || state.seriesId,
@@ -5411,6 +5439,7 @@ async function runSeriesPackageCompletion(job: ProductionJob, origin: string) {
             doneByEp,
             reportsByEp,
             verifiedByEp,
+            coverMissingByEp,
             failedEpisode: episode,
             failureReason: reason,
             allDone: false,
@@ -5452,6 +5481,7 @@ async function runSeriesPackageCompletion(job: ProductionJob, origin: string) {
           contentIssues: prefixedIssues,
           report,
           processedEpisodes,
+          coverMissingByEp,
           state: {
             ...state,
             seriesId: seriesId || state.seriesId,
@@ -5460,6 +5490,7 @@ async function runSeriesPackageCompletion(job: ProductionJob, origin: string) {
               doneByEp,
               reportsByEp,
               verifiedByEp,
+              coverMissingByEp,
               failedEpisode: episode,
               failureReason: reason,
               contentIssues: prefixedIssues,
@@ -5481,6 +5512,9 @@ async function runSeriesPackageCompletion(job: ProductionJob, origin: string) {
     seriesId,
     episodes,
     processedEpisodes,
+    // COVER-PIPELINE-DECOUPLE-001: episodes with covers pending assembled
+    // fine — their cover_missing flags ride along for late-fill.
+    coverMissingByEp,
     state: {
       ...state,
       seriesId: seriesId || state.seriesId,
@@ -5489,6 +5523,7 @@ async function runSeriesPackageCompletion(job: ProductionJob, origin: string) {
         doneByEp,
         reportsByEp,
         verifiedByEp,
+        coverMissingByEp,
         allDone,
         completedAt: allDone ? nowIso() : null,
         lastUpdatedAt: nowIso(),
@@ -5504,7 +5539,9 @@ function missingReadyForReviewFields(story: any) {
   if (story?.published_on !== null) missing.push('published_on=null')
   if (!String(story?.audio_url || '').trim()) missing.push('audio_url')
   if (!String(story?.story_audio_url || '').trim()) missing.push('story_audio_url')
-  if (!String(story?.cover_url || '').trim()) missing.push('cover_url')
+  // COVER-PIPELINE-DECOUPLE-001 (Task 6): cover_url is NOT a blocking field.
+  // Partitioned by the caller into a cover_missing warning; episodes assemble
+  // with covers pending, covers addable later.
   if (!String(story?.prose_text || '').trim()) missing.push('prose_text')
   return missing
 }
@@ -5545,7 +5582,14 @@ async function verifyStandaloneReadyForReview(job: ProductionJob) {
 
   if (error || !story) throw new Error(error?.message || 'Story not found')
 
-  const missingFields = missingReadyForReviewFields(story)
+  const rawMissingFields = missingReadyForReviewFields(story)
+  // COVER-PIPELINE-DECOUPLE-001 (Task 6): missing cover = warning +
+  // cover_missing flag, NOT a blocking error.
+  const { blocking: missingFields } = partitionAssemblyBlockers(rawMissingFields)
+  const coverMissing = !String(story?.cover_url || '').trim()
+  if (coverMissing) {
+    console.warn(`[assembly-tolerance] story=${storyId} RFR with cover_missing — proceeding, cover addable later`)
+  }
   const structuralOk = missingFields.length === 0
 
   // ── HAL-PIPE-002: Hard Audio Gate - final_mix.mp3 must exist in storage ──
@@ -5580,6 +5624,9 @@ async function verifyStandaloneReadyForReview(job: ProductionJob) {
     success,
     storyId: String(storyId),
     missingFields,
+    // COVER-PIPELINE-DECOUPLE-001: cover_missing rides along, never blocks.
+    coverMissing,
+    coverWarnings: coverMissing ? ['cover_url'] : [],
     contentIssues: contentIssues.length > 0 ? contentIssues : undefined,
     story,
     state: {
@@ -5588,6 +5635,8 @@ async function verifyStandaloneReadyForReview(job: ProductionJob) {
       readyForReview: {
         status: success ? 'complete' : 'failed',
         missingFields,
+        coverMissing,
+        coverWarnings: coverMissing ? ['cover_url'] : [],
         contentIssues: contentIssues.length > 0 ? contentIssues : undefined,
         verifiedAt: nowIso(),
       },
@@ -5980,12 +6029,32 @@ async function generateOneSeriesEpisodeScript(job: ProductionJob, model: string)
 
   const targetEpisode = episodes.find((episode: any) => !episode.script)
   if (!targetEpisode) {
+    // COVER-PIPELINE-DECOUPLE-001: backfill the cover phase for series whose
+    // scripts already exist (idempotent — skipped when state already has it).
+    // Pure state write; no image calls; never throws.
+    let backfillCoverPhase: Record<string, unknown> | null = null
+    if (!(state as Record<string, unknown>).coverPhase) {
+      try {
+        backfillCoverPhase = buildCoverPhaseState({
+          seriesId: String(seriesId),
+          seriesTitle: series ? String((series as any).title || '') : null,
+          episodes: episodes.map((episode: any) => ({
+            storyId: String(episode.id),
+            episodeNumber: episodeNumber(episode, 0),
+            title: String(episode.title || ''),
+          })),
+        })
+      } catch (err) {
+        console.warn('[cover-phase] backfill failed (non-blocking):', err instanceof Error ? err.message : String(err))
+      }
+    }
     return {
       generated: false,
       seriesId: String(seriesId),
       episode: null,
       episodes,
       nextStep: NEXT_STEP_AFTER_SERIES_SCRIPTS,
+      coverPhaseTriggered: backfillCoverPhase !== null,
       state: {
         ...state,
         seriesId: String(seriesId),
@@ -5996,6 +6065,7 @@ async function generateOneSeriesEpisodeScript(job: ProductionJob, model: string)
           episodeNumber: episodeNumber(episode, 0),
           hasScript: Boolean(episode.script),
         })),
+        ...(backfillCoverPhase ? { coverPhase: backfillCoverPhase } : {}),
       },
     }
   }
@@ -6117,6 +6187,30 @@ async function generateOneSeriesEpisodeScript(job: ProductionJob, model: string)
   const allScriptsGenerated = refreshedEpisodes.every((episode: any) => Boolean(episode.script))
   const nextStep = allScriptsGenerated ? NEXT_STEP_AFTER_SERIES_SCRIPTS : NEXT_STEP_AFTER_SERIES_CREATE
 
+  // COVER-PIPELINE-DECOUPLE-001 (Tasks 1-3): cover_generation_phase trigger.
+  // Fires right after the series blueprint + episode briefs/scripts exist —
+  // BEFORE any voice/audio work. Records cover_tasks[] for parallel dispatch.
+  // Pure state write only: no image API calls here (spend governance — Marc
+  // authorises render spend separately); the tasks carry the decoupling
+  // contract (never wait for preflight/intro/announcement/QC/audio/publish).
+  // Never throws: a trigger failure must not block script generation.
+  let coverPhase: Record<string, unknown> | null = null
+  if (allScriptsGenerated) {
+    try {
+      coverPhase = buildCoverPhaseState({
+        seriesId: String(seriesId),
+        seriesTitle: typeof series !== 'undefined' && series ? String((series as any).title || '') : null,
+        episodes: refreshedEpisodes.map((episode: any) => ({
+          storyId: String(episode.id),
+          episodeNumber: episodeNumber(episode, 0),
+          title: String(episode.title || ''),
+        })),
+      })
+    } catch (err) {
+      console.warn('[cover-phase] trigger failed (non-blocking):', err instanceof Error ? err.message : String(err))
+    }
+  }
+
   return {
     generated: true,
     seriesId: String(seriesId),
@@ -6128,6 +6222,7 @@ async function generateOneSeriesEpisodeScript(job: ProductionJob, model: string)
     },
     episodes: refreshedEpisodes,
     nextStep,
+    coverPhaseTriggered: coverPhase !== null,
     state: {
       ...state,
       seriesId: String(seriesId),
@@ -6140,6 +6235,7 @@ async function generateOneSeriesEpisodeScript(job: ProductionJob, model: string)
       })),
       lastGeneratedEpisodeNumber: targetEpisodeNumber,
       lastGeneratedEpisodeStoryId: updated.id,
+      ...(coverPhase ? { coverPhase } : {}),
     },
   }
 }

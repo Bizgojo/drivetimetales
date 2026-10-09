@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { classifyCoverFailure, COVER_MAX_RETRIES, buildStrategosRetryPrompt } from '@/lib/cover/coverRetry'
+import { buildCoverMissingAlert, fireCoverMissingAlert, shouldFireCoverAlert } from '@/lib/cover/coverAlert'
 
 export const runtime = 'nodejs'
 export const maxDuration = 300
@@ -9,7 +11,9 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
 
-type StepStatus = 'updated' | 'skipped' | 'failed'
+// COVER-PIPELINE-DECOUPLE-001: 'warning' = non-blocking step outcome.
+// A missing cover records a cover_missing warning and NEVER fails the package.
+type StepStatus = 'updated' | 'skipped' | 'failed' | 'warning'
 
 type PackageStep = {
   step: 'author' | 'narrator' | 'cover' | 'description' | 'prose'
@@ -125,7 +129,9 @@ function missingReviewReadyFields(story: any) {
   if (!String(story?.created_at || '').trim()) missing.push('created_at')
   if (!String(story?.audio_url || '').trim()) missing.push('audio_url')
   if (!String(story?.story_audio_url || '').trim()) missing.push('story_audio_url')
-  if (!String(story?.cover_url || '').trim()) missing.push('cover_url')
+  // COVER-PIPELINE-DECOUPLE-001 (Task 6): cover_url is NOT a blocking field.
+  // A missing cover is reported via coverMissingFields + the cover_missing flag;
+  // episodes assemble with covers pending, covers addable later.
   if (!String(story?.prose_text || '').trim()) missing.push('prose_text')
   if (!String(story?.author_id || '').trim()) missing.push('author_id')
   if (!String(story?.narrator_voice_id || '').trim()) missing.push('narrator_voice_id')
@@ -261,27 +267,62 @@ export async function POST(req: NextRequest) {
     if (story.cover_url && !forceCover) {
       steps.push({ step: 'cover', status: 'skipped', message: 'Already exists' })
     } else {
+      // COVER-PIPELINE-DECOUPLE-001 (Tasks 4+6): cover_retry discipline.
+      // Up to COVER_MAX_RETRIES retries with Strategos prompt regeneration;
+      // exhaustion records a cover_missing WARNING — never fails the package.
       const coverDiagnostics: Record<string, unknown> = { storyId }
+      const coverEndpoint = `${getOrigin(req)}/api/asc3/regenerate-cover`
+      coverDiagnostics.regenerateCoverEndpoint = coverEndpoint
+      const totalCoverAttempts = 1 + COVER_MAX_RETRIES
+      let coverFeedback = ''
+      let coverAttempt = 0
+      let coverSucceeded = false
+      let coverLastError = ''
       try {
-        const coverEndpoint = `${getOrigin(req)}/api/asc3/regenerate-cover`
-        coverDiagnostics.regenerateCoverEndpoint = coverEndpoint
         console.log('[complete-story-package] cover generation start', coverDiagnostics)
+        while (coverAttempt < totalCoverAttempts && !coverSucceeded) {
+          coverAttempt += 1
+          const coverRes = await fetch(coverEndpoint, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ storyId, genre: story.genre || story.primary_genre || '', ...(coverFeedback ? { coverFeedback } : {}) }),
+          })
+          const coverData = await coverRes.json().catch(() => ({}))
+          coverDiagnostics.regenerateCoverStatus = coverRes.status
+          coverDiagnostics.regenerateCoverOk = coverRes.ok
+          coverDiagnostics.regenerateCoverSuccess = Boolean(coverData?.success)
+          coverDiagnostics.returnedCoverImageUrl = coverData?.coverImageUrl || null
+          coverDiagnostics.regenerateCoverError = coverData?.error || null
+          coverDiagnostics.coverAttempt = coverAttempt
+          console.log('[complete-story-package] cover generation response', coverDiagnostics)
 
-        const coverRes = await fetch(coverEndpoint, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ storyId, genre: story.genre || story.primary_genre || '' }),
-        })
-        const coverData = await coverRes.json().catch(() => ({}))
-        coverDiagnostics.regenerateCoverStatus = coverRes.status
-        coverDiagnostics.regenerateCoverOk = coverRes.ok
-        coverDiagnostics.regenerateCoverSuccess = Boolean(coverData?.success)
-        coverDiagnostics.returnedCoverImageUrl = coverData?.coverImageUrl || null
-        coverDiagnostics.regenerateCoverError = coverData?.error || null
-        console.log('[complete-story-package] cover generation response', coverDiagnostics)
+          if (coverRes.ok && coverData?.success && coverData?.coverImageUrl) {
+            coverSucceeded = true
+            break
+          }
+          coverLastError = String(coverData?.error || `Cover generation failed (HTTP ${coverRes.status})`)
+          const classified = classifyCoverFailure(coverLastError, { status: coverRes.status })
+          // cover_missing_alert fires after 2 failed retries (log-only sink here;
+          // production agent_logs wiring injects its sink explicitly — code only).
+          if (shouldFireCoverAlert(coverAttempt)) {
+            await fireCoverMissingAlert(buildCoverMissingAlert({
+              storyId,
+              taskId: `cover:episode_cover:${storyId}`,
+              taskKind: 'episode_cover',
+              failedAttempts: coverAttempt,
+              failureClass: classified.failureClass,
+              lastError: coverLastError,
+            }), {})
+          }
+          if (!classified.retryable || coverAttempt >= totalCoverAttempts) break
+          // Strategos prompt regeneration for the next attempt (endpoint applies
+          // coverFeedback as a hard constraint before its brightness directive).
+          coverFeedback = buildStrategosRetryPrompt('', classified.failureClass, coverAttempt + 1)
+          console.log(`[complete-story-package] cover retry ${coverAttempt + 1}/${totalCoverAttempts} (${classified.failureClass})`)
+        }
 
-        if (!coverRes.ok || !coverData?.success || !coverData?.coverImageUrl) {
-          throw Object.assign(new Error(coverData?.error || 'Cover generation failed'), { details: coverDiagnostics })
+        if (!coverSucceeded) {
+          throw Object.assign(new Error(coverLastError || 'Cover generation failed'), { details: coverDiagnostics })
         }
         const coverUrl = String(coverData.coverImageUrl || '').trim()
         const { error: coverUpdateError } = await supabase
@@ -313,16 +354,18 @@ export async function POST(req: NextRequest) {
         }
 
         story.cover_url = coverCheck.cover_url
-        steps.push({ step: 'cover', status: 'updated', message: 'Generated unique cover' })
+        steps.push({ step: 'cover', status: 'updated', message: coverAttempt > 1 ? `Generated unique cover (attempt ${coverAttempt})` : 'Generated unique cover' })
       } catch (err) {
+        // COVER-PIPELINE-DECOUPLE-001 (Task 6): missing cover = warning +
+        // cover_missing flag, NOT a blocking error. Package continues.
         const details = (err && typeof err === 'object' && 'details' in err)
           ? (err as { details?: Record<string, unknown> }).details
           : coverDiagnostics
-        console.error('[complete-story-package] cover step failed', details)
+        console.warn('[complete-story-package] cover step degraded to cover_missing (non-blocking)', details)
         steps.push({
           step: 'cover',
-          status: 'failed',
-          message: err instanceof Error ? err.message : String(err),
+          status: 'warning',
+          message: `Cover pending (cover_missing): ${err instanceof Error ? err.message : String(err)}. Episode assembles without cover; cover addable later.`,
           details,
         })
       }
@@ -372,6 +415,10 @@ export async function POST(req: NextRequest) {
     const failedSteps = steps.filter((step) => step.status === 'failed')
     const skippedSteps = steps.filter((step) => step.status === 'skipped')
     const missingFields = missingReviewReadyFields(refreshed)
+    // COVER-PIPELINE-DECOUPLE-001 (Task 6): cover absence is a warning flag,
+    // reported alongside — never part of the blocking decision.
+    const coverMissing = !String(refreshed?.cover_url || '').trim()
+    const coverWarnings = coverMissing ? ['cover_url'] : []
     if (failedSteps.length > 0 || missingFields.length > 0) {
       const reason = blockingReason(failedSteps, missingFields)
       return json({
@@ -383,6 +430,8 @@ export async function POST(req: NextRequest) {
         failedSteps,
         skippedSteps,
         missingFields,
+        coverMissing,
+        coverWarnings,
         story: storySummary(refreshed),
       }, 422)
     }
@@ -429,6 +478,8 @@ export async function POST(req: NextRequest) {
       storyId,
       steps,
       belleVariants,
+      coverMissing,
+      coverWarnings,
       story: storySummary(reviewReadyStory),
     })
   } catch (err) {

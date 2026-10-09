@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server'
 export const runtime = 'nodejs'
 import { createClient } from '@supabase/supabase-js'
 import { buildCoverDirectionBrief, buildCoverPrompt, ULTRA_BRIGHT_DIRECTIVE } from '@/lib/coverPrompt'
+import { selectImageBackend } from '@/lib/cover/imageRouter'
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let sharp: any
 try {
@@ -52,7 +53,12 @@ const supabase = createClient(
 )
 
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY!
-const IMAGE_MODEL = process.env.OPENAI_IMAGE_MODEL || 'gpt-image-1'
+// COVER-PIPELINE-DECOUPLE-001 (Task 5): image backend routing.
+// Primary: ChatGPT → DALL·E 3 (default). Override via COVER_IMAGE_BACKEND
+// (dalle3 | claude-art | external-renderer) or OPENAI_IMAGE_MODEL.
+// Keys stay in env (Marc-governed); Belle is voice-only and is rejected here.
+const SELECTED_BACKEND = selectImageBackend()
+const IMAGE_MODEL = SELECTED_BACKEND.model
 
 type CoverFailureDetails = {
   substep: string
@@ -210,7 +216,7 @@ async function generateWithDallE(prompt: string): Promise<Buffer> {
     imageRequest.response_format = 'url'
   }
 
-  console.log('[regenerate-cover] image model used:', IMAGE_MODEL)
+  console.log('[regenerate-cover] image backend:', SELECTED_BACKEND.backend.label, '| model:', IMAGE_MODEL)
 
   const res = await fetch('https://api.openai.com/v1/images/generations', {
     method: 'POST',
