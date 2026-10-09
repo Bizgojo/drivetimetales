@@ -3,6 +3,13 @@ import { createClient } from '@supabase/supabase-js';
 
 export const dynamic = 'force-dynamic';
 
+// NOTE (servability-chase 2026-10-09): on Next 14, `force-dynamic` alone does
+// NOT disable the fetch Data Cache used internally by supabase-js. Without
+// this, the first response per query URL is cached for the life of the
+// deployment (e.g. `?search=gnome` cached `[]` pre-publish and stayed stale
+// after publish). `revalidate = 0` forces no-store fetches on this route.
+export const revalidate = 0;
+
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
