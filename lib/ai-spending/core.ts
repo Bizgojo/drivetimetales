@@ -25,7 +25,7 @@ export const PROVIDERS = [
   { id: 'Suno', label: 'Suno', url: 'https://suno.com/', action: 'Credits / subscription', source: null },
   { id: 'Muse Spark', label: 'Meta Muse Spark', url: 'https://dev.meta.ai/', action: 'Manage API billing', source: null },
   { id: 'DeepSeek', label: 'DeepSeek R1 / V3', url: 'https://platform.deepseek.com/', action: 'Add credits', source: null },
-  { id: 'Hindsight', label: 'Hindsight memory', url: 'https://ui.hindsight.vectorize.io/', action: 'Open cloud account', source: null },
+  { id: 'Hindsight', label: 'Hindsight / Ollama (local)', url: null, action: '', source: null },
   { id: 'OpenRouter', label: 'OpenRouter (if used)', url: 'https://openrouter.ai/settings/credits', action: 'Add credits', source: null },
   { id: 'Other AI', label: 'Other AI subscriptions / APIs', url: null, action: '', source: null },
 ]
