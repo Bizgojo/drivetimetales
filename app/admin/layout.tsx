@@ -47,6 +47,7 @@ const NAV_GROUPS = [
     { href: '/admin/referrals', label: 'Referrals' },
   ]},
   { id: 'marketing', label: 'Marketing', icon: '📱', items: [
+    { href: '/admin/marketing/dashboard', label: 'Dashboard' },
     { href: '/admin/growth', label: 'Growth Command Center' },
     { href: '/admin/marketing', label: 'Campaigns' },
     { href: '/admin/waitlist', label: 'Waitlist' },
