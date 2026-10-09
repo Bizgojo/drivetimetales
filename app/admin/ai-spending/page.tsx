@@ -3,6 +3,7 @@ import Link from 'next/link'
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { AGENTS, AGENT_ROSTER, PROVIDERS, dayKey, shiftDay, monday, summarize, type DailyCost } from '@/lib/ai-spending/core'
 import styles from './spending.module.css'
+import type { BillingResult } from '@/lib/ai-spending/billing'
 import { PRICE_SOURCE, type UsageDay } from '@/lib/ai-spending/openclaw'
 
 export const dynamic = 'force-dynamic'
@@ -16,6 +17,23 @@ export default function AISpendingPage() {
   const [from, setFrom] = useState(''), [to, setTo] = useState(''), [open, setOpen] = useState(false), [saving, setSaving] = useState(false), [saveStatus, setSaveStatus] = useState('')
   const [form, setForm] = useState({ provider: 'OpenAI', agent: 'Unassigned', model: '', kind: 'credit_purchase', amount: '', date: dayKey(new Date()), note: '' })
   const [importing, setImporting] = useState(false), [importStatus, setImportStatus] = useState(''), [usageGroup, setUsageGroup] = useState('agent')
+  const utcToday = new Date().toISOString().slice(0, 10)
+  const [billingFrom, setBillingFrom] = useState(utcToday.slice(0, 7) + '-01'), [billingTo, setBillingTo] = useState(utcToday)
+  const [billing, setBilling] = useState<{ reports: BillingResult[]; fetchedAt: string; from: string; to: string } | null>(null), [billingLoading, setBillingLoading] = useState(false), [billingError, setBillingError] = useState('')
+  const billingRequest = useRef(0), billingAbort = useRef<AbortController | null>(null)
+  async function refreshBilling() {
+    const id = ++billingRequest.current; billingAbort.current?.abort(); const controller = new AbortController(); billingAbort.current = controller
+    setBillingLoading(true); setBillingError('')
+    const timer = setTimeout(() => controller.abort(), 55000)
+    try {
+      const q = new URLSearchParams({ from: billingFrom, to: billingTo }); const r = await fetch('/api/admin/ai-spending/billing?' + q, { cache: 'no-store', signal: controller.signal }); const p = await r.json()
+      if (!r.ok || !p.success) throw new Error(p.error || 'Billing access unavailable.')
+      if (id === billingRequest.current) setBilling({ ...p, from: billingFrom, to: billingTo })
+    } catch (e: any) { if (id === billingRequest.current) setBillingError(e.name === 'AbortError' ? 'Billing refresh timed out.' : e.message) }
+    finally { clearTimeout(timer); if (id === billingRequest.current) setBillingLoading(false) }
+  }
+  useEffect(() => { void refreshBilling(); return () => { ++billingRequest.current; billingAbort.current?.abort() } }, [])
+  const currentBilling = billing?.from === billingFrom && billing?.to === billingTo ? billing : null
   const request = useRef(0), active = useRef<AbortController | null>(null)
   async function refresh() {
     const id = ++request.current; active.current?.abort(); const controller = new AbortController(); active.current = controller
@@ -82,6 +100,17 @@ export default function AISpendingPage() {
       {period === 'custom' && <><label>From<input type="date" value={from} onChange={e => setFrom(e.target.value)} max={to || today} /></label><label>To<input type="date" value={to} onChange={e => setTo(e.target.value)} min={from} max={today} /></label></>}
     </section>
     <p className={styles.meta}>{subtitle} · {data ? `Fetched ${new Date(data.fetchedAt).toLocaleString()}` : loading ? 'Loading recorded data…' : 'No data loaded'} · Weeks start Monday</p>
+    <section className={styles.panel}>
+      <div className={styles.sectionHeader}><div><h2>Actual provider-reported costs</h2><p>Dollar costs reported by billing APIs. These are separate from card payments, credit purchases, and token estimates.</p></div><button className={styles.primary} onClick={refreshBilling} disabled={billingLoading}>{billingLoading ? 'Reading billing…' : 'Refresh actual costs'}</button></div>
+      <div className={styles.filters}><div className={styles.tabs}>{[['Day', utcToday], ['Week', monday(utcToday)], ['Month', utcToday.slice(0, 7) + '-01']].map(([name, date]) => <button key={name} onClick={() => { setBillingFrom(date); setBillingTo(utcToday) }}>{name}</button>)}</div><label>Billing from (UTC)<input type="date" value={billingFrom} max={billingTo} onChange={e => setBillingFrom(e.target.value)} /></label><label>Billing through (UTC)<input type="date" value={billingTo} min={billingFrom} max={utcToday} onChange={e => setBillingTo(e.target.value)} /></label></div>
+      <p className={styles.meta}>Billing APIs return UTC daily buckets, so this section has its own dates. For lifetime, choose the account's earliest billing date, then refresh. Up to five years per request. Above agent filters do not allocate organization bills: a shared key does not identify an agent.</p>
+      {billingError && <p role="alert" className={styles.error}>{billingError}</p>}
+      {billing && !currentBilling && <p role="status">Dates changed. Refresh actual costs to load this range.</p>}
+      <div className={styles.scroll}><table><thead><tr><th>Provider</th><th>Actual reported USD costs</th><th>Billing connection</th></tr></thead><tbody>{['OpenAI', 'Anthropic', 'Muse Spark', 'DeepSeek', 'ElevenLabs', 'KIE.ai'].map(name => { const report = currentBilling?.reports.find(r => r.provider === name); return <tr key={name}><td><b>{name}</b><small>{report?.scope || 'No verified billing-cost feed'}</small></td><td>{report?.status === 'connected' ? usd(report.rows.reduce((n, r) => n + r.amount, 0)) : 'Not connected'}</td><td>{report ? <>{report.status.replaceAll('_', ' ')}<small>{report.detail}</small></> : name === 'OpenAI' || name === 'Anthropic' ? billingLoading ? 'Loading…' : 'Refresh billing connection' : 'Actual expenditure history needs provider billing records; usage and balances do not establish spending.'}</td></tr> })}</tbody></table></div>
+      {currentBilling && <p className={styles.meta}>Retrieved {new Date(currentBilling.fetchedAt).toLocaleString()} · {currentBilling.from}–{currentBilling.to} UTC. API costs may differ from paid invoices, taxes, adjustments and subscription payments. Anthropic Priority Tier costs are not included by its cost endpoint.</p>}
+      <h3>Current credits & quota</h3><div className={styles.scroll}><table><thead><tr><th>Account</th><th>Available now</th><th>Source</th></tr></thead><tbody>{['DeepSeek', 'ElevenLabs', 'KIE.ai', 'OpenAI', 'Anthropic', 'Muse Spark'].map(name => { const b = data?.balances.find(x => x.provider === name); return <tr key={name}><td>{name}</td><td>{b?.status === 'live' ? `${b.credits.toLocaleString()} ${b.unit}` : 'Not connected'}{b?.status === 'live' && b.granted !== null && b.granted !== undefined && <small>Granted: {b.granted.toLocaleString()} · topped up: {b.toppedUp?.toLocaleString() ?? 'Unknown'}</small>}</td><td>{b?.status === 'live' ? name === 'ElevenLabs' ? 'Live remaining quota; not dollars' : name === 'DeepSeek' ? 'Live available balance; not expenditure history' : 'Live provider credits; not dollars' : b ? b.status.replaceAll('_', ' ') : 'No verified live credit-balance feed. Open provider billing below.'}</td></tr> })}</tbody></table></div><p className={styles.meta}>Use Refresh data at the top to fetch balances. Add credits controls below open the provider's own payment page. ET does not execute or assume a purchase.</p>
+      <details><summary>Reported cost line items</summary><div className={styles.scroll}><table><thead><tr><th>UTC date</th><th>Provider / account</th><th>Line item</th><th>Reported USD cost</th></tr></thead><tbody>{currentBilling?.reports.flatMap(r => r.rows).slice(0, 1000).map((r, i) => <tr key={i}><td>{r.date}</td><td>{r.provider}<small>{r.account}</small></td><td>{r.line}</td><td>{usd(r.amount)}</td></tr>)}</tbody></table></div><p className={styles.meta}>First 1,000 line items shown; connected provider totals include the full report.</p></details>
+    </section>
     <section className={styles.panel}>
       <div className={styles.sectionHeader}><div><h2>OpenClaw agent usage</h2><p>Import the v2 usage-only JSONL from your desktop. Re-imports retain earlier history and count each event ID once. This is a manual snapshot, not a live desktop connection.</p></div><label>{importing ? 'Importing…' : 'Import usage file'}<input aria-label="Import OpenClaw usage JSONL" type="file" accept=".jsonl,application/x-ndjson" disabled={importing} onChange={e => { const f = e.target.files?.[0]; if (f) void importUsage(f); e.target.value = '' }} /></label></div>
       <p role="status">{importStatus}</p>
