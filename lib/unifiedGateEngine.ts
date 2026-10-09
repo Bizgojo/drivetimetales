@@ -608,6 +608,9 @@ export function introSatisfiesPackageCheck(
 
 /**
  * ALDERTON-CONTRADICTION-001 resolution.
+ * Marc decision alderton-optionA-oct8-2323 (2026-10-08): numeral exemption via
+ * code, NOT content rewrite (precedent: ceo-dispatch-oct8-1511) — the package
+ * title validator MUST keep requiring the canonical digit intro.
  * Narrow episode-number-token pass-through for the numeral pre-TTS scan: a BARE
  * integer token equal to the episode number, occurring in "Episode N" context,
  * is TTS-safe ("episode three") and MUST NOT be flagged — the package check
