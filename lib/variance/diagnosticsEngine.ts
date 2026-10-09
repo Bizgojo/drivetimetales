@@ -1,5 +1,5 @@
 export function DiagnosticsEngine({ creative, audience, funnel, story, external }: any) {
-  const fmt = (x: any) => ${x.finding} (${x.delta}%);
+  const fmt = (x: any) => `${x.finding} (${x.delta}%)`;
   return {
     creative: creative.map(fmt),
     audience: audience.map(fmt),

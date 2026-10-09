@@ -10,7 +10,7 @@ export async function buildTimeline(campaignId: string) {
   );
 
   return logs.rows.map((row: any) => ({
-    label: ${row.agent}: ${row.event},
+    label: `${row.agent}: ${row.event}`,
     timestamp: row.created_at
   }));
 }
