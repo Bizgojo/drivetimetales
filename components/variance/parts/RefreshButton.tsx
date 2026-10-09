@@ -1,7 +1,5 @@
-export function RefreshButton({ onClick }: { onClick: () => void }) {
-  return (
-    <button className="refresh-button" onClick={onClick}>
-      Refresh Variance Data
-    </button>
-  );
+export function RefreshButton({ onClick, disabled = false }: { onClick: () => void; disabled?: boolean }) {
+  return <button className="refresh-button" onClick={onClick} disabled={disabled}>
+    {disabled ? "Regenerating…" : "Regenerate Analysis"}
+  </button>;
 }
