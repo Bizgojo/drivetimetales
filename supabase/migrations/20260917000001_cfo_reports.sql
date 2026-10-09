@@ -22,6 +22,7 @@ CREATE INDEX IF NOT EXISTS cfo_reports_report_date_idx ON cfo_reports (report_da
 ALTER TABLE cfo_reports ENABLE ROW LEVEL SECURITY;
 
 -- Service role has full access (for automated report storage)
+DROP POLICY IF EXISTS "service_role_full_access" ON cfo_reports;
 CREATE POLICY "service_role_full_access" ON cfo_reports
   FOR ALL
   TO service_role
@@ -29,6 +30,7 @@ CREATE POLICY "service_role_full_access" ON cfo_reports
   WITH CHECK (true);
 
 -- Authenticated users can read reports (admin check done at API/page level)
+DROP POLICY IF EXISTS "authenticated_read" ON cfo_reports;
 CREATE POLICY "authenticated_read" ON cfo_reports
   FOR SELECT
   TO authenticated
