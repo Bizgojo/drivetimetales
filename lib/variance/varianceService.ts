@@ -8,7 +8,7 @@ import { ingestDailyMetricsForCampaign } from "@/lib/ad/ingestion";
 import { db, getSupabaseServiceClient } from "@/lib/db";
 
 export async function getCampaignVariance(campaignId: string) {
-  await ingestDailyMetricsForCampaign(campaignId);
+  const dataCoverage = await ingestDailyMetricsForCampaign(campaignId);
 
   const campaign = await getCampaignById(campaignId);
   const forecast = await getForecastMetrics(campaignId);
@@ -31,6 +31,8 @@ export async function getCampaignVariance(campaignId: string) {
 
   const payload = {
     campaign,
+    dataCoverage,
+    generatedAt: new Date().toISOString(),
     summary,
     diagnostics,
     charts: {
