@@ -52,12 +52,14 @@ export interface NumeralScanOptions {
   /** v2 reserved — unused in v1 */
   allowlist?: string[]
   /**
-   * ALDERTON-CONTRADICTION-001 (gate-engine): narrow episode-number-token
+   * ALDERTON-CONTRADICTION-001 (gate-engine) + Marc decision
+   * alderton-optionA-oct8-2323 (2026-10-08): narrow episode-number-token
    * pass-through. When set, a bare integer token equal to this episode number
    * occurring in "Episode N" context (the digit the package check requires in
    * the canonical series intro) is TTS-safe and is NOT flagged. All other
    * digit spans still fail. Standalone path leaves this unset (no Episode-N
-   * intro exists there), so standalone behavior is unchanged.
+   * intro exists there), so standalone behavior is unchanged. The package
+   * title validator is untouched and still REQUIRES the canonical digit.
    */
   episodeNumberPassThrough?: number
 }
