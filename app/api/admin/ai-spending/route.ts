@@ -1,21 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createServerClient } from '@supabase/ssr'
-import { createClient } from '@supabase/supabase-js'
-import { cookies } from 'next/headers'
+import { authorized, client } from '@/lib/ai-spending/auth'
+import { readImports } from '@/lib/ai-spending/openclaw-storage'
 import { AGENTS, PROVIDERS, dayKey, agentFor, providerFor, kindFor, validAmount, type DailyCost } from '@/lib/ai-spending/core'
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
 export const maxDuration = 60
-const ADMIN_EMAILS = new Set(['marc@endless-tales.com', 'hello.endlesstales@gmail.com', 'williampostlewaite@icloud.com', 'm.postlewaite@gmail.com'])
 const json = (data: unknown, status = 200) => NextResponse.json(data, { status, headers: { 'Cache-Control': 'no-store' } })
-async function authorized() {
-  const c = cookies()
-  const auth = createServerClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!, { cookies: { getAll: () => c.getAll(), setAll: () => {} } })
-  const { data: { user } } = await auth.auth.getUser()
-  return user && ADMIN_EMAILS.has((user.email || '').toLowerCase()) ? user : null
-}
-function client() { return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false } }) }
 const LOGS = [
   { table: 'openai_usage_log', provider: 'OpenAI', date: 'created_at', columns: 'id,created_at,cost_usd,model,metadata' },
   { table: 'anthropic_usage_log', provider: 'Anthropic', date: 'created_at', columns: 'id,created_at,cost_usd,model,metadata' },
@@ -53,13 +44,14 @@ export async function GET() {
   try {
     if (!await authorized()) return json({ error: 'Unauthorized' }, 401)
     const db = client()
-    const [loaded, balances] = await Promise.all([
+    const [loaded, balances, openclaw] = await Promise.all([
       Promise.all(LOGS.map(s => loadSource(db, s))),
       Promise.all([
         balance('DeepSeek', 'https://api.deepseek.com/user/balance', { Authorization: `Bearer ${process.env.DEEPSEEK_API_KEY || ''}` }, !!process.env.DEEPSEEK_API_KEY),
         balance('ElevenLabs', 'https://api.elevenlabs.io/v1/user/subscription', { 'xi-api-key': process.env.ELEVENLABS_API_KEY || '' }, !!process.env.ELEVENLABS_API_KEY),
         balance('KIE.ai', 'https://api.kie.ai/api/v1/chat/credit', { Authorization: `Bearer ${process.env.KIE_API_KEY || ''}` }, !!process.env.KIE_API_KEY),
       ]),
+      readImports(db),
     ])
     const grouped = new Map<string, DailyCost>(); const payments: any[] = []; const sources: any[] = []
     for (const source of loaded) {
@@ -82,7 +74,7 @@ export async function GET() {
       }
       sources.push({ table: source.spec.table, provider: source.spec.provider, status: source.error ? 'unavailable' : source.truncated || skipped ? 'partial' : 'connected', rows: included, skipped, first, last, truncated: source.truncated, error: source.error })
     }
-    return json({ success: true, fetchedAt: new Date().toISOString(), timezone: 'America/New_York', daily: [...grouped.values()].sort((a, b) => a.date.localeCompare(b.date)), sources, balances, payments: payments.sort((a, b) => b.date.localeCompare(a.date)).slice(0, 200) })
+    return json({ success: true, fetchedAt: new Date().toISOString(), timezone: 'America/New_York', daily: [...grouped.values()].sort((a, b) => a.date.localeCompare(b.date)), sources, balances, openclaw, payments: payments.sort((a, b) => b.date.localeCompare(a.date)).slice(0, 200) })
   } catch { return json({ error: 'AI spending data could not be loaded. Check admin access and database configuration.' }, 500) }
 }
 export async function POST(req: NextRequest) {
