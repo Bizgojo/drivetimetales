@@ -3,6 +3,7 @@
 import Link from 'next/link'
 
 const CARDS = [
+  { href: '/admin/marketing/variance-command-center', title: 'Marketing Variance Command Center (Independent)', desc: 'Alternate campaign presentation using the same Airtable campaign source as Atlas, with Regenerate and variance detail.' },
   { href: '/admin/growth', title: 'Growth Command Center', desc: 'Growth overview, experiments, and key levers.' },
   { href: '/admin/marketing', title: 'Campaigns', desc: 'Active and past marketing campaigns.' },
   { href: '/admin/waitlist', title: 'Waitlist', desc: 'Waitlist growth and invites.' },
