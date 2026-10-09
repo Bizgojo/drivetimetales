@@ -32,7 +32,7 @@ async function balance(provider: string, url: string, headers: Record<string, st
     if (provider === 'DeepSeek') {
       const info = p.balance_infos?.find((i: any) => i.currency === 'USD') || p.balance_infos?.[0]
       const credits = validAmount(info?.total_balance); if (credits === null) throw new Error('Invalid balance')
-      return { provider, status: 'live', credits, unit: info.currency + ' balance' }
+      return { provider, status: 'live', credits, granted: validAmount(info.granted_balance), toppedUp: validAmount(info.topped_up_balance), unit: info.currency + ' balance' }
     }
     if (provider === 'KIE.ai') { const credits = validAmount(p.data); if (credits === null) throw new Error('Invalid balance'); return { provider, status: 'live', credits, unit: 'KIE credits' } }
     const used = validAmount(p.character_count), limit = validAmount(p.character_limit)
