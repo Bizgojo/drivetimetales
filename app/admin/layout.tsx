@@ -48,6 +48,7 @@ const NAV_GROUPS = [
   ]},
   { id: 'marketing', label: 'Marketing', icon: '📱', items: [
     { href: '/admin/marketing/dashboard', label: 'Dashboard' },
+    { href: '/admin/marketing/campaign-intelligence', label: 'Campaign Intelligence' },
     { href: '/admin/growth', label: 'Growth Command Center' },
     { href: '/admin/marketing', label: 'Campaigns' },
     { href: '/admin/waitlist', label: 'Waitlist' },

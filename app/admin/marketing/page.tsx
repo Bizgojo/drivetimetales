@@ -134,6 +134,14 @@ export default function AdminMarketingPage() {
         </button>
       </div>
 
+      <div style={{ backgroundColor: '#275d4f', borderRadius: '12px', padding: '1rem', marginBottom: '1.5rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap' }}>
+        <div>
+          <div style={{ color: 'white', fontSize: '17px', fontWeight: 800 }}>Campaign Intelligence</div>
+          <div style={{ color: '#e0e9dc', fontSize: '13px', marginTop: '0.25rem' }}>A second dashboard using the same live Airtable campaigns, with variance analysis and fresh data on Regenerate.</div>
+        </div>
+        <button onClick={() => router.push('/admin/marketing/campaign-intelligence')} style={{ backgroundColor: '#f2e7ca', color: '#172a28', padding: '0.75rem 1rem', borderRadius: '8px', border: 'none', cursor: 'pointer', fontWeight: 800 }}>Open Campaign Intelligence</button>
+      </div>
+
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem' }}>
         {/* Left: Story Selector & Generator */}
         <div>

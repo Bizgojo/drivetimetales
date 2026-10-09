@@ -3,6 +3,8 @@
 import Link from 'next/link'
 
 const CARDS = [
+  { href: '/admin/marketing/campaign-intelligence', title: 'Campaign Intelligence', desc: 'Live Airtable campaigns, forecasts vs. actuals, variance analysis, and Regenerate.' },
+  { href: '/admin/marketing/campaign-plan', title: 'Campaign Plan', desc: 'Existing Airtable campaign planning dashboard, timeline, forecasts, and task owners.' },
   { href: '/admin/growth', title: 'Growth Command Center', desc: 'Growth overview, experiments, and key levers.' },
   { href: '/admin/marketing', title: 'Campaigns', desc: 'Active and past marketing campaigns.' },
   { href: '/admin/waitlist', title: 'Waitlist', desc: 'Waitlist growth and invites.' },
