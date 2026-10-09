@@ -394,6 +394,16 @@ export default function AdminPage() {
 
             {/* Quick Links */}
             <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+              <Link href="/admin/marketing/campaign-plan" className="bg-white hover:bg-gray-100 rounded-xl p-4 border border-gray-200 transition-colors">
+                <span className="text-2xl mb-2 block">📣</span>
+                <p className="text-black font-medium">Atlas Campaign Dashboard</p>
+                <p className="text-gray-700 text-xs">Existing campaign plan and approvals</p>
+              </Link>
+              <Link href="/admin/marketing/variance-command-center" className="bg-white hover:bg-gray-100 rounded-xl p-4 border border-gray-200 transition-colors">
+                <span className="text-2xl mb-2 block">📊</span>
+                <p className="text-black font-medium">Marketing Variance Command Center</p>
+                <p className="text-gray-700 text-xs">Independent live-record view and regeneration</p>
+              </Link>
               <Link href="/admin/news-briefings" className="bg-white hover:bg-gray-100 rounded-xl p-4 border border-gray-200 transition-colors">
                 <span className="text-2xl mb-2 block">📰</span>
                 <p className="text-black font-medium">News Briefings</p>
