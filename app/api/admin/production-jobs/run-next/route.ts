@@ -15,6 +15,10 @@ import { loadActiveMission } from '@/lib/missionContext'
 import { ownedJobFence, isLockLostError, lockLostMessage } from '@/lib/jobLockGuard'
 import { runPremiseGate, formatPremiseCollisionMessage, formatPremiseAdjacentWarning, type PremiseGateResult } from '@/lib/premiseGate'
 import { syncPremiseIndexForTransition } from '@/lib/premiseIndex'
+// ATLAS PUBLISH-MODE SWITCH (Canon Rule 4, PIPELINE-CANON-001, approved 2026-10-04):
+// read-once-at-RFR switch (rfr|direct, initial direct) + shared direct-publish
+// promotion. Manual admin paths untouched.
+import { maybeDirectPublishStandalone, maybeDirectPublishSeries, type DirectAutoPublishReport } from '@/lib/directPublish'
 import { verifyArtifactHttp } from '@/lib/artifactGate'
 import { runHookGateForStory, detectBelleQualityRepairEmpty } from '@/lib/hookGate'
 import { runStoryQualityGate } from '@/lib/storyQualityGate'
@@ -11250,6 +11254,27 @@ export async function POST(req: NextRequest) {
 
         if (updateError) throw new Error(`Failed to advance series package completion job: ${updateError.message}`)
 
+        // ── RULE 4 (PUBLISH-MODE SWITCH) — series RFR hook ─────────────────
+        // Canon Rule 3 + Rule 4: the series flips as ONE unit, never split
+        // across modes. Read once after every episode locked; direct +
+        // all-episodes-ready → publish the whole series together via the
+        // shared lib/directPublish promotion. Anything else holds at RFR.
+        let directAutoPublish: DirectAutoPublishReport | null = null
+        const hookSeriesId = String(result.seriesId || lockedJob.series_id || '').trim()
+        if (hookSeriesId && episodeIdsToPromote.length > 0) {
+          try {
+            directAutoPublish = await maybeDirectPublishSeries(supabase, {
+              seriesId: hookSeriesId,
+              episodeIds: episodeIdsToPromote,
+              jobId: lockedJob.id,
+            })
+          } catch (e) {
+            console.error(`[direct-publish] series RFR hook threw (holding at RFR): ${e instanceof Error ? e.message : String(e)}`)
+            directAutoPublish = { mode: 'rfr', action: 'held', seriesId: hookSeriesId }
+          }
+        }
+        // ── END RULE 4 series hook ──────────────────────────────────────────
+
         return NextResponse.json({
           success: true,
           action: 'series_ready_for_review_complete',
@@ -11260,6 +11285,7 @@ export async function POST(req: NextRequest) {
           seriesId: result.seriesId || lockedJob.series_id,
           processedEpisodes: result.processedEpisodes,
           promotedEpisodeIds: episodeIdsToPromote,
+          directAutoPublish,
           seriesCompleteStoryPackage: result.state.seriesCompleteStoryPackage,
           logs: completedLogs,
         })
@@ -12251,6 +12277,27 @@ export async function POST(req: NextRequest) {
       }
       // ── END ATL-PIPE-014 ──────────────────────────────────────────────────
 
+      // ── RULE 4 (PUBLISH-MODE SWITCH) — standalone RFR hook ───────────────
+      // Read AFTER all gates passed and AFTER the RFR promotion above (canon:
+      // the current value at the moment the item is about to go live governs).
+      // rfr → hold exactly as today (report only, zero writes). direct →
+      // auto-run the SAME promotion the manual publish path performs, via
+      // lib/directPublish (shared guards + payload, matrix-legal two-step).
+      // Guard failures hold at RFR — mode never rescues a blocked story.
+      let directAutoPublish: DirectAutoPublishReport | null = null
+      if (storyPromotionStatus === 'ok' && result.storyId) {
+        try {
+          directAutoPublish = await maybeDirectPublishStandalone(supabase, {
+            storyId: String(result.storyId),
+            jobId: lockedJob.id,
+          })
+        } catch (e) {
+          console.error(`[direct-publish] RFR hook threw (holding at RFR): ${e instanceof Error ? e.message : String(e)}`)
+          directAutoPublish = { mode: 'rfr', action: 'held', storyId: String(result.storyId) }
+        }
+      }
+      // ── END RULE 4 standalone hook ────────────────────────────────────────
+
       const { data: updatedJob, error: updateError } = await supabase
         .from('production_jobs')
         .update({
@@ -12287,6 +12334,7 @@ export async function POST(req: NextRequest) {
         completedAt,
         readyForReview: result.state.readyForReview,
         storyPromotionStatus,
+        directAutoPublish,
         logs,
       })
     }
