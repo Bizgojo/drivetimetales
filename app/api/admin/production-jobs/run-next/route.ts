@@ -18,6 +18,7 @@ import { syncPremiseIndexForTransition } from '@/lib/premiseIndex'
 import { verifyArtifactHttp } from '@/lib/artifactGate'
 import { runHookGateForStory, detectBelleQualityRepairEmpty } from '@/lib/hookGate'
 import { runStoryQualityGate } from '@/lib/storyQualityGate'
+import { checkRuntimeVsBrief, parseBriefRuntimeToSecs, RUNTIME_GATE_ID } from '@/lib/runtimeGate'
 import { runGarbleGate } from '@/lib/garbleGate'
 import { parseScriptPositions } from '@/lib/scriptLineIndex'
 // GATE 4 (GATE-GAPS-SPEC-20261004 §4): wire the existing deterministic duplicate-segment
@@ -11512,6 +11513,135 @@ export async function POST(req: NextRequest) {
       }
       // ── END HOOK-GATE-001 ─────────────────────────────────────────────────
 
+      // ── RUNTIME-GATE-001: runtime-vs-brief tolerance (±10%) ───────────────
+      // Decision gap2-runtime-tolerance-oct11-1408. Runs BETWEEN HOOK-GATE-001
+      // and QUALITY-GATE-001. Pure check lives in lib/runtimeGate.ts.
+      // Measured mismatch → job failed + needs_attention park (no autonomous
+      // repair: a length mismatch needs editorial judgment, not a rewrite).
+      // Unmeasured inputs → persistent skipped marker (state_json.runtimeGate
+      // + warn + pipeline log) and continue — never a silent skip, never
+      // strand jobs on missing telemetry.
+      {
+        const stateForRuntime = result.state && typeof result.state === 'object'
+          ? result.state as Record<string, unknown>
+          : {}
+        const renderMix = (stateForRuntime as any).renderFinalMix
+        const actualSecs = renderMix && typeof renderMix === 'object'
+          ? (renderMix as any).durationSecs
+          : null
+
+        const { data: storyForRuntime } = await supabase
+          .from('stories')
+          .select('duration_mins, duration_label, brief_json')
+          .eq('id', result.storyId)
+          .single()
+
+        const briefSecs = parseBriefRuntimeToSecs(
+          (storyForRuntime as any)?.duration_mins,
+          (storyForRuntime as any)?.brief_json?.runtime ?? (storyForRuntime as any)?.duration_label,
+        )
+
+        const runtimeCheck = checkRuntimeVsBrief(actualSecs, briefSecs)
+
+        if (runtimeCheck.skipped) {
+          const skippedState = {
+            ...stateForRuntime,
+            runtimeGate: {
+              status: 'skipped',
+              reason: runtimeCheck.skipReason,
+              actualSecs: runtimeCheck.actualSecs,
+              briefSecs: runtimeCheck.briefSecs,
+              at: nowIso(),
+            },
+          }
+          const runtimeSkipLogs = appendLog({ ...lockedJob, logs }, `RUNTIME-GATE-001: skipped — ${runtimeCheck.skipReason}`, {
+            storyId: result.storyId,
+            gate: RUNTIME_GATE_ID,
+            reason: runtimeCheck.skipReason,
+          })
+          await supabase
+            .from('production_jobs')
+            .update({
+              story_id: result.storyId,
+              state_json: skippedState,
+              logs: runtimeSkipLogs,
+            })
+            .match(ownedJobFence(lockedJob, lockHolderId))
+          console.warn(`[run-next] RUNTIME-GATE-001 skipped for ${result.storyId}: ${runtimeCheck.skipReason}`)
+          result.state = skippedState
+        } else if (!runtimeCheck.pass) {
+          const pct = ((runtimeCheck.deviationPct ?? 0) * 100).toFixed(1)
+          const mismatchMsg = `RUNTIME-GATE-001: mix runtime ${runtimeCheck.actualSecs}s vs brief ${runtimeCheck.briefSecs}s (${pct}% deviation, tolerance ±10%)`
+          const runtimeErrorJson = {
+            kind: 'runtime_brief_mismatch',
+            gate: RUNTIME_GATE_ID,
+            step: 'complete_story_package',
+            storyId: result.storyId,
+            actualSecs: runtimeCheck.actualSecs,
+            briefSecs: runtimeCheck.briefSecs,
+            deviationPct: runtimeCheck.deviationPct,
+            tolerance: runtimeCheck.tolerance,
+            message: mismatchMsg,
+            at: nowIso(),
+          }
+          const runtimeLogs = appendLog({ ...lockedJob, logs }, mismatchMsg, {
+            storyId: result.storyId,
+            gate: RUNTIME_GATE_ID,
+            actualSecs: runtimeCheck.actualSecs,
+            briefSecs: runtimeCheck.briefSecs,
+          })
+          await supabase
+            .from('stories')
+            .update({
+              needs_attention: true,
+              needs_attention_reason: `${mismatchMsg} — parked for attention (no autonomous repair for length mismatch).`.slice(0, 1000),
+              needs_attention_at: nowIso(),
+              updated_at: nowIso(),
+            })
+            .eq('id', result.storyId)
+          await supabase
+            .from('production_jobs')
+            .update({
+              story_id: result.storyId,
+              status: 'failed',
+              current_step: 'runtime_gate_failed',
+              state_json: {
+                ...stateForRuntime,
+                runtimeGate: {
+                  status: 'failed',
+                  actualSecs: runtimeCheck.actualSecs,
+                  briefSecs: runtimeCheck.briefSecs,
+                  deviationPct: runtimeCheck.deviationPct,
+                  at: nowIso(),
+                },
+              },
+              error_json: runtimeErrorJson,
+              logs: runtimeLogs,
+              locked_at: null,
+              locked_by: null,
+            })
+            .match(ownedJobFence(lockedJob, lockHolderId))
+          return NextResponse.json({
+            success: false,
+            jobId: lockedJob.id,
+            currentStep: step,
+            currentStep_after: 'runtime_gate_failed',
+            status: 'failed',
+            storyId: result.storyId,
+            gate: RUNTIME_GATE_ID,
+            actualSecs: runtimeCheck.actualSecs,
+            briefSecs: runtimeCheck.briefSecs,
+            deviationPct: runtimeCheck.deviationPct,
+            error: mismatchMsg,
+          }, { status: 422 })
+        } else {
+          console.log(
+            `[run-next] RUNTIME-GATE-001 PASS for ${result.storyId}: actual=${runtimeCheck.actualSecs}s brief=${runtimeCheck.briefSecs}s`,
+          )
+        }
+      }
+      // ── END RUNTIME-GATE-001 ──────────────────────────────────────────────
+
       // ── STEP 10 QUALITY GATE (AUTO-REWRITE LOOP) ────────────────────────
       // Standalone only (series returns earlier in this block).
       // publish (≥24): continue to ready_for_review.
@@ -11519,15 +11649,75 @@ export async function POST(req: NextRequest) {
       //   state_json.rewriteAttempts — 0-indexed; incremented before each rewrite.
       //   state_json.qualityGateHistory — records each attempt's score + dimensions.
       //   After 3 failed rewrites: needs_attention=true, stop cleanly (no Marc ping).
-      // tooling error: fail-open, log and continue (never block on broken judge).
+      // tooling error: FAIL-CLOSED (decision gap2-fail-closed-oct11-1408) —
+      // park for attention, never advance unjudged to ready_for_review.
       if (result.storyId) {
         const qualityResult = await runStoryQualityGate(result.storyId)
 
         if (qualityResult.error) {
-          // Tooling failure — fail open
-          console.warn(
-            `[run-next] quality-gate tooling error for ${result.storyId}: ${qualityResult.error} — continuing to ready_for_review`,
-          )
+          // Tooling failure — fail closed. The story must NOT advance to RFR
+          // unjudged. Park for attention: no rewrite-loop burn (rewriting an
+          // unjudged script would destroy evidence), no silent pass.
+          const toolingMsg = `QUALITY-GATE-001 tooling error — story parked, not advanced to ready_for_review: ${qualityResult.error}`
+          console.warn(`[run-next] ${toolingMsg} (story=${result.storyId})`)
+
+          const stateForTooling = result.state && typeof result.state === 'object'
+            ? result.state as Record<string, unknown>
+            : {}
+
+          await supabase
+            .from('stories')
+            .update({
+              needs_attention: true,
+              needs_attention_reason: toolingMsg.slice(0, 1000),
+              needs_attention_at: nowIso(),
+              updated_at: nowIso(),
+            })
+            .eq('id', result.storyId)
+
+          const toolingState = {
+            ...stateForTooling,
+            qualityGateToolingError: {
+              error: qualityResult.error,
+              at: nowIso(),
+            },
+          }
+          const toolingLogs = appendLog({ ...lockedJob, logs }, `Quality-gate tooling error — fail-closed park: ${qualityResult.error}`, {
+            storyId: result.storyId,
+            gate: 'QUALITY-GATE-001',
+          })
+          await supabase
+            .from('production_jobs')
+            .update({
+              story_id: result.storyId,
+              status: 'failed',
+              current_step: 'quality_gate_tooling_error',
+              state_json: toolingState,
+              error_json: {
+                kind: 'quality_gate_tooling_error',
+                gate: 'QUALITY-GATE-001',
+                step: 'complete_story_package',
+                storyId: result.storyId,
+                toolingError: qualityResult.error,
+                message: toolingMsg,
+                at: nowIso(),
+              },
+              logs: toolingLogs,
+              locked_at: null,
+              locked_by: null,
+            })
+            .match(ownedJobFence(lockedJob, lockHolderId))
+
+          return NextResponse.json({
+            success: false,
+            jobId: lockedJob.id,
+            currentStep: step,
+            currentStep_after: 'quality_gate_tooling_error',
+            status: 'failed',
+            storyId: result.storyId,
+            gate: 'QUALITY-GATE-001',
+            error: toolingMsg,
+          }, { status: 422 })
         } else if (qualityResult.recommendation !== 'publish') {
           // Score <24 (review 22-23 or block <22) — auto-rewrite loop
           const stateForRewrite = result.state && typeof result.state === 'object'
@@ -11985,6 +12175,21 @@ export async function POST(req: NextRequest) {
             .update({ status: 'failed' })
             .eq('id', lockedJob.queue_item_id)
         }
+
+        // GAP2-NOTIFY (decision gap2-notify-oct11-1408): exhausted RFR repair
+        // must notify Marc via existing channels. The job failure above
+        // surfaces in health-check + hal-report (marc_required=true); the
+        // story flag makes it enumerable in content-approval and blocks
+        // re-dispatch until Marc clears it.
+        await supabase
+          .from('stories')
+          .update({
+            needs_attention: true,
+            needs_attention_reason: `RFR verification failed (${failureKind})${rfrRepairAttempts >= MAX_RFR_RETRIES ? ' after exhausting autonomous narrator repair' : ''} — parked for attention.`.slice(0, 1000),
+            needs_attention_at: nowIso(),
+            updated_at: nowIso(),
+          })
+          .eq('id', result.storyId)
 
         return NextResponse.json({
           success: false,
