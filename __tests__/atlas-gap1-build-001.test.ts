@@ -32,7 +32,7 @@ import {
 // Every terminal call appends to `ops` so tests can assert zero-write paths.
 // ---------------------------------------------------------------------------
 
-type OpLog = Array<{ table: string; op: string }>
+type OpLog = Array<{ table: string; op: string; filters?: Array<{ col: string; val: any }> }>
 
 function resolveResponse(table: string, op: string, responses: Record<string, any>) {
   const v = responses[`${table}:${op}`]
@@ -45,18 +45,25 @@ function resolveResponse(table: string, op: string, responses: Record<string, an
 // (builders are thenable — the audit inserts rely on this).
 function chainFor(table: string, op: string, ops: OpLog, responses: Record<string, any>) {
   const terminal = new Set(['maybeSingle', 'single'])
+  const filters: Array<{ col: string; val: any }> = []
   const handler: ProxyHandler<any> = {
     get(_t, prop: string) {
+      if (prop === 'eq') {
+        return (col: string, val: any) => {
+          filters.push({ col, val })
+          return proxy
+        }
+      }
       if (terminal.has(prop)) {
         return async () => {
-          ops.push({ table, op })
+          ops.push({ table, op, filters: [...filters] })
           return resolveResponse(table, op, responses)
         }
       }
       // Thenable: `await supabase.from(t).insert(...)` executes the query.
       if (prop === 'then') {
         return (resolve: (v: any) => void) => {
-          ops.push({ table, op })
+          ops.push({ table, op, filters: [...filters] })
           resolve(resolveResponse(table, op, responses))
         }
       }
@@ -155,12 +162,20 @@ describe('requireStrategosToken', () => {
 describe('verifyBlueprintApproval', () => {
   test('blank ref → fail-closed, zero DB writes', async () => {
     const { ops, client } = makeSupabase()
-    const r = await verifyBlueprintApproval(client, '  ')
+    const r = await verifyBlueprintApproval(client, '  ', 'q1')
     expect(r.ok).toBe(false)
     expect(ops).toEqual([])
   })
 
-  test('approved row → ok', async () => {
+  // CLAUDE-FIX (N-A1, 2026-10-11): queueItemId is now required, not optional.
+  test('blank queueItemId → fail-closed, zero DB writes', async () => {
+    const { ops, client } = makeSupabase()
+    const r = await verifyBlueprintApproval(client, 'bp-1', '  ')
+    expect(r.ok).toBe(false)
+    expect(ops).toEqual([])
+  })
+
+  test('approved row → ok, query scoped by BOTH queue_item_id and blueprint_ref', async () => {
     const { ops, client } = makeSupabase({
       [`${BLUEPRINT_APPROVALS_TABLE}:select`]: {
         data: {
@@ -172,16 +187,46 @@ describe('verifyBlueprintApproval', () => {
         error: null,
       },
     })
-    const r = await verifyBlueprintApproval(client, 'bp-1')
+    const r = await verifyBlueprintApproval(client, 'bp-1', 'q1')
     expect(r).toEqual({ ok: true })
-    expect(ops).toEqual([{ table: BLUEPRINT_APPROVALS_TABLE, op: 'select' }])
+    expect(ops).toHaveLength(1)
+    const filters = ops[0].filters || []
+    expect(filters).toEqual(
+      expect.arrayContaining([
+        { col: 'queue_item_id', val: 'q1' },
+        { col: 'blueprint_ref', val: 'bp-1' },
+        { col: 'status', val: APPROVED_STATUS },
+      ])
+    )
+  })
+
+  // CLAUDE-FIX (N-A1, 2026-10-11) regression: the original build queried by
+  // blueprint_ref alone, so an approval minted for queue item q1 would also
+  // verify a dispatch of a DIFFERENT queue item (q2) reusing the same ref.
+  // The mock here models the real unique partial index: a row only matches
+  // when BOTH columns match the filter, same as Postgres would enforce.
+  test('approval for a DIFFERENT queue item does not verify this one (cross-item reuse blocked)', async () => {
+    const approvalRow = {
+      id: 'a1',
+      queue_item_id: 'q1', // approved for q1 only
+      blueprint_ref: 'bp-shared',
+      status: APPROVED_STATUS,
+    }
+    const { client } = makeSupabase({
+      [`${BLUEPRINT_APPROVALS_TABLE}:select`]: () => ({ data: null, error: null }), // q2 has no row
+    })
+    // Verifying q2 against the same blueprintRef must fail — there is no
+    // approval row for (q2, bp-shared), only for (q1, bp-shared).
+    const r = await verifyBlueprintApproval(client, approvalRow.blueprint_ref, 'q2')
+    expect(r.ok).toBe(false)
+    expect(r.reason).toMatch(/not approved/)
   })
 
   test('no approved row → fail-closed with reason', async () => {
     const { client } = makeSupabase({
       [`${BLUEPRINT_APPROVALS_TABLE}:select`]: { data: null, error: null },
     })
-    const r = await verifyBlueprintApproval(client, 'bp-nope')
+    const r = await verifyBlueprintApproval(client, 'bp-nope', 'q1')
     expect(r.ok).toBe(false)
     expect(r.reason).toMatch(/not approved/)
   })
@@ -193,7 +238,7 @@ describe('verifyBlueprintApproval', () => {
         error: { message: 'relation does not exist' },
       },
     })
-    const r = await verifyBlueprintApproval(client, 'bp-1')
+    const r = await verifyBlueprintApproval(client, 'bp-1', 'q1')
     expect(r.ok).toBe(false)
     expect(r.reason).toMatch(/unavailable/)
   })

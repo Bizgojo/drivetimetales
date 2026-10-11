@@ -132,18 +132,29 @@ export function requireStrategosToken(req: Request): { ok: boolean; error?: stri
  * Server-side blueprint approval verification against the dedicated table.
  * Fail-closed: any lookup failure, empty ref, or no active approved row
  * → {ok:false}. Never fail open.
+ *
+ * CLAUDE-FIX (N-A1, 2026-10-11): scoped by BOTH queue_item_id AND
+ * blueprint_ref, matching the table's own unique partial index
+ * `(queue_item_id, blueprint_ref) WHERE status='approved'`. The original
+ * build queried by blueprint_ref alone, so an approval minted for queue
+ * item A would also verify a dispatch of queue item B reusing the same
+ * blueprint_ref — an approval is per (item, ref), not global to a ref.
  */
 export async function verifyBlueprintApproval(
   supabase: any,
-  blueprintRef: string
+  blueprintRef: string,
+  queueItemId: string
 ): Promise<{ ok: boolean; reason?: string }> {
   const ref = String(blueprintRef || '').trim()
+  const itemId = String(queueItemId || '').trim()
   if (!ref) return { ok: false, reason: 'blueprintRef required' }
+  if (!itemId) return { ok: false, reason: 'queueItemId required' }
   let query: any
   try {
     query = await supabase
       .from(BLUEPRINT_APPROVALS_TABLE)
       .select('id,queue_item_id,blueprint_ref,status,approved_by,approved_at')
+      .eq('queue_item_id', itemId)
       .eq('blueprint_ref', ref)
       .eq('status', APPROVED_STATUS)
       .order('approved_at', { ascending: false })
@@ -156,7 +167,7 @@ export async function verifyBlueprintApproval(
     return { ok: false, reason: `blueprint verification unavailable: ${query.error.message || 'lookup failed'}` }
   }
   if (!query?.data) {
-    return { ok: false, reason: `blueprint ${ref} is not approved` }
+    return { ok: false, reason: `blueprint ${ref} is not approved for queue item ${itemId}` }
   }
   return { ok: true }
 }
@@ -284,7 +295,7 @@ export async function authorizeAndDispatchQueueItem(
   if (!blueprintRef) throw new DispatchError('blueprintRef required', 400)
 
   // 1. Blueprint verification — before any state mutation.
-  const v = await verifyBlueprintApproval(supabase, blueprintRef)
+  const v = await verifyBlueprintApproval(supabase, blueprintRef, queueItemId)
   if (!v.ok) {
     // Rejected dispatch attempts are auditable too (best-effort: the table
     // has no FK, so this write is safe even for unknown item ids).

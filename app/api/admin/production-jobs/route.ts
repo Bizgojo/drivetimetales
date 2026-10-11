@@ -271,7 +271,7 @@ export async function POST(req: NextRequest) {
       if (!blueprintRef) {
         return bad('blueprintRef required: item is not pre-authorized', 400)
       }
-      const v = await verifyBlueprintApproval(supabase, blueprintRef)
+      const v = await verifyBlueprintApproval(supabase, blueprintRef, queueItemId)
       if (!v.ok) {
         return NextResponse.json({ success: false, error: v.reason || 'blueprint not approved' }, { status: 422 })
       }
