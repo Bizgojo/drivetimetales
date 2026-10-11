@@ -65,3 +65,59 @@ provider, key revocation/401s, Vercel account-level failures.
 - OpenClaw cron run failures (gateway logs / `openclaw tasks`)
 - watchdog.log (recovery half's own actions — detect recovery loops: >3
   restarts or cooldown-clears in 30 min = escalate to MARC-ACTION 2a check)
+
+---
+
+## Gap-3 — Orion liveness watcher (Atlas; Marc decisions 2026-10-11 14:11 EDT)
+
+Owner: Marc. Implementation: `scripts/watchdog/orion-liveness.sh` +
+launchd plist `scripts/watchdog/com.endlesstales.orion-liveness.plist`.
+Review: Lyra reviews before any merge. Branch: `feat/atlas-gap3-liveness-oct11`.
+
+### Signal
+- Heartbeat file: `~/.openclaw/workspace-orion/memory/heartbeat-state.json`
+  (written by Orion heartbeats; contains `lastChecks` map of epoch timestamps).
+- **Stale** = file mtime older than threshold AND newest `lastChecks` value
+  older than threshold. Both must be stale (avoids false positives from a
+  writer that touches the file without updating content, or vice versa).
+- Missing file = no signal = treated as stale (alert only; watcher never
+  creates or repairs the file).
+- Unparseable `lastChecks` = newest-check age treated as infinite (mtime
+  alone decides freshness only if mtime is fresh; both-stale rule still applies).
+- Un-stat-able file = log error, NO alert, exit 0 (needs a human; do not spam).
+
+### Threshold / cadence / alert (Marc decisions, authoritative)
+- Threshold: **45 min** (`STALE_MINUTES`, env-overridable).
+  Decision: gap3-threshold-oct11-1411.
+- Cadence: **5 min** via launchd `StartInterval 300` (+ `RunAtLoad`).
+  Decision: gap3-cadence-oct11-1411.
+- Alert: critical Telegram via **direct Bot API** (`TELEGRAM_BOT_TOKEN` +
+  `TELEGRAM_CHAT_ID` env; independent of the OpenClaw gateway — same
+  mechanism as the alerting watchdog). Template prefix: `🔴 MARC ACTION —
+  Orion silent`. Message carries age detail, threshold, cooldown, and the
+  no-restart disclaimer.
+- **Quiet-hours BYPASS: this check notifies immediately at any hour.**
+  Orion-silence is critical (Marc decision gap3-quiet-oct11-1411). No other
+  alert class gains quiet-hours bypass from this section.
+
+### Cooldown
+- **30-min re-alert cooldown while still dead** (`COOLDOWN_MINUTES`): first
+  stale detection alerts (and stamps `orion-liveness.state` with the alert
+  epoch); further runs suppress until 30 min elapse, then re-alert.
+- Fresh signal deletes the state file (next death alerts immediately).
+- Failed Telegram send does NOT stamp cooldown (retry next run).
+- Missing credentials (env unset) logs `ALERT NOT SENT` and DOES stamp state
+  (operator must provision creds; no crash, no spam beyond cooldown).
+
+### Sentinel
+- `MONITORING_PAUSED` file at
+  `~/.openclaw/workspace-orion/memory/MONITORING_PAUSED`: when present, the
+  watcher logs one skip line and exits silently — no alert, no state change.
+  Same sentinel as the rest of monitoring; respected before all other logic.
+
+### No-recovery rule
+- Watcher **NEVER restarts Orion**, never clears cooldowns, never writes the
+  DB, never mutates any state except its own `orion-liveness.state` +
+  `orion-liveness.log` (Marc rule 2026-07-10). Detect → alert → exit.
+- Plain bash + python3 + curl. **No AI dependency** (must work when models
+  are down).
