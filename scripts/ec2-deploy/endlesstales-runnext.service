@@ -1,0 +1,16 @@
+[Unit]
+Description=Endless Tales run-next loop (Phase 1 autonomy — HOLD until Marc's go-live word)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/drivetimetales
+ExecStart=/usr/bin/env bash %h/drivetimetales/scripts/ec2-deploy/run-next-loop.sh
+Restart=always
+RestartSec=10
+StandardOutput=append:%h/drivetimetales/scripts/ec2-deploy/run-next-loop.log
+StandardError=append:%h/drivetimetales/scripts/ec2-deploy/run-next-loop.log
+
+[Install]
+WantedBy=multi-user.target
