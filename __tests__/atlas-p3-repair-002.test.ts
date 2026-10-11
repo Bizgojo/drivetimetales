@@ -14,6 +14,8 @@
 import { sweepStaleEtMixDirs, ET_MIX_PREFIX } from '@/lib/tmpSpace'
 import {
   classifyRunNextFetchError,
+  serializeFetchErrorCause,
+  alternateBaseUrl,
   RUN_NEXT_FETCH_HEARTBEAT_MS,
 } from '@/lib/pipeline-runner/runner'
 import { classifyFailure } from '@/lib/pipeline-runner/classify'
@@ -255,5 +257,67 @@ describe('P3-4: download + ffmpeg classifiers', () => {
   test('timeout budgets have sane defaults', () => {
     expect(RENDER_CHUNK_TIMEOUT_MS).toBe(120_000)
     expect(RENDER_MIX_TIMEOUT_MS).toBe(600_000)
+  })
+})
+
+describe('P3-5: ATLAS-SCORE-VALIDATE-001 fetch cause chain + alternate host', () => {
+  test('nested TimeoutError cause classifies as timeout even under bare "fetch failed"', () => {
+    const timeoutCause = new Error('Connect Timeout Error')
+    timeoutCause.name = 'ConnectTimeoutError'
+    const top = new TypeError('fetch failed')
+    ;(top as { cause?: unknown }).cause = timeoutCause
+    expect(classifyRunNextFetchError(top, 'score_validate_package', 90_000).kind).toBe('timeout')
+  })
+
+  test('nested ECONNRESET cause classifies as connection with errno visible', () => {
+    const reset = new Error('read ECONNRESET') as Error & { code?: string }
+    reset.code = 'ECONNRESET'
+    const top = new TypeError('fetch failed')
+    ;(top as { cause?: unknown }).cause = reset
+    const c = classifyRunNextFetchError(top, 'score_validate_package', 90_000)
+    expect(c.kind).toBe('connection')
+    const frames = serializeFetchErrorCause(top)
+    expect(frames.some((f) => f.code === 'ECONNRESET')).toBe(true)
+  })
+
+  test('bare "fetch failed" with no cause still classifies as connection', () => {
+    expect(classifyRunNextFetchError(new TypeError('fetch failed'), 's', 1).kind).toBe('connection')
+  })
+
+  test('serializeFetchErrorCause caps depth, truncates messages, handles cycles', () => {
+    const a = new Error('a') as Error & { cause?: unknown }
+    const b = new Error('b')
+    a.cause = b
+    b.cause = a // cycle
+    const frames = serializeFetchErrorCause(a)
+    expect(frames.length).toBeGreaterThanOrEqual(2)
+    expect(frames.length).toBeLessThanOrEqual(8)
+    const long = serializeFetchErrorCause(new Error('x'.repeat(2000)))
+    expect(long[0].message.length).toBeLessThanOrEqual(500)
+  })
+
+  test('connection reason in classifyFailure carries the underlying cause + retry host', () => {
+    const c = classifyFailure(
+      {
+        fetchErrorKind: 'connection',
+        fetchErrorCause: [
+          { name: 'TypeError', message: 'fetch failed' },
+          { name: 'Error', message: 'read ECONNRESET', code: 'ECONNRESET' },
+        ],
+        fetchRetryHost: 'https://drivetimetales.vercel.app',
+        currentStep: 'score_validate_package',
+      },
+      { current_step: 'score_validate_package' },
+    )
+    expect(c.kind).toBe('transient')
+    expect(c.needsMarc).toBe(false)
+    expect(c.reason).toContain('ECONNRESET')
+    expect(c.reason).toContain('drivetimetales.vercel.app')
+  })
+
+  test('alternateBaseUrl never returns the primary host', () => {
+    expect(alternateBaseUrl('https://app.endless-tales.com')).toBe('https://drivetimetales.vercel.app')
+    expect(alternateBaseUrl('https://drivetimetales.vercel.app')).toBe('https://app.endless-tales.com')
+    expect(alternateBaseUrl('http://127.0.0.1:3000')).toBe('https://app.endless-tales.com')
   })
 })

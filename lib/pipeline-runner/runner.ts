@@ -477,9 +477,54 @@ export type RunNextFetchErrorKind = 'timeout' | 'killed' | 'oom' | 'connection' 
 export const RUN_NEXT_FETCH_HEARTBEAT_MS = 60_000
 
 /**
+ * ATLAS-SCORE-VALIDATE-001 (2026-10-11): serialize the FULL .cause chain of a
+ * fetch error. classifyRunNextFetchError used to keep only the top-level
+ * message ("fetch failed") and String() the first cause — the socket-level
+ * errno (ECONNRESET, EAI_AGAIN, …) that distinguishes a dead route from a
+ * slow server was discarded, leaving identical "fetch failed" entries with
+ * no actionable detail (Extraction job e910b19d, Oct 11).
+ *
+ * Pure (no I/O) — unit-tested in __tests__/atlas-p3-repair-002.test.ts.
+ */
+export type FetchErrorCauseFrame = { name: string; message: string; code?: string }
+export function serializeFetchErrorCause(err: unknown): FetchErrorCauseFrame[] {
+  const frames: FetchErrorCauseFrame[] = []
+  const seen = new Set<unknown>()
+  const chains: unknown[] = [err]
+  while (chains.length > 0 && frames.length < 8) {
+    const cur = chains.shift()
+    if (cur == null || seen.has(cur)) continue
+    seen.add(cur)
+    if (cur instanceof Error) {
+      const code = (cur as { code?: unknown }).code
+      frames.push({
+        name: String(cur.name || 'Error'),
+        message: String(cur.message || '').slice(0, 500),
+        ...(typeof code === 'string' && code ? { code } : {}),
+      })
+      if (frames.length >= 8) break
+      const agg = (cur as { errors?: unknown }).errors
+      if (Array.isArray(agg)) {
+        for (const sub of agg.slice(0, 4)) chains.push(sub)
+      }
+      const cause = (cur as { cause?: unknown }).cause
+      if (cause != null) chains.push(cause)
+    } else {
+      frames.push({ name: typeof cur, message: String(cur).slice(0, 500) })
+    }
+  }
+  return frames
+}
+
+/**
  * ATLAS-P3-REPAIR-002: distinguish WHY a run-next fetch failed so the
  * failure path can tell a slow render (timeout — likely transient) from a
  * dead worker (connection) from resource exhaustion (kill/OOM).
+ *
+ * ATLAS-SCORE-VALIDATE-001: the haystack now covers EVERY level of the
+ * .cause chain (name + message + code), so a nested TimeoutError /
+ * ECONNRESET is classified correctly even when the top-level message is a
+ * bare "fetch failed".
  *
  * Pure (no I/O) — unit-tested in __tests__/atlas-p3-repair-002.test.ts.
  */
@@ -488,14 +533,12 @@ export function classifyRunNextFetchError(
   step: string | null,
   budgetMs: number,
 ): { kind: RunNextFetchErrorKind; message: string } {
+  const frames = serializeFetchErrorCause(err)
   const msg = err instanceof Error ? err.message : String(err)
-  const name = err instanceof Error ? err.name : ''
-  const causeMsg = err instanceof Error && (err as { cause?: unknown }).cause != null
-    ? String((err as { cause?: unknown }).cause)
-    : ''
-  const hay = `${name} ${msg} ${causeMsg}`
+  const hay = frames.map((f) => `${f.name} ${f.message} ${f.code ?? ''}`).join(' | ')
+  const topName = err instanceof Error ? err.name : ''
   const stepLabel = step ?? 'unknown_step'
-  if (/TimeoutError|AbortError|aborted|exceeded.*timeout|timed out/i.test(hay) || /timeout/i.test(name)) {
+  if (/TimeoutError|AbortError|aborted|exceeded.*timeout|timed out/i.test(hay) || /timeout/i.test(topName)) {
     return {
       kind: 'timeout',
       message: `run-next fetch timeout: step "${stepLabel}" exceeded its ${budgetMs}ms abort budget (server may still be rendering; job lock decides ownership).`,
@@ -513,13 +556,29 @@ export function classifyRunNextFetchError(
   return { kind: 'unknown', message: `run-next fetch error at step "${stepLabel}": ${msg}` }
 }
 
+/**
+ * ATLAS-SCORE-VALIDATE-001 (2026-10-11): alternate host for the one-shot
+ * connection-failure retry in callRunNext. If the primary host is
+ * unreachable from the runner (fast transport death, server likely never
+ * reached), the other production host may still route. Returns the host
+ * that is NOT primary — never the same host twice.
+ *
+ * Pure (no I/O) — unit-tested in __tests__/atlas-p3-repair-002.test.ts.
+ */
+export function alternateBaseUrl(primary: string): string {
+  const canonical = 'https://app.endless-tales.com'
+  const fallback = 'https://drivetimetales.vercel.app'
+  if (primary.replace(/\/+$/, '') === canonical) return fallback
+  return canonical
+}
+
 async function callRunNext(
   jobId: string,
   holderId: string,
   currentStep: string | null,
   opts?: { supabase?: SupabaseClient },
 ): Promise<RunNextResult> {
-  const url = `${baseUrl()}/api/admin/production-jobs/run-next`
+  const primaryHost = baseUrl()
   // ATL-RUNNER-TIMEOUT-001: per-step abort budget (600s for final-mix
   // renders, 90s default). See runNextTimeoutMs above.
   const budgetMs = runNextTimeoutMs(currentStep)
@@ -538,29 +597,74 @@ async function callRunNext(
           .catch(() => {/* non-fatal */})
       }, RUN_NEXT_FETCH_HEARTBEAT_MS)
     : undefined
+  const doPost = (host: string): Promise<Response> => fetch(`${host}/api/admin/production-jobs/run-next`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ jobId, holderId }),
+    signal: AbortSignal.timeout(budgetMs),
+  })
+  // ATLAS-SCORE-VALIDATE-001: the full cause chain goes to Vercel logs
+  // (console.error) AND onto the payload (fetchErrorCause) so job logs carry
+  // the socket-level errno instead of a bare "fetch failed".
+  const failPayload = (err: unknown, host: string, extra?: Record<string, unknown>): RunNextResult => {
+    const classified = classifyRunNextFetchError(err, currentStep, budgetMs)
+    const rawMsg = err instanceof Error ? err.message : String(err)
+    const cause = serializeFetchErrorCause(err)
+    console.error(
+      `[run-next-fetch] ${classified.kind} step=${currentStep ?? '?'} job=${jobId.slice(0, 8)} host=${host}`,
+      JSON.stringify(cause),
+    )
+    return {
+      ok: false,
+      httpStatus: 0,
+      payload: {
+        success: false,
+        message: classified.message,
+        bodySnippet: rawMsg,
+        fetchErrorKind: classified.kind,
+        fetchErrorCause: cause,
+        fetchHost: host,
+        fetchStep: currentStep,
+        fetchTimeoutMs: budgetMs,
+        ...(extra ?? {}),
+      },
+    }
+  }
   try {
     let response: Response
     try {
-      response = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ jobId, holderId }),
-        signal: AbortSignal.timeout(budgetMs),
-      })
+      response = await doPost(primaryHost)
     } catch (err: unknown) {
       const classified = classifyRunNextFetchError(err, currentStep, budgetMs)
-      const rawMsg = err instanceof Error ? err.message : String(err)
-      return {
-        ok: false,
-        httpStatus: 0,
-        payload: {
-          success: false,
-          message: classified.message,
-          bodySnippet: rawMsg,
-          fetchErrorKind: classified.kind,
-          fetchStep: currentStep,
-          fetchTimeoutMs: budgetMs,
-        },
+      // Connection-kind = fast transport death; the server likely never saw
+      // the request (lock serializes any duplicate that did arrive — a 409
+      // or a second execution of an idempotent step read is harmless). One
+      // retry via the alternate production host before recording failure.
+      if (classified.kind === 'connection') {
+        const alt = alternateBaseUrl(primaryHost)
+        if (alt !== primaryHost) {
+          try {
+            response = await doPost(alt)
+          } catch (err2: unknown) {
+            const first = failPayload(err, primaryHost)
+            const second = failPayload(err2, alt)
+            const p1 = first.payload
+            return {
+              ...second,
+              payload: {
+                ...second.payload,
+                message: `${String(p1.message)} (retry via ${alt} also failed: ${String(second.payload.message)})`,
+                fetchErrorCause: p1.fetchErrorCause,
+                fetchRetryHost: alt,
+                fetchRetryCause: second.payload.fetchErrorCause,
+              },
+            }
+          }
+        } else {
+          return failPayload(err, primaryHost)
+        }
+      } else {
+        return failPayload(err, primaryHost)
       }
     }
 
@@ -802,7 +906,13 @@ export async function runPipelineLoop(
           const attempts = retryState.get(key) ?? 0
           if (attempts < MAX_TRANSIENT_RETRIES_PER_KEY) {
             retryState.set(key, attempts + 1)
-            await sleep(TRANSIENT_RETRY_SLEEP_MS)
+            // ATLAS-SCORE-VALIDATE-001: fetch-level failures (httpStatus 0)
+            // mean the 4 cron workers all died in lock-step on the same tick
+            // (Extraction e910b19d, Oct 11 — identical failures <300ms apart).
+            // Jitter the retry so workers desynchronize instead of re-hammering
+            // run-next simultaneously on the next attempt.
+            const fetchDead = (result.payload?.fetchErrorKind as string | undefined) != null
+            await sleep(TRANSIENT_RETRY_SLEEP_MS + (fetchDead ? Math.floor(Math.random() * 5000) : 0))
             continue
           }
         }
