@@ -5,6 +5,8 @@ Wants=network-online.target
 
 [Service]
 Type=simple
+User=ubuntu
+Group=ubuntu
 WorkingDirectory=%h/drivetimetales
 ExecStart=/usr/bin/env node %h/drivetimetales/scripts/render-worker/render-worker.mjs
 Restart=always

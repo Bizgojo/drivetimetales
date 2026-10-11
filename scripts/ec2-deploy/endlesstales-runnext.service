@@ -5,6 +5,8 @@ Wants=network-online.target
 
 [Service]
 Type=simple
+User=ubuntu
+Group=ubuntu
 WorkingDirectory=%h/drivetimetales
 ExecStart=/usr/bin/env bash %h/drivetimetales/scripts/ec2-deploy/run-next-loop.sh
 Restart=always
