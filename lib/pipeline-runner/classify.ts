@@ -228,11 +228,21 @@ export function classifyFailure(
     }
   }
   if (pinnedFetchKind === 'killed' || pinnedFetchKind === 'oom' || pinnedFetchKind === 'connection') {
+    // ATLAS-SCORE-VALIDATE-001: surface the socket-level cause (serialized by
+    // serializeFetchErrorCause in the runner) in the job log so the next
+    // "fetch failed" carries its errno instead of a bare top-level message.
+    const causeFrames = Array.isArray(payload?.fetchErrorCause) ? payload.fetchErrorCause : []
+    const causeSummary = causeFrames.length
+      ? ` Underlying: ${causeFrames
+        .map((f: any) => [f?.code, f?.name, f?.message].filter(Boolean).join(' '))
+        .join(' <- ').slice(0, 300)}`
+      : ''
+    const retryHost = payload?.fetchRetryHost ? ` (retry via ${payload.fetchRetryHost} also failed)` : ''
     return {
       kind: 'transient',
       retryable: true,
       needsMarc: false,
-      reason: `run-next fetch ${pinnedFetchKind} at step "${context.step ?? 'unknown'}".`,
+      reason: `run-next fetch ${pinnedFetchKind} at step "${context.step ?? 'unknown'}".${causeSummary}${retryHost}`,
       recommendedAction:
         pinnedFetchKind === 'oom'
           ? 'Runner showed OOM signatures — reduce render concurrency or raise runner memory before retrying.'

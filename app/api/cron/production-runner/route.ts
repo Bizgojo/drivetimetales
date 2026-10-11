@@ -22,6 +22,14 @@ async function handleRunner(request: NextRequest): Promise<NextResponse> {
     { auth: { persistSession: false, autoRefreshToken: false } },
   )
 
+  // ATLAS-SCORE-VALIDATE-001 (2026-10-11): kill-switch. Setting
+  // PRODUCTION_RUNNER_PAUSED=true (Vercel env, no code change) makes all
+  // workers exit immediately so a wedged run-next path stops burning
+  // 1-min ticks + webhook alerts while diagnosing. Default: running.
+  if (process.env.PRODUCTION_RUNNER_PAUSED === 'true') {
+    return NextResponse.json({ success: true, paused: true, message: 'production-runner paused via PRODUCTION_RUNNER_PAUSED' })
+  }
+
   // Each worker gets a stable, unique holderId so per-worker leases don't collide.
   // worker=1/2/3 ensures three parallel runners each claim their own lease row.
   const workerNum = request.nextUrl.searchParams.get('worker') ?? '1'
