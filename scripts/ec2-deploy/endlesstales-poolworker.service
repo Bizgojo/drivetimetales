@@ -10,7 +10,7 @@ Group=ubuntu
 WorkingDirectory=/home/ubuntu/drivetimetales
 ExecStart=/usr/bin/env node /home/ubuntu/drivetimetales/scripts/personalization/pool-worker.mjs
 Restart=always
-RestartSec=5
+RestartSec=900
 Environment=NODE_ENV=production
 StandardOutput=append:/home/ubuntu/drivetimetales/scripts/personalization/pool-worker.log
 StandardError=append:/home/ubuntu/drivetimetales/scripts/personalization/pool-worker.log
