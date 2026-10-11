@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+// GAP1-HARDEN (DRAFT-NOT-FOR-MERGE): shared blueprint gate; see design §4/§6.
+import { verifyBlueprintApproval } from '@/lib/storyQueue/dispatch'
 
 export const runtime = 'nodejs'
 
@@ -255,6 +257,23 @@ export async function POST(req: NextRequest) {
 
     if (!queueItem) {
       return bad('Queue item not found', 404)
+    }
+
+    // GAP1-HARDEN (DRAFT-NOT-FOR-MERGE, feat/atlas-gap1-dispatch-oct11, Lyra review required):
+    // close direct-POST bypass of the audited dispatch path. An item is dispatchable
+    // iff pre-authorized (authorized=true, set only via the atomic dispatch endpoint)
+    // or accompanied by a blueprintRef verifiable inline. See design §4.
+    // TODO(B-1): verifyBlueprintApproval is fail-closed until the approval record exists.
+    const preAuthorized = queueItem.authorized === true
+    if (!preAuthorized) {
+      const blueprintRef = String((body as any).blueprintRef || '').trim()
+      if (!blueprintRef) {
+        return bad('blueprintRef required: item is not pre-authorized', 400)
+      }
+      const v = await verifyBlueprintApproval(supabase, blueprintRef)
+      if (!v.ok) {
+        return NextResponse.json({ success: false, error: v.reason || 'blueprint not approved' }, { status: 422 })
+      }
     }
 
     const { data: existingJob, error: existingJobError } = await supabase
