@@ -361,6 +361,16 @@ export async function maybeDirectPublishStandalone(
   if (!story) {
     return { mode, action: 'held_blocked', storyId: args.storyId, blockers: ['story row not found after RFR promotion'] }
   }
+  // 3-fix N3 (defense-in-depth): the standalone hook must never publish a
+  // series member, even if upstream routing misdispatches one here. Series
+  // episodes publish only as a unit via maybeDirectPublishSeries. Refuse and
+  // hold at RFR — do not rely solely on the caller's routing.
+  const standaloneSeriesId = String((story.series_id as string | null) ?? '').trim()
+  if (standaloneSeriesId) {
+    const blocker = `series member (series_id ${standaloneSeriesId}) routed to standalone hook; holding at ready_for_review — series episodes publish only as a unit via the series hook`
+    console.warn(`[direct-publish] story ${args.storyId} ${blocker}`)
+    return { mode, action: 'held_blocked', storyId: args.storyId, seriesId: standaloneSeriesId, blockers: [blocker] }
+  }
   let siblings: Array<Record<string, unknown>> = []
   const seriesId = String((story.series_id as string | null) ?? '').trim()
   if (seriesId) {
@@ -447,6 +457,22 @@ export async function maybeDirectPublishSeries(
     let firstRemaining = firstAutoPublish
     for (const ep of relevant) {
       const epId = String(ep.id)
+      // 3-fix N2 (Rule 3): re-verify each episode's CURRENT workflow_state
+      // immediately before promoting it. On a partial write failure (or a
+      // concurrent manual publish) an episode may already be live — re-
+      // promoting it would double-write audit rows and split the series.
+      // Already-published episodes are skipped, never re-promoted.
+      let current: Record<string, unknown> | null = null
+      try {
+        current = await fetchStory(db, epId)
+      } catch (e) {
+        throw new Error(`pre-promote re-read failed for episode ${epId}: ${e instanceof Error ? e.message : String(e)}`)
+      }
+      if (current && String(current.workflow_state) === 'published') {
+        console.log(`[direct-publish] series ${args.seriesId}: episode ${epId} already published — skipping re-promotion`)
+        transitions.push(`${epId}:skipped_already_published`)
+        continue
+      }
       const { publishedOn: epAt, transitions: epTransitions } = await promoteStoryToPublished(db, epId, {
         reason,
         firstAutoPublish: firstRemaining,

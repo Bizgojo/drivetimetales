@@ -166,11 +166,21 @@ describe('publish_mode default (Canon Rule 4 initial = direct)', () => {
     await expect(getPublishMode(db as never)).resolves.toBe('rfr')
   })
 
-  test('getPublishMode falls back to direct when the row/table is absent or errors', async () => {
+  test('getPublishMode falls back to direct when the row is absent (pre-migration)', async () => {
     const missing = makeDb({ settingsValue: null })
     await expect(getPublishMode(missing.db as never)).resolves.toBe('direct')
-    const errored = makeDb({ settingsError: 'relation "atlas_settings" does not exist' })
-    await expect(getPublishMode(errored.db as never)).resolves.toBe('direct')
+  })
+
+  // 3-fix N1: a real read error holds at RFR — a transient DB hiccup must
+  // never trigger an unreviewed publish.
+  test('getPublishMode holds at rfr on query error', async () => {
+    const errored = makeDb({ settingsError: 'connection reset by peer' })
+    await expect(getPublishMode(errored.db as never)).resolves.toBe('rfr')
+  })
+
+  test('getPublishMode holds at rfr when the read throws', async () => {
+    const throwing = { from: () => { throw new Error('conn reset') } }
+    await expect(getPublishMode(throwing as never)).resolves.toBe('rfr')
   })
 })
 
@@ -335,5 +345,56 @@ describe('manual path contract (prove we did not diverge)', () => {
 
   test('setting key constant matches the migration seed', () => {
     expect(PUBLISH_MODE_KEY).toBe('publish_mode')
+  })
+})
+
+// ── 6. 3-fix N2: series mid-loop guard (Rule 3, partial-write safety) ───────
+
+describe('series mid-loop re-verify guard (3-fix N2)', () => {
+  test('pre-published episode is skipped, rest still promote as a unit', async () => {
+    // ep-1 went live via a prior partial run (or a manual publish); ep-2/3
+    // are freshly at RFR. The loop must NOT re-promote ep-1.
+    const eps = [
+      readyStory({ id: 'ep-1', series_id: 'ser-9', episode_number: 1, workflow_state: 'published', status: 'published', is_hidden: false }),
+      readyStory({ id: 'ep-2', series_id: 'ser-9', episode_number: 2 }),
+      readyStory({ id: 'ep-3', series_id: 'ser-9', episode_number: 3 }),
+    ]
+    const { db, writes, stories } = makeDb({ settingsValue: 'direct', stories: eps })
+    const report = await maybeDirectPublishSeries(db as never, {
+      seriesId: 'ser-9',
+      episodeIds: ['ep-1', 'ep-2', 'ep-3'],
+      jobId: 'job-n2',
+    })
+    expect(report.action).toBe('published')
+    // ep-1 skipped, ep-2 + ep-3 each promoted through the legal two-step.
+    expect(report.transitions).toContain('ep-1:skipped_already_published')
+    expect(report.transitions?.filter((t) => t.startsWith('ep-1:'))).toHaveLength(1)
+    const ep1Writes = writes.filter(
+      (w) => w.table === 'stories' && (w.filter as Row)?.id === 'ep-1'
+    )
+    expect(ep1Writes).toHaveLength(0)
+    const terminals = writes.filter(
+      (w) => w.table === 'stories' && w.op === 'update' && (w.payload as Row).workflow_state === 'published'
+    )
+    expect(terminals).toHaveLength(2)
+    // Whole unit ends live.
+    for (const s of stories) expect(s.workflow_state).toBe('published')
+  })
+})
+
+// ── 7. 3-fix N3: standalone refuses series members (defense-in-depth) ───────
+
+describe('standalone series-member guard (3-fix N3)', () => {
+  test('series member routed to the standalone hook holds at RFR with zero writes', async () => {
+    const { db, writes } = makeDb({
+      settingsValue: 'direct',
+      stories: [readyStory({ id: 'ep-2', series_id: 'ser-x', episode_number: 2 })],
+    })
+    const report = await maybeDirectPublishStandalone(db as never, { storyId: 'ep-2', jobId: 'job-n3' })
+    expect(report.mode).toBe('direct')
+    expect(report.action).toBe('held_blocked')
+    expect(report.blockers?.join(' ')).toMatch(/series member|series hook/)
+    expect(writes.filter((w) => w.table === 'stories')).toHaveLength(0)
+    expect(writes.filter((w) => w.table === 'story_workflow_audit')).toHaveLength(0)
   })
 })

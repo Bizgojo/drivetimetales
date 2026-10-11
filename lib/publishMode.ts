@@ -55,9 +55,16 @@ type MinimalSettingsClient = {
 }
 
 /**
- * Read the current publish_mode. Falls back to the canon default ('direct')
- * when the table/row is absent (pre-migration) or on read error — never
- * throws, never blocks the pipeline. Failures are logged so they are visible.
+ * Read the current publish_mode.
+ *
+ * Fallback is split by cause (3-fix N1, 2026-10-11):
+ *   - No settings row (pre-migration / absent table content) → canon default
+ *     ('direct'). The setting was never configured, so the canon initial
+ *     value applies.
+ *   - Actual query ERROR or thrown exception → 'rfr' (HOLD). A transient DB
+ *     hiccup must never trigger an unreviewed publish; the safe direction
+ *     is the human-checked hold, and the failure is logged so it is visible.
+ * Never throws, never blocks the pipeline.
  */
 export async function getPublishMode(
   supabase: MinimalSettingsClient,
@@ -70,8 +77,10 @@ export async function getPublishMode(
       .eq('key', PUBLISH_MODE_KEY)
       .maybeSingle()
     if (error) {
-      log(`[publish-mode] settings read failed (${error.message}); using canon default '${PUBLISH_MODE_DEFAULT}'`)
-      return PUBLISH_MODE_DEFAULT
+      // 3-fix N1: a real read error holds at RFR — a transient DB hiccup
+      // must never trigger an unreviewed publish.
+      log(`[publish-mode] settings read failed (${error.message}); holding at '${PUBLISH_MODE_RFR}' (safe direction)`)
+      return PUBLISH_MODE_RFR
     }
     if (!data || data.value == null) {
       log(`[publish-mode] no '${PUBLISH_MODE_KEY}' row; using canon default '${PUBLISH_MODE_DEFAULT}'`)
@@ -83,7 +92,7 @@ export async function getPublishMode(
     }
     return mode
   } catch (e) {
-    log(`[publish-mode] settings read threw (${e instanceof Error ? e.message : String(e)}); using canon default '${PUBLISH_MODE_DEFAULT}'`)
-    return PUBLISH_MODE_DEFAULT
+    log(`[publish-mode] settings read threw (${e instanceof Error ? e.message : String(e)}); holding at '${PUBLISH_MODE_RFR}' (safe direction)`)
+    return PUBLISH_MODE_RFR
   }
 }
