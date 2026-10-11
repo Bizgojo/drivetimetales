@@ -1,0 +1,17 @@
+[Unit]
+Description=Endless Tales local render worker (Path 2 — render_final_mix, 80+ segment stories)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/drivetimetales
+ExecStart=/usr/bin/env node %h/drivetimetales/scripts/render-worker/render-worker.mjs
+Restart=always
+RestartSec=5
+Environment=NODE_ENV=production
+StandardOutput=append:%h/drivetimetales/scripts/render-worker/render-worker.log
+StandardError=append:%h/drivetimetales/scripts/render-worker/render-worker.log
+
+[Install]
+WantedBy=multi-user.target

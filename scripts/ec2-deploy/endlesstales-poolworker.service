@@ -1,0 +1,17 @@
+[Unit]
+Description=Endless Tales personalization pool worker
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/drivetimetales
+ExecStart=/usr/bin/env node %h/drivetimetales/scripts/personalization/pool-worker.mjs
+Restart=always
+RestartSec=5
+Environment=NODE_ENV=production
+StandardOutput=append:%h/drivetimetales/scripts/personalization/pool-worker.log
+StandardError=append:%h/drivetimetales/scripts/personalization/pool-worker.log
+
+[Install]
+WantedBy=multi-user.target
