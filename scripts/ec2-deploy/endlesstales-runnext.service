@@ -7,12 +7,12 @@ Wants=network-online.target
 Type=simple
 User=ubuntu
 Group=ubuntu
-WorkingDirectory=%h/drivetimetales
-ExecStart=/usr/bin/env bash %h/drivetimetales/scripts/ec2-deploy/run-next-loop.sh
+WorkingDirectory=/home/ubuntu/drivetimetales
+ExecStart=/usr/bin/env bash /home/ubuntu/drivetimetales/scripts/ec2-deploy/run-next-loop.sh
 Restart=always
 RestartSec=10
-StandardOutput=append:%h/drivetimetales/scripts/ec2-deploy/run-next-loop.log
-StandardError=append:%h/drivetimetales/scripts/ec2-deploy/run-next-loop.log
+StandardOutput=append:/home/ubuntu/drivetimetales/scripts/ec2-deploy/run-next-loop.log
+StandardError=append:/home/ubuntu/drivetimetales/scripts/ec2-deploy/run-next-loop.log
 
 [Install]
 WantedBy=multi-user.target
