@@ -2638,11 +2638,16 @@ async function runGenerateVoicesPreflightRequest(origin: string, storyId: string
         preflightOnly: true,
         error: aborted
           ? `generate-voices preflight timed out after ${Math.round(VOICE_PREFLIGHT_TIMEOUT_MS / 1000)}s`
-          : error instanceof Error ? error.message : String(error),
+          // ATL-SERIES-PREFLIGHT-TRANSIENT-001: String(error) (not .message) so a
+          // thrown TypeError reads "TypeError: fetch failed" verbatim — the exact
+          // text classifyTransientFailure's network rule matches. error.message
+          // alone drops the "TypeError: " prefix, which made this failure
+          // unclassifiable as transient downstream (see series_voice_preflight).
+          : String(error),
         blockingReasons: [
           aborted
             ? `generate-voices preflight timed out after ${Math.round(VOICE_PREFLIGHT_TIMEOUT_MS / 1000)}s`
-            : `generate-voices preflight request failed: ${error instanceof Error ? error.message : String(error)}`,
+            : `generate-voices preflight request failed: ${String(error)}`,
         ],
       },
     }
@@ -8257,6 +8262,21 @@ export async function POST(req: NextRequest) {
               preflightReport: result.report,
               failedEpisodes: result.state.seriesVoicePreflight?.failedEpisodes || [],
               at: nowIso(),
+              // TRANSIENT-FAILURE-001 (ATL-SERIES-PREFLIGHT-TRANSIENT-001): the
+              // generate-voices preflight self-fetch can fail on a network blip
+              // ("TypeError: fetch failed") before any provider is even reached.
+              // The sibling series_generate_voices step (NEXT_STEP_AFTER_SERIES_PREFLIGHT,
+              // below) already classifies its failures this way; this step did not,
+              // so a transient self-fetch error was being treated as a permanent
+              // story defect — counting toward the dispatch failure circuit and the
+              // 7-day retry cap instead of a backed-off auto-retry.
+              ...(() => {
+                const cause = classifyTransientFailure(
+                  stripQuotedScriptText(result.report?.error),
+                  stripQuotedScriptText((result.report?.blockingReasons || [])[0]),
+                )
+                return cause ? transientErrorFields(cause) : {}
+              })(),
             },
             logs,
             locked_at: null,
