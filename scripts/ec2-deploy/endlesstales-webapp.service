@@ -8,9 +8,14 @@ Type=simple
 User=ubuntu
 Group=ubuntu
 WorkingDirectory=/home/ubuntu/drivetimetales
-ExecStart=/usr/bin/env npm start
+# Call next directly (not via `npm start`, which wraps it in an extra
+# sh -c layer). The npm/sh wrapper let the actual next-server survive
+# as an orphaned grandchild on SIGTERM, holding port 3000 and making
+# every restart attempt fail with EADDRINUSE (found 2026-10-12).
+ExecStart=/usr/bin/env node_modules/.bin/next start -p 3000
 Restart=always
 RestartSec=5
+KillMode=control-group
 Environment=NODE_ENV=production
 Environment=PORT=3000
 StandardOutput=append:/home/ubuntu/drivetimetales/scripts/ec2-deploy/webapp.log
