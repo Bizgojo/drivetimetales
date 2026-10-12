@@ -192,3 +192,4 @@ export async function PATCH(request: NextRequest) {
   if (error) return json({ error: error.message }, 500)
   return json({ success: true, message: data })
 }
+// AGENT-BRIDGE-001: force clean rebuild, no cache reuse (route missing from prior build output) - 2026-10-12T01:55:25Z
