@@ -5,7 +5,10 @@
  *   PIPELINE_ALERT_WEBHOOK_URL  (optional) — POST target for failure/stall alerts.
  *                                            Leave unset while the gateway is loopback-only.
  *   NEXT_PUBLIC_APP_URL         (optional) — Base URL for run-next calls.
- *                                            Defaults to https://drivetimetales.vercel.app
+ *                                            Defaults to https://app.endless-tales.com
+ *                                            (ATLAS-RUNNEXT-ORIGIN-002: the old
+ *                                            drivetimetales.vercel.app fallback could
+ *                                            pin the pipeline to a stale build.)
  */
 
 import { applyGateRouting } from '@/lib/unifiedGateEngine'

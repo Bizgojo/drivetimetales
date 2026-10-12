@@ -284,7 +284,9 @@ async function updateCircuitBreaker(
   return { open: circuitOpen, consecutiveFailures, lockLost: false }
 }
 
-function baseUrl(): string {
+export const RUNNER_CANONICAL_HOST = 'https://app.endless-tales.com'
+
+export function resolveRunnerBaseUrl(): string {
   // ORION-RUNNER-ORIGIN-001 (2026-07-11): in production, internal pipeline
   // calls (run-next → generate-voices etc.) must ALWAYS hit the current
   // production deployment via the canonical domain. Deriving this from
@@ -295,11 +297,26 @@ function baseUrl(): string {
   // seg50, REPEATED_IDENTICAL_TRUNCATION, Jul 10-11). Canonical domain always
   // tracks the latest production deployment; env override remains for
   // local/preview only.
-  if (process.env.VERCEL_ENV === 'production') return 'https://app.endless-tales.com'
+  // ATLAS-RUNNEXT-ORIGIN-002 (2026-10-11, Class A): the EC2 production
+  // runner has no VERCEL_ENV, so it skipped the canonical rule above and
+  // fell through to the vercel.app deployment URL — a separately-versioned
+  // backend that can serve a different (stale) build than the canonical
+  // domain. Post-#333 Extraction series_voice_preflight failures still
+  // carried the pre-#333 error shape (no fetchErrorCause/transient) because
+  // run-next executed on a stale backend, never the new
+  // fetchWithConnectionRetry path. The unset-env fallback is now the
+  // canonical host too, so every production-context invocation (Vercel cron
+  // AND EC2 cron) targets the same current-production backend and run-next's
+  // `new URL(req.url).origin` self-fetch stays on that backend.
+  if (process.env.VERCEL_ENV === 'production') return RUNNER_CANONICAL_HOST
   return (
     (process.env.NEXT_PUBLIC_APP_URL ?? '').replace(/\/+$/, '') ||
-    'https://drivetimetales.vercel.app'
+    RUNNER_CANONICAL_HOST
   )
+}
+
+function baseUrl(): string {
+  return resolveRunnerBaseUrl()
 }
 
 // ---------------------------------------------------------------------------
