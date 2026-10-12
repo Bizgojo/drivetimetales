@@ -1,0 +1,20 @@
+[Unit]
+Description=Endless Tales web app (app.endless-tales.com / ec2.endless-tales.com via Caddy -> localhost:3000)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/home/ubuntu/drivetimetales
+ExecStart=/usr/bin/env npm start
+Restart=always
+RestartSec=5
+Environment=NODE_ENV=production
+Environment=PORT=3000
+StandardOutput=append:/home/ubuntu/drivetimetales/scripts/ec2-deploy/webapp.log
+StandardError=append:/home/ubuntu/drivetimetales/scripts/ec2-deploy/webapp.log
+
+[Install]
+WantedBy=multi-user.target
