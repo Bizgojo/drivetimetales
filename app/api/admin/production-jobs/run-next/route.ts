@@ -9,6 +9,7 @@ import { isBelleBVoiceId } from '@/lib/voiceConstants'
 import { runRenderFinalMix } from '../../../asc3/render-final-mix/core'
 import { buildStructuredError, type StructuredErrorJsonKind } from '@/lib/pipeline-runner/types'
 import { classifyTransientFailure, stripQuotedScriptText, transientErrorFields } from '@/lib/transientFailure'
+import { serializeSelfFetchCause, classifySelfFetchTransportError, fetchWithConnectionRetry } from '@/lib/preflightSelfFetch'
 import { classifyTrueState } from '@/lib/pipelineTruth'
 import { getPlaybookByKind } from '@/lib/repairPlaybooks'
 import { loadActiveMission } from '@/lib/missionContext'
@@ -2619,13 +2620,64 @@ async function runGenerateVoicesPreflightRequest(origin: string, storyId: string
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), VOICE_PREFLIGHT_TIMEOUT_MS)
 
+  // ATLAS-SERIES-PREFLIGHT-SELFFETCH-001 (Class A): the preflight POST is an
+  // in-platform self-fetch. Transport death (bare `fetch failed`, status 0)
+  // is an outside failure, never a story defect — so (a) retry
+  // connection-kind throws with backoff+jitter (the server likely never saw
+  // the request), (b) persist the FULL cause chain for forensics, and
+  // (c) tag the terminal failure transient so dispatch backs off instead of
+  // re-dispatching a new job every cycle. Abort/timeout is single-shot (the
+  // server may still be working) but still tagged transient.
+  const doPost = () => fetch(endpoint, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ storyId, preflightOnly: true }),
+    signal: controller.signal,
+  })
+
+  const buildTransportReport = (error: unknown): VoicePreflightResult => {
+    const aborted = error instanceof Error && error.name === 'AbortError'
+    const cause = serializeSelfFetchCause(error)
+    // Classify on the RAW error chain (colon form), not the composed message
+    // — the composed "...request failed: fetch failed" does NOT match the
+    // anchored `TypeError: fetch failed` pattern (verified 2026-10-11).
+    const transientCause = aborted ? 'network' as const : classifySelfFetchTransportError(error)
+    const message = aborted
+      ? `generate-voices preflight timed out after ${Math.round(VOICE_PREFLIGHT_TIMEOUT_MS / 1000)}s`
+      : `generate-voices preflight request failed: ${error instanceof Error ? error.message : String(error)}`
+    console.error(
+      `[voice-preflight-selffetch] ${aborted ? 'timeout' : 'connection'} story=${storyId}`,
+      JSON.stringify(cause),
+    )
+    return {
+      success: false,
+      preflightOnly: true,
+      // ATL-SERIES-PREFLIGHT-TRANSIENT-001 (kept from #332): String(error)
+      // (not .message) so a thrown TypeError reads "TypeError: fetch failed"
+      // verbatim — the exact text classifyTransientFailure's network rule
+      // matches downstream (see series_voice_preflight).
+      error: aborted
+        ? `generate-voices preflight timed out after ${Math.round(VOICE_PREFLIGHT_TIMEOUT_MS / 1000)}s`
+        : String(error),
+      blockingReasons: [message],
+      fetchErrorCause: cause,
+      ...(transientCause ? transientErrorFields(transientCause) : {}),
+    }
+  }
+
   try {
-    const response = await fetch(endpoint, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ storyId, preflightOnly: true }),
-      signal: controller.signal,
+    const { value: response, attempts, failures } = await fetchWithConnectionRetry(doPost, {
+      attempts: 3,
+      baseDelayMs: 2000,
+      maxDelayMs: 15000,
+      jitterMs: 2000,
     })
+    if (attempts > 1 || failures.length > 0) {
+      console.warn(
+        `[voice-preflight-selffetch] recovered after ${attempts} attempt(s) story=${storyId}`,
+        JSON.stringify(failures.flatMap((f) => f.cause)),
+      )
+    }
     const report = await readJsonOrDiagnostic(response, '/api/admin/generate-voices') as VoicePreflightResult
     return { responseOk: response.ok, status: response.status, report }
   } catch (error) {
@@ -2633,23 +2685,7 @@ async function runGenerateVoicesPreflightRequest(origin: string, storyId: string
     return {
       responseOk: false,
       status: aborted ? 408 : 0,
-      report: {
-        success: false,
-        preflightOnly: true,
-        error: aborted
-          ? `generate-voices preflight timed out after ${Math.round(VOICE_PREFLIGHT_TIMEOUT_MS / 1000)}s`
-          // ATL-SERIES-PREFLIGHT-TRANSIENT-001: String(error) (not .message) so a
-          // thrown TypeError reads "TypeError: fetch failed" verbatim — the exact
-          // text classifyTransientFailure's network rule matches. error.message
-          // alone drops the "TypeError: " prefix, which made this failure
-          // unclassifiable as transient downstream (see series_voice_preflight).
-          : String(error),
-        blockingReasons: [
-          aborted
-            ? `generate-voices preflight timed out after ${Math.round(VOICE_PREFLIGHT_TIMEOUT_MS / 1000)}s`
-            : `generate-voices preflight request failed: ${String(error)}`,
-        ],
-      },
+      report: buildTransportReport(error),
     }
   } finally {
     clearTimeout(timeout)
@@ -8277,6 +8313,16 @@ export async function POST(req: NextRequest) {
                 )
                 return cause ? transientErrorFields(cause) : {}
               })(),
+              // ATLAS-SERIES-PREFLIGHT-SELFFETCH-001: a transport-tagged
+              // preflight report is an outside failure — propagate the
+              // transient tag so dispatch backs off (transientDispatchHold)
+              // and the failure circuit ignores it, instead of parking
+              // episodes in repair_queue for an infra blip. Placed last so
+              // the raw-error classification (incl. abort timeouts, which the
+              // composed-text classifier above cannot see) wins.
+              ...((result.report as any)?.transient === true
+                ? transientErrorFields((result.report as any).transient_cause ?? 'network')
+                : {}),
             },
             logs,
             locked_at: null,
@@ -9255,6 +9301,12 @@ export async function POST(req: NextRequest) {
               ...errorJsonPayload,
               playbookId: playbook?.id || null,
               preflightReport: result.report,
+              // ATLAS-SERIES-PREFLIGHT-SELFFETCH-001: same transient
+              // propagation as the series path — a transport-tagged report
+              // is an outside failure, not a story defect.
+              ...((result.report as any)?.transient === true
+                ? transientErrorFields((result.report as any).transient_cause ?? 'network')
+                : {}),
             },
             logs,
             locked_at: null,

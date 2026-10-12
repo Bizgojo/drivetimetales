@@ -64,6 +64,98 @@ export function retryCapWindowStartMs(
   return start
 }
 
+// ── ATLAS-SERIES-RETRY-CAP-001 (2026-10-11) ───────────────────────────────
+// The standalone dispatch path has a 7-day RETRY_CAP backstop (PIPE-AUDIT-001
+// item 4); the SERIES path had only the 2h failure circuit + transient
+// escalation/hold. A series failing with the same story/content defect once
+// per cycle — spaced wider than 2h, or re-queued by a repair flow after the
+// circuit parked it — minted a new production_jobs row every cycle, forever,
+// with no long-window backstop. These helpers give the series path parity:
+// a long-window cap on non-transient failures plus an identical-signature
+// cap that parks even earlier when the SAME failure repeats.
+//
+// Transient/infra rows (transient:true, zombie_stalled) NEVER count here —
+// they are outside failures with their own escalation path (48h). Only
+// story/content defects consume this budget, so real defects are parked
+// with needs_attention + audit instead of re-queued forever, and infra
+// blips are never mistaken for defects.
+export const SERIES_RETRY_CAP = RETRY_CAP
+// 5 non-transient failures in 7 days (reset-floored), same as standalone.
+export const SERIES_RETRY_CAP_WINDOW_MS = RETRY_CAP_WINDOW_MS
+// Same failure signature repeating this often (non-transient) parks early.
+export const SERIES_IDENTICAL_FAILURE_CAP = 3
+
+/**
+ * Stable signature for a failed job row: step + cause-kind + normalized
+ * message. Numbers are KEPT (segment_0043 vs segment_0044 are different
+ * failures until proven otherwise); case/whitespace are folded so trivial
+ * formatting drift does not split a signature. error_json carries
+ * {kind, step, message} via buildStructuredError; current_step is fallback.
+ */
+export function seriesFailureSignature(row: JobStatusRow): string {
+  const err = (row.error_json && typeof row.error_json === 'object'
+    ? row.error_json
+    : {}) as Record<string, unknown>
+  const step = String(err.step ?? row.current_step ?? 'unknown').trim() || 'unknown'
+  const cause = String(err.transient_cause ?? err.kind ?? '').trim() || 'unclassified'
+  const msg = String(err.message ?? err.error ?? '')
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 160)
+  return `${step} :: ${cause} :: ${msg}`
+}
+
+/** Non-transient failed rows at/after the retry-cap window start. */
+export function capEligibleFailures(
+  jobs: JobStatusRow[],
+  nowMs: number,
+  opts: Parameters<typeof retryCapWindowStartMs>[1] = {},
+): JobStatusRow[] {
+  const start = retryCapWindowStartMs(nowMs, opts)
+  return jobs.filter((job) => {
+    if (cleanStatus(job.status) !== 'failed') return false
+    if (isTransientJobRow(job)) return false // TRANSIENT-FAILURE-001
+    const failedAt = Date.parse(job.updated_at || '')
+    return Number.isFinite(failedAt) && failedAt >= start
+  })
+}
+
+/**
+ * Most-frequent failure signature among cap-eligible rows, with its count.
+ * Null when no eligible rows. Ties resolve to the most recent row's
+ * signature (deterministic, recency-biased toward the live defect).
+ */
+export function topFailureSignature(
+  jobs: JobStatusRow[],
+  nowMs: number,
+  opts: Parameters<typeof retryCapWindowStartMs>[1] = {},
+): { signature: string; count: number } | null {
+  const eligible = capEligibleFailures(jobs, nowMs, opts)
+  if (eligible.length === 0) return null
+  const counts = new Map<string, { count: number; latest: number }>()
+  for (const job of eligible) {
+    const sig = seriesFailureSignature(job)
+    const failedAt = Date.parse(job.updated_at || '') || 0
+    const entry = counts.get(sig)
+    if (entry) {
+      entry.count += 1
+      if (failedAt > entry.latest) entry.latest = failedAt
+    } else {
+      counts.set(sig, { count: 1, latest: failedAt })
+    }
+  }
+  let best: { signature: string; count: number } | null = null
+  let bestLatest = -1
+  for (const [signature, { count, latest }] of counts) {
+    if (!best || count > best.count || (count === best.count && latest > bestLatest)) {
+      best = { signature, count }
+      bestLatest = latest
+    }
+  }
+  return best
+}
+
 /** Count failed jobs at/after the retry-cap window start. */
 export function countRetryCapFailures(
   jobs: JobStatusRow[],

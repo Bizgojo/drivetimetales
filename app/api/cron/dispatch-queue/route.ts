@@ -4,6 +4,10 @@ import {
   DISPATCH_FAILURE_THRESHOLD,
   DISPATCH_FAILURE_WINDOW_MS,
   RETRY_CAP,
+  SERIES_IDENTICAL_FAILURE_CAP,
+  SERIES_RETRY_CAP_WINDOW_MS,
+  capEligibleFailures,
+  topFailureSignature,
   failureCircuitOpen,
   countRecentFailures,
   hasActiveMixJob,
@@ -457,6 +461,70 @@ async function handleDispatchQueue(request: NextRequest) {
       if (seriesTransientHold) {
         console.log('[dispatch-queue] Series waiting after transient failure:', seriesId, seriesTransientHold)
         skipped.push({ seriesId, ...seriesTransientHold })
+        continue
+      }
+
+      // ── ATLAS-SERIES-RETRY-CAP-001: series long-window + signature caps ──
+      // The standalone path has a 5-in-7d RETRY_CAP; the series path had
+      // none — a series failing with the same story/content defect once per
+      // cycle (wider than the 2h circuit, or re-queued by a repair flow)
+      // minted a new production_jobs row every cycle, forever. Count
+      // NON-TRANSIENT failures in the reset-floored 7d window (transient/
+      // infra rows never count — they have their own 48h escalation above),
+      // and park with needs_attention + audit instead of inserting. Flag-
+      // only (episodes stay where they are): clearing the flag via
+      // content-approval clear_needs_attention stamps
+      // dispatch_failure_reset_at, which floors this window on reset.
+      const seriesCapWindowStart = new Date(retryCapWindowStartMs(Date.now(), {
+        windowMs: SERIES_RETRY_CAP_WINDOW_MS,
+        resetAtIso: seriesResetMs > 0 ? new Date(seriesResetMs).toISOString() : null,
+        ignoreBeforeIso: process.env.RETRY_CAP_IGNORE_FAILURES_BEFORE || null,
+      })).toISOString()
+      const { data: seriesCapRows, error: seriesCapError } = await supabase
+        .from('production_jobs')
+        .select('id,status,updated_at,current_step,error_json')
+        .eq('series_id', seriesId)
+        .eq('status', 'failed')
+        .gte('updated_at', seriesCapWindowStart)
+      if (seriesCapError) {
+        console.error('[dispatch-queue] Series retry-cap lookup failed:', seriesId, seriesCapError)
+        skipped.push({ seriesId, reason: 'failure_lookup_failed', error: seriesCapError.message })
+        continue
+      }
+      const capOpts = {
+        windowMs: SERIES_RETRY_CAP_WINDOW_MS,
+        resetAtIso: seriesResetMs > 0 ? new Date(seriesResetMs).toISOString() : null,
+        ignoreBeforeIso: process.env.RETRY_CAP_IGNORE_FAILURES_BEFORE || null,
+      }
+      const eligibleSeriesFailures = capEligibleFailures((seriesCapRows || []) as JobStatusRow[], Date.now(), capOpts)
+      const topSeriesSignature = topFailureSignature((seriesCapRows || []) as JobStatusRow[], Date.now(), capOpts)
+      const seriesCapTripped = eligibleSeriesFailures.length >= RETRY_CAP
+      const seriesSignatureTripped = (topSeriesSignature?.count ?? 0) >= SERIES_IDENTICAL_FAILURE_CAP
+      if (seriesCapTripped || seriesSignatureTripped) {
+        const reason = seriesSignatureTripped
+          ? `Identical series failure repeating (${topSeriesSignature!.count}x in 7d, cap ${SERIES_IDENTICAL_FAILURE_CAP}): ${topSeriesSignature!.signature}. Same story/content defect failing every cycle — parked for manual review instead of minting new production_jobs rows. Clear via content-approval clear_needs_attention to reset the counter with an audit trail.`
+          : `Series retry cap reached: ${eligibleSeriesFailures.length} failed jobs since ${seriesCapWindowStart} (cap ${RETRY_CAP}/7d). Manual review required — clear the flag via content-approval clear_needs_attention to reset the counter with an audit trail.`
+        const { error: seriesAttentionError } = await supabase
+          .from('stories')
+          .update({
+            needs_attention: true,
+            needs_attention_reason: reason,
+            needs_attention_at: now,
+          })
+          .eq('series_id', seriesId)
+          .eq('workflow_state', 'stories_in_queue')
+        if (seriesAttentionError) {
+          console.error('[dispatch-queue] Failed to flag series retry-cap:', seriesId, seriesAttentionError)
+          skipped.push({ seriesId, reason: 'needs_attention_update_failed', error: seriesAttentionError.message })
+          continue
+        }
+        console.log('[dispatch-queue] Skipped (series retry cap):', seriesId, reason)
+        skipped.push({
+          seriesId,
+          reason: seriesSignatureTripped ? 'series_identical_failure_capped' : 'series_retry_cap_reached',
+          failedJobsInSevenDays: eligibleSeriesFailures.length,
+          ...(topSeriesSignature ? { topSignature: topSeriesSignature.signature, topSignatureCount: topSeriesSignature.count } : {}),
+        })
         continue
       }
 
