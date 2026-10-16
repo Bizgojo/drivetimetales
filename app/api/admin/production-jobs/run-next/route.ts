@@ -2621,7 +2621,17 @@ async function readJsonOrDiagnostic(response: Response, endpoint: string) {
 // lib/pipeline-runner/runner.ts). All other origins pass through unchanged.
 function resolvePreflightOrigin(origin: string): string {
   try {
-    if (new URL(origin).hostname === 'app.endless-tales.com' && !process.env.VERCEL_ENV) {
+    const parsed = new URL(origin)
+    // LOCALHOST-SCHEME-GUARD-001 (2026-10-16, Class A, Marc-approved 11:37 EDT):
+    // when the origin hostname is localhost/127.0.0.1, force http://
+    // regardless of the incoming scheme. The Next server listens on plain
+    // HTTP loopback (:3000) — an https://localhost self-fetch dies with
+    // `fetch failed` (TLS handshake against a non-TLS listener). Strip/override.
+    if (parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1') {
+      parsed.protocol = 'http:'
+      return parsed.toString().replace(/\/$/, '')
+    }
+    if (parsed.hostname === 'app.endless-tales.com' && !process.env.VERCEL_ENV) {
       const port = process.env.PORT || '3000'
       return `http://localhost:${port}`
     }
