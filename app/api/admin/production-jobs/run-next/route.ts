@@ -2611,12 +2611,32 @@ async function readJsonOrDiagnostic(response: Response, endpoint: string) {
   }
 }
 
+// RUNNEXT-HAIRPIN-LOCALHOST-001 (2026-10-16, Class A): on the EC2 host the
+// public https origin (app.endless-tales.com) is unreachable from the server
+// itself (hairpin NAT/TLS defect — self-fetch dies with `TypeError: fetch
+// failed`). Bypass it via loopback; the Next server listens on
+// localhost:3000 on EC2. Vercel serverless has no loopback listener, so the
+// rewrite applies ONLY outside Vercel (no VERCEL_ENV ⇒ EC2 production
+// context, per the ATLAS-RUNNEXT-ORIGIN-002 convention in
+// lib/pipeline-runner/runner.ts). All other origins pass through unchanged.
+function resolvePreflightOrigin(origin: string): string {
+  try {
+    if (new URL(origin).hostname === 'app.endless-tales.com' && !process.env.VERCEL_ENV) {
+      const port = process.env.PORT || '3000'
+      return `http://localhost:${port}`
+    }
+  } catch {
+    // Unparseable origin — fall through to the passed origin unchanged.
+  }
+  return origin
+}
+
 async function runGenerateVoicesPreflightRequest(origin: string, storyId: string): Promise<{
   responseOk: boolean
   status: number
   report: VoicePreflightResult
 }> {
-  const endpoint = `${origin}/api/admin/generate-voices`
+  const endpoint = `${resolvePreflightOrigin(origin)}/api/admin/generate-voices`
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), VOICE_PREFLIGHT_TIMEOUT_MS)
 
