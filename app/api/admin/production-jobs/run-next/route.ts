@@ -2611,15 +2611,20 @@ async function readJsonOrDiagnostic(response: Response, endpoint: string) {
   }
 }
 
-// RUNNEXT-HAIRPIN-LOCALHOST-001 (2026-10-16, Class A): on the EC2 host the
-// public https origin (app.endless-tales.com) is unreachable from the server
-// itself (hairpin NAT/TLS defect — self-fetch dies with `TypeError: fetch
-// failed`). Bypass it via loopback; the Next server listens on
-// localhost:3000 on EC2. Vercel serverless has no loopback listener, so the
-// rewrite applies ONLY outside Vercel (no VERCEL_ENV ⇒ EC2 production
-// context, per the ATLAS-RUNNEXT-ORIGIN-002 convention in
-// lib/pipeline-runner/runner.ts). All other origins pass through unchanged.
-function resolvePreflightOrigin(origin: string): string {
+// RUNNEXT-SELF-FETCH-ORIGIN-001 (2026-10-16, Class A, Marc-approved — centralize,
+// not per-site patch): EVERY self-fetch in this file MUST go through this
+// single function. Do NOT build fetch URLs from the raw `origin` below.
+// Behavior: on the EC2 host the public https origin (app.endless-tales.com)
+// is unreachable from the server itself (hairpin NAT/TLS defect — self-fetch
+// dies with `TypeError: fetch failed`). Bypass it via loopback; the Next
+// server listens on localhost:3000 on EC2. Vercel serverless has no loopback
+// listener, so the rewrite applies ONLY outside Vercel (no VERCEL_ENV ⇒ EC2
+// production context, per the ATLAS-RUNNEXT-ORIGIN-002 convention in
+// lib/pipeline-runner/runner.ts). Localhost/127.0.0.1 origins are forced to
+// http:// (LOCALHOST-SCHEME-GUARD-001 — the loopback listener is plain HTTP,
+// an https://localhost self-fetch dies on TLS handshake). All other origins
+// (Vercel previews, production serverless) pass through unchanged.
+function resolveSelfFetchOrigin(origin: string): string {
   try {
     const parsed = new URL(origin)
     // LOCALHOST-SCHEME-GUARD-001 (2026-10-16, Class A, Marc-approved 11:37 EDT):
@@ -2647,7 +2652,7 @@ async function runGenerateVoicesPreflightRequest(origin: string, storyId: string
   report: VoicePreflightResult
   endpoint: string
 }> {
-  const endpoint = `${resolvePreflightOrigin(origin)}/api/admin/generate-voices`
+  const endpoint = `${resolveSelfFetchOrigin(origin)}/api/admin/generate-voices`
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), VOICE_PREFLIGHT_TIMEOUT_MS)
 
@@ -4237,7 +4242,7 @@ async function runStandaloneVoiceSegment(job: ProductionJob, origin: string): Pr
     ? Number(previous.nextSegmentNumber)
     : firstMissingSegmentNumber(previous.missingSegments, 0)
   const segmentNumber = Math.max(0, fallbackSegmentNumber)
-  const endpoint = `${origin}/api/admin/generate-voices`
+  const endpoint = `${resolveSelfFetchOrigin(origin)}/api/admin/generate-voices`
 
   // HOOK-GATE-STALE-001: on the very first invocation of generate_voices for a
   // job (empty voiceGeneration state = no prior progress recorded), request a
@@ -4321,7 +4326,7 @@ async function runStandaloneBelleAssets(job: ProductionJob, origin: string) {
     throw new Error('Voice generation must be complete before generate_belle_assets')
   }
 
-  const response = await fetch(`${origin}/api/admin/generate-voices`, {
+  const response = await fetch(`${resolveSelfFetchOrigin(origin)}/api/admin/generate-voices`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ storyId, generateBelleOnly: true }),
@@ -4855,7 +4860,7 @@ async function runStandaloneMusicGeneration(job: ProductionJob, origin: string) 
 
   // GATE 3: increment the attempt counter immediately BEFORE the provider fetch.
   const nextMusicAttempts = musicAttempts + 1
-  const response = await fetch(`${origin}/api/asc3/generate-music`, {
+  const response = await fetch(`${resolveSelfFetchOrigin(origin)}/api/asc3/generate-music`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ storyId, prompt }),
@@ -5310,7 +5315,7 @@ async function runStandalonePackageCompletion(job: ProductionJob, origin: string
     throw new Error('Final mix outputs must exist before complete_story_package (audio_url and story_audio_url must be set in stories table)')
   }
 
-  const response = await fetch(`${origin}/api/admin/complete-story-package`, {
+  const response = await fetch(`${resolveSelfFetchOrigin(origin)}/api/admin/complete-story-package`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ storyId }),
@@ -5460,7 +5465,7 @@ async function runSeriesPackageCompletion(job: ProductionJob, origin: string) {
     const key = String(episode.episodeNumber || episode.storyId)
     if (doneByEp[key]) continue
 
-    const response = await fetch(`${origin}/api/admin/complete-story-package`, {
+    const response = await fetch(`${resolveSelfFetchOrigin(origin)}/api/admin/complete-story-package`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ storyId: episode.storyId }),
@@ -7329,7 +7334,7 @@ async function runSeriesVoiceSegment(job: ProductionJob, origin: string): Promis
         console.log(`[SERIES-VOICE-RETRY] Ep${number} seg${segmentNumber} attempt ${attempt}/${MAX_SEGMENT_RETRIES}, waiting ${delayMs.toFixed(0)}ms`)
         await new Promise(r => setTimeout(r, delayMs))
       }
-      response = await fetch(`${origin}/api/admin/generate-voices`, {
+      response = await fetch(`${resolveSelfFetchOrigin(origin)}/api/admin/generate-voices`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -7518,7 +7523,7 @@ async function runSeriesBelleAssets(job: ProductionJob, origin: string) {
     }
 
     const storyId = String(ep.id)
-    const r = await fetch(`${origin}/api/admin/generate-voices`, {
+    const r = await fetch(`${resolveSelfFetchOrigin(origin)}/api/admin/generate-voices`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ storyId, generateBelleOnly: true }),
@@ -7609,7 +7614,7 @@ async function runSeriesMusicGeneration(job: ProductionJob, origin: string) {
     // fetch, so a crash mid-poll still counts the attempt and we never spin
     // the provider past the cap.
     byEpisode[key] = epAttempts + 1
-    const r = await fetch(`${origin}/api/asc3/generate-music`, {
+    const r = await fetch(`${resolveSelfFetchOrigin(origin)}/api/asc3/generate-music`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ storyId, prompt }),
