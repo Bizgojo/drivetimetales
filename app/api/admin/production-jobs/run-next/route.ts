@@ -2635,6 +2635,7 @@ async function runGenerateVoicesPreflightRequest(origin: string, storyId: string
   responseOk: boolean
   status: number
   report: VoicePreflightResult
+  endpoint: string
 }> {
   const endpoint = `${resolvePreflightOrigin(origin)}/api/admin/generate-voices`
   const controller = new AbortController()
@@ -2666,12 +2667,18 @@ async function runGenerateVoicesPreflightRequest(origin: string, storyId: string
       ? `generate-voices preflight timed out after ${Math.round(VOICE_PREFLIGHT_TIMEOUT_MS / 1000)}s`
       : `generate-voices preflight request failed: ${error instanceof Error ? error.message : String(error)}`
     console.error(
-      `[voice-preflight-selffetch] ${aborted ? 'timeout' : 'connection'} story=${storyId}`,
+      `[voice-preflight-selffetch] ${aborted ? 'timeout' : 'connection'} story=${storyId} endpoint=${endpoint} origin=${origin}`,
       JSON.stringify(cause),
     )
     return {
       success: false,
       preflightOnly: true,
+      // PREFLIGHT-URL-CAPTURE-001 (2026-10-16): record the exact fetch
+      // target so a failed self-fetch can be diagnosed (localhost vs public
+      // origin) from error_json alone. Flows into error_json.preflightReport
+      // at the series_voice_preflight failure site below.
+      preflightEndpoint: endpoint,
+      preflightOrigin: origin,
       // ATL-SERIES-PREFLIGHT-TRANSIENT-001 (kept from #332): String(error)
       // (not .message) so a thrown TypeError reads "TypeError: fetch failed"
       // verbatim — the exact text classifyTransientFailure's network rule
@@ -2694,18 +2701,19 @@ async function runGenerateVoicesPreflightRequest(origin: string, storyId: string
     })
     if (attempts > 1 || failures.length > 0) {
       console.warn(
-        `[voice-preflight-selffetch] recovered after ${attempts} attempt(s) story=${storyId}`,
+        `[voice-preflight-selffetch] recovered after ${attempts} attempt(s) story=${storyId} endpoint=${endpoint} origin=${origin}`,
         JSON.stringify(failures.flatMap((f) => f.cause)),
       )
     }
     const report = await readJsonOrDiagnostic(response, '/api/admin/generate-voices') as VoicePreflightResult
-    return { responseOk: response.ok, status: response.status, report }
+    return { responseOk: response.ok, status: response.status, report, endpoint }
   } catch (error) {
     const aborted = error instanceof Error && error.name === 'AbortError'
     return {
       responseOk: false,
       status: aborted ? 408 : 0,
       report: buildTransportReport(error),
+      endpoint,
     }
   } finally {
     clearTimeout(timeout)
@@ -8316,6 +8324,9 @@ export async function POST(req: NextRequest) {
               episodeResult: result.episodeResult,
               narratorIssues: result.narratorIssues && result.narratorIssues.length > 0 ? result.narratorIssues : undefined,
               preflightReport: result.report,
+              // PREFLIGHT-URL-CAPTURE-001 (2026-10-16): exact self-fetch
+              // target, surfaced top-level for log querying.
+              preflightEndpoint: (result.report as any)?.preflightEndpoint ?? null,
               failedEpisodes: result.state.seriesVoicePreflight?.failedEpisodes || [],
               at: nowIso(),
               // TRANSIENT-FAILURE-001 (ATL-SERIES-PREFLIGHT-TRANSIENT-001): the
