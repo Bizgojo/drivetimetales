@@ -372,32 +372,53 @@ describe('personalizationPublishBlockers', () => {
     expect(blockers[0]).toContain('announcement_url is missing')
   })
 
-  test('[LISTENER_NAME] in announcement_text blocks (WotW regression)', () => {
+  test('[LISTENER_NAME] in announcement_text is a standing pass (Marc 2026-10-16: Belle announcement position = approved personalization token)', () => {
     const blockers = personalizationPublishBlockers({
       ...cleanStory,
       announcement_text: '"Weight of the Water" begins on a riverbed... , [LISTENER_NAME], where someone...',
     })
-    expect(blockers).toHaveLength(1)
-    expect(blockers[0]).toContain('announcement_text')
-    expect(blockers[0]).toContain(LISTENER_NAME_TOKEN)
+    expect(blockers).toEqual([])
   })
 
-  test('[LISTENER_NAME] in script blocks', () => {
+  test('[LISTENER_NAME] in script body (outside Belle intro line) blocks', () => {
     const blockers = personalizationPublishBlockers({
       ...cleanStory,
-      script: 'BELLE: Welcome, [LISTENER_NAME]. Tonight...',
+      script: 'BELLE B: Welcome to the show.\nCOLE: Tell me, [LISTENER_NAME], what happened.',
     })
     expect(blockers).toHaveLength(1)
     expect(blockers[0]).toContain('script')
   })
 
-  test('WotW as published: legacy token AND null announcement_url = two blockers', () => {
+  test('[LISTENER_NAME] in the Belle intro line is a standing pass (EP1 approved pattern)', () => {
+    const blockers = personalizationPublishBlockers({
+      ...cleanStory,
+      announcement_text:
+        "'The Extraction,' Episode 1: 'One Last Job.' Cole Briggs has been out of the game two years, [LISTENER_NAME] \u2014 someone just decided that was long enough.",
+      script:
+        'BELLE B INTRO\n---\nBELLE B: ' +
+        `"'The Extraction,' Episode 1: 'One Last Job.' Cole Briggs has been out of the game two years, ${LISTENER_NAME_TOKEN} \u2014 someone just decided that was long enough."` +
+        '\n---\n\nCOLE: Lila said it was simple.',
+    })
+    expect(blockers).toEqual([])
+  })
+
+  test('[LISTENER_NAME] in a later Belle line (outro) still blocks — only the intro line passes', () => {
+    const blockers = personalizationPublishBlockers({
+      ...cleanStory,
+      script: 'BELLE B: Welcome to the show.\nBELLE B OUTRO\nBELLE B: Goodnight, [LISTENER_NAME].',
+    })
+    expect(blockers).toHaveLength(1)
+    expect(blockers[0]).toContain('script')
+  })
+
+  test('WotW as published: null announcement_url blocks; legacy token in announcement_text no longer adds a blocker (Marc 2026-10-16 standing pass)', () => {
     const blockers = personalizationPublishBlockers({
       announcement_url: null,
       announcement_text: '..., [LISTENER_NAME], where someone is putting things in...',
       script: null,
     })
-    expect(blockers).toHaveLength(2)
+    expect(blockers).toHaveLength(1)
+    expect(blockers[0]).toContain('announcement_url')
   })
 
   test('missing/undefined fields on a minimal row: only the announcement_url blocker fires', () => {
@@ -436,10 +457,25 @@ describe('/api/admin/publish-story — guard is blocking in the publish flow', (
   test('single story with legacy [LISTENER_NAME] script is blocked', async () => {
     const { res, body } = await callPublish(
       { storyId: 's-1' },
-      { stories: [{ data: { ...publishableStory, script: 'BELLE: Hello [LISTENER_NAME].' }, error: null }] }
+      { stories: [{ data: { ...publishableStory, script: 'BELLE B: Hello tonight.\nCOLE: Hello [LISTENER_NAME].' }, error: null }] }
     )
     expect(res.status).toBe(400)
     expect(body.personalizationBlockers[0]).toContain('script')
+  })
+
+  test('single story with approved Belle-intro token passes the guard (Marc 2026-10-16 standing pass)', async () => {
+    const introTokenStory = { ...publishableStory, script: 'BELLE B: Hello [LISTENER_NAME].\nCOLE: Lila said it was simple.' }
+    const { res, body } = await callPublish(
+      { storyId: 's-1' },
+      {
+        stories: [
+          { data: introTokenStory, error: null }, // pre-publish read
+          { data: { id: 's-1', title: publishableStory.title, status: 'published' }, error: null }, // update
+        ],
+      }
+    )
+    expect(res.status).toBe(200)
+    expect(body.success).toBe(true)
   })
 
   test('clean story still publishes', async () => {
