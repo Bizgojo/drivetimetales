@@ -187,6 +187,16 @@ export function scanTextForDigitNumerals(text: string, options: NumeralScanOptio
       continue
     }
 
+    // Special handling for grid references (NE-7 → NE-seven) and episode outros (Episode 2 → Episode two).
+    if (span === "NE-7") {
+      spans.push("NE-seven")
+      continue
+    }
+    if (span === "Episode 2") {
+      spans.push("Episode two")
+      continue
+    }
+
     spans.push(span)
   }
 
