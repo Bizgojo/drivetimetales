@@ -6,6 +6,7 @@ import { promises as fs } from 'fs'
 import path from 'path'
 import os from 'os'
 import { createHash } from 'crypto'
+import { isStandaloneOutroRecording } from '@/lib/belleOutroRecording'
 import { CANONICAL_BELLE_B_VOICE_ID, RESERVED_BELLE_B_VOICE_IDS, isBelleBVoiceId } from '@/lib/voiceConstants'
 // ATL-PARSER-001: shared script line-index parser — both GV and render-final-mix
 // delegate all counting to this function so [PAUSE] drift can never recur.
@@ -2800,8 +2801,10 @@ export async function POST(req: NextRequest) {
           const priority = (name: string) => name === 'announcement.mp3' || name === 'intro.mp3' ? 0 : 1
           return priority(a.name) - priority(b.name) || a.name.localeCompare(b.name)
         })[0]
+      // BELLE-OUTRO-RECORDING-001: composites (outro_with_music) must never
+      // satisfy the standalone-outro requirement.
       let existingOutroFile = [...(existingAudioFiles || [])]
-        .filter(file => file.name === 'outro.mp3' || file.name.startsWith('outro_'))
+        .filter(file => isStandaloneOutroRecording(file.name))
         .sort((a, b) => {
           const priority = (name: string) => name === 'outro.mp3' ? 0 : 1
           return priority(a.name) - priority(b.name) || a.name.localeCompare(b.name)
