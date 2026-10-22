@@ -38,9 +38,19 @@
  *      drained to Ep3's continuity_pins_used; stale outro audio nulled via
  *      belleRepairAudioInvalidation; exact-URL delete intent embedded via
  *      setPendingAudioDelete. CAS-conditioned on the pre-repair snapshot.
- *   3. Ep1: P5 must PASS on the live text (performance regen only, NO text
- *      rewrite); its stale outro_with_music URL rides as an audio-delete
- *      intent (CAS script_json-only write). Ep3 untouched.
+ *   3. Ep1 EXECUTES (in scope — never a warning): P5 must PASS on the live
+ *      text (performance regen only, NO text rewrite); its divergent
+ *      production-consumed raw copy (script_json.raw_script) is synced to
+ *      the validated script text; BOTH dependent pins (Ep2→Ep1, Ep3→Ep1)
+ *      are re-derived from the current Ep1 script via the real
+ *      continuityPin method and repaired; the recovery is recorded in
+ *      belle_repair_audit (append, history intact). Ep1's stale
+ *      outro_with_music URL rides as an audio-delete intent (CAS
+ *      script_json-only write). Ep3 text untouched.
+ *   5. FINAL VERIFICATION (fail-closed): all three continuity links
+ *      (Ep2→Ep1, Ep3→Ep1, Ep3→Ep2) are re-read and must match the final
+ *      scripts before success is reported — any mismatch is a reported
+ *      failure, never a success claim.
  *   4. REAL HANDOFF through runPrePackagingRecoveryWithContinuation (same-job
  *      continuation to series_generate_belle_assets, Ep1+Ep2 stage resets,
  *      lock held until cleanup completes, release strictly after). Final
@@ -48,7 +58,7 @@
  */
 
 import { createClient } from '@supabase/supabase-js'
-import { hashScript } from '../lib/continuityPin'
+import { hashScript, buildContinuityPins, verifyContinuityPins } from '../lib/continuityPin'
 import {
   hasCompanionPresence,
   buildBelleRepairAuditEntry,
@@ -82,6 +92,11 @@ export const CREEK_EP2_ID = 'a10d725a-6e6a-4885-a854-5c4730a5d1e4'
 export const CREEK_EP3_ID = 'd381caca-a186-4deb-9a73-a2adac611637'
 export const FAILED_STEP = 'complete_story_package'
 export const LOCK_ID = 'creek-legacy-recovery'
+export const EP1_RAW_SYNC_ACTION = 'creek_legacy_ep1_raw_sync'
+export const EP1_PIN_REPAIR_ACTION = 'creek_legacy_ep1_pin_repair'
+/** Known live condition 2026-10-22: stale Ep1 pin legs vs live Ep1 script. */
+export const EP1_STALE_PIN_PREFIX = 'abefa7c8'
+export const EP1_LIVE_PIN_PREFIX = '791664c4'
 
 /** Unwrap .single() results defensively (real QueryBuilder may return a row or [row]). */
 export const one = (d: any): any => (Array.isArray(d) ? d[0] : d)
@@ -158,11 +173,53 @@ export function ep2StateOf(script: string): 'before' | 'after' | 'unknown' {
  * construction (no client arg). Accepts failed@complete_story_package OR
  * own-lock-held rows (resume waiver); every other guard still applies.
  */
+/**
+ * Pure Ep1-repair planner over already-fetched rows. Derives the wanted
+ * Ep2→Ep1 / Ep3→Ep1 pin from the verified current Ep1 script via the
+ * REAL continuityPin method (buildContinuityPins — the same builder the
+ * generation path uses), and flags the divergent production-consumed raw
+ * copy (script_json.raw_script). Zero writes by construction.
+ */
+export function ep1PinRepairPlan({ ep1, ep2, ep3 }: { ep1: any; ep2: any; ep3: any }): {
+  needed: boolean
+  wantPinHash: string
+  staleOn: string[]
+  rawDivergent: boolean
+} {
+  const derived = buildContinuityPins([{ id: CREEK_EP1_ID, script: String(ep1?.script ?? '') }])
+  const wantPinHash = String(derived[CREEK_EP1_ID] ?? hashScript(ep1?.script))
+  const ep2Pins = (ep2?.script_json?.series_generation?.continuity_pins_used ?? {}) as Record<string, string>
+  const ep3Pins = (ep3?.script_json?.series_generation?.continuity_pins_used ?? {}) as Record<string, string>
+  const staleOn: string[] = []
+  if (ep2Pins[CREEK_EP1_ID] !== wantPinHash) staleOn.push(CREEK_EP2_ID)
+  if (ep3Pins[CREEK_EP1_ID] !== wantPinHash) staleOn.push(CREEK_EP3_ID)
+  const rawDivergent = String(ep1?.script_json?.raw_script ?? '') !== String(ep1?.script ?? '')
+  return { needed: staleOn.length > 0 || rawDivergent, wantPinHash, staleOn, rawDivergent }
+}
+
+/**
+ * Final three-link verification (fail-closed gate): Ep2→Ep1, Ep3→Ep1,
+ * Ep3→Ep2 must ALL match the final scripts. ANY mismatch → ok:false.
+ * Pure over already-fetched episode rows (each carries id, script,
+ * script_json, episode_number).
+ */
+export function checkFinalContinuity(episodes: any[]): {
+  ok: boolean
+  mismatches: string[]
+} {
+  const res = verifyContinuityPins(episodes ?? [])
+  const mismatches = (res.mismatches ?? []).map(
+    (m: any) => `ep${m.episodeNumber} ${String(m.priorStoryId).slice(0, 8)}…: pinned ${String(m.expectedHash).slice(0, 8)}… vs live ${String(m.actualHash).slice(0, 8)}…`,
+  )
+  return { ok: res.ok && mismatches.length === 0, mismatches }
+}
+
 export function evaluatePreflight({ job, stories }: { job: any; stories: any[] }): {
   ok: boolean
   failures: string[]
   resumed: boolean
   warnings: string[]
+  ep1RepairNeeded: boolean
 } {
   const failures: string[] = []
   if (!job || job.id !== CREEK_JOB_ID) failures.push(`job id mismatch: ${job?.id}`)
@@ -183,27 +240,26 @@ export function evaluatePreflight({ job, stories }: { job: any; stories: any[] }
   for (const id of [CREEK_EP1_ID, CREEK_EP2_ID, CREEK_EP3_ID]) {
     if (!byId[id]) failures.push(`missing story row ${id}`)
   }
-  if (failures.length > 0) return { ok: false, failures, resumed, warnings: [] }
+  if (failures.length > 0) return { ok: false, failures, resumed, warnings: [], ep1RepairNeeded: false }
   const ep1 = byId[CREEK_EP1_ID]; const ep2 = byId[CREEK_EP2_ID]; const ep3 = byId[CREEK_EP3_ID]
-  const ep2Pins = (ep2.script_json?.series_generation?.continuity_pins_used ?? {}) as Record<string, string>
-  const ep3Pins = (ep3.script_json?.series_generation?.continuity_pins_used ?? {}) as Record<string, string>
-  // Ep1 pin drift is OBSERVED, not gating: live 2026-10-22 shows Ep2→Ep1 /
-  // Ep3→Ep1 pins (abefa7c8…) stale vs the live Ep1 script hash (791664c4…,
-  // script_updated_at 18:02:26Z post-dates the C8 pin write) — a pre-existing
-  // C8-aftermath condition OUTSIDE this recovery's scope (this repair only
-  // moves Ep3→Ep2, which Ep2's own edit invalidates). Recorded as a warning;
-  // reported as a deferred gap, never silently "fixed" here.
-  const ep1Hash = hashScript(ep1.script)
+  // Ep1 pin drift is IN SCOPE and EXECUTES (step 3): live 2026-10-22 shows
+  // Ep2→Ep1 / Ep3→Ep1 pins (abefa7c8…) stale vs the live Ep1 script hash
+  // (791664c4…, script_updated_at 18:02:26Z post-dates the C8 pin write),
+  // plus a divergent Ep1 raw copy. Stale legs never gate preflight (they
+  // are the repair target); they are reported here and repaired under the
+  // held lock via ep1PinRepairPlan — never left as a warning.
+  const plan = ep1PinRepairPlan({ ep1, ep2, ep3 })
   const warnings: string[] = []
-  if (ep2Pins[CREEK_EP1_ID] !== ep1Hash) warnings.push('ep1 pin stale on ep2 (pre-existing C8 drift; deferred)')
-  if (ep3Pins[CREEK_EP1_ID] !== ep1Hash) warnings.push('ep1 pin stale on ep3 (pre-existing C8 drift; deferred)')
+  for (const id of plan.staleOn) warnings.push(`ep1 pin stale on ${String(id).slice(0, 8)}… (in-scope: re-derive from current ep1 script in step 3)`)
+  if (plan.rawDivergent) warnings.push('ep1 raw_script divergent from validated script (in-scope: sync in step 3)')
   // Ep2 must be exactly BEFORE or exactly AFTER (never anything else).
   const st = ep2StateOf(ep2.script)
+  const ep3LivePins = (ep3.script_json?.series_generation?.continuity_pins_used ?? {}) as Record<string, string>
   if (st === 'unknown') failures.push('ep2 script is neither BEFORE nor AFTER text — refusing blind write')
-  if (st === 'before' && ep3Pins[CREEK_EP2_ID] !== hashScript(ep2.script)) {
+  if (st === 'before' && ep3LivePins[CREEK_EP2_ID] !== hashScript(ep2.script)) {
     failures.push('ep3→ep2 pin inconsistent with live pre-repair ep2 script')
   }
-  if (st === 'after' && ep3Pins[CREEK_EP2_ID] !== hashScript(ep2.script)) {
+  if (st === 'after' && ep3LivePins[CREEK_EP2_ID] !== hashScript(ep2.script)) {
     // Post-repair: the pin must equal the hash of the full persisted script —
     // UNLESS a crash interrupted the drain: a non-empty pending_pin_resync
     // list on Ep2 resolving to exactly this hash is the durable record of
@@ -221,7 +277,7 @@ export function evaluatePreflight({ job, stories }: { job: any; stories: any[] }
   const ep1Outro = String(ep1.outro_text ?? '')
   if (!hasCompanionPresence(ep1Outro)) failures.push('ep1 outro fails P5 — no blind rewrite authorized')
   if (!hasCompanionPresence(EP2_OUTRO_AFTER)) failures.push('Ep2 AFTER copy fails P5 — refusing to persist')
-  return { ok: failures.length === 0, failures, resumed, warnings }
+  return { ok: failures.length === 0, failures, resumed, warnings, ep1RepairNeeded: plan.needed }
 }
 
 // ---------------------------------------------------------------------------
@@ -247,9 +303,17 @@ export async function runRecovery(
   const { data: _job } = await supabase.from('production_jobs').select('*').eq('id', CREEK_JOB_ID).single()
   const liveJob = one(_job)
   const { data: stories } = await supabase.from('stories').select('*').eq('series_id', CREEK_SERIES_ID).order('episode_number')
-  // Terminal continuation already reached: converge with zero writes.
+  // Terminal continuation already reached: converge with zero writes —
+  // but success is still gated on the final three-link verification.
   if (liveJob?.current_step === PRE_PACKAGING_CONTINUATION_STEP && liveJob?.status === 'queued' && liveJob?.locked_by == null) {
     log('[converged] job already queued@series_generate_belle_assets — zero writes')
+    const finCheck = checkFinalContinuity(stories ?? [])
+    if (!finCheck.ok) {
+      log('[FAIL] final three-link verification mismatch — no success claimed:')
+      for (const m of finCheck.mismatches) log(`  - ${m}`)
+      return { ok: false, phase: 'final-verification', failures: finCheck.mismatches, writes }
+    }
+    log('[ok] final verification: Ep2→Ep1, Ep3→Ep1, Ep3→Ep2 all match final scripts')
     return { ok: true, writes, generationPayload: ep2OutroGenerationPayload(), continued: true }
   }
   const pre = evaluatePreflight({ job: liveJob, stories })
@@ -415,9 +479,99 @@ export async function runRecovery(
   }
   log(`[info] ep2 generation payload: ${JSON.stringify(ep2OutroGenerationPayload())} (identical to persisted outro_text; paid TTS runs on later Belle-generation ticks)`)
 
-  // STEP 3 — Ep1: P5 passes on live text (verified in preflight) → regen
-  // performance only, NO text rewrite. Its stale outro_with_music URL rides
-  // as an audio-delete intent (CAS script_json-only write, nested path).
+  // STEP 3 — Ep1 EXECUTES (in scope, never a warning): P5 passes on the
+  // live text (verified in preflight) → regen performance only, NO text
+  // rewrite. The validated script text is preserved exactly; its divergent
+  // production-consumed raw copy is synced; BOTH dependent pins (Ep2→Ep1,
+  // Ep3→Ep1) are re-derived from the current Ep1 script via the real
+  // continuityPin method; the recovery is recorded in belle_repair_audit
+  // (append, history intact). Each write is fenced + read-after-write
+  // verified; every branch converge-checks first (crash-restart safe).
+  // 3a — Ep1 raw sync: production-consumed raw_script := validated script.
+  {
+    const { data: _r1 } = await supabase.from('stories').select('id,script,script_json').eq('id', CREEK_EP1_ID).single()
+    const r1 = one(_r1)
+    if (String(r1?.script_json?.raw_script ?? '') === String(r1?.script ?? '')) {
+      log('[converged] ep1 raw_script already synced to validated script — skipping')
+    } else {
+      const snapshot = r1?.script_json
+      const auditEntry = buildBelleRepairAuditEntry({
+        action: EP1_RAW_SYNC_ACTION,
+        jobId: CREEK_JOB_ID,
+        storyId: CREEK_EP1_ID,
+        episodeNumber: 1,
+        beforeScript: String(r1?.script_json?.raw_script ?? ''),
+        afterScript: String(r1?.script ?? ''),
+        repairedIntro: false,
+        repairedOutro: false,
+      })
+      const next = applyBelleRepairAudit({ ...(snapshot ?? {}), raw_script: String(r1?.script ?? '') }, auditEntry)
+      await fence(
+        'ep1 raw_script sync to validated script (audit appended, history intact)',
+        async () => {
+          const { data, error } = await supabase.from('stories').update({ script_json: next }).eq('id', CREEK_EP1_ID)
+            .eq('script_json', jsonbEqFilter(snapshot)).select('id')
+          if (error) throw new Error(`ep1 raw sync write failed: ${error.message}`)
+          if (!data || data.length === 0) throw new Error('ep1 raw sync matched zero rows (concurrent modification) — retry converges')
+          return data
+        },
+        async () => {
+          const { data: _v } = await supabase.from('stories').select('script,script_json').eq('id', CREEK_EP1_ID).single()
+          const v = one(_v)
+          return String(v?.script_json?.raw_script ?? '') === String(v?.script ?? '')
+            && Array.isArray(v?.script_json?.series_generation?.belle_repair_audit)
+            && (v?.script_json?.series_generation?.belle_repair_audit as any[]).some((e: any) => e?.jobId === CREEK_JOB_ID && e?.action === EP1_RAW_SYNC_ACTION)
+        },
+      )
+    }
+  }
+  // 3b — Ep1 pin re-derivation: Ep2→Ep1 + Ep3→Ep1 := current Ep1 hash.
+  for (const depId of [CREEK_EP2_ID, CREEK_EP3_ID]) {
+    const { data: _e1 } = await supabase.from('stories').select('id,script').eq('id', CREEK_EP1_ID).single()
+    const e1 = one(_e1)
+    const derived = buildContinuityPins([{ id: CREEK_EP1_ID, script: String(e1?.script ?? '') }])
+    const want = String(derived[CREEK_EP1_ID] ?? hashScript(e1?.script))
+    const { data: _dep } = await supabase.from('stories').select('id,script,script_json').eq('id', depId).single()
+    const dep = one(_dep)
+    const have = String((dep?.script_json?.series_generation?.continuity_pins_used ?? {})[CREEK_EP1_ID] ?? '')
+    if (have === want) {
+      log(`[converged] ${String(depId).slice(0, 8)}…→ep1 pin already at current ep1 hash — skipping`)
+      continue
+    }
+    const snapshot = dep?.script_json
+    const fixed = resyncContinuityPinsAfterRepair([{ id: depId, script_json: snapshot }], CREEK_EP1_ID, want)
+    if (fixed.length === 0) throw new Error(`pin resync produced no update for ${String(depId).slice(0, 8)}… (expected stale leg) — refusing blind write`)
+    const auditEntry = buildBelleRepairAuditEntry({
+      action: EP1_PIN_REPAIR_ACTION,
+      jobId: CREEK_JOB_ID,
+      storyId: String(depId),
+      episodeNumber: String(depId) === CREEK_EP2_ID ? 2 : 3,
+      beforeScript: String(dep?.script ?? ''),
+      afterScript: String(dep?.script ?? ''),
+      repairedIntro: false,
+      repairedOutro: false,
+    })
+    const next = applyBelleRepairAudit(fixed[0].script_json, auditEntry)
+    await fence(
+      `${String(depId).slice(0, 8)}…→ep1 pin re-derived from current ep1 script (audit appended)`,
+      async () => {
+        const { data, error } = await supabase.from('stories').update({ script_json: next }).eq('id', depId)
+          .eq('script_json', jsonbEqFilter(snapshot)).select('id')
+        if (error) throw new Error(`ep1 pin repair write failed: ${error.message}`)
+        if (!data || data.length === 0) throw new Error('ep1 pin repair matched zero rows (concurrent modification) — retry converges')
+        return data
+      },
+      async () => {
+        const { data: _v } = await supabase.from('stories').select('script_json').eq('id', depId).single()
+        const v = one(_v)
+        return String((v?.script_json?.series_generation?.continuity_pins_used ?? {})[CREEK_EP1_ID] ?? '') === want
+          && Array.isArray(v?.script_json?.series_generation?.belle_repair_audit)
+          && (v?.script_json?.series_generation?.belle_repair_audit as any[]).some((e: any) => e?.jobId === CREEK_JOB_ID && e?.action === EP1_PIN_REPAIR_ACTION)
+      },
+    )
+  }
+  // 3c — Ep1 stale outro_with_music URL rides as an audio-delete intent
+  // (CAS script_json-only write, nested path). Text never rewritten.
   {
     const { data: _f1 } = await supabase.from('stories').select('id,script_json,outro_with_music_url').eq('id', CREEK_EP1_ID).single()
     const f1 = one(_f1)
@@ -458,6 +612,14 @@ export async function runRecovery(
     const freshJob = one(_j)
     if (freshJob?.current_step === PRE_PACKAGING_CONTINUATION_STEP && freshJob?.status === 'queued' && freshJob?.locked_by == null) {
       log('[converged] continuation already released — zero further writes')
+      const { data: _rel3 } = await supabase.from('stories').select('id,script,script_json,episode_number').eq('series_id', CREEK_SERIES_ID)
+      const relCheck = checkFinalContinuity(_rel3 ?? [])
+      if (!relCheck.ok) {
+        log('[FAIL] final three-link verification mismatch — no success claimed:')
+        for (const m of relCheck.mismatches) log(`  - ${m}`)
+        return { ok: false, phase: 'final-verification', failures: relCheck.mismatches, writes }
+      }
+      log('[ok] final verification: Ep2→Ep1, Ep3→Ep1, Ep3→Ep2 all match final scripts')
       return { ok: true, writes, generationPayload: ep2OutroGenerationPayload(), continued: true }
     }
     if (!(freshJob?.locked_by === LOCK_ID && freshJob?.status === 'running')) {
@@ -495,6 +657,17 @@ export async function runRecovery(
           return rel?.status === 'queued' && rel?.locked_by == null
         },
       )
+      // Stranded-resume success is still gated on final verification.
+      {
+        const { data: _s3 } = await supabase.from('stories').select('id,script,script_json,episode_number').eq('series_id', CREEK_SERIES_ID)
+        const sCheck = checkFinalContinuity(_s3 ?? [])
+        if (!sCheck.ok) {
+          log('[FAIL] final three-link verification mismatch — no success claimed:')
+          for (const m of sCheck.mismatches) log(`  - ${m}`)
+          return { ok: false, phase: 'final-verification', failures: sCheck.mismatches, writes }
+        }
+        log('[ok] final verification: Ep2→Ep1, Ep3→Ep1, Ep3→Ep2 all match final scripts')
+      }
       return { ok: true, writes, generationPayload: ep2OutroGenerationPayload(), continued: true }
     }
     const handoff = await runPrePackagingRecoveryWithContinuation(supabase, {
@@ -513,6 +686,20 @@ export async function runRecovery(
     if (!(fin?.status === 'queued' && fin?.current_step === PRE_PACKAGING_CONTINUATION_STEP && fin?.locked_by == null)) {
       throw new Error(`handoff final state mismatch: ${JSON.stringify(fin)} (expected queued@${PRE_PACKAGING_CONTINUATION_STEP}, lock NULL)`)
     }
+  }
+
+  // STEP 5 — FINAL VERIFICATION (fail-closed): re-read all three episodes
+  // and require Ep2→Ep1, Ep3→Ep1, Ep3→Ep2 to match the final scripts.
+  // Any mismatch is a REPORTED FAILURE — never a success claim.
+  {
+    const { data: _fin3 } = await supabase.from('stories').select('id,script,script_json,episode_number').eq('series_id', CREEK_SERIES_ID)
+    const finCheck = checkFinalContinuity(_fin3 ?? [])
+    if (!finCheck.ok) {
+      log('[FAIL] final three-link verification mismatch — no success claimed:')
+      for (const m of finCheck.mismatches) log(`  - ${m}`)
+      return { ok: false, phase: 'final-verification', failures: finCheck.mismatches, writes }
+    }
+    log('[ok] final verification: Ep2→Ep1, Ep3→Ep1, Ep3→Ep2 all match final scripts')
   }
 
   return { ok: true, writes, generationPayload: ep2OutroGenerationPayload(), continued: true }

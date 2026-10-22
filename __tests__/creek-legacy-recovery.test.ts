@@ -33,12 +33,23 @@ const EP1_OUTRO =
   'Blythe found the page \u2014 or rather, found where it used to be. ' +
   'Sit with that for a moment \u2014 and you\u2019ll discover why in Episode two.'
 
+// Known live condition 2026-10-22 (the blocker Correction 1 executes on):
+// Ep2→Ep1 / Ep3→Ep1 pin legs are STALE (abefa7c8…) vs the live Ep1 script
+// hash (791664c4… — script_updated_at 18:02:26Z post-dates the C8 pin
+// write), and Ep1's production-consumed raw copy is DIVERGENT from the
+// validated script text. Fixtures seed exactly that (never already-correct).
+const STALE_EP1_PIN = 'abefa7c8' + '0'.repeat(56)
+
 function buildDb() {
   const ep1Script = 'EP ONE BODY. BELLE B OUTRO\n---\nBELLE B: ' + EP1_OUTRO
   const ep2Script = 'EP TWO BODY. BELLE B OUTRO\n---\nBELLE B: ' + R.EP2_OUTRO_BEFORE
   const ep3Script = 'EP THREE BODY. BELLE B OUTRO\n---\nBELLE B: finale copy.'
   const h1 = hashScript(ep1Script)
   const h2 = hashScript(ep2Script)
+  if (!h1.startsWith('791664c4') || STALE_EP1_PIN === h1) {
+    // Live-prefix constants document the real rows; the invariant that
+    // matters here is stale-leg ≠ live-hash (asserted below per test).
+  }
   return {
     production_jobs: [
       {
@@ -56,10 +67,12 @@ function buildDb() {
         outro_audio_url: null,
         outro_with_music_url: `https://x/storage/v1/object/public/audio/asc3/${R.CREEK_EP1_ID}/outro_with_music.mp3`,
         script_json: {
-          raw_script: ep1Script,
+          // DIVERGENT production-consumed raw copy (live blocker condition).
+          raw_script: ep1Script + '\n[STALE RAW COPY — pre-C8 text, diverges from validated script]',
           series_generation: {
             model: 'm', continuity_pins_used: {},
             belle_outro_repair: { at: '2026-10-22', action: 'c8', job_id: R.CREEK_JOB_ID },
+            belle_repair_audit: [{ action: 'seeded_prior_ep1_repair', jobId: 'other-job' }],
           },
         },
       },
@@ -72,7 +85,8 @@ function buildDb() {
           raw_script: ep2Script,
           series_generation: {
             model: 'm',
-            continuity_pins_used: { [R.CREEK_EP1_ID]: h1 },
+            // STALE Ep1 leg (live blocker condition abefa7c8…).
+            continuity_pins_used: { [R.CREEK_EP1_ID]: STALE_EP1_PIN },
             continuity_pin_recovery: {
               at: '2026-10-22', action: 'c8_pin_resync_after_belle_outro_repair',
               job_id: R.CREEK_JOB_ID, prior_recovery: { at: 'earlier', action: 'c7' },
@@ -90,7 +104,8 @@ function buildDb() {
           raw_script: ep3Script,
           series_generation: {
             model: 'm',
-            continuity_pins_used: { [R.CREEK_EP1_ID]: h1, [R.CREEK_EP2_ID]: h2 },
+            // STALE Ep1 leg (abefa7c8…); Ep2 leg correct pre-repair (= h2).
+            continuity_pins_used: { [R.CREEK_EP1_ID]: STALE_EP1_PIN, [R.CREEK_EP2_ID]: h2 },
           },
         },
       },
@@ -110,8 +125,12 @@ function buildDb() {
 type Db = ReturnType<typeof buildDb>
 
 // --- In-memory PostgREST + storage stub (real QueryBuilder serialization) --
-function stubFetch(db: Db, opts: { captured?: any[]; failOn?: (c: any) => boolean } = {}) {
+function stubFetch(db: Db, opts: { captured?: any[]; failOn?: (c: any) => boolean; sabotageFinalRead?: boolean } = {}) {
   const captured = opts.captured ?? []
+  // Negative-case hook: after the handoff release PATCH lands, serve the
+  // final verification re-reads a TAMPERED Ep1 script (simulates a
+  // concurrent modification between handoff and final verification).
+  let released = false
   return async (url: any, fetchOpts: any = {}) => {
     const u = String(url)
     if (u.includes('[object Object]')) throw new Error(`URL contains [object Object]: ${u}`)
@@ -165,16 +184,22 @@ function stubFetch(db: Db, opts: { captured?: any[]; failOn?: (c: any) => boolea
     }
     if (method === 'GET') {
       let rows = [...((db as any)[table] || [])]
-      rows = rows.filter(matchRow)
+      rows = rows.filter(matchRow).map((r) => JSON.parse(JSON.stringify(r)))
+      if (opts.sabotageFinalRead && released && table === 'stories') {
+        rows = rows.map((r) =>
+          String(r.id) === R.CREEK_EP1_ID ? { ...r, script: String(r.script) + ' SABOTAGE' } : r,
+        )
+      }
       const order = params.get('order')
       if (order) {
         const [col, dir] = order.split('.')
         rows.sort((a, b) => (dir === 'desc' ? -1 : 1) * (String(a[col]) < String(b[col]) ? -1 : 1))
       }
-      return respond(rows.map((r) => JSON.parse(JSON.stringify(r))))
+      return respond(rows)
     }
     if (method === 'PATCH') {
       const rows = ((db as any)[table] || []).filter(matchRow)
+      if (table === 'production_jobs' && (body as any)?.status === 'queued') released = true
       for (const r of rows) Object.assign(r, JSON.parse(JSON.stringify(body)))
       return respond(rows.map((r: any) => JSON.parse(JSON.stringify(r))))
     }
@@ -182,9 +207,9 @@ function stubFetch(db: Db, opts: { captured?: any[]; failOn?: (c: any) => boolea
   }
 }
 
-function clientFor(db: Db, stubOpts?: { captured?: any[]; failOn?: (c: any) => boolean }) {
+function clientFor(db: Db, stubOpts?: { captured?: any[]; failOn?: (c: any) => boolean; sabotageFinalRead?: boolean }) {
   const captured: any[] = stubOpts?.captured ?? []
-  const fetch = stubFetch(db, { captured, failOn: stubOpts?.failOn })
+  const fetch = stubFetch(db, { captured, failOn: stubOpts?.failOn, sabotageFinalRead: stubOpts?.sabotageFinalRead })
   const supabase = createClient('http://localhost:9999', 'anon-key', { global: { fetch } })
   return { supabase, captured }
 }
@@ -294,29 +319,41 @@ test('ep3 continuity_pins_used updated via CAS drain; ep3 text untouched', async
   }
   const finalPins = db.stories[2].script_json.series_generation.continuity_pins_used
   expect(finalPins[R.CREEK_EP2_ID]).toBe(hashScript(db.stories[1].script))
-  expect(finalPins[R.CREEK_EP1_ID]).toBe(hashScript(db.stories[0].script)) // unchanged
+  // Ep1 leg REPAIRED (Correction 1): stale abefa7c8… → current ep1 hash.
+  expect(finalPins[R.CREEK_EP1_ID]).toBe(hashScript(db.stories[0].script))
 })
 
-test('ep1 regen-only: intent on nested path, no text rewrite', async () => {
+test('ep1 executes, never warns: raw synced + text preserved + intent on nested path', async () => {
   const db = buildDb()
   const beforeScript = db.stories[0].script
+  // Fixture seeds the live blocker: divergent raw copy.
+  expect(db.stories[0].script_json.raw_script).not.toBe(beforeScript)
   const { supabase, captured } = clientFor(db)
   const r = await R.runRecovery(supabase, { execute: true, ...quiet })
   expect(r.ok).toBe(true)
+  // NO text rewrite: validated script text preserved exactly.
   expect(db.stories[0].script).toBe(beforeScript)
+  // Production-consumed raw copy SYNCED to the validated script.
+  expect(db.stories[0].script_json.raw_script).toBe(beforeScript)
   const ep1Patches = postgrestOf(captured).filter(
     (p) => p.url.includes('/rest/v1/stories') && p.url.includes(`id=eq.${R.CREEK_EP1_ID}`),
   )
-  // Exactly two row writes: the intent-setting PATCH (nested sg path) and
-  // the handoff's clearing PATCH — never a text rewrite.
-  expect(ep1Patches.length).toBe(2)
+  // Exactly three row writes: raw-sync PATCH, intent-setting PATCH (nested
+  // sg path), and the handoff's clearing PATCH — never a text rewrite.
+  expect(ep1Patches.length).toBe(3)
   for (const p of ep1Patches) {
     expect(p.body.script).toBeUndefined()
     expect(p.body.outro_text).toBeUndefined()
+    expect(p.url).toContain('script_json=eq.') // CAS-conditioned, real JSON
   }
-  expect(ep1Patches[0].body.script_json.series_generation.pending_audio_delete).toEqual([
-    expect.stringContaining('outro_with_music.mp3'),
-  ])
+  expect(ep1Patches[0].url).not.toContain('[object Object]')
+  // Raw-sync audit appended, prior history intact (append, never overwrite).
+  const audits = db.stories[0].script_json.series_generation.belle_repair_audit
+  expect(audits.length).toBe(2)
+  expect(audits[0]).toEqual({ action: 'seeded_prior_ep1_repair', jobId: 'other-job' })
+  expect(audits[1].jobId).toBe(R.CREEK_JOB_ID)
+  expect(audits[1].action).toBe(R.EP1_RAW_SYNC_ACTION)
+  // Audio-delete intent rode the nested path, then drained via handoff.
   expect(db.stories[0].script_json.series_generation.pending_audio_delete).toEqual([])
 })
 
@@ -372,6 +409,94 @@ test('numeral normalization exact-match', () => {
   expect(R.normalizeSpokenNumerals('Episode 3, "What the Creek Knew," is where it all comes due.'))
     .toBe('Episode Three, "What the Creek Knew," is where it all comes due.')
   expect(R.ep2OutroGenerationPayload()).toBe(R.EP2_OUTRO_AFTER)
+})
+
+test('ep1 pin repair executes: stale legs + divergent raw in → synced raw + both pins re-derived + audit appended + three-link verification green', async () => {
+  const db = buildDb()
+  // Fixture seeds the actual live blocker (never already-correct).
+  expect(db.stories[1].script_json.series_generation.continuity_pins_used[R.CREEK_EP1_ID]).toBe(STALE_EP1_PIN)
+  expect(db.stories[2].script_json.series_generation.continuity_pins_used[R.CREEK_EP1_ID]).toBe(STALE_EP1_PIN)
+  expect(STALE_EP1_PIN).not.toBe(hashScript(db.stories[0].script))
+  expect(db.stories[0].script_json.raw_script).not.toBe(db.stories[0].script)
+  // Pure planner agrees repair is needed, derived via the real method.
+  const plan = R.ep1PinRepairPlan({ ep1: db.stories[0], ep2: db.stories[1], ep3: db.stories[2] })
+  expect(plan.needed).toBe(true)
+  expect(plan.rawDivergent).toBe(true)
+  expect(plan.staleOn).toEqual([R.CREEK_EP2_ID, R.CREEK_EP3_ID])
+  expect(plan.wantPinHash).toBe(hashScript(db.stories[0].script))
+  // Preflight does NOT fail on the stale legs (they are the repair target).
+  const pre = R.evaluatePreflight({ job: db.production_jobs[0], stories: db.stories })
+  expect(pre.ok).toBe(true)
+  expect(pre.ep1RepairNeeded).toBe(true)
+
+  const { supabase, captured } = clientFor(db)
+  const r = await R.runRecovery(supabase, { execute: true, ...quiet })
+  expect(r.ok).toBe(true)
+  expect(r.continued).toBe(true)
+  for (const c of captured) expect(c.url).not.toContain('[object Object]')
+
+  // Synced raw + both pins re-derived from the current ep1 script.
+  const want = hashScript(db.stories[0].script)
+  expect(db.stories[0].script_json.raw_script).toBe(db.stories[0].script)
+  expect(db.stories[1].script_json.series_generation.continuity_pins_used[R.CREEK_EP1_ID]).toBe(want)
+  expect(db.stories[2].script_json.series_generation.continuity_pins_used[R.CREEK_EP1_ID]).toBe(want)
+  // Captured-request proof: pin-repair PATCHes carry full UUIDs, nested
+  // sg paths, CAS guards — never [object Object], never top-level columns.
+  // Repair writes precede the handoff continuation by construction (step 3
+  // before step 4); the handoff's later intent-clear PATCH re-carries the
+  // same audit tail and must not be counted as a repair write.
+  const contIdx = postgrestOf(captured).findIndex(
+    (p) => p.url.includes('/rest/v1/production_jobs') && p.body.current_step !== undefined,
+  )
+  expect(contIdx).toBeGreaterThan(0)
+  const pinPatches = postgrestOf(captured).slice(0, contIdx).filter((p) => {
+    const audits = p.body.script_json?.series_generation?.belle_repair_audit
+    return p.url.includes('/rest/v1/stories')
+      && p.body.script === undefined
+      && p.body.script_json?.series_generation?.continuity_pins_used?.[R.CREEK_EP1_ID] === want
+      && Array.isArray(audits) && audits[audits.length - 1]?.action === R.EP1_PIN_REPAIR_ACTION
+  })
+  expect(pinPatches.length).toBe(2)
+  for (const p of pinPatches) {
+    expect(p.url).toContain('script_json=eq.')
+    expect(p.body.continuity_pins_used).toBeUndefined()
+    expect(p.body.outro_text).toBeUndefined()
+    const audits = p.body.script_json.series_generation.belle_repair_audit
+    expect(audits[audits.length - 1].jobId).toBe(R.CREEK_JOB_ID)
+    expect(audits[audits.length - 1].action).toBe(R.EP1_PIN_REPAIR_ACTION)
+  }
+  // Audit appended with history intact: Ep2's seeded prior entry survives
+  // first; both carriers record the repair (append, never overwrite).
+  const audits2 = db.stories[1].script_json.series_generation.belle_repair_audit
+  expect(audits2[0]).toEqual({ action: 'seeded_prior_repair', jobId: 'other-job' })
+  for (const ep of [db.stories[1], db.stories[2]]) {
+    const audits = ep.script_json.series_generation.belle_repair_audit
+    expect(audits.some((e: any) => e?.jobId === R.CREEK_JOB_ID && e?.action === R.EP1_PIN_REPAIR_ACTION)).toBe(true)
+  }
+  // Final three-link verification green over the final rows.
+  const fin = R.checkFinalContinuity(db.stories)
+  expect(fin.ok).toBe(true)
+  expect(fin.mismatches).toEqual([])
+})
+
+test('negative: final verification mismatch → reported failure, no success claim', async () => {
+  const db = buildDb()
+  const { supabase, captured } = clientFor(db, { sabotageFinalRead: true })
+  const r = await R.runRecovery(supabase, { execute: true, ...quiet })
+  // Fail-closed: reported failure, never a success claim.
+  expect(r.ok).toBe(false)
+  expect(r.phase).toBe('final-verification')
+  expect(r.failures!.length).toBeGreaterThan(0)
+  expect(r.continued).toBeUndefined()
+  expect(r.generationPayload).toBeUndefined()
+  for (const c of captured) expect(c.url).not.toContain('[object Object]')
+  // The pure gate agrees: tampered ep1 breaks both Ep1 legs.
+  const tampered = db.stories.map((s: any) =>
+    String(s.id) === R.CREEK_EP1_ID ? { ...s, script: String(s.script) + ' SABOTAGE' } : s,
+  )
+  const gate = R.checkFinalContinuity(tampered)
+  expect(gate.ok).toBe(false)
+  expect(gate.mismatches.length).toBe(2) // Ep2→Ep1 + Ep3→Ep1
 })
 
 test('kill-switch after EACH write: restart converges, no duplicate script persist, no own-lock refusal', async () => {
