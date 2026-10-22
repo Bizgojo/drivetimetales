@@ -11047,20 +11047,162 @@ export async function POST(req: NextRequest) {
         })
 
         if (!result.success) {
+          const persistedPackage = lockedJob.state_json?.seriesCompleteStoryPackage &&
+            typeof lockedJob.state_json.seriesCompleteStoryPackage === 'object'
+              ? lockedJob.state_json.seriesCompleteStoryPackage
+              : {}
+          const persistedBelleRetry = persistedPackage.belleRetry &&
+            typeof persistedPackage.belleRetry === 'object'
+              ? persistedPackage.belleRetry
+              : {}
+          const byEpisode = persistedBelleRetry.byEpisode &&
+            typeof persistedBelleRetry.byEpisode === 'object'
+              ? persistedBelleRetry.byEpisode
+              : {}
+
+          // BELLE-REPAIR-DRAIN-REACHABILITY-001: HOISTED drain-first. Runs
+          // BEFORE continuity validation (seriesBelleRetryTarget gating) and
+          // OUTSIDE the content-retry allowance guard. When the failed
+          // episode's row still carries a non-empty pending_pin_resync list,
+          // the drain executes even if the failure class is
+          // continuity_pin_mismatch (not Belle-position) and even if the
+          // per-episode rewrite count is exhausted. A read miss here falls
+          // through to normal handling (no queue-jam on a read blip); a
+          // MALFORMED list throws loudly via getPendingPinResync before any
+          // write (pending data preserved, no rewrite attempted). A
+          // drain-only recovery consumes no attempt and performs no
+          // rewrite, validation, or audio regeneration.
+          const drainCandidateStoryId = String(result?.episode?.storyId || '').trim()
+          if (drainCandidateStoryId) {
+            const { data: drainCandidate, error: drainCandidateError } = await supabase
+              .from('stories')
+              .select('id,script_json')
+              .eq('id', drainCandidateStoryId)
+              .single()
+            if (!drainCandidateError && drainCandidate) {
+              const hoistedPending = getPendingPinResync((drainCandidate as any).script_json, drainCandidateStoryId)
+              if (hoistedPending.length > 0) {
+                const hoistedDrainedIds = await drainPendingPinResync(
+                  supabase,
+                  drainCandidateStoryId,
+                  hoistedPending
+                )
+                const hoistedEpisodeNumber = result?.episode?.episodeNumber ?? null
+                const hoistedIssues = Array.isArray(result?.contentIssues)
+                  ? result.contentIssues.map(String)
+                  : []
+                const hoistedCurrentRetry = Number((byEpisode as any)[drainCandidateStoryId]?.count || 0)
+                const hoistedPriorRecord = ((byEpisode as any)[drainCandidateStoryId] || {}) as {
+                  repairedIntro?: unknown
+                  repairedOutro?: unknown
+                }
+                const hoistedEpKey = String(hoistedEpisodeNumber || drainCandidateStoryId)
+                const hoistedRetryState = {
+                  ...result.state,
+                  seriesBelleGeneration: {
+                    ...(result.state.seriesBelleGeneration || {}),
+                    doneByEp: {
+                      ...(result.state.seriesBelleGeneration?.doneByEp || {}),
+                      [hoistedEpKey]: false,
+                    },
+                    allDone: false,
+                    lastUpdatedAt: nowIso(),
+                  },
+                  seriesRenderFinalMix: {
+                    ...(result.state.seriesRenderFinalMix || {}),
+                    doneByEp: {
+                      ...(result.state.seriesRenderFinalMix?.doneByEp || {}),
+                      [hoistedEpKey]: false,
+                    },
+                    allDone: false,
+                    lastUpdatedAt: nowIso(),
+                  },
+                  seriesCompleteStoryPackage: {
+                    ...(result.state.seriesCompleteStoryPackage || {}),
+                    doneByEp: {
+                      ...(result.state.seriesCompleteStoryPackage?.doneByEp || {}),
+                      [hoistedEpKey]: false,
+                    },
+                    failedEpisode: null,
+                    failureReason: null,
+                    contentIssues: null,
+                    allDone: false,
+                    belleRetry: {
+                      ...persistedBelleRetry,
+                      byEpisode: {
+                        ...byEpisode,
+                        [drainCandidateStoryId]: {
+                          count: hoistedCurrentRetry,
+                          max: MAX_SERIES_BELLE_RETRIES,
+                          episodeNumber: hoistedEpisodeNumber,
+                          issues: hoistedIssues,
+                          repairedIntro: typeof hoistedPriorRecord.repairedIntro === 'string' ? hoistedPriorRecord.repairedIntro : null,
+                          repairedOutro: typeof hoistedPriorRecord.repairedOutro === 'string' ? hoistedPriorRecord.repairedOutro : null,
+                          deletedBelleFiles: [],
+                          lastRetriedAt: nowIso(),
+                          pinDrainRecoveredAt: nowIso(),
+                          pinDrainRecovered: hoistedDrainedIds,
+                        },
+                      },
+                    },
+                    lastUpdatedAt: nowIso(),
+                  },
+                }
+                const hoistedLogMessage = `Pin-resync drain recovered ${hoistedDrainedIds.length} dependent(s) for EP${hoistedEpisodeNumber} (no rewrite, no audio regeneration, attempt not consumed)`
+                const hoistedLogs = appendLog({ ...lockedJob, logs }, hoistedLogMessage, {
+                  seriesId: result.seriesId || lockedJob.series_id,
+                  storyId: drainCandidateStoryId,
+                  episodeNumber: hoistedEpisodeNumber,
+                  issues: hoistedIssues,
+                  deletedBelleFiles: [],
+                })
+                const { data: hoistedRetryJob, error: hoistedRetryError } = await supabase
+                  .from('production_jobs')
+                  .update({
+                    status: 'queued',
+                    current_step: NEXT_STEP_AFTER_SERIES_VOICES,
+                    state_json: hoistedRetryState,
+                    error_json: {
+                      step,
+                      action: 'series_belle_pin_drain',
+                      retryCount: hoistedCurrentRetry,
+                      maxRetries: MAX_SERIES_BELLE_RETRIES,
+                      seriesId: result.seriesId || lockedJob.series_id,
+                      repairedStoryId: drainCandidateStoryId,
+                      repairedEpisodeNumber: hoistedEpisodeNumber,
+                      issues: hoistedIssues,
+                      deletedBelleFiles: [],
+                      at: nowIso(),
+                    },
+                    logs: hoistedLogs,
+                    locked_at: null,
+                    locked_by: null,
+                  })
+                  .match(ownedJobFence(lockedJob, lockHolderId))
+                  .select('*')
+                  .single()
+                if (hoistedRetryError) throw new Error(`Failed to queue series Belle pin drain: ${hoistedRetryError.message}`)
+                return NextResponse.json({
+                  success: true,
+                  action: 'series_belle_pin_drain',
+                  jobId: hoistedRetryJob.id,
+                  currentStep: step,
+                  nextStep: NEXT_STEP_AFTER_SERIES_VOICES,
+                  retryCount: hoistedCurrentRetry,
+                  pinDrainRecovered: hoistedDrainedIds,
+                  maxRetries: MAX_SERIES_BELLE_RETRIES,
+                  seriesId: result.seriesId || lockedJob.series_id,
+                  repairedStoryId: drainCandidateStoryId,
+                  repairedEpisodeNumber: hoistedEpisodeNumber,
+                  deletedBelleFiles: [],
+                  logs: hoistedLogs,
+                })
+              }
+            }
+          }
+
           const belleRetryTarget = seriesBelleRetryTarget(result)
           if (belleRetryTarget) {
-            const persistedPackage = lockedJob.state_json?.seriesCompleteStoryPackage &&
-              typeof lockedJob.state_json.seriesCompleteStoryPackage === 'object'
-                ? lockedJob.state_json.seriesCompleteStoryPackage
-                : {}
-            const persistedBelleRetry = persistedPackage.belleRetry &&
-              typeof persistedPackage.belleRetry === 'object'
-                ? persistedPackage.belleRetry
-                : {}
-            const byEpisode = persistedBelleRetry.byEpisode &&
-              typeof persistedBelleRetry.byEpisode === 'object'
-                ? persistedBelleRetry.byEpisode
-                : {}
             const currentRetry = Number(byEpisode[belleRetryTarget.storyId]?.count || 0)
 
             if (currentRetry < MAX_SERIES_BELLE_RETRIES) {
@@ -11088,7 +11230,7 @@ export async function POST(req: NextRequest) {
               // persisted attempt (written to the job row before throwing, so
               // the bound survives restarts); drain/infra failures consume
               // none, and a drain-only recovery run consumes none.
-              const preExistingPending = getPendingPinResync((targetStory as any).script_json)
+              const preExistingPending = getPendingPinResync((targetStory as any).script_json, String(belleRetryTarget.storyId))
               let retryCount: number
               let recordRepairedIntro: string | null
               let recordRepairedOutro: string | null
@@ -11112,6 +11254,44 @@ export async function POST(req: NextRequest) {
                 deletedBelleFiles = []
                 retryLogMessage = `Pin-resync drain recovered ${drainedIds.length} dependent(s) for EP${belleRetryTarget.episodeNumber} (no rewrite, no audio regeneration, attempt not consumed)`
               } else {
+                // BELLE-RETRY-ATTEMPT-RESERVATION-001: reserve the incremented
+                // attempt on the job row BEFORE the paid LLM rewrite, so a
+                // crash between rewrite and result cannot grant an uncounted
+                // attempt. Success and validation-failure paths below keep
+                // this reserved count (reserve once, reuse downstream — never
+                // double-increment). failJob preserves state_json, so the
+                // reservation survives any throw after this point.
+                const reservedRetryCount = currentRetry + 1
+                const reservedRetryState = {
+                  ...result.state,
+                  seriesCompleteStoryPackage: {
+                    ...(result.state.seriesCompleteStoryPackage || {}),
+                    belleRetry: {
+                      ...persistedBelleRetry,
+                      byEpisode: {
+                        ...byEpisode,
+                        [belleRetryTarget.storyId]: {
+                          count: reservedRetryCount,
+                          max: MAX_SERIES_BELLE_RETRIES,
+                          episodeNumber: belleRetryTarget.episodeNumber,
+                          issues: belleRetryTarget.issues,
+                          repairedIntro: null,
+                          repairedOutro: null,
+                          deletedBelleFiles: [],
+                          lastRetriedAt: nowIso(),
+                        },
+                      },
+                    },
+                    lastUpdatedAt: nowIso(),
+                  },
+                }
+                const { error: reserveCountError } = await supabase
+                  .from('production_jobs')
+                  .update({ state_json: reservedRetryState })
+                  .match(ownedJobFence(lockedJob, lockHolderId))
+                if (reserveCountError) {
+                  throw new Error(`Failed to reserve Belle retry attempt count: ${reserveCountError.message}`)
+                }
                 const repaired = await regenerateSeriesBelleFromFeedback(targetStory, belleRetryTarget, nextEpisode, model)
                 let repairedScript = String(targetStory.script || '')
                 if (belleRetryTarget.repairIntro) repairedScript = replaceBelleSection(repairedScript, 'intro', repaired.introText)
@@ -11139,11 +11319,14 @@ export async function POST(req: NextRequest) {
                     normalizedNarrativeHookIntro: normalizeNarrativeHookText(validationIntroText),
                     detectedNarrativeHookCategory: detectNarrativeHookCategory(validationIntroText),
                   }
-                  // Validation failure spends one PERSISTED attempt: write the
-                  // incremented count to the job row before throwing (failJob
-                  // preserves state_json), so the per-episode bound survives
-                  // restarts instead of granting a fresh loop on every retry.
-                  const failedRetryCount = currentRetry + 1
+                  // Validation failure keeps the RESERVED attempt (written to
+                  // the job row before the rewrite, so the per-episode bound
+                  // survives restarts instead of granting a fresh loop on
+                  // every retry). Reuses reservedRetryCount — no second
+                  // increment. This write adds the validation issues to the
+                  // reserved record before throwing (failJob preserves
+                  // state_json).
+                  const failedRetryCount = reservedRetryCount
                   const failedRetryState = {
                     ...result.state,
                     seriesCompleteStoryPackage: {
@@ -11237,7 +11420,9 @@ export async function POST(req: NextRequest) {
                   pendingEntries: pendingPinEntries,
                 })
   
-                retryCount = currentRetry + 1
+                // Success keeps the RESERVED attempt (reuses
+                // reservedRetryCount — no second increment).
+                retryCount = reservedRetryCount
                 recordRepairedIntro = belleRetryTarget.repairIntro ? repaired.introText : null
                 recordRepairedOutro = belleRetryTarget.repairOutro ? repaired.outroText : null
                 retryLogMessage = `Auto-retry ${retryCount}/${MAX_SERIES_BELLE_RETRIES}: repaired Belle copy for EP${belleRetryTarget.episodeNumber}`
