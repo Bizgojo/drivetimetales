@@ -11297,10 +11297,10 @@ export async function POST(req: NextRequest) {
               // still carries pending entries, drain them now — BEFORE any
               // rewrite/validation/audio step — and requeue WITHOUT another
               // rewrite, audio regeneration, or attempt consumption.
-              // ATTEMPT SEMANTICS (binding): validation failures consume one
-              // persisted attempt (written to the job row before throwing, so
-              // the bound survives restarts); drain/infra failures consume
-              // none, and a drain-only recovery run consumes none.
+              // ATTEMPT SEMANTICS (binding): each regen round consumes one
+              // persisted attempt (reserved on the job row BEFORE its paid
+              // call, so the bound survives restarts); drain/infra failures
+              // consume none, and a drain-only recovery run consumes none.
               const preExistingPending = getPendingPinResync((targetStory as any).script_json, String(belleRetryTarget.storyId))
               let retryCount: number
               let recordRepairedIntro: string | null
@@ -11328,12 +11328,12 @@ export async function POST(req: NextRequest) {
                 // BELLE-RETRY-ATTEMPT-RESERVATION-001: reserve the incremented
                 // attempt on the job row BEFORE the paid LLM rewrite, so a
                 // crash between rewrite and result cannot grant an uncounted
-                // attempt. Success and validation-failure paths below keep
-                // this reserved count (reserve once, reuse downstream — never
-                // double-increment). failJob preserves state_json, so the
-                // reservation survives any throw after this point.
-                const reservedRetryCount = currentRetry + 1
-                const reservedRetryState = {
+                // attempt. Round 1 reserves currentRetry + 1 here; each
+                // additional loop round reserves its own count BEFORE its
+                // paid call (BELLE-RETRY-PER-ROUND-RESERVATION-001 below).
+                // failJob preserves state_json, so any reservation survives
+                // any throw after this point.
+                const buildBelleRetryReserveState = (count: number) => ({
                   ...result.state,
                   seriesCompleteStoryPackage: {
                     ...(result.state.seriesCompleteStoryPackage || {}),
@@ -11342,7 +11342,7 @@ export async function POST(req: NextRequest) {
                       byEpisode: {
                         ...byEpisode,
                         [belleRetryTarget.storyId]: {
-                          count: reservedRetryCount,
+                          count,
                           max: MAX_SERIES_BELLE_RETRIES,
                           episodeNumber: belleRetryTarget.episodeNumber,
                           issues: belleRetryTarget.issues,
@@ -11353,9 +11353,11 @@ export async function POST(req: NextRequest) {
                         },
                       },
                     },
-                    lastUpdatedAt: nowIso(),
+                  lastUpdatedAt: nowIso(),
                   },
-                }
+                })
+                const reservedRetryCount = currentRetry + 1
+                const reservedRetryState = buildBelleRetryReserveState(reservedRetryCount)
                 // Reservation REQUIRES an affected row (fenced + row-count
                 // verified inside the helper): a lost lock matching zero
                 // rows throws BEFORE regenerateSeriesBelleFromFeedback —
@@ -11365,17 +11367,31 @@ export async function POST(req: NextRequest) {
                   fence: ownedJobFence(lockedJob, lockHolderId),
                   stateJson: reservedRetryState,
                 })
-                // CANDIDATE P3+P5: bounded feedback loop inside the reserved
-                // attempt. Round 1 reuses the reservation above (no extra
-                // write); each failed round feeds its validation issues into
-                // the next regen via the existing issues channel. Exhaustion
-                // falls into P5's failed-count write + marc_required throw.
+                // BELLE-RETRY-FEEDBACK-BOUND: bounded repair-and-resume. Each
+                // regen+validate round consumes one unit of the per-episode
+                // bound, and each failed round's validation issues feed back
+                // into the next regen via the existing issues channel.
                 const remainingBelleAttempts = Math.max(MAX_SERIES_BELLE_RETRIES - currentRetry, 0)
                 let repaired: { introText: string; outroText: string } | null = null
                 let repairedScript = String(targetStory.script || '')
                 let validation: { passed: boolean; issues: string[] } | null = null
                 let belleAttemptsUsed = 0
                 for (let belleAttempt = 0; belleAttempt < remainingBelleAttempts; belleAttempt++) {
+                  // BELLE-RETRY-PER-ROUND-RESERVATION-001: round 1 reuses the
+                  // reservation above (no extra write); EVERY additional
+                  // round reserves currentRetry + belleAttempt + 1 durably
+                  // (fenced + affected-row-checked) BEFORE its paid rewrite.
+                  // A failed reservation throws here — zero further paid
+                  // calls — and prior rounds' reservations stay in the job
+                  // row, so a restart resumes with the consumed attempts
+                  // intact instead of granting a free loop.
+                  if (belleAttempt > 0) {
+                    await reserveBelleRetryCount(supabase, {
+                      jobId: String((lockedJob as any)?.id || ''),
+                      fence: ownedJobFence(lockedJob, lockHolderId),
+                      stateJson: buildBelleRetryReserveState(currentRetry + belleAttempt + 1),
+                    })
+                  }
                   const attemptTarget = belleAttempt === 0
                     ? belleRetryTarget
                     : { ...belleRetryTarget, issues: [...(validation?.issues || [])] }
@@ -11412,16 +11428,12 @@ export async function POST(req: NextRequest) {
                     normalizedNarrativeHookIntro: normalizeNarrativeHookText(validationIntroText),
                     detectedNarrativeHookCategory: detectNarrativeHookCategory(validationIntroText),
                   }
-                  // Validation failure keeps the RESERVED attempt (written to
-                  // the job row before the rewrite, so the per-episode bound
-                  // survives restarts instead of granting a fresh loop on
-                  // every retry). Reuses reservedRetryCount — no second
-                  // increment. This write adds the validation issues to the
-                  // reserved record before throwing (failJob preserves
-                  // state_json).
-                  // CANDIDATE P3+P5: bound-aware failure count. Single-round
-                  // fast path keeps the RESERVED attempt exactly (P5); a
-                  // multi-round loop persists currentRetry + rounds used (P3).
+                  // Bound-aware failure count: persists currentRetry +
+                  // rounds used (every round reserved before its paid call,
+                  // so the per-episode bound survives restarts instead of
+                  // granting a fresh loop on every retry). This write adds
+                  // the final validation issues to the record before
+                  // throwing (failJob preserves state_json).
                   const failedRetryCount = currentRetry + Math.max(belleAttemptsUsed, 1)
                   const failedRetryState = {
                     ...result.state,
@@ -11538,10 +11550,9 @@ export async function POST(req: NextRequest) {
                   pendingAudioDeleteUrls,
                 })).deletedBelleFiles
   
-                // CANDIDATE P3+P5: bound-aware success count. Single-round
-                // fast path keeps the RESERVED attempt exactly (P5); a
-                // multi-round loop records currentRetry + rounds used (P3).
-                // The downstream retryState write persists this value, so no
+                // Bound-aware success count: records currentRetry + rounds
+                // used (every round reserved before its paid call). The
+                // downstream retryState write persists this value, so no
                 // extra write is needed here.
                 retryCount = currentRetry + Math.max(belleAttemptsUsed, 1)
                 recordRepairedIntro = belleRetryTarget.repairIntro ? repaired?.introText ?? null : null
