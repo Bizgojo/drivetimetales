@@ -11073,28 +11073,50 @@ export async function POST(req: NextRequest) {
                 episodeNumber(episode, 0) === Number(targetStory.episode_number || 0) + 1
               ) || null
 
-              const repaired = await regenerateSeriesBelleFromFeedback(targetStory, belleRetryTarget, nextEpisode, model)
+              // BELLE-RETRY-FEEDBACK-BOUND: bounded repair-and-resume. Each
+              // regen+validate round consumes one unit of the per-episode bound,
+              // and each failed round's validation issues feed back into the next
+              // regen via the existing issues channel (no signature change needed).
+              // The marc_required throw below fires ONLY when the bound is
+              // exhausted with no passing copy.
+              const remainingBelleAttempts = MAX_SERIES_BELLE_RETRIES - currentRetry
+              let repaired: { introText: string; outroText: string } | null = null
+              let lastAttemptRepaired: { introText: string; outroText: string } | null = null
               let repairedScript = String(targetStory.script || '')
-              if (belleRetryTarget.repairIntro) repairedScript = replaceBelleSection(repairedScript, 'intro', repaired.introText)
-              if (belleRetryTarget.repairOutro) repairedScript = replaceBelleSection(repairedScript, 'outro', repaired.outroText)
-
-              const validation = await validateIntroOutroPositionRules(
-                { ...targetStory, script: repairedScript },
-                extractBelleSection(repairedScript, 'intro'),
-                extractBelleSection(repairedScript, 'outro')
-              )
-              if (!validation.passed) {
+              let lastValidationIssues: string[] = [...belleRetryTarget.issues]
+              let belleAttemptsUsed = 0
+              for (let belleAttempt = 0; belleAttempt < remainingBelleAttempts; belleAttempt++) {
+                const attemptTarget = { ...belleRetryTarget, issues: lastValidationIssues }
+                const attemptRepaired = await regenerateSeriesBelleFromFeedback(targetStory, attemptTarget, nextEpisode, model)
+                let attemptScript = String(targetStory.script || '')
+                if (belleRetryTarget.repairIntro) attemptScript = replaceBelleSection(attemptScript, 'intro', attemptRepaired.introText)
+                if (belleRetryTarget.repairOutro) attemptScript = replaceBelleSection(attemptScript, 'outro', attemptRepaired.outroText)
+                const attemptValidation = await validateIntroOutroPositionRules(
+                  { ...targetStory, script: attemptScript },
+                  extractBelleSection(attemptScript, 'intro'),
+                  extractBelleSection(attemptScript, 'outro')
+                )
+                belleAttemptsUsed += 1
+                lastAttemptRepaired = attemptRepaired
+                repairedScript = attemptScript
+                if (attemptValidation.passed) {
+                  repaired = attemptRepaired
+                  break
+                }
+                lastValidationIssues = [...attemptValidation.issues]
+              }
+              if (!repaired) {
                 const validationIntroText = extractBelleSection(repairedScript, 'intro')
                 const validationOutroText = extractBelleSection(repairedScript, 'outro')
-                const retryValidationError = new Error(`Belle retry produced invalid copy: ${validation.issues.join('; ')}`)
+                const retryValidationError = new Error(`Belle retry produced invalid copy: ${lastValidationIssues.join('; ')}`)
                 ;(retryValidationError as Error & { structuredErrorDetail?: unknown }).structuredErrorDetail = {
                   kind: 'series_belle_retry_validation_failed',
                   seriesId: result.seriesId || lockedJob.series_id,
                   storyId: belleRetryTarget.storyId,
                   episodeNumber: belleRetryTarget.episodeNumber,
-                  issues: validation.issues,
-                  repairedIntroText: belleRetryTarget.repairIntro ? repaired.introText : null,
-                  repairedOutroText: belleRetryTarget.repairOutro ? repaired.outroText : null,
+                  issues: lastValidationIssues,
+                  repairedIntroText: belleRetryTarget.repairIntro ? lastAttemptRepaired?.introText ?? null : null,
+                  repairedOutroText: belleRetryTarget.repairOutro ? lastAttemptRepaired?.outroText ?? null : null,
                   validationIntroText,
                   validationOutroText,
                   normalizedNarrativeHookIntro: normalizeNarrativeHookText(validationIntroText),
@@ -11132,7 +11154,7 @@ export async function POST(req: NextRequest) {
                 throw new Error(`Failed to save repaired Belle copy: ${repairUpdateError.message}`)
               }
 
-              const retryCount = currentRetry + 1
+              const retryCount = currentRetry + belleAttemptsUsed
               const epKey = String(belleRetryTarget.episodeNumber || belleRetryTarget.storyId)
               const nextBelleDoneByEp = {
                 ...(result.state.seriesBelleGeneration?.doneByEp || {}),
