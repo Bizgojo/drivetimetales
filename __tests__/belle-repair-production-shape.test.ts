@@ -122,7 +122,7 @@ function makeEmulator(
   seedStories: Record<string, any>,
   seedJobs: Record<string, any>,
   storageFiles: Record<string, string[]> = {},
-  opts: { failPatch?: (table: string, values: any) => string | null } = {}
+  opts: { failPatch?: (table: string, values: any) => string | null; failRpc?: (params: any) => string | null } = {}
 ) {
   const stories = new Map<string, any>(Object.entries(clone(seedStories)))
   const jobs = new Map<string, any>(Object.entries(clone(seedJobs)))
@@ -167,6 +167,25 @@ function makeEmulator(
       return jsonResponse(paths.map((p) => ({ name: String(p).split('/').pop() })))
     }
 
+    // LARGE-DOC-CAS: server-side compare-and-swap RPC emulation (atomic
+    // compare via canon, whitelist enforced, zero-row match = []).
+    if (parsed.pathname === '/rest/v1/rpc/cas_update_story' && method === 'POST') {
+      const rpcBody = JSON.parse(bodyText || '{}')
+      const injected = opts.failRpc ? opts.failRpc(rpcBody) : null
+      if (injected) return jsonResponse({ message: injected, code: '400' }, 400)
+      const allowed = ['script', 'script_json', 'announcement_text', 'outro_text', 'announcement_url', 'outro_audio_url', 'outro_with_music_url']
+      for (const k of Object.keys(rpcBody?.p_updates ?? {})) {
+        if (!allowed.includes(k)) {
+          return jsonResponse({ message: `cas_update_story: column ${k} not in whitelist`, code: 'P0001' }, 400)
+        }
+      }
+      const row = stories.get(String(rpcBody?.p_story_id))
+      if (row && canon(row.script_json ?? null) === canon(rpcBody?.p_expected ?? null)) {
+        for (const [k, v] of Object.entries(rpcBody?.p_updates ?? {})) (row as any)[k] = clone(v)
+        return jsonResponse([{ updated_id: row.id }])
+      }
+      return jsonResponse([])
+    }
     const restMatch = parsed.pathname.match(/^\/rest\/v1\/([^/]+)$/)
     if (!restMatch) return jsonResponse({ message: `emu: unknown path ${parsed.pathname}` }, 404)
     const table = restMatch[1]
@@ -613,9 +632,10 @@ describe('(2) pre-packaging audio recovery resets stages + persists before packa
     expect(contIdx).toBeGreaterThan(-1)
     expect(releaseIdx).toBeGreaterThan(-1)
     expect(deleteIdx).toBeLessThan(contIdx)
+    // LARGE-DOC-CAS: prunes travel as RPC calls (body params, no URL filter).
     const pruneIdxs = emu.requests
       .map((r, i) => ({ r, i }))
-      .filter(({ r }) => r.method === 'PATCH' && r.url.includes('/rest/v1/stories'))
+      .filter(({ r }) => r.method === 'POST' && r.url.includes('/rest/v1/rpc/cas_update_story'))
       .map(({ i }) => i)
     expect(pruneIdxs.length).toBeGreaterThan(0)
     for (const i of pruneIdxs) expect(i).toBeGreaterThan(contIdx)
@@ -625,10 +645,16 @@ describe('(2) pre-packaging audio recovery resets stages + persists before packa
       emu.stories.get(EP1_ID).script_json.series_generation.pending_audio_delete
     ).toEqual([])
 
-    // Unaffected episode row untouched: no story write names it, its row
-    // is byte-identical to the seed.
-    for (const r of patchRequests(emu).filter((x) => x.url.includes('/rest/v1/stories'))) {
-      expect(String(r.body || '')).not.toContain(EP2_ID)
+    // Unaffected episode row untouched: no story write targets it, its row
+    // is byte-identical to the seed. (Target-based, not body-substring:
+    // RPC bodies legitimately carry pin cross-references as data.)
+    for (const r of emu.requests) {
+      if (r.method === 'PATCH' && r.url.includes('/rest/v1/stories')) {
+        expect(r.url).not.toContain(`id=eq.${EP2_ID}`)
+      }
+      if (r.method === 'POST' && r.url.includes('/rest/v1/rpc/')) {
+        expect(String(JSON.parse(r.body || '{}').p_story_id || '')).not.toBe(EP2_ID)
+      }
     }
     expect(emu.stories.get(EP2_ID).script_json).toEqual(
       { series_generation: { generated_title: EP2_ID } }
@@ -902,7 +928,12 @@ describe('(3) HANDOFF gate: lock held until cleanup + stranded recovery', () => 
       handoffSeeds(),
       { [JOB_ID]: lockedPackagingJob() },
       { [`asc3/${EP1_ID}`]: ['outro.mp3'] },
-      { failPatch: (table) => (table === 'stories' && failStoriesPrune ? 'boom-prune' : null) }
+      {
+        failRpc: (params) =>
+          String(params?.p_story_id) === EP1_ID
+          && !Object.prototype.hasOwnProperty.call(params?.p_updates || {}, 'script')
+          && failStoriesPrune ? 'boom-prune' : null,
+      }
     )
     const job = emu.jobs.get(JOB_ID)
 

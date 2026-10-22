@@ -157,6 +157,23 @@ function makeEmulator(
       return jsonResponse(paths.map((p) => ({ name: String(p).split('/').pop() })))
     }
 
+    // LARGE-DOC-CAS: server-side compare-and-swap RPC emulation (atomic
+    // compare via canon, whitelist enforced, zero-row match = []).
+    if (parsed.pathname === '/rest/v1/rpc/cas_update_story' && method === 'POST') {
+      const rpcBody = JSON.parse(bodyText || '{}')
+      const allowed = ['script', 'script_json', 'announcement_text', 'outro_text', 'announcement_url', 'outro_audio_url', 'outro_with_music_url']
+      for (const k of Object.keys(rpcBody?.p_updates ?? {})) {
+        if (!allowed.includes(k)) {
+          return jsonResponse({ message: `cas_update_story: column ${k} not in whitelist`, code: 'P0001' }, 400)
+        }
+      }
+      const row = stories.get(String(rpcBody?.p_story_id))
+      if (row && canon(row.script_json ?? null) === canon(rpcBody?.p_expected ?? null)) {
+        for (const [k, v] of Object.entries(rpcBody?.p_updates ?? {})) (row as any)[k] = clone(v)
+        return jsonResponse([{ updated_id: row.id }])
+      }
+      return jsonResponse([])
+    }
     const restMatch = parsed.pathname.match(/^\/rest\/v1\/([^/]+)$/)
     if (!restMatch) return jsonResponse({ message: `emu: unknown path ${parsed.pathname}` }, 404)
     const table = restMatch[1]
@@ -522,11 +539,13 @@ describe('(4) prior recovery precedes series packaging', () => {
       (r) => r.method === 'GET' && r.url.includes('/rest/v1/production_jobs')
     )
     expect(markerIdx).toBeGreaterThan(-1)
+    // LARGE-DOC-CAS: drains travel as RPC calls (body params, no URL filter).
     const drainOrClearIdx = emu.requests
       .map((r, i) => ({ r, i }))
       .filter(
         ({ r }) =>
           (r.method === 'PATCH' && r.url.includes('/rest/v1/stories')) ||
+          (r.method === 'POST' && r.url.includes('/rest/v1/rpc/cas_update_story')) ||
           (r.method === 'DELETE' && r.url.includes('/storage/'))
       )
       .map(({ i }) => i)
@@ -564,9 +583,11 @@ describe('(4) prior recovery precedes series packaging', () => {
       (r) => r.method === 'GET' && r.url.includes('/rest/v1/production_jobs')
     )
     expect(markerIdx).toBeGreaterThan(-1)
+    // LARGE-DOC-CAS: drains travel as RPC calls (body params, no URL filter).
     const drainIdx = emu.requests
       .map((r, i) => ({ r, i }))
-      .filter(({ r }) => r.method === 'PATCH' && r.url.includes('/rest/v1/stories'))
+      .filter(({ r }) => (r.method === 'PATCH' && r.url.includes('/rest/v1/stories'))
+        || (r.method === 'POST' && r.url.includes('/rest/v1/rpc/cas_update_story')))
       .map(({ i }) => i)
     expect(drainIdx.length).toBeGreaterThan(0)
     for (const i of drainIdx) expect(i).toBeLessThan(markerIdx)

@@ -139,7 +139,9 @@ function stubFetch(db: Db, opts: { captured?: any[]; failOn?: (c: any) => boolea
     try { body = fetchOpts.body ? JSON.parse(fetchOpts.body) : null } catch { body = fetchOpts.body }
     const rec: any = { method, url: u, body }
     captured.push(rec)
-    if (opts.failOn && opts.failOn(rec) && (method === 'PATCH' || method === 'DELETE')) {
+    const isMutating = method === 'PATCH' || method === 'DELETE'
+      || (method === 'POST' && String(u).includes('/rest/v1/rpc/'))
+    if (opts.failOn && opts.failOn(rec) && isMutating) {
       throw new Error('SIMULATED CRASH')
     }
     const respond = (data: any) => {
@@ -170,6 +172,45 @@ function stubFetch(db: Db, opts: { captured?: any[]; failOn?: (c: any) => boolea
     // PostgREST surface.
     const path = u.split('?')[0]
     const table = path.split('/rest/v1/')[1]
+    // RPC surface: faithful emulation of cas_update_story (atomic
+    // compare-and-swap). jsonb `=` semantics: object key order
+    // INSENSITIVE, array order sensitive. Unknown update keys raise
+    // (400) like the migration's whitelist. Zero-row match = [].
+    const deepEqualJson = (a: any, b: any): boolean => {
+      if (a === b) return true
+      if (typeof a !== typeof b) return false
+      if (a === null || b === null) return a === b
+      if (Array.isArray(a) || Array.isArray(b)) {
+        return Array.isArray(a) && Array.isArray(b) && a.length === b.length
+          && a.every((v: any, i: number) => deepEqualJson(v, b[i]))
+      }
+      if (typeof a === 'object') {
+        const ka = Object.keys(a).sort(); const kb = Object.keys(b).sort()
+        return ka.length === kb.length && ka.every((k, i) => k === kb[i] && deepEqualJson(a[k], b[k]))
+      }
+      return false
+    }
+    if (table === 'rpc/cas_update_story' && method === 'POST') {
+      const failShape = (message: string) => ({
+        ok: false, status: 400,
+        headers: { get: () => null },
+        json: async () => ({ message, code: 'P0001' }),
+        text: async () => JSON.stringify({ message, code: 'P0001' }),
+      })
+      const { p_story_id, p_expected, p_updates } = (body ?? {}) as any
+      const allowed = ['script', 'script_json', 'announcement_text', 'outro_text', 'announcement_url', 'outro_audio_url', 'outro_with_music_url']
+      for (const k of Object.keys(p_updates ?? {})) {
+        if (!allowed.includes(k)) return failShape(`cas_update_story: column ${k} not in whitelist`)
+      }
+      const row: any = ((db as any).stories || []).find((r: any) => String(r.id) === String(p_story_id))
+      if (row && deepEqualJson(row.script_json ?? null, p_expected ?? null)) {
+        for (const k of Object.keys(p_updates ?? {})) {
+          row[k] = (p_updates as any)[k] === null ? null : JSON.parse(JSON.stringify((p_updates as any)[k]))
+        }
+        return respond([{ updated_id: row.id }])
+      }
+      return respond([])
+    }
     const params = new URLSearchParams(u.split('?')[1] || '')
     const matchRow = (r: any): boolean => {
       for (const [k, v] of params) {
@@ -240,6 +281,11 @@ function clientFor(db: Db, stubOpts?: { captured?: any[]; failOn?: (c: any) => b
 
 const writesOf = (captured: any[]) => captured.filter((c) => c.method === 'PATCH' || c.method === 'DELETE')
 const postgrestOf = (captured: any[]) => captured.filter((c) => c.method === 'PATCH')
+// LARGE-DOC-CAS: story writes travel as RPC POSTs (body params, no URL
+// filter). mutatingOf covers every state-changing call for ordering and
+// kill-switch enumeration (storage POSTs excluded — file deletes, not rows).
+const rpcOf = (captured: any[]) => captured.filter((c) => c.method === 'POST' && String(c.url).includes('/rest/v1/rpc/'))
+const mutatingOf = (captured: any[]) => captured.filter((c) => c.method === 'PATCH' || c.method === 'DELETE' || (c.method === 'POST' && String(c.url).includes('/rest/v1/rpc/')))
 
 test('identifiers are full UUIDs used in captured requests', async () => {
   for (const id of [R.CREEK_JOB_ID, R.CREEK_SERIES_ID, R.CREEK_EP1_ID, R.CREEK_EP2_ID, R.CREEK_EP3_ID]) {
@@ -274,14 +320,14 @@ test('lock acquired FIRST; no story write before the claim', async () => {
   const { supabase, captured } = clientFor(db)
   const r = await R.runRecovery(supabase, { execute: true, ...quiet })
   expect(r.ok).toBe(true)
-  const patches = postgrestOf(captured)
-  expect(patches.length).toBeGreaterThan(0)
-  const first = patches[0]
+  const mutating = mutatingOf(captured)
+  expect(mutating.length).toBeGreaterThan(0)
+  const first = mutating[0]
   expect(first.url).toContain('/rest/v1/production_jobs')
   expect(first.body.status).toBe('running')
   expect(first.body.locked_by).toBe('creek-legacy-recovery')
   expect(first.url).toContain('status=eq.failed') // fenced on failed
-  const firstStoryIdx = patches.findIndex((p) => p.url.includes('/rest/v1/stories'))
+  const firstStoryIdx = mutating.findIndex((p) => p.url.includes('/rest/v1/stories') || p.url.includes('/rest/v1/rpc/'))
   expect(firstStoryIdx).toBeGreaterThan(0) // claim (idx 0) precedes every story write
 })
 
@@ -293,16 +339,20 @@ test('normalized AFTER persisted in script + raw_script + outro_text; payload id
   expect(R.EP2_OUTRO_AFTER).toContain('Episode Three')
   expect(R.EP2_OUTRO_AFTER).not.toMatch(/Episode \d/)
   expect(r.generationPayload).toBe(R.EP2_OUTRO_AFTER)
-  const ep2Patch = postgrestOf(captured).find(
-    (p) => p.url.includes('/rest/v1/stories') && p.body.script !== undefined,
+  // LARGE-DOC-CAS: the persist travels as one atomic RPC call (full
+  // repair shape in body params); the reviewed drain inside persist
+  // applies Ep3's leg (also via RPC) and prunes the embedded list.
+  const ep2Call = rpcOf(captured).find(
+    (p) => String(p.body?.p_story_id) === R.CREEK_EP2_ID && p.body?.p_updates?.script !== undefined,
   )
-  expect(ep2Patch).toBeDefined()
-  expect(ep2Patch!.body.script).toContain(R.EP2_OUTRO_AFTER)
-  expect(ep2Patch!.body.script).not.toContain(R.EP2_OUTRO_BEFORE)
-  expect(ep2Patch!.body.outro_text).toBe(R.EP2_OUTRO_AFTER)
-  expect(ep2Patch!.body.script_json.raw_script).toContain(R.EP2_OUTRO_AFTER)
+  expect(ep2Call).toBeDefined()
+  const eu = ep2Call!.body.p_updates
+  expect(eu.script).toContain(R.EP2_OUTRO_AFTER)
+  expect(eu.script).not.toContain(R.EP2_OUTRO_BEFORE)
+  expect(eu.outro_text).toBe(R.EP2_OUTRO_AFTER)
+  expect(eu.script_json.raw_script).toContain(R.EP2_OUTRO_AFTER)
   // Nested reviewed paths (never top-level columns).
-  const sg = ep2Patch!.body.script_json.series_generation
+  const sg = eu.script_json.series_generation
   expect(Array.isArray(sg.pending_pin_resync)).toBe(true)
   expect(sg.pending_pin_resync[0]).toEqual({
     dependentStoryId: R.CREEK_EP3_ID,
@@ -313,11 +363,14 @@ test('normalized AFTER persisted in script + raw_script + outro_text; payload id
     expect.stringContaining('outro_0088.mp3'),
     expect.stringContaining('outro_with_music.mp3'),
   ])
-  expect(ep2Patch!.body.pending_pin_resync).toBeUndefined()
-  expect(ep2Patch!.body.pending_audio_delete).toBeUndefined()
+  expect(eu.pending_pin_resync).toBeUndefined()
+  expect(eu.pending_audio_delete).toBeUndefined()
   // Scoped audio nulls only.
-  expect(ep2Patch!.body.outro_audio_url).toBeNull()
-  expect(ep2Patch!.body.outro_with_music_url).toBeNull()
+  expect(eu.outro_audio_url).toBeNull()
+  expect(eu.outro_with_music_url).toBeNull()
+  // And Ep3's Ep2-leg was drained to the post-repair hash by persist.
+  const ep3pins = db.stories[2].script_json.series_generation.continuity_pins_used
+  expect(ep3pins[R.CREEK_EP2_ID]).toBe(hashScript(db.stories[1].script))
   // Audit appended, prior history preserved.
   const audits = sg.belle_repair_audit
   expect(audits.length).toBe(2)
@@ -327,19 +380,19 @@ test('normalized AFTER persisted in script + raw_script + outro_text; payload id
   expect(sg.continuity_pin_recovery.prior_recovery.action).toBe('c7')
 })
 
-test('ep3 continuity_pins_used updated via CAS drain; ep3 text untouched', async () => {
+test('ep3 continuity_pins_used updated via RPC CAS drain; ep3 text untouched', async () => {
   const db = buildDb()
   const { supabase, captured } = clientFor(db)
   const r = await R.runRecovery(supabase, { execute: true, ...quiet })
   expect(r.ok).toBe(true)
-  const ep3Patches = postgrestOf(captured).filter(
-    (p) => p.url.includes('/rest/v1/stories') && p.url.includes(`id=eq.${R.CREEK_EP3_ID}`),
+  const ep3Calls = rpcOf(captured).filter(
+    (p) => String(p.body?.p_story_id) === R.CREEK_EP3_ID,
   )
-  expect(ep3Patches.length).toBeGreaterThan(0)
-  for (const p of ep3Patches) {
-    expect(p.body.script).toBeUndefined()
-    expect(p.body.outro_text).toBeUndefined()
-    expect(p.url).toContain('script_json=eq.') // CAS-conditioned, real JSON
+  expect(ep3Calls.length).toBeGreaterThan(0)
+  for (const p of ep3Calls) {
+    expect(p.body?.p_updates?.script).toBeUndefined()
+    expect(p.body?.p_updates?.outro_text).toBeUndefined()
+    expect(String(p.url)).not.toContain('script_json=eq.') // body params, never a URL filter
   }
   const finalPins = db.stories[2].script_json.series_generation.continuity_pins_used
   expect(finalPins[R.CREEK_EP2_ID]).toBe(hashScript(db.stories[1].script))
@@ -359,18 +412,20 @@ test('ep1 executes, never warns: raw synced + text preserved + intent on nested 
   expect(db.stories[0].script).toBe(beforeScript)
   // Production-consumed raw copy SYNCED to the validated script.
   expect(db.stories[0].script_json.raw_script).toBe(beforeScript)
-  const ep1Patches = postgrestOf(captured).filter(
-    (p) => p.url.includes('/rest/v1/stories') && p.url.includes(`id=eq.${R.CREEK_EP1_ID}`),
+  const ep1Calls = captured.filter(
+    (p) => (p.method === 'PATCH' && p.url.includes('/rest/v1/stories') && p.url.includes(`id=eq.${R.CREEK_EP1_ID}`))
+      || (p.method === 'POST' && String(p.url).includes('/rest/v1/rpc/') && String(p.body?.p_story_id) === R.CREEK_EP1_ID),
   )
-  // Exactly three row writes: raw-sync PATCH, intent-setting PATCH (nested
-  // sg path), and the handoff's clearing PATCH — never a text rewrite.
-  expect(ep1Patches.length).toBe(3)
-  for (const p of ep1Patches) {
-    expect(p.body.script).toBeUndefined()
-    expect(p.body.outro_text).toBeUndefined()
-    expect(p.url).toContain('script_json=eq.') // CAS-conditioned, real JSON
+  // Exactly three row writes: raw-sync, intent-setting (nested sg path),
+  // and the handoff's clearing call — never a text rewrite.
+  expect(ep1Calls.length).toBe(3)
+  for (const p of ep1Calls) {
+    const updates = p.method === 'POST' ? p.body?.p_updates : p.body
+    expect(updates?.script).toBeUndefined()
+    expect(updates?.outro_text).toBeUndefined()
+    expect(String(p.url)).not.toContain('script_json=eq.') // body params, never a URL filter
   }
-  expect(ep1Patches[0].url).not.toContain('[object Object]')
+  expect(String(ep1Calls[0].url)).not.toContain('[object Object]')
   // Raw-sync audit appended, prior history intact (append, never overwrite).
   const audits = db.stories[0].script_json.series_generation.belle_repair_audit
   expect(audits.length).toBe(2)
@@ -469,23 +524,31 @@ test('ep1 pin repair executes: stale legs + divergent raw in → synced raw + bo
   // Repair writes precede the handoff continuation by construction (step 3
   // before step 4); the handoff's later intent-clear PATCH re-carries the
   // same audit tail and must not be counted as a repair write.
-  const contIdx = postgrestOf(captured).findIndex(
-    (p) => p.url.includes('/rest/v1/production_jobs') && p.body.current_step !== undefined,
+  const contIdx = captured.findIndex(
+    (p) => p.method === 'PATCH' && p.url.includes('/rest/v1/production_jobs') && p.body.current_step !== undefined,
   )
   expect(contIdx).toBeGreaterThan(0)
-  const pinPatches = postgrestOf(captured).slice(0, contIdx).filter((p) => {
-    const audits = p.body.script_json?.series_generation?.belle_repair_audit
-    return p.url.includes('/rest/v1/stories')
-      && p.body.script === undefined
-      && p.body.script_json?.series_generation?.continuity_pins_used?.[R.CREEK_EP1_ID] === want
+  // LARGE-DOC-CAS: pin repairs travel as RPC calls (compare server-side),
+  // bounded pre-handoff like the original PATCH-based proof.
+  const preHandoff = captured.slice(0, contIdx)
+  const pinCalls = rpcOf(preHandoff).filter((p) => {
+    const updates = p.body?.p_updates
+    const audits = updates?.script_json?.series_generation?.belle_repair_audit
+    return [R.CREEK_EP2_ID, R.CREEK_EP3_ID].includes(String(p.body?.p_story_id))
+      && updates?.script === undefined
+      && updates?.script_json?.series_generation?.continuity_pins_used?.[R.CREEK_EP1_ID] === want
       && Array.isArray(audits) && audits[audits.length - 1]?.action === R.EP1_PIN_REPAIR_ACTION
   })
-  expect(pinPatches.length).toBe(2)
-  for (const p of pinPatches) {
-    expect(p.url).toContain('script_json=eq.')
-    expect(p.body.continuity_pins_used).toBeUndefined()
-    expect(p.body.outro_text).toBeUndefined()
-    const audits = p.body.script_json.series_generation.belle_repair_audit
+  // eslint-disable-next-line no-console
+  // Repair writes precede the handoff continuation by construction (step 3
+  // before step 4); the handoff's later intent-clear RPC re-carries the
+  // same pin + audit tail and must not be counted as a repair write.
+  expect(pinCalls.length).toBe(2)
+  for (const p of pinCalls) {
+    expect(String(p.url)).not.toContain('script_json=eq.')
+    expect(p.body?.p_updates?.continuity_pins_used).toBeUndefined()
+    expect(p.body?.p_updates?.outro_text).toBeUndefined()
+    const audits = p.body.p_updates.script_json.series_generation.belle_repair_audit
     expect(audits[audits.length - 1].jobId).toBe(R.CREEK_JOB_ID)
     expect(audits[audits.length - 1].action).toBe(R.EP1_PIN_REPAIR_ACTION)
   }
@@ -532,7 +595,7 @@ test('kill-switch after EACH write: restart converges, no duplicate script persi
     const r = await R.runRecovery(supabase, { execute: true, ...quiet })
     expect(r.ok).toBe(true)
   }
-  const mutating = writesOf(baseCap)
+  const mutating = mutatingOf(baseCap)
   expect(mutating.length).toBeGreaterThan(3)
   for (let n = 1; n <= mutating.length; n++) {
     const db = buildDb()
@@ -541,7 +604,8 @@ test('kill-switch after EACH write: restart converges, no duplicate script persi
     const { supabase: crashSb } = clientFor(db, {
       captured: crashCap,
       failOn: (c) => {
-        if (c.method === 'PATCH' || c.method === 'DELETE') seen += 1
+        if (c.method === 'PATCH' || c.method === 'DELETE'
+          || (c.method === 'POST' && String(c.url).includes('/rest/v1/rpc/'))) seen += 1
         return seen === n
       },
     })
@@ -562,9 +626,11 @@ test('kill-switch after EACH write: restart converges, no duplicate script persi
     expect(job.status).toBe('queued')
     expect(job.current_step).toBe(PRE_PACKAGING_CONTINUATION_STEP)
     expect(job.locked_by).toBeNull()
-    // Ep2 script persist happened at most once across crash + restart.
+    // Ep2 script persist happened at most once across crash + restart
+    // (LARGE-DOC-CAS: the persist is one atomic RPC call).
     const scriptPersists = [...crashCap, ...[]].filter(
-      (c) => c.method === 'PATCH' && c.url.includes('/rest/v1/stories') && c.body && c.body.script !== undefined,
+      (c) => c.method === 'POST' && String(c.url).includes('/rest/v1/rpc/')
+        && String(c.body?.p_story_id) === R.CREEK_EP2_ID && c.body?.p_updates?.script !== undefined,
     )
     expect(scriptPersists.length).toBeLessThanOrEqual(1)
     // Persisted text identical wherever it landed.

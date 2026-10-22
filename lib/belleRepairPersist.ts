@@ -67,9 +67,58 @@ export const CONCURRENT_MOD_CODE = 'belle_pin_resync_concurrent_modification'
  * filter. NEVER pass a raw object to `.eq('script_json', ...)` — the SDK
  * stringifies it to `[object Object]`. JSON.stringify lets the SDK
  * URL-encode a real jsonb equality match (`script_json=eq.%7B%22...`).
+ *
+ * LARGE-DOC LIMIT (2026-10-22): URL filters 400 Bad Request at production
+ * doc sizes (18–27KB proven live). New code MUST use
+ * casUpdateStoryScriptJson (server-side compare, body params) instead.
+ * This export stays for small-doc/test callers only.
  */
 export function jsonbEqFilter(snapshot: unknown): string {
   return JSON.stringify(snapshot === undefined ? null : snapshot)
+}
+
+/**
+ * Server-side compare-and-swap for stories rows (LARGE-DOC-CAS,
+ * 2026-10-22): atomic `UPDATE ... WHERE id AND script_json = expected`
+ * via the `cas_update_story` RPC — the expected snapshot travels in the
+ * POST body, so production doc sizes never touch URL limits. Full-update
+ * callers keep single-statement atomicity across all repaired columns
+ * (closed whitelist enforced server-side; unknown keys raise). Same
+ * contract as the old URL filter: success returns the row; zero rows
+ * (moved under us) throws with code CONCURRENT_MOD_CODE and the row
+ * untouched; transport errors throw plainly. Requires migration
+ * 20261022190000_cas_update_story (Codex review + Marc word before
+ * production install).
+ */
+export async function casUpdateStory(
+  supabaseClient: any,
+  args: { storyId: string; expected: unknown; updates: Record<string, unknown> },
+): Promise<{ id: string }> {
+  const storyId = String(args.storyId || '')
+  const { data, error } = await supabaseClient.rpc(
+    'cas_update_story',
+    {
+      p_story_id: storyId,
+      p_expected: (args.expected ?? null) as any,
+      p_updates: args.updates as any,
+    },
+  )
+  if (error) {
+    throw new Error(
+      `CAS story write failed on ${storyId}: ${error.message} (row left unmodified)`
+    )
+  }
+  const row = Array.isArray(data) ? data[0] : data
+  if (!row || !(row as any).updated_id) {
+    const concurrentError = new Error(
+      `Refused story CAS on ${storyId}: row changed between read and write ` +
+        `(concurrent modification \u2014 row left unmodified, retry converges)`
+    )
+    ;(concurrentError as Error & { code?: string }).code =
+      CONCURRENT_MOD_CODE
+    throw concurrentError
+  }
+  return { id: String((row as any).updated_id) }
 }
 
 /**
@@ -313,17 +362,20 @@ async function prunePendingPinResync(
     drainedEntries
   )
   const nextJson = setPendingPinResync(snapshot, remaining)
-  const first = await supabaseClient
-    .from('stories')
-    .update({ script_json: nextJson })
-    .eq('id', repairedStoryId)
-    .eq('script_json', jsonbEqFilter(snapshot))
-    .select('id')
-  if (!first.error && first.data && first.data.length > 0) return
-  if (first.error) {
-    throw new Error(
-      `Failed to prune Belle pin-resync pending list on ${repairedStoryId}: ${first.error.message}`
-    )
+  // LARGE-DOC-CAS: server-side compare (body params, no URL filter).
+  try {
+    await casUpdateStory(supabaseClient, {
+      storyId: repairedStoryId,
+      expected: snapshot,
+      updates: { script_json: nextJson },
+    })
+    return
+  } catch (e) {
+    if ((e as any)?.code !== CONCURRENT_MOD_CODE) {
+      throw new Error(
+        `Failed to prune Belle pin-resync pending list on ${repairedStoryId}: ${(e as Error).message}`
+      )
+    }
   }
   // Zero rows matched: the row moved under us. Re-read once, recompute
   // the subtraction against the new fresh read (concurrently-added entries
@@ -347,18 +399,20 @@ async function prunePendingPinResync(
     drainedEntries
   )
   const retryJson = setPendingPinResync(freshSnapshot, retryRemaining)
-  const second = await supabaseClient
-    .from('stories')
-    .update({ script_json: retryJson })
-    .eq('id', repairedStoryId)
-    .eq('script_json', jsonbEqFilter(freshSnapshot))
-    .select('id')
-  if (!second.error && second.data && second.data.length > 0) return
-  if (second.error) {
-    throw new Error(
-      `Failed to prune Belle pin-resync pending list on ${repairedStoryId}: ${second.error.message} ` +
-        `(pending data left intact in the DB — nothing pruned)`
-    )
+  try {
+    await casUpdateStory(supabaseClient, {
+      storyId: repairedStoryId,
+      expected: freshSnapshot,
+      updates: { script_json: retryJson },
+    })
+    return
+  } catch (e) {
+    if ((e as any)?.code !== CONCURRENT_MOD_CODE) {
+      throw new Error(
+        `Failed to prune Belle pin-resync pending list on ${repairedStoryId}: ${(e as Error).message} ` +
+          `(pending data left intact in the DB — nothing pruned)`
+      )
+    }
   }
   const conflictError = new Error(
     `Refused Belle pin-resync prune on ${repairedStoryId}: dependent script_json ` +
@@ -430,26 +484,29 @@ export async function drainPendingPinResync(
       entry.newPinHash
     )
     // CAS write: applies ONLY if the dependent's full script_json still
-    // equals what we just read. Empty `data` = zero rows matched = the row
-    // moved under us → refuse loudly, keep the pending entry, touch nothing.
-    // The snapshot MUST be serialized via jsonbEqFilter: a raw object
-    // encodes as `eq.[object Object]` (matches nothing, silently).
-    const { data: casApplied, error: writeError } = await supabaseClient
-      .from('stories')
-      .update({ script_json: nextDepJson })
-      .eq('id', entry.dependentStoryId)
-      .eq('script_json', jsonbEqFilter(expectedSnapshot))
-      .select('id')
-    if (writeError) {
-      const remaining = subtractPendingEntries(entries || [], drainedEntries)
-      await prunePendingPinResync(supabaseClient, repairedStoryId, drainedEntries)
-      throw new Error(
-        `Failed to drain Belle pin resync on ${entry.dependentStoryId} ` +
-          `after Belle repair of ${repairedStoryId}: ${writeError.message} ` +
-          `(pending list intact in DB for ${remaining.length} entr${remaining.length === 1 ? 'y' : 'ies'})`
-      )
+    // equals what we just read (LARGE-DOC-CAS: server-side compare —
+    // zero rows matched = the row moved under us → refuse loudly, keep
+    // the pending entry, touch nothing).
+    let casConflict = false
+    try {
+      await casUpdateStory(supabaseClient, {
+        storyId: String(entry.dependentStoryId),
+        expected: expectedSnapshot,
+        updates: { script_json: nextDepJson },
+      })
+    } catch (e) {
+      if ((e as any)?.code !== CONCURRENT_MOD_CODE) {
+        const remaining = subtractPendingEntries(entries || [], drainedEntries)
+        await prunePendingPinResync(supabaseClient, repairedStoryId, drainedEntries)
+        throw new Error(
+          `Failed to drain Belle pin resync on ${entry.dependentStoryId} ` +
+            `after Belle repair of ${repairedStoryId}: ${(e as Error).message} ` +
+            `(pending list intact in DB for ${remaining.length} entr${remaining.length === 1 ? 'y' : 'ies'})`
+        )
+      }
+      casConflict = true
     }
-    if (!casApplied || casApplied.length === 0) {
+    if (casConflict) {
       const remaining = subtractPendingEntries(entries || [], drainedEntries)
       await prunePendingPinResync(supabaseClient, repairedStoryId, drainedEntries)
       const concurrentError = new Error(
@@ -792,17 +849,20 @@ export async function clearPendingAudioDelete(
   const remaining = subtractProcessed(safeReadAudioDelete(snapshot, storyId))
   const current = safeReadAudioDelete(snapshot, storyId)
   if (remaining.length === current.length) return
-  const first = await supabaseClient
-    .from('stories')
-    .update({ script_json: setPendingAudioDelete(snapshot, remaining) })
-    .eq('id', storyId)
-    .eq('script_json', jsonbEqFilter(snapshot))
-    .select('id')
-  if (!first.error && first.data && first.data.length > 0) return
-  if (first.error) {
-    throw new Error(
-      `Failed to clear Belle pending audio-delete intent on ${storyId}: ${first.error.message}`
-    )
+  // LARGE-DOC-CAS: server-side compare (body params, no URL filter).
+  try {
+    await casUpdateStory(supabaseClient, {
+      storyId,
+      expected: snapshot,
+      updates: { script_json: setPendingAudioDelete(snapshot, remaining) },
+    })
+    return
+  } catch (e) {
+    if ((e as any)?.code !== CONCURRENT_MOD_CODE) {
+      throw new Error(
+        `Failed to clear Belle pending audio-delete intent on ${storyId}: ${(e as Error).message}`
+      )
+    }
   }
   const { data: fresh, error: rereadError } = await supabaseClient
     .from('stories')
@@ -821,18 +881,20 @@ export async function clearPendingAudioDelete(
   const retryRemaining = subtractProcessed(freshCurrent)
   if (retryRemaining.length === freshCurrent.length) return
   const retryJson = setPendingAudioDelete(freshSnapshot, retryRemaining)
-  const second = await supabaseClient
-    .from('stories')
-    .update({ script_json: retryJson })
-    .eq('id', storyId)
-    .eq('script_json', jsonbEqFilter(freshSnapshot))
-    .select('id')
-  if (!second.error && second.data && second.data.length > 0) return
-  if (second.error) {
-    throw new Error(
-      `Failed to clear Belle pending audio-delete intent on ${storyId}: ${second.error.message} ` +
-        `(pending data left intact in the DB — nothing pruned)`
-    )
+  try {
+    await casUpdateStory(supabaseClient, {
+      storyId,
+      expected: freshSnapshot,
+      updates: { script_json: retryJson },
+    })
+    return
+  } catch (e) {
+    if ((e as any)?.code !== CONCURRENT_MOD_CODE) {
+      throw new Error(
+        `Failed to clear Belle pending audio-delete intent on ${storyId}: ${(e as Error).message} ` +
+          `(pending data left intact in the DB — nothing pruned)`
+      )
+    }
   }
   const conflictError = new Error(
     `Refused Belle pending audio-delete clear on ${storyId}: story script_json ` +
@@ -902,23 +964,35 @@ export async function persistBelleRepair(
     }
   }
   const hasSnapshot = params.expectedRepairedScriptJson !== undefined
-  const firstAttempt = hasSnapshot
-    ? await supabaseClient
-        .from('stories')
-        .update(updatesWithIntent)
-        .eq('id', repairedStoryId)
-        .eq('script_json', jsonbEqFilter(params.expectedRepairedScriptJson))
-        .select('id')
-    : await supabaseClient
-        .from('stories')
-        .update(updatesWithIntent)
-        .eq('id', repairedStoryId)
-  const firstData = hasSnapshot ? firstAttempt.data : undefined
-  const firstError = firstAttempt.error
-  if (firstError) {
-    throw new Error(
-      `Failed to save repaired Belle copy: ${firstError.message}`
-    )
+  // LARGE-DOC-CAS: the full repair shape goes through ONE atomic RPC
+  // statement (all repaired columns, single statement — atomicity kept).
+  let firstData: any[] | undefined
+  if (hasSnapshot) {
+    try {
+      await casUpdateStory(supabaseClient, {
+        storyId: repairedStoryId,
+        expected: params.expectedRepairedScriptJson,
+        updates: updatesWithIntent as Record<string, unknown>,
+      })
+      firstData = [{ id: repairedStoryId }]
+    } catch (e) {
+      if ((e as any)?.code !== CONCURRENT_MOD_CODE) {
+        throw new Error(
+          `Failed to save repaired Belle copy: ${(e as Error).message}`
+        )
+      }
+      firstData = []
+    }
+  } else {
+    const plainAttempt = await supabaseClient
+      .from('stories')
+      .update(updatesWithIntent)
+      .eq('id', repairedStoryId)
+    if (plainAttempt.error) {
+      throw new Error(
+        `Failed to save repaired Belle copy: ${plainAttempt.error.message}`
+      )
+    }
   }
   let effectiveUpdates = updatesWithIntent
   let effectivePending = params.pendingEntries || []
@@ -945,19 +1019,19 @@ export async function persistBelleRepair(
     )
     effectiveUpdates = { ...updatesWithIntent, script_json: rebasedJson }
     effectivePending = safeReadPending(rebasedJson, repairedStoryId)
-    const secondAttempt = await supabaseClient
-      .from('stories')
-      .update(effectiveUpdates)
-      .eq('id', repairedStoryId)
-      .eq('script_json', jsonbEqFilter(freshSnapshot))
-      .select('id')
-    if (secondAttempt.error) {
-      throw new Error(
-        `Failed to save repaired Belle copy on retry: ${secondAttempt.error.message} ` +
-          `(row left unmodified by the retry — repair may retry on a later tick)`
-      )
-    }
-    if (!secondAttempt.data || secondAttempt.data.length === 0) {
+    try {
+      await casUpdateStory(supabaseClient, {
+        storyId: repairedStoryId,
+        expected: freshSnapshot,
+        updates: effectiveUpdates as Record<string, unknown>,
+      })
+    } catch (e) {
+      if ((e as any)?.code !== CONCURRENT_MOD_CODE) {
+        throw new Error(
+          `Failed to save repaired Belle copy on retry: ${(e as Error).message} ` +
+            `(row left unmodified by the retry — repair may retry on a later tick)`
+        )
+      }
       const conflictError = new Error(
         `Refused Belle repair persist on ${repairedStoryId}: repaired row changed ` +
           `again before the retry write (concurrent modification — row left ` +

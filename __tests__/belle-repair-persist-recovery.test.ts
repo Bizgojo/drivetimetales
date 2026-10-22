@@ -123,6 +123,7 @@ function makeFakeSupabase(
   opts: {
     failUpdate?: (table: string, values: Record<string, unknown>, filters: Filter[]) => string | null
     failSelect?: (table: string, key: Filter) => string | null
+    failRpc?: (params: any) => string | null
     afterSelect?: (table: string, id: string) => void
   } = {}
 ) {
@@ -145,11 +146,40 @@ function makeFakeSupabase(
     }
     return store
   }
+  const rpcCalls: { fn: string; params: any }[] = []
   const client = {
     tables,
     updateCalls,
     selectCalls,
+    rpcCalls,
     events,
+    // LARGE-DOC-CAS: server-side compare-and-swap RPC emulation.
+    rpc(fn: string, params: any) {
+      rpcCalls.push({ fn, params: JSON.parse(JSON.stringify(params ?? {})) })
+      events.push(`rpc:${fn}:${String(params?.p_story_id ?? '')}`)
+      const injected = opts.failRpc ? opts.failRpc(params) : null
+      if (injected) return Promise.resolve({ data: null, error: { message: injected } })
+      if (fn !== 'cas_update_story') {
+        return Promise.resolve({ data: null, error: { message: `unknown rpc ${fn}` } })
+      }
+      const allowed = ['script', 'script_json', 'announcement_text', 'outro_text', 'announcement_url', 'outro_audio_url', 'outro_with_music_url']
+      for (const k of Object.keys(params?.p_updates ?? {})) {
+        if (!allowed.includes(k)) {
+          return Promise.resolve({ data: null, error: { message: `cas_update_story: column ${k} not in whitelist`, code: 'P0001' } })
+        }
+      }
+      const store = storeFor('stories')
+      const row = store.get(String(params?.p_story_id))
+      const exp = params?.p_expected ?? null
+      const cur = row ? (row.script_json ?? null) : undefined
+      if (row && cur !== undefined && deepEq(cur, exp)) {
+        const next = { ...row }
+        for (const [k, v] of Object.entries(params?.p_updates ?? {})) (next as any)[k] = JSON.parse(JSON.stringify(v))
+        store.set(String(params?.p_story_id), next)
+        return Promise.resolve({ data: [{ updated_id: next.id }], error: null })
+      }
+      return Promise.resolve({ data: [], error: null })
+    },
     from(table: string) {
       return {
         update(values: Record<string, unknown>) {
@@ -372,8 +402,14 @@ async function writeJobEntry(client: FakeClient, jobId: string, storyId: string,
   client.events.push('reserve-write')
 }
 
+// LARGE-DOC-CAS: script-column writes travel as RPC calls (p_updates.script)
+// as well as legacy PATCH updates — count both.
 function countScriptWrites(client: FakeClient): number {
-  return client.updateCalls.filter((c) => c.table === 'stories' && 'script' in (c.values as any)).length
+  const patch = client.updateCalls.filter((c) => c.table === 'stories' && 'script' in (c.values as any)).length
+  const rpc = client.rpcCalls.filter(
+    (c) => c.fn === 'cas_update_story' && Object.prototype.hasOwnProperty.call(c.params?.p_updates || {}, 'script')
+  ).length
+  return patch + rpc
 }
 
 interface TickOutcome {
@@ -562,11 +598,12 @@ describe('partial resync + recovery through route order (i)', () => {
     const fake = makeFakeSupabase(
       { stories: { [EP1_ID]: repairedRow, [EP2_ID]: dep2, [EP3_ID]: dep3 } },
       {
-        // Fail ONLY dep#2's CAS pin write (script_json-only update on EP3_ID).
+        // Fail ONLY dep#2's CAS pin write (script_json-only RPC on EP3_ID).
         // The atomic repaired-row write (carries `script`) and the prune
         // write (targets EP1_ID) must succeed.
-        failUpdate: (_table, values, filters) =>
-          !('script' in values) && filters.some((f) => f.col === 'id' && f.val === EP3_ID)
+        failRpc: (params) =>
+          String(params?.p_story_id) === EP3_ID
+          && !Object.prototype.hasOwnProperty.call(params?.p_updates || {}, 'script')
             ? 'pin write boom'
             : null,
       }
