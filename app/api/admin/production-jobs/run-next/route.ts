@@ -7632,10 +7632,10 @@ async function runSeriesMusicGeneration(job: ProductionJob, origin: string) {
     break // one episode per call
   }
 
-  // allDone: every episode is either complete (true) or refused/exhausted.
-  // A refused episode must not block the series from advancing — it is a
-  // terminal state for that episode pending manual Marc requeue.
-  const allDone = episodes.every(ep => Boolean(doneByEp[String(episodeNumber(ep, 0))]))
+  // allDone: every episode is genuinely complete (true). A refused/exhausted
+  // episode does NOT count as complete — it blocks series advancement to
+  // render pending manual Marc requeue (which resets its counter).
+  const allDone = episodes.every(ep => doneByEp[String(episodeNumber(ep, 0))] === true)
   return {
     allDone,
     processedEp,
