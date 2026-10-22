@@ -15,26 +15,25 @@ import {
   classifyFfmpegError,
 } from '@/lib/renderFetch'
 import { promises as fs, statfsSync } from 'node:fs'
-import { createHash } from 'node:crypto'
 import { sbwoFatalError } from '@/lib/storage/section10'
+import { verifyUploadedBytes as verifyUploadedBytesViaPublicUrl } from '@/lib/storage/verifyUploadedBytes'
 
-// FIX-1 (storage idempotency, §10): byte-level post-upload verification.
-// The Supabase SDK can return error:null on a partial write — name-presence
-// checks are not enough. Download the object back and compare size + sha256.
+// FIX-1 (storage idempotency, §10) + VERIFY-READ-001: byte-level post-upload
+// verification. The Supabase SDK can return error:null on a partial write —
+// name-presence checks are not enough. Download the object back and compare
+// size + sha256.
+// VERIFY-READ-001: the read goes through the cache-busted public URL (same
+// consistency playback consumes), NOT the authenticated SDK download — the
+// latter returned pinned stale bytes after a same-key upsert (Creek Ep1:
+// `size mismatch: got 14412112, want 14403335`, twice ~10 min apart, while
+// the public URL served fresh bytes both times). Bounded retry rides out
+// brief propagation; persistent mismatch still throws (guard stays blocking).
 async function verifyUploadedBytes(
   storagePath: string,
   expected: Buffer,
   label: string,
 ): Promise<void> {
-  const { data, error } = await supabase.storage.from('audio').download(storagePath)
-  if (error) throw new Error(`${label} verification download failed: ${error.message}`)
-  const actual = Buffer.from(await data.arrayBuffer())
-  if (actual.length !== expected.length) {
-    throw new Error(`${label} size mismatch: got ${actual.length}, want ${expected.length}`)
-  }
-  const aHash = createHash('sha256').update(actual).digest('hex')
-  const eHash = createHash('sha256').update(expected).digest('hex')
-  if (aHash !== eHash) throw new Error(`${label} sha256 mismatch: got ${aHash.slice(0, 12)}…, want ${eHash.slice(0, 12)}…`)
+  await verifyUploadedBytesViaPublicUrl(`${BASE_STORAGE}/${storagePath}`, expected, label)
 }
 import path from 'path'
 import os from 'os'
