@@ -32,19 +32,21 @@
  * All functions take the supabase client as `any` and use only three query
  * chains — `.from('stories').update(values).eq('id', x)` awaited as
  * `{ error }`, `.from('stories').select(...).eq('id', x).single()` awaited
- * as `{ data, error }`, and CAS writes
- * `.from('stories').update(values).eq('id', x)
- *   .eq('script_json', jsonbEqFilter(expectedSnapshot)).select('id')`
- * awaited as `{ data, error }` where an empty `data` array means zero rows
- * matched (concurrent modification — safe refusal, never silent clobber).
+ * as `{ data, error }`, and CAS writes via `casUpdateStory` (the
+ * `cas_update_story` RPC, expected snapshot in the POST body) where a
+ * zero-row result means the row moved under us (concurrent modification —
+ * safe refusal, never silent clobber).
  *
- * JSONB CAS ENCODING (binding): postgrest-js `.eq()` on a raw object
- * serializes to `eq.[object Object]` (verified against the real SDK:
- * `script_json=eq.%5Bobject+Object%5D` — matches nothing, silently). Every
- * whole-doc snapshot condition MUST go through `jsonbEqFilter` (explicit
- * JSON.stringify) so the SDK URL-encodes a real jsonb equality match.
- * Tests prove this through the REAL QueryBuilder with a stub fetch that
- * captures the outgoing URL — never a mirror.
+ * JSONB CAS ENCODING (binding, historical): postgrest-js `.eq()` on a raw
+ * object serializes to `eq.[object Object]` (verified against the real
+ * SDK: `script_json=eq.%5Bobject+Object%5D` — matches nothing, silently).
+ * The old URL-filter transport therefore required `jsonbEqFilter`
+ * (explicit JSON.stringify) — and still 400s at production doc sizes
+ * (LARGE-DOC-CAS, 2026-10-22). All live CAS writes now go through
+ * `casUpdateStory` (server-side compare, body params); `jsonbEqFilter`
+ * stays for small-doc/test callers only. Tests prove the encoding through
+ * the REAL QueryBuilder with a stub fetch that captures the outgoing
+ * URL — never a mirror.
  *
  * The production route passes its real client straight through
  * (no re-composed mirror: the route calls persistBelleRepair /
@@ -69,8 +71,8 @@ export const CONCURRENT_MOD_CODE = 'belle_pin_resync_concurrent_modification'
  * URL-encode a real jsonb equality match (`script_json=eq.%7B%22...`).
  *
  * LARGE-DOC LIMIT (2026-10-22): URL filters 400 Bad Request at production
- * doc sizes (18–27KB proven live). New code MUST use
- * casUpdateStoryScriptJson (server-side compare, body params) instead.
+ * doc sizes (18–27KB proven live). New code MUST use casUpdateStory
+ * (server-side compare, body params) instead.
  * This export stays for small-doc/test callers only.
  */
 export function jsonbEqFilter(snapshot: unknown): string {
@@ -333,7 +335,7 @@ export function applyPendingPinToScriptJson(
  * concurrently between the drain's read and this prune is absent from the
  * drained set, so it survives even when the CAS write succeeds on first
  * attempt. The write is CAS-conditioned on the freshly-read snapshot
- * (jsonbEqFilter construction) with an affected-row check: a concurrent
+ * (casUpdateStory RPC) with an affected-row check: a concurrent
  * script_json edit is never silently clobbered. On a zero-row conflict the
  * row is RE-READ once, the subtraction is recomputed against the new fresh
  * read (concurrent additions still survive), and the write is retried once.
@@ -428,10 +430,11 @@ async function prunePendingPinResync(
  * row, then issue the pin update CONDITIONED on the full prior script_json
  * still matching what was read (compare-and-swap, not read-then-hope):
  *
- *   .update({ script_json: next }).eq('id', depId)
- *     .eq('script_json', expectedSnapshot).select('id')
+ *   casUpdateStory(sb, { storyId: depId, expected: expectedSnapshot,
+ *     updates: { script_json: next } })
  *
- * whole-doc jsonb equality is the CAS condition. Zero rows updated means the
+ * server-side whole-doc jsonb equality (cas_update_story RPC) is the CAS
+ * condition. Zero rows updated means the
  * dependent changed between our read and our write (a concurrent operator /
  * worker edit, even to an UNRELATED key) → safe refusal: throw a structured
  * Error (code CONCURRENT_MOD_CODE), keep the pending entry in the DB, do NOT
@@ -916,7 +919,7 @@ export async function clearPendingAudioDelete(
  *     via CAS-conditioned writes (see drainPendingPinResync).
  *
  * When `expectedRepairedScriptJson` (the pre-repair snapshot) is provided,
- * step 1 is CAS-conditioned on it (jsonbEqFilter construction) with an
+ * step 1 is CAS-conditioned on it (casUpdateStory RPC) with an
  * affected-row check: a concurrent repair-row edit is never silently
  * clobbered. On a zero-row conflict the row is RE-READ once, the payload
  * is rebased (rebaseRepairedScriptJson: newer unrelated keys win, pending

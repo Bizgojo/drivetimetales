@@ -33,9 +33,12 @@ const ID = 'd381caca-a186-4deb-9a73-a2adac611637'
 const describeLive = BASE ? describe : describe.skip
 
 describeLive('cas transport (live PostgREST)', () => {
-  const sb: any = createClient(BASE, KEY)
+  let sb: any
 
   beforeAll(async () => {
+    // Lazy client: creating it here (after the env gate) keeps the
+    // no-env case a clean skip instead of a describe-body throw.
+    sb = createClient(BASE, KEY)
     // Seed a 26KB production-shaped doc via plain REST (small URL).
     // 22KB raw sits inside production's 25–36KB encoded range and above
     // the local failure threshold, so the OLD shape must 400 here.
