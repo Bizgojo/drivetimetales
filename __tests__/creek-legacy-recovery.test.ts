@@ -125,7 +125,7 @@ function buildDb() {
 type Db = ReturnType<typeof buildDb>
 
 // --- In-memory PostgREST + storage stub (real QueryBuilder serialization) --
-function stubFetch(db: Db, opts: { captured?: any[]; failOn?: (c: any) => boolean; sabotageFinalRead?: boolean } = {}) {
+function stubFetch(db: Db, opts: { captured?: any[]; failOn?: (c: any) => boolean; sabotageFinalRead?: boolean; failFinalRead?: boolean } = {}) {
   const captured = opts.captured ?? []
   // Negative-case hook: after the handoff release PATCH lands, serve the
   // final verification re-reads a TAMPERED Ep1 script (simulates a
@@ -183,6 +183,18 @@ function stubFetch(db: Db, opts: { captured?: any[]; failOn?: (c: any) => boolea
       return true
     }
     if (method === 'GET') {
+      // GUARD 1a hook: after release, fail the FINAL verification re-reads
+      // (projection id,script,script_json,episode_number) with a query
+      // error — intermediate reads (other projections) keep working.
+      const flat = u.replace(/%2C/gi, ',')
+      if (opts.failFinalRead && released && table === 'stories' && flat.includes('script,script_json')) {
+        return {
+          ok: false, status: 500,
+          headers: { get: () => null },
+          json: async () => ({ message: 'SIMULATED READ FAILURE', code: '500' }),
+          text: async () => JSON.stringify({ message: 'SIMULATED READ FAILURE', code: '500' }),
+        }
+      }
       let rows = [...((db as any)[table] || [])]
       rows = rows.filter(matchRow).map((r) => JSON.parse(JSON.stringify(r)))
       if (opts.sabotageFinalRead && released && table === 'stories') {
@@ -207,9 +219,9 @@ function stubFetch(db: Db, opts: { captured?: any[]; failOn?: (c: any) => boolea
   }
 }
 
-function clientFor(db: Db, stubOpts?: { captured?: any[]; failOn?: (c: any) => boolean; sabotageFinalRead?: boolean }) {
+function clientFor(db: Db, stubOpts?: { captured?: any[]; failOn?: (c: any) => boolean; sabotageFinalRead?: boolean; failFinalRead?: boolean }) {
   const captured: any[] = stubOpts?.captured ?? []
-  const fetch = stubFetch(db, { captured, failOn: stubOpts?.failOn, sabotageFinalRead: stubOpts?.sabotageFinalRead })
+  const fetch = stubFetch(db, { captured, failOn: stubOpts?.failOn, sabotageFinalRead: stubOpts?.sabotageFinalRead, failFinalRead: stubOpts?.failFinalRead })
   const supabase = createClient('http://localhost:9999', 'anon-key', { global: { fetch } })
   return { supabase, captured }
 }
@@ -548,3 +560,72 @@ test('kill-switch after EACH write: restart converges, no duplicate script persi
     expect(db.stories[1].script).toContain(R.EP2_OUTRO_AFTER)
   }
 }, 60000)
+
+// --- GUARD 1: final verification must not accept missing evidence ---------
+// Marc's []-acceptance: checkFinalContinuity([]) returned ok:true (zero legs
+// checked = zero mismatches) and final reads discarded query errors via
+// `rows ?? []`. Every test below must refuse (ok:false) except the positive.
+function finalRows() {
+  const s1 = 'EP1 FINAL BODY. BELLE B OUTRO\n---\nBELLE B: finale one.'
+  const s2 = 'EP2 FINAL BODY. BELLE B OUTRO\n---\nBELLE B: finale two.'
+  const s3 = 'EP3 FINAL BODY. BELLE B OUTRO\n---\nBELLE B: finale three.'
+  return [
+    { id: R.CREEK_EP1_ID, episode_number: 1, script: s1, script_json: { series_generation: { continuity_pins_used: {} } } },
+    { id: R.CREEK_EP2_ID, episode_number: 2, script: s2, script_json: { series_generation: { continuity_pins_used: { [R.CREEK_EP1_ID]: hashScript(s1) } } } },
+    { id: R.CREEK_EP3_ID, episode_number: 3, script: s3, script_json: { series_generation: { continuity_pins_used: { [R.CREEK_EP1_ID]: hashScript(s1), [R.CREEK_EP2_ID]: hashScript(s2) } } } },
+  ]
+}
+
+test('guard1: empty final read is refused, never success', () => {
+  const gate = R.checkFinalContinuity([])
+  expect(gate.ok).toBe(false)
+  expect(gate.mismatches.length).toBeGreaterThan(0)
+})
+
+test('guard1a: final-read query error is refused', () => {
+  const gate = R.finalContinuityFromRead({ data: null, error: { message: 'boom' } })
+  expect(gate.ok).toBe(false)
+  expect(gate.mismatches.length).toBeGreaterThan(0)
+})
+
+test('guard1a-integration: query error on the final read → refusal, no success', async () => {
+  const db = buildDb()
+  const { supabase, captured } = clientFor(db, { failFinalRead: true })
+  const r = await R.runRecovery(supabase, { execute: true, ...quiet })
+  expect(r.ok).toBe(false)
+  expect(r.phase).toBe('final-verification')
+  expect(r.failures!.length).toBeGreaterThan(0)
+  expect(r.continued).toBeUndefined()
+  for (const c of captured) expect(c.url).not.toContain('[object Object]')
+})
+
+test('guard1b: only two of three episodes returned → refusal', () => {
+  const rows = finalRows().slice(0, 2)
+  const gate = R.checkFinalContinuity(rows)
+  expect(gate.ok).toBe(false)
+  expect(gate.mismatches.length).toBeGreaterThan(0)
+})
+
+test('guard1c: episode with empty script → refusal', () => {
+  const rows = finalRows()
+  rows[1] = { ...rows[1], script: '' }
+  const gate = R.checkFinalContinuity(rows)
+  expect(gate.ok).toBe(false)
+  expect(gate.mismatches.length).toBeGreaterThan(0)
+})
+
+test('guard1d: missing pin link → refusal', () => {
+  const rows = finalRows()
+  const pins = { ...rows[2].script_json.series_generation.continuity_pins_used }
+  delete pins[R.CREEK_EP2_ID] // drop the Ep3→Ep2 leg
+  rows[2] = { ...rows[2], script_json: { series_generation: { continuity_pins_used: pins } } }
+  const gate = R.checkFinalContinuity(rows)
+  expect(gate.ok).toBe(false)
+  expect(gate.mismatches.length).toBeGreaterThan(0)
+})
+
+test('guard1e: all three IDs + nonempty scripts + all three links + matching hashes → ok:true', () => {
+  const gate = R.checkFinalContinuity(finalRows())
+  expect(gate.ok).toBe(true)
+  expect(gate.mismatches).toEqual([])
+})

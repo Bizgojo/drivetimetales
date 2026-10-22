@@ -42,8 +42,8 @@ set -euo pipefail
 cd /home/ubuntu/drivetimetales
 PREV_COMMIT=$(git rev-parse HEAD); echo "previous source commit: $PREV_COMMIT"
 PREV_BUILD_ID=$(cat .next/BUILD_ID); echo "previous build id: $PREV_BUILD_ID"  # current .next build identity on the host
-systemctl is-active endlesstales-webapp.service   # webapp state (the correct unit — see 1d)
-systemctl is-active endlesstales-runnext.service  # expected: inactive (MUST stay stopped, see 1e)
+systemctl is-active endlesstales-webapp.service || true   # webapp state, record only (never abort the restore-point capture — see 1d)
+[ "$(systemctl is-active endlesstales-runnext.service || true)" = "inactive" ]  # expected: inactive (MUST stay stopped, see 1e)
 crontab -l | head -n 20  # paused crontab state (record exact output)
 ```
 

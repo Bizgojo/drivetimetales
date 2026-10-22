@@ -200,6 +200,12 @@ export function ep1PinRepairPlan({ ep1, ep2, ep3 }: { ep1: any; ep2: any; ep3: a
 /**
  * Final three-link verification (fail-closed gate): Ep2→Ep1, Ep3→Ep1,
  * Ep3→Ep2 must ALL match the final scripts. ANY mismatch → ok:false.
+ *
+ * GUARD (fail-closed on missing evidence): verifyContinuityPins alone
+ * accepts [] (zero legs checked = zero mismatches) and treats absent pins
+ * as warn-only — so the presence requirements below MUST run first. A read
+ * with no rows, a subset of the three episodes, an empty script, or a
+ * missing pin leg can NEVER verify; each refuses with ok:false.
  * Pure over already-fetched episode rows (each carries id, script,
  * script_json, episode_number).
  */
@@ -207,11 +213,65 @@ export function checkFinalContinuity(episodes: any[]): {
   ok: boolean
   mismatches: string[]
 } {
-  const res = verifyContinuityPins(episodes ?? [])
+  const eps = episodes ?? []
+  const byId: Record<string, any> = {}
+  for (const s of eps) {
+    if (s) byId[String(s.id)] = s
+  }
+  const expected = [CREEK_EP1_ID, CREEK_EP2_ID, CREEK_EP3_ID]
+  const missing: string[] = []
+  // 1. The read must contain EXACTLY the three expected episodes.
+  for (const id of expected) {
+    if (!byId[id]) missing.push(`missing episode row ${String(id).slice(0, 8)}… — refusing blind success`)
+  }
+  if (eps.length !== expected.length) {
+    missing.push(`expected exactly 3 episode rows, found ${eps.length} — refusing blind success`)
+  }
+  // 2. Every episode must carry a nonempty script (hash input must exist).
+  for (const id of expected) {
+    const s = byId[id]
+    if (s && String(s.script ?? '').length === 0) {
+      missing.push(`empty script on ${String(id).slice(0, 8)}… — refusing blind success`)
+    }
+  }
+  // 3. All three pin legs must be PRESENT (absent ≠ matching).
+  const pinsOf = (ep: any): Record<string, string> =>
+    (ep?.script_json?.series_generation?.continuity_pins_used ?? {}) as Record<string, string>
+  const legs: Array<[string, string, string]> = [
+    [CREEK_EP2_ID, CREEK_EP1_ID, 'Ep2→Ep1'],
+    [CREEK_EP3_ID, CREEK_EP1_ID, 'Ep3→Ep1'],
+    [CREEK_EP3_ID, CREEK_EP2_ID, 'Ep3→Ep2'],
+  ]
+  for (const [dep, prior, label] of legs) {
+    if (byId[dep] && !String(pinsOf(byId[dep])[prior] ?? '')) {
+      missing.push(`missing pin link ${label} — refusing blind success`)
+    }
+  }
+  if (missing.length > 0) return { ok: false, mismatches: missing }
+  const res = verifyContinuityPins(eps)
   const mismatches = (res.mismatches ?? []).map(
     (m: any) => `ep${m.episodeNumber} ${String(m.priorStoryId).slice(0, 8)}…: pinned ${String(m.expectedHash).slice(0, 8)}… vs live ${String(m.actualHash).slice(0, 8)}…`,
   )
   return { ok: res.ok && mismatches.length === 0, mismatches }
+}
+
+/**
+ * Fail-closed final-read wrapper: a FAILED read is never evidence of
+ * success. Every final verification site must go through here — never
+ * `checkFinalContinuity(rows ?? [])` directly on a fallible read.
+ */
+export function finalContinuityFromRead(read: { data: any; error: any }): {
+  ok: boolean
+  mismatches: string[]
+} {
+  if (read?.error) {
+    const msg = (read.error as any)?.message ?? String(read.error)
+    return { ok: false, mismatches: [`final read failed (${msg}) — refusing blind success`] }
+  }
+  if (!read?.data) {
+    return { ok: false, mismatches: ['final read returned no rows — refusing blind success'] }
+  }
+  return checkFinalContinuity(read.data)
 }
 
 export function evaluatePreflight({ job, stories }: { job: any; stories: any[] }): {
@@ -302,12 +362,12 @@ export async function runRecovery(
   // STEP 0 — preflight re-verification reads (always run, even in dry-run).
   const { data: _job } = await supabase.from('production_jobs').select('*').eq('id', CREEK_JOB_ID).single()
   const liveJob = one(_job)
-  const { data: stories } = await supabase.from('stories').select('*').eq('series_id', CREEK_SERIES_ID).order('episode_number')
+  const { data: stories, error: storiesError } = await supabase.from('stories').select('*').eq('series_id', CREEK_SERIES_ID).order('episode_number')
   // Terminal continuation already reached: converge with zero writes —
   // but success is still gated on the final three-link verification.
   if (liveJob?.current_step === PRE_PACKAGING_CONTINUATION_STEP && liveJob?.status === 'queued' && liveJob?.locked_by == null) {
     log('[converged] job already queued@series_generate_belle_assets — zero writes')
-    const finCheck = checkFinalContinuity(stories ?? [])
+    const finCheck = finalContinuityFromRead({ data: stories, error: storiesError })
     if (!finCheck.ok) {
       log('[FAIL] final three-link verification mismatch — no success claimed:')
       for (const m of finCheck.mismatches) log(`  - ${m}`)
@@ -612,8 +672,8 @@ export async function runRecovery(
     const freshJob = one(_j)
     if (freshJob?.current_step === PRE_PACKAGING_CONTINUATION_STEP && freshJob?.status === 'queued' && freshJob?.locked_by == null) {
       log('[converged] continuation already released — zero further writes')
-      const { data: _rel3 } = await supabase.from('stories').select('id,script,script_json,episode_number').eq('series_id', CREEK_SERIES_ID)
-      const relCheck = checkFinalContinuity(_rel3 ?? [])
+      const { data: _rel3, error: _rel3Err } = await supabase.from('stories').select('id,script,script_json,episode_number').eq('series_id', CREEK_SERIES_ID)
+      const relCheck = finalContinuityFromRead({ data: _rel3, error: _rel3Err })
       if (!relCheck.ok) {
         log('[FAIL] final three-link verification mismatch — no success claimed:')
         for (const m of relCheck.mismatches) log(`  - ${m}`)
@@ -659,8 +719,8 @@ export async function runRecovery(
       )
       // Stranded-resume success is still gated on final verification.
       {
-        const { data: _s3 } = await supabase.from('stories').select('id,script,script_json,episode_number').eq('series_id', CREEK_SERIES_ID)
-        const sCheck = checkFinalContinuity(_s3 ?? [])
+        const { data: _s3, error: _s3Err } = await supabase.from('stories').select('id,script,script_json,episode_number').eq('series_id', CREEK_SERIES_ID)
+        const sCheck = finalContinuityFromRead({ data: _s3, error: _s3Err })
         if (!sCheck.ok) {
           log('[FAIL] final three-link verification mismatch — no success claimed:')
           for (const m of sCheck.mismatches) log(`  - ${m}`)
@@ -692,8 +752,8 @@ export async function runRecovery(
   // and require Ep2→Ep1, Ep3→Ep1, Ep3→Ep2 to match the final scripts.
   // Any mismatch is a REPORTED FAILURE — never a success claim.
   {
-    const { data: _fin3 } = await supabase.from('stories').select('id,script,script_json,episode_number').eq('series_id', CREEK_SERIES_ID)
-    const finCheck = checkFinalContinuity(_fin3 ?? [])
+    const { data: _fin3, error: _fin3Err } = await supabase.from('stories').select('id,script,script_json,episode_number').eq('series_id', CREEK_SERIES_ID)
+    const finCheck = finalContinuityFromRead({ data: _fin3, error: _fin3Err })
     if (!finCheck.ok) {
       log('[FAIL] final three-link verification mismatch — no success claimed:')
       for (const m of finCheck.mismatches) log(`  - ${m}`)
