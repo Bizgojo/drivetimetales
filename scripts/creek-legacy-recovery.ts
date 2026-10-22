@@ -68,7 +68,7 @@ import {
 } from '../lib/belleValidation'
 import {
   PRE_PACKAGING_CONTINUATION_STEP,
-  jsonbEqFilter,
+  casUpdateStory,
   recoverStrandedContinuationCleanup,
   releasePrePackagingContinuationLock,
   getPendingPinResync,
@@ -569,11 +569,13 @@ export async function runRecovery(
       await fence(
         'ep1 raw_script sync to validated script (audit appended, history intact)',
         async () => {
-          const { data, error } = await supabase.from('stories').update({ script_json: next }).eq('id', CREEK_EP1_ID)
-            .eq('script_json', jsonbEqFilter(snapshot)).select('id')
-          if (error) throw new Error(`ep1 raw sync write failed: ${error.message}`)
-          if (!data || data.length === 0) throw new Error('ep1 raw sync matched zero rows (concurrent modification) — retry converges')
-          return data
+          // LARGE-DOC-CAS: server-side compare (body params, no URL filter).
+          try {
+            await casUpdateStory(supabase, { storyId: CREEK_EP1_ID, expected: snapshot, updates: { script_json: next } })
+          } catch (e) {
+            throw new Error(`ep1 raw sync write failed: ${(e as Error).message}`)
+          }
+          return { id: CREEK_EP1_ID }
         },
         async () => {
           const { data: _v } = await supabase.from('stories').select('script,script_json').eq('id', CREEK_EP1_ID).single()
@@ -615,11 +617,13 @@ export async function runRecovery(
     await fence(
       `${String(depId).slice(0, 8)}…→ep1 pin re-derived from current ep1 script (audit appended)`,
       async () => {
-        const { data, error } = await supabase.from('stories').update({ script_json: next }).eq('id', depId)
-          .eq('script_json', jsonbEqFilter(snapshot)).select('id')
-        if (error) throw new Error(`ep1 pin repair write failed: ${error.message}`)
-        if (!data || data.length === 0) throw new Error('ep1 pin repair matched zero rows (concurrent modification) — retry converges')
-        return data
+        // LARGE-DOC-CAS: server-side compare (body params, no URL filter).
+        try {
+          await casUpdateStory(supabase, { storyId: String(depId), expected: snapshot, updates: { script_json: next } })
+        } catch (e) {
+          throw new Error(`ep1 pin repair write failed: ${(e as Error).message}`)
+        }
+        return { id: String(depId) }
       },
       async () => {
         const { data: _v } = await supabase.from('stories').select('script_json').eq('id', depId).single()
@@ -648,11 +652,13 @@ export async function runRecovery(
         await fence(
           'ep1 stale-outro audio-delete intent (nested sg path, CAS-guarded)',
           async () => {
-            const { data, error } = await supabase.from('stories').update({ script_json: next }).eq('id', CREEK_EP1_ID)
-              .eq('script_json', jsonbEqFilter(snapshot)).select('id')
-            if (error) throw new Error(`ep1 intent write failed: ${error.message}`)
-            if (!data || data.length === 0) throw new Error('ep1 intent matched zero rows (concurrent modification) — retry converges')
-            return data
+            // LARGE-DOC-CAS: server-side compare (body params, no URL filter).
+            try {
+              await casUpdateStory(supabase, { storyId: CREEK_EP1_ID, expected: snapshot, updates: { script_json: next } })
+            } catch (e) {
+              throw new Error(`ep1 intent write failed: ${(e as Error).message}`)
+            }
+            return { id: CREEK_EP1_ID }
           },
           async () => {
             const { data: _v1 } = await supabase.from('stories').select('script_json').eq('id', CREEK_EP1_ID).single()

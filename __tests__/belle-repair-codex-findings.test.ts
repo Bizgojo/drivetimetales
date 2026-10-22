@@ -71,6 +71,7 @@ interface ReqLog {
 
 interface EmuOpts {
   failPatch?: (table: string, values: any) => string | null
+  failRpc?: (params: any) => string | null
   afterGetSingle?: (table: string, id: string) => void
   storageFiles?: Record<string, string[]>
 }
@@ -176,6 +177,25 @@ function makeEmulator(
     }
 
     // ── rest ──
+    // LARGE-DOC-CAS: server-side compare-and-swap RPC emulation (atomic
+    // compare via canon, whitelist enforced, zero-row match = []).
+    if (parsed.pathname === '/rest/v1/rpc/cas_update_story' && method === 'POST') {
+      const rpcBody = JSON.parse(bodyText || '{}')
+      const injected = opts.failRpc ? opts.failRpc(rpcBody) : null
+      if (injected) return jsonResponse({ message: injected, code: '400' }, 400)
+      const allowed = ['script', 'script_json', 'announcement_text', 'outro_text', 'announcement_url', 'outro_audio_url', 'outro_with_music_url']
+      for (const k of Object.keys(rpcBody?.p_updates ?? {})) {
+        if (!allowed.includes(k)) {
+          return jsonResponse({ message: `cas_update_story: column ${k} not in whitelist`, code: 'P0001' }, 400)
+        }
+      }
+      const row = stories.get(String(rpcBody?.p_story_id))
+      if (row && canon(row.script_json ?? null) === canon(rpcBody?.p_expected ?? null)) {
+        for (const [k, v] of Object.entries(rpcBody?.p_updates ?? {})) (row as any)[k] = clone(v)
+        return jsonResponse([{ updated_id: row.id }])
+      }
+      return jsonResponse([])
+    }
     const restMatch = parsed.pathname.match(/^\/rest\/v1\/([^/]+)$/)
     if (!restMatch) return jsonResponse({ message: `emu: unknown path ${parsed.pathname}` }, 404)
     const table = restMatch[1]
@@ -331,16 +351,13 @@ function storiesPatchBodies(emu: Emu): any[] {
     .map((r) => JSON.parse(r.body || '{}'))
 }
 
-function casPatchUrls(emu: Emu): string[] {
-  return emu.requests
-    .filter((r) => r.method === 'PATCH' && r.url.includes('/rest/v1/stories'))
-    .map((r) => r.url)
-    .filter((u) => u.includes('script_json=eq.'))
-}
+// (LARGE-DOC-CAS: the old casPatchUrls URL-filter helper was removed —
+// snapshot conditions now travel as cas_update_story p_expected body
+// params; see the F1 rewrite above.)
 
 // ── F1: JSON CAS filter construction through the REAL QueryBuilder ─────────
 
-describe('F1: whole-doc snapshot conditions are real encoded JSON', () => {
+describe('F1: snapshot conditions travel as RPC body params (LARGE-DOC-CAS)', () => {
   function seedFullRepair() {
     const stale = hashScript(BEFORE_SCRIPT)
     const repairedRow = seedRepairedRow()
@@ -377,40 +394,31 @@ describe('F1: whole-doc snapshot conditions are real encoded JSON', () => {
       expectedRepairedScriptJson: preRepairSnapshot,
     })
 
-    // Every whole-doc snapshot condition on the wire…
-    const casUrls = casPatchUrls(emu)
-    expect(casUrls.length).toBeGreaterThanOrEqual(3) // persist + 2 drain pins (+ prune)
-    // NOTE: the SDK form-encodes spaces as `+` (URLSearchParams semantics);
-    // decode accordingly — the emulator's own URLSearchParams-based matching
-    // already proved the server side parses these filters correctly.
-    const decodeFilter = (enc: string) => decodeURIComponent(enc.replace(/\+/g, ' '))
-    for (const url of casUrls) {
-      const enc = url.split('script_json=eq.')[1].split('&')[0]
-      const decoded = decodeFilter(enc)
-      // …parses as JSON and deep-equals a real snapshot…
-      expect(() => JSON.parse(decoded)).not.toThrow()
-      expect(String(decoded)).toMatch(/^\{/)
+    // LARGE-DOC-CAS: every snapshot condition travels as a p_expected RPC
+    // body param (parsed object, never a URL filter)…
+    const rpcCalls = emu.requests.filter((r) => r.url.includes('/rest/v1/rpc/cas_update_story'))
+    expect(rpcCalls.length).toBeGreaterThanOrEqual(3) // persist + drain pin (+ prune)
+    for (const r of rpcCalls) {
+      const params = JSON.parse(r.body || '{}')
+      expect(params.p_expected).toEqual(expect.anything())
+      expect(() => JSON.stringify(params.p_expected)).not.toThrow()
     }
-    // …and NOTHING on the wire ever carries the broken serialization.
+    // …the persist call carries the pre-repair snapshot exactly…
+    const persistReq = rpcCalls.find((r) => {
+      const params = JSON.parse(r.body || '{}')
+      return String(params.p_story_id) === EP1_ID
+        && Object.prototype.hasOwnProperty.call(params.p_updates || {}, 'script')
+    })
+    expect(persistReq).toBeDefined()
+    expect(JSON.parse((persistReq as ReqLog).body || '{}').p_expected).toEqual(preRepairSnapshot)
+    // …and NOTHING on the wire carries a whole-doc URL filter or the
+    // broken serialization.
     for (const r of emu.requests) {
+      expect(r.url).not.toContain('script_json=eq.')
       expect(r.url).not.toContain('[object Object]')
       expect(r.url).not.toContain('object+Object')
       expect(r.url).not.toContain('%5Bobject')
     }
-    // The persist CAS filter is byte-exact: the SDK encodes our JSON string.
-    // Correlate: the persist write is the stories PATCH whose body carries
-    // the `script` column (drain pin writes and prunes are script_json-only).
-    const persistReq = emu.requests.find(
-      (r) =>
-        r.method === 'PATCH' &&
-        r.url.includes('/rest/v1/stories') &&
-        Object.prototype.hasOwnProperty.call(JSON.parse(r.body || '{}'), 'script')
-    )
-    expect(persistReq).toBeDefined()
-    const persistUrl = (persistReq as ReqLog).url
-    expect(persistUrl).toContain('script_json=eq.')
-    const persistEnc = (persistUrl as string).split('script_json=eq.')[1].split('&')[0]
-    expect(decodeFilter(persistEnc)).toBe(JSON.stringify(preRepairSnapshot))
 
     // Repair landed: pin moved, pending cleared, raw copy synced.
     expect(
@@ -576,11 +584,15 @@ describe('F3: repaired-row writes are CAS-verified with re-read/re-merge/retry',
     const audits = ep1.script_json.series_generation.belle_repair_audit
     expect(audits).toHaveLength(3)
     expect(new Set(audits.map((e: unknown) => JSON.stringify(e))).size).toBe(3)
-    // …and the wire shows exactly two repair writes (attempt + one retry).
+    // …and the wire shows exactly two repair writes (attempt + one retry),
+    // both atomic RPC calls carrying the full repair shape.
     expect(
-      storiesPatchBodies(emu).filter((b) =>
-        Object.prototype.hasOwnProperty.call(b, 'script')
-      )
+      emu.requests.filter((r) => {
+        if (!r.url.includes('/rest/v1/rpc/cas_update_story')) return false
+        const params = JSON.parse(r.body || '{}')
+        return String(params.p_story_id) === EP1_ID
+          && Object.prototype.hasOwnProperty.call(params.p_updates || {}, 'script')
+      })
     ).toHaveLength(2)
   })
 
@@ -734,8 +746,9 @@ describe('F5: file deletion only after durable repair; raw copy synced', () => {
     const seed = seedAudio()
     const emu = makeEmulator(seed.stories, seed.jobs, {
       storageFiles,
-      failPatch: (table, values) =>
-        table === 'stories' && Object.prototype.hasOwnProperty.call(values, 'script')
+      failRpc: (params) =>
+        String(params?.p_story_id) === EP1_ID
+        && Object.prototype.hasOwnProperty.call(params?.p_updates || {}, 'script')
           ? 'persist boom'
           : null,
     })
@@ -799,11 +812,11 @@ describe('F5: file deletion only after durable repair; raw copy synced', () => {
     const removeBody = JSON.parse(removes[0].body || '[]')
     const removedPaths = (Array.isArray(removeBody) ? removeBody : removeBody.prefixes || []).map(String).sort()
     expect(removedPaths).toEqual(out.deletedBelleFiles.sort())
-    // Ordering on the wire: the persist PATCH precedes the storage DELETE.
+    // Ordering on the wire: the persist RPC precedes the storage DELETE.
     const persistIdx = emu.requests.findIndex(
       (r) =>
-        r.method === 'PATCH' &&
-        r.url.includes('/rest/v1/stories') &&
+        r.method === 'POST' &&
+        r.url.includes('/rest/v1/rpc/cas_update_story') &&
         (r.body || '').includes('"script"')
     )
     const removeIdx = emu.requests.findIndex(
