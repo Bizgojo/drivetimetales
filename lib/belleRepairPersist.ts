@@ -1387,6 +1387,55 @@ export async function persistPrePackagingAudioRecovery(
 }
 
 /**
+ * Release half of the pre-packaging audio-recovery continuation gate
+ * (HANDOFF fix): the companion to persistPrePackagingAudioRecovery when
+ * the continuation is persisted WITHOUT releasing the lock.
+ *
+ * The continuation PATCH queues the regeneration intent but leaves the job
+ * UNCLAIMABLE (status still running, lock held) — no other worker can
+ * start replacement Belle generation mid-cleanup. Only AFTER the pending
+ * audio-delete intents are pruned and the pin resyncs drained does this
+ * second fenced write flip status to queued and clear the lock, unblocking
+ * generation. Fenced on the same owner fence: a write error or zero-row
+ * match throws fail-closed (generation stays blocked) instead of
+ * half-releasing. On success the in-memory job mirrors the release. Same
+ * job, no new row, retry counts untouched.
+ */
+export async function releasePrePackagingContinuationLock(
+  supabaseClient: any,
+  job: any,
+  fence?: Record<string, unknown>
+): Promise<void> {
+  const jobId = String(job?.id || 'unknown-job')
+  const update: Record<string, unknown> = {
+    status: 'queued',
+    locked_at: null,
+    locked_by: null,
+  }
+  const { data, error } = await supabaseClient
+    .from('production_jobs')
+    .update(update)
+    .match(fence && typeof fence === 'object' ? fence : { id: jobId })
+    .select('id')
+  if (error) {
+    throw new Error(
+      `Failed to release pre-packaging Belle audio-recovery continuation lock for job ${jobId}: ${error.message}`
+    )
+  }
+  if (!data || data.length === 0) {
+    throw new Error(
+      `Failed to release pre-packaging Belle audio-recovery continuation lock for job ${jobId}: ` +
+        `zero rows matched (lock lost or concurrent update) — generation stays blocked`
+    )
+  }
+  if (job && typeof job === 'object') {
+    job.status = 'queued'
+    job.locked_at = null
+    job.locked_by = null
+  }
+}
+
+/**
  * Same-job continuation step for the pre-packaging audio recovery: the
  * Belle-generation step the job returns to for replacement audio after
  * its stale files were deleted. NOT a new job.
@@ -1404,17 +1453,23 @@ export const PRE_PACKAGING_CONTINUATION_STEP = 'series_generate_belle_assets'
  *      proceeds to packaging this tick (`continued: false`).
  *   3. Otherwise: delete the affected audio files from storage ONLY
  *      (pending intent lists stay intact in the DB).
- *   4. Persist the same-job continuation (status/step transition off
+ *   4. Persist the same-job continuation (step transition off
  *      complete_story_package toward Belle generation + affected
  *      Belle/mix/package flag resets, unaffected flags and all retry
- *      counts preserved) BEFORE any pending prune. A write failure
- *      throws here with pending entries intact, so a later tick retries
- *      the continuation — never a half-persisted state that loses the
- *      recovery.
- *   5. Only after the continuation lands: prune the processed audio
- *      intents and drain the pin resyncs (a failure here still throws
- *      loudly with pending intact; the continuation is already queued,
- *      so the next packaging tick re-discovers and converges).
+ *      counts preserved) with the lock HELD and status still running —
+ *      the continuation is durable but the job is UNCLAIMABLE, so no
+ *      other worker can start replacement generation mid-cleanup. A
+ *      write failure throws here with pending entries intact, so a later
+ *      tick retries the continuation — never a half-persisted state that
+ *      loses the recovery.
+ *   5. With the lock still held: prune the processed audio intents and
+ *      drain the pin resyncs (a failure here still throws loudly with
+ *      pending intact AND the lock held — generation stays blocked; the
+ *      generation-entry guard recovers stranded cleanup before any
+ *      regen).
+ *   6. Only after cleanup completes: release the lock through a second
+ *      fenced write (status queued + lock cleared) — replacement
+ *      generation is unblocked strictly after pending cleanup.
  *
  * Returns `continued: true` when the caller MUST return from the current
  * tick BEFORE any packaging call (zero packaging calls that tick); a
@@ -1480,15 +1535,17 @@ export async function runPrePackagingRecoveryWithContinuation(
     })
     return { continued: false, recovery, affectedKeys: [] }
   }
+  // HANDOFF gate: the continuation persists with the lock HELD and the
+  // status still running — the job is durable but UNCLAIMABLE, so no other
+  // worker can start replacement Belle generation mid-cleanup. The lock is
+  // released (second fenced write below) strictly AFTER the pending prune.
   const affectedKeys = await persistPrePackagingAudioRecovery(
     supabaseClient,
     args.job,
     resolutions,
     args.fence,
     {
-      status: 'queued',
       currentStep: PRE_PACKAGING_CONTINUATION_STEP,
-      releaseLock: true,
       logMessage:
         'Belle audio recovery: continuation to Belle generation (packaging deferred)',
       logDetails: {
@@ -1498,8 +1555,12 @@ export async function runPrePackagingRecoveryWithContinuation(
       },
     }
   )
-  // The continuation landed: now prune the processed intents and drain
-  // the pins (fresh reads inside each call keep concurrent additions).
+  // The continuation landed with the lock held: now prune the processed
+  // intents and drain the pins (fresh reads inside each call keep
+  // concurrent additions). A failure here still throws loudly with pending
+  // intact AND the lock held — generation stays blocked, and the
+  // generation-entry guard (recoverStrandedContinuationCleanup) finishes
+  // the certified cleanup before any regen on the next worker entry.
   const drainedByStory: Record<string, string[]> = {}
   for (const carrier of carriers) {
     if ((carrier.pendingPins || []).length > 0) {
@@ -1513,6 +1574,10 @@ export async function runPrePackagingRecoveryWithContinuation(
   for (const carrier of audioCarriers) {
     await clearPendingAudioDelete(supabaseClient, carrier.storyId, carrier.audioUrls)
   }
+  // Cleanup complete: release the lock so the job becomes claimable for
+  // replacement generation. Fenced — a zero-row match throws fail-closed
+  // (generation stays blocked) instead of half-releasing.
+  await releasePrePackagingContinuationLock(supabaseClient, args.job, args.fence)
   const recovery: PendingDrainResolution[] = [
     ...resolutions.map((r) => ({
       ...r,
@@ -1529,6 +1594,113 @@ export async function runPrePackagingRecoveryWithContinuation(
       })),
   ]
   return { continued: true, recovery, affectedKeys }
+}
+
+/**
+ * Generation-entry guard for the pre-packaging audio-recovery continuation
+ * (HANDOFF fix — the durable recovery path; the exact function the
+ * run-next route calls as thin glue BEFORE replacement Belle generation).
+ *
+ * If execution stops after the continuation persisted but before the
+ * pending prune (or the prune itself failed), the job sits at the
+ * continuation step with its lock stale and the certified deletion intent
+ * still pending. The next worker entry MUST NOT generate replacement audio
+ * against that surviving intent — a later recovery would storage-delete the
+ * fresh recording at the reused filename (paid regen destroyed). This guard
+ * retires the certified intent BEFORE any generation call on the tick.
+ *
+ * Certified-only, storage-free, job-write-free:
+ *   - In-memory gate first: unless the job sits at
+ *     PRE_PACKAGING_CONTINUATION_STEP with persisted deletedBelleFiles
+ *     markers (the continuation PATCH's certificate that storage-delete
+ *     already ran for those stories), this is a pure no-op with ZERO DB
+ *     calls — ordinary jobs pay nothing.
+ *   - With markers: fresh carrier reads, then per certified story clear
+ *     ONLY the intent URLs whose derived storage path is in the certified
+ *     set (clearPendingAudioDelete identity-subtract, CAS-guarded — a
+ *     concurrently-added intent for an uncertified path survives), plus
+ *     the pin-resync drain for certified stories. Affected stories only;
+ *     retry counts untouched (zero job writes).
+ *   - ZERO storage calls by construction: the markers certify the files
+ *     are already deleted, so re-deleting is both unnecessary and unsafe
+ *     (it could hit a regenerated file at the reused path). The guard can
+ *     never delete any file, fresh or otherwise.
+ *
+ * Returns `recovered: true` when the certified cleanup pass ran (even when
+ * nothing remained), `false` for the no-op path.
+ */
+export async function recoverStrandedContinuationCleanup(
+  supabaseClient: any,
+  args: {
+    failingStoryId: string
+    loadSeriesStories?: () => Promise<any[]>
+    job: any
+  }
+): Promise<{
+  recovered: boolean
+  clearedAudioIntents: Record<string, string[]>
+  drainedPins: Record<string, string[]>
+}> {
+  const idle = {
+    recovered: false,
+    clearedAudioIntents: {},
+    drainedPins: {},
+  }
+  const job = args?.job
+  if (!job || typeof job !== 'object') return idle
+  if (String((job as any).current_step || '') !== PRE_PACKAGING_CONTINUATION_STEP)
+    return idle
+  const state =
+    (job as any).state_json && typeof (job as any).state_json === 'object'
+      ? (job as any).state_json
+      : null
+  const pkg = state?.seriesCompleteStoryPackage
+  const byEpisode =
+    pkg && typeof pkg === 'object' && (pkg as any).belleRetry && typeof (pkg as any).belleRetry === 'object'
+      ? (pkg as any).belleRetry.byEpisode
+      : null
+  if (!byEpisode || typeof byEpisode !== 'object') return idle
+  const certifiedByStory: Record<string, Set<string>> = {}
+  for (const [storyId, rec] of Object.entries(byEpisode as Record<string, unknown>)) {
+    const files =
+      rec && typeof rec === 'object'
+        ? (rec as Record<string, unknown>).deletedBelleFiles
+        : null
+    if (Array.isArray(files) && files.length > 0) {
+      certifiedByStory[String(storyId)] = new Set(files.map((f) => String(f)))
+    }
+  }
+  if (Object.keys(certifiedByStory).length === 0) return idle
+  // Markers present: the continuation landed, so the cleanup pass runs.
+  const carriers = await collectPrePackagingRecoveryCarriers(supabaseClient, {
+    failingStoryId: args.failingStoryId,
+    loadSeriesStories: args.loadSeriesStories,
+  })
+  const clearedAudioIntents: Record<string, string[]> = {}
+  const drainedPins: Record<string, string[]> = {}
+  for (const carrier of carriers) {
+    // Affected-only: stories outside the certified set belong to other
+    // flows — their intents stay untouched for their own ticks.
+    const certified = certifiedByStory[carrier.storyId]
+    if (!certified) continue
+    const intent = (carrier.audioUrls || []).map((u) => String(u))
+    const covered = intent.filter((u) => {
+      const derived = audioDeletePathsForStory(carrier.storyId, [u])
+      return derived.length > 0 && certified.has(derived[0])
+    })
+    if (covered.length > 0) {
+      await clearPendingAudioDelete(supabaseClient, carrier.storyId, covered)
+      clearedAudioIntents[carrier.storyId] = covered
+    }
+    if ((carrier.pendingPins || []).length > 0) {
+      drainedPins[carrier.storyId] = await drainPendingPinResync(
+        supabaseClient,
+        carrier.storyId,
+        carrier.pendingPins
+      )
+    }
+  }
+  return { recovered: true, clearedAudioIntents, drainedPins }
 }
 
 /**

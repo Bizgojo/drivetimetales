@@ -52,6 +52,7 @@ import {
   persistBelleRepairAndInvalidateAudio,
   PRE_PACKAGING_CONTINUATION_STEP,
   recoverPendingPinDrains,
+  recoverStrandedContinuationCleanup,
   reserveBelleRetryCount,
   resumePendingPinJob,
   runPrePackagingRecoveryWithContinuation,
@@ -12851,6 +12852,21 @@ export async function POST(req: NextRequest) {
     // ── Series Belle → Music → Render steps ────────────────────────────────
     if (step === NEXT_STEP_AFTER_SERIES_VOICES) {
       const origin = new URL(req.url).origin
+      // HANDOFF gate: finish stranded pre-packaging continuation cleanup
+      // BEFORE any replacement Belle generation (lib — this route is thin
+      // glue). No-op with zero DB calls unless the job carries a persisted
+      // continuation with certified deletion markers.
+      await recoverStrandedContinuationCleanup(supabase, {
+        failingStoryId: String(
+          lockedJob.story_id ||
+            (lockedJob.state_json as any)?.storyId ||
+            ''
+        ),
+        loadSeriesStories: lockedJob.series_id
+          ? () => loadSeriesEpisodes(String(lockedJob.series_id))
+          : undefined,
+        job: lockedJob,
+      })
       const result = await runSeriesBelleAssets(lockedJob, origin)
       const nextStep = result.allDone ? NEXT_STEP_AFTER_SERIES_BELLE : NEXT_STEP_AFTER_SERIES_VOICES
       const logs = appendLog(lockedJob,

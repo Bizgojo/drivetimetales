@@ -19,18 +19,27 @@
  *     present.
  *  2. pre-packaging recovery CONTINUES (never packages same-tick): an
  *     audio-deleting recovery deletes the stale files, then persists a
- *     same-job continuation to Belle generation (status/step transition
- *     off complete_story_package + affected Belle/mix/package flag
- *     resets) and returns BEFORE any packaging call. Unaffected episodes
- *     keep their flags, all retry counts are preserved, and a
- *     continuation-write failure leaves pending entries intact so a later
- *     tick retries the continuation (fail-closed, never half-persisted).
+ *     same-job continuation to Belle generation (step transition off
+ *     complete_story_package + affected Belle/mix/package flag resets,
+ *     lock HELD) and returns BEFORE any packaging call; the lock is
+ *     released by a second fenced write strictly AFTER the pending prune.
+ *     Unaffected episodes keep their flags, all retry counts are
+ *     preserved, and a continuation-write failure leaves pending entries
+ *     intact so a later tick retries the continuation (fail-closed, never
+ *     half-persisted).
+ *  3. HANDOFF gate: a prune failure after the continuation persisted
+ *     leaves the job lock-held and unclaimable (no premature generation),
+ *     and the next worker entry (recoverStrandedContinuationCleanup +
+ *     release) retires the certified intent with zero storage calls — so
+ *     no fresh recording at a reused path is ever deleted.
  */
 import { createClient } from '@supabase/supabase-js'
 import {
   applyAudioDeleteRecoveryToState,
   getPendingResumeAdmission,
   persistPrePackagingAudioRecovery,
+  recoverStrandedContinuationCleanup,
+  releasePrePackagingContinuationLock,
   resumePendingPinJob,
   runPrePackagingRecoveryWithContinuation,
   runSeriesPackagingWithPriorRecovery,
@@ -112,7 +121,8 @@ function rowMatchesParams(row: any, sp: URLSearchParams): boolean {
 function makeEmulator(
   seedStories: Record<string, any>,
   seedJobs: Record<string, any>,
-  storageFiles: Record<string, string[]> = {}
+  storageFiles: Record<string, string[]> = {},
+  opts: { failPatch?: (table: string, values: any) => string | null } = {}
 ) {
   const stories = new Map<string, any>(Object.entries(clone(seedStories)))
   const jobs = new Map<string, any>(Object.entries(clone(seedJobs)))
@@ -181,6 +191,8 @@ function makeEmulator(
 
     if (method === 'PATCH') {
       const values = JSON.parse(bodyText || '{}')
+      const fail = opts.failPatch ? opts.failPatch(table, values) : null
+      if (fail) return jsonResponse({ message: fail, code: '400' }, 400)
       const matched: any[] = []
       for (const row of store.values()) {
         if (!rowMatchesParams(row, sp)) continue
@@ -200,7 +212,19 @@ function makeEmulator(
   const client = createClient('https://xyz.supabase.co', 'test-anon-key', {
     global: { fetch: stubFetch as any },
   })
-  return { client, requests, stories, jobs }
+  return {
+    client,
+    requests,
+    stories,
+    jobs,
+    storageAdd(prefix: string, names: string[]) {
+      for (const name of names) {
+        const set = bucketFiles.get('audio') || new Set<string>()
+        set.add(`${prefix}/${name}`.replace(/\/+/g, '/'))
+        bucketFiles.set('audio', set)
+      }
+    },
+  }
 }
 
 type Emu = ReturnType<typeof makeEmulator>
@@ -523,18 +547,32 @@ describe('(2) pre-packaging audio recovery resets stages + persists before packa
     expect(rec?.deletedAudioFiles).toEqual([`asc3/${EP1_ID}/outro.mp3`])
     expect(storageDeletes(emu)).toHaveLength(1)
 
-    // …and the SAME job continued to Belle generation: status/step
-    // transition + affected flag resets on the captured job PATCH.
+    // …and the SAME job continued to Belle generation: step transition +
+    // affected flag resets on the captured continuation PATCH — persisted
+    // with the lock HELD (HANDOFF gate: unclaimable mid-cleanup), then
+    // released by a second fenced write strictly AFTER the pending prune.
     const conts = jobPatches(emu).filter((r) =>
       String(r.body || '').includes('series_generate_belle_assets')
     )
-    expect(jobPatches(emu)).toHaveLength(1)
+    expect(jobPatches(emu)).toHaveLength(2)
     expect(conts).toHaveLength(1)
     const contBody = JSON.parse(conts[0].body || '{}')
-    expect(contBody.status).toBe('queued')
+    // No status change on the continuation PATCH: the job stays running.
+    expect('status' in contBody).toBe(false)
     expect(contBody.current_step).toBe('series_generate_belle_assets')
-    expect(contBody.locked_by).toBeNull()
-    expect(contBody.locked_at).toBeNull()
+    // Lock HELD through cleanup — the continuation PATCH touches only
+    // state/step/logs (lock columns absent from the body), so the row
+    // keeps its lock and no other worker can claim mid-cleanup.
+    expect('locked_by' in contBody).toBe(false)
+    expect('locked_at' in contBody).toBe(false)
+    // The release is a separate fenced PATCH, after the prune: status
+    // queued + lock cleared.
+    const releases = jobPatches(emu).filter((r) => !conts.includes(r))
+    expect(releases).toHaveLength(1)
+    const releaseBody = JSON.parse(releases[0].body || '{}')
+    expect(releaseBody.status).toBe('queued')
+    expect(releaseBody.locked_by).toBeNull()
+    expect(releaseBody.locked_at).toBeNull()
     const persisted = contBody.state_json
     for (const stage of ['seriesBelleGeneration', 'seriesRenderFinalMix', 'seriesCompleteStoryPackage']) {
       expect(persisted[stage].doneByEp['1']).toBe(false)
@@ -563,14 +601,17 @@ describe('(2) pre-packaging audio recovery resets stages + persists before packa
     expect(job.locked_by).toBeNull()
     expect(job.state_json.seriesCompleteStoryPackage.doneByEp).toEqual({ '1': false, '2': true })
 
-    // Wire order: storage DELETE → continuation PATCH → stories prunes
-    // (pending is pruned only AFTER the continuation lands).
+    // Wire order: storage DELETE → continuation PATCH (lock held) →
+    // stories prunes → lock release LAST (generation unblocked strictly
+    // after cleanup completes).
     const deleteIdx = emu.requests.findIndex(
       (r) => r.method === 'DELETE' && r.url.includes('/storage/')
     )
     const contIdx = emu.requests.indexOf(conts[0])
+    const releaseIdx = emu.requests.indexOf(releases[0])
     expect(deleteIdx).toBeGreaterThan(-1)
     expect(contIdx).toBeGreaterThan(-1)
+    expect(releaseIdx).toBeGreaterThan(-1)
     expect(deleteIdx).toBeLessThan(contIdx)
     const pruneIdxs = emu.requests
       .map((r, i) => ({ r, i }))
@@ -578,6 +619,7 @@ describe('(2) pre-packaging audio recovery resets stages + persists before packa
       .map(({ i }) => i)
     expect(pruneIdxs.length).toBeGreaterThan(0)
     for (const i of pruneIdxs) expect(i).toBeGreaterThan(contIdx)
+    for (const i of pruneIdxs) expect(i).toBeLessThan(releaseIdx)
     // Pending fully pruned after the continuation landed.
     expect(
       emu.stories.get(EP1_ID).script_json.series_generation.pending_audio_delete
@@ -794,5 +836,223 @@ describe('(2) pre-packaging audio recovery resets stages + persists before packa
     ])
     expect(untouched.affectedKeys).toEqual([])
     expect(untouched.state).toEqual(packagingState())
+  })
+})
+
+// ── (3) HANDOFF: lock held until cleanup completes + stranded recovery ─────
+// Failure injection AFTER the continuation persisted but BEFORE the prune,
+// then the next worker/recovery entry. Proves (a) no paid generation can
+// start prematurely and (b) no fresh recording is subsequently deleted.
+describe('(3) HANDOFF gate: lock held until cleanup + stranded recovery', () => {
+  const NEW_HASH = hashScript(AFTER_SCRIPT)
+  const STALE = hashScript(BEFORE_SCRIPT)
+  const OUTRO_URL = `https://cdn.example.com/asc3/${EP1_ID}/outro.mp3`
+  const REUSED_PATH = `asc3/${EP1_ID}/outro.mp3`
+
+  function handoffSeeds() {
+    return {
+      [EP1_ID]: seedRow(
+        EP1_ID,
+        scriptJsonWith({
+          pending: [{ dependentStoryId: EP2_ID, priorStoryId: EP1_ID, newPinHash: NEW_HASH }],
+          audio: [OUTRO_URL],
+          storyId: EP1_ID,
+        }),
+        1
+      ),
+      [EP2_ID]: seedRow(
+        EP2_ID,
+        { series_generation: { generated_title: EP2_ID, continuity_pins_used: { [EP1_ID]: STALE } } },
+        2
+      ),
+    }
+  }
+
+  function lockedPackagingJob() {
+    return seedFailedJob({
+      status: 'running',
+      locked_by: 'holder-1',
+      locked_at: '2026-10-22T16:00:00.000Z',
+      state_json: {
+        storyId: EP1_ID,
+        seriesBelleGeneration: { doneByEp: { '1': true, '2': true }, allDone: true },
+        seriesRenderFinalMix: { doneByEp: { '1': true, '2': true }, allDone: true },
+        seriesCompleteStoryPackage: {
+          doneByEp: { '1': true, '2': true },
+          allDone: true,
+          belleRetry: {
+            byEpisode: {
+              [EP1_ID]: { count: 2, max: 5, episodeNumber: 1 },
+              [EP2_ID]: { count: 1, max: 5, episodeNumber: 2 },
+            },
+          },
+        },
+      },
+      error_json: null,
+    })
+  }
+
+  function voiceCalls(emu: Emu) {
+    return emu.requests.filter((r) => r.url.includes('generate-voices'))
+  }
+
+  test('prune failure: continuation durable but lock-held, unclaimable, pending intact, zero generation', async () => {
+    let failStoriesPrune = true
+    const emu = makeEmulator(
+      handoffSeeds(),
+      { [JOB_ID]: lockedPackagingJob() },
+      { [`asc3/${EP1_ID}`]: ['outro.mp3'] },
+      { failPatch: (table) => (table === 'stories' && failStoriesPrune ? 'boom-prune' : null) }
+    )
+    const job = emu.jobs.get(JOB_ID)
+
+    // Inject the failure AFTER continuation persistence, BEFORE pruning:
+    // the first stories PATCH (pin prune) throws.
+    await expect(
+      runPrePackagingRecoveryWithContinuation(emu.client, {
+        failingStoryId: EP1_ID,
+        job,
+        fence: { id: JOB_ID, locked_by: 'holder-1', status: 'running' },
+      })
+    ).rejects.toThrow(/boom-prune/)
+
+    // (i) The stale file was deleted, then the continuation PATCH landed —
+    // the ONLY job PATCH on the wire, with the lock HELD (no release).
+    expect(storageDeletes(emu)).toHaveLength(1)
+    expect(jobPatches(emu)).toHaveLength(1)
+    const contBody = JSON.parse(jobPatches(emu)[0].body || '{}')
+    expect(contBody.current_step).toBe('series_generate_belle_assets')
+    expect('status' in contBody).toBe(false)
+    expect('locked_by' in contBody).toBe(false)
+    expect('locked_at' in contBody).toBe(false)
+    // (ii) The DB row is durable (continuation persisted) but still locked.
+    const row = emu.jobs.get(JOB_ID)
+    expect(row.current_step).toBe('series_generate_belle_assets')
+    expect(row.status).toBe('running')
+    expect(row.locked_by).toBe('holder-1')
+    expect(row.state_json.seriesBelleGeneration.doneByEp).toEqual({ '1': false, '2': true })
+    // (iii) Pending intact: audio intent AND pin resync survive.
+    const sj = emu.stories.get(EP1_ID).script_json.series_generation
+    expect(sj.pending_audio_delete).toEqual([OUTRO_URL])
+    expect(sj.pending_pin_resync).toHaveLength(1)
+    // (iv) (a) No premature generation: another worker's fenced claim
+    // matches ZERO rows (lock held) — and the wire shows zero Belle-audio
+    // generation requests before cleanup completes.
+    const claim = (await emu.client
+      .from('production_jobs')
+      .update({ status: 'running', locked_at: '2026-10-22T17:00:00.000Z', locked_by: 'worker-2' })
+      .match({ id: JOB_ID, locked_by: 'worker-2' })
+      .select('id')) as any
+    expect(claim.error).toBeNull()
+    expect(claim.data).toEqual([])
+    expect(emu.jobs.get(JOB_ID).locked_by).toBe('holder-1')
+    expect(voiceCalls(emu)).toHaveLength(0)
+    expectCleanWire(emu)
+
+    // ── Next worker/recovery entry ──
+    failStoriesPrune = false
+    const nextJob = (await emu.client.from('production_jobs').select('*').eq('id', JOB_ID).single() as any).data
+    const guard = await recoverStrandedContinuationCleanup(emu.client, {
+      failingStoryId: EP1_ID,
+      job: nextJob,
+    })
+    // (v) Guard retires the certified intent: audio cleared, pins drained.
+    expect(guard.recovered).toBe(true)
+    expect(guard.clearedAudioIntents).toEqual({ [EP1_ID]: [OUTRO_URL] })
+    expect(guard.drainedPins[EP1_ID]).toEqual([EP2_ID])
+    expect(emu.stories.get(EP1_ID).script_json.series_generation.pending_audio_delete).toEqual([])
+    expect(emu.stories.get(EP2_ID).script_json.series_generation.continuity_pins_used[EP1_ID]).toBe(NEW_HASH)
+    // (vi) Guard issued ZERO storage calls (certified — files already gone)
+    // and ZERO job writes, and still zero generation requests.
+    expect(storageDeletes(emu)).toHaveLength(1)
+    expect(jobPatches(emu)).toHaveLength(2) // persist-hold + failed claim only
+    expect(voiceCalls(emu)).toHaveLength(0)
+    // (vii) Release unblocks generation — strictly after cleanup.
+    await releasePrePackagingContinuationLock(emu.client, nextJob, {
+      id: JOB_ID,
+      locked_by: 'holder-1',
+      status: 'running',
+    })
+    expect(jobPatches(emu)).toHaveLength(3)
+    const releaseBody = JSON.parse(jobPatches(emu)[2].body || '{}')
+    expect(releaseBody.status).toBe('queued')
+    expect(releaseBody.locked_by).toBeNull()
+    expect(releaseBody.locked_at).toBeNull()
+    expect(emu.jobs.get(JOB_ID).status).toBe('queued')
+    expect(emu.jobs.get(JOB_ID).locked_by).toBeNull()
+    // Retry counts preserved across the whole handoff.
+    const byEp = emu.jobs.get(JOB_ID).state_json.seriesCompleteStoryPackage.belleRetry.byEpisode
+    expect(byEp[EP1_ID].count).toBe(2)
+    expect(byEp[EP2_ID].count).toBe(1)
+    expect(byEp[EP1_ID].deletedBelleFiles).toEqual([REUSED_PATH])
+    expectCleanWire(emu)
+  })
+
+  test('no fresh recording at a reused path is ever deleted afterwards', async () => {
+    const emu = makeEmulator(
+      handoffSeeds(),
+      { [JOB_ID]: lockedPackagingJob() },
+      { [`asc3/${EP1_ID}`]: ['outro.mp3'] }
+    )
+    // Full success path: continuation (lock held) → prune → release.
+    const job = emu.jobs.get(JOB_ID)
+    const pre = await runPrePackagingRecoveryWithContinuation(emu.client, {
+      failingStoryId: EP1_ID,
+      job,
+      fence: { id: JOB_ID, locked_by: 'holder-1', status: 'running' },
+    })
+    expect(pre.continued).toBe(true)
+    const deletesAfterSuccess = storageDeletes(emu).length
+    const jobPatchesAfterSuccess = jobPatches(emu).length
+    expect(deletesAfterSuccess).toBe(1)
+
+    // Simulate replacement regen: a FRESH recording lands at the reused
+    // filename (same path the stale intent once named).
+    emu.storageAdd(`asc3/${EP1_ID}`, ['outro.mp3'])
+
+    // Steady-state guard tick: markers persist as audit, but with nothing
+    // pending the guard clears nothing, writes nothing, deletes nothing.
+    const tickJob = (await emu.client.from('production_jobs').select('*').eq('id', JOB_ID).single() as any).data
+    const guard = await recoverStrandedContinuationCleanup(emu.client, {
+      failingStoryId: EP1_ID,
+      job: tickJob,
+    })
+    expect(guard.recovered).toBe(true)
+    expect(guard.clearedAudioIntents).toEqual({})
+    expect(guard.drainedPins).toEqual({})
+    // A later packaging tick re-enters recovery and converges (no
+    // continuation, no writes) instead of re-deleting.
+    const later = await runPrePackagingRecoveryWithContinuation(emu.client, {
+      failingStoryId: EP1_ID,
+      job: tickJob,
+      fence: { id: JOB_ID },
+    })
+    expect(later.continued).toBe(false)
+    expect(later.recovery).toEqual([])
+    // (b) No storage DELETE against the regenerated path; the fresh
+    // recording is intact; no further job writes.
+    expect(storageDeletes(emu)).toHaveLength(deletesAfterSuccess)
+    expect(jobPatches(emu)).toHaveLength(jobPatchesAfterSuccess)
+    expect(voiceCalls(emu)).toHaveLength(0)
+    const listed = (await emu.client.storage.from('audio').list(`asc3/${EP1_ID}`) as any).data
+    expect((listed || []).map((e: any) => e.name)).toContain('outro.mp3')
+    expectCleanWire(emu)
+  })
+
+  test('guard is a zero-DB-call no-op for jobs without a persisted continuation', async () => {
+    const emu = makeEmulator(
+      handoffSeeds(),
+      { [JOB_ID]: lockedPackagingJob() },
+      { [`asc3/${EP1_ID}`]: ['outro.mp3'] }
+    )
+    const callsBefore = emu.requests.length
+    // Packaging step, no markers: no reads, no writes.
+    const plain = await recoverStrandedContinuationCleanup(emu.client, {
+      failingStoryId: EP1_ID,
+      job: emu.jobs.get(JOB_ID),
+    })
+    expect(plain).toEqual({ recovered: false, clearedAudioIntents: {}, drainedPins: {} })
+    expect(emu.requests).toHaveLength(callsBefore)
+    expectCleanWire(emu)
   })
 })
