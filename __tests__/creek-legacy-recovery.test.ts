@@ -125,7 +125,7 @@ function buildDb() {
 type Db = ReturnType<typeof buildDb>
 
 // --- In-memory PostgREST + storage stub (real QueryBuilder serialization) --
-function stubFetch(db: Db, opts: { captured?: any[]; failOn?: (c: any) => boolean; sabotageFinalRead?: boolean; failFinalRead?: boolean } = {}) {
+function stubFetch(db: Db, opts: { captured?: any[]; failOn?: (c: any) => boolean; sabotageFinalRead?: boolean; failFinalRead?: boolean; failDiscoveryRead?: boolean } = {}) {
   const captured = opts.captured ?? []
   // Negative-case hook: after the handoff release PATCH lands, serve the
   // final verification re-reads a TAMPERED Ep1 script (simulates a
@@ -187,6 +187,18 @@ function stubFetch(db: Db, opts: { captured?: any[]; failOn?: (c: any) => boolea
       // (projection id,script,script_json,episode_number) with a query
       // error — intermediate reads (other projections) keep working.
       const flat = u.replace(/%2C/gi, ',')
+      // Discovery-loader hook: fail ONLY the exact loader projection
+      // (select=id,script_json,episode_number — unique to the handoff
+      // discovery loader; final reads select id,script,script_json,
+      // episode_number and must keep working under this flag).
+      if (opts.failDiscoveryRead && table === 'stories' && flat.includes('select=id,script_json,episode_number')) {
+        return {
+          ok: false, status: 500,
+          headers: { get: () => null },
+          json: async () => ({ message: 'SIMULATED DISCOVERY FAILURE', code: '500' }),
+          text: async () => JSON.stringify({ message: 'SIMULATED DISCOVERY FAILURE', code: '500' }),
+        }
+      }
       if (opts.failFinalRead && released && table === 'stories' && flat.includes('script,script_json')) {
         return {
           ok: false, status: 500,
@@ -219,9 +231,9 @@ function stubFetch(db: Db, opts: { captured?: any[]; failOn?: (c: any) => boolea
   }
 }
 
-function clientFor(db: Db, stubOpts?: { captured?: any[]; failOn?: (c: any) => boolean; sabotageFinalRead?: boolean; failFinalRead?: boolean }) {
+function clientFor(db: Db, stubOpts?: { captured?: any[]; failOn?: (c: any) => boolean; sabotageFinalRead?: boolean; failFinalRead?: boolean; failDiscoveryRead?: boolean }) {
   const captured: any[] = stubOpts?.captured ?? []
-  const fetch = stubFetch(db, { captured, failOn: stubOpts?.failOn, sabotageFinalRead: stubOpts?.sabotageFinalRead, failFinalRead: stubOpts?.failFinalRead })
+  const fetch = stubFetch(db, { captured, failOn: stubOpts?.failOn, sabotageFinalRead: stubOpts?.sabotageFinalRead, failFinalRead: stubOpts?.failFinalRead, failDiscoveryRead: stubOpts?.failDiscoveryRead })
   const supabase = createClient('http://localhost:9999', 'anon-key', { global: { fetch } })
   return { supabase, captured }
 }
@@ -628,4 +640,50 @@ test('guard1e: all three IDs + nonempty scripts + all three links + matching has
   const gate = R.checkFinalContinuity(finalRows())
   expect(gate.ok).toBe(true)
   expect(gate.mismatches).toEqual([])
+})
+
+// The script pre-calls the memoized discovery loader before either
+// reviewed invocation, so a failed discovery read throws here with the
+// precise cause — the machinery never gets a chance to convert it into a
+// "nothing to do" (recovered=false / continued=false) that still
+// reaches the fenced release. Fail-closed with lock held, no release.
+test('guard1e: discovery-read failure at handoff → thrown refusal, lock held, no release', async () => {
+  const db = buildDb()
+  const { supabase, captured } = clientFor(db, { failDiscoveryRead: true })
+  await expect(R.runRecovery(supabase, { execute: true, ...quiet })).rejects.toThrow(/discovery read failed/)
+  // No continuation claimed and no release ever written: the job row keeps
+  // our own lock (fail-closed, never a blind [] handed to the machinery).
+  const job = db.production_jobs[0] as any
+  expect(job.locked_by).toBe(R.LOCK_ID)
+  expect(job.status).toBe('running')
+  const releases = captured.filter(
+    (c) => c.method === 'PATCH' && String(c.url).includes('/production_jobs') && (c.body as any)?.status === 'queued',
+  )
+  expect(releases).toHaveLength(0)
+  for (const c of captured) expect(c.url).not.toContain('[object Object]')
+})
+
+// Sharp case for the loader fix: on the stranded-continuation path (job
+// already running@continuation under our lock), a failed discovery read
+// must throw BEFORE the certified cleanup + fenced release. Pre-fix code
+// returned [] here, letting cleanup "recover" trivially, releasing, and
+// then passing final verification on the healthy stories reads — a false
+// success with cleanup never performed. This test fails pre-fix (ok:true)
+// and passes post-fix (thrown refusal, lock held, no release).
+test('guard1f: stranded-path discovery failure → thrown refusal, no release', async () => {
+  const db = buildDb()
+  const job = db.production_jobs[0] as any
+  job.status = 'running'
+  job.current_step = PRE_PACKAGING_CONTINUATION_STEP
+  job.locked_by = R.LOCK_ID
+  job.locked_at = new Date().toISOString()
+  const { supabase, captured } = clientFor(db, { failDiscoveryRead: true })
+  await expect(R.runRecovery(supabase, { execute: true, ...quiet })).rejects.toThrow(/discovery read failed/)
+  expect(job.locked_by).toBe(R.LOCK_ID)
+  expect(job.status).toBe('running')
+  const releases = captured.filter(
+    (c) => c.method === 'PATCH' && String(c.url).includes('/production_jobs') && (c.body as any)?.status === 'queued',
+  )
+  expect(releases).toHaveLength(0)
+  for (const c of captured) expect(c.url).not.toContain('[object Object]')
 })

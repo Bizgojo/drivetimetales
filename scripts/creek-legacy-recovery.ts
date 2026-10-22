@@ -697,10 +697,25 @@ export async function runRecovery(
     const failingStoryId = String(
       (freshJob as any)?.story_id ?? (freshJob as any)?.state_json?.storyId ?? '',
     )
+    // Fail-closed discovery loader: a FAILED read is never an empty
+    // series. Throw with the lock held (same style as the other mid-run
+    // guards) — never hand the reviewed machinery a blind [] that would
+    // let cleanup/release "succeed" without ever seeing the rows.
+    let cachedSeries: any[] | null = null
     const loadSeriesStories = async () => {
-      const { data: rows } = await supabase.from('stories').select('id,script_json,episode_number').eq('series_id', CREEK_SERIES_ID)
-      return rows ?? []
+      if (!cachedSeries) {
+        const { data: rows, error: rowsErr } = await supabase.from('stories').select('id,script_json,episode_number').eq('series_id', CREEK_SERIES_ID)
+        if (rowsErr) throw new Error(`series discovery read failed (${rowsErr.message ?? rowsErr}) — refusing blind handoff`)
+        cachedSeries = rows ?? []
+      }
+      return cachedSeries
     }
+    // Fail-fast BEFORE either reviewed call: both the stranded-cleanup
+    // guard and the handoff tolerate discovery trouble internally
+    // (recovered=false / continued=false), which would let a failed read
+    // masquerade as "nothing to do" and still reach the fenced release.
+    // One verified read here, memoized for both downstream uses.
+    await loadSeriesStories()
     if (freshJob?.current_step === PRE_PACKAGING_CONTINUATION_STEP
       && freshJob?.status === 'running' && freshJob?.locked_by === LOCK_ID) {
       log('[resume] continuation already persisted — certified cleanup + fenced release only')
