@@ -113,7 +113,9 @@ async function seriesMusicAttempt(state, { episodes, fetchMock, markNeedsAttenti
     break // one episode per call
   }
 
-  const allDone = episodes.every(n => Boolean(doneByEp[String(n)]))
+  // allDone mirrors production: only genuine completion (true) counts — a
+  // 'refused' episode blocks series advancement pending manual Marc requeue.
+  const allDone = episodes.every(n => doneByEp[String(n)] === true)
   return {
     allDone,
     processedEp,
@@ -253,8 +255,9 @@ describe('MUSIC-CAP-001 — series', () => {
     const na = jest.fn()
     // Ep1 ok, Ep2 always fails (will exhaust), Ep3 ok
     const { state, fetchCalls, last } = await drive({}, [1, 2, 3], { 1: true, 2: false, 3: true }, na)
-    // Ep2 refused, Ep1 and Ep3 complete → series allDone (refused is terminal)
-    expect(last.allDone).toBe(true)
+    // Ep2 refused, Ep1 and Ep3 complete → series NOT allDone (refused blocks
+    // advancement to render pending manual Marc requeue)
+    expect(last.allDone).toBe(false)
     expect(state.seriesMusicGeneration.doneByEp['1']).toBe(true)
     expect(state.seriesMusicGeneration.doneByEp['2']).toBe('refused')
     expect(state.seriesMusicGeneration.doneByEp['3']).toBe(true)

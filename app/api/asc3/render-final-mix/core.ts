@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js'
 // ATL-SFX-WIRE-001: manifest gate (Rule 8) + unconditional save on passing render
 import { outroMusicClipArgs } from '@/lib/outroMusicClip'
+import { isStandaloneOutroRecording } from '@/lib/belleOutroRecording'
 import { loadManifest, validateManifestGate, saveManifest, emptyManifest } from '@/lib/sfxAssetLock'
 // ATL-PARSER-001: shared line-index parser — single source of truth for segment numbering
 import { parseScriptPositions } from '@/lib/scriptLineIndex'
@@ -415,8 +416,9 @@ export async function runRenderFinalMix(storyId: string): Promise<{
     const isSplitIntro = !introCorrectedFile && !announcementFile && !!(introBeforeFile && introAfterFile)
     // Priority: intro_corrected.mp3 > announcement > split > single
     const introFile = introCorrectedFile ?? announcementFile ?? (isSplitIntro ? null : (introSingleFile ?? null))
-    // Priority: outro_corrected.mp3 > outro.mp3 / outro_*
-    const outroFile = outroCorrectedFile ?? files.find(f => (f.name === 'outro.mp3' || f.name.startsWith('outro_')) && !f.name.startsWith('outro_corrected'))
+    // Priority: outro_corrected.mp3 > standalone outro recording.
+    // BELLE-OUTRO-RECORDING-001: composites (outro_with_music) never qualify.
+    const outroFile = outroCorrectedFile ?? files.find(f => isStandaloneOutroRecording(f.name))
     const segmentPattern = /^segment_(\d{4})\.mp3$/
     const parsedSegments = files
       .map(f => {
