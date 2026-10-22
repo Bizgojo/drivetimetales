@@ -52,6 +52,7 @@ import {
   persistBelleRepairAndInvalidateAudio,
   recoverPendingPinDrains,
   reserveBelleRetryCount,
+  resumePendingPinJob,
   setPendingPinResync,
 } from '@/lib/belleRepairPersist'
 // COVER-PIPELINE-DECOUPLE-001: decoupled cover phase (tasks recorded right
@@ -2316,8 +2317,24 @@ function blockedBelleResumeInfo(job: ProductionJob): { kind: string; retryCount:
   }
 }
 
+// P5-ENTRY-GAPS-001 (narrow revival entry): a failed job the sync
+// blockedBelleResumeInfo check does NOT admit may still carry a durable
+// repair whose drain never ran (kill-after-persist). resumePendingPinJob
+// (lib) admits ONLY failed jobs whose episode row carries a NON-EMPTY
+// pending_pin_resync list, re-queues them for drain-first recovery with a
+// job-row resume cap, and re-marks terminal+marc_required at the bound.
+// Every other failed job is refused unchanged. Returns the mapped ids, or
+// nulls when the row was refused (caller continues scanning / idles).
+async function pendingPinRevivalIds(job: ProductionJob): Promise<{ resumedId: string | null; exhaustedId: string | null } | null> {
+  const outcome = await resumePendingPinJob(supabase, job)
+  if (outcome.status === 'resumed') return { resumedId: outcome.jobId, exhaustedId: null }
+  if (outcome.status === 'exhausted') return { resumedId: null, exhaustedId: outcome.jobId }
+  return null
+}
+
 async function tryResumeBlockedBelleJob(explicitJobId?: string): Promise<{ resumedId: string | null; exhaustedId: string | null }> {
   let candidate: ProductionJob | null = null
+  let failedRows: ProductionJob[] = []
   if (explicitJobId) {
     const { data } = await supabase.from('production_jobs').select('*').eq('id', explicitJobId).maybeSingle()
     candidate = (data as ProductionJob | null) ?? null
@@ -2330,11 +2347,29 @@ async function tryResumeBlockedBelleJob(explicitJobId?: string): Promise<{ resum
       .order('updated_at', { ascending: true })
       .limit(25)
     const rows = (Array.isArray(data) ? data : []) as ProductionJob[]
+    failedRows = rows
     candidate = rows.find(j => blockedBelleResumeInfo(j) !== null) ?? null
+    // Narrow revival scan: no sync-admissible job — probe failed rows in
+    // order for a pending-carrying episode row (first admission wins;
+    // refusals fall through to the next row, never jam the tick).
+    if (!candidate) {
+      for (const row of failedRows) {
+        const revived = await pendingPinRevivalIds(row)
+        if (revived) return revived
+      }
+      return { resumedId: null, exhaustedId: null }
+    }
   }
   if (!candidate) return { resumedId: null, exhaustedId: null }
   const info = blockedBelleResumeInfo(candidate)
-  if (!info) return { resumedId: null, exhaustedId: null }
+  // Explicit-job path: sync check refused — try the narrow pending revival
+  // for the requested job only (refusal preserves the old nulls outcome).
+  if (!info) {
+    if (explicitJobId) {
+      return (await pendingPinRevivalIds(candidate)) ?? { resumedId: null, exhaustedId: null }
+    }
+    return { resumedId: null, exhaustedId: null }
+  }
   const state = candidate.state_json && typeof candidate.state_json === 'object' ? (candidate.state_json as Record<string, unknown>) : {}
   const storyId = candidate.story_id || (state.storyId as string | undefined) || null
   const maxAllowed = Math.min(info.maxRetries, MAX_BELLE_BLOCKED_RETRIES)
@@ -11194,7 +11229,7 @@ export async function POST(req: NextRequest) {
             if (currentRetry < MAX_SERIES_BELLE_RETRIES) {
               const { data: targetStory, error: targetStoryError } = await supabase
                 .from('stories')
-                .select('id,title,description,script,script_json,series_id,series_name,episode_number,series_total_episodes,series_is_finale')
+                .select('id,title,description,script,script_json,series_id,series_name,episode_number,series_total_episodes,series_is_finale,outro_audio_url,outro_with_music_url')
                 .eq('id', belleRetryTarget.storyId)
                 .single()
               if (targetStoryError || !targetStory?.script) {
@@ -11409,6 +11444,17 @@ export async function POST(req: NextRequest) {
                   } : {}),
                 }
   
+                // P5-ENTRY-GAPS-001 (durable invalidation intent): the exact
+                // pre-repair outro URLs ride into the atomic persist
+                // alongside pending_pin_resync; recovery finishes those
+                // scoped DELETEs before any regen/rewrite when a
+                // kill-after-persist strands them.
+                const pendingAudioDeleteUrls = Boolean(belleRetryTarget.repairOutro)
+                  ? [
+                      String((targetStory as any)?.outro_audio_url || ''),
+                      String((targetStory as any)?.outro_with_music_url || ''),
+                    ].filter((u) => u.length > 0)
+                  : []
                 deletedBelleFiles = (await persistBelleRepairAndInvalidateAudio(supabase, {
                   repairedStoryId: String(belleRetryTarget.storyId),
                   storyUpdates,
@@ -11416,6 +11462,7 @@ export async function POST(req: NextRequest) {
                   expectedRepairedScriptJson: (targetStory as any).script_json,
                   repairIntro: Boolean(belleRetryTarget.repairIntro),
                   repairOutro: Boolean(belleRetryTarget.repairOutro),
+                  pendingAudioDeleteUrls,
                 })).deletedBelleFiles
   
                 // Success keeps the RESERVED attempt (reuses

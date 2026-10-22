@@ -108,6 +108,34 @@ function safeReadPending(scriptJson: any, storyIdForContext?: string): PendingPi
   return getPendingPinResync(scriptJson, storyIdForContext)
 }
 
+/**
+ * Full-identity key for a pending pin entry. Prune removal is keyed on the
+ * whole triple — never on array index or list length — so an entry added
+ * concurrently (same dependent, different hash, or a brand-new dependent)
+ * never compares equal to a drained entry and always survives the prune.
+ */
+function pendingEntryIdentity(entry: PendingPinResyncEntry): string {
+  return JSON.stringify([
+    String(entry.dependentStoryId),
+    String(entry.priorStoryId),
+    String(entry.newPinHash),
+  ])
+}
+
+/**
+ * Pure identity-based subtraction: `current` minus every entry whose full
+ * identity appears in `drained`. Order-preserving; duplicates collapse to
+ * the drained identity. Used by the drain paths so the prune write removes
+ * ONLY what this run drained — concurrently-added entries survive.
+ */
+export function subtractPendingEntries(
+  current: PendingPinResyncEntry[],
+  drained: PendingPinResyncEntry[]
+): PendingPinResyncEntry[] {
+  const gone = new Set((drained || []).map(pendingEntryIdentity))
+  return (current || []).filter((e) => !gone.has(pendingEntryIdentity(e)))
+}
+
 /** One pending continuity-pin update: dependent row -> new pin hash. */
 export interface PendingPinResyncEntry {
   /** stories.id of the dependent episode row whose pin must move. */
@@ -247,21 +275,26 @@ export function applyPendingPinToScriptJson(
 }
 
 /**
- * Rewrite the repaired row's pending list to `remaining` (script_json ONLY —
+ * Identity-based prune of the repaired row's pending list (script_json ONLY —
  * never touches the script column, so the repaired text is written exactly
- * once no matter how many drains/prunes run). The write is CAS-conditioned
- * on the freshly-read snapshot (jsonbEqFilter construction) with an
- * affected-row check: a concurrent script_json edit is never silently
- * clobbered. On a zero-row conflict the row is RE-READ once, the pending
- * lists are unioned (pending never dropped), newer unrelated metadata keys
- * win automatically (the retry builds on the fresh read), and the write is
- * retried once. A second zero-row conflict throws loudly (code
- * CONCURRENT_MOD_CODE) with everything preserved in the DB.
+ * once no matter how many drains/prunes run). The caller passes the entries
+ * THIS run drained; the remaining list is recomputed from a FRESH read as
+ * `fresh minus drained-identities` (subtractPendingEntries) — never from a
+ * possibly-stale caller-side list, never by index or length. An entry added
+ * concurrently between the drain's read and this prune is absent from the
+ * drained set, so it survives even when the CAS write succeeds on first
+ * attempt. The write is CAS-conditioned on the freshly-read snapshot
+ * (jsonbEqFilter construction) with an affected-row check: a concurrent
+ * script_json edit is never silently clobbered. On a zero-row conflict the
+ * row is RE-READ once, the subtraction is recomputed against the new fresh
+ * read (concurrent additions still survive), and the write is retried once.
+ * A second zero-row conflict throws loudly (code CONCURRENT_MOD_CODE) with
+ * everything preserved in the DB.
  */
 async function prunePendingPinResync(
   supabaseClient: any,
   repairedStoryId: string,
-  remaining: PendingPinResyncEntry[]
+  drainedEntries: PendingPinResyncEntry[]
 ): Promise<void> {
   const { data: row, error: readError } = await supabaseClient
     .from('stories')
@@ -275,6 +308,10 @@ async function prunePendingPinResync(
     )
   }
   const snapshot = (row as any).script_json
+  const remaining = subtractPendingEntries(
+    safeReadPending(snapshot, repairedStoryId),
+    drainedEntries
+  )
   const nextJson = setPendingPinResync(snapshot, remaining)
   const first = await supabaseClient
     .from('stories')
@@ -288,8 +325,10 @@ async function prunePendingPinResync(
       `Failed to prune Belle pin-resync pending list on ${repairedStoryId}: ${first.error.message}`
     )
   }
-  // Zero rows matched: the row moved under us. Re-read once, union the
-  // pending lists (ours wins ties; pending never dropped), retry once.
+  // Zero rows matched: the row moved under us. Re-read once, recompute
+  // the subtraction against the new fresh read (concurrently-added entries
+  // are still absent from the drained set, so pending is never dropped),
+  // retry once.
   const { data: fresh, error: rereadError } = await supabaseClient
     .from('stories')
     .select('id,script_json')
@@ -303,11 +342,11 @@ async function prunePendingPinResync(
     )
   }
   const freshSnapshot = (fresh as any).script_json
-  const merged = unionPendingEntries(
+  const retryRemaining = subtractPendingEntries(
     safeReadPending(freshSnapshot, repairedStoryId),
-    remaining
+    drainedEntries
   )
-  const retryJson = setPendingPinResync(freshSnapshot, merged)
+  const retryJson = setPendingPinResync(freshSnapshot, retryRemaining)
   const second = await supabaseClient
     .from('stories')
     .update({ script_json: retryJson })
@@ -367,7 +406,7 @@ export async function drainPendingPinResync(
   repairedStoryId: string,
   entries: PendingPinResyncEntry[]
 ): Promise<string[]> {
-  const drained: string[] = []
+  const drainedEntries: PendingPinResyncEntry[] = []
   for (const entry of entries || []) {
     const { data: depRow, error: readError } = await supabaseClient
       .from('stories')
@@ -375,10 +414,8 @@ export async function drainPendingPinResync(
       .eq('id', entry.dependentStoryId)
       .single()
     if (readError || !depRow) {
-      const remaining = (entries || []).filter(
-        (e) => !drained.includes(e.dependentStoryId)
-      )
-      await prunePendingPinResync(supabaseClient, repairedStoryId, remaining)
+      const remaining = subtractPendingEntries(entries || [], drainedEntries)
+      await prunePendingPinResync(supabaseClient, repairedStoryId, drainedEntries)
       throw new Error(
         `Failed to drain Belle pin resync on ${entry.dependentStoryId} ` +
           `after Belle repair of ${repairedStoryId}: ` +
@@ -404,10 +441,8 @@ export async function drainPendingPinResync(
       .eq('script_json', jsonbEqFilter(expectedSnapshot))
       .select('id')
     if (writeError) {
-      const remaining = (entries || []).filter(
-        (e) => !drained.includes(e.dependentStoryId)
-      )
-      await prunePendingPinResync(supabaseClient, repairedStoryId, remaining)
+      const remaining = subtractPendingEntries(entries || [], drainedEntries)
+      await prunePendingPinResync(supabaseClient, repairedStoryId, drainedEntries)
       throw new Error(
         `Failed to drain Belle pin resync on ${entry.dependentStoryId} ` +
           `after Belle repair of ${repairedStoryId}: ${writeError.message} ` +
@@ -415,10 +450,8 @@ export async function drainPendingPinResync(
       )
     }
     if (!casApplied || casApplied.length === 0) {
-      const remaining = (entries || []).filter(
-        (e) => !drained.includes(e.dependentStoryId)
-      )
-      await prunePendingPinResync(supabaseClient, repairedStoryId, remaining)
+      const remaining = subtractPendingEntries(entries || [], drainedEntries)
+      await prunePendingPinResync(supabaseClient, repairedStoryId, drainedEntries)
       const concurrentError = new Error(
         `Refused Belle pin resync on ${entry.dependentStoryId} ` +
           `after Belle repair of ${repairedStoryId}: dependent script_json ` +
@@ -429,12 +462,16 @@ export async function drainPendingPinResync(
         CONCURRENT_MOD_CODE
       throw concurrentError
     }
-    drained.push(entry.dependentStoryId)
+    drainedEntries.push({
+      dependentStoryId: String(entry.dependentStoryId),
+      priorStoryId: String(entry.priorStoryId),
+      newPinHash: String(entry.newPinHash),
+    })
   }
-  if (drained.length > 0) {
-    await prunePendingPinResync(supabaseClient, repairedStoryId, [])
+  if (drainedEntries.length > 0) {
+    await prunePendingPinResync(supabaseClient, repairedStoryId, drainedEntries)
   }
-  return drained
+  return drainedEntries.map((e) => e.dependentStoryId)
 }
 
 /**
@@ -481,6 +518,10 @@ export function rebaseRepairedScriptJson(
     safeReadPending(fresh, undefined),
     safeReadPending(attempted, undefined)
   )
+  const mergedAudio = unionPendingAudioDeletes(
+    safeReadAudioDelete(fresh, undefined),
+    safeReadAudioDelete(attempted, undefined)
+  )
   const next: Record<string, any> = { ...fresh }
   if (attempted.raw_script !== undefined) next.raw_script = attempted.raw_script
   next.series_generation = {
@@ -492,7 +533,258 @@ export function rebaseRepairedScriptJson(
       newPinHash: String(e.newPinHash),
     })),
   }
+  // Audio-delete intent unions like pending pins — but never invent the key
+  // on rows that never carried it (no shape churn for intent-free repairs).
+  if (mergedAudio.length > 0 || PENDING_AUDIO_DELETE_KEY in freshSG) {
+    next.series_generation[PENDING_AUDIO_DELETE_KEY] = mergedAudio
+  }
   return next
+}
+
+/**
+ * DURABLE INVALIDATION INTENT (P5 entry-gaps): the exact outro audio URLs
+ * requiring deletion, persisted alongside pending_pin_resync inside
+ * script_json.series_generation in the SAME atomic repair update. A
+ * kill-after-persist (repair row written, process dead before storage
+ * deletion) leaves the intent in the DB; recovery (drainPendingAudioDeletes,
+ * wired into recoverPendingPinDrains which runs hoisted before any
+ * regen/rewrite) finishes those scoped DELETEs first, then clears the list
+ * via a CAS-guarded script_json-only write. Delete-before-clear with
+ * idempotent storage removes gives exactly-once effect: a crash between
+ * the DELETE and the clear simply re-issues the (no-op) remove on the next
+ * tick before clearing.
+ */
+
+/** Key under script_json.series_generation holding the pending audio-delete URL list. */
+export const PENDING_AUDIO_DELETE_KEY = 'pending_audio_delete'
+
+/**
+ * Read the pending audio-delete URL list. Absent key -> [] (normal empty
+ * state). Present-but-malformed (non-array, or a blank/non-string entry)
+ * throws loudly with MALFORMED_PENDING_CODE before any write — the intent
+ * stays intact in the DB.
+ */
+export function getPendingAudioDelete(
+  scriptJson: any,
+  storyIdForContext?: string
+): string[] {
+  const seriesGen =
+    scriptJson && typeof scriptJson === 'object'
+      ? (scriptJson as any).series_generation
+      : undefined
+  const raw =
+    seriesGen && typeof seriesGen === 'object'
+      ? (seriesGen as any)[PENDING_AUDIO_DELETE_KEY]
+      : undefined
+  if (raw === undefined) return []
+  const where = storyIdForContext ? ` on story ${storyIdForContext}` : ''
+  const malformed = (detail: string): Error => {
+    const err = new Error(
+      `Malformed Belle pending_audio_delete list${where}: ${detail} ` +
+        `(expected an array of non-empty URL strings; ` +
+        `pending data left intact in the DB — nothing pruned, no rewrite attempted)`
+    )
+    ;(err as Error & { code?: string }).code = MALFORMED_PENDING_CODE
+    return err
+  }
+  if (!Array.isArray(raw)) {
+    throw malformed(
+      `container is ${raw === null ? 'null' : typeof raw}, not an array`
+    )
+  }
+  const out: string[] = []
+  for (let i = 0; i < raw.length; i++) {
+    const url = typeof raw[i] === 'string' ? raw[i].trim() : ''
+    if (!url) throw malformed(`entry [${i}] is not a non-empty string`)
+    out.push(url)
+  }
+  return out
+}
+
+/** Lenient audio-delete read for merge paths (absent -> []; malformed stays loud). */
+function safeReadAudioDelete(scriptJson: any, storyIdForContext?: string): string[] {
+  return getPendingAudioDelete(scriptJson, storyIdForContext)
+}
+
+/** Pure merge: set the pending audio-delete URL list, preserving all other keys. */
+export function setPendingAudioDelete(
+  scriptJson: any,
+  urls: string[]
+): Record<string, any> {
+  const base =
+    scriptJson && typeof scriptJson === 'object' ? { ...scriptJson } : {}
+  const seriesGen =
+    base.series_generation && typeof base.series_generation === 'object'
+      ? { ...base.series_generation }
+      : {}
+  return {
+    ...base,
+    series_generation: {
+      ...seriesGen,
+      [PENDING_AUDIO_DELETE_KEY]: (urls || []).map((u) => String(u)),
+    },
+  }
+}
+
+/** Union two pending audio-delete URL lists (deduped, order-preserving). */
+export function unionPendingAudioDeletes(first: string[], second: string[]): string[] {
+  const seen = new Set<string>()
+  const out: string[] = []
+  for (const u of [...(first || []), ...(second || [])]) {
+    const url = String(u)
+    if (!seen.has(url)) {
+      seen.add(url)
+      out.push(url)
+    }
+  }
+  return out
+}
+
+/**
+ * Map exact audio URLs to scoped storage paths for one story row. Each
+ * URL's basename becomes `asc3/<storyId>/<basename>` (deduped, blanks
+ * dropped) — the delete set is EXACTLY these files, never a broad prefix.
+ */
+export function audioDeletePathsForStory(storyId: string, urls: string[]): string[] {
+  const prefix = `asc3/${String(storyId)}`
+  const seen = new Set<string>()
+  const out: string[] = []
+  for (const raw of urls || []) {
+    const text = String(raw || '').trim()
+    if (!text) continue
+    let base = ''
+    try {
+      const parsed = new URL(text)
+      base = String(parsed.pathname.split('/').pop() || '').trim()
+    } catch {
+      base = String(text.split('?')[0].split('/').pop() || '').trim()
+    }
+    if (!base) continue
+    const path = `${prefix}/${base}`
+    if (!seen.has(path)) {
+      seen.add(path)
+      out.push(path)
+    }
+  }
+  return out
+}
+
+/**
+ * Finish a pending audio-delete intent: remove EXACTLY the scoped storage
+ * paths derived from `urls` (no bucket listing — the intent names the
+ * files), then clear the intent list via a CAS-guarded script_json-only
+ * write (concurrent additions unioned back on conflict, never dropped).
+ * Empty intent is a pure no-op (zero storage calls). Returns removed paths.
+ */
+export async function drainPendingAudioDeletes(
+  supabaseClient: any,
+  storyId: string,
+  urls?: string[]
+): Promise<string[]> {
+  const id = String(storyId)
+  let intent = urls ? [...urls] : null
+  if (!intent) {
+    const { data: row, error: readError } = await supabaseClient
+      .from('stories')
+      .select('id,script_json')
+      .eq('id', id)
+      .single()
+    if (readError || !row) {
+      throw new Error(
+        `Failed to read Belle pending audio-delete intent on ${id}: ` +
+          `${readError?.message || 'missing row'}`
+      )
+    }
+    intent = getPendingAudioDelete((row as any).script_json, id)
+  }
+  if (!intent || intent.length === 0) return []
+  const paths = audioDeletePathsForStory(id, intent)
+  if (paths.length > 0) {
+    const { error: removeError } = await supabaseClient.storage
+      .from('audio')
+      .remove(paths)
+    if (removeError) {
+      throw new Error(
+        `Failed to delete stale Belle audio files for ${id}: ${removeError.message} ` +
+          `(pending audio-delete intent intact in DB for ${intent.length} URL(s))`
+      )
+    }
+  }
+  await clearPendingAudioDelete(supabaseClient, id)
+  return paths
+}
+
+/**
+ * CAS-guarded clear of the pending audio-delete list (script_json ONLY).
+ * On a zero-row conflict the row is re-read once and any concurrently-added
+ * URLs are unioned back (intent never dropped), retried once; a second
+ * conflict throws loudly with the row untouched.
+ */
+async function clearPendingAudioDelete(
+  supabaseClient: any,
+  storyId: string
+): Promise<void> {
+  const { data: row, error: readError } = await supabaseClient
+    .from('stories')
+    .select('id,script_json')
+    .eq('id', storyId)
+    .single()
+  if (readError || !row) {
+    throw new Error(
+      `Failed to clear Belle pending audio-delete intent on ${storyId}: ` +
+        `${readError?.message || 'missing row'}`
+    )
+  }
+  const snapshot = (row as any).script_json
+  const first = await supabaseClient
+    .from('stories')
+    .update({ script_json: setPendingAudioDelete(snapshot, []) })
+    .eq('id', storyId)
+    .eq('script_json', jsonbEqFilter(snapshot))
+    .select('id')
+  if (!first.error && first.data && first.data.length > 0) return
+  if (first.error) {
+    throw new Error(
+      `Failed to clear Belle pending audio-delete intent on ${storyId}: ${first.error.message}`
+    )
+  }
+  const { data: fresh, error: rereadError } = await supabaseClient
+    .from('stories')
+    .select('id,script_json')
+    .eq('id', storyId)
+    .single()
+  if (rereadError || !fresh) {
+    throw new Error(
+      `Failed to re-read Belle pending audio-delete intent on ${storyId} ` +
+        `after concurrent modification: ${rereadError?.message || 'missing row'} ` +
+        `(pending data left intact in the DB — nothing pruned)`
+    )
+  }
+  const freshSnapshot = (fresh as any).script_json
+  const retryJson = setPendingAudioDelete(
+    freshSnapshot,
+    unionPendingAudioDeletes(safeReadAudioDelete(freshSnapshot, storyId), [])
+  )
+  const second = await supabaseClient
+    .from('stories')
+    .update({ script_json: retryJson })
+    .eq('id', storyId)
+    .eq('script_json', jsonbEqFilter(freshSnapshot))
+    .select('id')
+  if (!second.error && second.data && second.data.length > 0) return
+  if (second.error) {
+    throw new Error(
+      `Failed to clear Belle pending audio-delete intent on ${storyId}: ${second.error.message} ` +
+        `(pending data left intact in the DB — nothing pruned)`
+    )
+  }
+  const conflictError = new Error(
+    `Refused Belle pending audio-delete clear on ${storyId}: story script_json ` +
+      `changed again before the retry write (concurrent modification — ` +
+      `row left unmodified, pending intent kept for a later tick)`
+  )
+  ;(conflictError as Error & { code?: string }).code = CONCURRENT_MOD_CODE
+  throw conflictError
 }
 
 /**
@@ -525,20 +817,45 @@ export async function persistBelleRepair(
     storyUpdates: Record<string, unknown>
     pendingEntries: PendingPinResyncEntry[]
     expectedRepairedScriptJson?: unknown
+    /**
+     * Durable invalidation intent: exact outro audio URLs requiring
+     * deletion, embedded into script_json in the SAME atomic update (never
+     * invents the key when empty — intent-free repairs keep their shape).
+     */
+    pendingAudioDeleteUrls?: string[]
   }
 ): Promise<{ drainedDependentIds: string[] }> {
   const repairedStoryId = String(params.repairedStoryId)
+  const audioIntent = (params.pendingAudioDeleteUrls || [])
+    .map((u) => String(u || '').trim())
+    .filter((u) => u.length > 0)
+  // Embed the durable invalidation intent into the atomic payload (unioned
+  // with any intent the route already placed there — intent never dropped).
+  let updatesWithIntent = params.storyUpdates
+  if (audioIntent.length > 0) {
+    const priorAudio = safeReadAudioDelete(
+      (params.storyUpdates as any)?.script_json,
+      repairedStoryId
+    )
+    updatesWithIntent = {
+      ...params.storyUpdates,
+      script_json: setPendingAudioDelete(
+        (params.storyUpdates as any)?.script_json,
+        unionPendingAudioDeletes(priorAudio, audioIntent)
+      ),
+    }
+  }
   const hasSnapshot = params.expectedRepairedScriptJson !== undefined
   const firstAttempt = hasSnapshot
     ? await supabaseClient
         .from('stories')
-        .update(params.storyUpdates)
+        .update(updatesWithIntent)
         .eq('id', repairedStoryId)
         .eq('script_json', jsonbEqFilter(params.expectedRepairedScriptJson))
         .select('id')
     : await supabaseClient
         .from('stories')
-        .update(params.storyUpdates)
+        .update(updatesWithIntent)
         .eq('id', repairedStoryId)
   const firstData = hasSnapshot ? firstAttempt.data : undefined
   const firstError = firstAttempt.error
@@ -547,7 +864,7 @@ export async function persistBelleRepair(
       `Failed to save repaired Belle copy: ${firstError.message}`
     )
   }
-  let effectiveUpdates = params.storyUpdates
+  let effectiveUpdates = updatesWithIntent
   let effectivePending = params.pendingEntries || []
   if (hasSnapshot && (!firstData || firstData.length === 0)) {
     // Zero rows matched: the repaired row moved under us. Re-read once,
@@ -568,9 +885,9 @@ export async function persistBelleRepair(
     const freshSnapshot = (freshRow as any).script_json
     const rebasedJson = rebaseRepairedScriptJson(
       freshSnapshot,
-      (params.storyUpdates as any)?.script_json
+      (updatesWithIntent as any)?.script_json
     )
-    effectiveUpdates = { ...params.storyUpdates, script_json: rebasedJson }
+    effectiveUpdates = { ...updatesWithIntent, script_json: rebasedJson }
     effectivePending = safeReadPending(rebasedJson, repairedStoryId)
     const secondAttempt = await supabaseClient
       .from('stories')
@@ -644,6 +961,8 @@ export interface PendingDrainResolution {
   drainedDependentIds: string[]
   via: 'failing-row' | 'series-scan'
   episodeNumber: number | null
+  /** Scoped storage paths removed while finishing the durable audio-delete intent. */
+  deletedAudioFiles: string[]
 }
 
 function rowEpisodeNumber(row: any): number | null {
@@ -667,6 +986,12 @@ function rowEpisodeNumber(row: any): number | null {
  *     row with a non-empty pending list is drained (carrier re-read fresh
  *     before draining so a stale scan snapshot can never clobber a
  *     concurrent pending addition; malformed stays loud).
+ *
+ * Durable audio-delete intents ride along: every carrier (failing row or
+ * scan hit) finishes its pending_audio_delete intent with scoped storage
+ * DELETEs BEFORE any pin drain — and the whole function runs hoisted before
+ * any regen/rewrite — so a kill-after-persist is completed with zero paid
+ * calls. A carrier qualifies on pins OR audio intent alone.
  *
  * `loadSeriesStories` is invoked LAZILY — only when the failing row itself
  * carries nothing pending. Drain-only recovery performs no validation and
@@ -694,7 +1019,16 @@ export async function recoverPendingPinDrains(
         (data as any).script_json,
         failingId
       )
-      if (failingPending.length > 0) {
+      const failingAudio = getPendingAudioDelete(
+        (data as any).script_json,
+        failingId
+      )
+      if (failingPending.length > 0 || failingAudio.length > 0) {
+        const deletedAudio = await drainPendingAudioDeletes(
+          supabaseClient,
+          failingId,
+          failingAudio
+        )
         const drained = await drainPendingPinResync(
           supabaseClient,
           failingId,
@@ -706,6 +1040,7 @@ export async function recoverPendingPinDrains(
           drainedDependentIds: drained,
           via: 'failing-row',
           episodeNumber: rowEpisodeNumber(data),
+          deletedAudioFiles: deletedAudio,
         })
       }
     }
@@ -727,7 +1062,13 @@ export async function recoverPendingPinDrains(
         (row as any)?.script_json,
         carrierId
       )
-      if (scanned.length === 0) continue
+      // Stale-snapshot pre-filter only: audio intent admits a carrier just
+      // like pins do (both re-verified fresh below; malformed stays loud).
+      const scannedAudio = getPendingAudioDelete(
+        (row as any)?.script_json,
+        carrierId
+      )
+      if (scanned.length === 0 && scannedAudio.length === 0) continue
       // Re-read the carrier fresh: the scan snapshot may be stale, and
       // draining (plus its prune) off a stale pending list could drop a
       // concurrently-added entry. Read blip -> skip without jamming.
@@ -741,7 +1082,16 @@ export async function recoverPendingPinDrains(
         (fresh as any).script_json,
         carrierId
       )
-      if (freshPending.length === 0) continue
+      const freshAudio = getPendingAudioDelete(
+        (fresh as any).script_json,
+        carrierId
+      )
+      if (freshPending.length === 0 && freshAudio.length === 0) continue
+      const deletedAudio = await drainPendingAudioDeletes(
+        supabaseClient,
+        carrierId,
+        freshAudio
+      )
       const drained = await drainPendingPinResync(
         supabaseClient,
         carrierId,
@@ -754,6 +1104,7 @@ export async function recoverPendingPinDrains(
         via: 'series-scan',
         episodeNumber:
           rowEpisodeNumber(row) ?? rowEpisodeNumber(fresh),
+        deletedAudioFiles: deletedAudio,
       })
     }
   }
@@ -822,17 +1173,252 @@ export async function persistBelleRepairAndInvalidateAudio(
     expectedRepairedScriptJson?: unknown
     repairIntro: boolean
     repairOutro: boolean
+    /**
+     * Durable invalidation intent: exact outro audio URLs. When provided,
+     * the persist embeds them alongside pending_pin_resync and the delete
+     * removes EXACTLY those scoped files (no bucket listing) before
+     * clearing the intent — a kill-after-persist is finished by recovery.
+     * When absent/empty, the legacy list-and-remove-scoped-names path runs.
+     */
+    pendingAudioDeleteUrls?: string[]
   }
 ): Promise<{ drainedDependentIds: string[]; deletedBelleFiles: string[] }> {
   const { drainedDependentIds } = await persistBelleRepair(
     supabaseClient,
     params
   )
-  const deletedBelleFiles = await deleteBelleAudioFiles(
-    supabaseClient,
-    String(params.repairedStoryId),
-    Boolean(params.repairIntro),
-    Boolean(params.repairOutro)
-  )
+  const intentUrls = (params.pendingAudioDeleteUrls || [])
+    .map((u) => String(u || '').trim())
+    .filter((u) => u.length > 0)
+  const deletedBelleFiles =
+    intentUrls.length > 0
+      ? await drainPendingAudioDeletes(
+          supabaseClient,
+          String(params.repairedStoryId),
+          intentUrls
+        )
+      : await deleteBelleAudioFiles(
+          supabaseClient,
+          String(params.repairedStoryId),
+          Boolean(params.repairIntro),
+          Boolean(params.repairOutro)
+        )
   return { drainedDependentIds, deletedBelleFiles }
+}
+
+/**
+ * NARROW REVIVAL ENTRY (P5 entry-gaps): a FAILED job the
+ * blockedBelleResumeInfo family does NOT admit (wrong kind, marc_required
+ * set, no safe_resume_point) may still be revived when its repaired-episode
+ * row carries a NON-EMPTY pending_pin_resync list — the kill-after-persist
+ * case: the repair text is durable in the DB, only the drain never ran.
+ * Every other failed job is refused unchanged (returns null).
+ *
+ * Cap: resume attempts are counted on the job row
+ * (state_json.pendingPinResumeCount); at PENDING_RESUME_MAX_ATTEMPTS the
+ * job is re-marked terminal (status stays failed, error_json gains
+ * exhausted + marc_required=true) and the story is flagged needs_attention.
+ */
+
+/** Max pending-pin revivals per job before terminal re-marking. */
+export const PENDING_RESUME_MAX_ATTEMPTS = 2
+
+/** State key counting pending-pin revivals on the job row. */
+export const PENDING_RESUME_COUNT_KEY = 'pendingPinResumeCount'
+
+/** Admission verdict for a failed job with a pending-carrying episode row. */
+export interface PendingResumeAdmission {
+  carrierStoryId: string
+  pendingCount: number
+}
+
+/** Outcome of a bounded pending-pin resume attempt. */
+export type PendingResumeOutcome =
+  | { status: 'resumed'; jobId: string; resumePoint: string; resumeCount: number }
+  | { status: 'exhausted'; jobId: string }
+  | { status: 'refused'; jobId: string; reason: string }
+
+function pendingResumeIsoNow(): string {
+  return new Date().toISOString()
+}
+
+/** Candidate episode rows for a job: its own story_id plus state storyId. */
+function pendingResumeStoryCandidates(job: any): string[] {
+  const state =
+    job?.state_json && typeof job.state_json === 'object'
+      ? (job.state_json as Record<string, unknown>)
+      : {}
+  const raw = [job?.story_id, state.storyId]
+  const out: string[] = []
+  for (const id of raw) {
+    const text = String(id || '').trim()
+    if (text && !out.includes(text)) out.push(text)
+  }
+  return out
+}
+
+/**
+ * Admission check: FAILED status plus a NON-EMPTY pending_pin_resync list
+ * on one of the job's candidate episode rows. Returns the first carrier
+ * found, else null. A read miss refuses (no queue-jam); malformed throws
+ * loudly (fail-closed before any write, like the drain path).
+ */
+export async function getPendingResumeAdmission(
+  supabaseClient: any,
+  job: any
+): Promise<PendingResumeAdmission | null> {
+  if (!job || String(job.status || '') !== 'failed') return null
+  for (const storyId of pendingResumeStoryCandidates(job)) {
+    const { data, error } = await supabaseClient
+      .from('stories')
+      .select('id,script_json')
+      .eq('id', storyId)
+      .single()
+    if (error || !data) continue
+    const pending = getPendingPinResync((data as any).script_json, storyId)
+    if (pending.length > 0) {
+      return { carrierStoryId: storyId, pendingCount: pending.length }
+    }
+  }
+  return null
+}
+
+/**
+ * Bounded pending-pin resume (the exact function the run-next route calls
+ * as thin glue from tryResumeBlockedBelleJob): admit a failed job whose
+ * episode row carries pending pins, re-queue it to `resumePoint` (default:
+ * the error's safe_resume_point, else the step it failed at) so the hoisted
+ * drain-first recovery runs before any regen/rewrite, counting the attempt
+ * on the job row. At the bound the job is re-marked terminal
+ * (exhausted + marc_required=true) and the story flagged needs_attention.
+ * Admission read errors refuse without writing; the job-row writes are
+ * fenced on status=failed with an affected-row check (zero rows = refused).
+ */
+export async function resumePendingPinJob(
+  supabaseClient: any,
+  job: any,
+  opts?: { maxResumes?: number; resumePoint?: string }
+): Promise<PendingResumeOutcome> {
+  const jobId = String(job?.id || 'unknown-job')
+  if (!job || String(job.status || '') !== 'failed') {
+    return { status: 'refused', jobId, reason: 'job is not failed' }
+  }
+  let admission: PendingResumeAdmission | null = null
+  try {
+    admission = await getPendingResumeAdmission(supabaseClient, job)
+  } catch {
+    return { status: 'refused', jobId, reason: 'pending admission unreadable' }
+  }
+  if (!admission) {
+    return { status: 'refused', jobId, reason: 'no non-empty pending_pin_resync on job episode rows' }
+  }
+  const state =
+    job.state_json && typeof job.state_json === 'object'
+      ? { ...(job.state_json as Record<string, unknown>) }
+      : {}
+  const err =
+    job.error_json && typeof job.error_json === 'object'
+      ? { ...(job.error_json as Record<string, unknown>) }
+      : {}
+  const maxResumes = Number(opts?.maxResumes ?? PENDING_RESUME_MAX_ATTEMPTS)
+  const resumeCount = Number(state[PENDING_RESUME_COUNT_KEY] ?? 0)
+  const storyId =
+    (job.story_id as string | undefined) ||
+    (state.storyId as string | undefined) ||
+    admission.carrierStoryId
+  const priorLogs = Array.isArray(job.logs) ? [...job.logs] : []
+  if (!(resumeCount < maxResumes)) {
+    // Bound spent: re-mark terminal + marc_required, flag the story.
+    const reason =
+      `Belle pending-drain revivals exhausted (${resumeCount}/${maxResumes}) ` +
+      `for carrier ${admission.carrierStoryId} (${admission.pendingCount} entr${admission.pendingCount === 1 ? 'y' : 'ies'} still pending). ` +
+      `Manual fix needed: drain pending_pin_resync, delete stale Belle audio, reset job.`
+    const { error: terminalError, data: terminalData } = await supabaseClient
+      .from('production_jobs')
+      .update({
+        error_json: {
+          ...err,
+          exhausted: true,
+          needsAttention: true,
+          marc_required: true,
+          fixRecommendation: reason,
+        },
+        logs: [
+          ...priorLogs,
+          {
+            at: pendingResumeIsoNow(),
+            event: 'belle_pending_resume_exhausted',
+            jobId,
+            carrierStoryId: admission.carrierStoryId,
+            pendingCount: admission.pendingCount,
+            message: reason,
+          },
+        ],
+        locked_at: null,
+        locked_by: null,
+      })
+      .eq('id', jobId)
+      .eq('status', 'failed')
+      .select('id')
+    if (terminalError || !terminalData || terminalData.length === 0) {
+      return { status: 'refused', jobId, reason: 'terminal re-mark matched zero rows' }
+    }
+    if (storyId) {
+      const { error: flagError } = await supabaseClient
+        .from('stories')
+        .update({
+          needs_attention: true,
+          needs_attention_reason: String(reason).slice(0, 1000),
+          needs_attention_at: pendingResumeIsoNow(),
+        })
+        .eq('id', String(storyId))
+      if (flagError) {
+        console.warn(
+          `[belleRepairPersist] failed to flag story needs_attention ${storyId}: ${flagError.message}`
+        )
+      }
+    }
+    return { status: 'exhausted', jobId }
+  }
+  const resumePoint =
+    String(opts?.resumePoint || (err as Record<string, unknown>).safe_resume_point || job.current_step || '').trim() ||
+    'repair_belle_quality'
+  const nextCount = resumeCount + 1
+  const { error: resumeError, data: resumeData } = await supabaseClient
+    .from('production_jobs')
+    .update({
+      status: 'queued',
+      current_step: resumePoint,
+      state_json: {
+        ...state,
+        [PENDING_RESUME_COUNT_KEY]: nextCount,
+        pendingPinResumedAt: pendingResumeIsoNow(),
+        pendingPinCarrierStoryId: admission.carrierStoryId,
+      },
+      error_json: null,
+      logs: [
+        ...priorLogs,
+        {
+          at: pendingResumeIsoNow(),
+          event: 'belle_pending_resume',
+          jobId,
+          carrierStoryId: admission.carrierStoryId,
+          pendingCount: admission.pendingCount,
+          resumePoint,
+          message:
+            `Auto-resume failed Belle job with ${admission.pendingCount} pending pin(s) ` +
+            `on ${admission.carrierStoryId} (revival ${nextCount}/${maxResumes}): ` +
+            `re-queued to ${resumePoint} for drain-first recovery (no rewrite yet)`,
+        },
+      ],
+      locked_at: null,
+      locked_by: null,
+    })
+    .eq('id', jobId)
+    .eq('status', 'failed')
+    .select('id')
+  if (resumeError || !resumeData || resumeData.length === 0) {
+    return { status: 'refused', jobId, reason: 'resume re-queue matched zero rows' }
+  }
+  return { status: 'resumed', jobId, resumePoint, resumeCount: nextCount }
 }
