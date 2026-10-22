@@ -15,7 +15,8 @@
  *   3. Allowance guard (mirror of currentRetry < MAX_SERIES_BELLE_RETRIES).
  *   4. Attempt reservation: job-row count+1 persisted BEFORE the paid regen.
  *   5. Paid regen -> validation (failure keeps the reserved count, no second
- *      increment) -> audio invalidation -> atomic persist + CAS drain.
+ *      increment) -> atomic persist (CAS) -> audio invalidation AFTER the
+ *      persist (persist-then-delete; a failed persist never strands audio).
  *
  * (i)   dep#1 pin write succeeds + dep#2 fails -> throw, dep#1 applied,
  *       repaired row keeps pending entry for dep#2 ONLY, script text
@@ -92,11 +93,26 @@ function deepEq(a: unknown, b: unknown): boolean {
   return JSON.stringify(a) === JSON.stringify(b)
 }
 
+function tryParseJsonFilter(val: unknown): unknown {
+  if (typeof val !== 'string') return val
+  try {
+    return JSON.parse(val)
+  } catch {
+    return val
+  }
+}
+
 function rowMatches(row: any, filters: Filter[]): boolean {
   if (!row || typeof row !== 'object') return false
   return filters.every((f) => {
     const v = (row as any)[f.col]
-    if (v !== null && typeof v === 'object') return deepEq(v, f.val)
+    if (v !== null && typeof v === 'object') {
+      // PostgREST jsonb equality: the production client sends the snapshot
+      // JSON-stringified (jsonbEqFilter — a raw object would encode as
+      // eq.[object Object] and match nothing). Parse string filters back
+      // before comparing, mirroring jsonb equality.
+      return deepEq(v, tryParseJsonFilter(f.val))
+    }
     if (f.val !== null && typeof f.val === 'object') return false
     return v === f.val
   })
@@ -285,7 +301,9 @@ function buildRouteShapedParams(repairedRow: any, dependentRows: any[]) {
   }))
   const storyUpdates: Record<string, unknown> = {
     script: AFTER_SCRIPT,
-    script_json: setPendingPinResync(withAudit, pendingEntries),
+    // Raw-script sync mirrors the production glue: top-level raw_script
+    // moves with the repaired text.
+    script_json: setPendingPinResync({ ...withAudit, raw_script: AFTER_SCRIPT }, pendingEntries),
     ...belleRepairAudioInvalidation(false, true),
     outro_text: 'repaired outro text',
   }
@@ -470,11 +488,9 @@ async function routeOrderTick(
     throw err
   }
 
-  // 7. Audio invalidation + atomic persist + CAS drain (thin glue, real lib).
-  const deleted = deps.deleteAudio()
-  audioCalls += 1
-  client.events.push('audio')
-  void deleted
+  // 7. Atomic persist (CAS on the pre-repair snapshot) THEN audio
+  // invalidation (thin glue, real lib). Production order is
+  // persist-then-delete: a failed persist never strands deleted audio.
   const audit = buildBelleRepairAuditEntry({
     jobId,
     storyId: target.storyId,
@@ -486,6 +502,7 @@ async function routeOrderTick(
     at: '2026-10-22T15:30:00.000Z',
   })
   const withAudit = applyBelleRepairAudit((targetStory as any)?.script_json, audit)
+  const withRawSync = { ...withAudit, raw_script: repairedScript }
   const pendingEntries: PendingPinResyncEntry[] = resyncContinuityPinsAfterRepair(
     deps.seriesEpisodes,
     target.storyId,
@@ -495,15 +512,20 @@ async function routeOrderTick(
     priorStoryId: target.storyId,
     newPinHash: String(audit.afterHash),
   }))
+  const preRepairSnapshot = JSON.parse(JSON.stringify((targetStory as any)?.script_json))
   await persistBelleRepair(client, {
     repairedStoryId: target.storyId,
     storyUpdates: {
       script: repairedScript,
-      script_json: setPendingPinResync(withAudit, pendingEntries),
+      script_json: setPendingPinResync(withRawSync, pendingEntries),
       ...belleRepairAudioInvalidation(false, true),
     },
     pendingEntries,
+    expectedRepairedScriptJson: preRepairSnapshot,
   })
+  const deleted = deps.deleteAudio()
+  audioCalls += 1
+  client.events.push('audio')
   await writeJobEntry(client, jobId, target.storyId, {
     count: reserved,
     max: MAX_RETRIES,
@@ -551,7 +573,12 @@ describe('partial resync + recovery through route order (i)', () => {
     )
 
     await expect(
-      persistBelleRepair(fake, { repairedStoryId: EP1_ID, storyUpdates, pendingEntries })
+      persistBelleRepair(fake, {
+        repairedStoryId: EP1_ID,
+        storyUpdates,
+        pendingEntries,
+        expectedRepairedScriptJson: repairedRow.script_json,
+      })
     ).rejects.toThrow(/story-creek-ep3.*pending list intact/)
 
     // Dep#1 applied: pin moved to the new hash (CAS matched, row written).
@@ -564,6 +591,7 @@ describe('partial resync + recovery through route order (i)', () => {
     // Repaired row: script written, audit appended once, pending keeps ONLY dep#2.
     const ep1After = fake.tables.get('stories')!.get(EP1_ID)
     expect(ep1After.script).toBe(AFTER_SCRIPT)
+    expect(ep1After.script_json.raw_script).toBe(AFTER_SCRIPT)
     expect(ep1After.script_json.series_generation.belle_repair_audit).toHaveLength(2)
     const pendingAfter = getPendingPinResync(ep1After.script_json, EP1_ID)
     expect(pendingAfter).toHaveLength(1)

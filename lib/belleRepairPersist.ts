@@ -32,14 +32,24 @@
  * All functions take the supabase client as `any` and use only three query
  * chains — `.from('stories').update(values).eq('id', x)` awaited as
  * `{ error }`, `.from('stories').select(...).eq('id', x).single()` awaited
- * as `{ data, error }`, and the CAS dependent write
- * `.from('stories').update({ script_json }).eq('id', x)
- *   .eq('script_json', expectedSnapshot).select('id')` awaited as
- * `{ data, error }` where an empty `data` array means zero rows matched
- * (concurrent modification — safe refusal, never silent clobber) — so tests
- * can inject a call-logging fake. The production route passes its real
- * client straight through (no re-composed mirror: the route calls
- * persistBelleRepair / drainPendingPinResync / getPendingPinResync
+ * as `{ data, error }`, and CAS writes
+ * `.from('stories').update(values).eq('id', x)
+ *   .eq('script_json', jsonbEqFilter(expectedSnapshot)).select('id')`
+ * awaited as `{ data, error }` where an empty `data` array means zero rows
+ * matched (concurrent modification — safe refusal, never silent clobber).
+ *
+ * JSONB CAS ENCODING (binding): postgrest-js `.eq()` on a raw object
+ * serializes to `eq.[object Object]` (verified against the real SDK:
+ * `script_json=eq.%5Bobject+Object%5D` — matches nothing, silently). Every
+ * whole-doc snapshot condition MUST go through `jsonbEqFilter` (explicit
+ * JSON.stringify) so the SDK URL-encodes a real jsonb equality match.
+ * Tests prove this through the REAL QueryBuilder with a stub fetch that
+ * captures the outgoing URL — never a mirror.
+ *
+ * The production route passes its real client straight through
+ * (no re-composed mirror: the route calls persistBelleRepair /
+ * persistBelleRepairAndInvalidateAudio / drainPendingPinResync /
+ * getPendingPinResync / recoverPendingPinDrains / reserveBelleRetryCount
  * directly).
  */
 
@@ -51,6 +61,52 @@ export const MALFORMED_PENDING_CODE = 'belle_pending_pin_resync_malformed'
 
 /** Stable code on the structured error thrown for a CAS concurrent-mod refusal. */
 export const CONCURRENT_MOD_CODE = 'belle_pin_resync_concurrent_modification'
+
+/**
+ * Serialize a whole-doc script_json snapshot for a PostgREST equality
+ * filter. NEVER pass a raw object to `.eq('script_json', ...)` — the SDK
+ * stringifies it to `[object Object]`. JSON.stringify lets the SDK
+ * URL-encode a real jsonb equality match (`script_json=eq.%7B%22...`).
+ */
+export function jsonbEqFilter(snapshot: unknown): string {
+  return JSON.stringify(snapshot === undefined ? null : snapshot)
+}
+
+/**
+ * Union two pending lists by dependentStoryId. `second` wins ties (the
+ * caller's drain outcome / retry intent is authoritative for ids present in
+ * both). Entries outside the overlap are never dropped — pending never
+ * dropped, on any path.
+ */
+export function unionPendingEntries(
+  first: PendingPinResyncEntry[],
+  second: PendingPinResyncEntry[]
+): PendingPinResyncEntry[] {
+  const merged = new Map<string, PendingPinResyncEntry>()
+  for (const e of first || []) {
+    merged.set(String(e.dependentStoryId), {
+      dependentStoryId: String(e.dependentStoryId),
+      priorStoryId: String(e.priorStoryId),
+      newPinHash: String(e.newPinHash),
+    })
+  }
+  for (const e of second || []) {
+    merged.set(String(e.dependentStoryId), {
+      dependentStoryId: String(e.dependentStoryId),
+      priorStoryId: String(e.priorStoryId),
+      newPinHash: String(e.newPinHash),
+    })
+  }
+  return [...merged.values()]
+}
+
+/**
+ * Lenient pending read: absent key -> [] (normal empty state). Malformed
+ * stays LOUD via getPendingPinResync (fail-closed before any write).
+ */
+function safeReadPending(scriptJson: any, storyIdForContext?: string): PendingPinResyncEntry[] {
+  return getPendingPinResync(scriptJson, storyIdForContext)
+}
 
 /** One pending continuity-pin update: dependent row -> new pin hash. */
 export interface PendingPinResyncEntry {
@@ -193,8 +249,14 @@ export function applyPendingPinToScriptJson(
 /**
  * Rewrite the repaired row's pending list to `remaining` (script_json ONLY —
  * never touches the script column, so the repaired text is written exactly
- * once no matter how many drains/prunes run). Reads the row fresh so a
- * concurrent script_json edit is not clobbered beyond the pending key.
+ * once no matter how many drains/prunes run). The write is CAS-conditioned
+ * on the freshly-read snapshot (jsonbEqFilter construction) with an
+ * affected-row check: a concurrent script_json edit is never silently
+ * clobbered. On a zero-row conflict the row is RE-READ once, the pending
+ * lists are unioned (pending never dropped), newer unrelated metadata keys
+ * win automatically (the retry builds on the fresh read), and the write is
+ * retried once. A second zero-row conflict throws loudly (code
+ * CONCURRENT_MOD_CODE) with everything preserved in the DB.
  */
 async function prunePendingPinResync(
   supabaseClient: any,
@@ -212,16 +274,60 @@ async function prunePendingPinResync(
         `${readError?.message || 'missing row'}`
     )
   }
-  const nextJson = setPendingPinResync((row as any).script_json, remaining)
-  const { error: writeError } = await supabaseClient
+  const snapshot = (row as any).script_json
+  const nextJson = setPendingPinResync(snapshot, remaining)
+  const first = await supabaseClient
     .from('stories')
     .update({ script_json: nextJson })
     .eq('id', repairedStoryId)
-  if (writeError) {
+    .eq('script_json', jsonbEqFilter(snapshot))
+    .select('id')
+  if (!first.error && first.data && first.data.length > 0) return
+  if (first.error) {
     throw new Error(
-      `Failed to prune Belle pin-resync pending list on ${repairedStoryId}: ${writeError.message}`
+      `Failed to prune Belle pin-resync pending list on ${repairedStoryId}: ${first.error.message}`
     )
   }
+  // Zero rows matched: the row moved under us. Re-read once, union the
+  // pending lists (ours wins ties; pending never dropped), retry once.
+  const { data: fresh, error: rereadError } = await supabaseClient
+    .from('stories')
+    .select('id,script_json')
+    .eq('id', repairedStoryId)
+    .single()
+  if (rereadError || !fresh) {
+    throw new Error(
+      `Failed to re-read Belle pin-resync pending list on ${repairedStoryId} ` +
+        `after concurrent modification: ${rereadError?.message || 'missing row'} ` +
+        `(pending data left intact in the DB — nothing pruned)`
+    )
+  }
+  const freshSnapshot = (fresh as any).script_json
+  const merged = unionPendingEntries(
+    safeReadPending(freshSnapshot, repairedStoryId),
+    remaining
+  )
+  const retryJson = setPendingPinResync(freshSnapshot, merged)
+  const second = await supabaseClient
+    .from('stories')
+    .update({ script_json: retryJson })
+    .eq('id', repairedStoryId)
+    .eq('script_json', jsonbEqFilter(freshSnapshot))
+    .select('id')
+  if (!second.error && second.data && second.data.length > 0) return
+  if (second.error) {
+    throw new Error(
+      `Failed to prune Belle pin-resync pending list on ${repairedStoryId}: ${second.error.message} ` +
+        `(pending data left intact in the DB — nothing pruned)`
+    )
+  }
+  const conflictError = new Error(
+    `Refused Belle pin-resync prune on ${repairedStoryId}: dependent script_json ` +
+      `changed again before the retry write (concurrent modification — ` +
+      `row left unmodified, pending entries kept for a later tick)`
+  )
+  ;(conflictError as Error & { code?: string }).code = CONCURRENT_MOD_CODE
+  throw conflictError
 }
 
 /**
@@ -289,11 +395,13 @@ export async function drainPendingPinResync(
     // CAS write: applies ONLY if the dependent's full script_json still
     // equals what we just read. Empty `data` = zero rows matched = the row
     // moved under us → refuse loudly, keep the pending entry, touch nothing.
+    // The snapshot MUST be serialized via jsonbEqFilter: a raw object
+    // encodes as `eq.[object Object]` (matches nothing, silently).
     const { data: casApplied, error: writeError } = await supabaseClient
       .from('stories')
       .update({ script_json: nextDepJson })
       .eq('id', entry.dependentStoryId)
-      .eq('script_json', expectedSnapshot)
+      .eq('script_json', jsonbEqFilter(expectedSnapshot))
       .select('id')
     if (writeError) {
       const remaining = (entries || []).filter(
@@ -330,13 +438,82 @@ export async function drainPendingPinResync(
 }
 
 /**
+ * Rebase an attempted repaired-row script_json onto a freshly re-read row
+ * after a CAS conflict. Newer unrelated metadata keys win (the fresh read
+ * is the base; only the repair's own keys are re-applied): the repair's
+ * raw_script (the repaired text), the audit entries (append-only union,
+ * deduped by JSON identity so a retry never double-appends), and the
+ * pending list (union of fresh + attempted, attempted wins ties — pending
+ * never dropped).
+ */
+export function rebaseRepairedScriptJson(
+  freshScriptJson: any,
+  attemptedScriptJson: any
+): Record<string, any> {
+  const fresh =
+    freshScriptJson && typeof freshScriptJson === 'object'
+      ? JSON.parse(JSON.stringify(freshScriptJson))
+      : {}
+  const attempted =
+    attemptedScriptJson && typeof attemptedScriptJson === 'object'
+      ? attemptedScriptJson
+      : {}
+  const freshSG =
+    fresh.series_generation && typeof fresh.series_generation === 'object'
+      ? fresh.series_generation
+      : {}
+  const attemptedSG =
+    attempted.series_generation && typeof attempted.series_generation === 'object'
+      ? attempted.series_generation
+      : {}
+  const freshAudit = Array.isArray(freshSG.belle_repair_audit)
+    ? freshSG.belle_repair_audit
+    : []
+  const attemptedAudit = Array.isArray(attemptedSG.belle_repair_audit)
+    ? attemptedSG.belle_repair_audit
+    : []
+  const seen = new Set(freshAudit.map((e: unknown) => JSON.stringify(e)))
+  const mergedAudit = [
+    ...freshAudit,
+    ...attemptedAudit.filter((e: unknown) => !seen.has(JSON.stringify(e))),
+  ]
+  const mergedPending = unionPendingEntries(
+    safeReadPending(fresh, undefined),
+    safeReadPending(attempted, undefined)
+  )
+  const next: Record<string, any> = { ...fresh }
+  if (attempted.raw_script !== undefined) next.raw_script = attempted.raw_script
+  next.series_generation = {
+    ...freshSG,
+    belle_repair_audit: mergedAudit,
+    [PENDING_PIN_RESYNC_KEY]: mergedPending.map((e) => ({
+      dependentStoryId: String(e.dependentStoryId),
+      priorStoryId: String(e.priorStoryId),
+      newPinHash: String(e.newPinHash),
+    })),
+  }
+  return next
+}
+
+/**
  * Atomic Belle-repair persist. The ROUTE builds `storyUpdates` (thin glue);
  * this function executes:
  *  1. a SINGLE atomic .update() on the repaired story row containing the
  *     repaired script + audit-bearing script_json (which already embeds the
- *     pending_pin_resync list) + scoped audio nulls;
+ *     pending_pin_resync list AND the synchronized top-level raw_script)
+ *     + scoped audio nulls;
  *  2. the DRAIN step applying each pending pin update to its dependent row
  *     via CAS-conditioned writes (see drainPendingPinResync).
+ *
+ * When `expectedRepairedScriptJson` (the pre-repair snapshot) is provided,
+ * step 1 is CAS-conditioned on it (jsonbEqFilter construction) with an
+ * affected-row check: a concurrent repair-row edit is never silently
+ * clobbered. On a zero-row conflict the row is RE-READ once, the payload
+ * is rebased (rebaseRepairedScriptJson: newer unrelated keys win, pending
+ * unioned, audit deduped), and the write is retried once. A second
+ * zero-row conflict throws loudly (code CONCURRENT_MOD_CODE) with the row
+ * untouched by us — everything preserved for a later tick.
+ *
  * A drain failure throws with the pending list intact in the DB (pruned of
  * applied entries) — the repaired script text is never rewritten by a drain.
  * Never touches retry counts (see ATTEMPT SEMANTICS above).
@@ -347,22 +524,315 @@ export async function persistBelleRepair(
     repairedStoryId: string
     storyUpdates: Record<string, unknown>
     pendingEntries: PendingPinResyncEntry[]
+    expectedRepairedScriptJson?: unknown
   }
 ): Promise<{ drainedDependentIds: string[] }> {
   const repairedStoryId = String(params.repairedStoryId)
-  const { error: repairUpdateError } = await supabaseClient
-    .from('stories')
-    .update(params.storyUpdates)
-    .eq('id', repairedStoryId)
-  if (repairUpdateError) {
+  const hasSnapshot = params.expectedRepairedScriptJson !== undefined
+  const firstAttempt = hasSnapshot
+    ? await supabaseClient
+        .from('stories')
+        .update(params.storyUpdates)
+        .eq('id', repairedStoryId)
+        .eq('script_json', jsonbEqFilter(params.expectedRepairedScriptJson))
+        .select('id')
+    : await supabaseClient
+        .from('stories')
+        .update(params.storyUpdates)
+        .eq('id', repairedStoryId)
+  const firstData = hasSnapshot ? firstAttempt.data : undefined
+  const firstError = firstAttempt.error
+  if (firstError) {
     throw new Error(
-      `Failed to save repaired Belle copy: ${repairUpdateError.message}`
+      `Failed to save repaired Belle copy: ${firstError.message}`
     )
+  }
+  let effectiveUpdates = params.storyUpdates
+  let effectivePending = params.pendingEntries || []
+  if (hasSnapshot && (!firstData || firstData.length === 0)) {
+    // Zero rows matched: the repaired row moved under us. Re-read once,
+    // rebase, retry once.
+    const { data: freshRow, error: rereadError } = await supabaseClient
+      .from('stories')
+      .select('id,script_json')
+      .eq('id', repairedStoryId)
+      .single()
+    if (rereadError || !freshRow) {
+      throw new Error(
+        `Refused Belle repair persist on ${repairedStoryId}: repaired row changed ` +
+          `between read and write and the re-read failed ` +
+          `(${rereadError?.message || 'missing row'}) — row left unmodified, ` +
+          `no rewrite applied, repair may retry on a later tick`
+      )
+    }
+    const freshSnapshot = (freshRow as any).script_json
+    const rebasedJson = rebaseRepairedScriptJson(
+      freshSnapshot,
+      (params.storyUpdates as any)?.script_json
+    )
+    effectiveUpdates = { ...params.storyUpdates, script_json: rebasedJson }
+    effectivePending = safeReadPending(rebasedJson, repairedStoryId)
+    const secondAttempt = await supabaseClient
+      .from('stories')
+      .update(effectiveUpdates)
+      .eq('id', repairedStoryId)
+      .eq('script_json', jsonbEqFilter(freshSnapshot))
+      .select('id')
+    if (secondAttempt.error) {
+      throw new Error(
+        `Failed to save repaired Belle copy on retry: ${secondAttempt.error.message} ` +
+          `(row left unmodified by the retry — repair may retry on a later tick)`
+      )
+    }
+    if (!secondAttempt.data || secondAttempt.data.length === 0) {
+      const conflictError = new Error(
+        `Refused Belle repair persist on ${repairedStoryId}: repaired row changed ` +
+          `again before the retry write (concurrent modification — row left ` +
+          `unmodified, no rewrite applied, repair may retry on a later tick)`
+      )
+      ;(conflictError as Error & { code?: string }).code = CONCURRENT_MOD_CODE
+      throw conflictError
+    }
   }
   const drainedDependentIds = await drainPendingPinResync(
     supabaseClient,
     repairedStoryId,
-    params.pendingEntries || []
+    effectivePending
   )
   return { drainedDependentIds }
+}
+
+/**
+ * Reserve the incremented Belle-retry attempt on the production_jobs row
+ * BEFORE the paid LLM rewrite (BELLE-RETRY-ATTEMPT-RESERVATION-001). The
+ * write is fenced AND affected-row verified: it MUST match exactly the
+ * owned job row. A lost lock (zero rows matched) throws BEFORE
+ * regenerateSeriesBelleFromFeedback runs — a zero-row reservation can
+ * never silently proceed to the paid rewrite.
+ */
+export async function reserveBelleRetryCount(
+  supabaseClient: any,
+  args: {
+    jobId: string
+    fence: Record<string, unknown>
+    stateJson: unknown
+  }
+): Promise<void> {
+  const jobId = String(args.jobId || 'unknown-job')
+  const { data, error } = await supabaseClient
+    .from('production_jobs')
+    .update({ state_json: args.stateJson })
+    .match(args.fence || {})
+    .select('id')
+  if (error) {
+    throw new Error(
+      `Failed to reserve Belle retry attempt count: ${error.message}`
+    )
+  }
+  if (!data || data.length === 0) {
+    throw new Error(
+      `Failed to reserve Belle retry attempt count for job ${jobId}: zero rows ` +
+        `matched (lock lost or concurrent update) — paid rewrite NOT attempted, ` +
+        `no attempt consumed`
+    )
+  }
+}
+
+/** One recovered pending drain: which repaired row carried the list, what drained, how it was found. */
+export interface PendingDrainResolution {
+  repairedStoryId: string
+  drainedDependentIds: string[]
+  via: 'failing-row' | 'series-scan'
+  episodeNumber: number | null
+}
+
+function rowEpisodeNumber(row: any): number | null {
+  const n = Number(
+    row?.episode_number ?? row?.series_episode_number ?? NaN
+  )
+  return Number.isFinite(n) ? n : null
+}
+
+/**
+ * PRODUCTION recovery entry for Belle pin-resync drains (the exact function
+ * the run-next route calls on a failed series package tick — the route is
+ * thin glue around it). Resolves the drain candidate to the row CARRYING
+ * the pending list:
+ *
+ *  1. failing-episode row first (result.episode.storyId). Read miss falls
+ *     through (no queue-jam on a read blip); present-but-malformed throws
+ *     loudly via getPendingPinResync before any write.
+ *  2. fallback: series-scoped scan. The pending list lives on the REPAIRED
+ *     episode, which may differ from the failing dependent — every series
+ *     row with a non-empty pending list is drained (carrier re-read fresh
+ *     before draining so a stale scan snapshot can never clobber a
+ *     concurrent pending addition; malformed stays loud).
+ *
+ * `loadSeriesStories` is invoked LAZILY — only when the failing row itself
+ * carries nothing pending. Drain-only recovery performs no validation and
+ * consumes no attempt (this function never touches retry counts; job-row
+ * writes are the caller's).
+ */
+export async function recoverPendingPinDrains(
+  supabaseClient: any,
+  args: {
+    failingStoryId: string
+    loadSeriesStories?: () => Promise<any[]>
+  }
+): Promise<PendingDrainResolution[]> {
+  const out: PendingDrainResolution[] = []
+  const drainedCarriers = new Set<string>()
+  const failingId = String(args.failingStoryId || '').trim()
+  if (failingId) {
+    const { data, error } = await supabaseClient
+      .from('stories')
+      .select('id,script_json')
+      .eq('id', failingId)
+      .single()
+    if (!error && data) {
+      const failingPending = getPendingPinResync(
+        (data as any).script_json,
+        failingId
+      )
+      if (failingPending.length > 0) {
+        const drained = await drainPendingPinResync(
+          supabaseClient,
+          failingId,
+          failingPending
+        )
+        drainedCarriers.add(failingId)
+        out.push({
+          repairedStoryId: failingId,
+          drainedDependentIds: drained,
+          via: 'failing-row',
+          episodeNumber: rowEpisodeNumber(data),
+        })
+      }
+    }
+  }
+  if (typeof args.loadSeriesStories === 'function') {
+    let seriesStories: any[] = []
+    // Lazy fallback: only scan when the failing row carried nothing.
+    if (drainedCarriers.size === 0) {
+      try {
+        seriesStories = (await args.loadSeriesStories()) || []
+      } catch {
+        seriesStories = []
+      }
+    }
+    for (const row of seriesStories) {
+      const carrierId = String((row as any)?.id || '').trim()
+      if (!carrierId || drainedCarriers.has(carrierId)) continue
+      const scanned = getPendingPinResync(
+        (row as any)?.script_json,
+        carrierId
+      )
+      if (scanned.length === 0) continue
+      // Re-read the carrier fresh: the scan snapshot may be stale, and
+      // draining (plus its prune) off a stale pending list could drop a
+      // concurrently-added entry. Read blip -> skip without jamming.
+      const { data: fresh, error: freshError } = await supabaseClient
+        .from('stories')
+        .select('id,script_json')
+        .eq('id', carrierId)
+        .single()
+      if (freshError || !fresh) continue
+      const freshPending = getPendingPinResync(
+        (fresh as any).script_json,
+        carrierId
+      )
+      if (freshPending.length === 0) continue
+      const drained = await drainPendingPinResync(
+        supabaseClient,
+        carrierId,
+        freshPending
+      )
+      drainedCarriers.add(carrierId)
+      out.push({
+        repairedStoryId: carrierId,
+        drainedDependentIds: drained,
+        via: 'series-scan',
+        episodeNumber:
+          rowEpisodeNumber(row) ?? rowEpisodeNumber(fresh),
+      })
+    }
+  }
+  return out
+}
+
+/**
+ * Scoped Belle audio invalidation through the passed client (moved here
+ * from the run-next route so the persist-then-delete order is unit-testable
+ * through the REAL client). Lists `asc3/<storyId>` and removes ONLY the
+ * repaired side's files: intro repair -> announcement and intro names,
+ * outro repair -> outro names. Never siblings/segments/mixes.
+ */
+export async function deleteBelleAudioFiles(
+  supabaseClient: any,
+  storyId: string,
+  repairIntro: boolean,
+  repairOutro: boolean
+): Promise<string[]> {
+  const { data: files, error } = await supabaseClient.storage
+    .from('audio')
+    .list(`asc3/${storyId}`, { limit: 500 })
+  if (error)
+    throw new Error(
+      `Failed to list Belle audio files for invalidation: ${error.message}`
+    )
+  const stalePaths = (files || [])
+    .map((file: any) => String(file.name || ''))
+    .filter(
+      (name: string) =>
+        (repairIntro &&
+          (name === 'announcement.mp3' ||
+            name.startsWith('announcement_') ||
+            name === 'intro.mp3' ||
+            name.startsWith('intro_') ||
+            name.startsWith('intro_before_') ||
+            name.startsWith('intro_after_'))) ||
+        (repairOutro && (name === 'outro.mp3' || name.startsWith('outro_')))
+    )
+    .map((name: string) => `asc3/${storyId}/${name}`)
+  if (stalePaths.length > 0) {
+    const { error: removeError } = await supabaseClient.storage
+      .from('audio')
+      .remove(stalePaths)
+    if (removeError)
+      throw new Error(
+        `Failed to delete stale Belle audio files: ${removeError.message}`
+      )
+  }
+  return stalePaths
+}
+
+/**
+ * Full repair write in the PRODUCTION order: persist FIRST, file deletion
+ * only AFTER the persist succeeds (the exact function the route calls —
+ * the route is thin glue around it). A failed persist can never strand
+ * deleted audio: on persist failure no storage call is made, the old audio
+ * URLs stay in the DB row, and the tick fails loudly.
+ */
+export async function persistBelleRepairAndInvalidateAudio(
+  supabaseClient: any,
+  params: {
+    repairedStoryId: string
+    storyUpdates: Record<string, unknown>
+    pendingEntries: PendingPinResyncEntry[]
+    expectedRepairedScriptJson?: unknown
+    repairIntro: boolean
+    repairOutro: boolean
+  }
+): Promise<{ drainedDependentIds: string[]; deletedBelleFiles: string[] }> {
+  const { drainedDependentIds } = await persistBelleRepair(
+    supabaseClient,
+    params
+  )
+  const deletedBelleFiles = await deleteBelleAudioFiles(
+    supabaseClient,
+    String(params.repairedStoryId),
+    Boolean(params.repairIntro),
+    Boolean(params.repairOutro)
+  )
+  return { drainedDependentIds, deletedBelleFiles }
 }

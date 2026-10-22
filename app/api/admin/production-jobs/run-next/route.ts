@@ -49,7 +49,9 @@ import {
 import {
   drainPendingPinResync,
   getPendingPinResync,
-  persistBelleRepair,
+  persistBelleRepairAndInvalidateAudio,
+  recoverPendingPinDrains,
+  reserveBelleRetryCount,
   setPendingPinResync,
 } from '@/lib/belleRepairPersist'
 // COVER-PIPELINE-DECOUPLE-001: decoupled cover phase (tasks recorded right
@@ -1460,25 +1462,9 @@ ${JSON.stringify({
   return { introText, outroText }
 }
 
-async function deleteBelleAudioFiles(storyId: string, repairIntro: boolean, repairOutro: boolean) {
-  const { data: files, error } = await supabase.storage.from('audio').list(`asc3/${storyId}`, { limit: 500 })
-  if (error) throw new Error(`Failed to list Belle audio files for invalidation: ${error.message}`)
-
-  const stalePaths = (files || [])
-    .map((file: any) => String(file.name || ''))
-    .filter(name =>
-      (repairIntro && (name === 'announcement.mp3' || name.startsWith('announcement_') || name === 'intro.mp3' || name.startsWith('intro_') || name.startsWith('intro_before_') || name.startsWith('intro_after_'))) ||
-      (repairOutro && (name === 'outro.mp3' || name.startsWith('outro_')))
-    )
-    .map(name => `asc3/${storyId}/${name}`)
-
-  if (stalePaths.length > 0) {
-    const { error: removeError } = await supabase.storage.from('audio').remove(stalePaths)
-    if (removeError) throw new Error(`Failed to delete stale Belle audio files: ${removeError.message}`)
-  }
-
-  return stalePaths
-}
+// deleteBelleAudioFiles lives in lib/belleRepairPersist (client-param) so the
+// persist-then-delete order is unit-testable through the real client; the
+// repair path below calls persistBelleRepairAndInvalidateAudio (thin glue).
 
 // ── Narrator assignment validator ─────────────────────────────────────────────
 // Hard-blocks missing, invalid, mismatched, or fallback narrator assignments
@@ -11061,33 +11047,33 @@ export async function POST(req: NextRequest) {
               : {}
 
           // BELLE-REPAIR-DRAIN-REACHABILITY-001: HOISTED drain-first. Runs
-          // BEFORE continuity validation (seriesBelleRetryTarget gating) and
-          // OUTSIDE the content-retry allowance guard. When the failed
-          // episode's row still carries a non-empty pending_pin_resync list,
-          // the drain executes even if the failure class is
-          // continuity_pin_mismatch (not Belle-position) and even if the
-          // per-episode rewrite count is exhausted. A read miss here falls
-          // through to normal handling (no queue-jam on a read blip); a
-          // MALFORMED list throws loudly via getPendingPinResync before any
-          // write (pending data preserved, no rewrite attempted). A
-          // drain-only recovery consumes no attempt and performs no
-          // rewrite, validation, or audio regeneration.
-          const drainCandidateStoryId = String(result?.episode?.storyId || '').trim()
-          if (drainCandidateStoryId) {
-            const { data: drainCandidate, error: drainCandidateError } = await supabase
-              .from('stories')
-              .select('id,script_json')
-              .eq('id', drainCandidateStoryId)
-              .single()
-            if (!drainCandidateError && drainCandidate) {
-              const hoistedPending = getPendingPinResync((drainCandidate as any).script_json, drainCandidateStoryId)
-              if (hoistedPending.length > 0) {
-                const hoistedDrainedIds = await drainPendingPinResync(
-                  supabase,
-                  drainCandidateStoryId,
-                  hoistedPending
-                )
-                const hoistedEpisodeNumber = result?.episode?.episodeNumber ?? null
+          // BEFORE continuity validation (seriesBelleRetryTarget gating),
+          // OUTSIDE the content-retry allowance guard, and BEFORE any
+          // terminal-marking throw on this tick. The production recovery
+          // entry (recoverPendingPinDrains, lib — this route is thin glue)
+          // resolves the drain candidate to the row CARRYING the pending
+          // list: the failing-episode row first, then a series-scoped scan
+          // for the repaired episode when it differs. The drain executes
+          // even if the failure class is continuity_pin_mismatch
+          // (not Belle-position) and even if the per-episode rewrite count
+          // is exhausted. A read miss falls through to normal handling
+          // (no queue-jam on a read blip); a MALFORMED list throws loudly
+          // before any write (pending data preserved, no rewrite
+          // attempted). A drain-only recovery consumes no attempt and
+          // performs no rewrite, validation, or audio regeneration.
+          const hoistedDrainResolutions = await recoverPendingPinDrains(supabase, {
+            failingStoryId: String(result?.episode?.storyId || ''),
+            loadSeriesStories: result.seriesId
+              ? () => loadSeriesEpisodes(String(result.seriesId))
+              : undefined,
+          })
+          if (hoistedDrainResolutions.length > 0) {
+            {
+              const hoistedPrimary = hoistedDrainResolutions[0]
+              const drainCandidateStoryId = hoistedPrimary.repairedStoryId
+              const hoistedDrainedIds = hoistedDrainResolutions.flatMap((r) => r.drainedDependentIds)
+              {
+                const hoistedEpisodeNumber = hoistedPrimary.episodeNumber ?? result?.episode?.episodeNumber ?? null
                 const hoistedIssues = Array.isArray(result?.contentIssues)
                   ? result.contentIssues.map(String)
                   : []
@@ -11285,13 +11271,15 @@ export async function POST(req: NextRequest) {
                     lastUpdatedAt: nowIso(),
                   },
                 }
-                const { error: reserveCountError } = await supabase
-                  .from('production_jobs')
-                  .update({ state_json: reservedRetryState })
-                  .match(ownedJobFence(lockedJob, lockHolderId))
-                if (reserveCountError) {
-                  throw new Error(`Failed to reserve Belle retry attempt count: ${reserveCountError.message}`)
-                }
+                // Reservation REQUIRES an affected row (fenced + row-count
+                // verified inside the helper): a lost lock matching zero
+                // rows throws BEFORE regenerateSeriesBelleFromFeedback —
+                // no paid rewrite after a zero-row reservation.
+                await reserveBelleRetryCount(supabase, {
+                  jobId: String((lockedJob as any)?.id || ''),
+                  fence: ownedJobFence(lockedJob, lockHolderId),
+                  stateJson: reservedRetryState,
+                })
                 const repaired = await regenerateSeriesBelleFromFeedback(targetStory, belleRetryTarget, nextEpisode, model)
                 let repairedScript = String(targetStory.script || '')
                 if (belleRetryTarget.repairIntro) repairedScript = replaceBelleSection(repairedScript, 'intro', repaired.introText)
@@ -11360,12 +11348,6 @@ export async function POST(req: NextRequest) {
                   throw retryValidationError
                 }
   
-                deletedBelleFiles = await deleteBelleAudioFiles(
-                  belleRetryTarget.storyId,
-                  belleRetryTarget.repairIntro,
-                  belleRetryTarget.repairOutro
-                )
-  
                 // BELLE-REPAIR-WRITE-INTEGRITY-001: audit + pin resync + scoped
                 // audio invalidation. A successful text repair rewrites
                 // stories.script, so it must (a) leave an audit entry with
@@ -11382,14 +11364,27 @@ export async function POST(req: NextRequest) {
                   repairedOutro: Boolean(belleRetryTarget.repairOutro),
                   at: nowIso(),
                 })
-                const repairedScriptJson = applyBelleRepairAudit((targetStory as any).script_json, repairAuditEntry)
+                // RAW-SCRIPT SYNC: top-level script_json.raw_script is the
+                // production-consumed copy (loadRecentStoryTexts reads it
+                // for uniqueness context; writers set it at creation). The
+                // repair rewrites stories.script, so raw_script must move
+                // with it — otherwise the consumed copy stays stale.
+                const repairedScriptJson = {
+                  ...applyBelleRepairAudit((targetStory as any).script_json, repairAuditEntry),
+                  raw_script: repairedScript,
+                }
   
                 // BELLE-REPAIR-PERSIST-RECOVERY-001: thin glue — the route
                 // builds the atomic payload (repaired script + audit-bearing
-                // script_json embedding the pending pin list + scoped audio
-                // nulls); lib/belleRepairPersist executes it (single atomic
-                // row write, then the pin drain). Drain failure throws with
-                // the pending list intact in the DB and consumes NO attempt.
+                // script_json embedding the pending pin list + synced
+                // raw_script + scoped audio nulls); lib/belleRepairPersist
+                // executes it. persistBelleRepairAndInvalidateAudio persists
+                // FIRST with a CAS condition on the pre-repair snapshot
+                // (zero-row conflict -> re-read, re-merge, retry once, else
+                // loud), then deletes stale audio files ONLY after the
+                // persist succeeds — a failed persist can never strand
+                // deleted audio. Drain failure throws with the pending list
+                // intact in the DB and consumes NO attempt.
                 const pendingPinEntries = resyncContinuityPinsAfterRepair(
                   seriesEpisodes,
                   String(belleRetryTarget.storyId),
@@ -11414,11 +11409,14 @@ export async function POST(req: NextRequest) {
                   } : {}),
                 }
   
-                await persistBelleRepair(supabase, {
+                deletedBelleFiles = (await persistBelleRepairAndInvalidateAudio(supabase, {
                   repairedStoryId: String(belleRetryTarget.storyId),
                   storyUpdates,
                   pendingEntries: pendingPinEntries,
-                })
+                  expectedRepairedScriptJson: (targetStory as any).script_json,
+                  repairIntro: Boolean(belleRetryTarget.repairIntro),
+                  repairOutro: Boolean(belleRetryTarget.repairOutro),
+                })).deletedBelleFiles
   
                 // Success keeps the RESERVED attempt (reuses
                 // reservedRetryCount — no second increment).
