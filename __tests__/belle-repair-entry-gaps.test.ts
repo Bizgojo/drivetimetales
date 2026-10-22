@@ -219,7 +219,24 @@ function seedRepairedRow(pending: PendingPinResyncEntry[] = []) {
     script_json: setPendingPinResync(
       {
         raw_script: AFTER_SCRIPT,
-        series_generation: { generated_title: 'Ep1' },
+        series_generation: {
+          generated_title: 'Ep1',
+          // Repair-ownership linkage: this row's pending list belongs to
+          // JOB_ID's repair (same atomic persist wrote both).
+          belle_repair_audit: [
+            {
+              action: 'series_belle_retry_repair',
+              timestamp: '2026-10-22T15:00:00.000Z',
+              jobId: JOB_ID,
+              storyId: EP1_ID,
+              episodeNumber: 1,
+              beforeHash: hashScript(BEFORE_SCRIPT),
+              afterHash: hashScript(AFTER_SCRIPT),
+              repairedIntro: false,
+              repairedOutro: true,
+            },
+          ],
+        },
       },
       pending
     ),
@@ -292,7 +309,7 @@ describe('(a) narrow revival entry: pending-carrying failed jobs only', () => {
     )
     const admission = await getPendingResumeAdmission(emu.client, emu.jobs.get(JOB_ID))
     expect(admission).not.toBeNull()
-    expect(admission).toEqual({ carrierStoryId: EP1_ID, pendingCount: 1 })
+    expect(admission).toEqual({ carrierStoryId: EP1_ID, pendingCount: 1, audioIntentCount: 0, scope: 'pins' })
     expectCleanWire(emu)
   })
 

@@ -53,6 +53,7 @@ import {
   recoverPendingPinDrains,
   reserveBelleRetryCount,
   resumePendingPinJob,
+  runSeriesPackagingWithPriorRecovery,
   setPendingPinResync,
 } from '@/lib/belleRepairPersist'
 // COVER-PIPELINE-DECOUPLE-001: decoupled cover phase (tasks recorded right
@@ -2326,7 +2327,13 @@ function blockedBelleResumeInfo(job: ProductionJob): { kind: string; retryCount:
 // Every other failed job is refused unchanged. Returns the mapped ids, or
 // nulls when the row was refused (caller continues scanning / idles).
 async function pendingPinRevivalIds(job: ProductionJob): Promise<{ resumedId: string | null; exhaustedId: string | null } | null> {
-  const outcome = await resumePendingPinJob(supabase, job)
+  // Series-scoped fallback: the repair carrier may live on a third row —
+  // hand the revival entry the same series loader the drain path uses.
+  const outcome = await resumePendingPinJob(supabase, job, {
+    loadSeriesStories: (job as any)?.series_id
+      ? () => loadSeriesEpisodes(String((job as any).series_id))
+      : undefined,
+  })
   if (outcome.status === 'resumed') return { resumedId: outcome.jobId, exhaustedId: null }
   if (outcome.status === 'exhausted') return { resumedId: null, exhaustedId: outcome.jobId }
   return null
@@ -11058,7 +11065,21 @@ export async function POST(req: NextRequest) {
 
       if (type === 'series') {
         const origin = new URL(req.url).origin
-        const result = await runSeriesPackageCompletion(lockedJob, origin)
+        // P5-CODEX-BLOCKERS-004: pending recovery runs BEFORE packaging
+        // can validate/advance — a packaging success or a packaging
+        // exception can no longer bypass cleanup of stranded Belle repair
+        // state (drain/clear requests precede package requests on the wire).
+        const { result } = await runSeriesPackagingWithPriorRecovery(supabase, {
+          failingStoryId: String(
+            lockedJob.story_id ||
+              (lockedJob.state_json as any)?.storyId ||
+              ''
+          ),
+          loadSeriesStories: lockedJob.series_id
+            ? () => loadSeriesEpisodes(String(lockedJob.series_id))
+            : undefined,
+          runPackage: () => runSeriesPackageCompletion(lockedJob, origin),
+        })
         const logs = appendLog(lockedJob, result.success ? 'Completed series story packages' : 'Series story package completion failed', {
           seriesId: result.seriesId || lockedJob.series_id,
           processedEpisodes: result.processedEpisodes,

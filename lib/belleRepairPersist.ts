@@ -710,20 +710,39 @@ export async function drainPendingAudioDeletes(
       )
     }
   }
-  await clearPendingAudioDelete(supabaseClient, id)
+  // Subtract ONLY the intents this run processed (by identity): an intent
+  // added concurrently between the DELETE above and the clearing read
+  // below is absent from `intent`, so it survives the clear and its file
+  // is never touched (no scope creep).
+  await clearPendingAudioDelete(supabaseClient, id, intent)
   return paths
 }
 
 /**
  * CAS-guarded clear of the pending audio-delete list (script_json ONLY).
- * On a zero-row conflict the row is re-read once and any concurrently-added
- * URLs are unioned back (intent never dropped), retried once; a second
- * conflict throws loudly with the row untouched.
+ * Removes ONLY the intents this run processed (`processedUrls`, matched by
+ * exact trimmed-URL identity) from a FRESH read — never from a possibly-
+ * stale caller-side list, never the whole list. An intent added
+ * concurrently between this run's DELETE and the clearing read is absent
+ * from the processed set, so it survives even when the CAS write succeeds
+ * on first attempt (and its file was never in this run's delete set).
+ * When none of the processed intents remain (already cleared), this is a
+ * pure no-op with zero writes. The write is CAS-conditioned on the
+ * freshly-read snapshot with an affected-row check; on a zero-row conflict
+ * the subtraction is recomputed against a new fresh read and retried once.
+ * A second zero-row conflict throws loudly with the row untouched.
  */
 async function clearPendingAudioDelete(
   supabaseClient: any,
-  storyId: string
+  storyId: string,
+  processedUrls: string[]
 ): Promise<void> {
+  const processed = new Set(
+    (processedUrls || []).map((u) => String(u || '').trim()).filter((u) => u.length > 0)
+  )
+  if (processed.size === 0) return
+  const subtractProcessed = (current: string[]): string[] =>
+    (current || []).filter((u) => !processed.has(String(u || '').trim()))
   const { data: row, error: readError } = await supabaseClient
     .from('stories')
     .select('id,script_json')
@@ -736,9 +755,12 @@ async function clearPendingAudioDelete(
     )
   }
   const snapshot = (row as any).script_json
+  const remaining = subtractProcessed(safeReadAudioDelete(snapshot, storyId))
+  const current = safeReadAudioDelete(snapshot, storyId)
+  if (remaining.length === current.length) return
   const first = await supabaseClient
     .from('stories')
-    .update({ script_json: setPendingAudioDelete(snapshot, []) })
+    .update({ script_json: setPendingAudioDelete(snapshot, remaining) })
     .eq('id', storyId)
     .eq('script_json', jsonbEqFilter(snapshot))
     .select('id')
@@ -761,10 +783,10 @@ async function clearPendingAudioDelete(
     )
   }
   const freshSnapshot = (fresh as any).script_json
-  const retryJson = setPendingAudioDelete(
-    freshSnapshot,
-    unionPendingAudioDeletes(safeReadAudioDelete(freshSnapshot, storyId), [])
-  )
+  const freshCurrent = safeReadAudioDelete(freshSnapshot, storyId)
+  const retryRemaining = subtractProcessed(freshCurrent)
+  if (retryRemaining.length === freshCurrent.length) return
+  const retryJson = setPendingAudioDelete(freshSnapshot, retryRemaining)
   const second = await supabaseClient
     .from('stories')
     .update({ script_json: retryJson })
@@ -1112,6 +1134,31 @@ export async function recoverPendingPinDrains(
 }
 
 /**
+ * Series packaging entry with PRIOR pending recovery (the exact function
+ * the run-next route calls as thin glue around runSeriesPackageCompletion).
+ * Runs recoverPendingPinDrains BEFORE `runPackage` can validate or advance
+ * anything, so a packaging success — or a packaging exception — can no
+ * longer bypass cleanup of stranded repair state. A recovery throw stays
+ * fail-closed before packaging; a packaging throw propagates AFTER
+ * recovery has completed (its effects are already in the DB).
+ */
+export async function runSeriesPackagingWithPriorRecovery<T>(
+  supabaseClient: any,
+  args: {
+    failingStoryId: string
+    loadSeriesStories?: () => Promise<any[]>
+    runPackage: () => Promise<T>
+  }
+): Promise<{ recovery: PendingDrainResolution[]; result: T }> {
+  const recovery = await recoverPendingPinDrains(supabaseClient, {
+    failingStoryId: args.failingStoryId,
+    loadSeriesStories: args.loadSeriesStories,
+  })
+  const result = await args.runPackage()
+  return { recovery, result }
+}
+
+/**
  * Scoped Belle audio invalidation through the passed client (moved here
  * from the run-next route so the persist-then-delete order is unit-testable
  * through the REAL client). Lists `asc3/<storyId>` and removes ONLY the
@@ -1209,9 +1256,13 @@ export async function persistBelleRepairAndInvalidateAudio(
 /**
  * NARROW REVIVAL ENTRY (P5 entry-gaps): a FAILED job the
  * blockedBelleResumeInfo family does NOT admit (wrong kind, marc_required
- * set, no safe_resume_point) may still be revived when its repaired-episode
- * row carries a NON-EMPTY pending_pin_resync list — the kill-after-persist
- * case: the repair text is durable in the DB, only the drain never ran.
+ * set, no safe_resume_point) may still be revived when a repair-carrying
+ * episode row — its own candidates, else a series-scoped fallback scan —
+ * holds a NON-EMPTY pending_pin_resync list or a non-empty
+ * pending_audio_delete intent FOR THIS JOB's repair (belle_repair_audit
+ * job-id linkage), the failure class is Belle-repair/package-completion,
+ * and the recovery step is allowed — the kill-after-persist case: the
+ * repair text is durable in the DB, only the drain never ran.
  * Every other failed job is refused unchanged (returns null).
  *
  * Cap: resume attempts are counted on the job row
@@ -1230,7 +1281,51 @@ export const PENDING_RESUME_COUNT_KEY = 'pendingPinResumeCount'
 export interface PendingResumeAdmission {
   carrierStoryId: string
   pendingCount: number
+  /** Non-empty pending_audio_delete URLs on the carrier (0 when pins-only). */
+  audioIntentCount: number
+  /** Which recovery the carrier qualifies for: pins, audio intent, or both. */
+  scope: 'pins' | 'audio' | 'both'
 }
+
+/**
+ * Failure classes admitted to the narrow pending revival entry: the
+ * Belle-repair / package-completion family only. Matched against
+ * job.error_json.kind, with the series Belle-retry actions as an alternate
+ * signal (job.error_json.action). Any other failed job — even one whose
+ * episode row carries leftover pending metadata — stays refused.
+ */
+export const PENDING_RESUME_ALLOWED_KINDS = [
+  'belle_asset_blocked',
+  'belle_quality_blocked',
+  'belle_quality_hook_missing',
+  'belle_quality_title_missing',
+  'belle_quality_listener_missing',
+  'belle_quality_repair_failed',
+  'belle_quality_unknown',
+  'belle_quality',
+  'series_belle_retry_validation_failed',
+  'continuity_pin_mismatch',
+]
+
+export const PENDING_RESUME_ALLOWED_ACTIONS = [
+  'series_belle_retry',
+  'series_belle_pin_drain',
+]
+
+/**
+ * Recovery steps the narrow revival may re-queue to: Belle asset / quality /
+ * repair steps plus the package-completion step. The candidate resume point
+ * (explicit override, else error safe_resume_point, else current step, else
+ * the repair default) must be one of these — otherwise the job is refused.
+ */
+export const PENDING_RESUME_ALLOWED_STEPS = [
+  'repair_belle_quality',
+  'generate_belle_assets',
+  'validate_belle_assets',
+  'validate_belle_quality',
+  'series_generate_belle_assets',
+  'complete_story_package',
+]
 
 /** Outcome of a bounded pending-pin resume attempt. */
 export type PendingResumeOutcome =
@@ -1258,16 +1353,92 @@ function pendingResumeStoryCandidates(job: any): string[] {
 }
 
 /**
+ * Repair-ownership check: the carrier row's script_json.series_generation
+ * .belle_repair_audit must contain an entry stamped with this job's id —
+ * the pending list links to THIS job's repair (same atomic persist wrote
+ * both). A carrier whose pending metadata is leftover from another job's
+ * repair (or has no audit at all) does not qualify. Malformed pending
+ * lists still throw loudly via the caller's getPendingPinResync read
+ * (fail-closed before any write); a missing/non-array audit simply refuses.
+ */
+function pendingCarrierLinksToJob(carrierScriptJson: any, jobId: string): boolean {
+  const seriesGen =
+    carrierScriptJson && typeof carrierScriptJson === 'object'
+      ? (carrierScriptJson as any).series_generation
+      : undefined
+  const audit =
+    seriesGen && typeof seriesGen === 'object'
+      ? (seriesGen as any).belle_repair_audit
+      : undefined
+  if (!Array.isArray(audit)) return false
+  return audit.some((e) => String((e as any)?.jobId || '') === String(jobId))
+}
+
+/**
+ * Job-level gate for the narrow revival: FAILED status, a Belle-repair /
+ * package-completion failure class (error kind or retry action), and an
+ * allowed recovery step. Returns the candidate resume point when admitted,
+ * else null. Pure read of the job object — zero DB calls, zero writes.
+ */
+function pendingResumeJobGate(job: any, resumePointOverride?: string): string | null {
+  if (!job || String(job.status || '') !== 'failed') return null
+  const err =
+    job.error_json && typeof job.error_json === 'object'
+      ? (job.error_json as Record<string, unknown>)
+      : {}
+  const kind = String((err as Record<string, unknown>).kind || '')
+  const action = String((err as Record<string, unknown>).action || '')
+  const inClass =
+    (PENDING_RESUME_ALLOWED_KINDS as readonly string[]).includes(kind) ||
+    (PENDING_RESUME_ALLOWED_ACTIONS as readonly string[]).includes(action)
+  if (!inClass) return null
+  const point = String(
+    resumePointOverride ||
+      (err as Record<string, unknown>).safe_resume_point ||
+      job.current_step ||
+      ''
+  ).trim() || 'repair_belle_quality'
+  if (!(PENDING_RESUME_ALLOWED_STEPS as readonly string[]).includes(point)) return null
+  return point
+}
+
+/**
  * Admission check: FAILED status plus a NON-EMPTY pending_pin_resync list
- * on one of the job's candidate episode rows. Returns the first carrier
- * found, else null. A read miss refuses (no queue-jam); malformed throws
- * loudly (fail-closed before any write, like the drain path).
+ * or a non-empty pending_audio_delete intent on a repair-carrying episode
+ * row — the job's own candidate rows (job.story_id + state storyId)
+ * first, then a series-scoped fallback scan (same pattern as the
+ * recoverPendingPinDrains drain fallback) so a repair carrier on a third
+ * row is found. A carrier qualifies on pins OR audio intent alone
+ * (audio-only recovery is admitted with scope 'audio' when pins have
+ * cleared but the delete intent remains).
+ *
+ * Restricted to the verified Belle recovery operation: the carrier's
+ * belle_repair_audit must link to this job's repair (job id match), the
+ * job's failure class must be Belle-repair/package-completion, and the
+ * recovery step must be allowed. Unrelated failed jobs with leftover
+ * pending metadata are refused (null) with ZERO writes. A read miss
+ * refuses (no queue-jam); malformed pending throws loudly (fail-closed
+ * before any write, like the drain path).
  */
 export async function getPendingResumeAdmission(
   supabaseClient: any,
-  job: any
+  job: any,
+  opts?: { loadSeriesStories?: () => Promise<any[]>; resumePoint?: string }
 ): Promise<PendingResumeAdmission | null> {
-  if (!job || String(job.status || '') !== 'failed') return null
+  if (pendingResumeJobGate(job, opts?.resumePoint) === null) return null
+  const jobId = String(job?.id || '')
+  const consider = (storyId: string, scriptJson: any): PendingResumeAdmission | null => {
+    const pending = getPendingPinResync(scriptJson, storyId)
+    const audio = getPendingAudioDelete(scriptJson, storyId)
+    if (pending.length === 0 && audio.length === 0) return null
+    if (!pendingCarrierLinksToJob(scriptJson, jobId)) return null
+    return {
+      carrierStoryId: storyId,
+      pendingCount: pending.length,
+      audioIntentCount: audio.length,
+      scope: pending.length > 0 && audio.length > 0 ? 'both' : pending.length > 0 ? 'pins' : 'audio',
+    }
+  }
   for (const storyId of pendingResumeStoryCandidates(job)) {
     const { data, error } = await supabaseClient
       .from('stories')
@@ -1275,9 +1446,23 @@ export async function getPendingResumeAdmission(
       .eq('id', storyId)
       .single()
     if (error || !data) continue
-    const pending = getPendingPinResync((data as any).script_json, storyId)
-    if (pending.length > 0) {
-      return { carrierStoryId: storyId, pendingCount: pending.length }
+    const hit = consider(storyId, (data as any).script_json)
+    if (hit) return hit
+  }
+  if (typeof opts?.loadSeriesStories === 'function') {
+    let seriesStories: any[] = []
+    try {
+      seriesStories = (await opts.loadSeriesStories()) || []
+    } catch {
+      seriesStories = []
+    }
+    const seen = new Set(pendingResumeStoryCandidates(job))
+    for (const row of seriesStories) {
+      const carrierId = String((row as any)?.id || '').trim()
+      if (!carrierId || seen.has(carrierId)) continue
+      seen.add(carrierId)
+      const hit = consider(carrierId, (row as any)?.script_json)
+      if (hit) return hit
     }
   }
   return null
@@ -1285,8 +1470,9 @@ export async function getPendingResumeAdmission(
 
 /**
  * Bounded pending-pin resume (the exact function the run-next route calls
- * as thin glue from tryResumeBlockedBelleJob): admit a failed job whose
- * episode row carries pending pins, re-queue it to `resumePoint` (default:
+ * as thin glue from tryResumeBlockedBelleJob): admit a failed job with a
+ * verified Belle-repair pending carrier (ownership + failure class +
+ * recovery step; own rows first, series fallback), re-queue it to `resumePoint` (default:
  * the error's safe_resume_point, else the step it failed at) so the hoisted
  * drain-first recovery runs before any regen/rewrite, counting the attempt
  * on the job row. At the bound the job is re-marked terminal
@@ -1297,7 +1483,7 @@ export async function getPendingResumeAdmission(
 export async function resumePendingPinJob(
   supabaseClient: any,
   job: any,
-  opts?: { maxResumes?: number; resumePoint?: string }
+  opts?: { maxResumes?: number; resumePoint?: string; loadSeriesStories?: () => Promise<any[]> }
 ): Promise<PendingResumeOutcome> {
   const jobId = String(job?.id || 'unknown-job')
   if (!job || String(job.status || '') !== 'failed') {
@@ -1305,12 +1491,15 @@ export async function resumePendingPinJob(
   }
   let admission: PendingResumeAdmission | null = null
   try {
-    admission = await getPendingResumeAdmission(supabaseClient, job)
+    admission = await getPendingResumeAdmission(supabaseClient, job, {
+      loadSeriesStories: opts?.loadSeriesStories,
+      resumePoint: opts?.resumePoint,
+    })
   } catch {
     return { status: 'refused', jobId, reason: 'pending admission unreadable' }
   }
   if (!admission) {
-    return { status: 'refused', jobId, reason: 'no non-empty pending_pin_resync on job episode rows' }
+    return { status: 'refused', jobId, reason: 'no verified Belle-repair pending carrier for this job' }
   }
   const state =
     job.state_json && typeof job.state_json === 'object'
