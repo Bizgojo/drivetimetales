@@ -50,6 +50,7 @@ import {
   drainPendingPinResync,
   getPendingPinResync,
   persistBelleRepairAndInvalidateAudio,
+  persistPrePackagingAudioRecovery,
   recoverPendingPinDrains,
   reserveBelleRetryCount,
   resumePendingPinJob,
@@ -11069,6 +11070,10 @@ export async function POST(req: NextRequest) {
         // can validate/advance — a packaging success or a packaging
         // exception can no longer bypass cleanup of stranded Belle repair
         // state (drain/clear requests precede package requests on the wire).
+        // P5-CODEX-FIXES2-002: consume the pre-packaging recovery — when it
+        // deleted Belle audio, the affected episodes' required stages reset
+        // + the same-job continuation persists BEFORE runPackage reads the
+        // flags, so packaging cannot skip regen on stale completion flags.
         const { result } = await runSeriesPackagingWithPriorRecovery(supabase, {
           failingStoryId: String(
             lockedJob.story_id ||
@@ -11078,6 +11083,13 @@ export async function POST(req: NextRequest) {
           loadSeriesStories: lockedJob.series_id
             ? () => loadSeriesEpisodes(String(lockedJob.series_id))
             : undefined,
+          onRecovery: (recovery) =>
+            persistPrePackagingAudioRecovery(
+              supabase,
+              lockedJob,
+              recovery,
+              ownedJobFence(lockedJob, lockHolderId)
+            ),
           runPackage: () => runSeriesPackageCompletion(lockedJob, origin),
         })
         const logs = appendLog(lockedJob, result.success ? 'Completed series story packages' : 'Series story package completion failed', {

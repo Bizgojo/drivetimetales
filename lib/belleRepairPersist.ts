@@ -1031,9 +1031,11 @@ export async function recoverPendingPinDrains(
   const drainedCarriers = new Set<string>()
   const failingId = String(args.failingStoryId || '').trim()
   if (failingId) {
+    // episode_number rides along so downstream stage resets key episodes
+    // exactly as the series packager does (String(episodeNumber || id)).
     const { data, error } = await supabaseClient
       .from('stories')
-      .select('id,script_json')
+      .select('id,script_json,episode_number')
       .eq('id', failingId)
       .single()
     if (!error && data) {
@@ -1094,9 +1096,10 @@ export async function recoverPendingPinDrains(
       // Re-read the carrier fresh: the scan snapshot may be stale, and
       // draining (plus its prune) off a stale pending list could drop a
       // concurrently-added entry. Read blip -> skip without jamming.
+      // episode_number rides along (same stage-reset keying as above).
       const { data: fresh, error: freshError } = await supabaseClient
         .from('stories')
-        .select('id,script_json')
+        .select('id,script_json,episode_number')
         .eq('id', carrierId)
         .single()
       if (freshError || !fresh) continue
@@ -1134,19 +1137,162 @@ export async function recoverPendingPinDrains(
 }
 
 /**
+ * Pre-packaging audio-recovery state fix: fold an already-completed
+ * pre-packaging recovery into the job state BEFORE packaging can advance.
+ * Every resolution whose audio-delete intent actually removed files
+ * (deletedAudioFiles non-empty) invalidates the affected episode's
+ * required stages — Belle audio (seriesBelleGeneration) + mixing
+ * (seriesRenderFinalMix) + the package-completion flag itself
+ * (seriesCompleteStoryPackage, whose doneByEp the packager uses to SKIP
+ * episodes) — keyed exactly as the packager keys them
+ * (String(episodeNumber || repairedStoryId)), with allDone cleared so
+ * replacement audio + mixing are scheduled. Episodes without deleted
+ * audio keep their flags untouched. The removed files are recorded on the
+ * existing per-episode Belle-retry record (counts untouched — recovery
+ * consumes no attempt). Pure: no DB calls, no writes.
+ */
+export function applyAudioDeleteRecoveryToState(
+  baseState: any,
+  recovery: PendingDrainResolution[]
+): {
+  state: any
+  affectedKeys: string[]
+  deletedFilesByStory: Record<string, string[]>
+} {
+  const state =
+    baseState && typeof baseState === 'object'
+      ? { ...(baseState as Record<string, unknown>) }
+      : {}
+  const affectedKeys: string[] = []
+  const deletedFilesByStory: Record<string, string[]> = {}
+  const episodeByStory: Record<string, number | null> = {}
+  for (const res of recovery || []) {
+    const files = Array.isArray((res as any)?.deletedAudioFiles)
+      ? (res as PendingDrainResolution).deletedAudioFiles.map(String)
+      : []
+    if (files.length === 0) continue
+    const storyId = String((res as any)?.repairedStoryId || '').trim()
+    if (!storyId) continue
+    const key = String((res as any)?.episodeNumber || storyId)
+    if (!affectedKeys.includes(key)) affectedKeys.push(key)
+    deletedFilesByStory[storyId] = files
+    episodeByStory[storyId] = (res as any)?.episodeNumber ?? null
+  }
+  if (affectedKeys.length === 0) return { state, affectedKeys, deletedFilesByStory }
+  for (const stageKey of [
+    'seriesBelleGeneration',
+    'seriesRenderFinalMix',
+    'seriesCompleteStoryPackage',
+  ]) {
+    const priorStage =
+      (state as any)[stageKey] && typeof (state as any)[stageKey] === 'object'
+        ? { ...((state as any)[stageKey] as Record<string, unknown>) }
+        : {}
+    const priorDone =
+      priorStage.doneByEp && typeof priorStage.doneByEp === 'object'
+        ? { ...((priorStage.doneByEp as unknown) as Record<string, unknown>) }
+        : {}
+    for (const key of affectedKeys) priorDone[key] = false
+    ;(state as any)[stageKey] = {
+      ...priorStage,
+      doneByEp: priorDone,
+      allDone: false,
+      lastUpdatedAt: pendingResumeIsoNow(),
+    }
+  }
+  const pkg =
+    (state as any).seriesCompleteStoryPackage &&
+    typeof (state as any).seriesCompleteStoryPackage === 'object'
+      ? (state as any).seriesCompleteStoryPackage
+      : {}
+  const retry =
+    (pkg as any).belleRetry && typeof (pkg as any).belleRetry === 'object'
+      ? { ...((pkg as any).belleRetry as Record<string, unknown>) }
+      : {}
+  const byEpisode =
+    (retry as any).byEpisode && typeof (retry as any).byEpisode === 'object'
+      ? { ...((retry as any).byEpisode as Record<string, unknown>) }
+      : {}
+  for (const [storyId, files] of Object.entries(deletedFilesByStory)) {
+    const priorRecord =
+      (byEpisode as any)[storyId] && typeof (byEpisode as any)[storyId] === 'object'
+        ? { ...((byEpisode as any)[storyId] as Record<string, unknown>) }
+        : {}
+    ;(byEpisode as any)[storyId] = {
+      ...priorRecord,
+      episodeNumber: (priorRecord as any).episodeNumber ?? episodeByStory[storyId] ?? null,
+      deletedBelleFiles: files,
+      audioDeleteRecoveredAt: pendingResumeIsoNow(),
+    }
+  }
+  ;(state as any).seriesCompleteStoryPackage = {
+    ...pkg,
+    belleRetry: { ...retry, byEpisode },
+  }
+  return { state, affectedKeys, deletedFilesByStory }
+}
+
+/**
+ * Persist the pre-packaging audio-recovery continuation on the SAME job
+ * row (status untouched — the job keeps its lock and proceeds to
+ * packaging with corrected flags). No-op with zero writes when no
+ * resolution deleted audio (pin-only recoveries need no regen). A fenced
+ * miss or write error throws BEFORE packaging runs — fail-closed, so
+ * packaging can never advance on stale completion flags it cannot see
+ * persisted. On success the in-memory job's state_json is updated too,
+ * so a `runPackage` closure over the job object packs with the reset
+ * flags. Returns the affected episode keys (empty when no-op).
+ */
+export async function persistPrePackagingAudioRecovery(
+  supabaseClient: any,
+  job: any,
+  recovery: PendingDrainResolution[],
+  fence?: Record<string, unknown>
+): Promise<string[]> {
+  const jobId = String(job?.id || 'unknown-job')
+  const base =
+    job?.state_json && typeof job.state_json === 'object' ? job.state_json : {}
+  const { state, affectedKeys } = applyAudioDeleteRecoveryToState(base, recovery)
+  if (affectedKeys.length === 0) return []
+  const { data, error } = await supabaseClient
+    .from('production_jobs')
+    .update({ state_json: state })
+    .match(fence && typeof fence === 'object' ? fence : { id: jobId })
+    .select('id')
+  if (error) {
+    throw new Error(
+      `Failed to persist pre-packaging Belle audio recovery for job ${jobId}: ${error.message}`
+    )
+  }
+  if (!data || data.length === 0) {
+    throw new Error(
+      `Failed to persist pre-packaging Belle audio recovery for job ${jobId}: ` +
+        `zero rows matched (lock lost or concurrent update) — packaging NOT ` +
+        `advanced on stale completion flags`
+    )
+  }
+  if (job && typeof job === 'object') job.state_json = state
+  return affectedKeys
+}
+
+/**
  * Series packaging entry with PRIOR pending recovery (the exact function
  * the run-next route calls as thin glue around runSeriesPackageCompletion).
  * Runs recoverPendingPinDrains BEFORE `runPackage` can validate or advance
  * anything, so a packaging success — or a packaging exception — can no
- * longer bypass cleanup of stranded repair state. A recovery throw stays
- * fail-closed before packaging; a packaging throw propagates AFTER
- * recovery has completed (its effects are already in the DB).
+ * longer bypass cleanup of stranded repair state. The optional `onRecovery`
+ * hook runs after recovery and BEFORE packaging (the route's pre-packaging
+ * audio-recovery continuation lives here); its throw stays fail-closed
+ * before packaging. A recovery throw stays fail-closed before packaging;
+ * a packaging throw propagates AFTER recovery has completed (its effects
+ * are already in the DB).
  */
 export async function runSeriesPackagingWithPriorRecovery<T>(
   supabaseClient: any,
   args: {
     failingStoryId: string
     loadSeriesStories?: () => Promise<any[]>
+    onRecovery?: (recovery: PendingDrainResolution[]) => Promise<void> | void
     runPackage: () => Promise<T>
   }
 ): Promise<{ recovery: PendingDrainResolution[]; result: T }> {
@@ -1154,6 +1300,9 @@ export async function runSeriesPackagingWithPriorRecovery<T>(
     failingStoryId: args.failingStoryId,
     loadSeriesStories: args.loadSeriesStories,
   })
+  if (recovery.length > 0 && typeof args.onRecovery === 'function') {
+    await args.onRecovery(recovery)
+  }
   const result = await args.runPackage()
   return { recovery, result }
 }
@@ -1375,8 +1524,56 @@ function pendingCarrierLinksToJob(carrierScriptJson: any, jobId: string): boolea
 }
 
 /**
+ * Failure-class check for the narrow revival. Reads the PRODUCTION error
+ * shape, not just the narrow top-level fields:
+ *
+ *  1. top-level error_json.kind / error_json.action (the narrow kinds and
+ *     the series Belle-retry actions the route writes directly);
+ *  2. nested error_json.detail.kind / error_json.detail.action — failJob
+ *     persists a thrower's structuredErrorDetail under `detail` with
+ *     top-level kind `unknown_step` (e.g. the Belle retry-validation
+ *     thrower, whose detail carries kind
+ *     series_belle_retry_validation_failed);
+ *  3. the plain persistence/drain-error `unknown_step` variants — lib
+ *     persist/drain throws carry no structured detail, but every one
+ *     names Belle in the message (failJob persists them verbatim as
+ *     top-level kind unknown_step).
+ *
+ * Paths 2–3 still need the carrier gates below (audit job-id linkage +
+ * non-empty pending/audio + allowed step), so an unrelated unknown_step
+ * with no Belle linkage stays refused. Pure read — zero DB calls.
+ */
+function pendingResumeFailureClass(err: Record<string, unknown>): boolean {
+  const kind = String(err.kind || '')
+  const action = String(err.action || '')
+  if (
+    (PENDING_RESUME_ALLOWED_KINDS as readonly string[]).includes(kind) ||
+    (PENDING_RESUME_ALLOWED_ACTIONS as readonly string[]).includes(action)
+  ) {
+    return true
+  }
+  const detail = err.detail
+  if (detail && typeof detail === 'object') {
+    const d = detail as Record<string, unknown>
+    const detailKind = String(d.kind || '')
+    const detailAction = String(d.action || '')
+    if (
+      (PENDING_RESUME_ALLOWED_KINDS as readonly string[]).includes(detailKind) ||
+      (PENDING_RESUME_ALLOWED_ACTIONS as readonly string[]).includes(detailAction)
+    ) {
+      return true
+    }
+  }
+  if (kind === 'unknown_step' && /belle/i.test(String(err.message || ''))) {
+    return true
+  }
+  return false
+}
+
+/**
  * Job-level gate for the narrow revival: FAILED status, a Belle-repair /
- * package-completion failure class (error kind or retry action), and an
+ * package-completion failure class (production error shape: top-level,
+ * nested detail, or plain Belle drain/persist unknown_step), and an
  * allowed recovery step. Returns the candidate resume point when admitted,
  * else null. Pure read of the job object — zero DB calls, zero writes.
  */
@@ -1386,12 +1583,7 @@ function pendingResumeJobGate(job: any, resumePointOverride?: string): string | 
     job.error_json && typeof job.error_json === 'object'
       ? (job.error_json as Record<string, unknown>)
       : {}
-  const kind = String((err as Record<string, unknown>).kind || '')
-  const action = String((err as Record<string, unknown>).action || '')
-  const inClass =
-    (PENDING_RESUME_ALLOWED_KINDS as readonly string[]).includes(kind) ||
-    (PENDING_RESUME_ALLOWED_ACTIONS as readonly string[]).includes(action)
-  if (!inClass) return null
+  if (!pendingResumeFailureClass(err)) return null
   const point = String(
     resumePointOverride ||
       (err as Record<string, unknown>).safe_resume_point ||
