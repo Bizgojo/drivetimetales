@@ -17,11 +17,14 @@
  *     unknown_step (no Belle linkage, no pending carrier) is refused with
  *     zero writes — even when stale pending metadata from ANOTHER job is
  *     present.
- *  2. pre-packaging recovery is consumed: an audio-deleting recovery resets
- *     the affected episodes' required stages (Belle audio + mixing +
- *     package completion) and persists the same-job continuation BEFORE
- *     packaging advances. Unaffected episodes keep their flags; packaging
- *     cannot skip the affected episode on stale flags.
+ *  2. pre-packaging recovery CONTINUES (never packages same-tick): an
+ *     audio-deleting recovery deletes the stale files, then persists a
+ *     same-job continuation to Belle generation (status/step transition
+ *     off complete_story_package + affected Belle/mix/package flag
+ *     resets) and returns BEFORE any packaging call. Unaffected episodes
+ *     keep their flags, all retry counts are preserved, and a
+ *     continuation-write failure leaves pending entries intact so a later
+ *     tick retries the continuation (fail-closed, never half-persisted).
  */
 import { createClient } from '@supabase/supabase-js'
 import {
@@ -29,6 +32,7 @@ import {
   getPendingResumeAdmission,
   persistPrePackagingAudioRecovery,
   resumePendingPinJob,
+  runPrePackagingRecoveryWithContinuation,
   runSeriesPackagingWithPriorRecovery,
   setPendingAudioDelete,
   setPendingPinResync,
@@ -472,72 +476,112 @@ describe('(2) pre-packaging audio recovery resets stages + persists before packa
       storyId: EP1_ID,
       seriesBelleGeneration: { doneByEp: { '1': true, '2': true }, allDone: true },
       seriesRenderFinalMix: { doneByEp: { '1': true, '2': true }, allDone: true },
-      seriesCompleteStoryPackage: { doneByEp: { '1': true, '2': true }, allDone: true },
+      seriesCompleteStoryPackage: {
+        doneByEp: { '1': true, '2': true },
+        allDone: true,
+        belleRetry: {
+          byEpisode: {
+            [EP1_ID]: { count: 2, max: 5, episodeNumber: 1 },
+            [EP2_ID]: { count: 1, max: 5, episodeNumber: 2 },
+          },
+        },
+      },
     }
   }
 
-  test('audio-deleting recovery schedules regen, preserves unaffected flags, packaging sees resets', async () => {
-    const emu = makeEmulator(audioSeeds(), {
-      [JOB_ID]: seedFailedJob({ status: 'running', state_json: packagingState() }),
+  function lockedPackagingJob() {
+    return seedFailedJob({
+      status: 'running',
+      locked_by: 'holder-1',
+      locked_at: '2026-10-22T16:00:00.000Z',
+      state_json: packagingState(),
+      error_json: null,
     })
+  }
+
+  function storageWithStaleOutro() {
+    return { [`asc3/${EP1_ID}`]: ['outro.mp3'] }
+  }
+
+  test('(a) audio recovery writes the same-job continuation + makes ZERO packaging calls that tick', async () => {
+    const emu = makeEmulator(audioSeeds(), { [JOB_ID]: lockedPackagingJob() }, storageWithStaleOutro())
     const job = emu.jobs.get(JOB_ID)
-    let packagedWith: any = null
-    const { recovery, result } = await runSeriesPackagingWithPriorRecovery(
-      emu.client,
-      {
-        failingStoryId: EP1_ID,
-        onRecovery: (rec) =>
-          persistPrePackagingAudioRecovery(emu.client, job, rec, { id: JOB_ID }),
-        runPackage: async () => {
-          // Stand-in for runSeriesPackageCompletion: reads the job's live
-          // state exactly like the real packager (doneByEp skip) and
-          // records what it observed.
-          packagedWith = clone(job.state_json)
-          const doneByEp =
-            (job.state_json?.seriesCompleteStoryPackage?.doneByEp as Record<string, boolean>) || {}
-          const packaged = ['1', '2'].filter((k) => !doneByEp[k])
-          return { success: true, packaged } as any
-        },
-      }
-    )
-    expect((result as any).success).toBe(true)
-    expect(recovery).toHaveLength(1)
-    expect(recovery[0].repairedStoryId).toBe(EP1_ID)
+    // Route-glue stand-in: packaging runs ONLY when the tick did not
+    // continue (mirrors the run-next branch exactly).
+    let packagingCalls = 0
+    const pre = await runPrePackagingRecoveryWithContinuation(emu.client, {
+      failingStoryId: EP1_ID,
+      job,
+      fence: { id: JOB_ID, locked_by: 'holder-1', status: 'running' },
+    })
+    if (!pre.continued) packagingCalls += 1
+    expect(pre.continued).toBe(true)
+    expect(pre.affectedKeys).toEqual(['1'])
+    expect(packagingCalls).toBe(0)
+    const rec = pre.recovery.find((r) => r.repairedStoryId === EP1_ID)
     // The stale Belle audio file was actually deleted…
-    expect(recovery[0].deletedAudioFiles).toEqual([`asc3/${EP1_ID}/outro.mp3`])
+    expect(rec?.deletedAudioFiles).toEqual([`asc3/${EP1_ID}/outro.mp3`])
     expect(storageDeletes(emu)).toHaveLength(1)
 
-    // …so replacement Belle audio + mixing are scheduled: the affected
-    // episode's required stages reset, continuation persisted to the job.
-    const cont = jobPatches(emu)
-    expect(cont.length).toBeGreaterThan(0)
-    const persisted = JSON.parse(cont[cont.length - 1].body || '{}').state_json
+    // …and the SAME job continued to Belle generation: status/step
+    // transition + affected flag resets on the captured job PATCH.
+    const conts = jobPatches(emu).filter((r) =>
+      String(r.body || '').includes('series_generate_belle_assets')
+    )
+    expect(jobPatches(emu)).toHaveLength(1)
+    expect(conts).toHaveLength(1)
+    const contBody = JSON.parse(conts[0].body || '{}')
+    expect(contBody.status).toBe('queued')
+    expect(contBody.current_step).toBe('series_generate_belle_assets')
+    expect(contBody.locked_by).toBeNull()
+    expect(contBody.locked_at).toBeNull()
+    const persisted = contBody.state_json
     for (const stage of ['seriesBelleGeneration', 'seriesRenderFinalMix', 'seriesCompleteStoryPackage']) {
       expect(persisted[stage].doneByEp['1']).toBe(false)
       expect(persisted[stage].allDone).toBe(false)
       // Unaffected episode keeps its completion flags.
       expect(persisted[stage].doneByEp['2']).toBe(true)
     }
+    // All retry counts preserved; deleted files recorded on the affected
+    // episode's record only.
+    expect(persisted.seriesCompleteStoryPackage.belleRetry.byEpisode[EP1_ID].count).toBe(2)
+    expect(persisted.seriesCompleteStoryPackage.belleRetry.byEpisode[EP2_ID].count).toBe(1)
     expect(persisted.seriesCompleteStoryPackage.belleRetry.byEpisode[EP1_ID].deletedBelleFiles).toEqual([
       `asc3/${EP1_ID}/outro.mp3`,
     ])
+    expect(
+      persisted.seriesCompleteStoryPackage.belleRetry.byEpisode[EP2_ID].deletedBelleFiles
+    ).toBeUndefined()
+    // Continuation log entry persisted on the same PATCH.
+    const logs = contBody.logs
+    expect(Array.isArray(logs)).toBe(true)
+    expect(String(logs[logs.length - 1].message)).toMatch(/continuation/)
 
-    // Packaging observed the resets — the affected episode is reprocessed,
-    // never skipped on its stale `true` flag.
-    expect(packagedWith.seriesCompleteStoryPackage.doneByEp['1']).toBe(false)
-    expect(packagedWith.seriesCompleteStoryPackage.doneByEp['2']).toBe(true)
-    expect((result as any).packaged).toContain('1')
+    // In-memory job mirrors the persisted continuation.
+    expect(job.status).toBe('queued')
+    expect(job.current_step).toBe('series_generate_belle_assets')
+    expect(job.locked_by).toBeNull()
+    expect(job.state_json.seriesCompleteStoryPackage.doneByEp).toEqual({ '1': false, '2': true })
 
-    // The continuation write precedes the package read on the wire.
-    const contIdx = emu.requests.findIndex(
-      (r) => r.method === 'PATCH' && r.url.includes('/rest/v1/production_jobs')
-    )
-    expect(contIdx).toBeGreaterThan(-1)
+    // Wire order: storage DELETE → continuation PATCH → stories prunes
+    // (pending is pruned only AFTER the continuation lands).
     const deleteIdx = emu.requests.findIndex(
       (r) => r.method === 'DELETE' && r.url.includes('/storage/')
     )
+    const contIdx = emu.requests.indexOf(conts[0])
     expect(deleteIdx).toBeGreaterThan(-1)
+    expect(contIdx).toBeGreaterThan(-1)
     expect(deleteIdx).toBeLessThan(contIdx)
+    const pruneIdxs = emu.requests
+      .map((r, i) => ({ r, i }))
+      .filter(({ r }) => r.method === 'PATCH' && r.url.includes('/rest/v1/stories'))
+      .map(({ i }) => i)
+    expect(pruneIdxs.length).toBeGreaterThan(0)
+    for (const i of pruneIdxs) expect(i).toBeGreaterThan(contIdx)
+    // Pending fully pruned after the continuation landed.
+    expect(
+      emu.stories.get(EP1_ID).script_json.series_generation.pending_audio_delete
+    ).toEqual([])
 
     // Unaffected episode row untouched: no story write names it, its row
     // is byte-identical to the seed.
@@ -547,6 +591,142 @@ describe('(2) pre-packaging audio recovery resets stages + persists before packa
     expect(emu.stories.get(EP2_ID).script_json).toEqual(
       { series_generation: { generated_title: EP2_ID } }
     )
+    expectCleanWire(emu)
+  })
+
+  test('(b) subsequent ticks reach replacement Belle audio → affected mix → packaging in order', async () => {
+    const emu = makeEmulator(audioSeeds(), { [JOB_ID]: lockedPackagingJob() }, storageWithStaleOutro())
+    const job = emu.jobs.get(JOB_ID)
+    let packagingCalls = 0
+    // Tick 1: recovery deletes + continuation (zero packaging calls).
+    const pre = await runPrePackagingRecoveryWithContinuation(emu.client, {
+      failingStoryId: EP1_ID,
+      job,
+      fence: { id: JOB_ID, locked_by: 'holder-1', status: 'running' },
+    })
+    expect(pre.continued).toBe(true)
+    if (!pre.continued) packagingCalls += 1
+    expect(packagingCalls).toBe(0)
+    const contIdx = emu.requests.findIndex((r) =>
+      r.method === 'PATCH' &&
+        r.url.includes('/rest/v1/production_jobs') &&
+        String(r.body || '').includes('series_generate_belle_assets')
+    )
+    expect(contIdx).toBeGreaterThan(-1)
+
+    // Tick 2: replacement Belle audio lands for the reset episode (story
+    // audio write) and the Belle stage flag flips back.
+    const NEW_OUTRO = `https://cdn.example.com/asc3/${EP1_ID}/outro-v2.mp3`
+    await emu.client.from('stories').update({ outro_audio_url: NEW_OUTRO }).eq('id', EP1_ID).select('id')
+    const belleRead = await emu.client.from('production_jobs').select('state_json').eq('id', JOB_ID).single()
+    const belleState = clone((belleRead as any).data.state_json)
+    belleState.seriesBelleGeneration.doneByEp['1'] = true
+    await emu.client.from('production_jobs').update({ state_json: belleState }).eq('id', JOB_ID).select('id')
+
+    // Tick 3: affected mix (story mix write + mix flag flip).
+    const NEW_MIX = `https://cdn.example.com/asc3/${EP1_ID}/mix-v2.mp3`
+    await emu.client.from('stories').update({ story_audio_url: NEW_MIX }).eq('id', EP1_ID).select('id')
+    const mixRead = await emu.client.from('production_jobs').select('state_json').eq('id', JOB_ID).single()
+    const mixState = clone((mixRead as any).data.state_json)
+    mixState.seriesRenderFinalMix.doneByEp['1'] = true
+    await emu.client.from('production_jobs').update({ state_json: mixState }).eq('id', JOB_ID).select('id')
+
+    // Tick 4: packaging tick — pre-packaging recovery finds nothing
+    // pending, does NOT continue, packaging runs and packs exactly the
+    // reset episode (unaffected ep stays skipped on its preserved flag).
+    let packaged: string[] = []
+    const pre4 = await runPrePackagingRecoveryWithContinuation(emu.client, {
+      failingStoryId: EP1_ID,
+      job: emu.jobs.get(JOB_ID),
+      fence: { id: JOB_ID },
+    })
+    expect(pre4.continued).toBe(false)
+    expect(pre4.recovery).toEqual([])
+    if (!pre4.continued) {
+      packagingCalls += 1
+      const live = emu.jobs.get(JOB_ID).state_json
+      const doneByEp =
+        (live?.seriesCompleteStoryPackage?.doneByEp as Record<string, boolean>) || {}
+      packaged = ['1', '2'].filter((k) => !doneByEp[k])
+      // Package-request marker on the wire.
+      await emu.client.from('production_jobs').select('id').eq('id', JOB_ID).limit(1)
+    }
+    expect(packagingCalls).toBe(1)
+    expect(packaged).toEqual(['1'])
+
+    // Captured-request sequence: continuation → replacement Belle audio →
+    // affected mix → packaging marker, in order.
+    const belleAudioIdx = emu.requests.findIndex((r) => String(r.body || '').includes('outro-v2'))
+    const mixAudioIdx = emu.requests.findIndex((r) => String(r.body || '').includes('mix-v2'))
+    const markerIdx = emu.requests.findIndex(
+      (r, i) =>
+        i > mixAudioIdx && r.method === 'GET' && r.url.includes('/rest/v1/production_jobs')
+    )
+    expect(belleAudioIdx).toBeGreaterThan(contIdx)
+    expect(mixAudioIdx).toBeGreaterThan(belleAudioIdx)
+    expect(markerIdx).toBeGreaterThan(mixAudioIdx)
+    // Retry counts survived every tick.
+    const finalRetry = emu.jobs.get(JOB_ID).state_json.seriesCompleteStoryPackage.belleRetry.byEpisode
+    expect(finalRetry[EP1_ID].count).toBe(2)
+    expect(finalRetry[EP2_ID].count).toBe(1)
+    expectCleanWire(emu)
+  })
+
+  test('(c) continuation-write failure leaves pending entries intact for retry', async () => {
+    const NEW_HASH = hashScript(AFTER_SCRIPT)
+    const emu = makeEmulator(
+      {
+        [EP1_ID]: seedRow(
+          EP1_ID,
+          scriptJsonWith({
+            pending: [{ dependentStoryId: EP2_ID, priorStoryId: EP1_ID, newPinHash: NEW_HASH }],
+            audio: [`https://cdn.example.com/asc3/${EP1_ID}/outro.mp3`],
+            storyId: EP1_ID,
+          }),
+          1
+        ),
+        [EP2_ID]: seedRow(
+          EP2_ID,
+          { series_generation: { generated_title: EP2_ID } },
+          2
+        ),
+      },
+      { [JOB_ID]: lockedPackagingJob() },
+      storageWithStaleOutro()
+    )
+    const job = emu.jobs.get(JOB_ID)
+    // Fenced miss (lock holder mismatch): the continuation write fails.
+    await expect(
+      runPrePackagingRecoveryWithContinuation(emu.client, {
+        failingStoryId: EP1_ID,
+        job,
+        fence: { id: JOB_ID, locked_by: 'someone-else', status: 'running' },
+      })
+    ).rejects.toThrow(/Failed to persist pre-packaging Belle audio recovery/)
+    // Pending entries NOT cleared: audio intent AND pin resync survive for
+    // a later tick to retry the continuation.
+    const sj = emu.stories.get(EP1_ID).script_json.series_generation
+    expect(sj.pending_audio_delete).toEqual([`https://cdn.example.com/asc3/${EP1_ID}/outro.mp3`])
+    expect(sj.pending_pin_resync).toHaveLength(1)
+    expect(sj.pending_pin_resync[0]).toMatchObject({
+      dependentStoryId: EP2_ID,
+      priorStoryId: EP1_ID,
+      newPinHash: NEW_HASH,
+    })
+    // Zero story-row writes: no prune was attempted before the
+    // continuation, so no half-persisted state lost the recovery.
+    expect(
+      patchRequests(emu).filter((r) => r.url.includes('/rest/v1/stories'))
+    ).toHaveLength(0)
+    // The continuation attempt hit the wire once but changed nothing: the
+    // job still sits locked at packaging for the retry tick.
+    expect(jobPatches(emu)).toHaveLength(1)
+    expect(emu.jobs.get(JOB_ID).status).toBe('running')
+    expect(emu.jobs.get(JOB_ID).current_step).toBe('complete_story_package')
+    expect(emu.jobs.get(JOB_ID).state_json).toEqual(packagingState())
+    // The storage delete is idempotent — a retry re-issues the no-op
+    // remove before re-attempting the continuation.
+    expect(storageDeletes(emu)).toHaveLength(1)
     expectCleanWire(emu)
   })
 

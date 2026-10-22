@@ -50,11 +50,11 @@ import {
   drainPendingPinResync,
   getPendingPinResync,
   persistBelleRepairAndInvalidateAudio,
-  persistPrePackagingAudioRecovery,
+  PRE_PACKAGING_CONTINUATION_STEP,
   recoverPendingPinDrains,
   reserveBelleRetryCount,
   resumePendingPinJob,
-  runSeriesPackagingWithPriorRecovery,
+  runPrePackagingRecoveryWithContinuation,
   setPendingPinResync,
 } from '@/lib/belleRepairPersist'
 // COVER-PIPELINE-DECOUPLE-001: decoupled cover phase (tasks recorded right
@@ -11070,11 +11070,17 @@ export async function POST(req: NextRequest) {
         // can validate/advance — a packaging success or a packaging
         // exception can no longer bypass cleanup of stranded Belle repair
         // state (drain/clear requests precede package requests on the wire).
-        // P5-CODEX-FIXES2-002: consume the pre-packaging recovery — when it
-        // deleted Belle audio, the affected episodes' required stages reset
-        // + the same-job continuation persists BEFORE runPackage reads the
-        // flags, so packaging cannot skip regen on stale completion flags.
-        const { result } = await runSeriesPackagingWithPriorRecovery(supabase, {
+        // P5-CONTINUATION-001: when the recovery deleted Belle audio, the
+        // current tick does NOT package. Instead the same job continues to
+        // Belle generation (status/step transition + affected Belle/mix/
+        // package flags reset, unaffected flags and retry counts
+        // preserved) and this tick returns BEFORE any packaging call —
+        // replacement audio + mixing run on subsequent ticks. Pin-only (or
+        // empty) recovery drains with zero job writes and packaging
+        // proceeds this tick. A continuation-write failure throws with
+        // pending entries intact, so a later tick retries the
+        // continuation (fail-closed, never half-persisted).
+        const preRecovery = await runPrePackagingRecoveryWithContinuation(supabase, {
           failingStoryId: String(
             lockedJob.story_id ||
               (lockedJob.state_json as any)?.storyId ||
@@ -11083,15 +11089,25 @@ export async function POST(req: NextRequest) {
           loadSeriesStories: lockedJob.series_id
             ? () => loadSeriesEpisodes(String(lockedJob.series_id))
             : undefined,
-          onRecovery: (recovery) =>
-            persistPrePackagingAudioRecovery(
-              supabase,
-              lockedJob,
-              recovery,
-              ownedJobFence(lockedJob, lockHolderId)
-            ),
-          runPackage: () => runSeriesPackageCompletion(lockedJob, origin),
+          job: lockedJob,
+          fence: ownedJobFence(lockedJob, lockHolderId),
         })
+        if (preRecovery.continued) {
+          return NextResponse.json({
+            success: true,
+            continued: true,
+            jobId: lockedJob.id,
+            currentStep: step,
+            nextStep: PRE_PACKAGING_CONTINUATION_STEP,
+            status: lockedJob.status,
+            affectedKeys: preRecovery.affectedKeys,
+            repairedStories: preRecovery.recovery
+              .filter((r) => (r.deletedAudioFiles || []).length > 0)
+              .map((r) => r.repairedStoryId),
+            logs: lockedJob.logs,
+          })
+        }
+        const result = await runSeriesPackageCompletion(lockedJob, origin)
         const logs = appendLog(lockedJob, result.success ? 'Completed series story packages' : 'Series story package completion failed', {
           seriesId: result.seriesId || lockedJob.series_id,
           processedEpisodes: result.processedEpisodes,

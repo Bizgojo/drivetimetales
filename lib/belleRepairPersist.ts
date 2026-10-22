@@ -670,13 +670,14 @@ export function audioDeletePathsForStory(storyId: string, urls: string[]): strin
 }
 
 /**
- * Finish a pending audio-delete intent: remove EXACTLY the scoped storage
- * paths derived from `urls` (no bucket listing — the intent names the
- * files), then clear the intent list via a CAS-guarded script_json-only
- * write (concurrent additions unioned back on conflict, never dropped).
- * Empty intent is a pure no-op (zero storage calls). Returns removed paths.
+ * Storage-only half of the audio-delete drain: remove EXACTLY the scoped
+ * storage paths derived from `urls` (no bucket listing — the intent names
+ * the files). Performs ZERO DB writes, so the pending intent list stays
+ * intact in the DB — the caller must clear it (clearPendingAudioDelete)
+ * only after its own continuation state is durably persisted. Empty
+ * intent is a pure no-op (zero storage calls). Returns removed paths.
  */
-export async function drainPendingAudioDeletes(
+export async function removePendingAudioFiles(
   supabaseClient: any,
   storyId: string,
   urls?: string[]
@@ -710,6 +711,39 @@ export async function drainPendingAudioDeletes(
       )
     }
   }
+  return paths
+}
+
+/**
+ * Finish a pending audio-delete intent: remove EXACTLY the scoped storage
+ * paths derived from `urls` (no bucket listing — the intent names the
+ * files), then clear the intent list via a CAS-guarded script_json-only
+ * write (concurrent additions unioned back on conflict, never dropped).
+ * Empty intent is a pure no-op (zero storage calls). Returns removed paths.
+ */
+export async function drainPendingAudioDeletes(
+  supabaseClient: any,
+  storyId: string,
+  urls?: string[]
+): Promise<string[]> {
+  const id = String(storyId)
+  let intent = urls ? [...urls] : null
+  if (!intent) {
+    const { data: row, error: readError } = await supabaseClient
+      .from('stories')
+      .select('id,script_json')
+      .eq('id', id)
+      .single()
+    if (readError || !row) {
+      throw new Error(
+        `Failed to read Belle pending audio-delete intent on ${id}: ` +
+          `${readError?.message || 'missing row'}`
+      )
+    }
+    intent = getPendingAudioDelete((row as any).script_json, id)
+  }
+  if (!intent || intent.length === 0) return []
+  const paths = await removePendingAudioFiles(supabaseClient, id, intent)
   // Subtract ONLY the intents this run processed (by identity): an intent
   // added concurrently between the DELETE above and the clearing read
   // below is absent from `intent`, so it survives the clear and its file
@@ -732,7 +766,7 @@ export async function drainPendingAudioDeletes(
  * the subtraction is recomputed against a new fresh read and retried once.
  * A second zero-row conflict throws loudly with the row untouched.
  */
-async function clearPendingAudioDelete(
+export async function clearPendingAudioDelete(
   supabaseClient: any,
   storyId: string,
   processedUrls: string[]
@@ -1020,15 +1054,36 @@ function rowEpisodeNumber(row: any): number | null {
  * consumes no attempt (this function never touches retry counts; job-row
  * writes are the caller's).
  */
-export async function recoverPendingPinDrains(
+/**
+ * One pre-packaging recovery carrier found by read-only discovery: which
+ * row carries pending pin-resync entries and/or a pending audio-delete
+ * intent, how it was found, and the exact lists read (fresh — never a
+ * stale scan snapshot for the drain inputs).
+ */
+export interface PrePackagingRecoveryCarrier {
+  storyId: string
+  via: 'failing-row' | 'series-scan'
+  episodeNumber: number | null
+  pendingPins: PendingPinResyncEntry[]
+  audioUrls: string[]
+}
+
+/**
+ * Read-only discovery for the pre-packaging recovery path: resolves the
+ * drain candidates exactly as recoverPendingPinDrains does (failing-episode
+ * row first, then a lazy series-scoped scan ONLY when the failing row
+ * carried nothing), with ZERO writes. Malformed lists throw loudly here —
+ * before any drain, delete, or continuation write — with pending intact.
+ * Read blips fall through (no queue-jam) just like the drain path.
+ */
+export async function collectPrePackagingRecoveryCarriers(
   supabaseClient: any,
   args: {
     failingStoryId: string
     loadSeriesStories?: () => Promise<any[]>
   }
-): Promise<PendingDrainResolution[]> {
-  const out: PendingDrainResolution[] = []
-  const drainedCarriers = new Set<string>()
+): Promise<PrePackagingRecoveryCarrier[]> {
+  const carriers: PrePackagingRecoveryCarrier[] = []
   const failingId = String(args.failingStoryId || '').trim()
   if (failingId) {
     // episode_number rides along so downstream stage resets key episodes
@@ -1048,40 +1103,27 @@ export async function recoverPendingPinDrains(
         failingId
       )
       if (failingPending.length > 0 || failingAudio.length > 0) {
-        const deletedAudio = await drainPendingAudioDeletes(
-          supabaseClient,
-          failingId,
-          failingAudio
-        )
-        const drained = await drainPendingPinResync(
-          supabaseClient,
-          failingId,
-          failingPending
-        )
-        drainedCarriers.add(failingId)
-        out.push({
-          repairedStoryId: failingId,
-          drainedDependentIds: drained,
+        carriers.push({
+          storyId: failingId,
           via: 'failing-row',
           episodeNumber: rowEpisodeNumber(data),
-          deletedAudioFiles: deletedAudio,
+          pendingPins: failingPending,
+          audioUrls: failingAudio,
         })
       }
     }
   }
-  if (typeof args.loadSeriesStories === 'function') {
+  if (typeof args.loadSeriesStories === 'function' && carriers.length === 0) {
     let seriesStories: any[] = []
     // Lazy fallback: only scan when the failing row carried nothing.
-    if (drainedCarriers.size === 0) {
-      try {
-        seriesStories = (await args.loadSeriesStories()) || []
-      } catch {
-        seriesStories = []
-      }
+    try {
+      seriesStories = (await args.loadSeriesStories()) || []
+    } catch {
+      seriesStories = []
     }
     for (const row of seriesStories) {
       const carrierId = String((row as any)?.id || '').trim()
-      if (!carrierId || drainedCarriers.has(carrierId)) continue
+      if (!carrierId) continue
       const scanned = getPendingPinResync(
         (row as any)?.script_json,
         carrierId
@@ -1112,26 +1154,49 @@ export async function recoverPendingPinDrains(
         carrierId
       )
       if (freshPending.length === 0 && freshAudio.length === 0) continue
-      const deletedAudio = await drainPendingAudioDeletes(
-        supabaseClient,
-        carrierId,
-        freshAudio
-      )
-      const drained = await drainPendingPinResync(
-        supabaseClient,
-        carrierId,
-        freshPending
-      )
-      drainedCarriers.add(carrierId)
-      out.push({
-        repairedStoryId: carrierId,
-        drainedDependentIds: drained,
+      carriers.push({
+        storyId: carrierId,
         via: 'series-scan',
         episodeNumber:
           rowEpisodeNumber(row) ?? rowEpisodeNumber(fresh),
-        deletedAudioFiles: deletedAudio,
+        pendingPins: freshPending,
+        audioUrls: freshAudio,
       })
     }
+  }
+  return carriers
+}
+
+export async function recoverPendingPinDrains(
+  supabaseClient: any,
+  args: {
+    failingStoryId: string
+    loadSeriesStories?: () => Promise<any[]>
+  }
+): Promise<PendingDrainResolution[]> {
+  const carriers = await collectPrePackagingRecoveryCarriers(
+    supabaseClient,
+    args
+  )
+  const out: PendingDrainResolution[] = []
+  for (const carrier of carriers) {
+    const deletedAudio = await drainPendingAudioDeletes(
+      supabaseClient,
+      carrier.storyId,
+      carrier.audioUrls
+    )
+    const drained = await drainPendingPinResync(
+      supabaseClient,
+      carrier.storyId,
+      carrier.pendingPins
+    )
+    out.push({
+      repairedStoryId: carrier.storyId,
+      drainedDependentIds: drained,
+      via: carrier.via,
+      episodeNumber: carrier.episodeNumber,
+      deletedAudioFiles: deletedAudio,
+    })
   }
   return out
 }
@@ -1234,29 +1299,66 @@ export function applyAudioDeleteRecoveryToState(
 
 /**
  * Persist the pre-packaging audio-recovery continuation on the SAME job
- * row (status untouched — the job keeps its lock and proceeds to
- * packaging with corrected flags). No-op with zero writes when no
- * resolution deleted audio (pin-only recoveries need no regen). A fenced
- * miss or write error throws BEFORE packaging runs — fail-closed, so
- * packaging can never advance on stale completion flags it cannot see
- * persisted. On success the in-memory job's state_json is updated too,
- * so a `runPackage` closure over the job object packs with the reset
- * flags. Returns the affected episode keys (empty when no-op).
+ * row. Without `transition` (legacy): status untouched — the job keeps
+ * its lock and proceeds to packaging with corrected flags. With
+ * `transition` (continuation): the SAME single PATCH also moves
+ * status/current_step off packaging toward Belle generation, appends the
+ * log entry, and releases the lock — the tick returns WITHOUT packaging.
+ * No-op with zero writes when no resolution deleted audio (pin-only
+ * recoveries need no regen). A fenced miss or write error throws BEFORE
+ * any pending prune or packaging runs — fail-closed, so packaging can
+ * never advance on stale completion flags it cannot see persisted, and
+ * pending entries survive for a later tick to retry the continuation.
+ * On success the in-memory job's row fields are updated too. Returns the
+ * affected episode keys (empty when no-op).
  */
 export async function persistPrePackagingAudioRecovery(
   supabaseClient: any,
   job: any,
   recovery: PendingDrainResolution[],
-  fence?: Record<string, unknown>
+  fence?: Record<string, unknown>,
+  transition?: {
+    status?: string
+    currentStep?: string
+    releaseLock?: boolean
+    logMessage?: string
+    logDetails?: Record<string, unknown>
+  }
 ): Promise<string[]> {
   const jobId = String(job?.id || 'unknown-job')
   const base =
     job?.state_json && typeof job.state_json === 'object' ? job.state_json : {}
   const { state, affectedKeys } = applyAudioDeleteRecoveryToState(base, recovery)
   if (affectedKeys.length === 0) return []
+  const update: Record<string, unknown> = { state_json: state }
+  if (transition?.status) update.status = transition.status
+  if (transition?.currentStep) update.current_step = transition.currentStep
+  let logs: unknown[] | null = null
+  if (transition?.logMessage) {
+    const priorLogs = Array.isArray(job?.logs) ? job.logs : []
+    logs = [
+      ...priorLogs,
+      {
+        at: pendingResumeIsoNow(),
+        step:
+          job?.current_step !== undefined && job?.current_step !== null
+            ? String(job.current_step)
+            : null,
+        message: transition.logMessage,
+        ...(transition.logDetails && typeof transition.logDetails === 'object'
+          ? transition.logDetails
+          : {}),
+      },
+    ]
+    update.logs = logs
+  }
+  if (transition?.releaseLock) {
+    update.locked_at = null
+    update.locked_by = null
+  }
   const { data, error } = await supabaseClient
     .from('production_jobs')
-    .update({ state_json: state })
+    .update(update)
     .match(fence && typeof fence === 'object' ? fence : { id: jobId })
     .select('id')
   if (error) {
@@ -1271,8 +1373,162 @@ export async function persistPrePackagingAudioRecovery(
         `advanced on stale completion flags`
     )
   }
-  if (job && typeof job === 'object') job.state_json = state
+  if (job && typeof job === 'object') {
+    job.state_json = state
+    if (transition?.status) job.status = transition.status
+    if (transition?.currentStep) job.current_step = transition.currentStep
+    if (logs) job.logs = logs
+    if (transition?.releaseLock) {
+      job.locked_at = null
+      job.locked_by = null
+    }
+  }
   return affectedKeys
+}
+
+/**
+ * Same-job continuation step for the pre-packaging audio recovery: the
+ * Belle-generation step the job returns to for replacement audio after
+ * its stale files were deleted. NOT a new job.
+ */
+export const PRE_PACKAGING_CONTINUATION_STEP = 'series_generate_belle_assets'
+
+/**
+ * Pre-packaging recovery with a same-job continuation (the exact function
+ * the run-next route calls as thin glue INSTEAD of packaging immediately).
+ *
+ * Ordering (fail-closed at every boundary):
+ *   1. Read-only discovery (no writes; malformed stays loud).
+ *   2. When NO carrier holds an audio-delete intent: legacy pin-only
+ *      path — recoverPendingPinDrains, zero job writes — and the caller
+ *      proceeds to packaging this tick (`continued: false`).
+ *   3. Otherwise: delete the affected audio files from storage ONLY
+ *      (pending intent lists stay intact in the DB).
+ *   4. Persist the same-job continuation (status/step transition off
+ *      complete_story_package toward Belle generation + affected
+ *      Belle/mix/package flag resets, unaffected flags and all retry
+ *      counts preserved) BEFORE any pending prune. A write failure
+ *      throws here with pending entries intact, so a later tick retries
+ *      the continuation — never a half-persisted state that loses the
+ *      recovery.
+ *   5. Only after the continuation lands: prune the processed audio
+ *      intents and drain the pin resyncs (a failure here still throws
+ *      loudly with pending intact; the continuation is already queued,
+ *      so the next packaging tick re-discovers and converges).
+ *
+ * Returns `continued: true` when the caller MUST return from the current
+ * tick BEFORE any packaging call (zero packaging calls that tick); a
+ * subsequent tick at the continuation step regenerates replacement Belle
+ * audio for the reset episodes, then mixing, then packaging.
+ */
+export async function runPrePackagingRecoveryWithContinuation(
+  supabaseClient: any,
+  args: {
+    failingStoryId: string
+    loadSeriesStories?: () => Promise<any[]>
+    job: any
+    fence?: Record<string, unknown>
+  }
+): Promise<{
+  continued: boolean
+  recovery: PendingDrainResolution[]
+  affectedKeys: string[]
+}> {
+  const carriers = await collectPrePackagingRecoveryCarriers(supabaseClient, {
+    failingStoryId: args.failingStoryId,
+    loadSeriesStories: args.loadSeriesStories,
+  })
+  const audioCarriers = carriers.filter(
+    (c) => (c.audioUrls || []).length > 0
+  )
+  if (audioCarriers.length === 0) {
+    const recovery = await recoverPendingPinDrains(supabaseClient, {
+      failingStoryId: args.failingStoryId,
+      loadSeriesStories: args.loadSeriesStories,
+    })
+    return { continued: false, recovery, affectedKeys: [] }
+  }
+  // Storage deletes only — pending intent lists survive until the
+  // continuation below lands.
+  const base =
+    args.job?.state_json && typeof args.job.state_json === 'object'
+      ? args.job.state_json
+      : {}
+  const resolutions: PendingDrainResolution[] = []
+  for (const carrier of audioCarriers) {
+    const deletedAudio = await removePendingAudioFiles(
+      supabaseClient,
+      carrier.storyId,
+      carrier.audioUrls
+    )
+    resolutions.push({
+      repairedStoryId: carrier.storyId,
+      drainedDependentIds: [],
+      via: carrier.via,
+      episodeNumber: carrier.episodeNumber,
+      deletedAudioFiles: deletedAudio,
+    })
+  }
+  // Degenerate intent (no derivable storage paths anywhere): nothing to
+  // regenerate — converge through the legacy drain (prunes pending) and
+  // let packaging proceed rather than stranding intent across ticks.
+  const planned = applyAudioDeleteRecoveryToState(base, resolutions)
+  if (planned.affectedKeys.length === 0) {
+    const recovery = await recoverPendingPinDrains(supabaseClient, {
+      failingStoryId: args.failingStoryId,
+      loadSeriesStories: args.loadSeriesStories,
+    })
+    return { continued: false, recovery, affectedKeys: [] }
+  }
+  const affectedKeys = await persistPrePackagingAudioRecovery(
+    supabaseClient,
+    args.job,
+    resolutions,
+    args.fence,
+    {
+      status: 'queued',
+      currentStep: PRE_PACKAGING_CONTINUATION_STEP,
+      releaseLock: true,
+      logMessage:
+        'Belle audio recovery: continuation to Belle generation (packaging deferred)',
+      logDetails: {
+        affectedKeys: planned.affectedKeys,
+        repairedStories: audioCarriers.map((c) => c.storyId),
+        deletedFiles: planned.deletedFilesByStory,
+      },
+    }
+  )
+  // The continuation landed: now prune the processed intents and drain
+  // the pins (fresh reads inside each call keep concurrent additions).
+  const drainedByStory: Record<string, string[]> = {}
+  for (const carrier of carriers) {
+    if ((carrier.pendingPins || []).length > 0) {
+      drainedByStory[carrier.storyId] = await drainPendingPinResync(
+        supabaseClient,
+        carrier.storyId,
+        carrier.pendingPins
+      )
+    }
+  }
+  for (const carrier of audioCarriers) {
+    await clearPendingAudioDelete(supabaseClient, carrier.storyId, carrier.audioUrls)
+  }
+  const recovery: PendingDrainResolution[] = [
+    ...resolutions.map((r) => ({
+      ...r,
+      drainedDependentIds: drainedByStory[r.repairedStoryId] || [],
+    })),
+    ...carriers
+      .filter((c) => (c.audioUrls || []).length === 0)
+      .map((c) => ({
+        repairedStoryId: c.storyId,
+        drainedDependentIds: drainedByStory[c.storyId] || [],
+        via: c.via,
+        episodeNumber: c.episodeNumber,
+        deletedAudioFiles: [] as string[],
+      })),
+  ]
+  return { continued: true, recovery, affectedKeys }
 }
 
 /**
