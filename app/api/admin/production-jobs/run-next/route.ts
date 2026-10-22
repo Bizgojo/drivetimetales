@@ -38,7 +38,14 @@ import { runVoiceConformanceGate, type VoiceProfile } from '@/lib/voiceConforman
 // central per-step model router. STEP_MODELS below derives from it with
 // fallback to the current Claude models when DEEPSEEK_API_KEY is absent.
 import { legacyStepModels, routeStep, resolveModelForStep, coerceValidationModelToClaude } from '@/lib/model-router'
-import { buildContinuityPins, verifyContinuityPins } from '@/lib/continuityPin'
+import { buildContinuityPins, hashScript, verifyContinuityPins } from '@/lib/continuityPin'
+import {
+  applyBelleRepairAudit,
+  belleRepairAudioInvalidation,
+  buildBelleRepairAuditEntry,
+  hasCompanionPresence,
+  resyncContinuityPinsAfterRepair,
+} from '@/lib/belleValidation'
 // COVER-PIPELINE-DECOUPLE-001: decoupled cover phase (tasks recorded right
 // after episode briefs/scripts; parallel dispatch; Holly-tolerant assembly).
 import { buildCoverPhaseState } from '@/lib/cover/coverPhase'
@@ -1148,16 +1155,8 @@ function hasEmotionalResidueOrReflection(text: string): boolean {
   return emotionalMarkers.test(text) || reflectionMarkers.test(text)
 }
 
-/**
- * FIX-BELLE-SERIES-TEMPLATE-001: True when the outro acknowledges companion
- * presence (Belle as narrator/guide or listener as co-participant). Required
- * for series non-finale outros.
- */
-function hasCompanionPresence(text: string): boolean {
-  const companionMarkers = /\b(i'?m belle|belle here|you won't|you will|you can't|alongside|join|discover|tune in|listen|next episode|stay tuned|coming back|keep listening|return|we'll|we're|we've|we|our)\b/i
-  return companionMarkers.test(text)
-}
-
+// BELLE-REPAIR-WRITE-INTEGRITY-001: hasCompanionPresence lives in
+// lib/belleValidation.ts (single definition, imported above).
 /**
  * Check whether intro text names the episode number.
  * Accepts digit form (\b3\b) and written cardinal/ordinal for episodes 1-20.
@@ -11061,7 +11060,7 @@ export async function POST(req: NextRequest) {
             if (currentRetry < MAX_SERIES_BELLE_RETRIES) {
               const { data: targetStory, error: targetStoryError } = await supabase
                 .from('stories')
-                .select('id,title,description,script,series_id,series_name,episode_number,series_total_episodes,series_is_finale')
+                .select('id,title,description,script,script_json,series_id,series_name,episode_number,series_total_episodes,series_is_finale')
                 .eq('id', belleRetryTarget.storyId)
                 .single()
               if (targetStoryError || !targetStory?.script) {
@@ -11109,18 +11108,36 @@ export async function POST(req: NextRequest) {
                 belleRetryTarget.repairOutro
               )
 
+              // BELLE-REPAIR-WRITE-INTEGRITY-001: audit + pin resync + scoped
+              // audio invalidation. A successful text repair rewrites
+              // stories.script, so it must (a) leave an audit entry with
+              // before/after hashes, (b) resync dependents' continuity pins
+              // to the new hash, and (c) invalidate ONLY this episode's
+              // repaired-side audio columns (never siblings/segments/mixes).
+              const repairAuditEntry = buildBelleRepairAuditEntry({
+                jobId: String((lockedJob as any)?.id || ''),
+                storyId: String(belleRetryTarget.storyId),
+                episodeNumber: Number(belleRetryTarget.episodeNumber ?? targetStory.episode_number ?? NaN) || null,
+                beforeScript: String(targetStory.script || ''),
+                afterScript: repairedScript,
+                repairedIntro: Boolean(belleRetryTarget.repairIntro),
+                repairedOutro: Boolean(belleRetryTarget.repairOutro),
+                at: nowIso(),
+              })
+              const repairedScriptJson = applyBelleRepairAudit((targetStory as any).script_json, repairAuditEntry)
+
               const storyUpdates: Record<string, unknown> = {
                 script: repairedScript,
-                audio_url: null,
-                story_audio_url: null,
-                outro_with_music_url: null,
+                script_json: repairedScriptJson,
+                ...belleRepairAudioInvalidation(
+                  Boolean(belleRetryTarget.repairIntro),
+                  Boolean(belleRetryTarget.repairOutro)
+                ),
                 ...(belleRetryTarget.repairIntro ? {
                   announcement_text: repaired.introText,
-                  announcement_url: null,
                 } : {}),
                 ...(belleRetryTarget.repairOutro ? {
                   outro_text: repaired.outroText,
-                  outro_audio_url: null,
                 } : {}),
               }
 
@@ -11130,6 +11147,24 @@ export async function POST(req: NextRequest) {
                 .eq('id', belleRetryTarget.storyId)
               if (repairUpdateError) {
                 throw new Error(`Failed to save repaired Belle copy: ${repairUpdateError.message}`)
+              }
+
+              // Resync continuity pins: every loaded dependent episode that
+              // pinned this story's OLD script hash now points at the new one.
+              // Fail closed on update error (a silently stale pin is worse).
+              const repairedPinUpdates = resyncContinuityPinsAfterRepair(
+                seriesEpisodes,
+                String(belleRetryTarget.storyId),
+                repairAuditEntry.afterHash
+              )
+              for (const pinUpdate of repairedPinUpdates) {
+                const { error: pinUpdateError } = await supabase
+                  .from('stories')
+                  .update({ script_json: pinUpdate.script_json })
+                  .eq('id', pinUpdate.id)
+                if (pinUpdateError) {
+                  throw new Error(`Failed to resync continuity pin on ${pinUpdate.id} after Belle repair: ${pinUpdateError.message}`)
+                }
               }
 
               const retryCount = currentRetry + 1
