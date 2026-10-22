@@ -68,16 +68,16 @@ import {
 } from '../lib/belleValidation'
 import {
   PRE_PACKAGING_CONTINUATION_STEP,
-  jsonbEqFilter,
   recoverStrandedContinuationCleanup,
   releasePrePackagingContinuationLock,
   getPendingPinResync,
   getPendingAudioDelete,
+  applyPendingPinToScriptJson,
+  subtractPendingEntries,
   setPendingPinResync,
   setPendingAudioDelete,
   unionPendingAudioDeletes,
   persistBelleRepair,
-  drainPendingPinResync,
 } from '../lib/belleRepairPersist'
 import { runPrePackagingRecoveryWithContinuation } from '../lib/belleRepairPersist'
 import { ownedJobFence } from '../lib/jobLockGuard'
@@ -429,6 +429,60 @@ export async function runRecovery(
     locked_by: LOCK_ID,
   }
 
+  // LARGE-DOC-CAS pin drain (2026-10-22, for Codex review): applies ONE
+  // pending pin entry with PK update + fenced verify + conditional prune —
+  // the same end state as the reviewed drainPendingPinResync, without its
+  // whole-doc URL filter (inoperable at production doc sizes; see Ep2
+  // note). Set-to-same converges, so a crash between apply and prune
+  // re-runs harmlessly; the prune is skipped when the entry was never
+  // embedded (e.g. pre-applied entries below).
+  const drainPinEntryLargeDoc = async (
+    repairedStoryId: string,
+    entry: { dependentStoryId: string; priorStoryId: string; newPinHash: string },
+  ) => {
+    const depId = String(entry.dependentStoryId)
+    const priorId = String(entry.priorStoryId)
+    const want = String(entry.newPinHash)
+    const { data: _dep, error: _depErr } = await supabase.from('stories').select('id,script_json').eq('id', depId).single()
+    if (_depErr || !_dep) throw new Error(`pin drain read failed for ${depId.slice(0, 8)}\u2026: ${_depErr?.message ?? 'missing row'} \u2014 refusing blind write`)
+    const nextDep = applyPendingPinToScriptJson(one(_dep)?.script_json, priorId, want)
+    await fence(
+      `pin drain ${depId.slice(0, 8)}\u2026\u2192${priorId.slice(0, 8)}\u2026 = ${want.slice(0, 8)}\u2026 (PK + fenced verify)`,
+      async () => {
+        const { data, error } = await supabase.from('stories').update({ script_json: nextDep }).eq('id', depId).select('id')
+        if (error) throw new Error(`pin drain write failed: ${error.message}`)
+        if (!data || data.length === 0) throw new Error('pin drain matched zero rows \u2014 retry converges')
+        return data
+      },
+      async () => {
+        const { data: _v } = await supabase.from('stories').select('script_json').eq('id', depId).single()
+        return String((one(_v)?.script_json?.series_generation?.continuity_pins_used ?? {})[priorId] ?? '') === want
+      },
+    )
+    const { data: _rep } = await supabase.from('stories').select('id,script_json').eq('id', repairedStoryId).single()
+    const repJson = one(_rep)?.script_json
+    const current = getPendingPinResync(repJson, repairedStoryId)
+    if (current.some((e: any) => String(e.dependentStoryId) === depId && String(e.priorStoryId) === priorId)) {
+      const pruned = setPendingPinResync(repJson, subtractPendingEntries(current, [entry as any]))
+      await fence(
+        `pending prune ${depId.slice(0, 8)}\u2026 from ${String(repairedStoryId).slice(0, 8)}\u2026 (PK + fenced verify)`,
+        async () => {
+          const { data, error } = await supabase.from('stories').update({ script_json: pruned }).eq('id', repairedStoryId).select('id')
+          if (error) throw new Error(`pending prune write failed: ${error.message}`)
+          if (!data || data.length === 0) throw new Error('pending prune matched zero rows \u2014 retry converges')
+          return data
+        },
+        async () => {
+          const { data: _v } = await supabase.from('stories').select('script_json').eq('id', repairedStoryId).single()
+          return !getPendingPinResync(one(_v)?.script_json, repairedStoryId)
+            .some((e: any) => String(e.dependentStoryId) === depId && String(e.priorStoryId) === priorId)
+        },
+      )
+    } else {
+      log(`[converged] pending entry for ${depId.slice(0, 8)}\u2026 not embedded \u2014 no prune needed`)
+    }
+  }
+
   // STEP 2 — Ep2 outro persist WITH normalization PERSISTED, through the REAL
   // production persist path (same storyUpdates shape the route builds).
   const ep2LiveState = ep2StateOf(ep2.script)
@@ -465,13 +519,22 @@ export async function runRecovery(
         priorStoryId: CREEK_EP2_ID,
         newPinHash: String(afterHash),
       }))
+    // LARGE-DOC-CAS: pre-apply dependent pins script-side (helper above)
+    // so persist never invokes the lib drain's whole-doc filter. Only
+    // PRE-EXISTING pendings are embedded (never the pre-applied ones —
+    // embedding those would leave phantom pendings for production-route
+    // ticks, whose lib drain would 400 on them the same way).
+    for (const entry of pendingEntries) {
+      await drainPinEntryLargeDoc(CREEK_EP2_ID, entry)
+    }
+    const preExistingPending = getPendingPinResync(ep2.script_json, CREEK_EP2_ID)
     const repairedScriptJson = {
       ...applyBelleRepairAudit(ep2.script_json, auditEntry),
       raw_script: afterRaw,
     }
     const storyUpdates: Record<string, unknown> = {
       script: afterScript,
-      script_json: setPendingPinResync(repairedScriptJson, pendingEntries),
+      script_json: setPendingPinResync(repairedScriptJson, preExistingPending),
       ...belleRepairAudioInvalidation(false, true),
       outro_text: EP2_OUTRO_AFTER,
     }
@@ -481,11 +544,19 @@ export async function runRecovery(
     ].filter((u) => u.length > 0)
     await fence(
       'ep2 outro persist (normalized AFTER in script + raw_script + outro_text, audit appended, pins embedded, audio nulled, intent embedded)',
+      // LARGE-DOC-CAS (2026-10-22, for Codex review): NO whole-doc
+      // snapshot CAS here. Creek script_json docs are 18–27KB (Ep2
+      // 23,565 chars / 32,869 URL-encoded); PostgREST answers the
+      // identical filter with 400 Bad Request even on a read-only
+      // SELECT (probed live 2026-10-22), so the CAS is inoperable at
+      // production doc sizes — it protects nothing and blocks recovery.
+      // Concurrency safety for this run: job lock held throughout +
+      // workers paused (single actor) + fenced read-after-write verify
+      // below + final three-link verification gating success.
       () => persistBelleRepair(supabase, {
         repairedStoryId: CREEK_EP2_ID,
         storyUpdates,
-        pendingEntries,
-        expectedRepairedScriptJson: ep2.script_json,
+        pendingEntries: [],
         pendingAudioDeleteUrls: audioIntent,
       }),
       async () => {
@@ -510,7 +581,10 @@ export async function runRecovery(
     if (leftover.length > 0) {
       await fence(
         'ep2 leftover pin-drain converge',
-        () => drainPendingPinResync(supabase, CREEK_EP2_ID, leftover),
+        async () => {
+          for (const entry of leftover) await drainPinEntryLargeDoc(CREEK_EP2_ID, entry)
+          return leftover
+        },
         async () => {
           const { data: _v } = await supabase.from('stories').select('script_json').eq('id', CREEK_EP2_ID).single()
           return getPendingPinResync(one(_v)?.script_json, CREEK_EP2_ID).length === 0
@@ -523,11 +597,11 @@ export async function runRecovery(
     if (e3pins[CREEK_EP2_ID] !== wantHash) {
       await fence(
         'ep3 continuity_pins_used converge (Ep3→Ep2 = post-repair hash)',
-        () => drainPendingPinResync(supabase, CREEK_EP2_ID, [{
+        () => drainPinEntryLargeDoc(CREEK_EP2_ID, {
           dependentStoryId: CREEK_EP3_ID,
           priorStoryId: CREEK_EP2_ID,
           newPinHash: wantHash,
-        }]),
+        }),
         async () => {
           const { data: _v3 } = await supabase.from('stories').select('script_json').eq('id', CREEK_EP3_ID).single()
           return (one(_v3)?.script_json?.series_generation?.continuity_pins_used ?? {})[CREEK_EP2_ID] === wantHash
@@ -569,8 +643,10 @@ export async function runRecovery(
       await fence(
         'ep1 raw_script sync to validated script (audit appended, history intact)',
         async () => {
+          // LARGE-DOC-CAS: no whole-doc filter (see Ep2 note) — PK row
+          // match + lock + fenced verify + final verification instead.
           const { data, error } = await supabase.from('stories').update({ script_json: next }).eq('id', CREEK_EP1_ID)
-            .eq('script_json', jsonbEqFilter(snapshot)).select('id')
+            .select('id')
           if (error) throw new Error(`ep1 raw sync write failed: ${error.message}`)
           if (!data || data.length === 0) throw new Error('ep1 raw sync matched zero rows (concurrent modification) — retry converges')
           return data
@@ -615,8 +691,9 @@ export async function runRecovery(
     await fence(
       `${String(depId).slice(0, 8)}…→ep1 pin re-derived from current ep1 script (audit appended)`,
       async () => {
+        // LARGE-DOC-CAS: no whole-doc filter (see Ep2 note).
         const { data, error } = await supabase.from('stories').update({ script_json: next }).eq('id', depId)
-          .eq('script_json', jsonbEqFilter(snapshot)).select('id')
+          .select('id')
         if (error) throw new Error(`ep1 pin repair write failed: ${error.message}`)
         if (!data || data.length === 0) throw new Error('ep1 pin repair matched zero rows (concurrent modification) — retry converges')
         return data
@@ -646,10 +723,11 @@ export async function runRecovery(
         const snapshot = f1?.script_json
         const next = setPendingAudioDelete(snapshot, unionPendingAudioDeletes(have, [staleUrl]))
         await fence(
-          'ep1 stale-outro audio-delete intent (nested sg path, CAS-guarded)',
+          'ep1 stale-outro audio-delete intent (nested sg path, PK + fenced verify)',
           async () => {
+            // LARGE-DOC-CAS: no whole-doc filter (see Ep2 note).
             const { data, error } = await supabase.from('stories').update({ script_json: next }).eq('id', CREEK_EP1_ID)
-              .eq('script_json', jsonbEqFilter(snapshot)).select('id')
+              .select('id')
             if (error) throw new Error(`ep1 intent write failed: ${error.message}`)
             if (!data || data.length === 0) throw new Error('ep1 intent matched zero rows (concurrent modification) — retry converges')
             return data

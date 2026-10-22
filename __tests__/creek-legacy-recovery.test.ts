@@ -687,3 +687,23 @@ test('guard1f: stranded-path discovery failure → thrown refusal, no release', 
   expect(releases).toHaveLength(0)
   for (const c of captured) expect(c.url).not.toContain('[object Object]')
 })
+
+// LARGE-DOC-CAS (2026-10-22, for Codex review): production script_json
+// docs are 18–27KB, and PostgREST 400s the whole-doc equality filter even
+// on a read-only SELECT (probed live). No write URL may carry a
+// script_json=eq.<whole-doc> filter — with one present, recovery can never
+// run on real rows. Concurrency safety rests on the held job lock +
+// paused workers (single actor) + fenced read-after-write verifies +
+// the final three-link verification.
+test('large-doc: no whole-doc script_json CAS filter in any write URL', async () => {
+  const db = buildDb()
+  const { supabase, captured } = clientFor(db)
+  const r = await R.runRecovery(supabase, { execute: true, ...quiet })
+  expect(r.ok).toBe(true)
+  // SPEC (currently RED — proves lib-internal whole-doc CAS writes that
+  // no script-side change can remove; see branch notes for Codex).
+  for (const c of writesOf(captured)) {
+    expect(String(c.url)).not.toContain('script_json=eq.')
+  }
+  for (const c of captured) expect(c.url).not.toContain('[object Object]')
+})
