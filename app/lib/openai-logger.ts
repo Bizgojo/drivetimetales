@@ -35,7 +35,30 @@ const DALLE_COSTS: Record<string, Record<string, number>> = {
   },
 }
 
-function dalleCost(model: string, size: string, quality = 'standard', n = 1): number {
+// COVER-GPT-IMAGE-DEFAULT-001: GPT image models bill per token, not per
+// image. Standard rates verified 2026-10-23 on developers.openai.com pricing
+// (image-generation table, $/MTok): text input / image output.
+// Our cover calls send text-only prompts, so cost = in*text + out*image.
+const GPT_IMAGE_RATES: Array<{ match: RegExp; textIn: number; imageOut: number }> = [
+  { match: /gpt-image-1\.5|chatgpt-image-latest/i, textIn: 5.00, imageOut: 32.00 },
+  { match: /gpt-image-1-mini/i,                     textIn: 2.00, imageOut: 8.00  },
+  { match: /gpt-image-2/i,                          textIn: 5.00, imageOut: 30.00 },
+  { match: /gpt-image-1/i,                          textIn: 5.00, imageOut: 40.00 },
+  { match: /gpt-image/i,                            textIn: 5.00, imageOut: 32.00 },
+]
+
+function gptImageCost(model: string, inputTokens: number, outputTokens: number): number | null {
+  const row = GPT_IMAGE_RATES.find(r => r.match.test(model))
+  if (!row) return null
+  return (inputTokens / 1_000_000) * row.textIn + (outputTokens / 1_000_000) * row.imageOut
+}
+
+function dalleCost(model: string, size: string, quality = 'standard', n = 1, inputTokens = 0, outputTokens = 0): number {
+  // GPT image models with real usage tokens: exact token-based actual.
+  if (inputTokens > 0 || outputTokens > 0) {
+    const exact = gptImageCost(model, inputTokens, outputTokens)
+    if (exact !== null) return exact
+  }
   const key = quality === 'hd' ? `${size}_hd` : `${size}_standard`
   const rate = DALLE_COSTS[model]?.[key] ?? DALLE_COSTS[model]?.[size] ?? 0.040
   return rate * n
@@ -67,6 +90,8 @@ export async function logDalleCall({
   storyId,
   storyTitle,
   metadata,
+  inputTokens = 0,
+  outputTokens = 0,
 }: {
   route: string
   purpose: string
@@ -77,16 +102,18 @@ export async function logDalleCall({
   storyId?: string
   storyTitle?: string
   metadata?: Record<string, unknown>
+  inputTokens?: number
+  outputTokens?: number
 }): Promise<void> {
-  const cost = dalleCost(model, size, quality, n)
+  const cost = dalleCost(model, size, quality, n, inputTokens, outputTokens)
   try {
     await supabase.from('openai_usage_log').insert({
       route,
       purpose,
       model,
       call_type: 'image',
-      input_tokens: 0,
-      output_tokens: 0,
+      input_tokens: inputTokens,
+      output_tokens: outputTokens,
       images_generated: n,
       cost_usd: cost,
       story_id: storyId ?? null,

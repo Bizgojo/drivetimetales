@@ -21,7 +21,7 @@
  *   6. Retry-then-succeed: Holly prompt regeneration across attempts.
  *   7. Alderton tolerance: cover_url demoted from blocking → warning.
  *   8. Post-publish late-cover update payloads.
- *   9. Image backend routing: dall-e-3 primary, Belle rejected as image agent.
+ *   9. Image backend routing: gpt-image-1.5 primary, Belle rejected as image agent.
  *
  * PIPELINE CANON 001 Rule 3 note: sequential ordering governs EPISODES
  * (continuity/script order), not asset generation — parallel cover assets do
@@ -338,11 +338,13 @@ describe('COVER-PIPELINE-DECOUPLE-001 — cover_post_publish_update', () => {
 })
 
 describe('COVER-PIPELINE-DECOUPLE-001 — image backend routing', () => {
-  it('primary is ChatGPT → DALL·E 3; priority order fixed', () => {
+  // COVER-GPT-IMAGE-DEFAULT-001: DALL-E 3 retired (live 400 `model does not
+  // exist`); default is gpt-image-1.5. Backend id stays 'dalle3' for env compat.
+  it('primary is ChatGPT → GPT Image; priority order fixed', () => {
     expect(IMAGE_BACKEND_PRIORITY).toEqual(['dalle3', 'claude-art', 'external-renderer'])
     const sel = selectImageBackend()
     expect(sel.backend.id).toBe('dalle3')
-    expect(sel.model).toBe('dall-e-3')
+    expect(sel.model).toBe('gpt-image-1.5')
   })
 
   it('Belle is voice-only: rejected as an image agent', () => {

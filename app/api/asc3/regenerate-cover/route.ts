@@ -201,7 +201,9 @@ async function overlayText(imageBuffer: Buffer, title: string, author: string): 
   return imageBuffer
 }
 
-async function generateWithDallE(prompt: string): Promise<Buffer> {
+type GeneratedCover = { buffer: Buffer; usage: { input_tokens: number; output_tokens: number; total_tokens: number } | null }
+
+async function generateWithDallE(prompt: string): Promise<GeneratedCover> {
   const imageRequest: Record<string, unknown> = {
     model: IMAGE_MODEL,
     prompt: prompt.slice(0, 4000),
@@ -213,9 +215,10 @@ async function generateWithDallE(prompt: string): Promise<Buffer> {
     imageRequest.quality = 'high'
   } else {
     imageRequest.quality = 'hd'
-    // dall-e-3 (and gpt-image-*) reject response_format — omit it and accept
-    // the API default (url for dall-e-3, b64 for gpt-image). Handler below
-    // accepts both b64_json and url payloads.
+    // COVER-DALLE3-RESPONSE-FORMAT-001 + COVER-GPT-IMAGE-DEFAULT-001:
+    // response_format is legacy (dall-e-3 400-rejected it; GPT image models
+    // don't accept it) — omit it and accept the API default (b64_json for
+    // gpt-image-*). Handler below still accepts both b64_json and url.
   }
 
   console.log('[regenerate-cover] image backend:', SELECTED_BACKEND.backend.label, '| model:', IMAGE_MODEL)
@@ -251,22 +254,32 @@ async function generateWithDallE(prompt: string): Promise<Buffer> {
     model: IMAGE_MODEL,
     hasUrl: Boolean(json.data?.[0]?.url),
     hasBase64: Boolean(json.data?.[0]?.b64_json),
+    usage: json.usage ?? null,
   })
+
+  // COVER-GPT-IMAGE-DEFAULT-001: capture real token usage so spend actuals
+  // (openai_usage_log + endpoint response) are computed, never estimated.
+  const u = json.usage && typeof json.usage === 'object' ? json.usage : null
+  const usage = u ? {
+    input_tokens: Number(u.input_tokens) || 0,
+    output_tokens: Number(u.output_tokens) || 0,
+    total_tokens: Number(u.total_tokens) || 0,
+  } : null
 
   const b64Json = json.data?.[0]?.b64_json
   if (b64Json) {
     try {
       const { logDalleCall } = await import('@/app/lib/openai-logger')
-      logDalleCall({ route: '/api/asc3/regenerate-cover', purpose: 'cover-art-regen', model: IMAGE_MODEL, size: '1024x1024', quality: 'high', n: 1 }).catch(() => {})
+      logDalleCall({ route: '/api/asc3/regenerate-cover', purpose: 'cover-art-regen', model: IMAGE_MODEL, size: '1024x1024', quality: 'high', n: 1, inputTokens: usage?.input_tokens ?? 0, outputTokens: usage?.output_tokens ?? 0 }).catch(() => {})
     } catch { /* never break */ }
-    return Buffer.from(b64Json, 'base64')
+    return { buffer: Buffer.from(b64Json, 'base64'), usage }
   }
 
   const imageUrl = json.data?.[0]?.url
   if (!imageUrl) throw new Error(`${IMAGE_MODEL} returned no image data`)
   try {
     const { logDalleCall } = await import('@/app/lib/openai-logger')
-    logDalleCall({ route: '/api/asc3/regenerate-cover', purpose: 'cover-art-regen', model: IMAGE_MODEL, size: '1024x1024', quality: 'hd', n: 1 }).catch(() => {})
+    logDalleCall({ route: '/api/asc3/regenerate-cover', purpose: 'cover-art-regen', model: IMAGE_MODEL, size: '1024x1024', quality: 'hd', n: 1, inputTokens: usage?.input_tokens ?? 0, outputTokens: usage?.output_tokens ?? 0 }).catch(() => {})
   } catch { /* never break */ }
 
   // Download the image
@@ -290,7 +303,7 @@ async function generateWithDallE(prompt: string): Promise<Buffer> {
       responsePreview: imgText.slice(0, 300),
     })
   }
-  return Buffer.from(await imgRes.arrayBuffer())
+  return { buffer: Buffer.from(await imgRes.arrayBuffer()), usage }
 }
 
 export async function POST(req: NextRequest) {
@@ -329,7 +342,15 @@ export async function POST(req: NextRequest) {
     console.log('[regenerate-cover] cover direction brief:', JSON.stringify(coverDirectionBrief, null, 2))
     console.log('  Prompt preview:', dallePrompt.substring(0, 200))
 
-    let rawBuffer = await generateWithDallE(dallePrompt)
+    const firstGen = await generateWithDallE(dallePrompt)
+    let rawBuffer = firstGen.buffer
+    // Spend actuals: sum real API usage across initial + any luminance retry.
+    const spendUsage = {
+      input_tokens: firstGen.usage?.input_tokens ?? 0,
+      output_tokens: firstGen.usage?.output_tokens ?? 0,
+      total_tokens: firstGen.usage?.total_tokens ?? 0,
+      generations: 1,
+    }
 
     // ── LUMINANCE VALIDATION GATE (STEP 4) ──────────────────────────────────
     // Check average luminance. If below threshold, auto-retry ONCE with
@@ -344,7 +365,12 @@ export async function POST(req: NextRequest) {
       console.warn(`[luminance] ⚠️ Cover too dark (${luminance.toFixed(1)} < ${LUMINANCE_THRESHOLD}) — retrying with ultra-bright constraint`)
       luminanceRetried = true
       const ultraBrightPrompt = `${ULTRA_BRIGHT_DIRECTIVE} ${dallePrompt}`.slice(0, 4000)
-      rawBuffer = await generateWithDallE(ultraBrightPrompt)
+      const retryGen = await generateWithDallE(ultraBrightPrompt)
+      rawBuffer = retryGen.buffer
+      spendUsage.input_tokens += retryGen.usage?.input_tokens ?? 0
+      spendUsage.output_tokens += retryGen.usage?.output_tokens ?? 0
+      spendUsage.total_tokens += retryGen.usage?.total_tokens ?? 0
+      spendUsage.generations += 1
       luminance = await computeAverageLuminance(rawBuffer)
       console.log(`[luminance] retry average: ${luminance !== null ? luminance.toFixed(1) : 'n/a'}`)
 
@@ -391,6 +417,7 @@ export async function POST(req: NextRequest) {
         luminance: luminance !== null ? parseFloat(luminance.toFixed(1)) : null,
         luminanceRetried,
         luminanceWarning: luminanceWarning || null,
+        usage: spendUsage,
       })
     }
 
@@ -409,6 +436,7 @@ export async function POST(req: NextRequest) {
       luminance: luminance !== null ? parseFloat(luminance.toFixed(1)) : null,
       luminanceRetried,
       luminanceWarning: luminanceWarning || null,
+      usage: spendUsage,
     })
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
