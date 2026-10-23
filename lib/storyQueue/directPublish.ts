@@ -427,10 +427,21 @@ async function fetchFreshEpisode(db: DirectPublishDb, storyId: string): Promise<
  */
 async function verifyResumeAuditChains(
   db: DirectPublishDb,
-  skipIds: string[]
+  gatedSkips: Array<Record<string, unknown>>
 ): Promise<void> {
-  for (const storyId of skipIds) {
+  for (const gated of gatedSkips) {
+    const storyId = String((gated as { id?: unknown }).id)
     const fresh = await fetchFreshEpisode(db, storyId)
+    // Full freshness fingerprint on skips too: a script/series/numbering
+    // change after gate evaluation refuses before any write, so later
+    // episodes never publish against stale continuity pins or scope.
+    if (!fresh || freshnessFingerprint(fresh) !== freshnessFingerprint(gated)) {
+      throw new DirectPublishError(
+        `resume refused: already-published episode ${storyId} changed since gate evaluation (freshness mismatch); operator must reconcile before retry`,
+        409,
+        [`episode ${storyId} changed since gate evaluation`]
+      )
+    }
     const live =
       !!fresh &&
       clean((fresh as { workflow_state?: unknown }).workflow_state) === 'published' &&
@@ -496,12 +507,15 @@ async function runOperatorDirectPublish(
 
   // Resume: verify the audit chains of already-published skips BEFORE any
   // write, then carry them in the result as verified (never re-published).
-  const skipIds = ordered
-    .filter((ep) => clean((ep as { workflow_state?: unknown }).workflow_state) === 'published')
-    .map((ep) => String((ep as { id?: unknown }).id))
-  await verifyResumeAuditChains(db, skipIds)
-  for (const id of skipIds) {
-    done.push({ id, transitions: ['resumed: verified already-published (3-edge audit chain complete)'] })
+  const gatedSkips = ordered.filter(
+    (ep) => clean((ep as { workflow_state?: unknown }).workflow_state) === 'published'
+  )
+  await verifyResumeAuditChains(db, gatedSkips)
+  for (const ep of gatedSkips) {
+    done.push({
+      id: String((ep as { id?: unknown }).id),
+      transitions: ['resumed: verified already-published (3-edge audit chain complete)'],
+    })
   }
 
   const todo = ordered.filter(

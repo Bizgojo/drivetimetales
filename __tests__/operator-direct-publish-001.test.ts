@@ -757,14 +757,50 @@ describe('freshness re-read (stale gates cannot publish)', () => {
     const ep2 = { ...fresh[1] }
     const driftedEp1 = { ...ep1.row, is_hidden: true }
     const { db, writes } = makeDb([driftedEp1, ep2], { seedAudits: ep1.audits })
-    // Gated snapshot still shows EP1 live; the fresh read must catch the delist.
+    // Gated snapshot still shows EP1 live; the skip fingerprint check must
+    // catch the delist (409) before the live-state check runs.
     await expect(
       executeOperatorDirectPublish(db, [ep1.row, ep2], {
         seriesId: SERIES,
         decisionId: DECISION,
         preflight: preflightOk,
       })
-    ).rejects.toMatchObject({ status: 422 })
+    ).rejects.toMatchObject({ status: 409 })
+    expect(writes.filter((w) => w.table === 'stories')).toHaveLength(0)
+    expect(writes.filter((w) => w.table === 'story_workflow_audit')).toHaveLength(0)
+  })
+
+  test('resume skip script changed after gates refuses with zero writes', async () => {
+    const fresh = passingSeries()
+    const ep1 = publishedEpisode(EP1, 1)
+    const ep2 = { ...fresh[1] }
+    const driftedEp1 = { ...ep1.row, script: `${PASS_SCRIPT_1}\nMARA: An unreviewed line.` }
+    const { db, writes } = makeDb([driftedEp1, ep2], { seedAudits: ep1.audits })
+    // Gated snapshot shows the pinned script; the fresh read must catch the edit.
+    await expect(
+      executeOperatorDirectPublish(db, [ep1.row, ep2], {
+        seriesId: SERIES,
+        decisionId: DECISION,
+        preflight: preflightOk,
+      })
+    ).rejects.toMatchObject({ status: 409 })
+    expect(writes.filter((w) => w.table === 'stories')).toHaveLength(0)
+    expect(writes.filter((w) => w.table === 'story_workflow_audit')).toHaveLength(0)
+  })
+
+  test('resume skip series changed after gates refuses with zero writes', async () => {
+    const fresh = passingSeries()
+    const ep1 = publishedEpisode(EP1, 1)
+    const ep2 = { ...fresh[1] }
+    const driftedEp1 = { ...ep1.row, series_id: '99999999-9999-9999-9999-999999999999' }
+    const { db, writes } = makeDb([driftedEp1, ep2], { seedAudits: ep1.audits })
+    await expect(
+      executeOperatorDirectPublish(db, [ep1.row, ep2], {
+        seriesId: SERIES,
+        decisionId: DECISION,
+        preflight: preflightOk,
+      })
+    ).rejects.toMatchObject({ status: 409 })
     expect(writes.filter((w) => w.table === 'stories')).toHaveLength(0)
     expect(writes.filter((w) => w.table === 'story_workflow_audit')).toHaveLength(0)
   })
