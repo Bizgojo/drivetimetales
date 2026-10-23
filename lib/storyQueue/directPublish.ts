@@ -19,8 +19,10 @@
  *       covers (cover_url), continuity pins (verifyContinuityPins), plus the
  *       shared personalization guard and series contiguity/order predicate;
  *   (c) one story_workflow_audit row per transition (ORION-GOV-006), with the
- *       decision id in reason/session_context — zero story writes happen
- *       unless the audit rows for that episode succeed;
+ *       decision id in reason/session_context — AUDIT-FIRST: the audit row
+ *       for an edge is written BEFORE its story update, and a failed audit
+ *       aborts with zero story writes for the edge (P1-1: zero unaudited
+ *       publishes — a story never reaches a new state without its audit);
  *   (d) Tier-1 scoping: a single explicit series_id; every episode touched
  *       must belong to it. No seriesId → refuse. Cross-series rows → refuse.
  *       There is deliberately no whole-library / multi-series mode.
@@ -45,18 +47,39 @@
  * queue_item_id is NOT NULL (a repaired series may have no queue item).
  */
 
-import { hasRenderedProduction, missingProductionUrls } from '@/lib/publishReadiness'
-import { verifyContinuityPins } from '@/lib/continuityPin'
+import { hashScript, verifyContinuityPins } from '@/lib/continuityPin'
 import {
-  assertSeriesContiguity,
+  evaluateSeriesPublishOrder,
   sortEpisodesForPublish,
+  type PublishOrderEpisode,
 } from '@/lib/story-gates'
-import { personalizationPublishBlockers } from '@/lib/personalization/publishGuard'
 import {
   shouldIncrementRepairCount,
   transitionAllowed,
 } from '@/lib/workflowTransitions'
 import { runPreflightChecks } from '@/lib/preflight/validator'
+
+/**
+ * Columns the gates read. Every field a gate predicate touches must be
+ * selected — a guard must never evaluate an unselected (undefined) field
+ * (P2-6). In particular announcement_text + series_number are read by the
+ * canonical publishability predicate and the ordering rank.
+ */
+export const DIRECT_PUBLISH_EPISODE_COLUMNS =
+  'id,series_id,episode_number,series_number,title,author,genre,audio_url,cover_url,description,' +
+  'duration_mins,announcement_url,announcement_text,background_music_url,script,script_json,series_name,' +
+  'narrator_voice_id,narrator_voice_name,author_id,workflow_state,review_status,' +
+  'status,is_hidden,production_repair_count,published_on,' +
+  'workflow_state_changed_by,workflow_state_changed_at,workflow_state_change_reason'
+
+/**
+ * In-process single-flight guard (P1-2): at most one direct-publish
+ * execution per series at a time in this runtime. A concurrent second call
+ * for the same series refuses 409 immediately instead of racing the first
+ * through the same edges. Cross-process races are caught by the per-write
+ * from-state row guard below.
+ */
+const inFlightDirectPublish = new Set<string>()
 
 /** Who/what performed the promotion (ORION-GOV-006 changed_by). */
 export const OPERATOR_DIRECT_PUBLISH_CHANGED_BY = 'operator-direct-publish'
@@ -159,17 +182,76 @@ export function evaluateOperatorDirectGates(
     }
   }
 
-  for (const ep of episodes) {
+  // Canonical publish-order: lowest episode_number first (P1-4). Every
+  // per-episode check AND the promotion loop below run in this order, so EP2
+  // can never go live before EP1 regardless of DB row order.
+  const ordered = sortEpisodesForPublish(episodes as never[]) as Array<Record<string, unknown>>
+
+  // Entry-state gate with idempotent resume: each episode is either
+  // repair_queue (to publish now) or already published BY THIS PATH
+  // (workflow_state_changed_by marker — verified against the audit chain by
+  // the executor before any write; the executor refuses unverified skips).
+  // Resume skips must form a strict prefix of the publish order: a published
+  // episode after an unreleased one means order was violated — reconcile.
+  // Any other intermediate state refuses (no mid-chain starts).
+  const entryOk = new Set<string>()
+  let seenTodo = false
+  for (const ep of ordered) {
+    const id = String((ep as { id?: unknown }).id ?? '(unknown)')
+    const label = `episode ${id}`
+    const ws = clean((ep as { workflow_state?: unknown }).workflow_state)
+    if (ws === 'repair_queue') {
+      seenTodo = true
+      entryOk.add(String((ep as { id?: unknown }).id))
+    } else if (
+      ws === 'published' &&
+      clean((ep as { workflow_state_changed_by?: unknown }).workflow_state_changed_by) === OPERATOR_DIRECT_PUBLISH_CHANGED_BY
+    ) {
+      if (seenTodo) {
+        blockers.push(
+          `${label}: already published but an earlier episode is still unreleased — publish order violated; operator must reconcile before retry`
+        )
+      }
+    } else {
+      blockers.push(
+        `${label}: workflow_state is '${ws || '(empty)'}', not 'repair_queue' — this path publishes repaired series only (intermediate states need operator reconcile; see resume rule)`
+      )
+    }
+  }
+
+  // CANONICAL publishability (P1-3): the SAME evaluateSeriesPublishOrder
+  // predicate as POST /api/admin/publish-story — imported, not copied.
+  // Episodes are projected to their end-of-path state (approved_ready) so the
+  // predicate answers "would this series be publishable once promoted";
+  // the entry-state gate above pins the actual start at repair_queue, and
+  // in-order atomic promotion (P1-4) satisfies the earlier-episode ordering
+  // the predicate models with its batch carve-out. This covers missing
+  // fields (title/author/genre/audio/cover/description/duration),
+  // the shared personalization guard (incl. announcement_url), and
+  // series contiguity — no divergent local copies of any of them.
+  const projected = ordered.map((ep) => ({
+    ...(ep as object),
+    workflow_state: 'approved_ready',
+    review_status: 'approved',
+  })) as PublishOrderEpisode[]
+  const canonicalEval = evaluateSeriesPublishOrder(projected)
+  if (canonicalEval.code === 'series_episode_number_gap') {
+    const detail = canonicalEval.blocked[0]?.reasons.join('; ') ?? 'episode number gap'
+    blockers.push(`series ${seriesId}: episode numbering gap: ${detail}`)
+  } else {
+    for (const b of canonicalEval.blocked) {
+      blockers.push(
+        `episode ${b.storyId} (${b.title}): canonical publishability: ${b.reasons.join('; ')}`
+      )
+    }
+  }
+
+  // Operator QC bundle (deliberate additions over the manual publish path):
+  // duration band, music bed, and a real preflight verdict per episode.
+  for (const ep of ordered) {
     const label = `episode ${String((ep as { id?: unknown }).id ?? '(unknown)')}`
     const storyId = String((ep as { id?: unknown }).id ?? '')
-
-    // Only repaired series are in scope for this path.
-    if (clean((ep as { workflow_state?: unknown }).workflow_state) !== 'repair_queue') {
-      blockers.push(
-        `${label}: workflow_state is '${clean((ep as { workflow_state?: unknown }).workflow_state) || '(empty)'}', not 'repair_queue' — this path publishes repaired series only`
-      )
-      continue
-    }
+    if (!entryOk.has(storyId)) continue
 
     // Duration band 15–20 min.
     const duration = durationOrNull((ep as { duration_mins?: unknown }).duration_mins)
@@ -177,11 +259,6 @@ export function evaluateOperatorDirectGates(
       blockers.push(
         `${label}: duration_mins ${String((ep as { duration_mins?: unknown }).duration_mins ?? '(missing)')} outside direct-publish band ${DIRECT_PUBLISH_MIN_DURATION_MINS}–${DIRECT_PUBLISH_MAX_DURATION_MINS}`
       )
-    }
-
-    // Rendered production: audio + cover + announcement (shared predicate).
-    if (!hasRenderedProduction(ep as never)) {
-      blockers.push(`${label}: missing rendered production: ${missingProductionUrls(ep as never).join(', ')}`)
     }
 
     // Music bed.
@@ -196,22 +273,11 @@ export function evaluateOperatorDirectGates(
     } else if (!pf.ok) {
       blockers.push(`${label}: preflight failed: ${pf.blockers.join('; ') || 'no details'}`)
     }
-
-    // Shared personalization guard (same import as publish-story).
-    const persBlockers = personalizationPublishBlockers(ep as never)
-    if (persBlockers.length) {
-      blockers.push(`${label}: personalization guard: ${persBlockers.join('; ')}`)
-    }
   }
 
-  // Series-level: contiguity/order (shared predicate) + continuity pins.
-  const ordered = sortEpisodesForPublish(episodes as never[])
-  const contiguity = assertSeriesContiguity(ordered)
-  if (!contiguity.ok) {
-    blockers.push(`series ${seriesId}: episode numbering gap: ${contiguity.error ?? 'episode number gap'}`)
-  }
+  // Series-level continuity pins (shared predicate, evaluated in publish order).
   try {
-    const pinResult = verifyContinuityPins(episodes as never[])
+    const pinResult = verifyContinuityPins(ordered as never[])
     if (!pinResult.ok) {
       const first = pinResult.mismatches[0]
       blockers.push(
@@ -264,13 +330,28 @@ export type ExecuteOperatorDirectPublishResult = {
 
 /**
  * Gate + promote. Re-runs the gates inside (fail-closed: throws with zero
- * writes on any blocker, including an unauthorized decision id). Each
- * episode moves repair_queue → ready_for_review → approved_ready →
- * published with one story_workflow_audit row per edge; the audit row for
- * an edge is written immediately after its update and a failed update
- * aborts the whole series (already-promoted episodes are reported, never
- * silently rolled back — rollback of a publish would itself need Marc
- * approval).
+ * writes on any blocker, including an unauthorized decision id). Episodes
+ * promote repair_queue → ready_for_review → approved_ready → published in
+ * canonical episode_number order (P1-4) with one story_workflow_audit row
+ * per edge.
+ *
+ * Concurrency (P1-2): an in-process single-flight guard refuses a second
+ * concurrent execution for the same series (409); every episode is re-read
+ * fresh immediately before promotion and must match its gated snapshot on
+ * all gate-critical fields (series, number, state, assets, script hash) —
+ * drift aborts 409 with zero writes; and EVERY story update carries
+ * from-state + series + episode row guards with a read-after-write row
+ * check (P2-5: exactly one row must come back from `.select('id')`).
+ *
+ * Audit-first (P1-1): the audit row for an edge is written BEFORE its story
+ * update. A failed audit aborts with zero story writes for the edge — a
+ * story is never left in a new state without its audit row (zero unaudited
+ * publishes). Already-promoted episodes keep their (audited) transitions
+ * and are reported, never silently rolled back.
+ *
+ * Resume: an interrupted series retries cleanly — already-published
+ * episodes (this path's marker) are audit-chain-verified and skipped, and
+ * only repair_queue episodes promote, in order.
  */
 export async function executeOperatorDirectPublish(
   db: DirectPublishDb,
@@ -287,6 +368,92 @@ export async function executeOperatorDirectPublish(
     )
   }
 
+  if (inFlightDirectPublish.has(seriesId)) {
+    throw new DirectPublishError(
+      `direct publish refused: series ${seriesId} already has a direct-publish in flight (single-flight guard — the concurrent attempt is refused so exactly one publish proceeds)`,
+      409
+    )
+  }
+  inFlightDirectPublish.add(seriesId)
+  try {
+    return await runOperatorDirectPublish(db, episodes, { ...input, seriesId, decisionId })
+  } finally {
+    inFlightDirectPublish.delete(seriesId)
+  }
+}
+
+/**
+ * Gate-critical fields: re-verified on a fresh row read immediately before
+ * an episode promotes. Any drift since gate evaluation (series move,
+ * renumber, state change, asset/URL swap, script edit detected via hash)
+ * aborts with 409 before any write for that episode.
+ */
+function freshnessFingerprint(ep: Record<string, unknown>): string {
+  return JSON.stringify([
+    clean((ep as { series_id?: unknown }).series_id),
+    Number((ep as { episode_number?: unknown }).episode_number) || null,
+    clean((ep as { workflow_state?: unknown }).workflow_state),
+    Number((ep as { duration_mins?: unknown }).duration_mins) || null,
+    clean((ep as { audio_url?: unknown }).audio_url),
+    clean((ep as { cover_url?: unknown }).cover_url),
+    clean((ep as { announcement_url?: unknown }).announcement_url),
+    clean((ep as { background_music_url?: unknown }).background_music_url),
+    hashScript(String((ep as { script?: unknown }).script ?? '')),
+  ])
+}
+
+async function fetchFreshEpisode(db: DirectPublishDb, storyId: string): Promise<Record<string, unknown> | null> {
+  const { data, error } = await db
+    .from('stories')
+    .select(DIRECT_PUBLISH_EPISODE_COLUMNS)
+    .eq('id', storyId)
+  if (error) throw new Error(`fresh row read for episode ${storyId} failed: ${error.message}`)
+  if (!Array.isArray(data) || data.length !== 1) return null
+  return data[0] as Record<string, unknown>
+}
+
+/**
+ * Resume verification: every already-published skip must carry the complete
+ * 3-edge audit chain by this path's marker. Runs BEFORE any write; a gap
+ * refuses the whole retry so an unverified publish is never claimed.
+ */
+async function verifyResumeAuditChains(
+  db: DirectPublishDb,
+  skipIds: string[]
+): Promise<void> {
+  for (const storyId of skipIds) {
+    const { data, error } = await db
+      .from('story_workflow_audit')
+      .select('story_id,from_state,to_state,changed_by')
+      .eq('story_id', storyId)
+      .eq('changed_by', OPERATOR_DIRECT_PUBLISH_CHANGED_BY)
+    if (error) {
+      throw new DirectPublishError(
+        `resume refused: audit-chain read for already-published episode ${storyId} failed (${error.message}); operator must reconcile before retry`,
+        500,
+        [error.message]
+      )
+    }
+    const edges = new Set(
+      (Array.isArray(data) ? data : []).map((r: any) => `${r.from_state}→${r.to_state}`)
+    )
+    const missing = OPERATOR_DIRECT_PUBLISH_EDGES.map(([f, t]) => `${f}→${t}`).filter((e) => !edges.has(e))
+    if (missing.length) {
+      throw new DirectPublishError(
+        `resume refused: episode ${storyId} is published but its audit chain is incomplete (missing ${missing.join(', ')}); operator must reconcile before retry — the gap is claimed, never silently skipped`,
+        422,
+        missing
+      )
+    }
+  }
+}
+
+async function runOperatorDirectPublish(
+  db: DirectPublishDb,
+  episodes: Array<Record<string, unknown>>,
+  input: ExecuteOperatorDirectPublishInput & { seriesId: string; decisionId: string }
+): Promise<ExecuteOperatorDirectPublishResult> {
+  const { seriesId, decisionId } = input
   const gates = evaluateOperatorDirectGates(episodes, input)
   if (!gates.ok) {
     throw new DirectPublishError(
@@ -295,16 +462,57 @@ export async function executeOperatorDirectPublish(
       (gates as { blockers: string[] }).blockers
     )
   }
-
   const publishedOn = new Date().toISOString()
   const reasonBase = clean(input.reason) || 'Audited operator direct-publish of repaired series (no owner click required)'
   const reason = `decision:${decisionId}: ${reasonBase}`
   const done: Array<{ id: string; transitions: string[] }> = []
 
-  for (const ep of episodes) {
+  // Canonical publish order (P1-4): lowest episode_number first, regardless
+  // of the row order the caller supplied.
+  const ordered = sortEpisodesForPublish(episodes as never[]) as Array<Record<string, unknown>>
+
+  // Resume: verify the audit chains of already-published skips BEFORE any
+  // write, then carry them in the result as verified (never re-published).
+  const skipIds = ordered
+    .filter((ep) => clean((ep as { workflow_state?: unknown }).workflow_state) === 'published')
+    .map((ep) => String((ep as { id?: unknown }).id))
+  await verifyResumeAuditChains(db, skipIds)
+  for (const id of skipIds) {
+    done.push({ id, transitions: ['resumed: verified already-published (3-edge audit chain complete)'] })
+  }
+
+  const todo = ordered.filter(
+    (ep) => clean((ep as { workflow_state?: unknown }).workflow_state) === 'repair_queue'
+  )
+  for (const ep of todo) {
     const storyId = String((ep as { id?: unknown }).id)
     const transitions: string[] = []
-    const repairCount = Number((ep as { production_repair_count?: unknown }).production_repair_count ?? 0)
+
+    // Freshness re-read: the row must still match its gated snapshot on
+    // every gate-critical field. Drift (concurrent edit that kept the
+    // workflow state) aborts here with 409 — zero writes for this episode.
+    // Residual: a change racing the single update statement itself needs a
+    // row-version column (migration, out of scope); the from-state guard
+    // below covers every state-changing race.
+    let fresh: Record<string, unknown> | null
+    try {
+      fresh = await fetchFreshEpisode(db, storyId)
+    } catch (e) {
+      throw new DirectPublishError(
+        `direct publish aborted at episode ${storyId}: ${e instanceof Error ? e.message : String(e)}`,
+        500,
+        [e instanceof Error ? e.message : String(e)]
+      )
+    }
+    if (!fresh || freshnessFingerprint(fresh) !== freshnessFingerprint(ep)) {
+      throw new DirectPublishError(
+        `direct publish conflict at episode ${storyId}: row changed since gate evaluation (freshness mismatch); refusing with zero writes for this episode — re-run gates and retry`,
+        409,
+        [`episode ${storyId} changed since gate evaluation`]
+      )
+    }
+    const epNum = Number(fresh.episode_number)
+    const repairCount = Number((fresh as { production_repair_count?: unknown }).production_repair_count ?? 0)
 
     const steps: Array<{ to: string; payload: Record<string, unknown> }> = [
       {
@@ -353,8 +561,15 @@ export async function executeOperatorDirectPublish(
         if (!transitionAllowed(from, step.to)) {
           throw new Error(`transition ${from} → ${step.to} not allowed; aborting series at episode ${storyId}`)
         }
-        const { error: updateError } = await db.from('stories').update(step.payload).eq('id', storyId)
-        if (updateError) throw new Error(`${from} → ${step.to} failed: ${updateError.message}`)
+        // AUDIT-FIRST (P1-1): the audit row for an edge is written BEFORE
+        // its story update. A failed audit aborts with ZERO story writes
+        // for the edge — nothing to compensate in stories, and a story can
+        // never reach a new state without its audit row already recorded.
+        // (Single-statement atomicity would need a DB function/migration —
+        // out of scope; the ordering guarantees the gap can only occur in
+        // the fail-closed direction: an audit row without a matching story
+        // transition, which aborts loudly below and is claimed, never live
+        // and unaudited.)
         const { error: auditError } = await db.from('story_workflow_audit').insert({
           story_id: storyId,
           from_state: from,
@@ -366,16 +581,45 @@ export async function executeOperatorDirectPublish(
         })
         if (auditError) {
           throw new Error(
-            `audit row for ${from} → ${step.to} failed (${auditError.message}); aborting — story update without audit is not permitted`
+            `audit row for ${from} → ${step.to} failed (${auditError.message}); aborting with zero story writes for this edge — publish fails because audit failed`
           )
+        }
+        // From-state + series + episode row guards with read-after-write
+        // (P1-2/P2-5): the update only matches while the row is still in
+        // `from`, in this series, at this episode number. Zero rows back =
+        // a concurrent mover got there first — refuse 409. If the update
+        // itself errors AFTER the audit row was written, the audit over-
+        // claims a transition that never happened: abort loudly naming the
+        // exact edge for operator reconcile (fail-closed — nothing is live).
+        const { data: updated, error: updateError } = await db
+          .from('stories')
+          .update(step.payload)
+          .eq('id', storyId)
+          .eq('workflow_state', from)
+          .eq('series_id', seriesId)
+          .eq('episode_number', epNum)
+          .select('id')
+        if (updateError) {
+          throw new Error(
+            `story update ${from} → ${step.to} failed AFTER its audit row was written (${updateError.message}); audit over-claims — operator must reconcile episode ${storyId} before retry`
+          )
+        }
+        if (!Array.isArray(updated) || updated.length !== 1) {
+          const conflict = new DirectPublishError(
+            `direct publish conflict at episode ${storyId}: expected exactly 1 row in '${from}' for ${from} → ${step.to}, got ${Array.isArray(updated) ? updated.length : 'no rows'} — audit row for the edge was written but the story was NOT updated; row moved concurrently; operator must reconcile before retry (exactly one publish proceeds)`,
+            409
+          )
+          ;(conflict as { blockers?: string[] }).blockers = [conflict.message]
+          throw conflict
         }
         transitions.push(`${from}→${step.to}`)
         from = step.to
       }
       done.push({ id: storyId, transitions })
     } catch (e) {
+      if (e instanceof DirectPublishError) throw e
       throw new DirectPublishError(
-        `direct publish aborted at episode ${storyId} after ${done.length} of ${episodes.length} published: ${e instanceof Error ? e.message : String(e)}`,
+        `direct publish aborted at episode ${storyId} after ${done.length} of ${ordered.length} published: ${e instanceof Error ? e.message : String(e)}`,
         500,
         [e instanceof Error ? e.message : String(e)]
       )

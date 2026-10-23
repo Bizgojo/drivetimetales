@@ -21,6 +21,7 @@
  */
 
 import {
+  DIRECT_PUBLISH_EPISODE_COLUMNS,
   DIRECT_PUBLISH_MAX_DURATION_MINS,
   DIRECT_PUBLISH_MIN_DURATION_MINS,
   DirectPublishError,
@@ -44,9 +45,13 @@ jest.mock('@/lib/belleStructureGate', () => ({
 
 type Row = Record<string, unknown>
 
-function makeDb(stories: Row[], opts?: { failAuditOn?: string[]; failUpdateOn?: string[] }) {
+function makeDb(
+  stories: Row[],
+  opts?: { failAuditOn?: string[]; failUpdateOn?: string[]; seedAudits?: Row[] }
+) {
   const writes: Array<{ table: string; op: string; payload?: unknown; id?: unknown }> = []
   const rows = new Map(stories.map((r) => [String(r.id), { ...r }]))
+  const audits: Row[] = [...(opts?.seedAudits ?? [])]
   const failAuditOn = new Set(opts?.failAuditOn ?? [])
   const failUpdateOn = new Set(opts?.failUpdateOn ?? [])
 
@@ -54,15 +59,40 @@ function makeDb(stories: Row[], opts?: { failAuditOn?: string[]; failUpdateOn?: 
     from: (table: string) => {
       if (table === 'stories') {
         return {
-          update: (payload: Row) => ({
-            eq: async (_col: string, val: unknown) => {
-              const id = String(val)
-              if (failUpdateOn.has(id)) return { error: { message: 'boom-update' } }
-              const row = rows.get(id)
-              if (!row) return { error: { message: 'not found' } }
-              writes.push({ table, op: 'update', payload, id })
-              Object.assign(row, payload)
-              return { error: null }
+          // Mirrors the real chain: update().eq().eq().select() with
+          // row-guard semantics (zero matching rows → data []).
+          update: (payload: Row) => {
+            const filters: Array<[string, unknown]> = []
+            const chain: any = {
+              eq: (col: string, val: unknown) => {
+                filters.push([col, val])
+                return chain
+              },
+              select: async (_cols: string) => {
+                const idFilter = filters.find(([c]) => c === 'id')
+                const id = idFilter ? String(idFilter[1]) : ''
+                if (failUpdateOn.has(id)) return { data: null, error: { message: 'boom-update' } }
+                const row = rows.get(id)
+                if (!row) return { data: [], error: null }
+                for (const [col, val] of filters) {
+                  if (String((row as Row)[col] ?? '') !== String(val ?? '')) {
+                    return { data: [], error: null }
+                  }
+                }
+                writes.push({ table, op: 'update', payload, id })
+                Object.assign(row, payload)
+                return { data: [{ id }], error: null }
+              },
+            }
+            return chain
+          },
+          // Freshness re-read: select().eq('id', …) → one-row data array.
+          select: (_cols: string) => ({
+            eq: async (col: string, val: unknown) => {
+              const found = [...rows.values()].filter(
+                (r) => String((r as Row)[col] ?? '') === String(val ?? '')
+              )
+              return { data: found.map((r) => ({ ...r })), error: null }
             },
           }),
         }
@@ -73,14 +103,33 @@ function makeDb(stories: Row[], opts?: { failAuditOn?: string[]; failUpdateOn?: 
             const sid = String((payload as Row).story_id ?? '')
             if (failAuditOn.has(sid)) return { error: { message: 'boom-audit' } }
             writes.push({ table, op: 'insert', payload })
+            audits.push({ ...(payload as Row) })
             return { error: null }
+          },
+          // Resume verification: select().eq().eq() thenable.
+          select: (_cols: string) => {
+            const filters: Array<[string, unknown]> = []
+            const chain: any = {
+              eq: (col: string, val: unknown) => {
+                filters.push([col, val])
+                return chain
+              },
+              then: (res: any, rej: any) =>
+                Promise.resolve({
+                  data: audits.filter((a) =>
+                    filters.every(([c, v]) => String(a[c] ?? '') === String(v ?? ''))
+                  ),
+                  error: null,
+                }).then(res, rej),
+            }
+            return chain
           },
         }
       }
       throw new Error(`unexpected table ${table}`)
     },
   }
-  return { db, writes, rows }
+  return { db, writes, rows, audits }
 }
 
 // ── Fixtures ──
@@ -277,15 +326,46 @@ describe('authorized pass', () => {
     }
   })
 
-  test('audit failure aborts: story update without audit is not permitted', async () => {
+  test('audit failure fails the publish with ZERO story writes (P1-1, audit-first)', async () => {
     const episodes = passingSeries()
-    const { db, writes } = makeDb(episodes, { failAuditOn: [EP1] })
+    const { db, writes, rows } = makeDb(episodes, { failAuditOn: [EP1] })
     await expect(
       executeOperatorDirectPublish(db, episodes, { seriesId: SERIES, decisionId: DECISION, preflight: preflightOk })
     ).rejects.toMatchObject({ status: 500 })
-    // EP1 got its first story update, then the audit failed → abort. EP2 untouched.
-    const ep2Writes = writes.filter((w) => String((w.id ?? (w.payload as Row)?.story_id) ?? '') === EP2)
-    expect(ep2Writes).toHaveLength(0)
+    // Audit-first: the failed audit aborts BEFORE any story write. EP1
+    // never left repair_queue; EP2 untouched; zero audit rows persisted.
+    expect(writes.filter((w) => w.table === 'stories')).toHaveLength(0)
+    expect(writes.filter((w) => w.table === 'story_workflow_audit')).toHaveLength(0)
+    expect(rows.get(EP1)!.workflow_state).toBe('repair_queue')
+    expect(rows.get(EP2)!.workflow_state).toBe('repair_queue')
+  })
+
+  test('audit fails on a later episode: earlier episode keeps its audited publish (P1-1)', async () => {
+    const episodes = passingSeries()
+    const { db, writes, rows } = makeDb(episodes, { failAuditOn: [EP2] })
+    await expect(
+      executeOperatorDirectPublish(db, episodes, { seriesId: SERIES, decisionId: DECISION, preflight: preflightOk })
+    ).rejects.toMatchObject({ status: 500 })
+    // EP1 fully published with its 3 audit rows; EP2 pristine — every live
+    // state has its audit, nothing is published-but-unaudited.
+    expect(rows.get(EP1)!.workflow_state).toBe('published')
+    expect(rows.get(EP2)!.workflow_state).toBe('repair_queue')
+    const audits = writes.filter((w) => w.table === 'story_workflow_audit')
+    expect(audits).toHaveLength(3)
+    expect(audits.every((a) => String((a.payload as Row).story_id) === EP1)).toBe(true)
+  })
+
+  test('story update fails after its audit: abort names the over-claim, story untouched (P1-1)', async () => {
+    const episodes = passingSeries()
+    const { db, writes, rows, audits } = makeDb(episodes, { failUpdateOn: [EP1] })
+    await expect(
+      executeOperatorDirectPublish(db, episodes, { seriesId: SERIES, decisionId: DECISION, preflight: preflightOk })
+    ).rejects.toMatchObject({ status: 500 })
+    expect(writes.filter((w) => w.table === 'stories')).toHaveLength(0)
+    // Exactly one audit row exists without a matching story transition —
+    // fail-closed (nothing live) and explicitly named for reconcile.
+    expect(audits).toHaveLength(1)
+    expect(rows.get(EP1)!.workflow_state).toBe('repair_queue')
   })
 })
 
@@ -329,6 +409,13 @@ describe('gates-enforced refuse (zero story writes each)', () => {
     episodes[1] = { ...episodes[1], announcement_url: '' }
     const blockers = await expectRefused(episodes, preflightOk)
     expect(blockers.join(' ')).toMatch(/announcement_url/)
+  })
+
+  test('missing title refuses via the canonical publishability predicate (P1-3)', async () => {
+    const episodes = passingSeries()
+    episodes[0] = { ...episodes[0], title: '' }
+    const blockers = await expectRefused(episodes, preflightOk)
+    expect(blockers.join(' ')).toMatch(/canonical publishability: missing title/)
   })
 
   test('missing cover refuses', async () => {
@@ -391,7 +478,7 @@ describe('gates-enforced refuse (zero story writes each)', () => {
       script_json: { series_generation: { continuity_pins_used: buildContinuityPins([episodes[0]]) } },
     }
     const blockers = await expectRefused(episodes, preflightOk)
-    expect(blockers.join(' ')).toMatch(/personalization guard/)
+    expect(blockers.join(' ')).toMatch(/LISTENER_NAME/)
   })
 
   test('episode numbering gap refuses', async () => {
@@ -442,5 +529,224 @@ describe('gate preservation (matrix + shared predicates untouched)', () => {
     const result = await runEpisodePreflight(ep)
     expect(result.ok).toBe(false)
     expect(result.blockers.length).toBeGreaterThan(0)
+  })
+})
+
+// ── E. Concurrency + ordering + read-after-write (P1-2 / P1-4 / P2-5 / P2-6) ──
+
+describe('concurrency guard (single-flight + row-guard)', () => {
+  test('concurrent double-publish: exactly one publish proceeds (P1-2)', async () => {
+    const episodes = passingSeries()
+    const { db, writes, rows } = makeDb(episodes)
+    const input = { seriesId: SERIES, decisionId: DECISION, preflight: preflightOk }
+    const [r1, r2] = await Promise.allSettled([
+      executeOperatorDirectPublish(db, episodes, input),
+      executeOperatorDirectPublish(db, episodes, input),
+    ])
+    const fulfilled = [r1, r2].filter((r) => r.status === 'fulfilled')
+    const rejected = [r1, r2].filter((r) => r.status === 'rejected')
+    expect(fulfilled).toHaveLength(1)
+    expect(rejected).toHaveLength(1)
+    expect((rejected[0] as PromiseRejectedResult).reason).toMatchObject({ status: 409 })
+    // Exactly one publish worth of story updates — no double-publish.
+    expect(writes.filter((w) => w.table === 'stories')).toHaveLength(6)
+    expect(writes.filter((w) => w.table === 'story_workflow_audit')).toHaveLength(6)
+    for (const id of [EP1, EP2]) {
+      expect(rows.get(id)!.workflow_state).toBe('published')
+    }
+  })
+
+  test('row moved concurrently: zero-row update refuses 409 with no further writes (P1-2)', async () => {
+    const episodes = passingSeries()
+    // Simulate a concurrent mover: EP1 is already out of repair_queue in the DB.
+    episodes[0] = { ...episodes[0], workflow_state: 'ready_for_review' }
+    const { db, writes } = makeDb(episodes)
+    // Gates on the stale snapshot still see repair_queue (caller-supplied
+    // rows); the row guard must catch the drift at write time.
+    const stale = passingSeries()
+    await expect(
+      executeOperatorDirectPublish(db, stale, { seriesId: SERIES, decisionId: DECISION, preflight: preflightOk })
+    ).rejects.toMatchObject({ status: 409 })
+    expect(writes.filter((w) => w.table === 'stories')).toHaveLength(0)
+    expect(writes.filter((w) => w.table === 'story_workflow_audit')).toHaveLength(0)
+  })
+})
+
+describe('publish ordering (P1-4)', () => {
+  test('reversed input still publishes EP1 before EP2', async () => {
+    const episodes = passingSeries().reverse()
+    expect(String(episodes[0].id)).toBe(EP2)
+    const { db, writes, rows } = makeDb(episodes)
+    const result = await executeOperatorDirectPublish(db, episodes, {
+      seriesId: SERIES,
+      decisionId: DECISION,
+      preflight: preflightOk,
+    })
+    expect(result.episodes.map((e) => e.id)).toEqual([EP1, EP2])
+    // First story write targets EP1, not EP2.
+    expect(writes.filter((w) => w.table === 'stories')[0].id).toBe(EP1)
+    for (const id of [EP1, EP2]) {
+      expect(rows.get(id)!.workflow_state).toBe('published')
+    }
+  })
+})
+
+describe('strictness (P2-5 / P2-6)', () => {
+  test('gate column list selects every field the predicates read (P2-6)', () => {
+    for (const col of [
+      'announcement_text',
+      'series_number',
+      'announcement_url',
+      'background_music_url',
+      'episode_number',
+      'workflow_state',
+      'review_status',
+      'script',
+      'script_json',
+      'published_on',
+      'workflow_state_changed_by',
+      'workflow_state_changed_at',
+      'workflow_state_change_reason',
+    ]) {
+      expect(DIRECT_PUBLISH_EPISODE_COLUMNS.split(',')).toContain(col)
+    }
+  })
+})
+
+// ── F. Resume + freshness (Codex R2 items 4–5) ──
+
+/** An episode already published by this path, with its 3-edge audit chain. */
+function publishedEpisode(id: string, epNum: number): { row: Row; audits: Row[] } {
+  const row = {
+    ...passingEpisode(id, epNum, epNum === 1 ? PASS_SCRIPT_1 : PASS_SCRIPT_2),
+    workflow_state: 'published',
+    review_status: 'approved',
+    status: 'published',
+    is_hidden: false,
+    published_on: '2026-10-23T09:00:00.000Z',
+    workflow_state_changed_by: 'operator-direct-publish',
+    workflow_state_changed_at: '2026-10-23T09:00:00.000Z',
+    workflow_state_change_reason: `decision:${DECISION}: prior run`,
+  }
+  const edges: Array<[string, string]> = [
+    ['repair_queue', 'ready_for_review'],
+    ['ready_for_review', 'approved_ready'],
+    ['approved_ready', 'published'],
+  ]
+  const audits = edges.map(([from_state, to_state]) => ({
+    story_id: id,
+    from_state,
+    to_state,
+    changed_by: 'operator-direct-publish',
+    changed_at: '2026-10-23T09:00:00.000Z',
+    reason: `decision:${DECISION}: prior run`,
+    session_context: `decision:${DECISION}`,
+  }))
+  return { row, audits }
+}
+
+describe('idempotent resume', () => {
+  test('interrupted series retries: EP1 verified+skipped, EP2 publishes', async () => {
+    const fresh = passingSeries()
+    const ep1 = publishedEpisode(EP1, 1)
+    // Pins hash scripts only, and the published EP1 row carries the same
+    // script — EP2's pins stay green without rebuilding.
+    const ep2 = { ...fresh[1] }
+    const { db, writes, rows } = makeDb([ep1.row, ep2], { seedAudits: ep1.audits })
+    const result = await executeOperatorDirectPublish(db, [ep1.row, ep2], {
+      seriesId: SERIES,
+      decisionId: DECISION,
+      preflight: preflightOk,
+    })
+    expect(result.episodes[0]).toMatchObject({ id: EP1 })
+    expect(result.episodes[0].transitions).toEqual([
+      'resumed: verified already-published (3-edge audit chain complete)',
+    ])
+    expect(result.episodes[1].transitions).toEqual([
+      'repair_queue→ready_for_review',
+      'ready_for_review→approved_ready',
+      'approved_ready→published',
+    ])
+    // EP1 never re-written; EP2 got exactly its 3 updates + 3 audits.
+    expect(writes.filter((w) => w.table === 'stories' && w.id === EP1)).toHaveLength(0)
+    expect(writes.filter((w) => w.table === 'stories' && w.id === EP2)).toHaveLength(3)
+    expect(rows.get(EP2)!.workflow_state).toBe('published')
+  })
+
+  test('resume with incomplete audit chain refuses (never claims unverified)', async () => {
+    const fresh = passingSeries()
+    const ep1 = publishedEpisode(EP1, 1)
+    const { db, writes } = makeDb([ep1.row, fresh[1]], {
+      seedAudits: ep1.audits.slice(0, 2), // third edge missing
+    })
+    await expect(
+      executeOperatorDirectPublish(db, [ep1.row, fresh[1]], {
+        seriesId: SERIES,
+        decisionId: DECISION,
+        preflight: preflightOk,
+      })
+    ).rejects.toMatchObject({ status: 422 })
+    expect(writes.filter((w) => w.table === 'stories')).toHaveLength(0)
+  })
+
+  test('published episode from another writer refuses (marker mismatch)', async () => {
+    const fresh = passingSeries()
+    const ep1 = publishedEpisode(EP1, 1)
+    ep1.row.workflow_state_changed_by = 'admin'
+    const { db } = makeDb([ep1.row, fresh[1]], { seedAudits: ep1.audits })
+    await expect(
+      executeOperatorDirectPublish(db, [ep1.row, fresh[1]], {
+        seriesId: SERIES,
+        decisionId: DECISION,
+        preflight: preflightOk,
+      })
+    ).rejects.toMatchObject({ status: 422 })
+  })
+
+  test('published episode after an unreleased one refuses (order violated)', async () => {
+    const fresh = passingSeries()
+    const ep2pub = publishedEpisode(EP2, 2)
+    const { db } = makeDb([fresh[0], ep2pub.row], { seedAudits: ep2pub.audits })
+    const verdict = evaluateOperatorDirectGates([fresh[0], ep2pub.row], {
+      seriesId: SERIES,
+      preflight: preflightOk,
+    })
+    expect(verdict.ok).toBe(false)
+    expect((verdict as { blockers: string[] }).blockers.join(' ')).toMatch(/order violated/)
+    await expect(
+      executeOperatorDirectPublish(db, [fresh[0], ep2pub.row], {
+        seriesId: SERIES,
+        decisionId: DECISION,
+        preflight: preflightOk,
+      })
+    ).rejects.toMatchObject({ status: 422 })
+  })
+})
+
+describe('freshness re-read (stale gates cannot publish)', () => {
+  test('asset swap without state change aborts 409 with zero writes', async () => {
+    const episodes = passingSeries()
+    const drifted = passingSeries()
+    // Concurrent edit: cover swapped after gate evaluation, state unchanged.
+    drifted[0] = { ...drifted[0], cover_url: 'https://cdn.example/cover-1-EVIL.png' }
+    const { db, writes } = makeDb(drifted)
+    await expect(
+      executeOperatorDirectPublish(db, episodes, { seriesId: SERIES, decisionId: DECISION, preflight: preflightOk })
+    ).rejects.toMatchObject({ status: 409 })
+    expect(writes.filter((w) => w.table === 'stories')).toHaveLength(0)
+    expect(writes.filter((w) => w.table === 'story_workflow_audit')).toHaveLength(0)
+  })
+
+  test('script edit without state change aborts 409 with zero writes', async () => {
+    const episodes = passingSeries()
+    const drifted = passingSeries()
+    drifted[1] = { ...drifted[1], script: `${PASS_SCRIPT_2}\nMARA: An unreviewed line.` }
+    const { db, writes } = makeDb(drifted)
+    await expect(
+      executeOperatorDirectPublish(db, episodes, { seriesId: SERIES, decisionId: DECISION, preflight: preflightOk })
+    ).rejects.toMatchObject({ status: 409 })
+    // EP1 promoted (fresh) before EP2's drift was caught — EP1 fully audited.
+    expect(writes.filter((w) => w.table === 'stories')).toHaveLength(3)
+    expect(writes.filter((w) => w.table === 'story_workflow_audit')).toHaveLength(3)
   })
 })

@@ -18,6 +18,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { requireStrategosToken } from '@/lib/storyQueue/dispatch'
 import {
+  DIRECT_PUBLISH_EPISODE_COLUMNS,
   DirectPublishError,
   executeOperatorDirectPublish,
   isDirectPublishDecisionAuthorized,
@@ -32,13 +33,6 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
-
-/** Columns the gates read. DB values are published as-is; no overrides accepted. */
-const DIRECT_PUBLISH_EPISODE_COLUMNS =
-  'id,series_id,episode_number,title,author,genre,audio_url,cover_url,description,' +
-  'duration_mins,announcement_url,background_music_url,script,script_json,series_name,' +
-  'narrator_voice_id,narrator_voice_name,author_id,workflow_state,review_status,' +
-  'status,is_hidden,production_repair_count'
 
 export async function POST(req: NextRequest) {
   try {
@@ -77,11 +71,14 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    // 4. Load the series (read-only).
+    // 4. Load the series (read-only) in canonical publish order (P1-4 /
+    // P2-6: deterministic episode_number order at the query, re-sorted by
+    // the executor as defense in depth — EP2 never precedes EP1).
     const { data: episodes, error: fetchError } = await supabase
       .from('stories')
       .select(DIRECT_PUBLISH_EPISODE_COLUMNS)
       .eq('series_id', seriesId)
+      .order('episode_number', { ascending: true })
     if (fetchError) {
       return NextResponse.json({ success: false, error: fetchError.message }, { status: 500 })
     }
@@ -113,8 +110,12 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ success: true, ...result })
   } catch (err: any) {
     if (err instanceof DirectPublishError) {
+      const code =
+        err.status === 403 ? 'decision_not_authorized'
+        : err.status === 409 ? 'direct_publish_conflict'
+        : 'direct_publish_gates_failed'
       return NextResponse.json(
-        { success: false, code: err.status === 403 ? 'decision_not_authorized' : 'direct_publish_gates_failed', error: err.message, ...(err.blockers ? { blockers: err.blockers } : {}) },
+        { success: false, code, error: err.message, ...(err.blockers ? { blockers: err.blockers } : {}) },
         { status: err.status }
       )
     }
