@@ -153,6 +153,11 @@ function holdEnvelope(held: boolean, by: string, reason: string): string {
  * Set the hold. Audited: the atlas_settings row carries actor + reason +
  * timestamp (plus server-side updated_at/updated_by), and an unmissable log
  * marker is emitted. Upsert so set is idempotent.
+ *
+ * Serialization role: this upsert UPDATEs the publication_hold row on
+ * conflict, taking the SAME row lock the trigger's SELECT ... FOR UPDATE
+ * holds during a publishing transaction — a hold-set racing an in-flight
+ * publish blocks until that transaction ends instead of slipping past it.
  */
 export async function setPublicationHold(
   db: SettingsReader,
@@ -168,20 +173,34 @@ export async function setPublicationHold(
   return parsePublicationHold(value)
 }
 
-/* ── ATOMIC ENFORCEMENT — Postgres trigger mirror (lake-marion-1445-atomic-bar) ──
+/* ── SERIALIZATION BARRIER — Postgres row-lock mirror (concurrency-proof-standard-1500) ──
  *
- * Rationale: the code-level checks above (fail-fast isPublicationHeld + the
- * assertPublishAllowed re-read immediately before each terminal write) still
- * leave a race window — the global hold can land BETWEEN the final re-read
- * and the UPDATE's commit, and two such reads can never be atomic with the
- * write that follows them. The BEFORE UPDATE trigger in
+ * Rationale (Marc 15:00 ruling): the code-level checks above (fail-fast
+ * isPublicationHeld + the assertPublishAllowed re-read immediately before
+ * each terminal write) still leave a race window, and the v1 trigger's
+ * plain SELECT re-read did NOT close it — a plain SELECT does not
+ * serialize hold-set vs publish. The corrected trigger in
  * supabase/migrations/20261023150000_publication_hold_trigger.sql closes
- * that window: it runs INSIDE the writing transaction, reads the committed
- * publication_hold envelope at write time, and aborts a becoming-visible
- * update with zero rows written. Code-level checks stay (they produce the
- * friendly 409/held_blocked refusals); the trigger is the backstop that
- * makes a hold landing mid-write still block (its violation surfaces as a
- * 500, never a silent publish).
+ * it with a SHARED serialization mechanism both sides participate in:
+ * the atlas_settings publication_hold ROW LOCK.
+ *
+ *   publish side — the trigger reads the envelope with SELECT ... FOR
+ *     UPDATE, holding the hold-row lock until the publishing transaction
+ *     commits or rolls back;
+ *   hold-set side — setPublicationHold() below upserts the SAME key, so
+ *     on conflict it UPDATEs the same row and takes the same lock (a
+ *     concurrent hold-set blocks behind an in-flight publish).
+ *
+ * Defined semantics (both orderings safe, no silent publish-after-hold):
+ *   (a) hold committed first → later becoming-visible UPDATE aborts;
+ *   (b) publish locks first → concurrent hold-set BLOCKS until the
+ *       publish commits/rolls back, then lands (in-flight publish is not
+ *       retroactively aborted; every subsequent publish is refused);
+ *   (c) truly concurrent → exactly one side wins the lock; (a) or (b).
+ * Precondition: the hold row must exist (the migration seeds an OPEN
+ * envelope; never delete the row) or FOR UPDATE locks nothing.
+ * Code-level checks stay (friendly 409/held_blocked refusals); trigger
+ * violations surface as 500, never a silent publish.
  *
  * The pure predicates below are the trigger's logic in TypeScript so unit
  * tests prove the exact becoming-visible boundary the SQL enforces. Keep
