@@ -58,6 +58,16 @@
 /** Key under script_json.series_generation holding the pending pin list. */
 export const PENDING_PIN_RESYNC_KEY = 'pending_pin_resync'
 
+// BELLE-FRESHNESS-001: fingerprint/stamp helpers live in lib/belleFreshness
+// (pure). Imported here so the repair persist — the single choke point
+// through which Belle text repairs write — stamps freshness evidence in
+// the SAME atomic statement as the repaired text.
+import {
+  BELLE_FRESHNESS_KEY,
+  freshnessEnvelopeForTextSet,
+  setBelleFreshness,
+} from './belleFreshness'
+
 /** Stable code on the structured error thrown for a malformed pending list. */
 export const MALFORMED_PENDING_CODE = 'belle_pending_pin_resync_malformed'
 
@@ -598,6 +608,14 @@ export function rebaseRepairedScriptJson(
   if (mergedAudio.length > 0 || PENDING_AUDIO_DELETE_KEY in freshSG) {
     next.series_generation[PENDING_AUDIO_DELETE_KEY] = mergedAudio
   }
+  // BELLE-FRESHNESS-001: carry the attempted freshness stamp (computed
+  // from the exact script text being written). Fail-closed-or-equal: a
+  // changed fingerprint always forces stale=true; a preserved envelope
+  // keeps valid render evidence. The attempted stamp never invents a
+  // clearance — only a mix rebuild clears stale.
+  if (BELLE_FRESHNESS_KEY in attemptedSG) {
+    next.series_generation[BELLE_FRESHNESS_KEY] = attemptedSG[BELLE_FRESHNESS_KEY]
+  }
   return next
 }
 
@@ -964,6 +982,29 @@ export async function persistBelleRepair(
         (params.storyUpdates as any)?.script_json,
         unionPendingAudioDeletes(priorAudio, audioIntent)
       ),
+    }
+  }
+  // BELLE-FRESHNESS-001: stamp the Belle-text fingerprint in the SAME
+  // atomic payload. Prior evidence comes from the pre-repair snapshot
+  // (expectedRepairedScriptJson); the new fingerprint from the repaired
+  // script column being written. Any change (or first stamp) sets the
+  // explicit stale flag + text_changed_at — downstream mixes are stale
+  // until a rebuild clears them; publication refuses without evidence.
+  const nextScriptText = (updatesWithIntent as any)?.script
+  if (typeof nextScriptText === 'string' && nextScriptText.length > 0) {
+    const stamp = freshnessEnvelopeForTextSet(
+      params.expectedRepairedScriptJson,
+      nextScriptText,
+      new Date().toISOString()
+    )
+    if (stamp.envelope) {
+      updatesWithIntent = {
+        ...updatesWithIntent,
+        script_json: setBelleFreshness(
+          (updatesWithIntent as any)?.script_json,
+          stamp.envelope
+        ),
+      }
     }
   }
   const hasSnapshot = params.expectedRepairedScriptJson !== undefined

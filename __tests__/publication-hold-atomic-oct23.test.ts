@@ -61,6 +61,7 @@ import {
   maybeDirectPublishStandalone,
 } from '@/lib/directPublish'
 import { buildContinuityPins } from '@/lib/continuityPin'
+import { currentBelleFingerprint } from '@/lib/belleFreshness'
 
 jest.mock('@supabase/supabase-js', () => ({
   createClient: () => ({
@@ -401,8 +402,37 @@ const BASE_URLS = {
   background_music_url: 'https://cdn.example/bed.mp3',
 }
 
-function ferryRow(overrides: Row = {}): Row {
+// BELLE-FRESHNESS-001 (bound clearance): every gate-clean row carries
+// bound render-freshness evidence for its FINAL script + audio_url (an
+// existing file is never evidence — without it the writers correctly
+// refuse fail-closed). Rows whose script_json is explicitly overridden
+// keep the override (deliberate-breakage tests).
+function freshnessEnv(script: string, audioUrl: string) {
+  const fp = currentBelleFingerprint(script)
   return {
+    fingerprint: fp,
+    text_changed_at: '2026-10-23T16:00:00.000Z',
+    audio_stale: false,
+    last_verified_render_at: '2026-10-23T17:00:00.000Z',
+    render_request_fingerprint: fp,
+    verified_audio_asset: audioUrl,
+  }
+}
+
+function withFreshness(row: Row): Row {
+  if ('script_json' in row) return row
+  return {
+    ...row,
+    script_json: {
+      series_generation: {
+        belle_freshness: freshnessEnv(String(row.script), String(row.audio_url)),
+      },
+    },
+  }
+}
+
+function ferryRow(overrides: Row = {}): Row {
+  return withFreshness({
     id: FERRY_ID,
     title: 'The Night Ferry',
     author: 'Test Author',
@@ -419,11 +449,11 @@ function ferryRow(overrides: Row = {}): Row {
     series_id: null,
     ...BASE_URLS,
     ...overrides,
-  }
+  })
 }
 
 function harborEpisode(id: string, epNum: number, script: string, overrides: Row = {}): Row {
-  return {
+  return withFreshness({
     id,
     series_id: SERIES,
     series_name: 'Harbor Test Series',
@@ -443,7 +473,7 @@ function harborEpisode(id: string, epNum: number, script: string, overrides: Row
     production_repair_count: 0,
     ...BASE_URLS,
     ...overrides,
-  }
+  })
 }
 
 function operatorEpisode(id: string, epNum: number, script: string): Row {
@@ -454,8 +484,8 @@ function operatorEpisode(id: string, epNum: number, script: string): Row {
 function operatorSeries(): Row[] {
   const ep1 = operatorEpisode(EP1, 1, PASS_SCRIPT_1)
   const ep2 = operatorEpisode(EP2, 2, PASS_SCRIPT_2)
-  ep2.script_json = { series_generation: { continuity_pins_used: buildContinuityPins([ep1]) } }
-  ep1.script_json = { series_generation: {} }
+  ep2.script_json = { series_generation: { continuity_pins_used: buildContinuityPins([ep1]), belle_freshness: freshnessEnv(PASS_SCRIPT_2, String(ep2.audio_url)) } }
+  ep1.script_json = { series_generation: { belle_freshness: freshnessEnv(PASS_SCRIPT_1, String(ep1.audio_url)) } }
   return [ep1, ep2]
 }
 

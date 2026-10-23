@@ -28,6 +28,36 @@ import {
   maybeDirectPublishSeries,
 } from '@/lib/directPublish'
 import { transitionAllowed } from '@/lib/workflowTransitions'
+import { currentBelleFingerprint } from '@/lib/belleFreshness'
+
+// BELLE-FRESHNESS-001 (bound clearance): every gate-clean row carries
+// bound render-freshness evidence for its FINAL script + audio_url (an
+// existing file is never evidence — without it the autonomous path
+// correctly holds fail-closed). Rows whose script_json is explicitly
+// overridden keep the override (deliberate-breakage tests).
+function freshnessEnv(script: string, audioUrl: string) {
+  const fp = currentBelleFingerprint(script)
+  return {
+    fingerprint: fp,
+    text_changed_at: '2026-10-23T16:00:00.000Z',
+    audio_stale: false,
+    last_verified_render_at: '2026-10-23T17:00:00.000Z',
+    render_request_fingerprint: fp,
+    verified_audio_asset: audioUrl,
+  }
+}
+
+function withFreshness(row: Row): Row {
+  if ('script_json' in row) return row
+  return {
+    ...row,
+    script_json: {
+      series_generation: {
+        belle_freshness: freshnessEnv(String(row.script), String(row.audio_url)),
+      },
+    },
+  }
+}
 
 // ── Minimal supabase-js mock (thenable builders for the exact chains used) ──
 
@@ -146,7 +176,7 @@ function seriesScript(n: number): string {
 }
 
 function readyStory(overrides: Row = {}): Row {
-  return {
+  return withFreshness({
     id: 'story-1',
     title: 'The Night Ferry',
     author: 'Test Author',
@@ -179,7 +209,7 @@ function readyStory(overrides: Row = {}): Row {
       'BELLE B: That was The Night Ferry by Test Author, read by Test Narrator. Sit with the weight of her choice tonight — you are not alone with it, and the harbor holds you close.',
     ].join('\n'),
     ...overrides,
-  }
+  })
 }
 
 // ── 1. Default seeds direct ─────────────────────────────────────────────────

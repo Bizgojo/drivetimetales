@@ -35,6 +35,7 @@ import {
   type PreflightGateResult,
 } from '@/lib/storyQueue/directPublish'
 import { buildContinuityPins } from '@/lib/continuityPin'
+import { currentBelleFingerprint } from '@/lib/belleFreshness'
 import { transitionAllowed, WORKFLOW_TRANSITIONS } from '@/lib/workflowTransitions'
 
 jest.mock('@/lib/belleStructureGate', () => ({
@@ -215,12 +216,29 @@ function passingEpisode(id: string, epNum: number, script: string, overrides: Ro
   }
 }
 
+// BELLE-FRESHNESS-001 (bound clearance): the gate-clean series carries
+// bound render-freshness evidence per episode (fingerprint of the exact
+// fixture script + the fixture audio_url as the verified asset). Without
+// it the operator gates correctly refuse (fail closed) — an existing file
+// is never evidence.
+function freshnessEnv(script: string, audioUrl: string) {
+  const fp = currentBelleFingerprint(script)
+  return {
+    fingerprint: fp,
+    text_changed_at: '2026-10-23T16:00:00.000Z',
+    audio_stale: false,
+    last_verified_render_at: '2026-10-23T17:00:00.000Z',
+    render_request_fingerprint: fp,
+    verified_audio_asset: audioUrl,
+  }
+}
+
 /** Two-episode repaired series with VALID continuity pins (real hash chain). */
 function passingSeries(): Row[] {
   const ep1 = passingEpisode(EP1, 1, PASS_SCRIPT_1)
   const ep2 = passingEpisode(EP2, 2, PASS_SCRIPT_2)
-  ep2.script_json = { series_generation: { continuity_pins_used: buildContinuityPins([ep1]) } }
-  ep1.script_json = { series_generation: {} }
+  ep2.script_json = { series_generation: { continuity_pins_used: buildContinuityPins([ep1]), belle_freshness: freshnessEnv(PASS_SCRIPT_2, 'https://cdn.example/audio-2.mp3') } }
+  ep1.script_json = { series_generation: { belle_freshness: freshnessEnv(PASS_SCRIPT_1, 'https://cdn.example/audio-1.mp3') } }
   return [ep1, ep2]
 }
 
@@ -634,8 +652,12 @@ describe('strictness (P2-5 / P2-6)', () => {
 
 /** An episode already published by this path, with its 3-edge audit chain. */
 function publishedEpisode(id: string, epNum: number): { row: Row; audits: Row[] } {
+  const script = epNum === 1 ? PASS_SCRIPT_1 : PASS_SCRIPT_2
   const row = {
-    ...passingEpisode(id, epNum, epNum === 1 ? PASS_SCRIPT_1 : PASS_SCRIPT_2),
+    ...passingEpisode(id, epNum, script),
+    // BELLE-FRESHNESS-001: the already-published row carries the bound
+    // evidence its mix was verified from (same helper as passingSeries).
+    script_json: { series_generation: { belle_freshness: freshnessEnv(script, `https://cdn.example/audio-${epNum}.mp3`) } },
     workflow_state: 'published',
     review_status: 'approved',
     status: 'published',

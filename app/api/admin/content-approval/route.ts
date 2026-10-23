@@ -8,6 +8,7 @@ import { syncPremiseIndexForTransition } from '@/lib/premiseIndex'
 import { personalizationPublishBlockers } from '@/lib/personalization/publishGuard'
 import { assertPublishAllowed, isPublicationHeld } from '@/lib/publicationHold'
 import { evaluateBelleUnitForPublish } from '@/lib/publicationBelleGate'
+import { evaluateBelleFreshnessForPublish, BELLE_FRESHNESS_STALE_CODE } from '@/lib/belleFreshness'
 import { verifyArtifactHttp } from '@/lib/artifactGate'
 import { hasRenderedProduction } from '@/lib/publishReadiness'
 
@@ -1179,7 +1180,7 @@ export async function POST(req: NextRequest) {
 
       const { data: seriesRows, error: seriesError } = await supabase
         .from('stories')
-        .select('id,title,author,series_id,series_name,episode_number,series_number,series_is_finale,status,is_hidden,review_status,workflow_state,production_repair_count,announcement_url,announcement_text,script,audio_url')
+        .select('id,title,author,series_id,series_name,episode_number,series_number,series_is_finale,status,is_hidden,review_status,workflow_state,production_repair_count,announcement_url,announcement_text,script,audio_url,script_json')
         .eq('series_id', seriesId)
 
       if (seriesError) return json({ success: false, error: seriesError.message }, 500)
@@ -1235,6 +1236,18 @@ export async function POST(req: NextRequest) {
             error: 'Series publish refused: Belle copy failed the publication gate. Fix the copy and re-validate — there is no waiver path.',
             seriesId,
             blockers: (seriesBelle as { blockers: string[] }).blockers,
+          }, 422)
+        }
+        // BELLE-FRESHNESS-001: render-freshness gate on the
+        // → published path. No waiver path; zero rows on refusal.
+        const seriesFreshness = evaluateBelleFreshnessForPublish(seriesRows as any[])
+        if (!seriesFreshness.ok) {
+          return json({
+            success: false,
+            code: BELLE_FRESHNESS_STALE_CODE,
+            error: 'Series publish refused: Belle-freshness failed the publication gate. Re-render the mix after the Belle text change — there is no waiver path.',
+            seriesId,
+            blockers: (seriesFreshness as { blockers: string[] }).blockers,
           }, 422)
         }
       }
@@ -1467,7 +1480,7 @@ export async function POST(req: NextRequest) {
 
     const { data: storyData, error: storyError } = await supabase
       .from('stories')
-      .select('id,title,author,series_id,series_name,episode_number,series_is_finale,status,is_hidden,review_status,workflow_state,production_repair_count,announcement_url,announcement_text,script,audio_url')
+      .select('id,title,author,series_id,series_name,episode_number,series_is_finale,status,is_hidden,review_status,workflow_state,production_repair_count,announcement_url,announcement_text,script,audio_url,script_json')
       .eq('id', storyId)
       .maybeSingle()
 
@@ -1499,6 +1512,18 @@ export async function POST(req: NextRequest) {
           error: 'Publish refused: Belle copy failed the publication gate. Fix the copy and re-validate — there is no waiver path.',
           storyId,
           blockers: (singleBelle as { blockers: string[] }).blockers,
+        }, 422)
+      }
+      // BELLE-FRESHNESS-001: render-freshness gate. No waiver path;
+      // zero rows on refusal.
+      const singleFreshness = evaluateBelleFreshnessForPublish([storyData as any])
+      if (!singleFreshness.ok) {
+        return json({
+          success: false,
+          code: BELLE_FRESHNESS_STALE_CODE,
+          error: 'Publish refused: Belle-freshness failed the publication gate. Re-render the mix after the Belle text change — there is no waiver path.',
+          storyId,
+          blockers: (singleFreshness as { blockers: string[] }).blockers,
         }, 422)
       }
       const personalizationBlockers = personalizationPublishBlockers(storyData as any)
