@@ -229,7 +229,14 @@ describe('authorization (decision-id allowlist)', () => {
     expect(isDirectPublishDecisionAuthorized('')).toBe(false)
     expect(isDirectPublishDecisionAuthorized(undefined)).toBe(false)
     expect(isDirectPublishDecisionAuthorized(' harbor-direct-publish-auth ')).toBe(true) // trimmed
-    expect(isDirectPublishDecisionAuthorized('HARBOR-DIRECT-PUBLISH-AUTH')).toBe(false) // exact match
+    expect(isDirectPublishDecisionAuthorized('HARBOR-DIRECT-PUBLISH-AUTH')).toBe(false)
+  })
+
+  test('lake-marion decision id is allowlisted (exact match only)', () => {
+    expect(OPERATOR_DIRECT_PUBLISH_DECISION_ALLOWLIST).toContain('lake-marion-romantic-horror-direct-publish')
+    expect(isDirectPublishDecisionAuthorized('lake-marion-romantic-horror-direct-publish')).toBe(true)
+    expect(isDirectPublishDecisionAuthorized('LAKE-MARION-ROMANTIC-HORROR-DIRECT-PUBLISH')).toBe(false)
+    expect(isDirectPublishDecisionAuthorized('harbor-direct-publish-auth')).toBe(true) // exact match
   })
 
   test('unauthorized execute refuses 403 with ZERO writes', async () => {
