@@ -168,6 +168,72 @@ export async function setPublicationHold(
   return parsePublicationHold(value)
 }
 
+/* ── ATOMIC ENFORCEMENT — Postgres trigger mirror (lake-marion-1445-atomic-bar) ──
+ *
+ * Rationale: the code-level checks above (fail-fast isPublicationHeld + the
+ * assertPublishAllowed re-read immediately before each terminal write) still
+ * leave a race window — the global hold can land BETWEEN the final re-read
+ * and the UPDATE's commit, and two such reads can never be atomic with the
+ * write that follows them. The BEFORE UPDATE trigger in
+ * supabase/migrations/20261023150000_publication_hold_trigger.sql closes
+ * that window: it runs INSIDE the writing transaction, reads the committed
+ * publication_hold envelope at write time, and aborts a becoming-visible
+ * update with zero rows written. Code-level checks stay (they produce the
+ * friendly 409/held_blocked refusals); the trigger is the backstop that
+ * makes a hold landing mid-write still block (its violation surfaces as a
+ * 500, never a silent publish).
+ *
+ * The pure predicates below are the trigger's logic in TypeScript so unit
+ * tests prove the exact becoming-visible boundary the SQL enforces. Keep
+ * them in sync with the migration by construction: both define
+ * listener-visible as (status='published' AND is_hidden=false) and both
+ * fire only on becoming-visible (OLD not visible → NEW visible).
+ */
+
+/** Minimal row shape the trigger predicate reads. */
+export type StoryVisibilityRow = {
+  status?: unknown
+  is_hidden?: unknown
+}
+
+/** Listener-visible = the exact row state the app serves to listeners. */
+export function isListenerVisible(row: StoryVisibilityRow | null | undefined): boolean {
+  if (!row || typeof row !== 'object') return false
+  return String(row.status ?? '').trim().toLowerCase() === 'published' && row.is_hidden === false
+}
+
+/**
+ * True only when the update makes the row listener-visible (was not, will
+ * be). Unrelated updates to already-visible rows and non-publishing
+ * updates never match — the trigger ignores them.
+ */
+export function isBecomingListenerVisible(
+  oldRow: StoryVisibilityRow | null | undefined,
+  newRow: StoryVisibilityRow | null | undefined
+): boolean {
+  return isListenerVisible(newRow) && !isListenerVisible(oldRow)
+}
+
+/**
+ * Trigger verdict: the refusal reason when this update must abort, null
+ * when it may proceed. Mirrors the SQL CASE: block only when the hold is
+ * ACTIVE and the row is becoming listener-visible.
+ */
+export function publicationHoldTriggerBlockReason(
+  oldRow: StoryVisibilityRow | null | undefined,
+  newRow: StoryVisibilityRow | null | undefined,
+  hold: PublicationHoldState | null | undefined
+): string | null {
+  if (!hold || hold.held !== true) return null
+  if (!isBecomingListenerVisible(oldRow, newRow)) return null
+  return (
+    'publication_hold: global publication hold is ACTIVE' +
+    (hold.by ? ` (set by ${hold.by}` : '') +
+    (hold.reason ? ` — ${hold.reason}` : hold.by ? ')' : '') +
+    '. Becoming-visible story update aborted with zero rows written.'
+  )
+}
+
 /**
  * Clear the hold. Audited identically to set (row keeps actor + reason +
  * timestamp of the clear). Clearing never backfills or republishes anything.
