@@ -396,6 +396,31 @@ describe('applyMixRebuildClearance', () => {
     })
   })
 
+  test('mid-render text repair fails closed: request rendered pre-repair text, re-read shows new text', () => {
+    // Race the deployed caller guards against (core.ts clearance): storyRow
+    // was read as V1 BEFORE the render, a Belle repair landed V2 DURING
+    // the render, and the post-render re-read (scriptText) shows V2.
+    // A post-hoc recompute of the request fingerprint from the re-read
+    // text would certify stale audio — the mismatch must keep stale even
+    // with a later timestamp and a real output asset.
+    const doc = { series_generation: { belle_freshness: freshEnvelope() } }
+    const res = applyMixRebuildClearance({
+      scriptJson: doc,
+      scriptText: SCRIPT_V2, // post-render re-read: repair landed mid-render
+      renderRequestFingerprint: FP_V1, // pre-render input: the mix was built from V1
+      outputAsset: OTHER_MIX_URL, // this request DID produce an asset
+      renderAtIso: T3, // later than the repair — still not evidence
+    })
+    expect(res.cleared).toBe(false)
+    expect(res.changed).toBe(true)
+    expect(readBelleFreshness(res.scriptJson)).toMatchObject({
+      fingerprint: FP_V2,
+      audio_stale: true,
+      render_request_fingerprint: FP_V1,
+      verified_audio_asset: null, // prior V1 asset binding VOIDED
+    })
+  })
+
   test('already-fresh-and-bound envelope is untouched (no write churn)', () => {
     const doc = { series_generation: { belle_freshness: freshEnvelope() } }
     const res = applyMixRebuildClearance({
