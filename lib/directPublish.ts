@@ -48,6 +48,7 @@ import {
 } from '@/lib/publishMode'
 import { assertPublishAllowed, isPublicationHeld } from '@/lib/publicationHold'
 import { evaluateBelleUnitForPublish } from '@/lib/publicationBelleGate'
+import { evaluateBelleFreshnessForPublish } from '@/lib/belleFreshness'
 
 export const DIRECT_PUBLISH_CHANGED_BY = 'autonomous-runner'
 
@@ -55,7 +56,7 @@ export const DIRECT_PUBLISH_CHANGED_BY = 'autonomous-runner'
 export const DIRECT_PUBLISH_GUARD_COLUMNS =
   'id,title,author,genre,audio_url,cover_url,description,duration_mins,' +
   'status,is_hidden,review_status,workflow_state,published_on,' +
-  'series_id,series_name,episode_number,series_number,series_is_finale,announcement_url,announcement_text,script'
+  'series_id,series_name,episode_number,series_number,series_is_finale,announcement_url,announcement_text,script,script_json'
 
 export type DirectPublishUpdate = {
   status: 'published'
@@ -143,6 +144,10 @@ export function evaluateSingleDirectReadiness(
   // PUBLICATION-HOLD-001: Belle copy gate — no waiver path.
   const belleVerdict = evaluateBelleUnitForPublish([story])
   if (!belleVerdict.ok) blockers.push(...(belleVerdict as { blockers: string[] }).blockers)
+  // BELLE-FRESHNESS-001: render-freshness gate — no waiver path.
+  // A stale mix holds at ready_for_review with zero writes.
+  const freshnessVerdict = evaluateBelleFreshnessForPublish([story as Record<string, unknown>])
+  if (!freshnessVerdict.ok) blockers.push(...(freshnessVerdict as { blockers: string[] }).blockers)
   if (String((story as { series_id?: unknown }).series_id ?? '').trim()) {
     const family = (siblings.length ? siblings : [story]).map((row) =>
       asApproved(row.id === story.id ? story : row)
@@ -174,6 +179,10 @@ export function evaluateSeriesDirectReadiness(
     // PUBLICATION-HOLD-001: Belle copy gate on every episode — no waiver.
     const belleVerdict = evaluateBelleUnitForPublish(episodes)
     if (!belleVerdict.ok) return { ok: false, blockers: (belleVerdict as { blockers: string[] }).blockers }
+    // BELLE-FRESHNESS-001: render-freshness gate on every episode —
+    // no waiver. A stale mix holds the whole series at ready_for_review.
+    const freshnessVerdict = evaluateBelleFreshnessForPublish(episodes)
+    if (!freshnessVerdict.ok) return { ok: false, blockers: (freshnessVerdict as { blockers: string[] }).blockers }
     return { ok: true }
   }
   const reasons = (evalResult.blocked ?? []).flatMap((b) =>

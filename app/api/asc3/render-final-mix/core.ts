@@ -2,6 +2,7 @@ import { createClient } from '@supabase/supabase-js'
 // ATL-SFX-WIRE-001: manifest gate (Rule 8) + unconditional save on passing render
 import { outroMusicClipArgs } from '@/lib/outroMusicClip'
 import { isStandaloneOutroRecording } from '@/lib/belleOutroRecording'
+import { applyMixRebuildClearance, currentBelleFingerprint, BELLE_FRESHNESS_MARKER } from '@/lib/belleFreshness'
 import { loadManifest, validateManifestGate, saveManifest, emptyManifest } from '@/lib/sfxAssetLock'
 // ATL-PARSER-001: shared line-index parser — single source of truth for segment numbering
 import { parseScriptPositions } from '@/lib/scriptLineIndex'
@@ -1218,11 +1219,44 @@ export async function runRenderFinalMix(storyId: string): Promise<{
 
     // Update story — story_audio_url for queue mode, audio_url for fallback
     // HAL-PIPE-002 fix: check for DB update error instead of silently discarding
+    // BELLE-FRESHNESS-001 bound clearance (Marc 2026-10-23 16:37 item 3):
+    // clearance binds to (a) the fingerprint of the Belle text ACTUALLY
+    // SENT to this render request (storyRow.script — the input this mix
+    // was built from) equaling the re-read current text, AND (b) the
+    // cleared asset equaling THIS request's output (finalAudioUrl — the
+    // plain URL stored in audio_url below). The render timestamp is audit
+    // only and NEVER clears. A concurrent text repair landing between the
+    // render input read and this re-read breaks binding (a) (fail
+    // closed). A re-read failure is non-fatal for the audio URLs — the
+    // publish gate refuses without evidence.
+    const freshnessRenderAt = new Date().toISOString()
+    let freshnessScriptJson: Record<string, unknown> | null = null
+    try {
+      const { data: freshnessRow } = await supabase
+        .from('stories')
+        .select('script, script_json')
+        .eq('id', storyId)
+        .single()
+      if (freshnessRow) {
+        const clearance = applyMixRebuildClearance({
+          scriptJson: (freshnessRow as any).script_json,
+          scriptText: (freshnessRow as any).script,
+          renderRequestFingerprint: currentBelleFingerprint(storyRow?.script),
+          outputAsset: finalAudioUrl,
+          renderAtIso: freshnessRenderAt,
+        })
+        if (clearance.changed) freshnessScriptJson = clearance.scriptJson
+        console.log(`  [${BELLE_FRESHNESS_MARKER}] render clearance: cleared=${clearance.cleared} established=${clearance.established} changed=${clearance.changed}`)
+      }
+    } catch (freshnessErr) {
+      console.warn(`  [${BELLE_FRESHNESS_MARKER}] pre-update freshness re-read failed (non-fatal; publish refuses without evidence):`, freshnessErr instanceof Error ? freshnessErr.message : String(freshnessErr))
+    }
     const { error: storyUpdateErr } = await supabase.from('stories').update({
       story_audio_url: storyBodyUrl,
       audio_url: finalAudioUrl,  // store plain URL (no ?v= cache-buster — versioning in response only)
       ...(outroWithMusicStorageUrl ? { outro_with_music_url: outroWithMusicStorageUrl } : {}),
       ...(storyBodyWithOutroStorageUrl ? { story_body_with_outro_url: storyBodyWithOutroStorageUrl } : {}),
+      ...(freshnessScriptJson ? { script_json: freshnessScriptJson } : {}),
       duration_mins: Math.ceil(durationSecs / 60)
     }).eq('id', storyId)
     if (storyUpdateErr) throw new Error(`Failed to update story audio_url: ${storyUpdateErr.message}`)

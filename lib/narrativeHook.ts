@@ -95,8 +95,28 @@ export function detectNarrativeHookCategory(text: string): NarrativeHookCategory
   ) return 'unexplained_event'
 
   // 3. Hidden evidence - something concealed, suppressed, or not meant to surface.
+  // SUPPRESSED-EVIDENCE-001 (Marc 2026-10-23 16:37 item 2): deliberately
+  // wiped evidence states suppressed evidence even without the legacy
+  // keywords. EP3 v2.4 ("footage is gone... formatted clean... does not
+  // want to be documented") stated suppressed evidence yet tripped NO
+  // category - a demonstrated false negative. This extension is ADDITIVE
+  // and stays inside the rule's own semantics ("something concealed or
+  // suppressed"): wiped-evidence verbs acting on evidence nouns, the
+  // "formatted clean" wipe phrase, and suppressor intent ("does not
+  // want ... documented / a case number"). missing_person is
+  // intentionally UNTOUCHED - the v2.5 "vanished" pass fired that
+  // category for footage (not a person), keyword-satisfying in exactly
+  // the way the ATL-PIPE-020 header calls a validator defect; with this
+  // extension the CORRECT category (hidden_evidence, checked first)
+  // fires instead.
   if (
-    /\b(hidden|concealed|buried|covered up|cover.?up|suppressed|sealed|locked away|kept secret|kept quiet|wasn.t meant to be found|never meant to be found|shouldn.t have surfaced|didn.t want found|didn.t want anyone to find)\b/i.test(t)
+    /\b(hidden|concealed|buried|covered up|cover.?up|suppressed|sealed|locked away|kept secret|kept quiet|wasn.t meant to be found|never meant to be found|shouldn.t have surfaced|didn.t want found|didn.t want anyone to find)\b/i.test(t) ||
+    /\b(wiped|erased|scrubbed|deleted|destroyed)\b.{0,40}\b(footage|tapes?|videos?|recordings?|evidence|files?|drives?|hard drives?|data|audio|photos?|pictures?|film|negatives?|records?|logs?)\b/i.test(t) ||
+    /\b(footage|tapes?|videos?|recordings?|evidence|files?|drives?|data|audio|photos?|film|negatives?|records?|logs?)\b.{0,40}\b(wiped|erased|scrubbed|deleted|destroyed)\b/i.test(t) ||
+    /\bformatted clean\b/i.test(t) ||
+    /\b(doesn.t|does not|don.t|do not|didn.t|did not|won.t|will not|wouldn.t|would not)\b.{0,30}\bwants?\b.{0,30}\b(documented|reported|recorded|logged|filed|investigated|written down|on record|case number)\b/i.test(t) ||
+    /\b(nobody|no one)\b.{0,20}\bwants?\b.{0,30}\b(documented|reported|recorded|logged|filed|investigated|written down|on record|case number)\b/i.test(t) ||
+    /\bno case number\b/i.test(t)
   ) return 'hidden_evidence'
 
   // 4. Secret - information deliberately withheld from someone.

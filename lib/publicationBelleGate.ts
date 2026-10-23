@@ -31,6 +31,7 @@ import {
   hasEmotionalResidueOrReflection,
 } from './belleValidation'
 import { detectNarrativeHookCategory } from './narrativeHook'
+import { episodeNumberNamedIn, normalizeNumberWords } from './numberWords'
 
 export type BellePublishEpisodeType = 'standalone' | 'series_non_finale' | 'series_finale'
 
@@ -86,10 +87,12 @@ export function extractBelleSection(script: string, kind: 'intro' | 'outro'): st
   return normalizeHeaderValue(pick[1] || '')
 }
 
-// MIRROR: normalizeBelleRequiredText + belleTextIncludes (run-next ~line 871-889).
+// MIRROR: normalizeBelleRequiredText + belleTextIncludes (run-next ~line 871-889),
+// plus shared numeral normalization (Marc 2026-10-23 16:37 item 1): a title
+// naming check must not fail on Two-vs-2 — "Episode Two" names "Episode 2".
 function belleTextIncludes(text: string, required: string): boolean {
   const norm = (s: string) =>
-    String(s || '')
+    normalizeNumberWords(String(s || ''))
       .toLowerCase()
       .replace(/[“”]/g, '"')
       .replace(/[‘’]/g, "'")
@@ -113,19 +116,13 @@ function hasSeriesClosureLanguage(text: string): boolean {
     /\b(the final|the last) (chapter|episode|installment|story) of\b/i.test(text)
 }
 
-// MIRROR: introNamesEpisodeNumber (run-next ~line 1172).
+// SINGLE DEFINITION (Marc 2026-10-23 16:37 item 1): episode-number naming
+// delegates to lib/numberWords.episodeNumberNamedIn — the private
+// cardinal/ordinal tables are gone. Normalizes first, then requires a
+// word-boundary digit match (also fixes the old substring check, under
+// which episode 1 matched "someone"). run-next imports the same helper.
 function introNamesEpisodeNumber(text: string, n: number): boolean {
-  const lower = String(text || '').toLowerCase()
-  if (new RegExp(`\\b${n}\\b`).test(lower)) return true
-  const cardinal = ['', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten',
-    'eleven', 'twelve', 'thirteen', 'fourteen', 'fifteen', 'sixteen', 'seventeen', 'eighteen', 'nineteen', 'twenty']
-  const ordinal = ['', 'first', 'second', 'third', 'fourth', 'fifth', 'sixth', 'seventh', 'eighth', 'ninth', 'tenth',
-    'eleventh', 'twelfth', 'thirteenth', 'fourteenth', 'fifteenth', 'sixteenth', 'seventeenth', 'eighteenth', 'nineteenth', 'twentieth']
-  if (n >= 1 && n <= 20) {
-    if (cardinal[n] && lower.includes(cardinal[n])) return true
-    if (ordinal[n] && lower.includes(ordinal[n])) return true
-  }
-  return false
+  return episodeNumberNamedIn(text, n)
 }
 
 function clean(value: unknown): string {
