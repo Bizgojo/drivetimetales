@@ -14,6 +14,7 @@ import { parseScriptPositions, isWordlessSpokenText, SCENE_BREAK_PAUSE_SECONDS }
 import { isAudioTooShortForText, minPlausibleSpeechSeconds } from '@/lib/speechDuration'
 // CASTING-ALIAS-001: structured error builder for character_description_missing gate
 import { buildStructuredError } from '@/lib/pipeline-runner/types'
+import { checkCastCollisions, formatCastCollisions } from '@/lib/castCollision'
 import { buildProductionLearningFeedback } from '@/lib/productionLearning'
 import { classifySegmentInventory } from '@/lib/artifactGate'
 import { resolveNarratorVoiceId } from '@/lib/preflight/narrator-check'
@@ -3331,6 +3332,26 @@ export async function POST(req: NextRequest) {
           missingCharacters: stillMissingVoiceMap,
         }, { status: 422 })
       }
+    }
+    // CAST-COLLISION-001: single choke-point over the FINAL assembled voiceMap.
+    // Every assignment path above (manual override, voice_code registry, pool
+    // selection, protagonist reuse, established roster reuse, remaining
+    // overrides) funnels through this one map, so one shared check here
+    // leaves no parallel unenforced path. Backed by the REAL isBelleBVoiceId
+    // predicate (lib/voiceConstants.ts) via lib/castCollision.ts — never a
+    // copied list. Belle wrapper renders through the dedicated Belle routes,
+    // never here, so no exemption flag is set: any reserved voice blocks.
+    {
+      const castCheck = checkCastCollisions(voiceMap, { allowBelleWrapper: false })
+      if (!castCheck.passed) {
+        const detail = castCheck.collisions.map((c) => `${c.character}=${c.voiceId}`).join(', ')
+        console.error(`  ❌ ${formatCastCollisions(castCheck)}`)
+        return NextResponse.json({
+          success: false,
+          error: `Belle B cannot be used as a character voice: ${detail}.`,
+        }, { status: 422 })
+      }
+      console.log(`  ✅ ${formatCastCollisions(castCheck)}`)
     }
     warnings.forEach(w => console.warn(`  ⚠️ ${w}`))
     const segmentFilePattern = /^segment_\d{4}\.mp3$/
