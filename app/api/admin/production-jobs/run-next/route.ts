@@ -4236,7 +4236,7 @@ async function runStandaloneVoicePreflight(job: ProductionJob, origin: string) {
   const runtimeCheck = checkScriptRuntimeMeetsMinimum(storyForNarrator.script || '')
   const scriptRuntimeMarker = {
     gateId: SCRIPT_RUNTIME_PREFLIGHT_ID,
-    passed: runtimeCheck.passed,
+    passed: runtimeCheck.pass,
     skipped: runtimeCheck.skipped,
     skipReason: runtimeCheck.skipReason ?? null,
     spokenWords: runtimeCheck.spokenWords,
@@ -4246,7 +4246,7 @@ async function runStandaloneVoicePreflight(job: ProductionJob, origin: string) {
     minEstimatedMinutes: SCRIPT_RUNTIME_PREFLIGHT.MIN_ESTIMATED_MINUTES,
     checkedAt: nowIso(),
   }
-  if (!runtimeCheck.passed && !runtimeCheck.skipped) {
+  if (!runtimeCheck.pass && !runtimeCheck.skipped) {
     const blocker = formatScriptRuntimeShortMessage(runtimeCheck)
     return {
       passed: false,
@@ -7084,9 +7084,18 @@ async function runSeriesVoicePreflight(job: ProductionJob, origin: string) {
     ? { ...previous.narratorsByEpisode }
     : {}
 
+  // Fresh episodes first (existing order). Fall back to rechecking failed
+  // episodes so a corrected script (numerals spelled out, short script
+  // extended, narrator reassigned) is re-evaluated instead of stranded in
+  // failedEpisodes forever. A still-broken episode simply re-parks — the
+  // runtime/numeral checks run BEFORE any ElevenLabs call, so rechecking a
+  // short script spends nothing. (SCRIPT-RUNTIME-PREFLIGHT-001 recovery.)
   const nextEpisode = episodes.find((episode: any) =>
     !checkedEpisodes.some((checked: any) => String(checked.storyId) === String(episode.id))
       && !failedEpisodes.some((failed: any) => String(failed.storyId) === String(episode.id))
+  ) ?? episodes.find((episode: any) =>
+    failedEpisodes.some((failed: any) => String(failed.storyId) === String(episode.id))
+      && !checkedEpisodes.some((checked: any) => String(checked.storyId) === String(episode.id))
   )
 
   // All episodes checked - validate cross-episode narrator consistency before returning success
@@ -7116,7 +7125,11 @@ async function runSeriesVoicePreflight(job: ProductionJob, origin: string) {
       }
     }
 
-    const hasFailed = narratorIssues.length > 0
+    // Defensive: with the recheck fallback above, reaching here with a
+    // non-empty failedEpisodes should be impossible — but a stale failure
+    // must NEVER report completion (series_generate_voices would throw).
+    // Park failed so the episode stays visible for correction.
+    const hasFailed = narratorIssues.length > 0 || failedEpisodes.length > 0
     return {
       passed: !hasFailed,
       failed: hasFailed,
@@ -7257,7 +7270,7 @@ async function runSeriesVoicePreflight(job: ProductionJob, origin: string) {
     const runtimeCheck = checkScriptRuntimeMeetsMinimum((nextEpisode as any).script || '')
     const scriptRuntimeMarker = {
       gateId: SCRIPT_RUNTIME_PREFLIGHT_ID,
-      passed: runtimeCheck.passed,
+      passed: runtimeCheck.pass,
       skipped: runtimeCheck.skipped,
       skipReason: runtimeCheck.skipReason ?? null,
       spokenWords: runtimeCheck.spokenWords,
@@ -7267,7 +7280,7 @@ async function runSeriesVoicePreflight(job: ProductionJob, origin: string) {
       minEstimatedMinutes: SCRIPT_RUNTIME_PREFLIGHT.MIN_ESTIMATED_MINUTES,
       checkedAt: nowIso(),
     }
-    if (!runtimeCheck.passed && !runtimeCheck.skipped) {
+    if (!runtimeCheck.pass && !runtimeCheck.skipped) {
       const blocker = formatScriptRuntimeShortMessage(runtimeCheck)
       const failedEpisodeEntry = {
         storyId,
@@ -7344,8 +7357,11 @@ async function runSeriesVoicePreflight(job: ProductionJob, origin: string) {
         episodeSummary,
       ]
     : checkedEpisodes
+  // A previously-failed episode that now passes leaves failedEpisodes —
+  // otherwise the stale entry would block series_generate_voices forever
+  // even after correction. (SCRIPT-RUNTIME-PREFLIGHT-001 recovery.)
   const nextFailedEpisodes = passed
-    ? failedEpisodes
+    ? failedEpisodes.filter((failed: any) => String(failed.storyId) !== String(storyId))
     : [
         ...failedEpisodes.filter((episode: any) => String(episode.storyId) !== storyId),
         {
@@ -8480,6 +8496,18 @@ export async function POST(req: NextRequest) {
       })
 
       if (result.failed) {
+        // SCRIPT-RUNTIME-PREFLIGHT-001: a short episode parks with an explicit
+        // non-autonomous classification (same semantics as the standalone path:
+        // length needs editorial judgment, never a rewrite loop) so the
+        // development queue shows kind + resume point top-level, not just
+        // nested in preflightReport.
+        const isSeriesRuntimeShort = (result.report as any)?.kind === SCRIPT_RUNTIME_PREFLIGHT.SHORT_KIND
+        if (isSeriesRuntimeShort) {
+          await markStoryNeedsAttention(
+            (result.episodeResult as any)?.storyId,
+            `Series voice preflight needs attention: episode script too short for narration spend. ${((result.report as any)?.blockingReasons || [])[0] || ''} Extend the episode script to ≥${SCRIPT_RUNTIME_PREFLIGHT.MIN_SPOKEN_WORDS} spoken words, then re-run the job (the corrected episode is rechecked automatically).`,
+          )
+        }
         const { data: failedJob, error: updateError } = await supabase
           .from('production_jobs')
           .update({
@@ -8491,6 +8519,15 @@ export async function POST(req: NextRequest) {
               seriesId: result.seriesId,
               episodeResult: result.episodeResult,
               narratorIssues: result.narratorIssues && result.narratorIssues.length > 0 ? result.narratorIssues : undefined,
+              ...(isSeriesRuntimeShort
+                ? {
+                    kind: 'script_runtime_short' as StructuredErrorJsonKind,
+                    marc_required: true,
+                    autonomous_repair: false,
+                    safe_resume_point: 'series_voice_preflight',
+                    fixRecommendation: ((result.report as any)?.blockingReasons || [])[0] || null,
+                  }
+                : {}),
               preflightReport: result.report,
               // PREFLIGHT-URL-CAPTURE-001 (2026-10-16): exact self-fetch
               // target, surfaced top-level for log querying.
@@ -9307,7 +9344,7 @@ export async function POST(req: NextRequest) {
           // just burn a cycle and bounce again. Park for Marc attention.
           failureKind = 'script_runtime_short'
           isAutonomousRetryable = false
-          recommendedAction = `${firstBlocker} Extend the episode script to ≥${SCRIPT_RUNTIME_PREFLIGHT.MIN_SPOKEN_WORDS} spoken words, then re-run the job from voice_preflight (no narration was spent).`
+          recommendedAction = `${blockingReasons[0] || 'Voice preflight failed'} Extend the episode script to ≥${SCRIPT_RUNTIME_PREFLIGHT.MIN_SPOKEN_WORDS} spoken words, then re-run the job from voice_preflight (no narration was spent).`
         } else if (hasNarratorIssue) {
           failureKind = 'narrator_mismatch'
           isAutonomousRetryable = false  // narrator mismatch requires DB/manual fix, not retry

@@ -111,6 +111,22 @@ describe('SCRIPT-RUNTIME-PREFLIGHT-001', () => {
     }
   })
 
+  test('route wiring reads the documented check field (regression pin)', () => {
+    // Codex review caught route.ts reading `runtimeCheck.passed` (undefined —
+    // would bounce EVERY script) instead of the `pass` field this lib returns.
+    // The route handler is not unit-importable, so pin the wiring statically.
+    const fs = require('fs')
+    const path = require('path')
+    const src: string = fs.readFileSync(
+      path.join(__dirname, '..', 'app', 'api', 'admin', 'production-jobs', 'run-next', 'route.ts'),
+      'utf8',
+    )
+    expect(src).not.toMatch(/runtimeCheck\.passed/)
+    // Two gate conditions (solo + series) and two persisted markers.
+    expect((src.match(/if \(!runtimeCheck\.pass && !runtimeCheck\.skipped\)/g) || []).length).toBe(2)
+    expect((src.match(/passed: runtimeCheck\.pass,/g) || []).length).toBe(2)
+  })
+
   test('estimate counts only voice positions (headers/SFX/silence excluded)', () => {
     const est = estimateScriptRuntime(buildScript(160))
     expect(est.spokenWords).toBe(160)

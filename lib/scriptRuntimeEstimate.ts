@@ -38,6 +38,12 @@
  *   episodes (all shipped short of 15 min) falls below the bar — i.e.
  *   this gate would have bounced each of them pre-spend.
  *
+ *   Residual band (accepted deliberately): 2480 words at the fastest
+ *   observed rate (169.9 wpm) yields ≈14.6 min — still short. The bar is
+ *   kept lenient so normal scripts are never false-bounced; the
+ *   remaining fast-narrator band is RUNTIME-GATE-001's job (measured
+ *   audio vs brief, ±10%), which stays intact as the true enforcement.
+ *
  * Unmeasurable input (zero parseable spoken words) does NOT block: the
  * caller records a persistent skipped marker and continues. Rationale:
  * an empty script spends ~nothing downstream (no lines → no ElevenLabs
