@@ -222,6 +222,15 @@ export interface BelleGateOptions {
   };
 }
 
+/**
+ * Columns fetched for the BELLE gate. is_funnel_entry is DELIBERATELY
+ * absent (BELLE-GATE-COLUMNS-001): never migrated to production; selecting
+ * it fails every preflight. The funnel flag stays optional downstream.
+ */
+export const BELLE_GATE_STORY_COLUMNS =
+  'script, title, author, series_episode_number, series_is_finale, ' +
+  'series_total_episodes, status'
+
 // ── Main export ───────────────────────────────────────────────────────────────
 
 /**
@@ -276,10 +285,12 @@ export async function runBelleStructureGate(
     const sb = createClient(SUPABASE_URL, SERVICE_KEY);
     const { data: rawData, error } = await sb
       .from('stories')
-      .select(
-        'script, title, author, series_episode_number, series_is_finale, ' +
-        'series_total_episodes, is_funnel_entry, status'
-      )
+      // BELLE-GATE-COLUMNS-001 (2026-10-23): is_funnel_entry was never
+      // migrated to production — selecting it hard-fails EVERY preflight
+      // with BELLE-001. The funnel flag is optional downstream
+      // (hasFunnelField=false → inconclusive, warn-only), so it is NOT
+      // selected; do not re-add without its migration.
+      .select(BELLE_GATE_STORY_COLUMNS)
       .eq('id', storyId)
       .single();
 
