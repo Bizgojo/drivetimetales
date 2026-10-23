@@ -213,7 +213,9 @@ async function generateWithDallE(prompt: string): Promise<Buffer> {
     imageRequest.quality = 'high'
   } else {
     imageRequest.quality = 'hd'
-    imageRequest.response_format = 'url'
+    // dall-e-3 (and gpt-image-*) reject response_format — omit it and accept
+    // the API default (url for dall-e-3, b64 for gpt-image). Handler below
+    // accepts both b64_json and url payloads.
   }
 
   console.log('[regenerate-cover] image backend:', SELECTED_BACKEND.backend.label, '| model:', IMAGE_MODEL)
