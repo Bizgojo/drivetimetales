@@ -93,6 +93,8 @@ export const OPERATOR_DIRECT_PUBLISH_CHANGED_BY = 'operator-direct-publish'
  */
 export const OPERATOR_DIRECT_PUBLISH_DECISION_ALLOWLIST: readonly string[] = [
   'harbor-direct-publish-auth',
+  // LAKE-MARION-001: fresh-series pipeline verification, inert until Marc records decision lake-marion-romantic-horror-direct-publish.
+  'lake-marion-romantic-horror-direct-publish',
 ]
 
 /** Product runtime band: 15-min minimum (SCRIPT-RUNTIME-PREFLIGHT-001) … 20-min brief cap. */
