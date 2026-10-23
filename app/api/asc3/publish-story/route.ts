@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { personalizationPublishBlockers } from '@/lib/personalization/publishGuard'
+import { assertPublishAllowed, isPublicationHeld } from '@/lib/publicationHold'
+import { evaluateBelleUnitForPublish } from '@/lib/publicationBelleGate'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -15,7 +17,7 @@ export async function POST(req: NextRequest) {
 
     const { data: story, error: storyError } = await supabase
       .from('stories')
-      .select('id, title, author, genre, audio_url, cover_url, description, duration_mins, announcement_url, announcement_text, script')
+      .select('id, title, author, series_id, series_name, episode_number, series_is_finale, genre, audio_url, cover_url, description, duration_mins, announcement_url, announcement_text, script')
       .eq('id', storyId)
       .single()
 
@@ -57,6 +59,21 @@ export async function POST(req: NextRequest) {
       )
     }
 
+    // PUBLICATION-HOLD-001: durable global hold (fail fast) + Belle copy
+    // gate (no waiver). Zero rows on refusal.
+    if (await isPublicationHeld(supabase as never)) {
+      return NextResponse.json({ success: false, code: 'publication_hold', error: 'Publish refused: global publication hold is ACTIVE. Clear the hold before publishing.' }, { status: 409 })
+    }
+    const ascBelle = evaluateBelleUnitForPublish([story as any])
+    if (!ascBelle.ok) {
+      return NextResponse.json({
+        success: false,
+        code: 'belle_publish_refused',
+        error: 'Publish refused: Belle copy failed the publication gate. Fix the copy and re-validate — there is no waiver path.',
+        blockers: (ascBelle as { blockers: string[] }).blockers,
+      }, { status: 422 })
+    }
+
     // Check for existing published story with same title (duplicate guard)
     const { data: existing } = await supabase
       .from('stories')
@@ -72,6 +89,13 @@ export async function POST(req: NextRequest) {
         duplicate: true,
         error: `A published story with this title already exists (ID: ${existing[0].id}). Archive the existing one first, or use a different title.`
       }, { status: 409 })
+    }
+
+    // PUBLICATION-HOLD-001: hold RE-READ immediately before the write.
+    try {
+      await assertPublishAllowed(supabase as never)
+    } catch (e: any) {
+      return NextResponse.json({ success: false, code: 'publication_hold', error: e?.message || 'Publish refused: global publication hold is ACTIVE.' }, { status: 409 })
     }
 
     // Update story: published + visible in library

@@ -464,7 +464,25 @@ describe('/api/admin/publish-story — guard is blocking in the publish flow', (
   })
 
   test('single story with approved Belle-intro token passes the guard (Marc 2026-10-16 standing pass)', async () => {
-    const introTokenStory = { ...publishableStory, script: 'BELLE B: Hello [LISTENER_NAME].\nCOLE: Lila said it was simple.' }
+    // PUBLICATION-HOLD-001: publication-time Belle gate requires compliant
+    // standalone copy — the [LISTENER_NAME] intro token (this test's subject)
+    // is preserved in the intro line and still passes the gate (placeholder
+    // is stripped for quality checks only).
+    const introTokenStory = {
+      ...publishableStory,
+      script: [
+        'TITLE: The Same Dead Man',
+        'AUTHOR: A. Writer',
+        'NARRATOR: Test Narrator',
+        '',
+        'BELLE B INTRO',
+        'BELLE B: Hello [LISTENER_NAME]. Welcome to The Same Dead Man, I am Belle with a story where a man vanished from the pier and no tide admits taking him.',
+        'COLE: Lila said it was simple.',
+        '',
+        'BELLE B OUTRO',
+        'BELLE B: That was The Same Dead Man by A. Writer, read by Test Narrator. Sit with the weight of his choice tonight — you are not alone with it, and the harbor holds you close.',
+      ].join('\n'),
+    }
     const { res, body } = await callPublish(
       { storyId: 's-1' },
       {
@@ -479,11 +497,25 @@ describe('/api/admin/publish-story — guard is blocking in the publish flow', (
   })
 
   test('clean story still publishes', async () => {
+    // PUBLICATION-HOLD-001: publication-time Belle gate requires compliant
+    // standalone copy (title + hook intro; titled/author/narrator outro).
+    const cleanScript = [
+      'TITLE: The Same Dead Man',
+      'AUTHOR: A. Writer',
+      'NARRATOR: Test Narrator',
+      '',
+      'BELLE B INTRO',
+      'BELLE B: Welcome to The Same Dead Man, I am Belle with a story where a man vanished from the pier and no tide admits taking him.',
+      'COLE: Lila said it was simple.',
+      '',
+      'BELLE B OUTRO',
+      'BELLE B: That was The Same Dead Man by A. Writer, read by Test Narrator. Sit with the weight of his choice tonight — you are not alone with it, and the harbor holds you close.',
+    ].join('\n')
     const { res, body } = await callPublish(
       { storyId: 's-1' },
       {
         stories: [
-          { data: publishableStory, error: null }, // pre-publish read
+          { data: { ...publishableStory, script: cleanScript }, error: null }, // pre-publish read
           { data: { id: 's-1', title: publishableStory.title, status: 'published' }, error: null }, // update
         ],
       }

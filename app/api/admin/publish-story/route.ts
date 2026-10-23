@@ -3,6 +3,8 @@ import { createClient } from '@supabase/supabase-js'
 import { personalizationPublishBlockers } from '@/lib/personalization/publishGuard'
 import { syncPremiseIndexForTransition } from '@/lib/premiseIndex'
 import { evaluateSeriesPublishOrder, isEpisodePublishable, sortEpisodesForPublish, assertSeriesContiguity } from '@/lib/story-gates'
+import { assertPublishAllowed, isPublicationHeld } from '@/lib/publicationHold'
+import { evaluateBelleUnitForPublish } from '@/lib/publicationBelleGate'
 
 export const runtime = 'nodejs'
 
@@ -65,7 +67,7 @@ export async function POST(req: NextRequest) {
 
       const { data: episodes, error: fetchError } = await supabase
         .from('stories')
-        .select('id,title,author,genre,audio_url,cover_url,description,duration_mins,status,is_hidden,review_status,workflow_state,episode_number,series_number,announcement_url,announcement_text,script')
+        .select('id,title,author,genre,audio_url,cover_url,description,duration_mins,status,is_hidden,review_status,workflow_state,series_id,series_name,episode_number,series_number,series_is_finale,announcement_url,announcement_text,script')
         .eq('series_id', seriesId)
 
       if (fetchError) {
@@ -73,6 +75,15 @@ export async function POST(req: NextRequest) {
       }
       if (!episodes || episodes.length === 0) {
         return NextResponse.json({ success: false, error: 'Series not found' }, { status: 404 })
+      }
+
+      // PUBLICATION-HOLD-001: durable global hold — checked here (fail fast)
+      // AND re-read immediately before the update below, so a hold that
+      // takes effect mid-request still blocks the write (double-checked
+      // guard; single-statement cross-table atomicity would need a DB
+      // function — out of scope — so the re-read is the atomicity point).
+      if (await isPublicationHeld(supabase as never)) {
+        return NextResponse.json({ success: false, code: 'publication_hold', error: 'Series publish refused: global publication hold is ACTIVE. Clear the hold before publishing.' }, { status: 409 })
       }
 
       // PUBLISH-ORDERING GATE (GATE-GAPS-SPEC 1, Canon Rule 1 precondition):
@@ -117,6 +128,29 @@ export async function POST(req: NextRequest) {
         workflow_state_change_reason: clean(body.reason || body.change_reason) || 'Published series to app',
       }
 
+      // PUBLICATION-HOLD-001: Belle copy gate — every episode's Belle copy
+      // must pass the deployed predicates (naming/hook/credit/closure/
+      // reflection/companion/tease). No waiver path; zero rows on failure.
+      const belleVerdict = evaluateBelleUnitForPublish(episodes as any[])
+      if (!belleVerdict.ok) {
+        return NextResponse.json({
+          success: false,
+          code: 'belle_publish_refused',
+          error: `Series publish refused: ${(belleVerdict as { blockers: string[] }).blockers.length} Belle copy blocker(s). Fix the copy and re-validate — there is no waiver path.`,
+          seriesId,
+          blockers: (belleVerdict as { blockers: string[] }).blockers,
+        }, { status: 422 })
+      }
+
+      // PUBLICATION-HOLD-001: hold RE-READ immediately before the write —
+      // the atomicity point. A hold set after the pre-check above still
+      // blocks here with zero rows written.
+      try {
+        await assertPublishAllowed(supabase as never)
+      } catch (e: any) {
+        return NextResponse.json({ success: false, code: 'publication_hold', error: e?.message || 'Series publish refused: global publication hold is ACTIVE.' }, { status: 409 })
+      }
+
       const { data, error } = await supabase
         .from('stories')
         .update(payload)
@@ -159,7 +193,7 @@ export async function POST(req: NextRequest) {
 
     const { data: existingStory, error: existingError } = await supabase
       .from('stories')
-      .select('id, series_id, episode_number, series_number, status, is_hidden, review_status, workflow_state, title, author, genre, audio_url, cover_url, description, duration_mins, announcement_url, announcement_text, script')
+      .select('id, series_id, series_name, episode_number, series_number, series_is_finale, status, is_hidden, review_status, workflow_state, title, author, genre, audio_url, cover_url, description, duration_mins, announcement_url, announcement_text, script')
       .eq('id', storyId)
       .single()
 
@@ -168,6 +202,12 @@ export async function POST(req: NextRequest) {
         { success: false, error: existingError?.message || `Story not found: ${storyId}` },
         { status: existingError?.code === 'PGRST116' ? 404 : 500 }
       )
+    }
+
+    // PUBLICATION-HOLD-001: durable global hold — fail fast here, re-read
+    // immediately before the update below.
+    if (await isPublicationHeld(supabase as never)) {
+      return NextResponse.json({ success: false, code: 'publication_hold', error: 'Publish refused: global publication hold is ACTIVE. Clear the hold before publishing.' }, { status: 409 })
     }
 
     const effectiveTitle = title || String(existingStory.title || '').trim()
@@ -212,6 +252,9 @@ export async function POST(req: NextRequest) {
     // PUBLISH-ORDERING GATE single-story path (GATE-GAPS-SPEC 1): same predicate
     // against siblings; block EpN if any lower-numbered ep is unpublished.
     // Rule 1 precondition — runs BEFORE the UPDATE below.
+    // Post-publish view of the target (operator overrides applied) for the
+    // Belle gate below; series branch refreshes it from the merged row.
+    let singleBelleView: any = { ...(existingStory as any), title: effectiveTitle, author: effectiveAuthor, genre: effectiveGenre, audio_url: effectiveAudioUrl, cover_url: effectiveCoverUrl, description: effectiveDescription, duration_mins: effectiveDurationMins }
     if ((existingStory as any).series_id) {
       const { data: siblings, error: sibError } = await supabase
         .from('stories')
@@ -222,6 +265,7 @@ export async function POST(req: NextRequest) {
       }
       // Evaluate the target ep with its post-publish field values merged in.
       const merged = { ...(existingStory as any), title: effectiveTitle, author: effectiveAuthor, genre: effectiveGenre, audio_url: effectiveAudioUrl, cover_url: effectiveCoverUrl, description: effectiveDescription, duration_mins: effectiveDurationMins }
+      singleBelleView = merged
       const fam = ((siblings as any[]) || []).map((row: any) => (row.id === merged.id ? merged : row))
       const _ordered = sortEpisodesForPublish(fam as any[])
       const _c = assertSeriesContiguity(_ordered)
@@ -233,6 +277,26 @@ export async function POST(req: NextRequest) {
       if (!_res.publishable && _res.reasons.some((r: string) => r.startsWith('earlier episode'))) {
         return NextResponse.json({ success: false, code: 'series_publish_out_of_order', error: 'Single-story publish aborted; an earlier episode in this series is not published+visible.', seriesId: (existingStory as any).series_id, blocked: [{ storyId, episodeNumber: (merged as any).episode_number ?? (merged as any).series_number ?? null, reasons: _res.reasons }] }, { status: 422 })
       }
+    }
+
+    // PUBLICATION-HOLD-001: Belle copy gate on the post-publish view.
+    // No waiver path; zero rows on failure.
+    const singleBelle = evaluateBelleUnitForPublish([singleBelleView])
+    if (!singleBelle.ok) {
+      return NextResponse.json({
+        success: false,
+        code: 'belle_publish_refused',
+        error: `Publish refused: Belle copy failed the publication gate. Fix the copy and re-validate — there is no waiver path.`,
+        storyId,
+        blockers: (singleBelle as { blockers: string[] }).blockers,
+      }, { status: 422 })
+    }
+
+    // PUBLICATION-HOLD-001: hold RE-READ immediately before the write.
+    try {
+      await assertPublishAllowed(supabase as never)
+    } catch (e: any) {
+      return NextResponse.json({ success: false, code: 'publication_hold', error: e?.message || 'Publish refused: global publication hold is ACTIVE.' }, { status: 409 })
     }
 
     const payload: Record<string, any> = {

@@ -97,6 +97,17 @@ function makeDb(
           }),
         }
       }
+      if (table === 'atlas_settings') {
+        // PUBLICATION-HOLD-001: the executor re-reads the global hold before
+        // any write. No hold row seeded here → missing row reads OPEN.
+        return {
+          select: (_cols: string) => ({
+            eq: (_col: string, _val: unknown) => ({
+              maybeSingle: async () => ({ data: null, error: null }),
+            }),
+          }),
+        }
+      }
       if (table === 'story_workflow_audit') {
         return {
           insert: async (payload: Row) => {
@@ -126,7 +137,6 @@ function makeDb(
           },
         }
       }
-      throw new Error(`unexpected table ${table}`)
     },
   }
   return { db, writes, rows, audits }
@@ -149,14 +159,14 @@ const PASS_SCRIPT_1 = [
   'NARRATOR: Test Narrator',
   '',
   'BELLE B INTRO',
-  'BELLE B: Welcome back to Harbor Test Series, I am Belle and tonight the foghorn sounds twice over the bay.',
+  'BELLE B: Welcome back to Harbor Test Series, I am Belle with episode one, The Wrong Tide — a fisherman vanished from the harbor last night, and the lighthouse ledger names a boat that should not exist.',
   '',
   'MARA: The tide brought in a brass key that belonged to no boat in the harbor.',
   'ELI: Then we ask the lighthouse keeper, who keeps a ledger of every lost thing.',
   'MARA: The ledger showed an entry dated tomorrow, written in her own hand.',
   '',
   'BELLE B OUTRO',
-  'BELLE B: That was The Wrong Tide, an Endless Tales original read at length for the Harbor Test Series.',
+  'BELLE B: Sit with that for a moment — the weight of what she gave up tonight is a lot to carry, and you know the logbook opens again in episode two, where the missing page names the storm. Keep listening for what comes next.',
 ].join('\n')
 
 const PASS_SCRIPT_2 = [
@@ -169,14 +179,14 @@ const PASS_SCRIPT_2 = [
   'NARRATOR: Test Narrator',
   '',
   'BELLE B INTRO',
-  'BELLE B: Welcome back to Harbor Test Series, I am Belle and the logbook opens on a page no one admits writing.',
+  'BELLE B: Welcome back to Harbor Test Series, I am Belle with episode two, The Logbook — a page no one admits writing vanished from the logbook, and the barometer agrees with a storm no record admits.',
   '',
   'MARA: The second entry named the storm that sank the Marigold in eighteen ninety.',
   'ELI: No storm was recorded that year, yet the barometer in the tower agrees.',
   'MARA: She closed the book, and the lighthouse beam swung toward the reef.',
   '',
   'BELLE B OUTRO',
-  'BELLE B: That was The Logbook, an Endless Tales original read at length for the Harbor Test Series.',
+  'BELLE B: Hold onto that feeling — the cost of her choice echoes in every page, and we will follow the beam into the reckoning that waits in the next episode. Stay tuned for what the water gives back.',
 ].join('\n')
 
 function passingEpisode(id: string, epNum: number, script: string, overrides: Row = {}): Row {
