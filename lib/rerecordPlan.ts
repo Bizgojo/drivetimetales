@@ -70,3 +70,54 @@ export function garbleReportProblem(report: { results?: GarbleRow[] } | null | u
   if (s.ok + s.warn + s.fail === 0) return 'garble check scored no segments'
   return null
 }
+
+/**
+ * RERECORD-RUNNER-002 — classify a failed run-render-final-mix-local.ts as
+ * story-specific (this episode's audio/script/assets) vs. account/environment
+ * wide (DB, network, disk, a crashed child process). Conservative: an
+ * UNRECOGNIZED failure defaults to 'batch' — the batch stops rather than
+ * silently skipping something that might be an outage affecting every
+ * remaining episode. Recognized markers are the render core's own error text
+ * (app/api/asc3/render-final-mix/core.ts) for defects that are provably about
+ * THIS story: missing/empty/duplicate segment or asset files, post-render
+ * quality checks (silence, Belle outro fade), and upload/storage-shape
+ * mismatches for this story's folder.
+ */
+const STORY_LEVEL_RENDER_MARKERS = [
+  'PARSER CONTRACT FAILURE',
+  'Post-render validation failed',
+  'No audio files found',
+  'No story segments found',
+  'No announcement audio found',
+  'No outro audio found',
+  'Split intro incomplete',
+  'Missing story segment file',
+  'Missing story-specific background_music.mp3',
+  'Duplicate story segment numbers found',
+  'Segment file is empty',
+  'Segment file too small',
+  'Segment inventory entry is missing a filename',
+  'LOUDNESS-001',
+]
+
+/**
+ * Systemic causes that CAN appear inside an otherwise story-specific wrapper
+ * (e.g. "Failed to prepare story segment X: <network/disk error>") and must
+ * never be classified 'episode' even if a story-level marker is also present.
+ * Review finding: MISSING_CORRECTED_INTRO/OUTRO and "Failed to prepare..."
+ * wrap ANY exception from a download/ffmpeg step, including a network drop,
+ * a Supabase 5xx, or a full disk — none of which are this story's fault.
+ */
+const SYSTEMIC_OVERRIDE_MARKERS = [
+  'ECONNRESET', 'ECONNREFUSED', 'ETIMEDOUT', 'ENOTFOUND', 'EAI_AGAIN', 'ENOSPC',
+  'fetch failed', 'socket hang up', 'network', 'timed out', 'timeout',
+  /\b5\d\d\b/, // any 5xx status text
+]
+
+export function classifyRenderFailure(output: string): 'episode' | 'batch' {
+  const text = String(output || '')
+  if (SYSTEMIC_OVERRIDE_MARKERS.some((m) => (m instanceof RegExp ? m.test(text) : text.toLowerCase().includes(m.toLowerCase())))) {
+    return 'batch'
+  }
+  return STORY_LEVEL_RENDER_MARKERS.some((m) => text.includes(m)) ? 'episode' : 'batch'
+}
