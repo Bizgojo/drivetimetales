@@ -32,12 +32,18 @@ export interface ImageBackendRoute {
 }
 
 export const IMAGE_BACKEND_ROUTES: Record<ImageBackendId, ImageBackendRoute> = {
+  // COVER-GPT-IMAGE-DEFAULT-001 (2026-10-22): DALL-E 3 is retired — live API
+  // 400s `The model 'dall-e-3' does not exist` on EC2 build 52cdcb6c, and
+  // /v1/models for this key lists no dall-e models. Default is now
+  // gpt-image-1.5 (verified on /v1/models + current images/generations docs).
+  // Backend id stays 'dalle3' so existing COVER_IMAGE_BACKEND values keep
+  // resolving; OPENAI_IMAGE_MODEL still overrides the model.
   'dalle3': {
     id: 'dalle3',
-    label: 'Primary — ChatGPT → DALL·E 3',
+    label: 'Primary — ChatGPT → GPT Image',
     provider: 'openai',
-    defaultModel: 'dall-e-3',
-    notes: 'Default cover renderer. OpenAI images API; key from env (Marc-governed).',
+    defaultModel: 'gpt-image-1.5',
+    notes: 'Default cover renderer (gpt-image-1.5). OpenAI images API; key from env (Marc-governed).',
   },
   'claude-art': {
     id: 'claude-art',
@@ -79,7 +85,7 @@ export interface SelectedImageBackend {
 /**
  * Resolve which image backend + model to use.
  * Precedence: caller override → COVER_IMAGE_BACKEND / OPENAI_IMAGE_MODEL env →
- * primary default (dall-e-3). Never touches API keys.
+ * primary default (gpt-image-1.5). Never touches API keys.
  */
 export function selectImageBackend(preferred?: string): SelectedImageBackend {
   const raw = String(preferred || process.env.COVER_IMAGE_BACKEND || '').trim().toLowerCase()
