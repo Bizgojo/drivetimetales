@@ -29,6 +29,85 @@ export function hasCompanionPresence(text: string): boolean {
   return companionMarkers.test(text)
 }
 
+/**
+ * HARBORLIGHT-REFLECTION-FIX-001: True when the outro contains emotional
+ * residue or reflection (not mere plot summary). Required for series
+ * non-finale outros.
+ *
+ * Moved here verbatim from app/api/admin/production-jobs/run-next/route.ts
+ * (FIX-BELLE-SERIES-TEMPLATE-001) so the rule has a single definition and is
+ * directly unit-testable, then extended with a reflective-invitation layer:
+ * listener-directed invitations to dwell on emotional weight ("sit with
+ * that"), emotional-burden "carry" phrasing ("a lot to carry", "carry
+ * that forward"), and reasonable paraphrases (hold onto / let it settle /
+ * take a moment / the weight of <abstract> / ask yourself / what would you
+ * / stays with you).
+ *
+ * ACCEPTANCE CONTRACT (explicit, Codex review x4): the invitation layer
+ * recognizes reflective GRAMMAR — ruled phrases ("sit with that",
+ * "a lot to carry"), second-person interrogatives ("ask yourself",
+ * "what would you"), and abstract-complement constructions ("weight of
+ * her grief", "carries that fear", "echoes of what she gave up").
+ * Residual ambiguity is ACCEPTED where only antecedent/clause semantics
+ * distinguish literal from reflective use ("carries it home" with it = a
+ * logbook vs. it = a lost home; "weight of what" + literal vs.
+ * reflective clause). Narrowing further would reintroduce false negatives
+ * on legitimate reflection — the exact bug being fixed. This is
+ * recall-oriented by design: the gate ANDs reflection with companion
+ * presence AND next-episode tease, and failures route to the bounded
+ * repair-and-revalidate loop (not to terminal rejection). (Note:
+ * requireLlmJudgment is set by the validator but presently unconsumed
+ * downstream — it is NOT an executed model review, so approval rests on
+ * accepting the ambiguity, not on downstream judgment resolving it.)
+ * Flat plot recaps with no invitation grammar at all still return false
+ * (19 negative fixtures).
+ */
+export function hasEmotionalResidueOrReflection(text: string): boolean {
+  const emotionalMarkers =
+    /\b(gasping|wonder|wondering|haunt|heartbreak|awe|dread|terror|unease|tension|longing|yearning|revelation|shocking|stunned|moment|leaves you|left you|you won't forget|forever changed)\b/i
+  const reflectionMarkers =
+    /\b(question|questioning|ponder|mystery|answer|truth|secret|revealed|reveal|understand|realize|realization|consequence|cost|choice|decision)\b/i
+  // Shared abstract-complement vocabulary: emotional/abstract nouns only.
+  // Concrete nouns (truck, toolbox, ladder, bell, rain, steps, logbook)
+  // can never satisfy these positions.
+  const abstractNouns =
+    'loss|losses|grief|love|choice|choices|silence|memory|memories|waiting|leaving|' +
+    'sacrifice|sacrifices|longing|regret|regrets|hope|hopes|fear|fears|loneliness|' +
+    'goodbye|goodbyes|absence|years|truth|secret|secrets|sorrow|dream|dreams|' +
+    'questions?|promises?|burden|burdens|shame|songs?|stor(?:y|ies)|laughter|music|meaning|history|tears'
+  const possessedAbstract = '(her|his|their|your|my|our) (' + abstractNouns + ')'
+  const determinedAbstract = '((that|this|the) (' + abstractNouns + '))'
+  const abstractComplement = '(what|losing|' + abstractNouns + '|' + possessedAbstract + '|' + determinedAbstract + ')'
+  const reflectionInvitationMarkers = new RegExp(
+    '\\b(sit with that' +
+      '|hold (on to|onto) that (feeling|moment|memory|memories|thought|hope|tight|close)' +
+      '|hold (on to|onto) this (moment|feeling|memory|thought|hope)' +
+      '|hold (that|this) (thought|feeling|moment|close)' +
+      '|let (that|it|this) (settle|sink in|sit|rest|linger)' +
+      '|take a (moment|second|minute|breath)' +
+      '|ask yourself' +
+      '|what would you' +
+      '|the weight of ' + abstractComplement +
+      '|weighs on' +
+      '|heavy with (' + abstractNouns + ')' +
+      '|stays with you|stay with you' +
+      '|(a lot|so much|too much|much) to carry' +
+      '|carr(?:y|ies|ying|ied) (that|this|it|them) (' + abstractNouns + '|home|forward|with (you|her|him|them|us))' +
+      '|carry the weight' +
+      '|lingers? (on|over) (that|this) (thought|feeling|moment|memory|memories)' +
+      '|lingers? with (you|her|him|them|us)' +
+      '|echo(?:es)? of (what|' + abstractNouns + '|' + possessedAbstract + '|' + determinedAbstract + ')' +
+      '|remember (this|that|what)' +
+    ')\\b',
+    'i'
+  )
+  return (
+    emotionalMarkers.test(text) ||
+    reflectionMarkers.test(text) ||
+    reflectionInvitationMarkers.test(text)
+  )
+}
+
 export { hashScript }
 
 /** Audit entry recorded under script_json.series_generation on Belle repair. */
