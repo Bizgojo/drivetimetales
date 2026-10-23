@@ -25,6 +25,7 @@ import { runHookGateForStory, detectBelleQualityRepairEmpty } from '@/lib/hookGa
 import { runStoryQualityGate } from '@/lib/storyQualityGate'
 import { checkRuntimeVsBrief, parseBriefRuntimeToSecs, RUNTIME_GATE_ID } from '@/lib/runtimeGate'
 import { runGarbleGate } from '@/lib/garbleGate'
+import { checkScriptRuntimeMeetsMinimum, formatScriptRuntimeShortMessage, SCRIPT_RUNTIME_PREFLIGHT, SCRIPT_RUNTIME_PREFLIGHT_ID } from '@/lib/scriptRuntimeEstimate'
 import { parseScriptPositions } from '@/lib/scriptLineIndex'
 // GATE 4 (GATE-GAPS-SPEC-20261004 §4): wire the existing deterministic duplicate-segment
 // detector into R. Single import site (no per-call require), CJS module via esModuleInterop.
@@ -4224,6 +4225,59 @@ async function runStandaloneVoicePreflight(job: ProductionJob, origin: string) {
     }
   }
 
+  // ── SCRIPT-RUNTIME-PREFLIGHT-001: pre-spend runtime floor ───────────────────
+  // Last gate before any ElevenLabs spend: estimate finished minutes from
+  // spoken-word counts at the calibrated rate. Short scripts bounce here
+  // (non-retryable — length needs editorial judgment) instead of spending
+  // narration money and failing the final measured gate (RUNTIME-GATE-001).
+  // Unmeasurable scripts (zero parseable spoken lines) do NOT block: record
+  // the persistent skipped marker and continue; an empty script spends
+  // ~nothing downstream and existing gates own that case.
+  const runtimeCheck = checkScriptRuntimeMeetsMinimum(storyForNarrator.script || '')
+  const scriptRuntimeMarker = {
+    gateId: SCRIPT_RUNTIME_PREFLIGHT_ID,
+    passed: runtimeCheck.passed,
+    skipped: runtimeCheck.skipped,
+    skipReason: runtimeCheck.skipReason ?? null,
+    spokenWords: runtimeCheck.spokenWords,
+    voiceSegments: runtimeCheck.voiceSegments,
+    estimatedMins: Number(runtimeCheck.estimatedMins.toFixed(2)),
+    calibratedWpm: SCRIPT_RUNTIME_PREFLIGHT.CALIBRATED_WPM,
+    minEstimatedMinutes: SCRIPT_RUNTIME_PREFLIGHT.MIN_ESTIMATED_MINUTES,
+    checkedAt: nowIso(),
+  }
+  if (!runtimeCheck.passed && !runtimeCheck.skipped) {
+    const blocker = formatScriptRuntimeShortMessage(runtimeCheck)
+    return {
+      passed: false,
+      skipped: false,
+      narratorIssues: [] as string[],
+      storyId: String(storyId),
+      report: {
+        success: false,
+        preflightOnly: true,
+        kind: SCRIPT_RUNTIME_PREFLIGHT.SHORT_KIND,
+        blockingReasons: [blocker],
+        scriptRuntime: scriptRuntimeMarker,
+      },
+      state: {
+        ...state,
+        storyId: String(storyId),
+        voicePreflightPassed: false,
+        voicePreflightStoryId: String(storyId),
+        voicePreflight: null,
+        voicePreflightAt: nowIso(),
+        narratorValidation: {
+          passed: true,
+          resolvedVoiceId: narratorResult.resolvedVoiceId,
+          resolvedVoiceName: narratorResult.resolvedVoiceName,
+          checkedAt: nowIso(),
+        },
+        scriptRuntimePreflight: scriptRuntimeMarker,
+      },
+    }
+  }
+
   // ── Generate-voices preflight (ElevenLabs metadata check) ────────────────────
   const { responseOk, report } = await runGenerateVoicesPreflightRequest(origin, String(storyId))
   const passed = responseOk && report.success === true
@@ -4247,6 +4301,7 @@ async function runStandaloneVoicePreflight(job: ProductionJob, origin: string) {
         resolvedVoiceName: narratorResult.resolvedVoiceName,
         checkedAt: nowIso(),
       },
+      scriptRuntimePreflight: scriptRuntimeMarker,
     },
   }
 }
@@ -7192,6 +7247,75 @@ async function runSeriesVoicePreflight(job: ProductionJob, origin: string) {
     }
   }
 
+  // ── SCRIPT-RUNTIME-PREFLIGHT-001: pre-spend runtime floor (per episode) ────
+  // Same floor as the standalone path, run on this episode's script BEFORE
+  // the ElevenLabs preflight/generate_voices call. A short episode fails the
+  // series preflight for this episode (recorded in failedEpisodes, same shape
+  // as the numeral failure above); the episode is extended and re-submitted.
+  // Unmeasurable scripts (zero parseable spoken lines) do NOT block.
+  {
+    const runtimeCheck = checkScriptRuntimeMeetsMinimum((nextEpisode as any).script || '')
+    const scriptRuntimeMarker = {
+      gateId: SCRIPT_RUNTIME_PREFLIGHT_ID,
+      passed: runtimeCheck.passed,
+      skipped: runtimeCheck.skipped,
+      skipReason: runtimeCheck.skipReason ?? null,
+      spokenWords: runtimeCheck.spokenWords,
+      voiceSegments: runtimeCheck.voiceSegments,
+      estimatedMins: Number(runtimeCheck.estimatedMins.toFixed(2)),
+      calibratedWpm: SCRIPT_RUNTIME_PREFLIGHT.CALIBRATED_WPM,
+      minEstimatedMinutes: SCRIPT_RUNTIME_PREFLIGHT.MIN_ESTIMATED_MINUTES,
+      checkedAt: nowIso(),
+    }
+    if (!runtimeCheck.passed && !runtimeCheck.skipped) {
+      const blocker = formatScriptRuntimeShortMessage(runtimeCheck)
+      const failedEpisodeEntry = {
+        storyId,
+        title: nextEpisode.title,
+        episodeNumber: number,
+        passed: false,
+        narratorIssues: [] as string[],
+        scriptRuntime: scriptRuntimeMarker,
+        blockingReasons: [blocker],
+        checkedAt: nowIso(),
+        report: {
+          success: false,
+          preflightOnly: true,
+          kind: SCRIPT_RUNTIME_PREFLIGHT.SHORT_KIND,
+          blockingReasons: [blocker],
+          scriptRuntime: scriptRuntimeMarker,
+        },
+      }
+      const nextFailedEpisodes = [
+        ...failedEpisodes.filter((episode: any) => String(episode.storyId) !== storyId),
+        failedEpisodeEntry,
+      ]
+      return {
+        passed: false,
+        failed: true,
+        complete: false,
+        seriesId: String(seriesId),
+        episodeResult: failedEpisodeEntry as any,
+        report: failedEpisodeEntry.report,
+        narratorIssues: [] as string[],
+        nextStep: NEXT_STEP_AFTER_SERIES_VALIDATION,
+        state: {
+          ...state,
+          seriesId: String(seriesId),
+          seriesVoicePreflight: {
+            episodeCount: episodes.length,
+            checkedEpisodes,
+            failedEpisodes: nextFailedEpisodes,
+            nextEpisodeNumber: number,
+            reportsByEpisode,
+            narratorsByEpisode,
+            narratorIssues: [] as string[],
+          },
+        },
+      }
+    }
+  }
+
   // ── Generate-voices preflight ──────────────────────────────────────────────
   const { responseOk, report } = await runGenerateVoicesPreflightRequest(origin, storyId)
   const passed = responseOk && report.success === true
@@ -9152,6 +9276,8 @@ export async function POST(req: NextRequest) {
         // Classify failure type: numeral pre-TTS, narrator mismatch, unlabeled lines, or unknown
         // GATE 5 (GATE-GAPS-SPEC-20261004 §5): digit-form numeral defect.
         const isNumeralPreTts = (result.report as any)?.kind === 'numeral_pre_tts'
+        // SCRIPT-RUNTIME-PREFLIGHT-001: short-script bounce carries kind 'script_runtime_short'.
+        const isScriptRuntimeShort = (result.report as any)?.kind === SCRIPT_RUNTIME_PREFLIGHT.SHORT_KIND
         const numeralFailures = Array.isArray((result.report as any)?.failures)
           ? (result.report as any).failures
           : []
@@ -9172,6 +9298,16 @@ export async function POST(req: NextRequest) {
           isAutonomousRetryable = true
           recommendedAction = (result.report as any)?.hint
             || 'Spell out numerals in words (4.6 → four point six) and re-submit.'
+        } else if (isScriptRuntimeShort) {
+          // SCRIPT-RUNTIME-PREFLIGHT-001: short script bounced pre-spend.
+          // NEVER autonomous-retryable: a length shortfall needs editorial
+          // judgment (extend the story vs accept a short episode), not a
+          // rewrite loop — and generate_script would reuse the same short
+          // script verbatim (GEN-SCRIPT-NULL-CHECK-001), so a retry would
+          // just burn a cycle and bounce again. Park for Marc attention.
+          failureKind = 'script_runtime_short'
+          isAutonomousRetryable = false
+          recommendedAction = `${firstBlocker} Extend the episode script to ≥${SCRIPT_RUNTIME_PREFLIGHT.MIN_SPOKEN_WORDS} spoken words, then re-run the job from voice_preflight (no narration was spent).`
         } else if (hasNarratorIssue) {
           failureKind = 'narrator_mismatch'
           isAutonomousRetryable = false  // narrator mismatch requires DB/manual fix, not retry
@@ -9329,6 +9465,16 @@ export async function POST(req: NextRequest) {
           )
         }
 
+        // SCRIPT-RUNTIME-PREFLIGHT-001: short scripts park immediately (never
+        // retried — see classification above). Mark the story so the short
+        // episode is visible for extension, not silently re-queued.
+        if (isScriptRuntimeShort) {
+          await markStoryNeedsAttention(
+            result.storyId,
+            `Voice preflight needs attention: script too short for narration spend. ${recommendedAction}`
+          )
+        }
+
         // Kinds that resume to generate_script (Hal re-generates the script).
         const resumesToGenerateScript =
           failureKind === 'script_unlabeled_lines' || failureKind === 'numeral_pre_tts'
@@ -9352,6 +9498,7 @@ export async function POST(req: NextRequest) {
             detail: {
               narratorIssues: result.narratorIssues,
               blockingReasons,
+              scriptRuntime: (result.report as any)?.scriptRuntime ?? null,
               unlabeledLineCount,
               examples: unlabeledExamples.slice(0, 3),
               numeralFailures: isNumeralPreTts ? numeralFailures.slice(0, 5) : undefined,
