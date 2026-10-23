@@ -44,6 +44,7 @@ import {
   belleRepairAudioInvalidation,
   buildBelleRepairAuditEntry,
   hasCompanionPresence,
+  hasEmotionalResidueOrReflection,
   resyncContinuityPinsAfterRepair,
 } from '@/lib/belleValidation'
 import {
@@ -1157,15 +1158,8 @@ function hasSeriesClosureLanguage(text: string): boolean {
     /\b(the final|the last) (chapter|episode|installment|story) of\b/i.test(text)
 }
 
-/**
- * FIX-BELLE-SERIES-TEMPLATE-001: True when the outro contains emotional residue or
- * reflection (not mere plot summary). Required for series non-finale outros.
- */
-function hasEmotionalResidueOrReflection(text: string): boolean {
-  const emotionalMarkers = /\b(gasping|wonder|wondering|haunt|heartbreak|awe|dread|terror|unease|tension|longing|yearning|revelation|shocking|stunned|moment|leaves you|left you|you won't forget|forever changed)\b/i
-  const reflectionMarkers = /\b(question|questioning|ponder|mystery|answer|truth|secret|revealed|reveal|understand|realize|realization|consequence|cost|choice|decision)\b/i
-  return emotionalMarkers.test(text) || reflectionMarkers.test(text)
-}
+// HARBORLIGHT-REFLECTION-FIX-001: hasEmotionalResidueOrReflection lives in
+// lib/belleValidation.ts (single definition, imported above).
 
 // BELLE-REPAIR-WRITE-INTEGRITY-001: hasCompanionPresence lives in
 // lib/belleValidation.ts (single definition, imported above).
