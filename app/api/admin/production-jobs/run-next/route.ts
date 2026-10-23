@@ -59,6 +59,11 @@ import {
   type NarrativeHookCategory,
 } from '@/lib/narrativeHook'
 import {
+  episodeNumberNamedIn,
+  normalizeNumberWords,
+  titlesEqualCanonical,
+} from '@/lib/numberWords'
+import {
   drainPendingPinResync,
   getPendingPinResync,
   persistBelleRepairAndInvalidateAudio,
@@ -881,7 +886,9 @@ function replaceBelleSection(script: string, kind: 'intro' | 'outro', text: stri
 }
 
 function normalizeBelleRequiredText(text: string) {
-  return String(text || '')
+  // Shared numeral normalization (Marc 2026-10-23 16:37 item 1): title
+  // naming checks must not fail on Two-vs-2.
+  return normalizeNumberWords(text)
     .toLowerCase()
     .replace(/[\u201C\u201D]/g, '"')
     .replace(/[\u2018\u2019]/g, "'")
@@ -1071,20 +1078,12 @@ function hasSeriesClosureLanguage(text: string): boolean {
 // lib/belleValidation.ts (single definition, imported above).
 /**
  * Check whether intro text names the episode number.
- * Accepts digit form (\b3\b) and written cardinal/ordinal for episodes 1-20.
+ * SINGLE DEFINITION (Marc 2026-10-23 16:37 item 1): delegates to
+ * lib/numberWords.episodeNumberNamedIn — the private cardinal/ordinal
+ * tables are gone (they also substring-matched: episode 1 hit "someone").
  */
 function introNamesEpisodeNumber(text: string, n: number): boolean {
-  const lower = text.toLowerCase()
-  if (new RegExp(`\\b${n}\\b`).test(lower)) return true
-  const cardinal = ['', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten',
-    'eleven', 'twelve', 'thirteen', 'fourteen', 'fifteen', 'sixteen', 'seventeen', 'eighteen', 'nineteen', 'twenty']
-  const ordinal = ['', 'first', 'second', 'third', 'fourth', 'fifth', 'sixth', 'seventh', 'eighth', 'ninth', 'tenth',
-    'eleventh', 'twelfth', 'thirteenth', 'fourteenth', 'fifteenth', 'sixteenth', 'seventeenth', 'eighteenth', 'nineteenth', 'twentieth']
-  if (n >= 1 && n <= 20) {
-    if (cardinal[n] && lower.includes(cardinal[n])) return true
-    if (ordinal[n] && lower.includes(ordinal[n])) return true
-  }
-  return false
+  return episodeNumberNamedIn(text, n)
 }
 
 /**
@@ -3619,7 +3618,10 @@ async function generateStandaloneScript(job: ProductionJob, model: string) {
   }
   // Title check: if brief specifies a title, warn if generated title differs substantially
   const briefTitle = String(brief.title || '').trim()
-  if (briefTitle && generatedTitle && generatedTitle.toLowerCase() !== briefTitle.toLowerCase()) {
+  // Shared numeral normalization (Marc 2026-10-23 16:37 item 1): a
+  // numeral-only title difference ("Episode 2" vs "Episode Two") is
+  // never a mismatch.
+  if (briefTitle && generatedTitle && !titlesEqualCanonical(generatedTitle, briefTitle)) {
     briefMismatches.push(`Title mismatch: brief="${briefTitle}" vs script="${generatedTitle}"`)
   }
   // Narrator check: narrator resolution writes only the explicit brief narrator field.

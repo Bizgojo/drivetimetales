@@ -354,6 +354,23 @@ describe('recordPersonalizationFallback (countable, best-effort, never throws)',
 // ─── Item 5: publish-time personalization guard ──────────────────────────────
 
 import { personalizationPublishBlockers, LISTENER_NAME_TOKEN } from '@/lib/personalization/publishGuard'
+import { currentBelleFingerprint } from '@/lib/belleFreshness'
+
+// BELLE-FRESHNESS-001 (bound clearance): publish-expectation fixtures
+// carry bound render-freshness evidence for their exact script +
+// audio_url (an existing file is never evidence — without it the route
+// correctly refuses 422 fail-closed).
+function freshnessEnv(script: string, audioUrl: string) {
+  const fp = currentBelleFingerprint(script)
+  return {
+    fingerprint: fp,
+    text_changed_at: '2026-10-23T16:00:00.000Z',
+    audio_stale: false,
+    last_verified_render_at: '2026-10-23T17:00:00.000Z',
+    render_request_fingerprint: fp,
+    verified_audio_asset: audioUrl,
+  }
+}
 
 describe('personalizationPublishBlockers', () => {
   const cleanStory = {
@@ -487,7 +504,7 @@ describe('/api/admin/publish-story — guard is blocking in the publish flow', (
       { storyId: 's-1' },
       {
         stories: [
-          { data: introTokenStory, error: null }, // pre-publish read
+          { data: { ...introTokenStory, script_json: { series_generation: { belle_freshness: freshnessEnv(introTokenStory.script, introTokenStory.audio_url) } } }, error: null }, // pre-publish read
           { data: { id: 's-1', title: publishableStory.title, status: 'published' }, error: null }, // update
         ],
       }
@@ -515,7 +532,7 @@ describe('/api/admin/publish-story — guard is blocking in the publish flow', (
       { storyId: 's-1' },
       {
         stories: [
-          { data: { ...publishableStory, script: cleanScript }, error: null }, // pre-publish read
+          { data: { ...publishableStory, script: cleanScript, script_json: { series_generation: { belle_freshness: freshnessEnv(cleanScript, publishableStory.audio_url) } } }, error: null }, // pre-publish read
           { data: { id: 's-1', title: publishableStory.title, status: 'published' }, error: null }, // update
         ],
       }

@@ -5,6 +5,7 @@ import { syncPremiseIndexForTransition } from '@/lib/premiseIndex'
 import { evaluateSeriesPublishOrder, isEpisodePublishable, sortEpisodesForPublish, assertSeriesContiguity } from '@/lib/story-gates'
 import { assertPublishAllowed, isPublicationHeld } from '@/lib/publicationHold'
 import { evaluateBelleUnitForPublish } from '@/lib/publicationBelleGate'
+import { evaluateBelleFreshnessForPublish, BELLE_FRESHNESS_STALE_CODE } from '@/lib/belleFreshness'
 
 export const runtime = 'nodejs'
 
@@ -67,7 +68,7 @@ export async function POST(req: NextRequest) {
 
       const { data: episodes, error: fetchError } = await supabase
         .from('stories')
-        .select('id,title,author,genre,audio_url,cover_url,description,duration_mins,status,is_hidden,review_status,workflow_state,series_id,series_name,episode_number,series_number,series_is_finale,announcement_url,announcement_text,script')
+        .select('id,title,author,genre,audio_url,cover_url,description,duration_mins,status,is_hidden,review_status,workflow_state,series_id,series_name,episode_number,series_number,series_is_finale,announcement_url,announcement_text,script,script_json')
         .eq('series_id', seriesId)
 
       if (fetchError) {
@@ -142,6 +143,20 @@ export async function POST(req: NextRequest) {
         }, { status: 422 })
       }
 
+      // BELLE-FRESHNESS-001: render-freshness gate — every episode's
+      // mix must be verified rendered from its CURRENT Belle text. An
+      // existing file is never evidence. No waiver path; zero rows.
+      const freshnessVerdict = evaluateBelleFreshnessForPublish(episodes as any[])
+      if (!freshnessVerdict.ok) {
+        return NextResponse.json({
+          success: false,
+          code: BELLE_FRESHNESS_STALE_CODE,
+          error: `Series publish refused: ${(freshnessVerdict as { blockers: string[] }).blockers.length} Belle-freshness blocker(s). Re-render the mix after the Belle text change — there is no waiver path.`,
+          seriesId,
+          blockers: (freshnessVerdict as { blockers: string[] }).blockers,
+        }, { status: 422 })
+      }
+
       // PUBLICATION-HOLD-001: hold RE-READ immediately before the write —
       // the atomicity point. A hold set after the pre-check above still
       // blocks here with zero rows written.
@@ -193,7 +208,7 @@ export async function POST(req: NextRequest) {
 
     const { data: existingStory, error: existingError } = await supabase
       .from('stories')
-      .select('id, series_id, series_name, episode_number, series_number, series_is_finale, status, is_hidden, review_status, workflow_state, title, author, genre, audio_url, cover_url, description, duration_mins, announcement_url, announcement_text, script')
+      .select('id, series_id, series_name, episode_number, series_number, series_is_finale, status, is_hidden, review_status, workflow_state, title, author, genre, audio_url, cover_url, description, duration_mins, announcement_url, announcement_text, script, script_json')
       .eq('id', storyId)
       .single()
 
@@ -258,7 +273,7 @@ export async function POST(req: NextRequest) {
     if ((existingStory as any).series_id) {
       const { data: siblings, error: sibError } = await supabase
         .from('stories')
-        .select('id,series_id,episode_number,series_number,status,is_hidden,review_status,workflow_state,title,author,genre,audio_url,cover_url,description,duration_mins,announcement_url,announcement_text,script')
+        .select('id,series_id,episode_number,series_number,status,is_hidden,review_status,workflow_state,title,author,genre,audio_url,cover_url,description,duration_mins,announcement_url,announcement_text,script,script_json')
         .eq('series_id', (existingStory as any).series_id)
       if (sibError) {
         return NextResponse.json({ success: false, error: sibError.message }, { status: 500 })
@@ -289,6 +304,19 @@ export async function POST(req: NextRequest) {
         error: `Publish refused: Belle copy failed the publication gate. Fix the copy and re-validate — there is no waiver path.`,
         storyId,
         blockers: (singleBelle as { blockers: string[] }).blockers,
+      }, { status: 422 })
+    }
+
+    // BELLE-FRESHNESS-001: render-freshness gate on the post-publish
+    // view. No waiver path; zero rows on failure.
+    const singleFreshness = evaluateBelleFreshnessForPublish([singleBelleView])
+    if (!singleFreshness.ok) {
+      return NextResponse.json({
+        success: false,
+        code: BELLE_FRESHNESS_STALE_CODE,
+        error: `Publish refused: Belle-freshness failed the publication gate. Re-render the mix after the Belle text change — there is no waiver path.`,
+        storyId,
+        blockers: (singleFreshness as { blockers: string[] }).blockers,
       }, { status: 422 })
     }
 

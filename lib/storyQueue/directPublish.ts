@@ -60,6 +60,8 @@ import {
 import { runPreflightChecks } from '@/lib/preflight/validator'
 import { assertPublishAllowed, isPublicationHeld } from '@/lib/publicationHold'
 import { evaluateBelleUnitForPublish } from '@/lib/publicationBelleGate'
+import { evaluateBelleFreshnessForPublish } from '@/lib/belleFreshness'
+import { parseEpisodeNumberToken } from '@/lib/numberWords'
 
 /**
  * Columns the gates read. Every field a gate predicate touches must be
@@ -312,6 +314,14 @@ export function evaluateOperatorDirectGates(
   const belleVerdict = evaluateBelleUnitForPublish(ordered as Array<Record<string, unknown>>)
   if (!belleVerdict.ok) {
     blockers.push(...(belleVerdict as { blockers: string[] }).blockers)
+  }
+
+  // BELLE-FRESHNESS-001: render-freshness gate — every episode's
+  // mix must be verified rendered from its CURRENT Belle text. Feeds the
+  // same blockers list (422 with zero writes via the caller's refusal).
+  const freshnessVerdict = evaluateBelleFreshnessForPublish(ordered as Array<Record<string, unknown>>)
+  if (!freshnessVerdict.ok) {
+    blockers.push(...(freshnessVerdict as { blockers: string[] }).blockers)
   }
 
   return blockers.length ? { ok: false, blockers, warnings } : { ok: true, warnings }
@@ -750,7 +760,14 @@ export async function runEpisodePreflight(
   const script = String((episode as { script?: unknown }).script ?? '')
   const meta = parsePreflightScriptMetadata(script)
   const { intro, outro } = extractPreflightIntroOutro(script)
-  const epNum = Number((episode as { episode_number?: unknown }).episode_number) || parseInt(meta.episode, 10) || undefined
+  // Identity comes from the episode_number COLUMN (never the title/header).
+  // The EPISODE: script-header token is a fallback only, parsed through the
+  // shared numeral normalizer (Marc 2026-10-23 16:37 item 1) so
+  // "EPISODE: Two" reads as 2 instead of NaN.
+  const epNum =
+    Number((episode as { episode_number?: unknown }).episode_number) ||
+    parseEpisodeNumberToken(meta.episode) ||
+    undefined
   try {
     const report = await runPreflightChecks({
       storyId,
