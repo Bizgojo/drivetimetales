@@ -41,6 +41,10 @@ import { runVoiceConformanceGate, type VoiceProfile } from '@/lib/voiceConforman
 import { legacyStepModels, routeStep, resolveModelForStep, coerceValidationModelToClaude } from '@/lib/model-router'
 import { buildContinuityPins, hashScript, verifyContinuityPins } from '@/lib/continuityPin'
 import {
+  hasEarnedPackageEvidence,
+  stampPackageEvidence,
+} from '@/lib/packageEvidence'
+import {
   applyBelleRepairAudit,
   belleRepairAudioInvalidation,
   buildBelleRepairAuditEntry,
@@ -49,6 +53,11 @@ import {
   REFLECTION_RULE_PROMPT_FRAGMENT,
   resyncContinuityPinsAfterRepair,
 } from '@/lib/belleValidation'
+import {
+  detectNarrativeHookCategory,
+  normalizeNarrativeHookText,
+  type NarrativeHookCategory,
+} from '@/lib/narrativeHook'
 import {
   drainPendingPinResync,
   getPendingPinResync,
@@ -911,114 +920,9 @@ function belleTextIncludes(text: string, required: string) {
 // Root cause: keyword matching approximates hook detection but cannot recognise
 // inferential or structural forms of narrative tension.
 
-export type NarrativeHookCategory =
-  | 'suspicious_discrepancy'
-  | 'unexplained_event'
-  | 'hidden_evidence'
-  | 'secret'
-  | 'fraud_wrongdoing'
-  | 'betrayal'
-  | 'conspiracy'
-  | 'impossible_fact'
-  | 'missing_person'
-  | 'concrete_threat'
-
-function normalizeNarrativeHookText(text: string) {
-  return String(text || '')
-    .normalize('NFKC')
-    .replace(/[\u2018\u2019\u201A\u201B\u2032\u02BC]/g, "'")
-    .replace(/[\u201C\u201D\u201E\u201F\u2033]/g, '"')
-    .replace(/[\u2010-\u2015\u2212]/g, ' ')
-    .replace(/[\u200B-\u200D\uFEFF]/g, '')
-    .replace(/\s+/g, ' ')
-    .trim()
-}
-
-function detectNarrativeHookCategory(text: string): NarrativeHookCategory | null {
-  const raw = normalizeNarrativeHookText(text).toLowerCase()
-  const normalized = raw
-    .replace(/\bshouldn.?t\b/g, 'should not')
-    .replace(/\bcan.?t\b/g, 'cannot')
-    .replace(/\bcan not\b/g, 'cannot')
-    .replace(/\bdoesn.?t\b/g, 'does not')
-    .replace(/\bisn.?t\b/g, 'is not')
-    .replace(/\bwasn.?t\b/g, 'was not')
-    .replace(/\bwon.?t\b/g, 'will not')
-  const contracted = normalized
-    .replace(/\bshould (not|never)\b/g, "shouldn't")
-    .replace(/\bcannot\b/g, "can't")
-    .replace(/\bdoes not\b/g, "doesn't")
-    .replace(/\bis not\b/g, "isn't")
-    .replace(/\bwas not\b/g, "wasn't")
-    .replace(/\bwill not\b/g, "won't")
-  const t = `${raw}\n${normalized}\n${contracted}`
-
-  // 1. Suspicious discrepancy - numbers/data/records that don't add up,
-  //    things that communicate an unintended truth, anomalies in records.
-  //    Covers: "numbers tell a story they were never meant to tell",
-  //    "the entry doesn't reconcile", "entries refuse to match",
-  //    "four payments to a vendor that may not exist".
-  if (
-    /\b(discrepancy|doesn.t add up|doesn.t match|anomal|irregularit|reconciliation|reconciling|reconcile|off the books|never meant to tell|weren.t meant|wasn.t meant|not meant to|never supposed to|shouldn.t exist|can.t exist|numbers.*wrong|wrong.*numbers)\b/i.test(t) ||
-    /numbers.{0,60}story.{0,40}meant/i.test(t) ||
-    /story.{0,40}(never|not|wasn.t|weren.t).{0,20}meant/i.test(t) ||
-    /\b(entries|entry|payments?|invoices?|transaction|figure|amount|sum).{0,40}(refuse|fail|don.t|doesn.t|won.t|can.t).{0,20}(match|reconcile|add up|balance|align)\b/i.test(t) ||
-    /\b(vendor|account|entity|company|supplier|payee).{0,40}(may not|might not|doesn.t|don.t|can.t|cannot|never|shouldn.t).{0,20}(exist|be real|be found|have existed)\b/i.test(t) ||
-    /\b(ledger|account|entry|invoice|payment|transaction|column|figure|balance|books?).{0,40}(wrong|off|false|missing|extra|unexplained|shouldn.t|didn.t|doesn.t|not right|bad|error|mistake)\b/i.test(t) ||
-    /\b(wrong|off|false|missing|extra|unexplained).{0,40}(ledger|account|entry|invoice|payment|transaction|column|figure|balance|books?)\b/i.test(t)
-  ) return 'suspicious_discrepancy'
-
-  // 2. Unexplained event - something happened with no apparent reason.
-  if (
-    /\b(unexplained|no explanation|no one knows why|never explained|without warning|out of nowhere|for no reason|reasons? unclear|nobody.?s sure|mysterious circumstances|can.?t explain|nobody can explain)\b/i.test(t)
-  ) return 'unexplained_event'
-
-  // 3. Hidden evidence - something concealed, suppressed, or not meant to surface.
-  if (
-    /\b(hidden|concealed|buried|covered up|cover.?up|suppressed|sealed|locked away|kept secret|kept quiet|wasn.t meant to be found|never meant to be found|shouldn.t have surfaced|didn.t want found|didn.t want anyone to find)\b/i.test(t)
-  ) return 'hidden_evidence'
-
-  // 4. Secret - information deliberately withheld from someone.
-  if (
-    /\b(secret|no one knew|nobody knew|didn.t tell|never told|withheld|confidential|classified|kept from|wasn.t supposed to know|not supposed to know)\b/i.test(t)
-  ) return 'secret'
-
-  // 5. Fraud / wrongdoing - explicit criminal or deceptive act.
-  if (
-    /\b(fraud|fraudulent|scheme|scam|theft|stolen|embezzl|forgery|falsif|tamper|manipulat|corrupt|brib|crime|criminal|illegal|illicit|wrongdoing|cover.?up|decei|on purpose|paper trail)\b/i.test(t)
-  ) return 'fraud_wrongdoing'
-
-  // 6. Betrayal - breach of trust between people.
-  if (
-    /\b(betrayal|betrayed|betrays|trust.{0,20}broken|broken.{0,20}trust|backstab|double.?cross|sold.{0,10}out|turned.{0,10}against|let.{0,10}down by someone)\b/i.test(t)
-  ) return 'betrayal'
-
-  // 7. Conspiracy - organised deception, plot, or coordinated wrongdoing.
-  if (
-    /\b(conspiracy|conspired|conspiring|plot|orchestrated|coordinated|web of|network of|scheme involving|working together to|they planned|planned together)\b/i.test(t)
-  ) return 'conspiracy'
-
-  // 8. Impossible fact - something that defies logic or should not exist.
-  if (
-    /\b(impossible|can.?t be right|can.?t be true|makes no sense|doesn.?t make sense|defies|against all (odds|logic|reason)|shouldn.?t (exist|be possible|have happened)|never should have|no way that|how is it possible)\b/i.test(t)
-  ) return 'impossible_fact'
-
-  // 9. Missing person - someone absent, disappeared, or unaccounted for.
-  if (
-    /\b(missing|disappeared|vanished|gone without|unaccounted|never came back|never returned|last seen|never found|no trace)\b/i.test(t)
-  ) return 'missing_person'
-
-  // 10. Concrete threat / danger / menace - a specific danger, warning, or
-  //     lurking presence tied to a subject/place/action, not just mood.
-  if (
-    /\b(something|someone|somebody|a man|a woman|a figure|a shadow|a voice|footsteps?|a presence).{0,50}(moving|watching|following|waiting|hiding|lurking|standing|breathing|scratching|knocking|whispering|coming|approaching)\b/i.test(t) ||
-    /\b(moving|watching|following|waiting|hiding|lurking|standing|breathing|scratching|knocking|whispering|coming|approaching).{0,50}\b(behind|inside|under|above|outside|across|beneath|within)\b/i.test(t) ||
-    /\b(danger|threat|warning|warned|trap|ambush|menace|stalked|stalker|predator|hunted|hunter).{0,60}\b(door|hallway|room|house|road|car|truck|phone|note|wall|walls|window|basement|attic|neighbor|family|home|town|station|route)\b/i.test(t) ||
-    /\b(door|hallway|room|house|road|car|truck|phone|note|wall|walls|window|basement|attic|neighbor|family|home|town|station|route).{0,60}\b(danger|threat|warning|trap|ambush|menace|stalked|hunted|not safe|unsafe)\b/i.test(t)
-  ) return 'concrete_threat'
-
-  return null
-}
+// NARRATIVE-HOOK DETECTOR lives in lib/narrativeHook.ts (single definition,
+// imported above) — PUBLICATION-HOLD-001 moved it so the publication-time
+// Belle gate enforces the same deterministic rule. Do NOT redefine here.
 
 async function hasConcreteNarrativeHook(text: string): Promise<boolean> {
   // ATL-PIPE-020: category-based detection remains the cheap fast path.
@@ -7019,11 +6923,50 @@ async function scoreValidateSeriesPackage(job: ProductionJob, model: string) {
   const hasLandingVariant = refreshedEpisodes.some((ep: any) =>
     /LANDING-STORY-001|No Belle B/i.test(extractHeader(String(ep.script || ''), 'VARIANT'))
   )
-  const packageReport = existingValidation.packageReport?.pass === true
+  // PUBLICATION-HOLD-001: a carried packageReport is trusted ONLY with earned
+  // evidence stamped by THIS job against THESE episode scripts (job id +
+  // series id + per-episode script hashes). A bare {pass:true} — preset,
+  // seeded, or carried from another job/run — is re-validated from scratch.
+  // hasEarnedPackageEvidence() in lib/packageEvidence.ts is the single
+  // predicate; never reintroduce a pass===true shortcut around it.
+  const carriedReport = hasEarnedPackageEvidence(existingValidation.packageReport, {
+    jobId: String(job.id),
+    seriesId: String(seriesId),
+    episodes: refreshedEpisodes,
+  })
     ? existingValidation.packageReport
-    : hasLandingVariant
-      ? { pass: true, issues: [], confidence: 1, summary: 'LANDING-STORY-001 preview package — package-level finale arc check skipped. Episodes validated individually. Marc ruling 2026-07-24 19:38.', rawReport: null }
-      : await validateSeriesPackageWithAi(refreshedEpisodes, metadataIssues, model, job)
+    : null
+  if (existingValidation.packageReport?.pass === true && !carriedReport) {
+    console.warn('[package-evidence] carried packageReport PASS lacks earned evidence for this job/scripts — re-validating from scratch', {
+      seriesId: String(seriesId),
+      jobId: String(job.id),
+    })
+  }
+  const freshLandingReport = hasLandingVariant
+    ? stampPackageEvidence(
+      { pass: true, issues: [], confidence: 1, summary: 'LANDING-STORY-001 preview package — package-level finale arc check skipped. Episodes validated individually. Marc ruling 2026-07-24 19:38.', rawReport: null },
+      {
+        jobId: String(job.id),
+        seriesId: String(seriesId),
+        episodes: refreshedEpisodes,
+        kind: 'landing-skip',
+        note: 'LANDING-STORY-001 preview package skip. Marc ruling 2026-07-24 19:38.',
+      }
+    )
+    : null
+  const freshAiReport = !carriedReport && !freshLandingReport
+    ? stampPackageEvidence(
+      await validateSeriesPackageWithAi(refreshedEpisodes, metadataIssues, model, job),
+      {
+        jobId: String(job.id),
+        seriesId: String(seriesId),
+        episodes: refreshedEpisodes,
+        kind: 'series-package-validator',
+        note: `series-package-validator model=${model}`,
+      }
+    )
+    : null
+  const packageReport = carriedReport ?? freshLandingReport ?? freshAiReport
 
   const failed = packageReport.pass !== true
   return {
@@ -7061,12 +7004,22 @@ async function runSeriesVoicePreflight(job: ProductionJob, origin: string) {
   const state = job.state_json && typeof job.state_json === 'object' ? job.state_json : {}
   const seriesId = job.series_id || state.seriesId
   if (!seriesId) throw new Error('Series job is missing series_id')
-  if (state.seriesValidation?.packageReport?.pass !== true) {
-    throw new Error('Series package validation must pass before series_voice_preflight')
+  // PUBLICATION-HOLD-001: same evidence rule as scoreValidateSeriesPackage —
+  // a bare carried PASS (preset/seeded) must not unlock voice preflight.
+  // Note: evidence is stamped per job id, so a verdict earned by an EARLIER
+  // job in the same series chain does not satisfy this check; the current
+  // job earns its own verdict by passing through scoreValidateSeriesPackage.
+  const preflightEpisodes = await loadSeriesEpisodes(String(seriesId))
+  if (!preflightEpisodes.length) throw new Error('No child episodes found for series package')
+  if (!hasEarnedPackageEvidence(state.seriesValidation?.packageReport, {
+    jobId: String(job.id),
+    seriesId: String(seriesId),
+    episodes: preflightEpisodes,
+  })) {
+    throw new Error('Series package validation must pass with earned evidence (this job, current scripts) before series_voice_preflight')
   }
 
-  const episodes = await loadSeriesEpisodes(String(seriesId))
-  if (!episodes.length) throw new Error('No child episodes found for series package')
+  const episodes = preflightEpisodes
 
   const finalEpisodeNumber = episodes.reduce((max: number, episode: any) => Math.max(max, episodeNumber(episode, 0)), 0)
   if (finalEpisodeNumber > 0) {

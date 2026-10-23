@@ -119,6 +119,32 @@ function makeDb(opts: {
   return { db: { from: table }, writes, stories }
 }
 
+const NUM_WORDS = ['', 'one', 'two', 'three', 'four', 'five']
+
+/**
+ * Series non-finale Belle-passing script for episode n (PUBLICATION-HOLD-001:
+ * the autonomous/operator Belle gate requires series naming + episode
+ * number + title + hook in the intro, and reflection + companion + tease
+ * with NO author/narrator/closure credit in a non-finale outro).
+ */
+function seriesScript(n: number): string {
+  const word = NUM_WORDS[n] ?? String(n)
+  const next = NUM_WORDS[n + 1] ?? 'next'
+  return [
+    'TITLE: The Night Ferry',
+    'AUTHOR: Test Author',
+    'GENRE: mystery',
+    '',
+    'BELLE B INTRO',
+    `BELLE B: Welcome back to the Harbor Test Series, I am Belle with episode ${word}, The Night Ferry — a passenger vanished from the midnight ferry and no manifest admits they ever boarded.`,
+    '',
+    'MARA: The ferry left at midnight with one passenger too many.',
+    '',
+    'BELLE B OUTRO',
+    `BELLE B: Sit with that for a moment — the weight of what she gave up is a lot to carry, and you know the current pulls toward episode ${next}, where the running light names the missing. Keep listening for what comes next.`,
+  ].join('\n')
+}
+
 function readyStory(overrides: Row = {}): Row {
   return {
     id: 'story-1',
@@ -139,7 +165,19 @@ function readyStory(overrides: Row = {}): Row {
     series_number: null,
     announcement_url: 'https://cdn.example/ann.mp3',
     announcement_text: 'Welcome back to the night ferry.',
-    script: 'NARRATOR: The ferry left at midnight.',
+    script: [
+      'TITLE: The Night Ferry',
+      'AUTHOR: Test Author',
+      'NARRATOR: Test Narrator',
+      '',
+      'BELLE B INTRO',
+      'BELLE B: Welcome to The Night Ferry, I am Belle with a story where a passenger vanished from the midnight ferry and no manifest admits they ever boarded.',
+      '',
+      'MARA: The ferry left at midnight with one passenger too many.',
+      '',
+      'BELLE B OUTRO',
+      'BELLE B: That was The Night Ferry by Test Author, read by Test Narrator. Sit with the weight of her choice tonight — you are not alone with it, and the harbor holds you close.',
+    ].join('\n'),
     ...overrides,
   }
 }
@@ -250,7 +288,7 @@ describe('direct mode auto-promotes after all gates pass', () => {
 
   test('series publishes as a unit; never split across modes', async () => {
     const eps = [1, 2, 3].map((n) =>
-      readyStory({ id: `ep-${n}`, series_id: 'ser-9', episode_number: n })
+      readyStory({ id: `ep-${n}`, series_id: 'ser-9', episode_number: n, script: seriesScript(n) })
     )
     const { db, writes } = makeDb({ settingsValue: 'direct', stories: eps })
     const report = await maybeDirectPublishSeries(db as never, {
@@ -355,9 +393,9 @@ describe('series mid-loop re-verify guard (3-fix N2)', () => {
     // ep-1 went live via a prior partial run (or a manual publish); ep-2/3
     // are freshly at RFR. The loop must NOT re-promote ep-1.
     const eps = [
-      readyStory({ id: 'ep-1', series_id: 'ser-9', episode_number: 1, workflow_state: 'published', status: 'published', is_hidden: false }),
-      readyStory({ id: 'ep-2', series_id: 'ser-9', episode_number: 2 }),
-      readyStory({ id: 'ep-3', series_id: 'ser-9', episode_number: 3 }),
+      readyStory({ id: 'ep-1', series_id: 'ser-9', episode_number: 1, script: seriesScript(1), workflow_state: 'published', status: 'published', is_hidden: false }),
+      readyStory({ id: 'ep-2', series_id: 'ser-9', episode_number: 2, script: seriesScript(2) }),
+      readyStory({ id: 'ep-3', series_id: 'ser-9', episode_number: 3, script: seriesScript(3) }),
     ]
     const { db, writes, stories } = makeDb({ settingsValue: 'direct', stories: eps })
     const report = await maybeDirectPublishSeries(db as never, {

@@ -58,6 +58,8 @@ import {
   transitionAllowed,
 } from '@/lib/workflowTransitions'
 import { runPreflightChecks } from '@/lib/preflight/validator'
+import { assertPublishAllowed, isPublicationHeld } from '@/lib/publicationHold'
+import { evaluateBelleUnitForPublish } from '@/lib/publicationBelleGate'
 
 /**
  * Columns the gates read. Every field a gate predicate touches must be
@@ -66,7 +68,7 @@ import { runPreflightChecks } from '@/lib/preflight/validator'
  * canonical publishability predicate and the ordering rank.
  */
 export const DIRECT_PUBLISH_EPISODE_COLUMNS =
-  'id,series_id,episode_number,series_number,title,author,genre,audio_url,cover_url,description,' +
+  'id,series_id,episode_number,series_number,series_is_finale,title,author,genre,audio_url,cover_url,description,' +
   'duration_mins,announcement_url,announcement_text,background_music_url,script,script_json,series_name,' +
   'narrator_voice_id,narrator_voice_name,author_id,workflow_state,review_status,' +
   'status,is_hidden,production_repair_count,published_on,' +
@@ -304,6 +306,14 @@ export function evaluateOperatorDirectGates(
     blockers.push(`series ${seriesId}: continuity pin verification threw: ${e instanceof Error ? e.message : String(e)}`)
   }
 
+  // PUBLICATION-HOLD-001: Belle copy gate — every episode's Belle copy must
+  // pass the deployed predicates. No waiver path; feeds the same blockers
+  // list so one operator call surfaces the full repair list.
+  const belleVerdict = evaluateBelleUnitForPublish(ordered as Array<Record<string, unknown>>)
+  if (!belleVerdict.ok) {
+    blockers.push(...(belleVerdict as { blockers: string[] }).blockers)
+  }
+
   return blockers.length ? { ok: false, blockers, warnings } : { ok: true, warnings }
 }
 
@@ -498,6 +508,16 @@ async function runOperatorDirectPublish(
       (gates as { blockers: string[] }).blockers
     )
   }
+  // PUBLICATION-HOLD-001: durable global hold — checked here (after gates,
+  // before ANY write) AND re-read per episode below, so a hold that takes
+  // effect mid-series still blocks the remaining episodes.
+  if (await isPublicationHeld(db)) {
+    throw new DirectPublishError(
+      'direct publish refused: global publication hold is ACTIVE. Clear the hold before publishing.',
+      409,
+      ['global publication hold is ACTIVE']
+    )
+  }
   const publishedOn = new Date().toISOString()
   const reasonBase = clean(input.reason) || 'Audited operator direct-publish of repaired series (no owner click required)'
   const reason = `decision:${decisionId}: ${reasonBase}`
@@ -548,6 +568,18 @@ async function runOperatorDirectPublish(
         `direct publish conflict at episode ${storyId}: row changed since gate evaluation (freshness mismatch); refusing with zero writes for this episode — re-run gates and retry`,
         409,
         [`episode ${storyId} changed since gate evaluation`]
+      )
+    }
+    // PUBLICATION-HOLD-001: hold RE-READ per episode immediately before its
+    // promotion steps — the atomicity point. A hold set after gate time
+    // blocks every remaining episode with zero further writes.
+    try {
+      await assertPublishAllowed(db)
+    } catch (e) {
+      throw new DirectPublishError(
+        `direct publish refused at episode ${storyId}: ${e instanceof Error ? e.message : String(e)}`,
+        409,
+        [e instanceof Error ? e.message : String(e)]
       )
     }
     const epNum = Number(fresh.episode_number)

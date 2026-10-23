@@ -46,6 +46,8 @@ import {
   getPublishMode,
   type PublishMode,
 } from '@/lib/publishMode'
+import { assertPublishAllowed, isPublicationHeld } from '@/lib/publicationHold'
+import { evaluateBelleUnitForPublish } from '@/lib/publicationBelleGate'
 
 export const DIRECT_PUBLISH_CHANGED_BY = 'autonomous-runner'
 
@@ -53,7 +55,7 @@ export const DIRECT_PUBLISH_CHANGED_BY = 'autonomous-runner'
 export const DIRECT_PUBLISH_GUARD_COLUMNS =
   'id,title,author,genre,audio_url,cover_url,description,duration_mins,' +
   'status,is_hidden,review_status,workflow_state,published_on,' +
-  'series_id,episode_number,series_number,announcement_url,announcement_text,script'
+  'series_id,series_name,episode_number,series_number,series_is_finale,announcement_url,announcement_text,script'
 
 export type DirectPublishUpdate = {
   status: 'published'
@@ -138,6 +140,9 @@ export function evaluateSingleDirectReadiness(
     ...requiredFieldBlockers(story),
     ...personalizationPublishBlockers(story as never),
   ]
+  // PUBLICATION-HOLD-001: Belle copy gate — no waiver path.
+  const belleVerdict = evaluateBelleUnitForPublish([story])
+  if (!belleVerdict.ok) blockers.push(...(belleVerdict as { blockers: string[] }).blockers)
   if (String((story as { series_id?: unknown }).series_id ?? '').trim()) {
     const family = (siblings.length ? siblings : [story]).map((row) =>
       asApproved(row.id === story.id ? story : row)
@@ -165,7 +170,12 @@ export function evaluateSeriesDirectReadiness(
   episodes: Array<Record<string, unknown>>
 ): DirectReadiness {
   const evalResult = evaluateSeriesPublishOrder(episodes.map(asApproved) as never[])
-  if (evalResult.code === 'ok') return { ok: true }
+  if (evalResult.code === 'ok') {
+    // PUBLICATION-HOLD-001: Belle copy gate on every episode — no waiver.
+    const belleVerdict = evaluateBelleUnitForPublish(episodes)
+    if (!belleVerdict.ok) return { ok: false, blockers: (belleVerdict as { blockers: string[] }).blockers }
+    return { ok: true }
+  }
   const reasons = (evalResult.blocked ?? []).flatMap((b) =>
     (b.reasons ?? []).map((r: string) => `${b.title || b.storyId}: ${r}`)
   )
@@ -263,6 +273,14 @@ async function promoteStoryToPublished(
     ['ready_for_review', 'approved_ready'],
     ['approved_ready', 'published'],
   ]
+  // PUBLICATION-HOLD-001: per-episode entry check (the series hook calls
+  // this per episode, so a mid-series hold blocks every remaining episode
+  // before its first write; the terminal re-read below is the final guard).
+  try {
+    await assertPublishAllowed(db)
+  } catch (e) {
+    throw new Error(`global publication hold is ACTIVE; refusing promotion for story ${storyId} (${e instanceof Error ? e.message : String(e)})`)
+  }
   for (const [from, to] of edges) {
     if (!transitionAllowed(from, to)) {
       throw new Error(`transition ${from} → ${to} not allowed; holding at ready_for_review`)
@@ -295,6 +313,14 @@ async function promoteStoryToPublished(
     })
   }
   // Step 2: terminal publish — same columns the manual writer sets.
+  // PUBLICATION-HOLD-001: hold RE-READ immediately before the terminal
+  // update — the atomicity point. A hold set after hook entry (or after
+  // step 1 above) blocks going LIVE here with no published row.
+  try {
+    await assertPublishAllowed(db)
+  } catch (e) {
+    throw new Error(`global publication hold is ACTIVE; refusing terminal publish for story ${storyId} (${e instanceof Error ? e.message : String(e)})`)
+  }
   {
     const payload = buildDirectPublishUpdate({
       reason: opts.firstAutoPublish
@@ -351,6 +377,12 @@ export async function maybeDirectPublishStandalone(
   const mode = await getPublishMode(db as never, (m) => console.log(m))
   if (mode !== 'direct') {
     return { mode, action: 'held', storyId: args.storyId }
+  }
+  // PUBLICATION-HOLD-001: durable global hold — checked here (before any
+  // read/gate work that could lead to a write) and re-read inside
+  // promoteStoryToPublished immediately before the terminal publish.
+  if (await isPublicationHeld(db)) {
+    return { mode, action: 'held_blocked', storyId: args.storyId, blockers: ['global publication hold is ACTIVE — holding at ready_for_review with zero writes'] }
   }
   let story: Record<string, unknown> | null
   try {
@@ -421,6 +453,11 @@ export async function maybeDirectPublishSeries(
   const mode = await getPublishMode(db as never, (m) => console.log(m))
   if (mode !== 'direct') {
     return { mode, action: 'held', seriesId: args.seriesId }
+  }
+  // PUBLICATION-HOLD-001: durable global hold — checked here and re-read
+  // per episode inside promoteStoryToPublished before the terminal publish.
+  if (await isPublicationHeld(db)) {
+    return { mode, action: 'held_blocked', seriesId: args.seriesId, blockers: ['global publication hold is ACTIVE — holding series at ready_for_review with zero writes'] }
   }
   let episodes: Array<Record<string, unknown>>
   try {
