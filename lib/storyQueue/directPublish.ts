@@ -188,12 +188,13 @@ export function evaluateOperatorDirectGates(
   const ordered = sortEpisodesForPublish(episodes as never[]) as Array<Record<string, unknown>>
 
   // Entry-state gate with idempotent resume: each episode is either
-  // repair_queue (to publish now) or already published BY THIS PATH
-  // (workflow_state_changed_by marker — verified against the audit chain by
-  // the executor before any write; the executor refuses unverified skips).
-  // Resume skips must form a strict prefix of the publish order: a published
-  // episode after an unreleased one means order was violated — reconcile.
-  // Any other intermediate state refuses (no mid-chain starts).
+  // repair_queue (to publish now) or already LIVE by this path (published +
+  // visible + this path's marker — the executor fresh-reads every skip and
+  // re-verifies live state + the 3-edge audit chain before any write, and
+  // refuses unverified or delisted skips). Resume skips must form a strict
+  // prefix of the publish order: a published episode after an unreleased
+  // one means order was violated — reconcile. Any other intermediate state
+  // refuses (no mid-chain starts).
   const entryOk = new Set<string>()
   let seenTodo = false
   for (const ep of ordered) {
@@ -205,6 +206,8 @@ export function evaluateOperatorDirectGates(
       entryOk.add(String((ep as { id?: unknown }).id))
     } else if (
       ws === 'published' &&
+      clean((ep as { status?: unknown }).status) === 'published' &&
+      (ep as { is_hidden?: unknown }).is_hidden === false &&
       clean((ep as { workflow_state_changed_by?: unknown }).workflow_state_changed_by) === OPERATOR_DIRECT_PUBLISH_CHANGED_BY
     ) {
       if (seenTodo) {
@@ -212,6 +215,10 @@ export function evaluateOperatorDirectGates(
           `${label}: already published but an earlier episode is still unreleased — publish order violated; operator must reconcile before retry`
         )
       }
+    } else if (ws === 'published') {
+      blockers.push(
+        `${label}: published but not verifiably live-by-this-path (status='${clean((ep as { status?: unknown }).status) || '(empty)'}', is_hidden=${String((ep as { is_hidden?: unknown }).is_hidden)}, marker='${clean((ep as { workflow_state_changed_by?: unknown }).workflow_state_changed_by) || '(empty)'}') — resume skips must be published+visible with the operator-direct-publish marker; operator must reconcile before retry`
+      )
     } else {
       blockers.push(
         `${label}: workflow_state is '${ws || '(empty)'}', not 'repair_queue' — this path publishes repaired series only (intermediate states need operator reconcile; see resume rule)`
@@ -383,23 +390,22 @@ export async function executeOperatorDirectPublish(
 }
 
 /**
- * Gate-critical fields: re-verified on a fresh row read immediately before
- * an episode promotes. Any drift since gate evaluation (series move,
- * renumber, state change, asset/URL swap, script edit detected via hash)
- * aborts with 409 before any write for that episode.
+ * Freshness digest: re-verified on a fresh row read immediately before an
+ * episode promotes. Covers EVERY selected column (stable key order) — title,
+ * author, genre, description, narrator fields, script_json pins included —
+ * so any concurrent edit to any gate input aborts with 409 before any
+ * write for that episode. The script body is compared by hash (same digest
+ * class as the continuity pins) to keep the comparison value-stable.
  */
 function freshnessFingerprint(ep: Record<string, unknown>): string {
-  return JSON.stringify([
-    clean((ep as { series_id?: unknown }).series_id),
-    Number((ep as { episode_number?: unknown }).episode_number) || null,
-    clean((ep as { workflow_state?: unknown }).workflow_state),
-    Number((ep as { duration_mins?: unknown }).duration_mins) || null,
-    clean((ep as { audio_url?: unknown }).audio_url),
-    clean((ep as { cover_url?: unknown }).cover_url),
-    clean((ep as { announcement_url?: unknown }).announcement_url),
-    clean((ep as { background_music_url?: unknown }).background_music_url),
-    hashScript(String((ep as { script?: unknown }).script ?? '')),
-  ])
+  const entries = Object.keys(ep)
+    .sort()
+    .map((k) => {
+      const v = (ep as Record<string, unknown>)[k]
+      const norm = k === 'script' ? hashScript(String(v ?? '')) : v ?? null
+      return [k, norm] as const
+    })
+  return JSON.stringify(entries)
 }
 
 async function fetchFreshEpisode(db: DirectPublishDb, storyId: string): Promise<Record<string, unknown> | null> {
@@ -413,15 +419,32 @@ async function fetchFreshEpisode(db: DirectPublishDb, storyId: string): Promise<
 }
 
 /**
- * Resume verification: every already-published skip must carry the complete
- * 3-edge audit chain by this path's marker. Runs BEFORE any write; a gap
- * refuses the whole retry so an unverified publish is never claimed.
+ * Resume verification: every already-published skip is FRESH-READ and must
+ * still be live (published + visible + this path's marker) AND carry the
+ * complete 3-edge audit chain by this path's marker. Runs BEFORE any write;
+ * a delisted skip or a chain gap refuses the whole retry so an unverified
+ * or no-longer-visible publish is never claimed as a predecessor.
  */
 async function verifyResumeAuditChains(
   db: DirectPublishDb,
   skipIds: string[]
 ): Promise<void> {
   for (const storyId of skipIds) {
+    const fresh = await fetchFreshEpisode(db, storyId)
+    const live =
+      !!fresh &&
+      clean((fresh as { workflow_state?: unknown }).workflow_state) === 'published' &&
+      clean((fresh as { status?: unknown }).status) === 'published' &&
+      (fresh as { is_hidden?: unknown }).is_hidden === false &&
+      clean((fresh as { workflow_state_changed_by?: unknown }).workflow_state_changed_by) ===
+        OPERATOR_DIRECT_PUBLISH_CHANGED_BY
+    if (!live) {
+      throw new DirectPublishError(
+        `resume refused: already-published episode ${storyId} is no longer verifiably live (fresh read: state/visibility/marker changed); operator must reconcile before retry`,
+        422,
+        [`episode ${storyId} no longer live`]
+      )
+    }
     const { data, error } = await db
       .from('story_workflow_audit')
       .select('story_id,from_state,to_state,changed_by')

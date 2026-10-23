@@ -737,6 +737,50 @@ describe('freshness re-read (stale gates cannot publish)', () => {
     expect(writes.filter((w) => w.table === 'story_workflow_audit')).toHaveLength(0)
   })
 
+  test('title cleared after gates aborts 409 with zero writes (gate-input drift)', async () => {
+    const episodes = passingSeries()
+    const drifted = passingSeries()
+    // Concurrent edit: title wiped after gate evaluation — canonical
+    // publishability would now fail; the fingerprint must catch it.
+    drifted[0] = { ...drifted[0], title: '' }
+    const { db, writes } = makeDb(drifted)
+    await expect(
+      executeOperatorDirectPublish(db, episodes, { seriesId: SERIES, decisionId: DECISION, preflight: preflightOk })
+    ).rejects.toMatchObject({ status: 409 })
+    expect(writes.filter((w) => w.table === 'stories')).toHaveLength(0)
+    expect(writes.filter((w) => w.table === 'story_workflow_audit')).toHaveLength(0)
+  })
+
+  test('resume skip delisted after gates refuses with zero writes', async () => {
+    const fresh = passingSeries()
+    const ep1 = publishedEpisode(EP1, 1)
+    const ep2 = { ...fresh[1] }
+    const driftedEp1 = { ...ep1.row, is_hidden: true }
+    const { db, writes } = makeDb([driftedEp1, ep2], { seedAudits: ep1.audits })
+    // Gated snapshot still shows EP1 live; the fresh read must catch the delist.
+    await expect(
+      executeOperatorDirectPublish(db, [ep1.row, ep2], {
+        seriesId: SERIES,
+        decisionId: DECISION,
+        preflight: preflightOk,
+      })
+    ).rejects.toMatchObject({ status: 422 })
+    expect(writes.filter((w) => w.table === 'stories')).toHaveLength(0)
+    expect(writes.filter((w) => w.table === 'story_workflow_audit')).toHaveLength(0)
+  })
+
+  test('published-but-hidden snapshot refuses at gate time', async () => {
+    const fresh = passingSeries()
+    const ep1 = publishedEpisode(EP1, 1)
+    ep1.row.is_hidden = true
+    const verdict = evaluateOperatorDirectGates([ep1.row, fresh[1]], {
+      seriesId: SERIES,
+      preflight: preflightOk,
+    })
+    expect(verdict.ok).toBe(false)
+    expect((verdict as { blockers: string[] }).blockers.join(' ')).toMatch(/not verifiably live-by-this-path/)
+  })
+
   test('script edit without state change aborts 409 with zero writes', async () => {
     const episodes = passingSeries()
     const drifted = passingSeries()
