@@ -12,6 +12,83 @@
 
 import { hashScript } from './continuityPin'
 
+/* ─────────────────────────────────────────────────────────────────────
+ * REFLECTION-RULE-UNIFICATION-001 (Marc 2026-10-22 22:45 EDT, PERMANENT):
+ * the reflection check is ONE rule with a single definition in this file,
+ * consumed identically by all three pipeline paths:
+ *   1. GENERATION — series + standalone script prompts interpolate
+ *      REFLECTION_RULE_PROMPT_FRAGMENT so the model writes copy the gate
+ *      accepts (previously the series prompt framed non-finale outros as
+ *      pure tease with no reflection requirement — the divergence that
+ *      produced validator-rejected copy).
+ *   2. VALIDATION — hasEmotionalResidueOrReflection (deterministic
+ *      predicate) + BELLE_QUALITY_VALIDATOR_PROMPT (LLM assist) which
+ *      embeds the same fragment.
+ *   3. REPAIR — regenerateSeriesBelleFromFeedback + BELLE_QUALITY_REPAIR_PROMPT
+ *      embed the same fragment (previously the repair model got only the
+ *      bare issue string with no definition of what counts as reflection).
+ * The fragment is BUILT from REFLECTION_VALID_EXAMPLES /
+ * REFLECTION_INVALID_EXAMPLES, and the unified test asserts every valid
+ * example passes the predicate and every invalid example fails it — prose,
+ * predicate, and tests cannot drift apart. Do NOT restate the rule
+ * anywhere else; reference this fragment.
+ * ───────────────────────────────────────────────────────────────────── */
+
+/**
+ * Valid reflective outros: felt experience, reflective language, or
+ * listener-directed invitations to dwell on emotional weight. EVERY entry
+ * must pass hasEmotionalResidueOrReflection (enforced by test).
+ */
+export const REFLECTION_VALID_EXAMPLES: string[] = [
+  // The Harbor Light Ep1 quoted candidate (the demonstrated false negative).
+  "That's a lot to carry \u2014 a failing joint, a demolition order, and now him. Sit with that for a second...",
+  // Saved Harbor Light outros (must keep passing).
+  'and you are left wondering what Lucy will sacrifice for her father light.',
+  'the cost of her dream job has never been clearer. She makes her choice in the Series Finale.',
+  // Paraphrase family: reflective invitations.
+  'Hold onto that feeling \u2014 dawn is coming, and everything changes.',
+  'Let it sink in: everything she knew just changed.',
+  'Take a moment with what she gave up before the storm hits.',
+  "The weight of what she's losing finally lands.",
+  'Ask yourself what you would carry home from that fire.',
+  // Independent positive: emotional aftermath with none of the taught invitation phrases.
+  'leaving you gasping at the cost of her choice.',
+]
+
+/**
+ * Plot-only recaps: no felt experience, no reflection, no invitation.
+ * EVERY entry must fail hasEmotionalResidueOrReflection (enforced by test).
+ */
+export const REFLECTION_INVALID_EXAMPLES: string[] = [
+  'In this episode, she discovered the letter and confronted him.',
+  'Lucy fixed the joint, confronted the council, and went home.',
+  'Episode 5: The Reckoning. Themes: betrayal and redemption.',
+  'She found the logbook, opened it, and read the final page.',
+  'Blythe found the page, Jonah opened the logbook, and the council voted at dawn.',
+  // Hard negatives: reflection-associated grammar aimed at literal plot objects.
+  'He asked himself where he left the toolbox.',
+  'She carried the toolbox home in the rain.',
+  'The crew remembered that the bell rings at dawn.',
+]
+
+/**
+ * Single prose copy of the reflection rule, interpolated into generation,
+ * validation-assist, and repair prompts. Built from the example arrays so
+ * prompt prose and validator acceptance can never diverge.
+ */
+export const REFLECTION_RULE_PROMPT_FRAGMENT: string =
+  'Reflection rule (emotional residue or reflection \u2014 NOT plot summary only):\n' +
+  'An outro passes when it carries the listener\u2019s felt experience after the episode ' +
+  '(awe, tension, heartbreak, wonder, unease) OR reflective language (questions, realizations, ' +
+  'costs, choices) OR a listener-directed invitation to dwell on emotional weight ' +
+  '(sit with that, hold onto that feeling, let it sink in, take a moment, the weight of what ' +
+  'was lost, ask yourself). The examples below illustrate reflection ONLY \u2014 every other ' +
+  'episode rule still applies (no time-of-day references, no invented events, teaser/closure ' +
+  'structure, credit placement); do not copy example events or wording. Valid reflective copy includes:\n' +
+  REFLECTION_VALID_EXAMPLES.map((ex) => `\u2705 "${ex}"`).join('\n') +
+  '\nA plot-only recap with no felt experience, no reflection, and no invitation FAILS, e.g.:\n' +
+  REFLECTION_INVALID_EXAMPLES.map((ex) => `\u274c "${ex}"`).join('\n')
+
 /**
  * FIX-BELLE-SERIES-TEMPLATE-001: True when the outro acknowledges companion
  * presence (Belle as narrator/guide or listener as co-participant). Required

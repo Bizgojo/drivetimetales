@@ -46,6 +46,7 @@ import {
   buildBelleRepairAuditEntry,
   hasCompanionPresence,
   hasEmotionalResidueOrReflection,
+  REFLECTION_RULE_PROMPT_FRAGMENT,
   resyncContinuityPinsAfterRepair,
 } from '@/lib/belleValidation'
 import {
@@ -1416,6 +1417,8 @@ Hard rules:
 - Announcement must include a concrete narrative hook: event, danger, secret, conflict, mystery, or story mechanism.
 - Outro must not include [LISTENER_NAME].
 - Non-finale outro must tease or point toward the next episode.
+- Non-finale outro must include emotional residue or reflection (not plot summary only).
+${REFLECTION_RULE_PROMPT_FRAGMENT}
 - Non-finale outro must not include author/narrator credits or "Endless Tales original".
 - Finale outro may close the series and include credits.
 - Intros must be one or two short sentences. Series outros (especially non-finale with next-ep tease) may be longer — up to five sentences for emotional landing plus tease structure.
@@ -1879,7 +1882,8 @@ Outro requirements:
 - Standalone outros must leave emotional residue or reflection; do not pass outros that are only title/author credits or plot summary.
 - Standalone outros must tie the emotional closure to the actual resolution, choice, reveal, or final consequence of the story.
 - Standalone outros must not tease a fake episode 2, "next time", "what happens next", or unresolved continuation.
-- Series non-finale outros may create intentional next-episode desire. A forward-tease construction (e.g. "Continue to the next episode to find out...") is ALLOWED for series non-finale outros — do NOT flag this as a violation. Only fail a series non-finale outro if it has zero emotional residue AND is purely a plot-summary recap with no companion presence.
+- Series non-finale outros may create intentional next-episode desire. A forward-tease construction (e.g. "Continue to the next episode to find out...") is ALLOWED for series non-finale outros — do NOT flag this as a violation. Only fail a series non-finale outro if it has zero emotional residue AND is purely a plot-summary recap with no companion presence. Apply the reflection rule below as an INDEPENDENT sub-check (this matches the deterministic gate, which raises a separate issue for missing reflection regardless of companion presence): companion presence alone never satisfies it — an outro that addresses the listener but only recaps plot still fails for zero emotional residue/reflection.
+${REFLECTION_RULE_PROMPT_FRAGMENT}
 - Finale outros should feel complete.
 - Credits language is only acceptable if brief and not the emotional center.
 - Must not use flat "That was..." credits-style structure as the dominant move.
@@ -1926,6 +1930,7 @@ MANDATORY FIELD REQUIREMENTS - you will be rejected if these are missing:
 Additional content rules:
 - Standalone intro must lightly ground the listener in the story world, then add a specific emotional or sensory hook that creates anticipation.
 - Outro should emotionally land and feel companion-like.
+${REFLECTION_RULE_PROMPT_FRAGMENT}
 - Standalone outro must feel complete and must not tease a next episode or deferred resolution.
 - Standalone outro must include the story title, author name, narrator name (if provided), and the exact phrase "Endless Tales original".
 - Standalone outro must emotionally close around the actual resolution, choice, reveal, or final consequence of the story.
