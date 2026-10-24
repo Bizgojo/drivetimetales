@@ -109,6 +109,27 @@ function hasNextEpisodeTeaseLang(text: string): boolean {
   return /\b(next episode|next time|continue|continues|continuing|keep listening|what happens next|find out|to be continued|coming up|pick up|picks up|what comes next|leads to|leads us|uncover|discover|tune in|join us|listen (in|on)|coming soon|coming back|wait to see|ahead for|what awaits|what['’]s next)\b/i.test(text)
 }
 
+// FINALE-SELF-NAMING-001 (dc-romance fix3, prepared-only, NOT deployed):
+// the finale no-tease check must not fire on the episode's OWN number.
+// The full row title required by the finale naming rule (e.g. "Episode 3:
+// ...") always contains "Episode <n>", which hasNextEpisodeTeaseLang
+// matches - no copy can satisfy both rules at once. Strip own-episode
+// self-naming (digit + spoken forms via shared normalizeNumberWords)
+// before the tease test; genuine next-episode language ("Episode 4",
+// "next episode", "join us", ...) still refuses. The MIRROR above is
+// byte-identical to run-next and intentionally untouched; standalone and
+// non-finale paths keep calling it directly.
+export function finaleOutroTeasesNext(outro: string, episodeNumOrNull: number | null): boolean {
+  if (!hasNextEpisodeTeaseLang(outro)) return false
+  if (episodeNumOrNull === null) return true
+  const n = Math.trunc(episodeNumOrNull)
+  const stripped = normalizeNumberWords(String(outro ?? '')).replace(
+    new RegExp(`\\bepisode\\s+${n}\\b`, 'gi'),
+    'episode',
+  )
+  return hasNextEpisodeTeaseLang(stripped)
+}
+
 // MIRROR: hasSeriesClosureLanguage (run-next ~line 1157).
 function hasSeriesClosureLanguage(text: string): boolean {
   return /\bendless tales original\b/i.test(text) ||
@@ -235,7 +256,7 @@ export function evaluateBelleCopyForPublish(story: BellePublishStory): BellePubl
     if (narrator && !belleTextIncludes(outro, narrator)) {
       blockers.push(`finale outro must name the narrator "${narrator}"`)
     }
-    if (hasNextEpisodeTeaseLang(outro)) {
+    if (finaleOutroTeasesNext(outro, episodeNumOrNull)) {
       blockers.push('finale outro must not tease a next episode')
     }
   }
