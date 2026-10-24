@@ -7176,8 +7176,18 @@ async function runSeriesVoicePreflight(job: ProductionJob, origin: string) {
   // (recorded in failedEpisodes); Hal corrects the episode script and re-submits.
   // ALDERTON-CONTRADICTION-001 (gate-engine): pass the episode number so the
   // canonical "Episode N" digit the package check requires is not flagged here.
+  // FORWARD-TEASE-001 (acceptance-close-gaps): a non-finale outro canonically
+  // names the NEXT episode ("Next time on X, Episode N+1") -- cover that digit
+  // with the same shared passthrough so valid tease copy is not false-blocked
+  // pre-spend. Finales get no forward cover: "Episode N+1" there is genuine.
   {
-    const numeralScan = numeralPreTtsScan((nextEpisode as any).script || '', { episodeNumberPassThrough: number })
+    const fwdTotal = Number((nextEpisode as any).series_total_episodes || 0) || null
+    const fwdIsFinale = Boolean((nextEpisode as any).series_is_finale) ||
+      (fwdTotal !== null && number > 0 && number >= fwdTotal)
+    const numeralScan = numeralPreTtsScan((nextEpisode as any).script || '', {
+      episodeNumberPassThrough: number,
+      ...(!fwdIsFinale && number > 0 ? { nextEpisodeNumberPassThrough: number + 1 } : {}),
+    })
     if (!numeralScan.passed) {
       const numeralReport = buildNumeralPreflightFailure(numeralScan.failures)
       const failedEpisodeEntry = {
