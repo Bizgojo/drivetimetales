@@ -5,6 +5,7 @@ import { useAuth } from '@/contexts/AuthContext'
 import { useRouter } from 'next/navigation'
 import LibraryStoryCard from '@/components/LibraryStoryCard'
 import { buildSeriesPlaybackTarget } from '@/lib/seriesPlayback'
+import { compareRecommendationRank } from '@/lib/geographicRecommendations'
 import { downloadQueuedItemOffline, removeQueuedItemOffline, type QueueDownloadTarget } from '@/lib/offline/queueDownload'
 
 interface Story {
@@ -114,6 +115,20 @@ export default function RecommendedForYou({ excludeIds = [] }: { excludeIds?: st
     if (!data || !data.length) { setLoading(false); return }
 
     const storyRows = (data as Story[]).filter(isLaunchInventory)
+    let locationMatches: Record<string, number> = {}
+    if (user?.id) {
+      try {
+        const response = await fetch('/api/user/recommendation-location', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ storyIds: storyRows.map(story => story.id) }),
+          signal: AbortSignal.timeout(5000),
+        })
+        if (response.ok) locationMatches = (await response.json()).matches || {}
+      } catch {
+        // A location lookup failure must not remove ordinary recommendations.
+      }
+    }
     const seriesIds = Array.from(new Set(storyRows.map((story) => story.series_id).filter(Boolean))) as string[]
     if (seriesIds.length > 0) {
       const { data: episodeRows, error: episodeError } = await supabase
@@ -238,9 +253,10 @@ export default function RecommendedForYou({ excludeIds = [] }: { excludeIds?: st
     }
 
     const all = [
-      ...singles.map(s => ({ type: 'single' as const, story: s, score: scoreStory(s) })),
-      ...seriesList.map(g => ({ type: 'series' as const, group: g, score: scoreSeries(g) }))
-    ].sort((a, b) => b.score - a.score)
+      ...singles.map(s => ({ type: 'single' as const, story: s, score: scoreStory(s), locationMatch: locationMatches[s.id] || 0 })),
+      ...seriesList.map(g => ({ type: 'series' as const, group: g, score: scoreSeries(g),
+        locationMatch: Math.max(0, ...g.episodes.map(episode => locationMatches[episode.id] || 0)) }))
+    ].sort(compareRecommendationRank)
 
     // ORION-HOME-WALK-001 fix 2 (Marc walk, 2026-07-12): cap at 3 (was 5).
     setDisplayItems(all.slice(0, 3).map(item => item.type === 'series' ? { type: 'series', group: item.group } : { type: 'single', story: item.story }))
