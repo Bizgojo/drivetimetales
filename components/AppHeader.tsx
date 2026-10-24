@@ -1,6 +1,7 @@
 'use client'
 
 import Image from 'next/image'
+import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { User } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
@@ -59,7 +60,12 @@ export default function AppHeader() {
             </span>
           </button>
         ) : (
-          <div className="h-11 w-11 flex-shrink-0" aria-hidden="true" />
+          <Link
+            href="/library"
+            className="inline-flex h-11 flex-shrink-0 items-center justify-center rounded-md bg-orange-500 px-2 text-sm font-bold text-slate-950 transition-colors hover:bg-orange-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-orange-400"
+          >
+            Library
+          </Link>
         )}
 
         <button
@@ -68,7 +74,7 @@ export default function AppHeader() {
           // signed-in users (was '/' + signed-in bounce — one hop fewer, and
           // never depends on the root redirect). Signed-out keeps '/'.
           onClick={() => router.push(user ? '/home' : '/')}
-          className="absolute left-1/2 flex -translate-x-1/2 items-center gap-2 border-0 bg-transparent p-0"
+          className={`absolute left-1/2 flex -translate-x-1/2 items-center border-0 bg-transparent p-0 ${pathname === '/home' ? 'gap-1 min-[380px]:gap-2' : 'gap-2'}`}
           aria-label="Go to Endless Tales home"
         >
           <Image
@@ -76,10 +82,10 @@ export default function AppHeader() {
             alt=""
             width={32}
             height={32}
-            className="h-8 w-8 object-contain"
+            className={pathname === '/home' ? 'h-6 w-6 object-contain min-[380px]:h-8 min-[380px]:w-8' : 'h-8 w-8 object-contain'}
             priority
           />
-          <span className="whitespace-nowrap text-xl font-bold leading-none">
+          <span className={`whitespace-nowrap font-bold leading-none ${pathname === '/home' ? 'text-base min-[380px]:text-xl' : 'text-xl'}`}>
             <span className="text-white">Endless </span>
             <span style={{ color: '#f97316' }}>Tales</span>
           </span>
