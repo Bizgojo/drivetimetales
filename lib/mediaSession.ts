@@ -29,7 +29,7 @@ export interface MediaTrack {
 }
 
 export const SEEK_BACKWARD_SECONDS = 15
-export const SEEK_FORWARD_SECONDS = 30
+export const SEEK_FORWARD_SECONDS = 15
 export const MEDIA_ALBUM = 'Endless Tales'
 const FALLBACK_ARTWORK = '/icons/icon-512x512.png'
 const ALL_ACTIONS: MediaAction[] = ['play', 'pause', 'stop', 'previoustrack', 'nexttrack', 'seekbackward', 'seekforward', 'seekto']
