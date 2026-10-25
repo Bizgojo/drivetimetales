@@ -2777,12 +2777,6 @@ export async function POST(req: NextRequest) {
     if (Object.keys(belleRepairUpdates).length > 0) {
       await supabase.from('stories').update(belleRepairUpdates).eq('id', storyId)
     }
-    // BELLE-POSTREPAIR-CONFORMANCE-001 (acceptance-close-gaps): a repaired Belle
-    // line is TTS-generatable but may still fail the SHARED publish conformance
-    // predicates -- spending voice calls on copy that cannot publish is waste.
-    // Re-run the PRODUCTION publish gate on the post-repair copy BEFORE any
-    // provider operation; refuse pre-spend (422) when it fails. Unrepaired copy
-    // is untouched: zero behavior change when no repair occurred.
     // BELLE-POSTREPAIR-CONFORMANCE-001 (acceptance-close-gaps): invalid Belle
     // copy must not reach voice spend when it cannot publish. Two sub-paths:
     // (a) repaired in-memory but still failing the SHARED publish conformance
