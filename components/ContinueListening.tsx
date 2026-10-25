@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
 import { supabase } from '@/lib/supabase'
+import { useNowPlaying } from '@/components/player/PersistentPlayer'
 
 interface ContinueCard {
   story_id: string; title: string; author: string; genre: string
@@ -73,7 +74,8 @@ export default function ContinueListening({ onIdsLoaded, excludeStoryId = null }
     setCard(null); setShowDismiss(false); onIdsLoaded?.([])
   }
 
-  if (loading || !card) return null
+  const nowPlaying = useNowPlaying()
+  if (loading || !card || nowPlaying?.storyId === card.story_id) return null
   const displayTitle = card.series_name || card.title
   const resumeAt = Math.max(0, card.progress)
   const description = card.description || ''

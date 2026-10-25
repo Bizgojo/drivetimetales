@@ -20,8 +20,12 @@ export interface PlaybackSnapshot {
   isPlaying: boolean
   currentTime: number
   duration: number
+  coverUrl?: string | null
+  seek?: (seconds: number) => void
   toggle: () => void
 }
+const NowPlayingContext = createContext<PlaybackSnapshot | null>(null)
+export function useNowPlaying() { return useContext(NowPlayingContext) }
 const PlayerContext = createContext<((selection: PlaybackSelection) => void) | null>(null)
 
 // Lives inside the root layout, outside changing page segments. Hiding the
@@ -63,8 +67,8 @@ export default function PersistentPlayer({ children }: { children: ReactNode }) 
   const miniature = !playerPage && !clearForRoute && !pathname?.startsWith('/admin') &&
     snapshot && snapshot.storyId === selection?.storyId
 
-  return <PlayerContext.Provider value={request}>
-    {children}
+  return <PlayerContext.Provider value={request}><NowPlayingContext.Provider value={miniature ? snapshot : null}>
+    <div style={{ paddingTop: miniature ? 152 : 0 }}>{children}</div>
     {selection && !clearForRoute && <div hidden={!playerPage} style={playerPage
       ? { position: 'fixed', top: 56, bottom: 0, left: 0, right: 0, zIndex: 40, overflowY: 'auto', background: '#020617' }
       : { display: 'none' }}>
@@ -72,21 +76,26 @@ export default function PersistentPlayer({ children }: { children: ReactNode }) 
         onPlaybackSnapshot={setSnapshot} onAdvanceInPlace={advance} />
     </div>}
     {miniature && <>
-      <div style={{ height: 164 }} aria-hidden="true" />
-      <aside aria-label="Now playing" style={{ position: 'fixed', bottom: 'calc(76px + env(safe-area-inset-bottom, 0px))', left: 12, right: 12,
-        zIndex: 60, padding: 12, borderRadius: 14, background: '#1e293b', color: 'white', border: '1px solid #475569', display: 'flex', alignItems: 'center', gap: 12 }}>
+
+      <aside aria-label="Now playing" style={{ position: 'fixed', top: 64, left: 12, right: 12,
+        zIndex: 45, padding: 10, borderRadius: 14, background: '#1e293b', color: 'white', border: '1px solid #475569' }}>
         <button type="button" aria-label={`Open player for ${snapshot.title}`} onClick={() => router.push(`/player/${selection.storyId}${selection.mode === 'playlist' ? '?playlist=1' : selection.mode === 'series' ? '?mode=series' : ''}`)}
-          style={{ flex: 1, minWidth: 0, textAlign: 'left', background: 'none', border: 0, color: 'white', cursor: 'pointer' }}>
-          <strong style={{ display: 'block', overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>{snapshot.title}</strong>
-          <span style={{ fontSize: 12, color: '#cbd5e1' }}>{formatPlaybackTime(snapshot.currentTime)} / {formatPlaybackTime(snapshot.duration)}</span>
+          style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, textAlign: 'left', background: 'none', border: 0, color: 'white', cursor: 'pointer' }}>
+          {snapshot.coverUrl && <img src={snapshot.coverUrl} alt="" width={40} height={40} style={{ objectFit: 'cover', borderRadius: 6 }} />}
+          <strong style={{ overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>{snapshot.title}</strong>
         </button>
-        <button type="button" onClick={snapshot.toggle} aria-label={snapshot.isPlaying ? 'Pause playback' : 'Continue playback'}
-          style={{ minHeight: 48, minWidth: 92, border: 0, borderRadius: 10, background: snapshot.isPlaying ? '#f97316' : '#22c55e', color: '#020617', fontWeight: 800, cursor: 'pointer' }}>
-          {snapshot.isPlaying ? 'Pause' : 'Continue'}
-        </button>
+        <div role="progressbar" aria-label="Listening progress" aria-valuemin={0} aria-valuemax={Math.max(1, snapshot.duration)} aria-valuenow={Math.min(snapshot.currentTime, snapshot.duration)} style={{ height: 4, background: '#475569', margin: '8px 0', borderRadius: 4 }}>
+          <div style={{ height: '100%', width: `${snapshot.duration > 0 ? Math.min(100, snapshot.currentTime / snapshot.duration * 100) : 0}%`, background: '#f97316', borderRadius: 4 }} />
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ flex: 1, fontSize: 12, color: '#cbd5e1' }}>{formatPlaybackTime(snapshot.currentTime)} · {formatPlaybackTime(Math.max(0, snapshot.duration - snapshot.currentTime))} left</span>
+          <button type="button" aria-label="Back 15 seconds" disabled={!snapshot.seek} onClick={() => snapshot.seek?.(Math.max(0, snapshot.currentTime - 15))} style={{ minHeight: 44, minWidth: 44, background: '#334155', color: 'white', border: 0, borderRadius: 8 }}>↶15</button>
+          <button type="button" onClick={snapshot.toggle} aria-label={snapshot.isPlaying ? 'Pause playback' : 'Continue playback'} style={{ minHeight: 44, minWidth: 88, border: 0, borderRadius: 8, background: snapshot.isPlaying ? '#f97316' : '#22c55e', color: '#020617', fontWeight: 800, cursor: 'pointer' }}>{snapshot.isPlaying ? 'Pause' : 'Continue'}</button>
+          <button type="button" aria-label="Forward 15 seconds" disabled={!snapshot.seek} onClick={() => snapshot.seek?.(Math.min(snapshot.duration, snapshot.currentTime + 15))} style={{ minHeight: 44, minWidth: 44, background: '#334155', color: 'white', border: 0, borderRadius: 8 }}>15↷</button>
+        </div>
       </aside>
     </>}
-  </PlayerContext.Provider>
+  </NowPlayingContext.Provider></PlayerContext.Provider>
 }
 
 // Route pages request a track, but never own an audio element. Returning to

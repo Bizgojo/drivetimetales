@@ -2558,11 +2558,13 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
     : (actualAudioDuration || (story?.duration_mins || 0) * 60)
   const effCur   = isASC3 ? cumTime : currentTime
   const playerGenres = getPlayerGenres(story)
+  const miniSeekRef = useRef(seekToSeconds)
+  miniSeekRef.current = seekToSeconds
   const miniToggleRef = useRef(handlePlayPause)
   miniToggleRef.current = handlePlayPause
   useEffect(() => {
     if (!story) return
-    onPlaybackSnapshot?.({ storyId, title: story.title, isPlaying, currentTime: effCur, duration: effTotal,
+    onPlaybackSnapshot?.({ storyId, title: story.title, coverUrl: story.cover_url, seek: seconds => miniSeekRef.current(seconds), isPlaying, currentTime: effCur, duration: effTotal,
       toggle: () => miniToggleRef.current() })
   }, [storyId, story?.title, isPlaying, effCur, effTotal, onPlaybackSnapshot])
   // Position: the OS extrapolates from (position, playbackRate), so update on
