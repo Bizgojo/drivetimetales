@@ -72,8 +72,8 @@ export default function ContinueListening({ onIdsLoaded, excludeStoryId = null }
     setCards(remaining); setShowDismiss(null); onIdsLoaded?.(remaining.map(card => card.story_id))
   }
 
-  if (loading) return null
-  return <>{cards.filter(card => card.story_id !== nowPlaying?.storyId).map(card => {
+  if (loading || nowPlaying) return null
+  return <>{cards.slice(0, 1).map(card => {
   const displayTitle = card.series_name || card.title
   const resumeAt = Math.max(0, card.progress)
   const description = card.description || ''

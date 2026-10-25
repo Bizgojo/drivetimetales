@@ -6,6 +6,7 @@ import { usePathname, useRouter } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
 import CanonicalPlayer from './CanonicalPlayer'
 import type { PlayerMode } from './playerTypes'
+import { supabase } from '@/lib/supabase'
 import { formatPlaybackTime } from '@/lib/playerControls'
 
 export interface PlaybackSelection {
@@ -35,7 +36,30 @@ export default function PersistentPlayer({ children }: { children: ReactNode }) 
   const router = useRouter()
   const { user, loading } = useAuth()
   const [selection, setSelection] = useState<PlaybackSelection | null>(null)
-  const [snapshot, setSnapshot] = useState<PlaybackSnapshot | null>(null)
+  const [liveSnapshot, setSnapshot] = useState<PlaybackSnapshot | null>(null)
+  const [savedStories, setSavedStories] = useState<Array<{id: string; title: string; coverUrl: string | null; progress: number; duration: number}>>([])
+  const saved = savedStories[0]
+  const snapshot: PlaybackSnapshot | null = liveSnapshot && liveSnapshot.storyId === selection?.storyId ? liveSnapshot : saved ? {
+    storyId: saved.id, title: saved.title, coverUrl: saved.coverUrl, currentTime: saved.progress, duration: saved.duration, isPlaying: false,
+    toggle: () => router.push(`/player/${saved.id}?resume=${saved.progress}&autoplay=1&playNow=1`),
+  } : null
+  useEffect(() => {
+    setSavedStories([])
+    if (loading || !user?.id) return
+    let cancelled = false
+    void supabase.from('user_library')
+      .select('story_id,progress,last_played,stories(title,cover_url,duration_mins)')
+      .eq('user_id', user.id).eq('completed', false).eq('hide_from_home', false)
+      .not('last_played', 'is', null).order('last_played', { ascending: false }).limit(50)
+      .then(({data}) => {
+        if (cancelled) return
+        setSavedStories((data || []).filter(row => row.stories).map(row => {
+          const story = row.stories as unknown as {title: string; cover_url: string | null; duration_mins: number}
+          return {id: row.story_id, title: story.title, coverUrl: story.cover_url, progress: Number(row.progress || 0), duration: Number(story.duration_mins || 0) * 60}
+        }))
+      })
+    return () => { cancelled = true }
+  }, [user?.id, loading])
   const identity = useRef<string | null>(null)
   const playerPage = pathname?.startsWith('/player/') === true
   const clearForRoute = pathname === '/signin' || pathname === '/signup' || pathname === '/go'
@@ -65,10 +89,10 @@ export default function PersistentPlayer({ children }: { children: ReactNode }) 
     }
   }, [router])
   const miniature = !playerPage && !clearForRoute && !pathname?.startsWith('/admin') &&
-    snapshot && snapshot.storyId === selection?.storyId
+    snapshot
 
   return <PlayerContext.Provider value={request}><NowPlayingContext.Provider value={miniature ? snapshot : null}>
-    <div style={{ paddingTop: miniature ? 152 : 0 }}>{children}</div>
+    <div style={{ paddingTop: miniature ? 186 : 0 }}>{children}</div>
     {selection && !clearForRoute && <div hidden={!playerPage} style={playerPage
       ? { position: 'fixed', top: 56, bottom: 0, left: 0, right: 0, zIndex: 40, overflowY: 'auto', background: '#020617' }
       : { display: 'none' }}>
@@ -79,7 +103,7 @@ export default function PersistentPlayer({ children }: { children: ReactNode }) 
 
       <aside aria-label="Now playing" style={{ position: 'fixed', top: 64, left: 12, right: 12,
         zIndex: 45, padding: 10, borderRadius: 14, background: '#1e293b', color: 'white', border: '1px solid #475569' }}>
-        <button type="button" aria-label={`Open player for ${snapshot.title}`} onClick={() => router.push(`/player/${selection.storyId}${selection.mode === 'playlist' ? '?playlist=1' : selection.mode === 'series' ? '?mode=series' : ''}`)}
+        <button type="button" aria-label={`Open player for ${snapshot.title}`} onClick={() => router.push(`/player/${snapshot.storyId}${selection?.mode === 'playlist' ? '?playlist=1' : selection?.mode === 'series' ? '?mode=series' : ''}`)}
           style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, textAlign: 'left', background: 'none', border: 0, color: 'white', cursor: 'pointer' }}>
           {snapshot.coverUrl && <img src={snapshot.coverUrl} alt="" width={40} height={40} style={{ objectFit: 'cover', borderRadius: 6 }} />}
           <strong style={{ overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>{snapshot.title}</strong>
@@ -93,6 +117,12 @@ export default function PersistentPlayer({ children }: { children: ReactNode }) 
           <button type="button" onClick={snapshot.toggle} aria-label={snapshot.isPlaying ? 'Pause playback' : 'Continue playback'} style={{ minHeight: 44, minWidth: 88, border: 0, borderRadius: 8, background: snapshot.isPlaying ? '#f97316' : '#22c55e', color: '#020617', fontWeight: 800, cursor: 'pointer' }}>{snapshot.isPlaying ? 'Pause' : 'Continue'}</button>
           <button type="button" aria-label="Forward 15 seconds" disabled={!snapshot.seek} onClick={() => snapshot.seek?.(Math.min(snapshot.duration, snapshot.currentTime + 15))} style={{ minHeight: 44, minWidth: 44, background: '#334155', color: 'white', border: 0, borderRadius: 8 }}>15↷</button>
         </div>
+        {savedStories.some(story => story.id !== snapshot.storyId) && <details style={{ marginTop: 6, fontSize: 12 }}>
+          <summary style={{ cursor: 'pointer', padding: '4px 0' }}>Other unfinished stories ({savedStories.filter(story => story.id !== snapshot.storyId).length})</summary>
+          <div style={{ maxHeight: 180, overflowY: 'auto' }}>{savedStories.filter(story => story.id !== snapshot.storyId).map(story =>
+            <button key={story.id} type="button" onClick={() => router.push(`/player/${story.id}?resume=${story.progress}&autoplay=1&playNow=1`)} style={{ display: 'block', width: '100%', minHeight: 44, textAlign: 'left', background: '#334155', color: 'white', border: 0, borderRadius: 6, marginTop: 4, padding: 8 }}>{story.title}</button>
+          )}</div>
+        </details>}
       </aside>
     </>}
   </NowPlayingContext.Provider></PlayerContext.Provider>
