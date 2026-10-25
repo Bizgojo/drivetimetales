@@ -29,15 +29,15 @@ function DismissModal({ label, onConfirm, onCancel }: { label: string; onConfirm
 
 // WALK-BUG-0713 #5 (Marc, 2026-07-13): when the ContinueSampleHero is already
 // showing a story, this list must NOT repeat it — same title stacked twice on
-// /home. excludeStoryId is the hero's catalog story id; we fetch the top TWO
-// in-progress rows and surface the first one that isn't the hero's, so the
-// section still earns its place with a second story and disappears otherwise.
+// /home. Keep unfinished stories available below the active mini-player;
+// exclude the hero and the active story by ID, without altering saved rows.
 export default function ContinueListening({ onIdsLoaded, excludeStoryId = null }: { onIdsLoaded?: (ids: string[]) => void; excludeStoryId?: string | null } = {}) {
   const { user } = useAuth()
   const router = useRouter()
-  const [card, setCard] = useState<ContinueCard | null>(null)
+  const [cards, setCards] = useState<ContinueCard[]>([])
+  const nowPlaying = useNowPlaying()
   const [loading, setLoading] = useState(true)
-  const [showDismiss, setShowDismiss] = useState(false)
+  const [showDismiss, setShowDismiss] = useState<ContinueCard | null>(null)
 
   useEffect(() => {
     if (!user) { setLoading(false); onIdsLoaded?.([]); return }
@@ -54,35 +54,33 @@ export default function ContinueListening({ onIdsLoaded, excludeStoryId = null }
       .eq('hide_from_home', false)
       .not('last_played', 'is', null)
       .order('last_played', { ascending: false })
-      .limit(2)
+      .limit(50)
     const rows = (data || []).filter(r => r.stories && r.story_id !== excludeStoryId)
-    const top = rows[0]
-    if (top) {
-      const s = top.stories as any
-      setCard({ story_id: top.story_id, title: s.title, author: s.author, genre: s.genre, cover_url: s.cover_url, duration_mins: s.duration_mins, progress: top.progress, last_played: top.last_played, series_name: s.series_name || null, series_id: s.series_id || null, episode_number: s.episode_number || null, description: s.description || null })
-      onIdsLoaded?.([top.story_id])
-    } else {
-      setCard(null)
-      onIdsLoaded?.([])
-    }
+    const nextCards = rows.map(row => {
+      const story = row.stories as any
+      return { ...story, story_id: row.story_id, progress: row.progress, last_played: row.last_played } as ContinueCard
+    })
+    setCards(nextCards)
+    onIdsLoaded?.(nextCards.map(card => card.story_id))
     setLoading(false)
   }
 
   async function dismiss() {
-    if (!card || !user) return
-    await supabase.from('user_library').update({ hide_from_home: true }).eq('user_id', user.id).eq('story_id', card.story_id)
-    setCard(null); setShowDismiss(false); onIdsLoaded?.([])
+    if (!showDismiss || !user) return
+    await supabase.from('user_library').update({ hide_from_home: true }).eq('user_id', user.id).eq('story_id', showDismiss.story_id)
+    const remaining = cards.filter(card => card.story_id !== showDismiss.story_id)
+    setCards(remaining); setShowDismiss(null); onIdsLoaded?.(remaining.map(card => card.story_id))
   }
 
-  const nowPlaying = useNowPlaying()
-  if (loading || !card || nowPlaying?.storyId === card.story_id) return null
+  if (loading) return null
+  return <>{cards.filter(card => card.story_id !== nowPlaying?.storyId).map(card => {
   const displayTitle = card.series_name || card.title
   const resumeAt = Math.max(0, card.progress)
   const description = card.description || ''
   const truncatedDescription = description.length > 90 ? description.slice(0, 87) + '…' : description
 
   return (
-    <section style={{ padding: '1.5rem 1rem 0' }}>
+    <section key={card.story_id} style={{ padding: '1.5rem 1rem 0' }}>
       <h2 style={{ color: 'white', fontSize: 18, fontWeight: 800, margin: '0 0 8px' }}>Continue {displayTitle}</h2>
       <div style={{ background: '#1e293b', borderRadius: '13px', border: '1px solid rgba(148,163,184,0.06)', display: 'flex', overflow: 'hidden', position: 'relative' }}>
         <div style={{ width: 96, flexShrink: 0, alignSelf: 'stretch' }}>
@@ -99,9 +97,10 @@ export default function ContinueListening({ onIdsLoaded, excludeStoryId = null }
             Continue
           </button>
         </div>
-        <button onClick={() => setShowDismiss(true)} style={{ position: 'absolute', top: 8, right: 8, width: 24, height: 24, background: 'rgba(100,116,139,0.4)', border: '1px solid rgba(148,163,184,0.2)', borderRadius: '50%', color: '#94a3b8', fontSize: 14, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>x</button>
+        <button onClick={() => setShowDismiss(card)} style={{ position: 'absolute', top: 8, right: 8, width: 24, height: 24, background: 'rgba(100,116,139,0.4)', border: '1px solid rgba(148,163,184,0.2)', borderRadius: '50%', color: '#94a3b8', fontSize: 14, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>x</button>
       </div>
-      {showDismiss && <DismissModal label={displayTitle} onConfirm={dismiss} onCancel={() => setShowDismiss(false)} />}
+      {showDismiss?.story_id === card.story_id && <DismissModal label={displayTitle} onConfirm={dismiss} onCancel={() => setShowDismiss(null)} />}
     </section>
   )
+  })}</>
 }

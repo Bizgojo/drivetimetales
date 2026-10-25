@@ -35,3 +35,16 @@ describe('saved-position playback readiness', () => {
     expect(waitForSegmentResume(false, 107, false)).toBe(false)
   })
 })
+
+import { isActiveLibraryCard } from '../lib/playerControls'
+describe('active card visibility', () => {
+  it('hides only the active single story, including when paused', () => {
+    expect(isActiveLibraryCard({story:{id:'active'}}, 'active')).toBe(true)
+    expect(isActiveLibraryCard({story:{id:'other'}}, 'active')).toBe(false)
+    expect(isActiveLibraryCard({story:{id:'active'}}, null)).toBe(false)
+  })
+  it('matches a grouped series through its actual episode IDs only', () => {
+    expect(isActiveLibraryCard({episodePlaylist:[{id:'active'}]}, 'active')).toBe(true)
+    expect(isActiveLibraryCard({episodePlaylist:[{id:'other'}]}, 'active')).toBe(false)
+  })
+})

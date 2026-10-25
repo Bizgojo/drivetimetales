@@ -48,3 +48,8 @@ export function getPlayerGenres(story: PlayerGenreFields | null | undefined): st
 export function waitForSegmentResume(segmented: boolean, pendingSeconds: number, completeDurations: boolean): boolean {
   return segmented && Number.isFinite(pendingSeconds) && pendingSeconds > 0 && !completeDurations
 }
+
+/** Hide only the currently represented story/series card, without changing saved progress. */
+export function isActiveLibraryCard(item: { story?: { id: string }; episodePlaylist?: Array<{ id: string }> }, activeStoryId: string | null): boolean {
+  return Boolean(activeStoryId && (item.story?.id === activeStoryId || item.episodePlaylist?.some(ep => ep.id === activeStoryId)))
+}

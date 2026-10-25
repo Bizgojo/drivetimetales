@@ -5,6 +5,8 @@ import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/contexts/AuthContext'
 import ReviewModal from '@/components/ReviewModal'
+import { useNowPlaying } from '@/components/player/PersistentPlayer'
+import { isActiveLibraryCard } from '@/lib/playerControls'
 import { buildSeriesPlaybackTarget, storeSeriesPlayback } from '@/lib/seriesPlayback'
 import { getAllLocalPlayerProgress, mergePlayerProgress } from '@/lib/playerProgress'
 import LibraryStoryCard, { formatMinutes } from '@/components/LibraryStoryCard'
@@ -135,6 +137,7 @@ function parsePlaylistKeys(raw: string | null): string[] | null {
 }
 
 export default function LibraryPage() {
+  const activePlayerStoryId = useNowPlaying()?.storyId || null
   const router = useRouter()
   const { user, session, loading: authLoading } = useAuth()
 
@@ -453,14 +456,14 @@ export default function LibraryPage() {
       activeGenre === 'All'
         ? cardItems
         : cardItems.filter((i) => (i.genre || '').toLowerCase() === activeGenre.toLowerCase())
-    return filtered.slice().sort((a, b) => {
+    return filtered.filter(item => !isActiveLibraryCard(item, activePlayerStoryId)).sort((a, b) => {
       if (a.notForMe !== b.notForMe) return a.notForMe ? 1 : -1
       const aCount = a.type === 'single' ? 1 : a.episodeCount || 0
       const bCount = b.type === 'single' ? 1 : b.episodeCount || 0
       if (aCount !== bCount) return aCount - bCount
       return a.durationForSort - b.durationForSort
     })
-  }, [cardItems, activeGenre])
+  }, [cardItems, activeGenre, activePlayerStoryId])
 
   const availableGenres = useMemo(() => {
     const populated = new Set(cardItems.map((item) => (item.genre || '').toLowerCase()).filter(Boolean))
