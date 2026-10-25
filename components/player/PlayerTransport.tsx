@@ -67,9 +67,7 @@ export default function PlayerTransport({ currentTime, duration, seekEnabled, is
         disabled={!seekEnabled || onboarding} onClick={() => onSeek(Math.min(total, currentTime + 15))}>
         <span aria-hidden="true">↷</span><small>15s</small>
       </button>
-      {hasStarted && !onboarding && <button type="button" className="et-player-start-over" onClick={() => {
-        if (window.confirm('Start this episode over? Your saved position will be replaced.')) onRestart()
-      }}>Start Over</button>}
+      {hasStarted && !onboarding && <button type="button" className="et-player-start-over" onClick={onRestart}>Start Over</button>}
     </div>
     {autoplayBlocked && !onboarding && !isPlaying && <p className="et-player-autoplay-note">Tap {currentTime > 0 ? 'Continue' : 'Play'} to start audio on this device.</p>}
     <style>{`
