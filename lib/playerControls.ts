@@ -43,3 +43,8 @@ export function getPlayerGenres(story: PlayerGenreFields | null | undefined): st
   add(story?.sub_genres)
   return labels
 }
+
+/** A saved global position cannot be mapped safely from partial segment durations. */
+export function waitForSegmentResume(segmented: boolean, pendingSeconds: number, completeDurations: boolean): boolean {
+  return segmented && Number.isFinite(pendingSeconds) && pendingSeconds > 0 && !completeDurations
+}

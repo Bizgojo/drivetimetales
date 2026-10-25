@@ -10,7 +10,7 @@ import { useAuth } from '@/contexts/AuthContext'
 import ReviewModal from '@/components/ReviewModal'
 import PlayerTransport from './PlayerTransport'
 import type { PlaybackSnapshot } from './PersistentPlayer'
-import { getPlayerGenres, shouldAutoStartPlayer } from '@/lib/playerControls'
+import { getPlayerGenres, shouldAutoStartPlayer, waitForSegmentResume } from '@/lib/playerControls'
 import InstallAppBanner from '@/components/InstallAppBanner'
 import { requestInstallReoffer } from '@/lib/installReoffer'
 import { welcomeClipCompleted } from '@/lib/welcomePlayback'
@@ -134,6 +134,7 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
   const activeQueueIndexRef = useRef(0)
   const pendingQueueSeekRef = useRef<number | null>(null)
   const pendingQueueSeekPlayRef = useRef(false)
+  const resumePlayRequestedRef = useRef(false)
   const sessionStartRef = useRef<number | null>(null)
   const playlistRef      = useRef<{id:string,episode_number:number}[]>([])
   const playlistIndexRef = useRef<number>(-1)
@@ -1076,6 +1077,7 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
     completedRef.current = 0
     pendingQueueSeekRef.current = null
     pendingQueueSeekPlayRef.current = false
+    resumePlayRequestedRef.current = false
     reviewPromptHandledRef.current = false
     installReofferFiredRef.current = false
     lastLocalProgressWriteRef.current = 0
@@ -1239,6 +1241,7 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
   // ── Load story ─────────────────────────────────────────────────────────────
 
   useEffect(() => {
+    if (authLoading) return
     let cancelled = false
     async function load() {
       let redirected = false
@@ -1394,6 +1397,7 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
           })
           setAudioErrorMessage('Audio is not available for this story yet.')
         }
+        if (cancelled) return
         setQueue(resolvedQueue)
         setIsASC3(resolvedIsASC3)
 
@@ -1591,7 +1595,8 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
     return () => {
       cancelled = true
     }
-  }, [storyId, user, userEmail, authLoading, resumeParam])
+  // Profile/session refreshes for the same identity must not reload live audio.
+  }, [storyId, user?.id, userEmail, authLoading, resumeParam])
 
   // Init audio once loaded
   useEffect(() => {
@@ -1667,6 +1672,9 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
           storyId,
           failedSegments: failed.map((entry) => entry.index),
         })
+        if (resumeRef.current > 0) {
+          setAudioErrorMessage('Could not restore your saved position. Try again or choose Start Over.')
+        }
       }
       durations.forEach(({ index, duration: segmentDuration }) => {
         if (segmentDuration > 0) segDursRef.current[index] = segmentDuration
@@ -1687,8 +1695,12 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
     // and the listener already pressed play from 0:00, don't yank their
     // position — the resume intent is stale at that point.
     if (isPlaying) { resumeRef.current = 0; return }
-    seekASC3ToGlobalTime(resumeRef.current, false)
+    if (!hasAllQueueDurations()) return
+    const shouldPlay = resumePlayRequestedRef.current || Boolean(audioRef.current && !audioRef.current.paused)
+    const target = resumeRef.current
     resumeRef.current = 0
+    resumePlayRequestedRef.current = false
+    seekASC3ToGlobalTime(target, shouldPlay)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isASC3, queue, loading, totalDur])
 
@@ -1698,6 +1710,7 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
     if (!shouldAutoStartPlayer(window.location.search)) return
     if (isASC3 && !queue.length) return
     if (!isASC3 && !audioSrc) return
+    if (waitForSegmentResume(isASC3, resumeRef.current, hasAllQueueDurations())) return
 
     seriesContinueAutoplayAttemptedRef.current = true
     // ORION-ANALYTICS-GAP-001: this is the auto-started playback path — it was
@@ -1734,7 +1747,7 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
       audio.addEventListener('canplay', attemptPlay, { once: true })
       return () => audio.removeEventListener('canplay', attemptPlay)
     }
-  }, [loading, isASC3, queue, audioSrc, storyId])
+  }, [loading, isASC3, queue, audioSrc, storyId, totalDur])
 
   // MARC-PLAYLIST-HANDSFREE-001: after an in-place playlist advance
   // (onAdvanceInPlace swapped storyId without a page navigation — see
@@ -1961,6 +1974,10 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
 
   const handlePlayPause = () => {
     if (!audioRef.current) return
+    if (waitForSegmentResume(isASC3, resumeRef.current, hasAllQueueDurations())) {
+      resumePlayRequestedRef.current = !resumePlayRequestedRef.current
+      return
+    }
     if (isPlaying) {
       disableAutoAdvanceForSession('manual_pause')
       audioRef.current.pause(); musicRef.current?.pause()
@@ -2794,11 +2811,9 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
           }
         }}
         onCanPlay={() => {
-          if (isASC3 && resumeRef.current > 0 && getQueueTotalSeconds() > 0) {
-            seekASC3ToGlobalTime(resumeRef.current, false)
-            resumeRef.current = 0
-            return
-          }
+          // Segmented resume is applied once, after the complete duration map
+          // resolves, by the resume effect before autoplay is allowed. A canplay
+          // event for the intro must never start a competing seek/load here.
           if (!isASC3 && audioRef.current) {
             if (finalMixRetryResumeRef.current !== null) {
               audioRef.current.currentTime = finalMixRetryResumeRef.current

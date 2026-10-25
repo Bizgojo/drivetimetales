@@ -22,3 +22,16 @@ describe('player metadata display', () => {
     expect(formatPlaybackTime(seconds as number)).toBe(label)
   })
 })
+
+
+import { waitForSegmentResume } from '../lib/playerControls'
+describe('saved-position playback readiness', () => {
+  it('holds segmented autoplay until the entire seek map is available', () => {
+    expect(waitForSegmentResume(true, 107, false)).toBe(true)
+    expect(waitForSegmentResume(true, 107, true)).toBe(false)
+  })
+  it('does not delay a fresh start or a single-file seek', () => {
+    expect(waitForSegmentResume(true, 0, false)).toBe(false)
+    expect(waitForSegmentResume(false, 107, false)).toBe(false)
+  })
+})
