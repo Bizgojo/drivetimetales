@@ -4452,13 +4452,7 @@ async function validateStandaloneBelleQuality(job: ProductionJob, model: string)
     story.series_is_finale ? `series_is_finale=${story.series_is_finale}` : '',
   ].filter(Boolean).join(', ') || 'standalone inferred from production job'
 
-  const response = await anthropic.messages.create({
-    model,
-    max_tokens: 1000,
-    temperature: 0,
-    messages: [{
-      role: 'user',
-      content: `${BELLE_QUALITY_VALIDATOR_PROMPT}
+  const validatorPrompt = `${BELLE_QUALITY_VALIDATOR_PROMPT}
 
 DECLARED METADATA:
 ${declaredStoryType}
@@ -4476,15 +4470,36 @@ BELLE OUTRO:
 ${outroText}
 
 SCRIPT ENDING CONTEXT:
-${scriptTail(story.script, 2200)}`,
-    }],
-  })
+${scriptTail(story.script, 2200)}`
 
-  const rawReport = response.content
-    .map((c: any) => ('text' in c ? c.text : ''))
-    .join('')
-    .trim()
-  if (!rawReport) throw new Error('Belle quality validator returned an empty report')
+  // JUDGE-JSON-RETRY-001 (2026-10-25): the judge model occasionally returns
+  // prose with no JSON object at all ("No JSON object found in model
+  // response" - EP1 b50011ae 2026-10-25). One bounded retry of the identical
+  // call; the gate is unchanged (valid parsed JSON still required to pass).
+  // Extra cost: at most one additional Anthropic call per validation.
+  const callBelleQualityValidator = async (): Promise<string> => {
+    const retryResponse = await anthropic.messages.create({
+      model,
+      max_tokens: 1000,
+      temperature: 0,
+      messages: [{ role: 'user', content: validatorPrompt }],
+    })
+    const retryRaw = retryResponse.content
+      .map((c: any) => ('text' in c ? c.text : ''))
+      .join('')
+      .trim()
+    if (!retryRaw) throw new Error('Belle quality validator returned an empty report')
+    return retryRaw
+  }
+
+  let rawReport = await callBelleQualityValidator()
+  try {
+    parseJsonObject(rawReport)
+  } catch (firstErr) {
+    if (String((firstErr as Error)?.message || '').includes('empty report')) throw firstErr
+    console.warn(`  Belle quality validator first response unparseable for story ${storyId}, retrying once: ${String((firstErr as Error)?.message || firstErr).slice(0, 120)}`)
+    rawReport = await callBelleQualityValidator()
+  }
 
   const parsed = parseJsonObject(rawReport)
   const introScore = typeof parsed.introScore === 'number' ? parsed.introScore : Number(parsed.introScore || 0)

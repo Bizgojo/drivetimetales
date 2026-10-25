@@ -45,6 +45,7 @@ import {
   transcriptSimilarity,
   transcriptTokenMatches,
   evaluateTranscriptQC,
+  transcriptFlakeWarrantsExtraCandidate,
   QC_MODULE_MARKER,
 } from '@/lib/transcriptQC'
 
@@ -2265,6 +2266,67 @@ async function generateVoiceLine(rawText: string, voiceId: string, storyId: stri
 
     if (!accepted) {
       if (transcriptFailure) {
+        // SEG57-TRANSCRIPT-FLAKE-001 (2026-10-25): before the identical-truncation
+        // guardrail, grant bounded extra FULL candidates when the failure is a
+        // clean-prefix flake on loudness-passing audio. Each full re-render is
+        // an independent transcription sample (demonstrated: varying fragments
+        // across jobs for the same text). Cap = 2 paid renders; verification
+        // unchanged (candidate must pass the same transcript QC). Falls through
+        // to the existing guardrail/rescue/throw path when exhausted or N/A.
+        if (!accepted && transcriptFailure && lastLoudnessPassedBuf) {
+          let extraUsed = 0
+          while (
+            !accepted &&
+            transcriptFlakeWarrantsExtraCandidate(
+              {
+                expectedText: transcriptFailure.expectedText,
+                detectedText: transcriptFailure.detectedText,
+                coverage: transcriptFailure.coverage,
+                tailMatches: transcriptFailure.tailMatches,
+              },
+              extraUsed,
+            )
+          ) {
+            extraUsed += 1
+            try {
+              let extraBuf = await generateAttempt()
+              const extraDuration = await getAudioDurationBuffer(extraBuf)
+              let extraMetrics = await analyzeLoudnessBuffer(extraBuf)
+              const extraAction = actionForMetrics(extraMetrics)
+              logSegmentQc(fileName, speaker, text, extraMetrics, `transcript_flake_extra_${extraUsed}_${extraAction}`)
+              // NOTE: deliberately NOT pushed to transcriptDetectedTexts - that array
+              // feeds the identical-truncation guardrail below; marker strings
+              // would corrupt its all-identical evaluation and steal split-rescue.
+              if (!isPassingAction(extraAction)) {
+                continue
+              }
+              lastLoudnessPassedBuf = extraBuf
+              const extraCheck = await validateSegmentTranscript(extraBuf, text, fileName)
+              console.log(`  Segment transcript QC ${fileName} speaker="${speaker}" extra=${extraUsed} coverage=${extraCheck.coverage.toFixed(2)} tail=${extraCheck.tailMatches ? 'pass' : 'fail'} result=${extraCheck.passed ? 'accept-flake-rescue' : 'retry'} expected="${text.slice(0, 120)}" detected="${extraCheck.detectedText.slice(0, 120)}"`)
+              if (!extraCheck.passed) {
+                transcriptFailure = extraCheck
+                transcriptDetectedTexts.push(extraCheck.detectedText)
+                continue
+              }
+              updateBest(99 + extraUsed, extraMetrics, extraAction)
+              accepted = { buf: extraBuf, metrics: extraMetrics, action: extraAction, duration: extraDuration, candidate: 99 + extraUsed }
+            } catch (e) {
+              console.warn(`  transcript-flake extra candidate ${extraUsed} errored for ${fileName}:`, String(e).slice(0, 200))
+              break
+            }
+          }
+          // Persist the loudness-passing buffer for post-mortem retranscription:
+          // failed segments are otherwise never saved, leaving the next
+          // occurrence undiagnosable. Storage-only, no paid calls.
+          if (!accepted && lastLoudnessPassedBuf) {
+            supabase.storage.from('audio').upload(
+              `asc3/${storyId}/diag/${fileName.replace('.mp3', '.flake.mp3')}`,
+              Buffer.from(lastLoudnessPassedBuf),
+              { contentType: 'audio/mpeg', upsert: true },
+            ).then(() => console.warn(`  flake-diag sidecar saved for ${fileName}`)).catch((e: unknown) => console.warn(`  flake-diag sidecar upload failed for ${fileName}:`, String(e).slice(0, 160)))
+          }
+        }
+
         // ── Repeated-identical-truncation guardrail (Marc 2026-05-21) ──────────
         //
         // Case A - Low-coverage truncation (original rule):
