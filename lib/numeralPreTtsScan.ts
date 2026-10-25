@@ -62,6 +62,16 @@ export interface NumeralScanOptions {
    * title validator is untouched and still REQUIRES the canonical digit.
    */
   episodeNumberPassThrough?: number
+  /**
+   * FORWARD-TEASE-001 (acceptance-close-gaps): narrow next-episode-token
+   * pass-through. A non-finale episode outro canonically teases the NEXT
+   * episode ("Next time on X, Episode N+1" — e.g. Lake EP1 teasing Episode 2).
+   * The bare digit N+1 in "Episode N+1" context is TTS-safe for the same
+   * reason as the current-episode digit. Reuses isEpisodeNumberPassThrough —
+   * no new matcher. Run-next sets this to number+1 for non-finale episodes
+   * only; finales leave it unset so a forward tease there still fails.
+   */
+  nextEpisodeNumberPassThrough?: number
 }
 
 // Any digit-form numeral including decimals and grouped thousands.
@@ -184,6 +194,13 @@ export function scanTextForDigitNumerals(text: string, options: NumeralScanOptio
     // ALDERTON-CONTRADICTION-001: skip the episode-number token the package
     // check requires (bare digit in "Episode N" context — TTS reads it correctly).
     if (span === match[0] && isEpisodeNumberPassThrough(span, text, options.episodeNumberPassThrough)) {
+      continue
+    }
+
+    // FORWARD-TEASE-001: skip the next-episode digit the canonical non-finale
+    // outro requires ("Episode N+1" context — same shared predicate, same
+    // TTS-safety argument). Unset for finales/standalone: no behavior change.
+    if (span === match[0] && isEpisodeNumberPassThrough(span, text, options.nextEpisodeNumberPassThrough)) {
       continue
     }
 

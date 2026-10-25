@@ -8,6 +8,7 @@ import os from 'os'
 import { createHash } from 'crypto'
 import { isStandaloneOutroRecording } from '@/lib/belleOutroRecording'
 import { CANONICAL_BELLE_B_VOICE_ID, RESERVED_BELLE_B_VOICE_IDS, isBelleBVoiceId } from '@/lib/voiceConstants'
+import { evaluateBelleCopyForPublish } from '@/lib/publicationBelleGate'
 // ATL-PARSER-001: shared script line-index parser — both GV and render-final-mix
 // delegate all counting to this function so [PAUSE] drift can never recur.
 import { parseScriptPositions, isWordlessSpokenText, SCENE_BREAK_PAUSE_SECONDS } from '@/lib/scriptLineIndex'
@@ -2775,6 +2776,46 @@ export async function POST(req: NextRequest) {
     if (outroValidation.repaired && outroValidation.line) belleRepairUpdates.outro_text = outroValidation.line.text
     if (Object.keys(belleRepairUpdates).length > 0) {
       await supabase.from('stories').update(belleRepairUpdates).eq('id', storyId)
+    }
+    // BELLE-POSTREPAIR-CONFORMANCE-001 (acceptance-close-gaps): invalid Belle
+    // copy must not reach voice spend when it cannot publish. Two sub-paths:
+    // (a) repaired in-memory but still failing the SHARED publish conformance
+    // predicates; (b) repair fallback ALSO fails local validation, in which case
+    // the defective ORIGINAL copy proceeds (line truthy, repaired:false). Re-run
+    // the PRODUCTION publish gate on the to-be-spoken copy BEFORE any provider
+    // operation; refuse pre-spend (422) when it fails. Clean copy (no repair,
+    // no errors) is untouched: zero behavior change on the passing path.
+    if (introValidation.repaired || outroValidation.repaired ||
+      introValidation.errors.length > 0 || outroValidation.errors.length > 0) {
+      const repairedRawLines = script.split('\n')
+      for (const rv of [introValidation, outroValidation]) {
+        if (!rv.repaired || !rv.line) continue
+        const rawIdx = (rv.line.rawLineNumber ?? 0) - 1
+        const src = rv.line.sourceLine
+        if (rawIdx >= 0 && rawIdx < repairedRawLines.length && typeof src === 'string' && repairedRawLines[rawIdx] === src) {
+          repairedRawLines[rawIdx] = src.replace(rv.originalText, rv.line.text)
+        }
+      }
+      const postRepairVerdict = evaluateBelleCopyForPublish({
+        id: storyId,
+        title: belleContext.title,
+        author: belleContext.author,
+        script: repairedRawLines.join('\n'),
+        series_id: (storyRow as any)?.series_id,
+        series_name: belleContext.seriesName,
+        episode_number: belleContext.episodeNumber ?? undefined,
+        series_is_finale: belleContext.isFinale,
+      })
+      if (!postRepairVerdict.ok) {
+        return NextResponse.json({
+          success: false,
+          error: 'Repaired Belle copy fails publish conformance - refusing before voice spend',
+          code: 'BELLE_POSTREPAIR_CONFORMANCE_FAILED',
+          bellePostRepairBlockers: postRepairVerdict.blockers,
+          repairedKinds: [...(introValidation.repaired ? ['intro'] : []), ...(outroValidation.repaired ? ['outro'] : [])],
+          unrepairedErrorKinds: [...(introValidation.errors.length > 0 && !introValidation.repaired ? ['intro'] : []), ...(outroValidation.errors.length > 0 && !outroValidation.repaired ? ['outro'] : [])],
+        }, { status: 422 })
+      }
     }
     const nonDialogueSpeakers = new Set(['TITLE', 'AUTHOR', 'GENRE', 'DESCRIPTION', 'SERIES', 'EPISODE', 'EPISODE_TITLE', 'SUNO PROMPT', 'ANNOUNCER', 'BELLE B', 'SANDY'])
     const inlineCueProblems = findInlineProductionCues(storyLines)
