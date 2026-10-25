@@ -2,7 +2,7 @@
 
 import { Suspense, useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import CanonicalPlayer from '@/components/player/CanonicalPlayer'
+import { PlayerRoute } from '@/components/player/PersistentPlayer'
 
 interface LegacyEpisodeEntry {
   id?: string
@@ -88,7 +88,7 @@ function PlaylistPlayerContent() {
     )
   }
 
-  return <CanonicalPlayer storyId={storyId} mode="playlist" onAdvanceInPlace={setStoryId} />
+  return <PlayerRoute storyId={storyId} mode="playlist" />
 }
 
 export default function PlaylistPlayerPage() {

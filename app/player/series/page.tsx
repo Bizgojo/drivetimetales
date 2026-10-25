@@ -2,7 +2,7 @@
 
 import { Suspense, useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import CanonicalPlayer from '@/components/player/CanonicalPlayer'
+import { PlayerRoute } from '@/components/player/PersistentPlayer'
 
 interface LegacySeriesEpisode {
   id?: string
@@ -59,7 +59,7 @@ function SeriesPlayerContent() {
     )
   }
 
-  return <CanonicalPlayer storyId={storyId} mode="series" />
+  return <PlayerRoute storyId={storyId} mode="series" />
 }
 
 export default function SeriesPlayerPage() {

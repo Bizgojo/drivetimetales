@@ -9,6 +9,7 @@ import { trackPlayStart, trackPlayEnd, trackSpuriousEndedRecovered, trackCardWal
 import { useAuth } from '@/contexts/AuthContext'
 import ReviewModal from '@/components/ReviewModal'
 import PlayerTransport from './PlayerTransport'
+import type { PlaybackSnapshot } from './PersistentPlayer'
 import { getPlayerGenres, shouldAutoStartPlayer } from '@/lib/playerControls'
 import InstallAppBanner from '@/components/InstallAppBanner'
 import { requestInstallReoffer } from '@/lib/installReoffer'
@@ -72,9 +73,11 @@ interface CanonicalPlayerProps {
   // under an earlier gesture. Only /player/playlist/page.tsx (the actual
   // playlist entry point) supplies this; without it, behavior is unchanged.
   onAdvanceInPlace?: (nextId: string) => void
+  onPlaybackSnapshot?: (snapshot: PlaybackSnapshot) => void
+  navigationKey?: string
 }
 
-export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 'story', onAdvanceInPlace }: CanonicalPlayerProps) {
+export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 'story', onAdvanceInPlace, onPlaybackSnapshot, navigationKey = '' }: CanonicalPlayerProps) {
   const router  = useRouter()
   const { user, session, loading: authLoading } = useAuth()
   const userEmail = String(user?.email || '').trim().toLowerCase()
@@ -234,7 +237,7 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
   // pages navigate here with ?openReader=1 instead of reimplementing this
   // reader — this is the one canonical prose reader. Guard ref so it only
   // auto-opens once per navigation, not on every proseAvailable re-render.
-  const openReaderAppliedRef = useRef(false)
+  const openReaderAppliedRef = useRef<string | null>(null)
   // Marc 2026-10-07: when the reader was opened via the ?openReader=1 deep
   // link (tapped "Read eBook" from the library/home card), closing it ("x")
   // should return to wherever that tap came from — not reveal this player
@@ -615,7 +618,7 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
       returnUrl: returnUrl.startsWith('/') && !returnUrl.startsWith('//') ? returnUrl : '',
       approvalReview: params.get('approvalReview') === '1',
     })
-  }, [])
+  }, [navigationKey])
 
   useEffect(() => {
     if (!returnContext.approvalReview) return
@@ -2326,14 +2329,14 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
   // prose modal once the story/series prose has loaded; does nothing if the
   // param is absent or there's no prose to show.
   useEffect(() => {
-    if (openReaderAppliedRef.current) return
+    if (openReaderAppliedRef.current === navigationKey) return
     const params = new URLSearchParams(window.location.search)
     if (params.get('openReader') !== '1') return
     if (!proseAvailable) return
-    openReaderAppliedRef.current = true
+    openReaderAppliedRef.current = navigationKey
     openedReaderViaDeepLinkRef.current = true
     setActiveModal('prose')
-  }, [proseAvailable])
+  }, [proseAvailable, navigationKey])
 
   useEffect(() => {
     if (!proseAvailable || totalProseParagraphs <= 0) return
@@ -2538,6 +2541,13 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
     : (actualAudioDuration || (story?.duration_mins || 0) * 60)
   const effCur   = isASC3 ? cumTime : currentTime
   const playerGenres = getPlayerGenres(story)
+  const miniToggleRef = useRef(handlePlayPause)
+  miniToggleRef.current = handlePlayPause
+  useEffect(() => {
+    if (!story) return
+    onPlaybackSnapshot?.({ storyId, title: story.title, isPlaying, currentTime: effCur, duration: effTotal,
+      toggle: () => miniToggleRef.current() })
+  }, [storyId, story?.title, isPlaying, effCur, effTotal, onPlaybackSnapshot])
   // Position: the OS extrapolates from (position, playbackRate), so update on
   // play/pause, seeks and every 5s bucket rather than on every timeupdate.
   // Uses the same global (multi-segment) position/total as the progress bar.

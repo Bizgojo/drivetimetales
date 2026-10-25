@@ -7,6 +7,7 @@ import UtmCapture from '@/components/UtmCapture';
 import ReferralCapture from '@/components/ReferralCapture';
 import OfflineBootstrap from '@/components/offline/OfflineBootstrap';
 import AppShell from '@/components/AppShell';
+import PersistentPlayer from '@/components/player/PersistentPlayer';
 import MetaPixel from '@/components/MetaPixel';
 import TikTokPixel from '@/components/TikTokPixel';
 
@@ -56,7 +57,7 @@ export default function RootLayout({
         <ReferralCapture />
         <OfflineBootstrap />
           <PWABackGuard />
-          <AppShell>{children}</AppShell>
+          <PersistentPlayer><AppShell>{children}</AppShell></PersistentPlayer>
         </AuthProvider>
         <Analytics />
         <MetaPixel />
