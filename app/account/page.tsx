@@ -154,9 +154,10 @@ export default function AccountPage() {
     );
   }
 
-  // Only redirect if definitely not logged in (after loading completes and mounted)
+  // Keep the intended Account destination through Google OAuth instead of
+  // silently returning to Home after authentication.
   if (!user) {
-    router.push('/signin');
+    router.replace('/signin?returnTo=%2Faccount');
     return (
       <div className="min-h-screen bg-gray-950 text-white flex items-center justify-center">
         <div className="text-center">
