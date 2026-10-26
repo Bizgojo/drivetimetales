@@ -1939,6 +1939,9 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
     setPlaybackEnded(false)
     setEndStateCandidate(null)
     setCatalogExhausted(false)
+    // Once Start Over is explicitly chosen, the old resume failure is obsolete.
+    setAudioErrorMessage('')
+    resumePlayRequestedRef.current = false
     clearLocalPlayerProgress(storyId, user?.id)
     lastLocalProgressWriteRef.current = 0
     resumeRef.current = 0
