@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import Anthropic from '@anthropic-ai/sdk'
 import { logAnthropicCall } from '@/app/lib/anthropic-logger'
+import { checkEpisodeSpendCap } from '@/app/lib/spend-ledger'
 import { sanitizeSeriesTitle } from '@/lib/seriesTitle'
 import { buildNamePalettePromptBlock } from '@/lib/story/namePalette'
 import { recordProductionLearningEvent } from '@/lib/productionLearning'
@@ -4451,13 +4452,7 @@ async function validateStandaloneBelleQuality(job: ProductionJob, model: string)
     story.series_is_finale ? `series_is_finale=${story.series_is_finale}` : '',
   ].filter(Boolean).join(', ') || 'standalone inferred from production job'
 
-  const response = await anthropic.messages.create({
-    model,
-    max_tokens: 1000,
-    temperature: 0,
-    messages: [{
-      role: 'user',
-      content: `${BELLE_QUALITY_VALIDATOR_PROMPT}
+  const validatorPrompt = `${BELLE_QUALITY_VALIDATOR_PROMPT}
 
 DECLARED METADATA:
 ${declaredStoryType}
@@ -4475,16 +4470,40 @@ BELLE OUTRO:
 ${outroText}
 
 SCRIPT ENDING CONTEXT:
-${scriptTail(story.script, 2200)}`,
-    }],
-  })
+${scriptTail(story.script, 2200)}`
 
-  const rawReport = response.content
-    .map((c: any) => ('text' in c ? c.text : ''))
-    .join('')
-    .trim()
-  if (!rawReport) throw new Error('Belle quality validator returned an empty report')
+  // JUDGE-JSON-RETRY-001 (2026-10-25): the judge model occasionally returns
+  // prose with no JSON object at all ("No JSON object found in model
+  // response" - EP1 b50011ae 2026-10-25). One bounded retry of the identical
+  // call; the gate is unchanged (valid parsed JSON still required to pass).
+  // Extra cost: at most one additional Anthropic call per validation.
+  let validatorUsage;
+  const callBelleQualityValidator = async (): Promise<string> => {
+    const retryResponse = await anthropic.messages.create({
+      model,
+      max_tokens: 1000,
+      temperature: 0,
+      messages: [{ role: 'user', content: validatorPrompt }],
+    })
+    const retryRaw = retryResponse.content
+      .map((c: any) => ('text' in c ? c.text : ''))
+      .join('')
+      .trim()
+    if (!retryRaw) throw new Error('Belle quality validator returned an empty report')
+    validatorUsage = retryResponse;
+    return retryRaw
+  }
 
+  let rawReport = await callBelleQualityValidator()
+  try {
+    parseJsonObject(rawReport)
+  } catch (firstErr) {
+    if (String((firstErr as Error)?.message || '').includes('empty report')) throw firstErr
+    console.warn(`  Belle quality validator first response unparseable for story ${storyId}, retrying once: ${String((firstErr as Error)?.message || firstErr).slice(0, 120)}`)
+    rawReport = await callBelleQualityValidator()
+  }
+
+  const response = validatorUsage;
   const parsed = parseJsonObject(rawReport)
   const introScore = typeof parsed.introScore === 'number' ? parsed.introScore : Number(parsed.introScore || 0)
   const outroScore = typeof parsed.outroScore === 'number' ? parsed.outroScore : Number(parsed.outroScore || 0)
@@ -8164,6 +8183,69 @@ export async function POST(req: NextRequest) {
       lockedJob = await lockJob(candidate, lockHolderId)
       if (!lockedJob) {
         return bad('Production job is already locked', 409, { jobId: candidate.id })
+      }
+    }
+
+    // CREEK-PAUSE-AND-REPAIR (B): per-episode spend cap — enforced BEFORE any
+    // paid step runs. Blocks new spend when the routine-production cap is
+    // reached. Fail-OPEN while the ledger table is not yet live (migration
+    // unapplied): getEpisodeSpend reports ledgerLive=false and allowed=true.
+    if (lockedJob.story_id) {
+      const spendGate = await checkEpisodeSpendCap(lockedJob.story_id).catch((gateErr) => {
+        console.warn('[spend-ledger] Cap check failed OPEN:', gateErr instanceof Error ? gateErr.message : String(gateErr))
+        return null
+      })
+      if (spendGate && spendGate.ledgerLive && !spendGate.allowed) {
+        const alreadyBlocked = (lockedJob.error_json as Record<string, unknown> | null)?.kind === 'spend_cap_reached'
+        const gateMsg =
+          'Routine-production spend cap reached for story ' + lockedJob.story_id + ': ' +
+          'USD ' + spendGate.estimatedTotalUsd.toFixed(2) + ' metered new spend vs USD ' + spendGate.capUsd.toFixed(2) + ' cap' +
+          (spendGate.unknownCount > 0
+            ? ' (+' + spendGate.unknownCount + ' UNKNOWN-value ' + (spendGate.unknownCount === 1 ? 'entry' : 'entries') + ' flagged — cap applies to metered new spend only)'
+            : '') +
+          '. No further paid steps until Marc reviews.'
+        console.error('[run-next] SPEND_CAP_BLOCKED job=' + lockedJob.id.slice(0, 8) + ' step=' + normalizeStep(lockedJob.current_step) + ' ' + gateMsg)
+        await supabase
+          .from('production_jobs')
+          .update({
+            status: 'queued',
+            locked_at: null,
+            locked_by: null,
+            error_json: {
+              kind: 'spend_cap_reached',
+              at: nowIso(),
+              step: normalizeStep(lockedJob.current_step),
+              estimatedTotalUsd: spendGate.estimatedTotalUsd,
+              capUsd: spendGate.capUsd,
+              unknownCount: spendGate.unknownCount,
+            },
+            logs: alreadyBlocked ? lockedJob.logs : appendLog(lockedJob, 'Blocked: routine-production spend cap reached (no paid steps run)', {
+              kind: 'spend_cap_reached',
+              estimatedTotalUsd: spendGate.estimatedTotalUsd,
+              capUsd: spendGate.capUsd,
+              unknownCount: spendGate.unknownCount,
+            }),
+          })
+          .match(ownedJobFence(lockedJob, lockHolderId))
+        return NextResponse.json(
+          {
+            success: false,
+            error: gateMsg,
+            spendCap: {
+              allowed: false,
+              estimatedTotalUsd: spendGate.estimatedTotalUsd,
+              capUsd: spendGate.capUsd,
+              unknownCount: spendGate.unknownCount,
+            },
+          },
+          { status: 402 },
+        )
+      }
+      if (spendGate && spendGate.unknownCount > 0 && spendGate.allowed) {
+        console.warn(
+          '[run-next] spend-ledger UNKNOWN flag job=' + lockedJob.id.slice(0, 8) + ' story=' + lockedJob.story_id + ' ' +
+          'unknownEntries=' + spendGate.unknownCount + ' (cap applies to metered new spend only)',
+        )
       }
     }
 

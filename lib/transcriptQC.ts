@@ -1566,6 +1566,44 @@ export function evaluateTranscriptQC(expectedText: string, detectedText: string)
   }
 }
 
+// SEG57-TRANSCRIPT-FLAKE-001 (2026-10-25): bounded extra full-segment
+// candidates for transcript-only failures on loudness-passing audio.
+// Demonstrated case: EP3 seg_0057 "He said nothing, which was its own kind
+// of comment." - Whisper VAD truncated at the comma pause; re-renders return
+// VARYING fragments ("He said nothing." 45.2%, "You had nothing." 38.1%),
+// proving transcription-side flake on good audio rather than a bad render.
+// When the detected text is a clean sequential prefix of expected (head
+// verified, tail missing) each full re-render is an independent transcription
+// sample, so up to TRANSCRIPT_FLAKE_EXTRA_CANDIDATES extra full candidates
+// are warranted BEFORE split-rescue. Non-prefix mismatches, ambiguous output
+// ("?"/empty), and tail-verified cases are NOT covered - they keep the
+// existing split-rescue path unchanged. Full-line verification is preserved:
+// an extra candidate must pass the same transcript QC to be accepted.
+export const TRANSCRIPT_FLAKE_EXTRA_CANDIDATES = 2
+export interface TranscriptFlakeFailure {
+  expectedText: string
+  detectedText: string
+  coverage?: number | null
+  tailMatches?: boolean | null
+}
+export function transcriptFlakeWarrantsExtraCandidate(
+  failure: TranscriptFlakeFailure | null | undefined,
+  extraCandidatesUsed: number,
+): boolean {
+  if (!failure || extraCandidatesUsed >= TRANSCRIPT_FLAKE_EXTRA_CANDIDATES) return false
+  const detected = String(failure.detectedText || '').trim()
+  if (!detected || detected === '?' || detected === '??') return false
+  if (failure.tailMatches) return false
+  const expTok = transcriptTokens(failure.expectedText || '')
+  const detTok = transcriptTokens(detected)
+  if (detTok.length === 0 || expTok.length === 0) return false
+  for (let i = 0; i < detTok.length; i++) {
+    if (i >= expTok.length || !transcriptTokenMatches(expTok[i], detTok[i])) return false
+  }
+  if (expTok.length - detTok.length < 1) return false
+  return true
+}
+
 // ORION-QC-DIAG-002b: module build marker — printed by the generate-voices
 // truncation diagnostic to detect stale compiled chunks in deployments.
 export const QC_MODULE_MARKER = 'unidash-001-20260712'
