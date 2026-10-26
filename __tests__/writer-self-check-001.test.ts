@@ -1,0 +1,190 @@
+import { readFileSync } from 'fs'
+import { join } from 'path'
+import {
+  briefMinutesOf,
+  briefRuntimeImpossible,
+  buildWriterRewriteFeedback,
+  checkScriptReadiness,
+  checkSeriesCastContinuity,
+  voicedCharacterSpeakers,
+  writeWithSelfCheck,
+  WRITER_SELF_CHECK_MAX_REWRITES,
+} from '@/lib/scriptReadiness'
+
+const filler = (n: number) => Array.from({ length: n }, (_, i) => `word${i}`).join(' ')
+
+/** A series-episode script in the real layout (planning headers, guide, then
+ * [START AUDIO DRAMA SCRIPT] — all 11 prod scripts with PREMISE/ENDING labels
+ * carry that marker). Spoken length is controlled by `lines`. */
+function episodeScript(lines: number, extra = '') {
+  const body: string[] = [
+    'TITLE: The Ultimatum',
+    'DESCRIPTION: A town votes on whether to stay alive.',
+    'NARRATOR: Ray Dolan',
+    'PREMISE: A dying town must choose.',
+    'ENDING: Cliffhanger at the vote.',
+    '',
+    'CHARACTER GUIDE',
+    '---',
+    'MARTHA LOCKE — 50s, female.',
+    'GAVIN CROWE — 40s, male.',
+    '---',
+    '',
+    '[START AUDIO DRAMA SCRIPT]',
+    '',
+    'BELLE B: [LISTENER_NAME], Ghost Town Vote — Episode 1: The Ultimatum.',
+    '',
+    '[SFX: wind through a broken shutter]',
+    '',
+  ]
+  for (let i = 0; i < lines; i++) {
+    body.push(`NARRATOR: ${filler(40)}`, '', `MARTHA LOCKE: ${filler(20)}`, '', `GAVIN CROWE: ${filler(10)}`, '')
+  }
+  if (extra) body.push(extra)
+  return body.join('\n')
+}
+
+const check = (brief: number) => (script: string) =>
+  checkScriptReadiness({
+    script,
+    storyType: 'series_episode',
+    seriesId: 's1',
+    seriesTotalEpisodes: 3,
+    episodeNumber: 1,
+    narratorVoiceNames: ['Ray Dolan'],
+    briefMinutes: brief,
+  })
+
+describe('WRITER-SELF-CHECK-001: bounded write → check → rewrite', () => {
+  test('passes on the first draft → exactly one writing call, no feedback', async () => {
+    const calls: string[] = []
+    const res = await writeWithSelfCheck({
+      briefMinutes: 14,
+      check: check(14),
+      generate: async (feedback) => {
+        calls.push(feedback)
+        return { script: episodeScript(32), description: 'd', inputTokens: 10, outputTokens: 20 }
+      },
+    })
+    expect(res.ok).toBe(true)
+    expect(calls).toEqual([''])
+    expect(res.attempts).toHaveLength(1)
+    expect(res.usage).toEqual({ input: 10, output: 20 })
+  })
+
+  test('short first draft (CEO shape) → rewrite with length feedback → passes on draft 2', async () => {
+    const calls: string[] = []
+    const drafts = [episodeScript(12), episodeScript(32)]
+    const res = await writeWithSelfCheck({
+      briefMinutes: 14,
+      check: check(14),
+      generate: async (feedback) => {
+        calls.push(feedback)
+        return { script: drafts[calls.length - 1], description: 'd' }
+      },
+    })
+    expect(res.ok).toBe(true)
+    expect(calls).toHaveLength(2)
+    expect(calls[1]).toMatch(/REWRITE REQUIRED/)
+    expect(calls[1]).toMatch(/LENGTH: .* must have about 2240 spoken words/)
+    expect(res.script).toBe(drafts[1])
+  })
+
+  test('never fixed → stops after 1 + max rewrites and reports failure (fail closed)', async () => {
+    let n = 0
+    const res = await writeWithSelfCheck({
+      briefMinutes: 20,
+      check: check(20),
+      generate: async () => {
+        n++
+        return { script: episodeScript(12), description: 'd' }
+      },
+    })
+    expect(res.ok).toBe(false)
+    expect(n).toBe(1 + WRITER_SELF_CHECK_MAX_REWRITES)
+    expect(res.attempts.at(-1)!.blockers.join(' ')).toMatch(/RUNTIME/)
+  })
+
+  test('feedback lists every non-length blocker verbatim', () => {
+    const report = check(14)(episodeScript(32, 'NARRATOR: At 8:52 the vote began.'))
+    const fb = buildWriterRewriteFeedback(report, 14)
+    expect(fb).toMatch(/NUMERAL-PRETTS/)
+    expect(fb).toMatch(/Keep characters, names, places, and continuity exactly/)
+  })
+})
+
+describe('false-positive guards found against real published scripts', () => {
+  test('header lines (PREMISE:, ENDING:) are not treated as characters', () => {
+    const speakers = voicedCharacterSpeakers(episodeScript(2))
+    expect(speakers.has('PREMISE')).toBe(false)
+    expect(speakers.has('ENDING')).toBe(false)
+    expect(Array.from(speakers).sort()).toEqual(['GAVIN CROWE', 'MARTHA LOCKE'])
+  })
+
+  test('a script with NO character guide is not blocked for it ("The Woman Who Took My Place" shape)', () => {
+    const noGuide = episodeScript(32).replace(/CHARACTER GUIDE\n---\n[\s\S]*?\n---\n/, '')
+    expect(noGuide).not.toMatch(/CHARACTER GUIDE/)
+    expect([...check(14)(noGuide).blockers, ...check(14)(noGuide).warnings].map((b) => b.gate)).not.toContain('CHARACTER-GUIDE')
+  })
+
+  test('mixed-case guide entries ("Jonah Bell", Harbor Light) still count', () => {
+    const script = episodeScript(32).replace('GAVIN CROWE — 40s, male.', 'Gavin Crowe — 40s, male.')
+    expect(check(14)(script).warnings.map((b) => b.gate)).not.toContain('CHARACTER-GUIDE')
+  })
+})
+
+describe('brief helpers', () => {
+  test('briefMinutesOf prefers duration_mins, falls back to brief_json.runtime', () => {
+    expect(briefMinutesOf({ duration_mins: 14, brief_json: { runtime: '20 min' } })).toBe(14)
+    expect(briefMinutesOf({ duration_mins: null, brief_json: { runtime: '18 min' } })).toBe(18)
+    expect(briefMinutesOf({})).toBeNull()
+  })
+
+  test('impossible briefs fail fast before any writing call', () => {
+    expect(briefRuntimeImpossible(11)).toMatch(/Re-brief to >= 12 min/)
+    expect(briefRuntimeImpossible(12)).toBeNull()
+    expect(briefRuntimeImpossible(20)).toBeNull()
+    expect(briefRuntimeImpossible(null)).toBeNull()
+  })
+})
+
+describe('wiring in run-next generateOneSeriesEpisodeScript', () => {
+  const src = readFileSync(join(__dirname, '..', 'app/api/admin/production-jobs/run-next/route.ts'), 'utf8')
+  const fnStart = src.indexOf('async function generateOneSeriesEpisodeScript(')
+  const fnEnd = src.indexOf('\nfunction validateSeriesMetadata(', fnStart)
+  const fn = src.slice(fnStart, fnEnd)
+
+  test('impossible-brief check runs before the self-check writer', () => {
+    expect(fn.indexOf('briefRuntimeImpossible(')).toBeGreaterThan(-1)
+    expect(fn.indexOf('briefRuntimeImpossible(')).toBeLessThan(fn.indexOf('writeWithSelfCheck('))
+  })
+
+  test('the only writing call is inside writeWithSelfCheck, and the self-check gates the save', () => {
+    expect((fn.match(/anthropic\.messages\.create\(/g) || []).length).toBe(1)
+    const writer = fn.indexOf('writeWithSelfCheck(')
+    expect(fn.indexOf('anthropic.messages.create(')).toBeGreaterThan(writer)
+    expect(fn.indexOf('if (!selfCheck.ok)')).toBeLessThan(fn.indexOf(".from('stories')\n    .update({"))
+  })
+
+  test('series cast continuity is checked once all scripts exist, before returning', () => {
+    const cont = fn.indexOf('checkSeriesCastContinuity(')
+    expect(cont).toBeGreaterThan(fn.indexOf('const allScriptsGenerated'))
+    expect(cont).toBeLessThan(fn.lastIndexOf('return {'))
+  })
+
+  test('self-check attempts are recorded on the saved episode', () => {
+    expect(fn).toMatch(/writer_self_check: \{ passed: true, attempts: writerAttempts \}/)
+  })
+})
+
+test('continuity check still separates Ghost Town Vote from The Understudy using parser speakers', () => {
+  const s = (names: string[]) => `NARRATOR: Ray Dolan\n\nBELLE B: hi\n\n${names.map((n) => `${n}: words here now.`).join('\n\n')}`
+  expect(checkSeriesCastContinuity([
+    { episodeNumber: 1, script: s(['GAVIN CROWE']) },
+    { episodeNumber: 2, script: s(['SUSANNA']) },
+  ])).toHaveLength(1)
+  expect(checkSeriesCastContinuity([
+    { episodeNumber: 1, script: s(['PRU ADLER']) },
+    { episodeNumber: 2, script: s(['PRU']) },
+  ])).toEqual([])
+})

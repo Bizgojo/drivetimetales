@@ -39,6 +39,13 @@ import { numeralPreTtsScan, buildNumeralPreflightFailure } from '@/lib/numeralPr
 import { shouldPurgeVoiceSegments, musicUrlReusable } from '@/app/lib/pipeline-gates'
 import { runVoiceMapGate } from '@/lib/voiceMapGate'
 import { checkNarrationPresence } from '@/lib/narrationPresence'
+import {
+  briefMinutesOf,
+  briefRuntimeImpossible,
+  checkScriptReadiness,
+  checkSeriesCastContinuity,
+  writeWithSelfCheck,
+} from '@/lib/scriptReadiness'
 import { runVoiceConformanceGate, type VoiceProfile } from '@/lib/voiceConformanceGate'
 // R1-V3 step map (decision r1-v3-step-map-approved-oct6, 2026-10-06):
 // central per-step model router. STEP_MODELS below derives from it with
@@ -6301,20 +6308,70 @@ async function generateOneSeriesEpisodeScript(job: ProductionJob, model: string)
   const seriesCharacterRosterBlock = buildSeriesCharacterRosterPromptBlock(seriesCharacterRoster)
   const prompt = buildSeriesEpisodePrompt(series, targetEpisode, episodes, continuityBundle, namePaletteBlock, authorVoiceBlock, assignedNarratorName, seriesCharacterRosterBlock)
 
-  const response = await anthropic.messages.create({
-    model,
-    max_tokens: 12000,
-    temperature: 0.65,
-    messages: [{ role: 'user', content: prompt }],
+  // WRITER-SELF-CHECK-001: check every draft with the free production gates
+  // before saving; rewrite with the exact failures, at most
+  // WRITER_SELF_CHECK_MAX_REWRITES times; fail closed if still failing.
+  const selfCheckVoices = (await fetchAllNarratorVoices()).map((voice) => voice.name)
+  const selfCheckBriefMinutes = briefMinutesOf(targetEpisode)
+  const impossibleBrief = briefRuntimeImpossible(selfCheckBriefMinutes)
+  if (impossibleBrief) {
+    throw new Error(`WRITER-SELF-CHECK-001: episode ${targetEpisodeNumber} cannot be written to pass (no writing call made): ${impossibleBrief}`)
+  }
+  const selfCheckTotal = Number(series.total_episodes || 0) || episodes.length
+  const selfCheck = await writeWithSelfCheck({
+    briefMinutes: selfCheckBriefMinutes,
+    generate: async (feedback) => {
+      const response = await anthropic.messages.create({
+        model,
+        max_tokens: 12000,
+        temperature: 0.65,
+        messages: [{ role: 'user', content: prompt + feedback }],
+      })
+      const rawScript = response.content
+        .map((c: any) => ('text' in c ? c.text : ''))
+        .join('')
+        .trim()
+      const normalized = normalizeScriptDescription(rawScript, brief.description || targetEpisode.description || '')
+      return {
+        script: normalized.script,
+        description: normalized.description,
+        inputTokens: response.usage?.input_tokens ?? 0,
+        outputTokens: response.usage?.output_tokens ?? 0,
+      }
+    },
+    check: (draftScript) => checkScriptReadiness({
+      script: draftScript,
+      storyType: 'series_episode',
+      seriesId: String(seriesId),
+      seriesTotalEpisodes: selfCheckTotal,
+      episodeNumber: targetEpisodeNumber,
+      isFinale: selfCheckTotal > 0 && targetEpisodeNumber >= selfCheckTotal,
+      narratorVoiceNames: selfCheckVoices,
+      briefMinutes: selfCheckBriefMinutes,
+    }),
   })
+  const script = selfCheck.script
+  const description = selfCheck.description
+  const writerAttempts = selfCheck.attempts
+  const writerUsage = selfCheck.usage
 
-  const rawScript = response.content
-    .map((c: any) => ('text' in c ? c.text : ''))
-    .join('')
-    .trim()
-  const normalized = normalizeScriptDescription(rawScript, brief.description || targetEpisode.description || '')
-  const script = normalized.script
-  const description = normalized.description
+  if (!selfCheck.ok) {
+    logAnthropicCall({
+      route: '/api/admin/production-jobs/run-next',
+      purpose: 'series-episode-script',
+      model,
+      inputTokens: writerUsage.input,
+      outputTokens: writerUsage.output,
+      storyId: targetEpisode.id,
+      storyTitle: String(targetEpisode.title || ''),
+      metadata: { is_v2: true, series_id: String(seriesId), episode_number: targetEpisodeNumber, writer_self_check: 'failed', attempts: writerAttempts.length },
+    }).catch(() => {})
+    const last = writerAttempts[writerAttempts.length - 1]
+    throw new Error(
+      `WRITER-SELF-CHECK-001: episode ${targetEpisodeNumber} still fails pre-save checks after ${writerAttempts.length} drafts ` +
+      `(nothing saved, no audio spend): ${(last?.blockers || []).join(' | ')}`,
+    )
+  }
   const generatedTitle = extractTitle(script) || targetEpisode.title || ''
   const wordCount = countWords(generatedTitle)
 
@@ -6337,6 +6394,7 @@ async function generateOneSeriesEpisodeScript(job: ProductionJob, model: string)
       series_id: String(seriesId),
       continuity_bundle_used: continuityBundle,
       continuity_pins_used: continuityPinsUsed,
+      writer_self_check: { passed: true, attempts: writerAttempts },
       summary: {
         title: generatedTitle,
         description,
@@ -6371,16 +6429,30 @@ async function generateOneSeriesEpisodeScript(job: ProductionJob, model: string)
     route: '/api/admin/production-jobs/run-next',
     purpose: 'series-episode-script',
     model,
-    inputTokens: response.usage?.input_tokens ?? 0,
-    outputTokens: response.usage?.output_tokens ?? 0,
+    inputTokens: writerUsage.input,
+    outputTokens: writerUsage.output,
     storyId: targetEpisode.id,
     storyTitle: generatedTitle,
-    metadata: { is_v2: true, series_id: String(seriesId), episode_number: targetEpisodeNumber },
+    metadata: { is_v2: true, series_id: String(seriesId), episode_number: targetEpisodeNumber, writer_self_check: 'passed', attempts: writerAttempts.length },
   }).catch(() => {})
 
   const refreshedEpisodes = await loadSeriesEpisodes(String(seriesId))
   const allScriptsGenerated = refreshedEpisodes.every((episode: any) => Boolean(episode.script))
   const nextStep = allScriptsGenerated ? NEXT_STEP_AFTER_SERIES_SCRIPTS : NEXT_STEP_AFTER_SERIES_CREATE
+
+  // SERIES-CAST-CONTINUITY-001: once every episode is written, the cast must
+  // carry across episodes before the series moves toward validation and spend.
+  if (allScriptsGenerated) {
+    const castBlockers = checkSeriesCastContinuity(
+      refreshedEpisodes.map((episode: any) => ({ episodeNumber: episodeNumber(episode, 0), script: episode.script })),
+    )
+    if (castBlockers.length > 0) {
+      throw new Error(
+        `SERIES-CAST-CONTINUITY-001: series ${seriesId} episodes do not share a cast (no audio spend): ` +
+        castBlockers.map((b) => b.detail).join(' | '),
+      )
+    }
+  }
 
   // COVER-PIPELINE-DECOUPLE-001 (Tasks 1-3): cover_generation_phase trigger.
   // Fires right after the series blueprint + episode briefs/scripts exist —

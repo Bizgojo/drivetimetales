@@ -24,6 +24,7 @@
 import { numeralPreTtsScan } from './numeralPreTtsScan'
 import { checkScriptRuntimeMeetsMinimum, SCRIPT_RUNTIME_PREFLIGHT } from './scriptRuntimeEstimate'
 import { checkNarrationPresence } from './narrationPresence'
+import { parseScriptPositions } from './scriptLineIndex'
 import { RUNTIME_GATE } from './runtimeGate'
 
 // Mirrors app/api/admin/production-jobs/run-next/route.ts (pinned by test).
@@ -56,6 +57,8 @@ export type ReadinessInput = {
 export type ReadinessReport = {
   ready: boolean
   blockers: ReadinessBlocker[]
+  /** Reported, never gating (not a production gate; 2/93 published scripts would trip it). */
+  warnings: ReadinessBlocker[]
   metrics: {
     spokenWords: number
     estimatedMins: number
@@ -74,15 +77,30 @@ function words(s: string): number {
   return s.trim().split(/\s+/).filter(Boolean).length
 }
 
-const NON_SPEAKERS = new Set([
-  'TITLE', 'DESCRIPTION', 'NARRATIVE_VOICE', 'NARRATOR', 'NARRATOR_IS_CHARACTER', 'GENRE', 'SUBGENRE',
-  'AUTHOR', 'SERIES', 'EPISODE', 'EPISODE_TITLE', 'SERIES_TOTAL_EPISODES', 'SERIES_IS_FINALE', 'ANNOUNCER',
-  'BELLE_GATE', 'STORY_TYPE', 'BEATS', 'SCENE', 'BELLE B', 'BELLE', 'PIPELINE_MODE', 'RUNTIME', 'SETTING',
-])
+
+/**
+ * Speakers exactly as production voices them: the canonical parser
+ * (parseScriptPositions) never classifies headers / pre-script lines
+ * (PREMISE:, ENDING:, BEATS:, SUNO PROMPT:...) as voice positions.
+ * Excludes narration and announcer lines.
+ */
+export function voicedCharacterSpeakers(script: string | null | undefined): Set<string> {
+  const text = String(script || '')
+  const narrator = header(text, 'NARRATOR').toUpperCase()
+  const out = new Set<string>()
+  for (const pos of parseScriptPositions(text)) {
+    if (pos.kind !== 'voice' || !pos.speaker) continue
+    const sp = pos.speaker.trim().toUpperCase()
+    if (sp === 'NARRATOR' || sp === narrator || sp === 'BELLE B' || sp === 'BELLE' || sp === 'ANNOUNCER') continue
+    out.add(sp)
+  }
+  return out
+}
 
 export function checkScriptReadiness(input: ReadinessInput): ReadinessReport {
   const script = String(input.script || '')
   const blockers: ReadinessBlocker[] = []
+  const warnings: ReadinessBlocker[] = []
   const sfxMax = input.sfxMax ?? VALIDATOR_SFX_MAX
 
   // 1. Card copy (run-next validateCardCopy rules)
@@ -147,19 +165,14 @@ export function checkScriptReadiness(input: ReadinessInput): ReadinessReport {
   // 6. Belle intro present
   if (!/^BELLE B\s*:/m.test(script)) blockers.push({ gate: 'BELLE', detail: 'no BELLE B intro line' })
 
-  // 7. Every speaker appears in the CHARACTER GUIDE (casting needs a description)
+  // 7. When a CHARACTER GUIDE exists, every voiced character must be in it
+  // (casting needs a description). A missing guide is NOT a blocker: published
+  // scripts without one (e.g. "The Woman Who Took My Place") produced fine.
   const guideMatch = script.match(/CHARACTER GUIDE([\s\S]*?)(\n---\s*\n[\s\S]*?\n---|\n\n\n)/)
-  const guide = (guideMatch?.[1] || '') + (guideMatch?.[2] || '')
-  if (guide) {
-    const speakers = new Set<string>()
-    for (const m of script.matchAll(/^([A-Z][A-Z .'\-]{1,40}?)\s*:/gm)) {
-      const s = m[1].trim()
-      if (!NON_SPEAKERS.has(s) && s !== narrator.toUpperCase()) speakers.add(s)
-    }
-    const missing = Array.from(speakers).filter((s) => !guide.toUpperCase().includes(s))
-    if (missing.length) blockers.push({ gate: 'CHARACTER-GUIDE', detail: `speakers without guide entry: ${missing.slice(0, 5).join(', ')}` })
-  } else {
-    blockers.push({ gate: 'CHARACTER-GUIDE', detail: 'CHARACTER GUIDE section missing' })
+  const guide = ((guideMatch?.[1] || '') + (guideMatch?.[2] || '')).toUpperCase()
+  if (guide.trim()) {
+    const missing = Array.from(voicedCharacterSpeakers(script)).filter((s) => !guide.includes(s) && !guide.includes(s.split(/\s+/)[0]))
+    if (missing.length) warnings.push({ gate: 'CHARACTER-GUIDE', detail: `voiced characters without guide entry: ${missing.slice(0, 5).join(', ')}` })
   }
 
   // 8. Series typing (SERIES-TYPE-CONSISTENCY-001)
@@ -170,6 +183,7 @@ export function checkScriptReadiness(input: ReadinessInput): ReadinessReport {
   return {
     ready: blockers.length === 0,
     blockers,
+    warnings,
     metrics: {
       spokenWords: runtime.spokenWords,
       estimatedMins: Number(runtime.estimatedMins.toFixed(2)),
@@ -195,15 +209,7 @@ export function checkScriptReadiness(input: ReadinessInput): ReadinessReport {
 export const CAST_CONTINUITY_MAX_EPISODES = 6
 
 export function speakingCastFirstNames(script: string | null | undefined): Set<string> {
-  const text = String(script || '')
-  const narrator = header(text, 'NARRATOR').toUpperCase()
-  const names = new Set<string>()
-  for (const m of text.matchAll(/^([A-Z][A-Z .'\-]{1,40}?)\s*:/gm)) {
-    const speaker = m[1].trim()
-    if (NON_SPEAKERS.has(speaker) || speaker === 'SUNO PROMPT' || speaker === narrator) continue
-    names.add(speaker.split(/\s+/)[0])
-  }
-  return names
+  return new Set(Array.from(voicedCharacterSpeakers(script)).map((s) => s.split(/\s+/)[0]))
 }
 
 export function checkSeriesCastContinuity(
@@ -250,4 +256,105 @@ export function dispatchReadinessReasons(
     for (const b of checkSeriesCastContinuity(episodes)) reasons.push(`${b.gate}: ${b.detail}`)
   }
   return reasons
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+// WRITER-SELF-CHECK-001 (Independent Recovery, 2026-10-26)
+// The series writer saved whatever the model returned; defects surfaced later
+// in production, one failed run at a time (CEO series: ~8 min vs 20-min brief).
+// The writer now checks each episode before saving and rewrites with this
+// feedback, at most WRITER_SELF_CHECK_MAX_REWRITES times.
+// ───────────────────────────────────────────────────────────────────────────
+
+export const WRITER_SELF_CHECK_MAX_REWRITES = 2
+
+export function buildWriterRewriteFeedback(report: ReadinessReport, briefMinutes?: number | null): string {
+  const lines: string[] = []
+  for (const b of report.blockers) {
+    if (b.gate === 'RUNTIME' || b.gate === 'RUNTIME-BRIEF') {
+      const target = Number(briefMinutes || 0) > 0 ? Number(briefMinutes) : SCRIPT_RUNTIME_PREFLIGHT.MIN_ESTIMATED_MINUTES
+      const targetWords = Math.round(target * SCRIPT_RUNTIME_PREFLIGHT.CALIBRATED_WPM)
+      lines.push(
+        `- LENGTH: the script has ${report.metrics.spokenWords} spoken words (~${report.metrics.estimatedMins} min). ` +
+        `It must have about ${targetWords} spoken words (${target} min at ${SCRIPT_RUNTIME_PREFLIGHT.CALIBRATED_WPM} wpm, within ±10%). ` +
+        `Add real scenes and beats; do not pad.`,
+      )
+    } else {
+      lines.push(`- ${b.gate}: ${b.detail}`)
+    }
+  }
+  return [
+    '',
+    '---',
+    'REWRITE REQUIRED. Your previous draft failed these automatic production checks.',
+    'Write the COMPLETE episode script again, in the same format, fixing every item:',
+    ...Array.from(new Set(lines)),
+    'Keep characters, names, places, and continuity exactly as given above.',
+    '---',
+  ].join('\n')
+}
+
+/** Brief-of-record minutes: stories.duration_mins, else brief_json.runtime ("15 min"). */
+export function briefMinutesOf(story: { duration_mins?: number | null; brief_json?: any }): number | null {
+  const direct = Number(story?.duration_mins || 0)
+  if (direct > 0) return direct
+  const m = String(story?.brief_json?.runtime || '').match(/(\d+(?:\.\d+)?)/)
+  return m ? Number(m[1]) : null
+}
+
+export type WriterDraft = { script: string; description: string; inputTokens?: number; outputTokens?: number }
+
+export type WriterSelfCheckResult = {
+  ok: boolean
+  script: string
+  description: string
+  report: ReadinessReport
+  attempts: Array<{ attempt: number; blockers: string[]; spokenWords: number }>
+  usage: { input: number; output: number }
+}
+
+/**
+ * Bounded write → check → rewrite loop. `generate` receives '' on the first
+ * draft and rewrite feedback afterwards. Makes at most 1 + maxRewrites calls.
+ */
+export async function writeWithSelfCheck(opts: {
+  generate: (feedback: string) => Promise<WriterDraft>
+  check: (script: string) => ReadinessReport
+  briefMinutes?: number | null
+  maxRewrites?: number
+}): Promise<WriterSelfCheckResult> {
+  const maxRewrites = opts.maxRewrites ?? WRITER_SELF_CHECK_MAX_REWRITES
+  const attempts: WriterSelfCheckResult['attempts'] = []
+  const usage = { input: 0, output: 0 }
+  let feedback = ''
+  let draft: WriterDraft = { script: '', description: '' }
+  let report: ReadinessReport = checkScriptReadiness({ script: '' })
+  for (let attempt = 0; attempt <= maxRewrites; attempt++) {
+    draft = await opts.generate(feedback)
+    usage.input += draft.inputTokens ?? 0
+    usage.output += draft.outputTokens ?? 0
+    report = opts.check(draft.script)
+    attempts.push({
+      attempt: attempt + 1,
+      blockers: report.blockers.map((b) => `${b.gate}: ${b.detail}`),
+      spokenWords: report.metrics.spokenWords,
+    })
+    if (report.ready) break
+    feedback = buildWriterRewriteFeedback(report, opts.briefMinutes)
+  }
+  return { ok: report.ready, script: draft.script, description: draft.description, report, attempts, usage }
+}
+
+/**
+ * A brief shorter than the pre-spend floor allows can never pass both the
+ * floor and RUNTIME-GATE-001 (±10% of brief). Detect it before any writing call.
+ */
+export function briefRuntimeImpossible(briefMinutes: number | null | undefined): string | null {
+  const brief = Number(briefMinutes || 0)
+  if (!(brief > 0)) return null
+  const maxAllowed = brief * (1 + RUNTIME_GATE.TOLERANCE)
+  if (maxAllowed < SCRIPT_RUNTIME_PREFLIGHT.MIN_ESTIMATED_MINUTES) {
+    return `brief is ${brief} min; RUNTIME-GATE-001 allows at most ${maxAllowed.toFixed(1)} min but the pre-spend floor requires ${SCRIPT_RUNTIME_PREFLIGHT.MIN_ESTIMATED_MINUTES} min. Re-brief to >= ${Math.ceil(SCRIPT_RUNTIME_PREFLIGHT.MIN_ESTIMATED_MINUTES / (1 + RUNTIME_GATE.TOLERANCE))} min.`
+  }
+  return null
 }

@@ -83,9 +83,10 @@ describe('SCRIPT-READINESS-001', () => {
     expect(r.blockers.map((b) => b.gate)).toContain('NARRATOR')
   })
 
-  test('speaker missing from CHARACTER GUIDE is blocked', () => {
+  test('speaker missing from CHARACTER GUIDE is a warning, never a blocker (2/93 published scripts have this)', () => {
     const r = checkScriptReadiness({ script: makeScript({ extraLines: ['ELIAS VALE: Sit down.'] }), ...series })
-    expect(r.blockers.find((b) => b.gate === 'CHARACTER-GUIDE')?.detail).toMatch(/ELIAS VALE/)
+    expect(r.warnings.find((b) => b.gate === 'CHARACTER-GUIDE')?.detail).toMatch(/ELIAS VALE/)
+    expect(r.blockers.map((b) => b.gate)).not.toContain('CHARACTER-GUIDE')
   })
 
   test('series member typed single is blocked', () => {
