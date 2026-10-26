@@ -172,3 +172,28 @@ describe('WRITER-BELLE-EVIDENCE-001: Belle failures quote the current Belle line
     expect(src).toContain("evidence: [`current ${isOutro ? 'outro' : 'intro'}: BELLE B: ${current}`]")
   })
 })
+
+describe('WRITER-PUBLISH-BELLE-001: writer runs the deterministic publish Belle gate', () => {
+  const src = readFileSync(join(__dirname, '..', 'app/api/admin/production-jobs/run-next/route.ts'), 'utf8')
+  const chk = src.slice(src.indexOf('check: async (draftScript) => {'), src.indexOf('} catch (err) {', src.indexOf('check: async (draftScript) => {')))
+
+  test('check closure calls evaluateBelleCopyForPublish and merges its blockers', () => {
+    expect(chk).toMatch(/evaluateBelleCopyForPublish\(\{/)
+    expect(chk).toMatch(/for \(const b of publishVerdict\.blockers\) if \(!belleIssues\.includes\(b\)\) belleIssues\.push\(b\)/)
+  })
+
+  test('saved EP2 intro (job f77a0696) is refused by the publish gate the voice step uses', () => {
+    const { evaluateBelleCopyForPublish } = require('@/lib/publicationBelleGate')
+    const intro = 'In The Toll at Marsh Crossing, Episode 2, "The Thread Pulls Back" — Nell Faraday turned in those coins and wrote down every detail. Now the coins are gone, and a sergeant with careful eyes wants to know exactly how much she remembers.'
+    const outro = "The secret under that bridge has Nell Faraday's father's name on it — and that revelation is going to cost her something she can't give back. You've been following every thread right alongside her, and the next episode is where it all pulls tight."
+    const script = `TITLE: The Thread Pulls Back\nNARRATOR: Cole Rafferty\n\nBELLE B ANNOUNCEMENT\n---\nBELLE B: ${intro}\n\n[START AUDIO DRAMA SCRIPT]\nNARRATOR: x.\n\nBELLE B OUTRO\n---\nBELLE B: ${outro}\n`
+    const v = evaluateBelleCopyForPublish({ id: 'x', title: 'The Thread Pulls Back', author: 'Dex Carver', script, series_id: 's', series_name: 'The Toll at Marsh Crossing', episode_number: 2, series_is_finale: false })
+    expect(v.ok).toBe(false)
+    expect(v.blockers).toContain('intro must include a concrete narrative hook (event, danger, secret, conflict, mystery, or story mechanism)')
+  })
+
+  test('hook failures get a plain-words hint in the rewrite feedback', () => {
+    const text = buildWriterRewriteFeedback({ ready: false, warnings: [], metrics: notReady().metrics, blockers: [{ gate: 'BELLE-CONTENT', detail: 'intro must include a concrete narrative hook (event, danger, secret, conflict, mystery, or story mechanism)' }] } as any, 15)
+    expect(text).toMatch(/concrete danger, secret, mystery, or impossible event/)
+  })
+})

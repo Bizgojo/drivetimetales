@@ -40,6 +40,7 @@ import { shouldPurgeVoiceSegments, musicUrlReusable } from '@/app/lib/pipeline-g
 import { runVoiceMapGate } from '@/lib/voiceMapGate'
 import { checkNarrationPresence } from '@/lib/narrationPresence'
 import { normalizeScriptFormat } from '@/lib/scriptLabels'
+import { evaluateBelleCopyForPublish } from '@/lib/publicationBelleGate'
 import {
   briefMinutesOf,
   briefRuntimeImpossible,
@@ -6500,6 +6501,24 @@ async function generateOneSeriesEpisodeScript(job: ProductionJob, model: string)
         series_total_episodes: selfCheckTotal,
         series_is_finale: selfCheckIsFinale,
       }, draftScript)
+      // WRITER-PUBLISH-BELLE-001 (job f77a0696): the voice step and publication
+      // run evaluateBelleCopyForPublish, whose hook check is deterministic (no
+      // LLM fallback). The writer's position check passed EP2's intro via the
+      // LLM fallback; voice preflight then refused it. Run the publish gate too.
+      const belleTitleForGate = extractTitle(draftScript) || targetEpisode.title
+      const publishVerdict = evaluateBelleCopyForPublish({
+        id: String(targetEpisode.id),
+        title: belleTitleForGate,
+        author: targetEpisode.author,
+        script: draftScript,
+        series_id: String(seriesId),
+        series_name: targetEpisode.series_name || series.title,
+        episode_number: targetEpisodeNumber,
+        series_is_finale: selfCheckIsFinale,
+      })
+      if (!publishVerdict.ok && 'blockers' in publishVerdict) {
+        for (const b of publishVerdict.blockers) if (!belleIssues.includes(b)) belleIssues.push(b)
+      }
       // WRITER-BELLE-EVIDENCE-001 (job ea6976c3: finale EP3 failed 3 drafts on
       // "outro appears cut off" with near-identical drafts — the writer never
       // saw which text was judged): quote the current Belle line back.

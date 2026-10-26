@@ -336,6 +336,8 @@ export function buildWriterRewriteFeedback(report: ReadinessReport, briefMinutes
       lines.push(`- BELLE-CONTENT: ${b.detail}`)
       if (/cut off|incomplete/i.test(b.detail))
         lines.push('    (The last word before the final period must be a strong word, not a small word such as on, in, at, of, to, the, a, and, or, but, with.)')
+      if (/narrative hook/i.test(b.detail))
+        lines.push('    (State the episode\'s concrete danger, secret, mystery, or impossible event in plain words, e.g. "a stranger pays the toll with coins that should not exist" — mood or setting alone does not count.)')
       for (const e of b.evidence ?? []) lines.push(`    ${e}`)
     } else if (b.gate === 'LABELS' && b.evidence?.length) {
       lines.push(
