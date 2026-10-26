@@ -15,17 +15,23 @@ function getInitial(user: ReturnType<typeof useAuth>['user']) {
 export default function AppHeader() {
   const router = useRouter()
   const pathname = usePathname()
-  const { user } = useAuth()
-  const initial = getInitial(user)
+  const { user, session, loading } = useAuth()
+  const accountUser = user || session?.user || null
+  const initial = getInitial(accountUser)
 
   if (pathname?.startsWith('/admin')) return null
 
   const goBack = () => {
-    // Library is a top-level destination, so Back always returns Home.
-    if (pathname === '/library') {
+    // Account can follow an OAuth redirect: browser history may point to Google.
+    // Primary app screens must return to an app destination, never auth history.
+    if (pathname === '/account' || pathname === '/library') {
       // Use a document navigation here: the route transition must work even if
       // the persistent audio host has left Next client navigation in a bad state.
       window.location.assign('/home')
+      return
+    }
+    if (pathname?.startsWith('/account/')) {
+      window.location.assign('/account')
       return
     }
     // APP-HEADER-PLAYER-001: on the player screen router.back() returns users
@@ -80,7 +86,7 @@ export default function AppHeader() {
           // WALK-BUG-0713 #8 (Marc, 2026-07-13): logo → /home directly for
           // signed-in users (was '/' + signed-in bounce — one hop fewer, and
           // never depends on the root redirect). Signed-out keeps '/'.
-          onClick={() => router.push(user ? '/home' : '/')}
+          onClick={() => window.location.assign(accountUser || loading ? '/home' : '/')}
           className={`absolute left-1/2 flex -translate-x-1/2 items-center border-0 bg-transparent p-0 ${pathname === '/home' ? 'gap-1 min-[380px]:gap-2' : 'gap-2'}`}
           aria-label="Go to Endless Tales home"
         >
@@ -106,9 +112,11 @@ export default function AppHeader() {
             type="button"
             onClick={() => window.location.assign('/account')}
             className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full bg-orange-500 text-lg font-bold text-white transition-colors hover:bg-orange-400"
-            aria-label={user ? 'Go to account' : 'Sign in or view account'}
+            disabled={loading && !accountUser}
+            aria-busy={loading && !accountUser}
+            aria-label={accountUser ? 'Go to account' : loading ? 'Loading account' : 'Sign in or view account'}
           >
-            {initial ? initial : <User className="h-6 w-6" aria-hidden="true" />}
+            {initial ? initial : loading ? <span aria-hidden="true">…</span> : <User className="h-6 w-6" aria-hidden="true" />}
           </button>
         </div>
       </div>
