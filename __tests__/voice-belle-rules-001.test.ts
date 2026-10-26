@@ -48,3 +48,24 @@ describe('VOICE-BELLE-RULES-001', () => {
     expect(fb).toMatch(/at most 38 words/)
   })
 })
+
+describe('WRITER-HOOK-WORDS-001 (job 68021047): name the words the deterministic hook check accepts', () => {
+  const { detectNarrativeHookCategory } = require('@/lib/narrativeHook')
+  const words = ['secret', 'hidden', 'missing', 'impossible', 'stolen', 'betrayed', 'conspiracy', 'warning']
+
+  test('the refused finale intro has no hook category; adding any listed word gives one', () => {
+    const refused = 'Episode three of "The Toll at Marsh Crossing" — "What the Bridge Kept." Nell has the coins and the log. A fixer is parked at her bridge to take them back.'
+    expect(detectNarrativeHookCategory(refused)).toBeNull()
+    for (const w of words) {
+      const s = w === 'warning' ? `${refused} A warning note waits on her car.` : `${refused} The ${w} log is hers now.`
+      expect(detectNarrativeHookCategory(s)).not.toBeNull()
+    }
+  })
+
+  test('prompt and feedback name those words', () => {
+    const src = readFileSync(join(__dirname, '..', 'app/api/admin/production-jobs/run-next/route.ts'), 'utf8')
+    expect(src).toContain('MUST use at least one of these exact words: secret, hidden, missing, impossible, stolen, betrayed, conspiracy, warning')
+    const fb = buildWriterRewriteFeedback({ ready: false, warnings: [], metrics: { spokenWords: 3000, estimatedMins: 18 } as any, blockers: [{ gate: 'BELLE-CONTENT', detail: 'intro must include a concrete narrative hook (event, danger, secret, conflict, mystery, or story mechanism)' }] } as any, 15)
+    expect(fb).toMatch(/secret, hidden, missing, impossible, stolen, betrayed, conspiracy, warning/)
+  })
+})

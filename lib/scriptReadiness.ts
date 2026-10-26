@@ -337,7 +337,7 @@ export function buildWriterRewriteFeedback(report: ReadinessReport, briefMinutes
       if (/cut off|incomplete/i.test(b.detail))
         lines.push('    (The last word before the final period must be a strong word, not a small word such as on, in, at, of, to, the, a, and, or, but, with.)')
       if (/narrative hook/i.test(b.detail))
-        lines.push('    (State the episode\'s concrete danger, secret, mystery, or impossible event in plain words, e.g. "a stranger pays the toll with coins that should not exist" — mood or setting alone does not count.)')
+        lines.push('    (State the episode\'s concrete danger, secret, mystery, or impossible event in plain words, e.g. "a stranger pays the toll with coins that should not exist" — mood or setting alone does not count. The automatic check looks for words like: secret, hidden, missing, impossible, stolen, betrayed, conspiracy, warning. Use at least one of them.)')
       if (/too long/i.test(b.detail)) lines.push('    (Belle B announcement: at most 38 words. Belle B outro: at most 55 words.)')
       if (/sounds final/i.test(b.detail)) lines.push('    (A non-finale outro must not use the words end, ended, final, concludes, conclusion, complete.)')
       if (/spoiler/i.test(b.detail)) lines.push('    (Do not use the words reveal, reveals, revealed, spoiler, or "turns out" in Belle B lines.)')
