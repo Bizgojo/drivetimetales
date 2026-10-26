@@ -425,3 +425,43 @@ describe('VALIDATOR-OUTRO-CLARITY-001', () => {
     expect(writerPrompt.indexOf('BELLE B OUTRO')).toBeGreaterThan(-1)
   })
 })
+
+describe('WRITER-BELLE-CONTENT-001: writer enforces the same Belle rules as series_voice_preflight', () => {
+  const src = readFileSync(join(__dirname, '..', 'app/api/admin/production-jobs/run-next/route.ts'), 'utf8')
+  const shared = src.slice(src.indexOf('async function seriesEpisodeBelleContentIssues('), src.indexOf('async function assertSeriesCastContinuity('))
+  const preflight = src.slice(src.indexOf('// ── SIMPLIFY-PIPELINE pre-voice content gate (per episode)'), src.indexOf("preVoiceContentGate: { gateId: 'SIMPLIFY-PIPELINE-PREVOICE-CONTENT', passed: false"))
+  const fn = src.slice(src.indexOf('async function generateOneSeriesEpisodeScript('), src.indexOf('\nfunction validateSeriesMetadata('))
+
+  test('one shared implementation runs validateBelleText + position rules', () => {
+    expect(shared).toMatch(/validateBelleText\('intro'/)
+    expect(shared).toMatch(/validateBelleText\('outro'/)
+    expect(shared).toMatch(/validateIntroOutroPositionRules\(/)
+  })
+  test('series_voice_preflight calls the shared function (no private copy)', () => {
+    expect(preflight).toMatch(/await seriesEpisodeBelleContentIssues\(/)
+    expect(preflight).not.toMatch(/validateBelleText\(/)
+  })
+  test('the writer self-check calls the same shared function on every draft', () => {
+    const start = fn.indexOf('check: async (draftScript) => {')
+    const check = fn.slice(start, fn.indexOf('} catch (err) {', start))
+    expect(check).toMatch(/await seriesEpisodeBelleContentIssues\(/)
+    expect(check).toMatch(/gate: 'BELLE-CONTENT'/)
+  })
+  test('writeWithSelfCheck awaits an async check and rewrites on its blockers', async () => {
+    const calls: string[] = []
+    const res = await writeWithSelfCheck({
+      briefMinutes: 15,
+      generate: async (feedback) => { calls.push(feedback); return { script: `draft${calls.length}`, description: 'd' } },
+      check: async (script) => {
+        await new Promise((r) => setTimeout(r, 1))
+        const base = checkScriptReadiness({ script: '' })
+        return script === 'draft1'
+          ? { ...base, ready: false, blockers: [{ gate: 'BELLE-CONTENT', detail: 'series intro must name the series title "X"' }] }
+          : { ...base, ready: true, blockers: [] }
+      },
+    })
+    expect(res.ok).toBe(true)
+    expect(calls).toHaveLength(2)
+    expect(calls[1]).toMatch(/BELLE-CONTENT: series intro must name the series title/)
+  })
+})

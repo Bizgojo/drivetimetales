@@ -6219,6 +6219,41 @@ async function createSeriesPackage(job: ProductionJob) {
 }
 
 /**
+ * SIMPLIFY-PIPELINE pre-voice Belle content rules for one series episode —
+ * the single implementation shared by series_voice_preflight and the series
+ * writer's self-check (WRITER-SELF-CHECK-001), so their verdicts cannot drift.
+ * Belle-exempt variants return no issues. Outro-gated checks run only when an
+ * outro section exists; a missing intro fails.
+ */
+async function seriesEpisodeBelleContentIssues(
+  episode: {
+    title?: string | null
+    author?: string | null
+    series_id?: string | null
+    series_name?: string | null
+    episode_number?: number | null
+    series_total_episodes?: number | null
+    series_is_finale?: boolean | null
+  },
+  script: string,
+): Promise<string[]> {
+  if (/LANDING-STORY-001|No Belle B/i.test(extractHeader(script, 'VARIANT'))) return []
+  const narrator = extractHeader(script, 'NARRATOR').trim() || null
+  const intro = extractBelleSection(script, 'intro')
+  const outro = extractBelleSection(script, 'outro')
+  const issues = [
+    ...(!intro ? ['intro text is required.'] : []),
+    ...(intro ? await validateBelleText('intro', intro, { standalone: false, title: episode.title, author: episode.author, narrator }) : []),
+    ...(outro ? await validateBelleText('outro', outro, { standalone: false, title: episode.title, author: episode.author, narrator }) : []),
+  ]
+  if (intro && outro) {
+    const position = await validateIntroOutroPositionRules({ ...episode, script }, intro, outro)
+    if (!position.passed) issues.push(...position.issues)
+  }
+  return issues
+}
+
+/**
  * SERIES-CAST-CONTINUITY-001 for the series writer: fail closed and flag every
  * episode (series jobs carry no story_id, so failJob alone flags nothing).
  */
@@ -6411,16 +6446,30 @@ async function generateOneSeriesEpisodeScript(job: ProductionJob, model: string)
         outputTokens: response.usage?.output_tokens ?? 0,
       }
     },
-    check: (draftScript) => checkScriptReadiness({
-      script: draftScript,
-      storyType: 'series_episode',
-      seriesId: String(seriesId),
-      seriesTotalEpisodes: selfCheckTotal,
-      episodeNumber: targetEpisodeNumber,
-      isFinale: selfCheckIsFinale,
-      narratorVoiceNames: selfCheckVoices,
-      briefMinutes: selfCheckBriefMinutes,
-    }),
+    check: async (draftScript) => {
+      const report = checkScriptReadiness({
+        script: draftScript,
+        storyType: 'series_episode',
+        seriesId: String(seriesId),
+        seriesTotalEpisodes: selfCheckTotal,
+        episodeNumber: targetEpisodeNumber,
+        isFinale: selfCheckIsFinale,
+        narratorVoiceNames: selfCheckVoices,
+        briefMinutes: selfCheckBriefMinutes,
+      })
+      // The same Belle rules series_voice_preflight enforces (shared function).
+      const belleIssues = await seriesEpisodeBelleContentIssues({
+        title: extractTitle(draftScript) || targetEpisode.title,
+        author: targetEpisode.author,
+        series_id: String(seriesId),
+        series_name: targetEpisode.series_name || series.title,
+        episode_number: targetEpisodeNumber,
+        series_total_episodes: selfCheckTotal,
+        series_is_finale: selfCheckIsFinale,
+      }, draftScript)
+      const blockers = [...report.blockers, ...belleIssues.map((detail) => ({ gate: 'BELLE-CONTENT', detail }))]
+      return { ...report, blockers, ready: blockers.length === 0 }
+    },
   })
   } catch (err) {
     const msg = `WRITER-SELF-CHECK-001: episode ${targetEpisodeNumber} writer call failed: ${err instanceof Error ? err.message : String(err)}`
@@ -7552,30 +7601,17 @@ async function runSeriesVoicePreflight(job: ProductionJob, origin: string) {
   // section fails. Belle-exempt variants skip, mirroring complete_story_package.
   {
     const epScript = String((nextEpisode as any).script || '')
-    const epVariant = extractHeader(epScript, 'VARIANT')
-    const epBelleExempt = /LANDING-STORY-001|No Belle B/i.test(epVariant)
+    const epBelleExempt = /LANDING-STORY-001|No Belle B/i.test(extractHeader(epScript, 'VARIANT'))
     if (!epBelleExempt) {
-      const epNarrator = extractHeader(epScript, 'NARRATOR').trim() || null
-      const epIntro = extractBelleSection(epScript, 'intro')
-      const epOutro = extractBelleSection(epScript, 'outro')
-      const epIssues = [
-        ...(!epIntro ? ['intro text is required.'] : []),
-        ...(epIntro ? await validateBelleText('intro', epIntro, { standalone: false, title: (nextEpisode as any).title, author: (nextEpisode as any).author, narrator: epNarrator }) : []),
-        ...(epOutro ? await validateBelleText('outro', epOutro, { standalone: false, title: (nextEpisode as any).title, author: (nextEpisode as any).author, narrator: epNarrator }) : []),
-      ]
-      if (epIntro && epOutro) {
-        const epPosition = await validateIntroOutroPositionRules({
-          title: (nextEpisode as any).title,
-          author: (nextEpisode as any).author,
-          script: epScript,
-          series_id: (nextEpisode as any).series_id,
-          series_name: (nextEpisode as any).series_name,
-          episode_number: episodeNumber(nextEpisode, 0),
-          series_total_episodes: (nextEpisode as any).series_total_episodes,
-          series_is_finale: (nextEpisode as any).series_is_finale,
-        }, epIntro, epOutro)
-        if (!epPosition.passed) epIssues.push(...epPosition.issues)
-      }
+      const epIssues = await seriesEpisodeBelleContentIssues({
+        title: (nextEpisode as any).title,
+        author: (nextEpisode as any).author,
+        series_id: (nextEpisode as any).series_id,
+        series_name: (nextEpisode as any).series_name,
+        episode_number: episodeNumber(nextEpisode, 0),
+        series_total_episodes: (nextEpisode as any).series_total_episodes,
+        series_is_finale: (nextEpisode as any).series_is_finale,
+      }, epScript)
       if (epIssues.length > 0) {
         const epKind = classifyBelleIssues(epIssues)
         const failedEpisodeEntry = {

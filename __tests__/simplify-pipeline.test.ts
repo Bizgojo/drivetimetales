@@ -143,18 +143,22 @@ describe('gate ordering — wired in run-next source', () => {
     expect(gateIdx).toBeLessThan(paidIdx)
   })
 
+  // WRITER-BELLE-CONTENT-001 (2026-10-26): the series pre-voice Belle checks
+  // moved into the shared seriesEpisodeBelleContentIssues(), which the series
+  // writer also calls. Intent unchanged: they run before the paid request.
   test('series preflight runs the Belle-text content gate before the voice preflight request', () => {
     const body = functionBody(src, 'runSeriesVoicePreflight')
-    const gateIdx = body.indexOf('validateBelleText')
+    const gateIdx = body.indexOf('seriesEpisodeBelleContentIssues(')
     const paidIdx = body.indexOf('runGenerateVoicesPreflightRequest(origin')
     expect(gateIdx).toBeGreaterThan(-1)
     expect(paidIdx).toBeGreaterThan(-1)
     expect(gateIdx).toBeLessThan(paidIdx)
+    expect(functionBody(src, 'seriesEpisodeBelleContentIssues')).toMatch('validateBelleText')
   })
 
   test('series preflight runs hook/position rules pre-spend (gate moved from complete_story_package)', () => {
-    const body = functionBody(src, 'runSeriesVoicePreflight')
-    expect(body).toMatch('validateIntroOutroPositionRules')
+    expect(functionBody(src, 'runSeriesVoicePreflight')).toMatch('seriesEpisodeBelleContentIssues(')
+    expect(functionBody(src, 'seriesEpisodeBelleContentIssues')).toMatch('validateIntroOutroPositionRules')
   })
 
   test('pre-voice failures carry a routable belle_quality_* kind (autonomous retry, not silent)', () => {

@@ -332,7 +332,7 @@ export type WriterSelfCheckResult = {
  */
 export async function writeWithSelfCheck(opts: {
   generate: (feedback: string) => Promise<WriterDraft>
-  check: (script: string) => ReadinessReport
+  check: (script: string) => ReadinessReport | Promise<ReadinessReport>
   briefMinutes?: number | null
   maxRewrites?: number
   /** Do not START another draft after this many ms (keeps the step inside its fetch timeout). */
@@ -352,7 +352,7 @@ export async function writeWithSelfCheck(opts: {
     draft = await opts.generate(feedback)
     usage.input += draft.inputTokens ?? 0
     usage.output += draft.outputTokens ?? 0
-    report = opts.check(draft.script)
+    report = await opts.check(draft.script)
     attempts.push({
       attempt: attempt + 1,
       blockers: report.blockers.map((b) => `${b.gate}: ${b.detail}`),
