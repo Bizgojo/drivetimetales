@@ -736,12 +736,9 @@ function HomeContent() {
           <HomeSearchResults query={homeSearch} />
         ) : (
           <>
-            {/* ORION-HOME-WALK-001: /go sample continue hero LEADS the page (Marc walk, 2026-07-12). */}
-            {/* WALK-BUG-0713 #5 (Marc, 2026-07-13): the hero's story must not repeat
-                in the Continue Listening list below — heroStoryId feeds its exclude. */}
-            <ContinueSampleHero onStoryId={(id) => { setHeroStoryId(id); setContinueIds(prev => Array.from(new Set([id, ...prev]))); setAllExcludeIds(prev => Array.from(new Set([id, ...prev]))) }} />
-            {/* key=clKey forces remount after /listen progress is written to user_library */}
-            <ContinueListening key={clKey} excludeStoryId={heroStoryId} onIdsLoaded={(ids) => { setContinueIds(prev => Array.from(new Set([...prev, ...ids]))); setAllExcludeIds(prev => Array.from(new Set([...prev, ...ids, ...playlistIds]))) }} />
+            {/* Signed-in listeners use the shared compact card above both pages. */}
+            {!user && <ContinueSampleHero onStoryId={(id) => { setHeroStoryId(id); setContinueIds(prev => Array.from(new Set([id, ...prev]))); setAllExcludeIds(prev => Array.from(new Set([id, ...prev]))) }} />}
+            <ContinueListening key={clKey} renderCard={false} excludeStoryId={heroStoryId} onIdsLoaded={(ids) => { setContinueIds(prev => Array.from(new Set([...prev, ...ids]))); setAllExcludeIds(prev => Array.from(new Set([...prev, ...ids, ...playlistIds]))) }} />
             <YourPlaylist onIdsLoaded={(ids) => { setPlaylistIds(ids); setAllExcludeIds(prev => [...new Set([...prev, ...ids])]) }} />
             <NewReleases
               excludeIds={[...new Set([...continueIds, ...playlistIds])]}
