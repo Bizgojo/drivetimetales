@@ -4477,6 +4477,7 @@ ${scriptTail(story.script, 2200)}`
   // response" - EP1 b50011ae 2026-10-25). One bounded retry of the identical
   // call; the gate is unchanged (valid parsed JSON still required to pass).
   // Extra cost: at most one additional Anthropic call per validation.
+  let validatorUsage;
   const callBelleQualityValidator = async (): Promise<string> => {
     const retryResponse = await anthropic.messages.create({
       model,
@@ -4489,6 +4490,7 @@ ${scriptTail(story.script, 2200)}`
       .join('')
       .trim()
     if (!retryRaw) throw new Error('Belle quality validator returned an empty report')
+    validatorUsage = retryResponse;
     return retryRaw
   }
 
@@ -4501,6 +4503,7 @@ ${scriptTail(story.script, 2200)}`
     rawReport = await callBelleQualityValidator()
   }
 
+  const response = validatorUsage;
   const parsed = parseJsonObject(rawReport)
   const introScore = typeof parsed.introScore === 'number' ? parsed.introScore : Number(parsed.introScore || 0)
   const outroScore = typeof parsed.outroScore === 'number' ? parsed.outroScore : Number(parsed.outroScore || 0)
