@@ -142,6 +142,13 @@ export default function AccountPage() {
         : 'bg-gray-950 text-gray-300 border-gray-700'
     }`;
 
+  // Redirect only after auth has settled; never navigate during render.
+  useEffect(() => {
+    if (mounted && !loading && !user) {
+      router.replace('/signin?returnTo=%2Faccount');
+    }
+  }, [mounted, loading, user, router]);
+
   // Show loading state while auth is initializing or not yet mounted
   if (!mounted || loading) {
     return (
@@ -153,13 +160,6 @@ export default function AccountPage() {
       </div>
     );
   }
-
-  // Redirect only after auth has settled; never navigate during render.
-  useEffect(() => {
-    if (mounted && !loading && !user) {
-      router.replace('/signin?returnTo=%2Faccount');
-    }
-  }, [mounted, loading, user, router]);
 
   if (!user) {
     return (
