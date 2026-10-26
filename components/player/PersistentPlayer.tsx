@@ -92,7 +92,7 @@ export default function PersistentPlayer({ children }: { children: ReactNode }) 
     snapshot
 
   return <PlayerContext.Provider value={request}><NowPlayingContext.Provider value={miniature ? snapshot : null}>
-    <div style={{ paddingTop: miniature ? 186 : 0 }}>{children}</div>
+    <div style={{ paddingTop: miniature ? 100 : 0 }}>{children}</div>
     {selection && !clearForRoute && <div hidden={!playerPage} style={playerPage
       ? { position: 'fixed', top: 56, bottom: 0, left: 0, right: 0, zIndex: 40, overflowY: 'auto', background: '#020617' }
       : { display: 'none' }}>
@@ -103,26 +103,20 @@ export default function PersistentPlayer({ children }: { children: ReactNode }) 
 
       <aside aria-label="Now playing" style={{ position: 'fixed', top: 64, left: 12, right: 12,
         zIndex: 45, padding: 10, borderRadius: 14, background: '#1e293b', color: 'white', border: '1px solid #475569' }}>
-        <button type="button" aria-label={`Open player for ${snapshot.title}`} onClick={() => router.push(`/player/${snapshot.storyId}${selection?.mode === 'playlist' ? '?playlist=1' : selection?.mode === 'series' ? '?mode=series' : ''}`)}
-          style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, textAlign: 'left', background: 'none', border: 0, color: 'white', cursor: 'pointer' }}>
-          {snapshot.coverUrl && <img src={snapshot.coverUrl} alt="" width={40} height={40} style={{ objectFit: 'cover', borderRadius: 6 }} />}
-          <strong style={{ overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>{snapshot.title}</strong>
-        </button>
-        <div role="progressbar" aria-label="Listening progress" aria-valuemin={0} aria-valuemax={Math.max(1, snapshot.duration)} aria-valuenow={Math.min(snapshot.currentTime, snapshot.duration)} style={{ height: 4, background: '#475569', margin: '8px 0', borderRadius: 4 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <button type="button" aria-label={`Open player for ${snapshot.title}`} onClick={() => router.push(`/player/${snapshot.storyId}${selection?.mode === 'playlist' ? '?playlist=1' : selection?.mode === 'series' ? '?mode=series' : ''}`)}
+            style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 10, textAlign: 'left', background: 'none', border: 0, color: 'white', cursor: 'pointer' }}>
+            {snapshot.coverUrl && <img src={snapshot.coverUrl} alt="" width={40} height={40} style={{ objectFit: 'cover', borderRadius: 6, flexShrink: 0 }} />}
+            <span style={{ minWidth: 0 }}>
+              <strong style={{ display: 'block', overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>{snapshot.title}</strong>
+              <span style={{ fontSize: 12, color: '#cbd5e1' }}>{formatPlaybackTime(snapshot.currentTime)} · {formatPlaybackTime(Math.max(0, snapshot.duration - snapshot.currentTime))} left</span>
+            </span>
+          </button>
+          <button type="button" onClick={snapshot.toggle} aria-label={snapshot.isPlaying ? 'Pause playback' : 'Continue playback'} style={{ minHeight: 44, minWidth: 88, border: 0, borderRadius: 8, background: snapshot.isPlaying ? '#f97316' : '#22c55e', color: '#020617', fontWeight: 800, cursor: 'pointer' }}>{snapshot.isPlaying ? 'Pause' : 'Continue'}</button>
+        </div>
+        <div role="progressbar" aria-label="Listening progress" aria-valuemin={0} aria-valuemax={Math.max(1, snapshot.duration)} aria-valuenow={Math.min(snapshot.currentTime, snapshot.duration)} style={{ height: 4, background: '#475569', marginTop: 8, borderRadius: 4 }}>
           <div style={{ height: '100%', width: `${snapshot.duration > 0 ? Math.min(100, snapshot.currentTime / snapshot.duration * 100) : 0}%`, background: '#f97316', borderRadius: 4 }} />
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span style={{ flex: 1, fontSize: 12, color: '#cbd5e1' }}>{formatPlaybackTime(snapshot.currentTime)} · {formatPlaybackTime(Math.max(0, snapshot.duration - snapshot.currentTime))} left</span>
-          <button type="button" aria-label="Back 15 seconds" disabled={!snapshot.seek} onClick={() => snapshot.seek?.(Math.max(0, snapshot.currentTime - 15))} style={{ minHeight: 44, minWidth: 44, background: '#334155', color: 'white', border: 0, borderRadius: 8 }}>↶15</button>
-          <button type="button" onClick={snapshot.toggle} aria-label={snapshot.isPlaying ? 'Pause playback' : 'Continue playback'} style={{ minHeight: 44, minWidth: 88, border: 0, borderRadius: 8, background: snapshot.isPlaying ? '#f97316' : '#22c55e', color: '#020617', fontWeight: 800, cursor: 'pointer' }}>{snapshot.isPlaying ? 'Pause' : 'Continue'}</button>
-          <button type="button" aria-label="Forward 15 seconds" disabled={!snapshot.seek} onClick={() => snapshot.seek?.(Math.min(snapshot.duration, snapshot.currentTime + 15))} style={{ minHeight: 44, minWidth: 44, background: '#334155', color: 'white', border: 0, borderRadius: 8 }}>15↷</button>
-        </div>
-        {savedStories.some(story => story.id !== snapshot.storyId) && <details style={{ marginTop: 6, fontSize: 12 }}>
-          <summary style={{ cursor: 'pointer', padding: '4px 0' }}>Other unfinished stories ({savedStories.filter(story => story.id !== snapshot.storyId).length})</summary>
-          <div style={{ maxHeight: 180, overflowY: 'auto' }}>{savedStories.filter(story => story.id !== snapshot.storyId).map(story =>
-            <button key={story.id} type="button" onClick={() => router.push(`/player/${story.id}?resume=${story.progress}&autoplay=1&playNow=1`)} style={{ display: 'block', width: '100%', minHeight: 44, textAlign: 'left', background: '#334155', color: 'white', border: 0, borderRadius: 6, marginTop: 4, padding: 8 }}>{story.title}</button>
-          )}</div>
-        </details>}
       </aside>
     </>}
   </NowPlayingContext.Provider></PlayerContext.Provider>
