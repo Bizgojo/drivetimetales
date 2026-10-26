@@ -415,3 +415,13 @@ describe('review round 3 follow-up: outages do not use up the writer cap', () =>
     expect(wrap('Request timed out.')).toBeNull()
   })
 })
+
+describe('VALIDATOR-OUTRO-CLARITY-001', () => {
+  test('package validator rule states a present BELLE B OUTRO is allowed (the writer is told to write one)', () => {
+    const src = readFileSync(join(__dirname, '..', 'app/api/admin/production-jobs/run-next/route.ts'), 'utf8')
+    expect(src).toMatch(/never fail a script for including a BELLE B OUTRO block/)
+    // the series writer prompt does ask for the outro block
+    const writerPrompt = src.slice(src.indexOf('function buildSeriesEpisodePrompt('))
+    expect(writerPrompt.indexOf('BELLE B OUTRO')).toBeGreaterThan(-1)
+  })
+})
