@@ -111,13 +111,17 @@ ${NO_HOOK_NARRATOR}
     // Hook must FAIL — "No Belle B" does NOT grant hook keyword exemption
     expect(result.checks.hook.status).toBe('fail')
     expect(result.checks.hook.detail).not.toMatch(/LANDING-STORY-001/i)
-    expect(result.failures.some(f => f.includes('[hook]'))).toBe(true)
+    // SIMPLIFY-PIPELINE-V2 batch-B cut 5: hook fail is advisory - surfaces in
+    // warnings, never in failures (audio/cover/consistency stay hard).
+    expect(result.failures.some(f => f.includes('[hook]'))).toBe(false)
+    expect(result.warnings.some(w => w.includes('[hook]'))).toBe(true)
 
     // Belle IS exempt — "No Belle B" grants Belle exemption (correct behaviour)
     expect(result.checks.belle.status).toBe('pass')
 
-    // Gate fails overall (hook is hard-fail)
-    expect(result.pass).toBe(false)
+    // Gate passes overall - hook is advisory post cut-5 (all other checks pass
+    // or are exempt/na in this fixture), but the hook check itself still FAILS.
+    expect(result.pass).toBe(true)
   })
 
   test('Ordinary story with VARIANT: STANDARD and no hook keywords: hook fails, Belle required', async () => {

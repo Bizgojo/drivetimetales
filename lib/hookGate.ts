@@ -63,8 +63,6 @@ const WORDS_PER_SECOND = 3
  * Previous value was 90 (30 seconds), which let Night Train slip through at word 86. */
 const HOOK_PASS_WORD_LIMIT = 30
 
-/** Words before which a hook landing is a warn (16–30 words ≈ 5–10 seconds). */
-const HOOK_WARN_WORD_LIMIT = 30
 
 /** For SFX check: scripts pre-dating the [SFX:...] template are legacy. */
 // A script is "new" (non-legacy) if it contains at least one [SFX:...] marker
@@ -83,7 +81,7 @@ const SFX_MAX = 3
 export interface HookCheckResult {
   /**
    * 'pass' — hook detected within HOOK_PASS_WORD_LIMIT
-   * 'warn' — hook detected but later than ideal
+   * 'warn' — reserved (word-offset warn branch removed as dead code)
    * 'fail' — no hook or hook too late
    * 'na'   — keyword gate skipped for exempt variant (LANDING-STORY-001);
    *          LLM hook rubric MUST be run on the final-mix transcript before
@@ -369,20 +367,14 @@ async function checkHook(script: string): Promise<HookCheckResult> {
     }
   }
 
-  if (hookOffset <= HOOK_WARN_WORD_LIMIT) {
-    return {
-      status: 'warn',
-      wordsBeforeHook: hookOffset,
-      hookFound: true,
-      detail: `Hook at word ${hookOffset} (${HOOK_PASS_WORD_LIMIT + 1}–${HOOK_WARN_WORD_LIMIT} = 30–50s range) — WARN`,
-    }
-  }
-
+  // SIMPLIFY-PIPELINE-V2 batch-B cut 5: warn branch was dead code
+  // (HOOK_WARN == HOOK_PASS == 30, so offsets > 30 always failed).
+  // Late/missing hooks fail here; aggregation demotes hook fails to warnings.
   return {
     status: 'fail',
     wordsBeforeHook: hookOffset,
     hookFound: true,
-    detail: `Hook at word ${hookOffset} (>${HOOK_WARN_WORD_LIMIT} = >50s) — too late for listener retention — FAIL`,
+    detail: `Hook at word ${hookOffset} (>${HOOK_PASS_WORD_LIMIT}) — too late for listener retention — FAIL (advisory, demoted to warning)`,
   }
 }
 
@@ -896,7 +888,8 @@ export async function runHookGate(input: RunHookGateInput): Promise<HookGateResu
   const warnings: string[] = []
 
   // Check 1: Hook ('na' = keyword gate exempt for LANDING-STORY-001; not a failure or warning)
-  if (hookCheck.status === 'fail') failures.push(`[hook] ${hookCheck.detail}`)
+  // SIMPLIFY-PIPELINE-V2 batch-B cut 5: hook fail is advisory, not blocking.
+  if (hookCheck.status === 'fail') warnings.push(`[hook] ${hookCheck.detail}`)
   else if (hookCheck.status === 'warn') warnings.push(`[hook] ${hookCheck.detail}`)
 
   // Check 2: SFX (N/A is not a failure or warning)
