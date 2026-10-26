@@ -24,6 +24,7 @@
 import { numeralPreTtsScan } from './numeralPreTtsScan'
 import { checkScriptRuntimeMeetsMinimum, SCRIPT_RUNTIME_PREFLIGHT } from './scriptRuntimeEstimate'
 import { checkNarrationPresence } from './narrationPresence'
+import { RUNTIME_GATE } from './runtimeGate'
 
 // Mirrors app/api/admin/production-jobs/run-next/route.ts (pinned by test).
 export const RUNNEXT_TITLE_MAX_CHARS = 28
@@ -48,6 +49,8 @@ export type ReadinessInput = {
   minMinutes?: number
   /** Override the SFX cap (default: production validator's 3). */
   sfxMax?: number
+  /** stories.duration_mins — the brief-of-record RUNTIME-GATE-001 measures the final mix against. */
+  briefMinutes?: number | null
 }
 
 export type ReadinessReport = {
@@ -128,6 +131,18 @@ export function checkScriptReadiness(input: ReadinessInput): ReadinessReport {
   if (runtime.skipped) blockers.push({ gate: 'RUNTIME', detail: 'no parseable spoken lines' })
   else if (!runtime.pass)
     blockers.push({ gate: 'RUNTIME', detail: `${runtime.estimatedMins.toFixed(1)} min est. (${runtime.spokenWords} words; floor ${input.minMinutes ?? SCRIPT_RUNTIME_PREFLIGHT.MIN_ESTIMATED_MINUTES} min)` })
+
+  // 5b. Brief match: predicts RUNTIME-GATE-001 (final mix within ±10% of
+  // duration_mins), which otherwise fails only AFTER full voice/music spend.
+  const brief = Number(input.briefMinutes || 0)
+  if (!runtime.skipped && brief > 0) {
+    const dev = (runtime.estimatedMins - brief) / brief
+    if (Math.abs(dev) > RUNTIME_GATE.TOLERANCE)
+      blockers.push({
+        gate: 'RUNTIME-BRIEF',
+        detail: `${runtime.estimatedMins.toFixed(1)} min est. vs ${brief}-min brief (${dev > 0 ? '+' : ''}${(dev * 100).toFixed(0)}%; RUNTIME-GATE-001 allows ±${RUNTIME_GATE.TOLERANCE * 100}% after render)`,
+      })
+  }
 
   // 6. Belle intro present
   if (!/^BELLE B\s*:/m.test(script)) blockers.push({ gate: 'BELLE', detail: 'no BELLE B intro line' })

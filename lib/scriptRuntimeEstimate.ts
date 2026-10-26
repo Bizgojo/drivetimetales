@@ -61,10 +61,14 @@ export const SCRIPT_RUNTIME_PREFLIGHT_ID = 'SCRIPT-RUNTIME-PREFLIGHT-001'
 export const SCRIPT_RUNTIME_PREFLIGHT = {
   /** Calibrated narration rate, words/min (Harbor Light + Creek, n=6). */
   CALIBRATED_WPM: 160,
-  /** 15-min product minimum + 0.5-min margin. */
-  MIN_ESTIMATED_MINUTES: 15.5,
-  /** Derived spoken-word floor: 15.5 × 160 = 2480. */
-  MIN_SPOKEN_WORDS: 2480,
+  /**
+   * RUNTIME-FLOOR-SPEC-001 (Marc 2026-10-26 09:29 EDT, option 2): align to
+   * PUBLISHED_STORY_SPEC v1.5 — series episodes 12–18 min. 12-min minimum
+   * + 0.5-min margin. Was 15.5 (15-min minimum, Marc order 2026-10-22).
+   */
+  MIN_ESTIMATED_MINUTES: 12.5,
+  /** Derived spoken-word floor: 12.5 × 160 = 2000. */
+  MIN_SPOKEN_WORDS: 2000,
   /** error_json.kind for a short script bounced pre-spend. */
   SHORT_KIND: 'script_runtime_short',
 } as const
@@ -130,7 +134,7 @@ export function formatScriptRuntimeShortMessage(check: ScriptRuntimeCheck): stri
     `(${check.spokenWords} spoken words across ${check.voiceSegments} voice segments at ` +
     `${SCRIPT_RUNTIME_PREFLIGHT.CALIBRATED_WPM} wpm calibrated) — below the ` +
     `${SCRIPT_RUNTIME_PREFLIGHT.MIN_ESTIMATED_MINUTES}-min pre-spend floor ` +
-    `(15-min minimum + margin; need ≥${SCRIPT_RUNTIME_PREFLIGHT.MIN_SPOKEN_WORDS} spoken words). ` +
+    `(12-min minimum + margin; need ≥${SCRIPT_RUNTIME_PREFLIGHT.MIN_SPOKEN_WORDS} spoken words). ` +
     `Extend the script before narration spend.`
   )
 }

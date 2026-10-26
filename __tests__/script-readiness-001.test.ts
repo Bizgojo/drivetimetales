@@ -49,7 +49,7 @@ describe('SCRIPT-READINESS-001', () => {
     const r = checkScriptReadiness({ script: makeScript(), ...series, narratorVoiceNames: ['Nora Ashby'] })
     expect(r.blockers).toEqual([])
     expect(r.ready).toBe(true)
-    expect(r.metrics.estimatedMins).toBeGreaterThan(15.5)
+    expect(r.metrics.estimatedMins).toBeGreaterThan(12.5)
   })
 
   test('reports ALL blockers at once (the CEO run-by-run problem)', () => {
@@ -97,6 +97,16 @@ describe('SCRIPT-READINESS-001', () => {
     const script = makeScript({ sfx: 5, narratorLines: 26 })
     expect(checkScriptReadiness({ script, ...series }).ready).toBe(false)
     expect(checkScriptReadiness({ script, ...series, minMinutes: 12, sfxMax: 6 }).ready).toBe(true)
+  })
+
+  test('RUNTIME-BRIEF predicts the post-render gate (Ghost Town Vote shape: ~14 min script, 20-min brief)', () => {
+    const script = makeScript({ narratorLines: 30 })
+    const r = checkScriptReadiness({ script, ...series, briefMinutes: 20 })
+    expect(r.metrics.estimatedMins).toBeGreaterThan(12.5)
+    expect(r.metrics.estimatedMins).toBeLessThan(18)
+    expect(r.blockers.map((b) => b.gate)).toEqual(['RUNTIME-BRIEF'])
+    const matched = checkScriptReadiness({ script, ...series, briefMinutes: Math.round(r.metrics.estimatedMins) })
+    expect(matched.ready).toBe(true)
   })
 
   test('constants are pinned to the run-next gate that actually blocks production', () => {

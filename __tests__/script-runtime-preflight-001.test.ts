@@ -2,7 +2,7 @@
  * SCRIPT-RUNTIME-PREFLIGHT-001 — focused tests (Marc order 2026-10-22 23:34 EDT)
  *
  * 1. Short script bounced pre-spend (Harbor Light Ep2 shape: ~1991 words → ~12.4 min).
- * 2. Borderline margin logic (2479 words fails, 2480 passes).
+ * 2. Borderline margin logic (1999 words fails, 2000 passes).
  * 3. Normal script passes (~3000 words → ~18.75 min).
  * 4. Final measured gate (RUNTIME-GATE-001) still catches misses — intact.
  * 5. Calibration anchors: all six measured Harbor Light/Creek episodes fall
@@ -48,20 +48,21 @@ function buildScript(wordCount: number): string {
 
 describe('SCRIPT-RUNTIME-PREFLIGHT-001', () => {
   test('short script is bounced pre-spend (Harbor Light Ep2 shape)', () => {
-    // HL Ep2 shipped 1991 spoken words → 12.8 min actual. Same shape must fail here.
-    const check = checkScriptRuntimeMeetsMinimum(buildScript(1991))
+    // RUNTIME-FLOOR-SPEC-001: floor is now 12.5 min (2000 words). An
+    // ~8-min script (CEO series shape, ~1300 words) must still bounce.
+    const check = checkScriptRuntimeMeetsMinimum(buildScript(1300))
     expect(check.skipped).toBe(false)
     expect(check.pass).toBe(false)
-    expect(check.estimatedMins).toBeLessThan(15)
-    expect(check.estimatedMins).toBeCloseTo(1991 / 160, 1)
+    expect(check.estimatedMins).toBeLessThan(12)
+    expect(check.estimatedMins).toBeCloseTo(1300 / 160, 1)
     const msg = formatScriptRuntimeShortMessage(check)
-    expect(msg).toMatch(/12\.4 min/)
-    expect(msg).toMatch(/2480/)
+    expect(msg).toMatch(/8\.1 min/)
+    expect(msg).toMatch(/2000/)
   })
 
-  test('borderline margin logic: 2479 fails, 2480 passes', () => {
-    expect(checkScriptRuntimeMeetsMinimum(buildScript(2479)).pass).toBe(false)
-    const at = checkScriptRuntimeMeetsMinimum(buildScript(2480))
+  test('borderline margin logic: 1999 fails, 2000 passes', () => {
+    expect(checkScriptRuntimeMeetsMinimum(buildScript(1999)).pass).toBe(false)
+    const at = checkScriptRuntimeMeetsMinimum(buildScript(2000))
     expect(at.skipped).toBe(false)
     expect(at.pass).toBe(true)
     expect(at.estimatedMins).toBeGreaterThanOrEqual(
@@ -84,7 +85,28 @@ describe('SCRIPT-RUNTIME-PREFLIGHT-001', () => {
     expect(checkRuntimeVsBrief(16.2 * 60, 15 * 60).pass).toBe(true)
   })
 
-  test('calibration anchors: all six measured episodes fall below the floor', () => {
+  test('calibration anchors vs the spec floor (RUNTIME-FLOOR-SPEC-001, 12.5 min)', () => {
+    // Under PUBLISHED_STORY_SPEC v1.5 (12–18 min), every anchor that shipped
+    // under 12 minutes must still bounce pre-spend; Harbor Light Ep1
+    // (13.8 min actual) must pass.
+    const anchors: Array<[string, number, number]> = [
+      ['Harbor Light Ep1', 2273, 830.6],
+      ['Harbor Light Ep2', 1991, 767.2],
+      ['Harbor Light Ep3', 1924, 723.2],
+      ['Creek Ep1', 1754, 619.6],
+      ['Creek Ep2', 1822, 699.8],
+      ['Creek Ep3', 1778, 635.2],
+    ]
+    for (const [name, words, actualSecs] of anchors) {
+      const mins = words / SCRIPT_RUNTIME_PREFLIGHT.CALIBRATED_WPM
+      if (actualSecs < 12 * 60) {
+        expect(mins).toBeLessThan(SCRIPT_RUNTIME_PREFLIGHT.MIN_ESTIMATED_MINUTES, name)
+      }
+    }
+    expect(2273 / SCRIPT_RUNTIME_PREFLIGHT.CALIBRATED_WPM).toBeGreaterThanOrEqual(SCRIPT_RUNTIME_PREFLIGHT.MIN_ESTIMATED_MINUTES)
+  })
+
+  test('historical: all six anchors were below the old 15.5-min floor', () => {
     // Spoken-word counts from parseScriptPositions on shipped scripts (2026-10-22).
     const measured: Array<[string, number, number]> = [
       ['Harbor Light Ep1', 2273, 830.6],
@@ -97,9 +119,9 @@ describe('SCRIPT-RUNTIME-PREFLIGHT-001', () => {
     for (const [name, words, actualSecs] of measured) {
       // Every one shipped short of 15 min…
       expect(actualSecs).toBeLessThan(15 * 60, name)
-      // …and every one would have bounced at the pre-spend floor.
+      // …and every one would have bounced at the old 15.5-min floor.
       const mins = words / SCRIPT_RUNTIME_PREFLIGHT.CALIBRATED_WPM
-      expect(mins).toBeLessThan(SCRIPT_RUNTIME_PREFLIGHT.MIN_ESTIMATED_MINUTES, name)
+      expect(mins).toBeLessThan(15.5, name)
     }
   })
 

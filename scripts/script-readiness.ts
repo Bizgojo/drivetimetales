@@ -35,7 +35,7 @@ async function main() {
   for (let from = 0; ; from += 200) {
     const { data, error } = await sb
       .from('stories')
-      .select('id,title,workflow_state,story_type,series_id,series_total_episodes,episode_number,is_v2,script')
+      .select('id,title,workflow_state,story_type,series_id,series_total_episodes,episode_number,is_v2,duration_mins,script')
       .in('workflow_state', states)
       .not('script', 'is', null)
       .range(from, from + 199)
@@ -58,6 +58,7 @@ async function main() {
       narratorVoiceNames,
       minMinutes,
       sfxMax,
+      briefMinutes: r.duration_mins,
     }),
   }))
 
