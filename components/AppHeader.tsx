@@ -22,7 +22,12 @@ export default function AppHeader() {
 
   const goBack = () => {
     // Library is a top-level destination, so Back always returns Home.
-    if (pathname === '/library') { router.push('/home'); return }
+    if (pathname === '/library') {
+      // Use a document navigation here: the route transition must work even if
+      // the persistent audio host has left Next client navigation in a bad state.
+      window.location.assign('/home')
+      return
+    }
     // APP-HEADER-PLAYER-001: on the player screen router.back() returns users
     // to /go (ad teaser) when they arrived via the onboarding funnel.
     // Redirect to /home explicitly instead.
