@@ -41,6 +41,7 @@ import { runVoiceMapGate } from '@/lib/voiceMapGate'
 import { checkNarrationPresence } from '@/lib/narrationPresence'
 import { normalizeScriptFormat } from '@/lib/scriptLabels'
 import { evaluateBelleCopyForPublish } from '@/lib/publicationBelleGate'
+import { buildBelleValidationContext, validateBelleLine } from '@/lib/voiceBelleRules'
 import {
   briefMinutesOf,
   briefRuntimeImpossible,
@@ -5867,10 +5868,10 @@ function buildSeriesEpisodePrompt(series: any, episode: any, allEpisodes: any[],
   const belleSeriesName = String(episode.series_name || series.title || brief.series_name || '').trim()
   const belleEpisodeTitle = String(episode.title || brief.episode_title || '').trim()
   const belleAuthorName = String(episode.author || brief.author || '').trim()
-  const belleIntroRequirement = `The Belle B announcement MUST contain, word for word: the series title "${belleSeriesName}", the words "Episode ${currentEpisodeNumber}", and the episode title "${belleEpisodeTitle}" in quotes.`
+  const belleIntroRequirement = `The Belle B announcement MUST contain, word for word: the series title "${belleSeriesName}", the words "Episode ${currentEpisodeNumber}", and the episode title "${belleEpisodeTitle}" in quotes. It MUST state the episode's concrete danger, secret, mystery, or impossible event in plain words (mood or setting alone does not count). At most 38 words in total. Never use the words reveal, reveals, revealed, spoiler, or "turns out" in either Belle B line.`
   const belleOutroRequirement = isFinale
-    ? `The Belle B outro MUST name the series title "${belleSeriesName}", the author "${belleAuthorName}", and the narrator "${assignedNarratorName}". It must not invite a next episode.`
-    : `The Belle B outro MUST do all three: (1) reflect on the emotional cost or meaning using at least one of these words: truth, secret, choice, question, cost, moment, revelation; (2) speak warmly to the listener using "you" or "we"; (3) point to what comes next using the words "next episode". It must NOT name the author "${belleAuthorName}" or the narrator "${assignedNarratorName}", must not say "an Endless Tales original", and must not sound like the series is over.`
+    ? `The Belle B outro MUST name the series title "${belleSeriesName}", the author "${belleAuthorName}", and the narrator "${assignedNarratorName}", and MUST include the words "an Endless Tales original". It must not invite a next episode. At most 55 words.`
+    : `The Belle B outro MUST do all three: (1) reflect on the emotional cost or meaning using at least one of these words: truth, secret, choice, question, cost, moment, revelation; (2) speak warmly to the listener using "you" or "we"; (3) point to what comes next using the words "next episode". It must NOT name the author "${belleAuthorName}" or the narrator "${assignedNarratorName}", must not say "an Endless Tales original", and must not sound like the series is over: never use the words end, ended, final, concludes, conclusion, or complete. At most 55 words.`
   const belleOutroRule = isFinale
     ? 'Belle B outro must resolve/close the series, must not encourage the next episode, must name the series and credit the author and narrator, and may say "an Endless Tales original".'
     : 'Belle B outro must reflect on what the cliffhanger means (not retell the plot), speak to the listener, point to the next episode, must not say "an Endless Tales original", and must not sound like a full-series ending.'
@@ -6518,6 +6519,25 @@ async function generateOneSeriesEpisodeScript(job: ProductionJob, model: string)
       })
       if (!publishVerdict.ok && 'blockers' in publishVerdict) {
         for (const b of publishVerdict.blockers) if (!belleIssues.includes(b)) belleIssues.push(b)
+      }
+      // WRITER-VOICE-BELLE-001 (job 60761b4a): generate-voices runs its own Belle
+      // line rules (word limits, spoiler/final words, credits) and REPLACES a
+      // failing line with a template, which then fails publish conformance.
+      // Run those exact rules here so the writer fixes the line itself.
+      const voiceBelleCtx = buildBelleValidationContext({
+        title: belleTitleForGate,
+        author: targetEpisode.author,
+        series_name: targetEpisode.series_name || series.title,
+        episode_number: targetEpisodeNumber,
+        series_total_episodes: selfCheckTotal,
+        series_is_finale: selfCheckIsFinale,
+      }, draftScript, String(targetEpisode.id))
+      for (const [kind, text] of [['intro', extractBelleSection(draftScript, 'intro')], ['outro', extractBelleSection(draftScript, 'outro')]] as const) {
+        if (!text) continue
+        for (const e of validateBelleLine(kind, text, voiceBelleCtx)) {
+          const issue = `voice step (${kind}): ${e}`
+          if (!belleIssues.includes(issue)) belleIssues.push(issue)
+        }
       }
       // WRITER-BELLE-EVIDENCE-001 (job ea6976c3: finale EP3 failed 3 drafts on
       // "outro appears cut off" with near-identical drafts — the writer never
