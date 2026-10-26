@@ -38,6 +38,7 @@ import { numeralPreTtsScan, buildNumeralPreflightFailure } from '@/lib/numeralPr
 // predicates. Content gates sort before paid steps; resumes reuse valid stages.
 import { shouldPurgeVoiceSegments, musicUrlReusable } from '@/app/lib/pipeline-gates'
 import { runVoiceMapGate } from '@/lib/voiceMapGate'
+import { checkNarrationPresence } from '@/lib/narrationPresence'
 import { runVoiceConformanceGate, type VoiceProfile } from '@/lib/voiceConformanceGate'
 // R1-V3 step map (decision r1-v3-step-map-approved-oct6, 2026-10-06):
 // central per-step model router. STEP_MODELS below derives from it with
@@ -1449,6 +1450,14 @@ function validateNarratorAssignmentSync(
   const scriptNarratorName = extractHeader(script, 'NARRATOR').trim()
   if (!scriptNarratorName) {
     issues.push(`${px}NARRATOR header missing from script`)
+    return { passed: false, narratorIssues: issues, resolvedVoiceId: null, resolvedVoiceName: null }
+  }
+
+  // NARRATION-PRESENCE-001: a declared narrator must actually narrate.
+  // Blocks scripts whose narration is attributed to characters (Creek series).
+  const narration = checkNarrationPresence(script)
+  if (!narration.passed) {
+    issues.push(...narration.issues.map((issue) => `${px}${issue}`))
     return { passed: false, narratorIssues: issues, resolvedVoiceId: null, resolvedVoiceName: null }
   }
 

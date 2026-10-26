@@ -22,6 +22,12 @@ import { ACCOUNT_WIDE_CAUSES, type TransientCause } from '@/lib/transientFailure
 import { findQueueDuplicates, type QueueDedupRow } from '@/lib/dispatchDedup'
 import { failureDestinationForStory, ONE_REPAIR_PASS_REASON } from '@/lib/workflowTransitions'
 import { syncPremiseIndexForTransition } from '@/lib/premiseIndex'
+import {
+  isSeriesMemberTypedStandalone,
+  mistypedSeriesRows,
+  seriesTypeMismatchReason,
+  type SeriesTypeRow,
+} from '@/lib/seriesTypeConsistency'
 
 export const runtime = 'nodejs'
 export const maxDuration = 60
@@ -532,11 +538,27 @@ async function handleDispatchQueue(request: NextRequest) {
         .from('stories')
         .select('id,title,author,story_type,workflow_state,series_id,series_name,episode_number,series_episode_number,series_total_episodes,needs_attention')
         .eq('series_id', seriesId)
-        .eq('story_type', 'series_episode')
 
       if (seriesStoriesError) {
         console.error('[dispatch-queue] Failed to load series stories:', seriesId, seriesStoriesError)
         skipped.push({ seriesId, reason: 'series_load_failed', error: seriesStoriesError.message })
+        continue
+      }
+
+      // SERIES-TYPE-CONSISTENCY-001: mixed story_type inside one series used to
+      // be skipped silently forever ("series_not_fully_written"). Flag it.
+      const mistyped = mistypedSeriesRows((seriesStories || []) as SeriesTypeRow[])
+      if (mistyped.length > 0) {
+        const reason = seriesTypeMismatchReason(seriesId, mistyped)
+        const { error: typeFlagError } = await supabase
+          .from('stories')
+          .update({ needs_attention: true, needs_attention_reason: reason, needs_attention_at: now })
+          .eq('series_id', seriesId)
+          .neq('workflow_state', 'cold_storage')
+          .or('needs_attention.is.null,needs_attention.eq.false')
+        if (typeFlagError) console.error('[dispatch-queue] Failed to flag mixed-type series:', seriesId, typeFlagError)
+        console.warn('[dispatch-queue] Skipped (mixed story_type in series):', seriesId, reason)
+        skipped.push({ seriesId, reason: 'series_story_type_mismatch', mistypedIds: mistyped.map((row) => row.id) })
         continue
       }
 
@@ -706,6 +728,19 @@ async function handleDispatchQueue(request: NextRequest) {
       if (dispatched.length >= dispatchTarget) break
       if (activeStandaloneStoryIds.has(story.id)) {
         skipped.push({ storyId: story.id, reason: 'active_job_exists' })
+        continue
+      }
+
+      // SERIES-TYPE-CONSISTENCY-001: never produce a series member as a standalone.
+      if (isSeriesMemberTypedStandalone(story as SeriesTypeRow)) {
+        const reason = seriesTypeMismatchReason(String(story.series_id), [story as SeriesTypeRow])
+        const { error: typeFlagError } = await supabase
+          .from('stories')
+          .update({ needs_attention: true, needs_attention_reason: reason, needs_attention_at: now })
+          .eq('id', story.id)
+        if (typeFlagError) console.error('[dispatch-queue] Failed to flag series member typed standalone:', story.id, typeFlagError)
+        needsAttentionSkipped += 1
+        skipped.push({ storyId: story.id, reason: 'series_member_typed_standalone' })
         continue
       }
 
