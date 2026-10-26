@@ -69,7 +69,7 @@ async function main() {
 
   const ready = results.filter((r) => r.ready)
   const gateCounts: Record<string, number> = {}
-  for (const r of results) for (const g of new Set(r.blockers.map((b) => b.gate))) gateCounts[g] = (gateCounts[g] || 0) + 1
+  for (const r of results) for (const g of Array.from(new Set(r.blockers.map((b) => b.gate)))) gateCounts[g] = (gateCounts[g] || 0) + 1
 
   console.log(`Checked ${results.length} scripts in [${states.join(', ')}]`)
   console.log(`READY: ${ready.length}`)

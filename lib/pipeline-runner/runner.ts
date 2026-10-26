@@ -46,6 +46,9 @@ export const RUN_NEXT_TIMEOUT_DEFAULT_MS = 90_000
 export const RUN_NEXT_TIMEOUT_MS_BY_STEP: Record<string, number> = {
   render_final_mix: 600_000,
   series_render_final_mix: 600_000,
+  // WRITER-SELF-CHECK-001: up to 3 drafts (self-check budget 420s) — a 90s
+  // abort would retry mid-write and overlap paid writing calls (review B2).
+  generate_episode_script: 600_000,
 }
 
 export function runNextTimeoutMs(step: string | null | undefined): number {

@@ -167,7 +167,7 @@ describe('wiring in run-next generateOneSeriesEpisodeScript', () => {
   })
 
   test('series cast continuity is checked once all scripts exist, before returning', () => {
-    const cont = fn.indexOf('checkSeriesCastContinuity(')
+    const cont = fn.indexOf('assertSeriesCastContinuity(String(seriesId), refreshedEpisodes)')
     expect(cont).toBeGreaterThan(fn.indexOf('const allScriptsGenerated'))
     expect(cont).toBeLessThan(fn.lastIndexOf('return {'))
   })
@@ -187,4 +187,106 @@ test('continuity check still separates Ghost Town Vote from The Understudy using
     { episodeNumber: 1, script: s(['PRU ADLER']) },
     { episodeNumber: 2, script: s(['PRU']) },
   ])).toEqual([])
+})
+
+// ── Fixes from the independent review (2026-10-26) ──────────────────────────
+import { RUNTIME_BRIEF_PRESPEND_TOLERANCE, dispatchReadinessReasons } from '@/lib/scriptReadiness'
+import { runNextTimeoutMs } from '@/lib/pipeline-runner/runner'
+
+describe('review B1: RUNTIME-BRIEF is standalone-only (RUNTIME-GATE-001 never runs on series)', () => {
+  const base = (storyType: string, brief: number, lines: number) =>
+    checkScriptReadiness({ script: episodeScript(lines), storyType, seriesId: storyType === 'series_episode' ? 's' : null, seriesTotalEpisodes: storyType === 'series_episode' ? 3 : null, episodeNumber: storyType === 'series_episode' ? 1 : null, briefMinutes: brief })
+  test('series episode ~14 min vs 20-min brief: no RUNTIME-BRIEF', () => {
+    expect(base('series_episode', 20, 32).blockers.map((b) => b.gate)).not.toContain('RUNTIME-BRIEF')
+  })
+  test('standalone ~14 min vs 20-min brief: blocked (would fail RUNTIME-GATE-001 after spend)', () => {
+    expect(base('single', 20, 32).blockers.map((b) => b.gate)).toContain('RUNTIME-BRIEF')
+  })
+  test('standalone within the pre-spend tolerance is not blocked', () => {
+    const r = base('single', 15, 32)
+    const dev = Math.abs(r.metrics.estimatedMins - 15) / 15
+    expect(dev).toBeLessThan(RUNTIME_BRIEF_PRESPEND_TOLERANCE)
+    expect(r.blockers.map((b) => b.gate)).not.toContain('RUNTIME-BRIEF')
+  })
+})
+
+describe('review B2: writer step cannot be aborted mid-write and re-run', () => {
+  test('generate_episode_script gets a 10-minute fetch budget', () => {
+    expect(runNextTimeoutMs('generate_episode_script')).toBe(600_000)
+    expect(runNextTimeoutMs('voice_preflight')).toBe(90_000)
+  })
+  test('writer stops starting new drafts once its time budget is spent', async () => {
+    let t = 0
+    let calls = 0
+    const res = await writeWithSelfCheck({
+      briefMinutes: 20,
+      check: check(20),
+      budgetMs: 400,
+      now: () => t,
+      generate: async () => { calls++; t += 300; return { script: episodeScript(12), description: 'd' } },
+    })
+    expect(calls).toBe(2) // draft 1 at t=0, draft 2 at t=300 (<400), no draft 3 at t=600
+    expect(res.ok).toBe(false)
+  })
+  test('episode save only writes an episode that is still empty', () => {
+    const src = readFileSync(join(__dirname, '..', 'app/api/admin/production-jobs/run-next/route.ts'), 'utf8')
+    const fn = src.slice(src.indexOf('async function generateOneSeriesEpisodeScript('), src.indexOf('\nfunction validateSeriesMetadata('))
+    expect(fn).toMatch(/\.eq\('id', targetEpisode\.id\)\s*\n\s*\/\/[^\n]*\n\s*\.or\('script\.is\.null,script\.eq\.'\)/)
+  })
+})
+
+describe('review B3 + L1: dispatcher never parks stories because of its own lookup failure, and only judges queued episodes', () => {
+  const src = readFileSync(join(__dirname, '..', 'app/api/cron/dispatch-queue/route.ts'), 'utf8')
+  test('narrator lookup error/empty → readiness skipped, nothing flagged', () => {
+    expect(src).toMatch(/if \(error \|\| !data \|\| data\.length === 0\) return null/)
+    expect(src).toMatch(/if \(!voices\) return \{ error: /)
+  })
+  test('series flag is scoped to queued episodes; per-script checks only on queued ids', () => {
+    const seriesBlock = src.slice(src.indexOf('// DISPATCH-READINESS-GATE-001 (series)'), src.indexOf('const episodeCount = expectedEpisodeCount(episodes)'))
+    expect(seriesBlock).toMatch(/\.eq\('workflow_state', 'stories_in_queue'\)/)
+    expect(seriesBlock).not.toMatch(/\.neq\('workflow_state', 'cold_storage'\)/)
+    expect(seriesBlock).toMatch(/readinessReasonsFor\(queuedIds, seriesId\)/)
+  })
+  test('continuity uses the whole series while per-script checks use only the given episodes', () => {
+    const s = (names: string[]) => `NARRATOR: Ray Dolan\n\nBELLE B: hi\n\n${names.map((n) => `${n}: words here now.`).join('\n\n')}`
+    const reasons = dispatchReadinessReasons(
+      [{ id: 'q', episodeNumber: 2, script: episodeScript(32), storyType: 'series_episode', seriesId: 's', seriesTotalEpisodes: 2 }],
+      [{ episodeNumber: 1, script: s(['ANNA']) }, { episodeNumber: 2, script: s(['BOB']) }],
+    )
+    expect(reasons.some((r) => r.startsWith('SERIES-CAST-CONTINUITY'))).toBe(true)
+    expect(reasons.some((r) => r.startsWith('EP1 '))).toBe(false)
+  })
+})
+
+describe('review L2–L7', () => {
+  const src = readFileSync(join(__dirname, '..', 'app/api/admin/production-jobs/run-next/route.ts'), 'utf8')
+  const fn = src.slice(src.indexOf('async function generateOneSeriesEpisodeScript('), src.indexOf('\nfunction validateSeriesMetadata('))
+  test('L2: continuity also guards the resume path, and flags episodes', () => {
+    const resume = fn.slice(0, fn.indexOf('COVER-PIPELINE-DECOUPLE-001: backfill'))
+    expect(resume).toMatch(/await assertSeriesCastContinuity\(String\(seriesId\), episodes\)/)
+    const helper = src.slice(src.indexOf('async function assertSeriesCastContinuity('), src.indexOf('async function generateOneSeriesEpisodeScript('))
+    expect(helper).toMatch(/markStoriesNeedAttention\(/)
+  })
+  test('L3: every writer refusal flags the episode before throwing', () => {
+    expect((fn.match(/await markStoryNeedsAttention\(String\(targetEpisode\.id\), msg\)\s*\n\s*throw new Error\(msg\)/g) || []).length).toBe(3)
+  })
+  test('L4: spend is metered per draft inside generate, not once at the end', () => {
+    const gen = fn.slice(fn.indexOf('generate: async (feedback) => {'), fn.indexOf('check: (draftScript) =>'))
+    expect(gen).toMatch(/logAnthropicCall\(/)
+    expect((fn.match(/logAnthropicCall\(/g) || []).length).toBe(1)
+  })
+  test('L5: narrator is resolved before any writing call', () => {
+    expect(fn.indexOf('is not in narrator_voices (no writing call made)')).toBeLessThan(fn.indexOf('writeWithSelfCheck('))
+  })
+  test('L6: finale/total come from the episode row first', () => {
+    expect(fn).toMatch(/targetEpisode\.series_total_episodes/)
+    expect(fn).toMatch(/Boolean\(targetEpisode\.series_is_finale\)/)
+  })
+  test('L7: Belle-exempt variants are not blocked for missing Belle', () => {
+    const noBelle = episodeScript(32).replace(/BELLE B:[^\n]*\n/, '').replace('TITLE: The Ultimatum', 'TITLE: The Ultimatum\nVARIANT: LANDING-STORY-001')
+    expect(noBelle).not.toMatch(/^BELLE B:/m)
+    expect(check(14)(noBelle).blockers.map((b) => b.gate)).not.toContain('BELLE')
+    const plain = episodeScript(32).replace(/BELLE B:[^\n]*\n/, '')
+    expect(check(14)(plain).blockers.map((b) => b.gate)).toContain('BELLE')
+  })
 })

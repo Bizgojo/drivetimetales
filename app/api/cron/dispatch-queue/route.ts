@@ -184,19 +184,36 @@ async function handleDispatchQueue(request: NextRequest) {
   // DISPATCH-READINESS-GATE-001: every free deterministic gate (incl.
   // runtime-vs-brief and series cast continuity) runs BEFORE a job exists.
   let narratorVoiceNamesCache: string[] | null = null
-  async function narratorVoiceNames(): Promise<string[]> {
+  async function narratorVoiceNames(): Promise<string[] | null> {
     if (narratorVoiceNamesCache) return narratorVoiceNamesCache
-    const { data } = await supabase.from('narrator_voices').select('name')
-    narratorVoiceNamesCache = ((data || []) as Array<{ name: string | null }>).map((v) => String(v.name || ''))
+    const { data, error } = await supabase.from('narrator_voices').select('name')
+    // Review B3: a failed/empty lookup must never park every candidate as
+    // "narrator not found". Skip the readiness step this run instead.
+    if (error || !data || data.length === 0) return null
+    narratorVoiceNamesCache = (data as Array<{ name: string | null }>).map((v) => String(v.name || ''))
     return narratorVoiceNamesCache
   }
-  async function readinessReasonsFor(storyIds: string[]): Promise<string[] | { error: string }> {
+  async function readinessReasonsFor(storyIds: string[], seriesIdForContinuity?: string): Promise<string[] | { error: string }> {
+    const voices = await narratorVoiceNames()
+    if (!voices) return { error: 'narrator_voices lookup failed or empty — readiness skipped this run, nothing flagged' }
     const { data, error } = await supabase
       .from('stories')
       .select('id,title,script,story_type,series_id,series_total_episodes,episode_number,series_episode_number,series_is_finale,duration_mins')
       .in('id', storyIds)
     if (error) return { error: error.message }
-    const voices = await narratorVoiceNames()
+    let continuity: Array<{ episodeNumber?: number | null; script?: string | null }> | undefined
+    if (seriesIdForContinuity) {
+      const { data: all, error: allError } = await supabase
+        .from('stories')
+        .select('script,episode_number,series_episode_number,workflow_state')
+        .eq('series_id', seriesIdForContinuity)
+        .neq('workflow_state', 'cold_storage')
+      if (allError) return { error: allError.message }
+      continuity = ((all || []) as any[]).map((row) => ({
+        episodeNumber: row.episode_number || row.series_episode_number,
+        script: row.script,
+      }))
+    }
     return dispatchReadinessReasons(((data || []) as any[]).map((row) => ({
       id: row.id,
       title: row.title,
@@ -204,11 +221,11 @@ async function handleDispatchQueue(request: NextRequest) {
       storyType: row.story_type,
       seriesId: row.series_id,
       seriesTotalEpisodes: row.series_total_episodes,
-      episodeNumber: row.episode_number ?? row.series_episode_number,
+      episodeNumber: row.episode_number || row.series_episode_number,
       isFinale: row.series_is_finale,
       briefMinutes: row.duration_mins,
       narratorVoiceNames: voices,
-    })))
+    })), continuity)
   }
   function readinessReason(reasons: string[]): string {
     const head = reasons.slice(0, 12).join(' | ')
@@ -638,7 +655,12 @@ async function handleDispatchQueue(request: NextRequest) {
 
       // DISPATCH-READINESS-GATE-001 (series)
       {
-        const readiness = await readinessReasonsFor(episodes.map((episode) => episode.id))
+        // Review L1: only queued episodes get per-script checks and flags;
+        // continuity is judged across the whole (non-cold) series.
+        const queuedIds = episodes
+          .filter((episode) => cleanState(episode.workflow_state) === 'stories_in_queue')
+          .map((episode) => episode.id)
+        const readiness = await readinessReasonsFor(queuedIds, seriesId)
         if (!Array.isArray(readiness)) {
           skipped.push({ seriesId, reason: 'readiness_lookup_failed', error: readiness.error })
           continue
@@ -649,7 +671,7 @@ async function handleDispatchQueue(request: NextRequest) {
             .from('stories')
             .update({ needs_attention: true, needs_attention_reason: reason, needs_attention_at: now })
             .eq('series_id', seriesId)
-            .neq('workflow_state', 'cold_storage')
+            .eq('workflow_state', 'stories_in_queue')
           if (readinessFlagError) console.error('[dispatch-queue] Failed to flag series readiness:', seriesId, readinessFlagError)
           console.warn('[dispatch-queue] Skipped (readiness gate):', seriesId, reason)
           skipped.push({ seriesId, reason: 'readiness_gate_failed', blockers: readiness.slice(0, 20) })

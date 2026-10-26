@@ -32,6 +32,8 @@ export const RUNNEXT_TITLE_MAX_CHARS = 28
 export const RUNNEXT_DESCRIPTION_MAX_WORDS = 24
 export const RUNNEXT_DESCRIPTION_PAST_TENSE_RE =
   /\b(vanished|was|were|had|found|discovered|left|moved|sealed|signed|forged|buried|hidden|lost)\b/i
+/** RUNTIME-GATE-001's ±10% plus the estimator's ≈±5% calibration spread. */
+export const RUNTIME_BRIEF_PRESPEND_TOLERANCE = 0.15
 /** Validator prompt rule SFX-001 ("at most 3 per episode"). Canon (Spec v1.5) allows 3–6. */
 export const VALIDATOR_SFX_MAX = 3
 
@@ -46,7 +48,7 @@ export type ReadinessInput = {
   isFinale?: boolean | null
   /** Optional: names from narrator_voices. When omitted the narrator lookup is skipped. */
   narratorVoiceNames?: string[]
-  /** Override the runtime floor (default: production's 15.5 min). */
+  /** Override the runtime floor (default: production's SCRIPT_RUNTIME_PREFLIGHT.MIN_ESTIMATED_MINUTES). */
   minMinutes?: number
   /** Override the SFX cap (default: production validator's 3). */
   sfxMax?: number
@@ -150,12 +152,17 @@ export function checkScriptReadiness(input: ReadinessInput): ReadinessReport {
   else if (!runtime.pass)
     blockers.push({ gate: 'RUNTIME', detail: `${runtime.estimatedMins.toFixed(1)} min est. (${runtime.spokenWords} words; floor ${input.minMinutes ?? SCRIPT_RUNTIME_PREFLIGHT.MIN_ESTIMATED_MINUTES} min)` })
 
-  // 5b. Brief match: predicts RUNTIME-GATE-001 (final mix within ±10% of
-  // duration_mins), which otherwise fails only AFTER full voice/music spend.
+  // 5b. Brief match — STANDALONE ONLY. RUNTIME-GATE-001 (final mix within
+  // ±10% of duration_mins) runs only in run-next's standalone
+  // complete_story_package branch; series never reach it, so applying it to
+  // series would be a new, stricter gate (independent review B1). Tolerance
+  // adds the estimator's calibration spread (155.7–169.9 wpm ≈ ±5%) so only
+  // scripts that will almost surely fail after spend are stopped.
   const brief = Number(input.briefMinutes || 0)
-  if (!runtime.skipped && brief > 0) {
+  const isStandaloneType = !input.storyType || input.storyType === 'single' || input.storyType === 'standalone'
+  if (isStandaloneType && !runtime.skipped && brief > 0) {
     const dev = (runtime.estimatedMins - brief) / brief
-    if (Math.abs(dev) > RUNTIME_GATE.TOLERANCE)
+    if (Math.abs(dev) > RUNTIME_BRIEF_PRESPEND_TOLERANCE)
       blockers.push({
         gate: 'RUNTIME-BRIEF',
         detail: `${runtime.estimatedMins.toFixed(1)} min est. vs ${brief}-min brief (${dev > 0 ? '+' : ''}${(dev * 100).toFixed(0)}%; RUNTIME-GATE-001 allows ±${RUNTIME_GATE.TOLERANCE * 100}% after render)`,
@@ -163,7 +170,9 @@ export function checkScriptReadiness(input: ReadinessInput): ReadinessReport {
   }
 
   // 6. Belle intro present
-  if (!/^BELLE B\s*:/m.test(script)) blockers.push({ gate: 'BELLE', detail: 'no BELLE B intro line' })
+  // LANDING-STORY-001 / "No Belle B" variants are Belle-exempt in production.
+  const belleExempt = /LANDING-STORY-001|No Belle B/i.test(header(script, 'VARIANT'))
+  if (!belleExempt && !/^BELLE B\s*:/m.test(script)) blockers.push({ gate: 'BELLE', detail: 'no BELLE B intro line' })
 
   // 7. When a CHARACTER GUIDE exists, every voiced character must be in it
   // (casting needs a description). A missing guide is NOT a blocker: published
@@ -213,7 +222,7 @@ export function speakingCastFirstNames(script: string | null | undefined): Set<s
 }
 
 export function checkSeriesCastContinuity(
-  episodes: Array<{ episodeNumber: number | null | undefined; script: string | null | undefined }>,
+  episodes: Array<{ episodeNumber?: number | null; script?: string | null }>,
 ): ReadinessBlocker[] {
   const sorted = episodes
     .filter((e) => Number(e.episodeNumber) > 0)
@@ -243,6 +252,8 @@ export function checkSeriesCastContinuity(
  */
 export function dispatchReadinessReasons(
   episodes: Array<ReadinessInput & { id: string; title?: string | null }>,
+  /** Whole series for SERIES-CAST-CONTINUITY (defaults to `episodes`). Only `episodes` get per-script checks. */
+  continuityEpisodes?: Array<{ episodeNumber?: number | null; script?: string | null }>,
 ): string[] {
   const reasons: string[] = []
   for (const ep of episodes) {
@@ -252,8 +263,9 @@ export function dispatchReadinessReasons(
       reasons.push(`${label} ${b.gate}: ${b.detail}`)
     }
   }
-  if (episodes.length > 1) {
-    for (const b of checkSeriesCastContinuity(episodes)) reasons.push(`${b.gate}: ${b.detail}`)
+  const series = continuityEpisodes ?? episodes
+  if (series.length > 1) {
+    for (const b of checkSeriesCastContinuity(series)) reasons.push(`${b.gate}: ${b.detail}`)
   }
   return reasons
 }
@@ -322,14 +334,20 @@ export async function writeWithSelfCheck(opts: {
   check: (script: string) => ReadinessReport
   briefMinutes?: number | null
   maxRewrites?: number
+  /** Do not START another draft after this many ms (keeps the step inside its fetch timeout). */
+  budgetMs?: number
+  now?: () => number
 }): Promise<WriterSelfCheckResult> {
   const maxRewrites = opts.maxRewrites ?? WRITER_SELF_CHECK_MAX_REWRITES
+  const now = opts.now ?? (() => Date.now())
+  const startedAt = now()
   const attempts: WriterSelfCheckResult['attempts'] = []
   const usage = { input: 0, output: 0 }
   let feedback = ''
-  let draft: WriterDraft = { script: '', description: '' }
-  let report: ReadinessReport = checkScriptReadiness({ script: '' })
+  let draft: WriterDraft | null = null
+  let report: ReadinessReport | null = null
   for (let attempt = 0; attempt <= maxRewrites; attempt++) {
+    if (attempt > 0 && opts.budgetMs !== undefined && now() - startedAt > opts.budgetMs) break
     draft = await opts.generate(feedback)
     usage.input += draft.inputTokens ?? 0
     usage.output += draft.outputTokens ?? 0
@@ -342,19 +360,29 @@ export async function writeWithSelfCheck(opts: {
     if (report.ready) break
     feedback = buildWriterRewriteFeedback(report, opts.briefMinutes)
   }
-  return { ok: report.ready, script: draft.script, description: draft.description, report, attempts, usage }
+  return {
+    ok: Boolean(report?.ready),
+    script: draft?.script ?? '',
+    description: draft?.description ?? '',
+    report: report ?? checkScriptReadiness({ script: '' }),
+    attempts,
+    usage,
+  }
 }
 
 /**
  * A brief shorter than the pre-spend floor allows can never pass both the
- * floor and RUNTIME-GATE-001 (±10% of brief). Detect it before any writing call.
+ * floor and the ±10% runtime window. Detect it before any writing call.
  */
 export function briefRuntimeImpossible(briefMinutes: number | null | undefined): string | null {
   const brief = Number(briefMinutes || 0)
   if (!(brief > 0)) return null
   const maxAllowed = brief * (1 + RUNTIME_GATE.TOLERANCE)
   if (maxAllowed < SCRIPT_RUNTIME_PREFLIGHT.MIN_ESTIMATED_MINUTES) {
-    return `brief is ${brief} min; RUNTIME-GATE-001 allows at most ${maxAllowed.toFixed(1)} min but the pre-spend floor requires ${SCRIPT_RUNTIME_PREFLIGHT.MIN_ESTIMATED_MINUTES} min. Re-brief to >= ${Math.ceil(SCRIPT_RUNTIME_PREFLIGHT.MIN_ESTIMATED_MINUTES / (1 + RUNTIME_GATE.TOLERANCE))} min.`
+    return `brief is ${brief} min; at most ${maxAllowed.toFixed(1)} min fits its ±10% window but the pre-spend floor requires ${SCRIPT_RUNTIME_PREFLIGHT.MIN_ESTIMATED_MINUTES} min. Re-brief to >= ${Math.ceil(SCRIPT_RUNTIME_PREFLIGHT.MIN_ESTIMATED_MINUTES / (1 + RUNTIME_GATE.TOLERANCE))} min.`
   }
   return null
 }
+
+/** Writer step budget: stop starting new drafts after 7 min (step fetch timeout is 10 min). */
+export const WRITER_SELF_CHECK_BUDGET_MS = 420_000
