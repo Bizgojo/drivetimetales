@@ -173,6 +173,7 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
   // completed end-state card (Play Again / Next episode) and the CTA label —
   // a finished episode must never show "▶ Continue" at 0.0 min left.
   const [playbackEnded, setPlaybackEnded] = useState(false)
+  const removedFromContinueRef = useRef(false)
   // Display-only next-episode candidate for the end-state card when
   // auto-advance is disarmed (e.g. after a manual pause). Fetched via the same
   // live-validated fetchDirectSeriesAutoAdvanceCandidate() query; navigation
@@ -1070,6 +1071,7 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
   }, [])
 
   useEffect(() => {
+    removedFromContinueRef.current = false
     isAdvancingRef.current = false
     seriesContinueAutoplayAttemptedRef.current = false
     setHasPlaybackStarted(false)
@@ -1987,6 +1989,7 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
       endAnalyticsSession('manual_pause')
       saveProgress(getProgressSeconds()); setIsPlaying(false)
     } else {
+      removedFromContinueRef.current = false
       // ORION-PLAYER-ENDSTATE-001 §2: at a natural end, "play" means replay —
       // resuming from the final seconds is the tail-loop trap Marc hit 3×.
       if (isAtNaturalEnd()) {
@@ -2046,7 +2049,7 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
       // the stored value untouched (inserts fall back to the column default false).
       const progressRow: Record<string, unknown> = {
         user_id: user.id, story_id: storyId, progress: Math.floor(t),
-        hide_from_home: false,  // Reset dismiss if user plays again
+        hide_from_home: removedFromContinueRef.current, // Keep a removed card hidden through pause/periodic saves
         not_for_me: false,      // Clear not_for_me if user plays again
         last_played: new Date().toISOString()
       }
@@ -2569,7 +2572,7 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
   miniToggleRef.current = handlePlayPause
   useEffect(() => {
     if (!story) return
-    onPlaybackSnapshot?.({ storyId, title: story.title, coverUrl: story.cover_url, seek: seconds => miniSeekRef.current(seconds), completed: playbackEnded, isPlaying, currentTime: effCur, duration: effTotal,
+    onPlaybackSnapshot?.({ storyId, title: story.title, coverUrl: story.cover_url, seek: seconds => miniSeekRef.current(seconds), completed: playbackEnded, markRemoved: () => { removedFromContinueRef.current = true }, isPlaying, currentTime: effCur, duration: effTotal,
       toggle: () => miniToggleRef.current() })
   }, [storyId, story?.title, isPlaying, playbackEnded, effCur, effTotal, onPlaybackSnapshot])
   // Position: the OS extrapolates from (position, playbackRate), so update on

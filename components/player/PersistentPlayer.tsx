@@ -21,6 +21,7 @@ export interface PlaybackSnapshot {
   title: string
   isPlaying: boolean
   completed?: boolean
+  markRemoved?: () => void
   currentTime: number
   duration: number
   coverUrl?: string | null
@@ -106,6 +107,7 @@ export default function PersistentPlayer({ children }: { children: ReactNode }) 
       .eq('user_id', user.id).eq('story_id', id).select('story_id').single()
     setRemoving(false)
     if (error) { setRemoveError('Could not remove this story. Please try again.'); return }
+    snapshot.markRemoved?.()
     if (snapshot.isPlaying) snapshot.toggle()
     setDismissedIds(ids => [...ids, id])
     setSavedStories(stories => stories.filter(story => story.id !== id))
