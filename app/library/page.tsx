@@ -581,15 +581,10 @@ export default function LibraryPage() {
     console.info('[Library] Play tapped', payload)
     router.push(targetUrl)
 
-    window.setTimeout(() => {
-      if (window.location.pathname === '/library') {
-        console.warn('[Library] router.push did not leave Library; falling back to hard navigation', {
-          targetUrl,
-          payload,
-        })
-        window.location.assign(targetUrl)
-      }
-    }, 700)
+    // Keep this a client navigation. A timed document reload discards the
+    // listener's playback permission and the persistent audio engine while
+    // the player route is still loading.
+
   }
 
   function playSingle(storyId: string) {

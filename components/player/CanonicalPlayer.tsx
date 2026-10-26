@@ -1714,7 +1714,6 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
     if (!isASC3 && !audioSrc) return
     if (waitForSegmentResume(isASC3, resumeRef.current, hasAllQueueDurations())) return
 
-    seriesContinueAutoplayAttemptedRef.current = true
     // ORION-ANALYTICS-GAP-001: this is the auto-started playback path — it was
     // completely invisible to analytics. seriesContinue/autoAdvance params are
     // set by navigateToAutoAdvanceCandidate()/advancePlaylist() (auto-advance
@@ -1724,9 +1723,14 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
         ? 'auto_advance'
         : 'autoplay'
     const audio = audioRef.current
+    let cancelled = false
+    let started = false
     const attemptPlay = () => {
+      seriesContinueAutoplayAttemptedRef.current = true
       audio.play()
         .then(() => {
+          if (cancelled) return
+          started = true
           setIsPlaying(true)
           setAutoplayBlocked(false)
           startAnalyticsSession(autoStartSource)
@@ -1736,6 +1740,7 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
           if (mode === 'playlist') markPlaylistStarted()
         })
         .catch((error) => {
+          if (cancelled) return
           console.warn('[player] series continuation autoplay blocked:', error)
           setAutoplayBlocked(true)
           setIsPlaying(false)
@@ -1743,11 +1748,13 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
         })
     }
 
-    if (audio.readyState >= 2) {
-      attemptPlay()
-    } else {
-      audio.addEventListener('canplay', attemptPlay, { once: true })
-      return () => audio.removeEventListener('canplay', attemptPlay)
+    // play() queues playback until media is ready. Waiting for canplay moves
+    // the request farther from the Continue gesture and its listener could be
+    // removed by a duration update before it ever requested playback.
+    attemptPlay()
+    return () => {
+      cancelled = true
+      if (!started) seriesContinueAutoplayAttemptedRef.current = false
     }
   }, [loading, isASC3, queue, audioSrc, storyId, totalDur])
 
