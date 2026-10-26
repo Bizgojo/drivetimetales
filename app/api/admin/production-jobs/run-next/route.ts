@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import Anthropic from '@anthropic-ai/sdk'
 import { logAnthropicCall } from '@/app/lib/anthropic-logger'
+import { checkEpisodeSpendCap } from '@/app/lib/spend-ledger'
 import { sanitizeSeriesTitle } from '@/lib/seriesTitle'
 import { buildNamePalettePromptBlock } from '@/lib/story/namePalette'
 import { recordProductionLearningEvent } from '@/lib/productionLearning'
@@ -8164,6 +8165,69 @@ export async function POST(req: NextRequest) {
       lockedJob = await lockJob(candidate, lockHolderId)
       if (!lockedJob) {
         return bad('Production job is already locked', 409, { jobId: candidate.id })
+      }
+    }
+
+    // CREEK-PAUSE-AND-REPAIR (B): per-episode spend cap — enforced BEFORE any
+    // paid step runs. Blocks new spend when the routine-production cap is
+    // reached. Fail-OPEN while the ledger table is not yet live (migration
+    // unapplied): getEpisodeSpend reports ledgerLive=false and allowed=true.
+    if (lockedJob.story_id) {
+      const spendGate = await checkEpisodeSpendCap(lockedJob.story_id).catch((gateErr) => {
+        console.warn('[spend-ledger] Cap check failed OPEN:', gateErr instanceof Error ? gateErr.message : String(gateErr))
+        return null
+      })
+      if (spendGate && spendGate.ledgerLive && !spendGate.allowed) {
+        const alreadyBlocked = (lockedJob.error_json as Record<string, unknown> | null)?.kind === 'spend_cap_reached'
+        const gateMsg =
+          'Routine-production spend cap reached for story ' + lockedJob.story_id + ': ' +
+          'USD ' + spendGate.estimatedTotalUsd.toFixed(2) + ' metered new spend vs USD ' + spendGate.capUsd.toFixed(2) + ' cap' +
+          (spendGate.unknownCount > 0
+            ? ' (+' + spendGate.unknownCount + ' UNKNOWN-value ' + (spendGate.unknownCount === 1 ? 'entry' : 'entries') + ' flagged — cap applies to metered new spend only)'
+            : '') +
+          '. No further paid steps until Marc reviews.'
+        console.error('[run-next] SPEND_CAP_BLOCKED job=' + lockedJob.id.slice(0, 8) + ' step=' + normalizeStep(lockedJob.current_step) + ' ' + gateMsg)
+        await supabase
+          .from('production_jobs')
+          .update({
+            status: 'queued',
+            locked_at: null,
+            locked_by: null,
+            error_json: {
+              kind: 'spend_cap_reached',
+              at: nowIso(),
+              step: normalizeStep(lockedJob.current_step),
+              estimatedTotalUsd: spendGate.estimatedTotalUsd,
+              capUsd: spendGate.capUsd,
+              unknownCount: spendGate.unknownCount,
+            },
+            logs: alreadyBlocked ? lockedJob.logs : appendLog(lockedJob, 'Blocked: routine-production spend cap reached (no paid steps run)', {
+              kind: 'spend_cap_reached',
+              estimatedTotalUsd: spendGate.estimatedTotalUsd,
+              capUsd: spendGate.capUsd,
+              unknownCount: spendGate.unknownCount,
+            }),
+          })
+          .match(ownedJobFence(lockedJob, lockHolderId))
+        return NextResponse.json(
+          {
+            success: false,
+            error: gateMsg,
+            spendCap: {
+              allowed: false,
+              estimatedTotalUsd: spendGate.estimatedTotalUsd,
+              capUsd: spendGate.capUsd,
+              unknownCount: spendGate.unknownCount,
+            },
+          },
+          { status: 402 },
+        )
+      }
+      if (spendGate && spendGate.unknownCount > 0 && spendGate.allowed) {
+        console.warn(
+          '[run-next] spend-ledger UNKNOWN flag job=' + lockedJob.id.slice(0, 8) + ' story=' + lockedJob.story_id + ' ' +
+          'unknownEntries=' + spendGate.unknownCount + ' (cap applies to metered new spend only)',
+        )
       }
     }
 

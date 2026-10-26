@@ -10,6 +10,7 @@
 
 import Anthropic from '@anthropic-ai/sdk'
 import { createClient } from '@supabase/supabase-js'
+import { recordLedgerSpend } from './spend-ledger'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -74,8 +75,18 @@ export async function logAnthropicCall({
       story_title: storyTitle ?? null,
       metadata: metadata ?? {},
     })
+    // CREEK-PAUSE-AND-REPAIR (B): mirror into the per-episode spend ledger.
+    // logAnthropicCall is the single choke point for all Claude spend (run-next
+    // included) — retries and repairs included. Cost is the same token-based
+    // ESTIMATE logged above, clearly labeled via detail.estimated.
+    await recordLedgerSpend({
+      storyId: storyId ?? null,
+      provider: 'anthropic',
+      operation: 'claude_' + route,
+      estimatedCostUsd: cost,
+      detail: { route, purpose, model, inputTokens, outputTokens, storyTitle: storyTitle ?? null },
+    })
   } catch (err) {
-    // Never let logging failures break the main request
     console.error('[anthropic-logger] Failed to log usage:', err)
   }
 }
