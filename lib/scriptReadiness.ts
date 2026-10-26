@@ -179,3 +179,75 @@ export function checkScriptReadiness(input: ReadinessInput): ReadinessReport {
     },
   }
 }
+
+// ───────────────────────────────────────────────────────────────────────────
+// SERIES-CAST-CONTINUITY-001 (Independent Recovery, 2026-10-26)
+// "Ghost Town Vote" (3 eps) was three unrelated stories with disjoint casts;
+// the LLM package validator caught it, but only after dispatch + a paid call,
+// and only by parking the series for Marc. This deterministic check runs free
+// in the dispatcher. Rule (short series, <= CAST_CONTINUITY_MAX_EPISODES):
+// every episode after 1 shares at least one speaking character (by first
+// name) with Episode 1 AND with the previous episode. Long arcs (e.g. The
+// Sunset of Competition, 26 eps, casts change by era) are exempt.
+// Calibrated 2026-10-26: 17/17 published short series pass; Ghost Town Vote fails.
+// ───────────────────────────────────────────────────────────────────────────
+
+export const CAST_CONTINUITY_MAX_EPISODES = 6
+
+export function speakingCastFirstNames(script: string | null | undefined): Set<string> {
+  const text = String(script || '')
+  const narrator = header(text, 'NARRATOR').toUpperCase()
+  const names = new Set<string>()
+  for (const m of text.matchAll(/^([A-Z][A-Z .'\-]{1,40}?)\s*:/gm)) {
+    const speaker = m[1].trim()
+    if (NON_SPEAKERS.has(speaker) || speaker === 'SUNO PROMPT' || speaker === narrator) continue
+    names.add(speaker.split(/\s+/)[0])
+  }
+  return names
+}
+
+export function checkSeriesCastContinuity(
+  episodes: Array<{ episodeNumber: number | null | undefined; script: string | null | undefined }>,
+): ReadinessBlocker[] {
+  const sorted = episodes
+    .filter((e) => Number(e.episodeNumber) > 0)
+    .sort((a, b) => Number(a.episodeNumber) - Number(b.episodeNumber))
+  if (sorted.length < 2 || sorted.length > CAST_CONTINUITY_MAX_EPISODES) return []
+  const casts = sorted.map((e) => speakingCastFirstNames(e.script))
+  const shares = (a: Set<string>, b: Set<string>) => Array.from(a).some((n) => b.has(n))
+  const blockers: ReadinessBlocker[] = []
+  for (let i = 1; i < sorted.length; i++) {
+    const ep = Number(sorted[i].episodeNumber)
+    const withFirst = shares(casts[i], casts[0])
+    const withPrev = shares(casts[i], casts[i - 1])
+    if (!withFirst || !withPrev) {
+      blockers.push({
+        gate: 'SERIES-CAST-CONTINUITY',
+        detail: `Episode ${ep} shares no speaking character with ${!withFirst ? 'Episode 1' : `Episode ${Number(sorted[i - 1].episodeNumber)}`} (cast: ${Array.from(casts[i]).slice(0, 6).join(', ')})`,
+      })
+    }
+  }
+  return blockers
+}
+
+/**
+ * DISPATCH-READINESS-GATE-001: the single free gate the dispatcher runs before
+ * creating ANY production job. Returns every reason at once so a parked story
+ * carries a complete fix list, not one defect per paid run.
+ */
+export function dispatchReadinessReasons(
+  episodes: Array<ReadinessInput & { id: string; title?: string | null }>,
+): string[] {
+  const reasons: string[] = []
+  for (const ep of episodes) {
+    const report = checkScriptReadiness(ep)
+    for (const b of report.blockers) {
+      const label = ep.episodeNumber ? `EP${ep.episodeNumber}` : String(ep.title || ep.id.slice(0, 8))
+      reasons.push(`${label} ${b.gate}: ${b.detail}`)
+    }
+  }
+  if (episodes.length > 1) {
+    for (const b of checkSeriesCastContinuity(episodes)) reasons.push(`${b.gate}: ${b.detail}`)
+  }
+  return reasons
+}

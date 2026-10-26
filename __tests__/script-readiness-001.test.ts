@@ -117,3 +117,60 @@ describe('SCRIPT-READINESS-001', () => {
     expect(src).toContain(`at most ${VALIDATOR_SFX_MAX} per episode (SFX-001)`)
   })
 })
+
+import { checkSeriesCastContinuity, dispatchReadinessReasons, CAST_CONTINUITY_MAX_EPISODES } from '@/lib/scriptReadiness'
+
+const ep = (n: number, speakers: string[]) => ({
+  episodeNumber: n,
+  script: `TITLE: T\nNARRATOR: Ray Dolan\n\n${speakers.map((s) => `${s}: line here.`).join('\n')}\nNARRATOR: Something happens.\nSUNO PROMPT: western strings`,
+})
+
+describe('SERIES-CAST-CONTINUITY-001', () => {
+  test('Ghost Town Vote shape (three unrelated casts) fails', () => {
+    const blockers = checkSeriesCastContinuity([
+      ep(1, ['FRANKLIN SHERIDAN', 'GAVIN CROWE', 'MARTHA LOCKE']),
+      ep(2, ['CALLUM', 'HENSHAW', 'SUSANNA']),
+      ep(3, ['ALMA', 'BENJAMIN', 'DOSS FLETCHER']),
+    ])
+    expect(blockers.length).toBe(2)
+    expect(blockers[0].detail).toMatch(/Episode 2 shares no speaking character with Episode 1/)
+  })
+
+  test('The Understudy shape (protagonist Pru recurs, first name only later) passes', () => {
+    expect(checkSeriesCastContinuity([
+      ep(1, ['PRU ADLER', 'VIVIENNE TALBOT', 'MALCOLM BROCK']),
+      ep(2, ['PRU', 'VIVIENNE', 'GIL']),
+      ep(3, ['PRU', 'MARGAUX', 'DENNY']),
+    ])).toEqual([])
+  })
+
+  test('narrator and SUNO PROMPT lines are not cast', () => {
+    expect(checkSeriesCastContinuity([ep(1, ['ANNA']), ep(2, ['BOB'])]).length).toBe(1)
+  })
+
+  test(`long arcs (> ${CAST_CONTINUITY_MAX_EPISODES} eps, e.g. Sunset of Competition) are exempt`, () => {
+    const eps = Array.from({ length: CAST_CONTINUITY_MAX_EPISODES + 1 }, (_, i) => ep(i + 1, [`ERA${i}`]))
+    expect(checkSeriesCastContinuity(eps)).toEqual([])
+  })
+
+  test('dispatchReadinessReasons aggregates per-episode and series blockers in one list', () => {
+    const reasons = dispatchReadinessReasons([
+      { id: 'a', ...ep(1, ['ANNA']), storyType: 'series_episode', seriesId: 's', seriesTotalEpisodes: 2 },
+      { id: 'b', ...ep(2, ['BOB']), storyType: 'series_episode', seriesId: 's', seriesTotalEpisodes: 2 },
+    ])
+    expect(reasons.some((r) => r.startsWith('EP1 '))).toBe(true)
+    expect(reasons.some((r) => r.startsWith('SERIES-CAST-CONTINUITY'))).toBe(true)
+  })
+
+  test('dispatcher runs the readiness gate before inserting a job, on both paths', () => {
+    const src = readFileSync(join(__dirname, '..', 'app/api/cron/dispatch-queue/route.ts'), 'utf8')
+    const seriesGate = src.indexOf('// DISPATCH-READINESS-GATE-001 (series)')
+    const seriesInsert = src.indexOf("job_type: 'series'")
+    const standaloneGate = src.indexOf('// DISPATCH-READINESS-GATE-001 (standalone)')
+    const standaloneInsert = src.indexOf("job_type: 'standalone'")
+    expect(seriesGate).toBeGreaterThan(-1)
+    expect(standaloneGate).toBeGreaterThan(-1)
+    expect(seriesGate).toBeLessThan(seriesInsert)
+    expect(standaloneGate).toBeLessThan(standaloneInsert)
+  })
+})
