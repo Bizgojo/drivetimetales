@@ -154,10 +154,14 @@ export default function AccountPage() {
     );
   }
 
-  // Keep the intended Account destination through Google OAuth instead of
-  // silently returning to Home after authentication.
+  // Redirect only after auth has settled; never navigate during render.
+  useEffect(() => {
+    if (mounted && !loading && !user) {
+      router.replace('/signin?returnTo=%2Faccount');
+    }
+  }, [mounted, loading, user, router]);
+
   if (!user) {
-    router.replace('/signin?returnTo=%2Faccount');
     return (
       <div className="min-h-screen bg-gray-950 text-white flex items-center justify-center">
         <div className="text-center">
