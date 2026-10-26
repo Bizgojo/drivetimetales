@@ -6001,7 +6001,7 @@ Belle B hard rules (checked automatically before any audio is made):
 - ${belleOutroRequirement}
 
 Production-format hard rules:
-- Write EVERY number as words in every spoken line: times ("three twelve in the morning"), years, ages, money, counts, addresses. Never use digits in NARRATOR, character, or BELLE B lines. The only digits allowed are in header lines (TITLE, EPISODE, SERIES_TOTAL and similar) and the words "Episode ${currentEpisodeNumber}".
+- Write EVERY number as words in every spoken line: times ("three twelve in the morning"), years, ages, money, counts, addresses, and codes, serial numbers, receipts, plates or lane numbers ("transaction zero zero one", "lane three"). Never use digits in NARRATOR, character, or BELLE B lines. The only digits allowed are in header lines (TITLE, EPISODE, SERIES_TOTAL and similar) and the words "Episode ${currentEpisodeNumber}".
 - Speaker labels are for spoken words only.
 - Character-labeled lines must contain only words that character says aloud.
 - Never put action, facial reactions, movement, blocking, inner thought, or narration under a character label.

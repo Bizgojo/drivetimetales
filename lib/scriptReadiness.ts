@@ -37,7 +37,12 @@ export const RUNTIME_BRIEF_PRESPEND_TOLERANCE = 0.15
 /** Validator prompt rule SFX-001 ("at most 3 per episode"). Canon (Spec v1.5) allows 3–6. */
 export const VALIDATOR_SFX_MAX = 3
 
-export type ReadinessBlocker = { gate: string; detail: string }
+export type ReadinessBlocker = {
+  gate: string
+  detail: string
+  /** Exact offending lines, quoted back to the writer on a rewrite (WRITER-NUMERAL-EVIDENCE-001). */
+  evidence?: string[]
+}
 
 export type ReadinessInput = {
   script: string | null | undefined
@@ -139,7 +144,15 @@ export function checkScriptReadiness(input: ReadinessInput): ReadinessReport {
     : {})
   if (!numerals.passed) {
     const spans = Array.from(new Set(numerals.failures.map((f) => f.offendingText))).slice(0, 6)
-    blockers.push({ gate: 'NUMERAL-PRETTS', detail: `${numerals.failures.length} digit numeral(s) in spoken lines: ${spans.join(', ')}` })
+    const rawLines = script.split(/\r?\n/)
+    const evidence = Array.from(new Set(numerals.failures.map((f) => f.line)))
+      .slice(0, 10)
+      .map((ln) => {
+        const text = String(rawLines[ln - 1] || '').trim()
+        const offending = numerals.failures.filter((f) => f.line === ln).map((f) => f.offendingText)
+        return `${text.length > 220 ? text.slice(0, 217) + '...' : text}  ← digits: ${Array.from(new Set(offending)).join(', ')}`
+      })
+    blockers.push({ gate: 'NUMERAL-PRETTS', detail: `${numerals.failures.length} digit numeral(s) in spoken lines: ${spans.join(', ')}`, evidence })
   }
 
   // 4. SFX count (validator SFX-001)
@@ -291,6 +304,14 @@ export function buildWriterRewriteFeedback(report: ReadinessReport, briefMinutes
         `- LENGTH: the script has ${report.metrics.spokenWords} spoken words (~${report.metrics.estimatedMins} min). ` +
         `It must have about ${targetWords} spoken words (${target} min at ${SCRIPT_RUNTIME_PREFLIGHT.CALIBRATED_WPM} wpm, within ±10%). ` +
         `Add real scenes and beats; do not pad.`,
+      )
+    } else if (b.gate === 'NUMERAL-PRETTS' && b.evidence?.length) {
+      // WRITER-NUMERAL-EVIDENCE-001 (job 1dcbe89e: EP2 kept "001, 002, 003"
+      // through 3 drafts when told only the digits): quote the exact lines.
+      lines.push(
+        `- NUMERAL-PRETTS (numbers): these spoken lines contain digits. Rewrite each number in words, the way a narrator would say it aloud ` +
+        `(for example "001" → "zero zero one", "17" → "seventeen"). Codes, serial numbers, plates, receipts and times count too:`,
+        ...b.evidence.map((e) => `    ${e}`),
       )
     } else {
       lines.push(`- ${b.gate}: ${b.detail}`)

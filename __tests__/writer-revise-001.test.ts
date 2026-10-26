@@ -113,3 +113,33 @@ describe('seriesSpokenWordTarget', () => {
     expect(seriesSpokenWordTarget('').minutes).toBe(15)
   })
 })
+
+describe('WRITER-NUMERAL-EVIDENCE-001: numeral feedback quotes the offending lines', () => {
+  const script = [
+    'TITLE: The Coins',
+    'NARRATOR: Cole Rafferty',
+    'BELLE B: Episode 2 of The Toll.',
+    '[START AUDIO DRAMA SCRIPT]',
+    'NARRATOR: The receipt read transaction 001, then 002.',
+    'JUNE: Lane 3 is closed.',
+    'NARRATOR: She waited.',
+  ].join('\n')
+  const report = checkScriptReadiness({ script, storyType: 'series_episode', seriesId: 's', seriesTotalEpisodes: 3, episodeNumber: 2 })
+  const numeral = report.blockers.find((b) => b.gate === 'NUMERAL-PRETTS')
+
+  test('blocker carries each offending line with its digits', () => {
+    expect(numeral?.evidence).toEqual([
+      'NARRATOR: The receipt read transaction 001, then 002.  ← digits: 001, 002',
+      'JUNE: Lane 3 is closed.  ← digits: 3',
+    ])
+  })
+
+  test('rewrite feedback quotes those lines and says how to spell codes', () => {
+    const text = buildWriterRewriteFeedback(report, 15)
+    expect(text).toMatch(/"001" → "zero zero one"/)
+    expect(text).toContain('NARRATOR: The receipt read transaction 001, then 002.')
+    expect(text).toContain('JUNE: Lane 3 is closed.')
+    // the Belle "Episode 2" passthrough is not reported
+    expect(text).not.toContain('BELLE B: Episode 2')
+  })
+})
