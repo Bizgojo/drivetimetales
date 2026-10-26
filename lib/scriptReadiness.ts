@@ -332,6 +332,11 @@ export function buildWriterRewriteFeedback(report: ReadinessReport, briefMinutes
         `(for example "001" → "zero zero one", "17" → "seventeen"). Codes, serial numbers, plates, receipts and times count too:`,
         ...b.evidence.map((e) => `    ${e}`),
       )
+    } else if (b.gate === 'BELLE-CONTENT') {
+      lines.push(`- BELLE-CONTENT: ${b.detail}`)
+      if (/cut off|incomplete/i.test(b.detail))
+        lines.push('    (The last word before the final period must be a strong word, not a small word such as on, in, at, of, to, the, a, and, or, but, with.)')
+      for (const e of b.evidence ?? []) lines.push(`    ${e}`)
     } else if (b.gate === 'LABELS' && b.evidence?.length) {
       lines.push(
         `- LABELS: every story line must start with a speaker label in CAPITAL LETTERS (NARRATOR: or the character's name, e.g. "NELL FARADAY:"). Fix these lines:`,
@@ -416,7 +421,7 @@ export async function writeWithSelfCheck(opts: {
     report = await opts.check(draft.script)
     attempts.push({
       attempt: attempt + 1,
-      blockers: report.blockers.map((b) => `${b.gate}: ${b.detail}`),
+      blockers: report.blockers.map((b) => `${b.gate}: ${b.detail}${b.gate === 'BELLE-CONTENT' && b.evidence?.length ? ` [${b.evidence[0].slice(0, 300)}]` : ''}`),
       spokenWords: report.metrics.spokenWords,
     })
     if (report.ready) break

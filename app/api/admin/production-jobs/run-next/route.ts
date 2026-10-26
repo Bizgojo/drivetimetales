@@ -6500,7 +6500,19 @@ async function generateOneSeriesEpisodeScript(job: ProductionJob, model: string)
         series_total_episodes: selfCheckTotal,
         series_is_finale: selfCheckIsFinale,
       }, draftScript)
-      const blockers = [...report.blockers, ...belleIssues.map((detail) => ({ gate: 'BELLE-CONTENT', detail }))]
+      // WRITER-BELLE-EVIDENCE-001 (job ea6976c3: finale EP3 failed 3 drafts on
+      // "outro appears cut off" with near-identical drafts — the writer never
+      // saw which text was judged): quote the current Belle line back.
+      const belleIntroText = extractBelleSection(draftScript, 'intro')
+      const belleOutroText = extractBelleSection(draftScript, 'outro')
+      const blockers = [
+        ...report.blockers,
+        ...belleIssues.map((detail) => {
+          const isOutro = /\boutro\b/i.test(detail)
+          const current = isOutro ? belleOutroText : /\bintro\b/i.test(detail) ? belleIntroText : ''
+          return { gate: 'BELLE-CONTENT', detail, ...(current ? { evidence: [`current ${isOutro ? 'outro' : 'intro'}: BELLE B: ${current}`] } : {}) }
+        }),
+      ]
       return { ...report, blockers, ready: blockers.length === 0 }
     },
   })

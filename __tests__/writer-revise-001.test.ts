@@ -143,3 +143,32 @@ describe('WRITER-NUMERAL-EVIDENCE-001: numeral feedback quotes the offending lin
     expect(text).not.toContain('BELLE B: Episode 2')
   })
 })
+
+describe('WRITER-BELLE-EVIDENCE-001: Belle failures quote the current Belle line', () => {
+  const report = {
+    ready: false,
+    warnings: [],
+    metrics: notReady().metrics,
+    blockers: [{ gate: 'BELLE-CONTENT', detail: 'outro appears cut off or incomplete.', evidence: ['current outro: BELLE B: And the river keeps moving on.'] }],
+  }
+
+  test('feedback quotes the outro and explains the cut-off rule', () => {
+    const text = buildWriterRewriteFeedback(report as any, 15)
+    expect(text).toContain('current outro: BELLE B: And the river keeps moving on.')
+    expect(text).toMatch(/must be a strong word, not a small word such as on, in, at/)
+  })
+
+  test('attempt record (and so the failure message) carries the quoted line', async () => {
+    const r = await writeWithSelfCheck({
+      generate: async () => ({ script: 's', description: 'd' }),
+      check: () => report as any,
+      maxRewrites: 0,
+    })
+    expect(r.attempts[0].blockers[0]).toContain('[current outro: BELLE B: And the river keeps moving on.]')
+  })
+
+  test('route attaches the current intro/outro to BELLE-CONTENT blockers', () => {
+    const src = readFileSync(join(__dirname, '..', 'app/api/admin/production-jobs/run-next/route.ts'), 'utf8')
+    expect(src).toContain("evidence: [`current ${isOutro ? 'outro' : 'intro'}: BELLE B: ${current}`]")
+  })
+})
