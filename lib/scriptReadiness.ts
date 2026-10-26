@@ -21,6 +21,7 @@
  * deterministic. A script that passes here can still fail those.
  */
 
+import { findUnlabeledStoryBodyLines, findSfxLabelLines } from './scriptLabels'
 import { numeralPreTtsScan } from './numeralPreTtsScan'
 import { checkScriptRuntimeMeetsMinimum, SCRIPT_RUNTIME_PREFLIGHT } from './scriptRuntimeEstimate'
 import { checkNarrationPresence } from './narrationPresence'
@@ -154,6 +155,24 @@ export function checkScriptReadiness(input: ReadinessInput): ReadinessReport {
       })
     blockers.push({ gate: 'NUMERAL-PRETTS', detail: `${numerals.failures.length} digit numeral(s) in spoken lines: ${spans.join(', ')}`, evidence })
   }
+
+  // 3b. Speaker labels / SFX cue format — the exact check series_voice_preflight
+  // runs (SCRIPT-LABELS-001, job f5b565be).
+  const quote = (t: string) => (t.length > 220 ? t.slice(0, 217) + '...' : t)
+  const sfxLabelLines = findSfxLabelLines(script)
+  if (sfxLabelLines.length)
+    blockers.push({
+      gate: 'SFX-FORMAT',
+      detail: `${sfxLabelLines.length} sound cue(s) written as a speaker label (voice step would read them aloud)`,
+      evidence: sfxLabelLines.slice(0, 10).map((l) => quote(l.text)),
+    })
+  const unlabeled = findUnlabeledStoryBodyLines(script)
+  if (unlabeled.length)
+    blockers.push({
+      gate: 'LABELS',
+      detail: `${unlabeled.length} story line(s) without an UPPER-CASE speaker label (voice preflight refuses these)`,
+      evidence: unlabeled.slice(0, 10).map((l) => quote(l.text)),
+    })
 
   // 4. SFX count (validator SFX-001)
   const sfxCount = (script.match(/\[SFX:/gi) || []).length
@@ -311,6 +330,16 @@ export function buildWriterRewriteFeedback(report: ReadinessReport, briefMinutes
       lines.push(
         `- NUMERAL-PRETTS (numbers): these spoken lines contain digits. Rewrite each number in words, the way a narrator would say it aloud ` +
         `(for example "001" → "zero zero one", "17" → "seventeen"). Codes, serial numbers, plates, receipts and times count too:`,
+        ...b.evidence.map((e) => `    ${e}`),
+      )
+    } else if (b.gate === 'LABELS' && b.evidence?.length) {
+      lines.push(
+        `- LABELS: every story line must start with a speaker label in CAPITAL LETTERS (NARRATOR: or the character's name, e.g. "NELL FARADAY:"). Fix these lines:`,
+        ...b.evidence.map((e) => `    ${e}`),
+      )
+    } else if (b.gate === 'SFX-FORMAT' && b.evidence?.length) {
+      lines.push(
+        `- SFX-FORMAT: write each sound effect on its own line exactly as [SFX: short description] — no "SFX:" label, no numbers or IDs. Fix these lines:`,
         ...b.evidence.map((e) => `    ${e}`),
       )
     } else {

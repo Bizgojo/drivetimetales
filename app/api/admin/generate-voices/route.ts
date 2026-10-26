@@ -34,6 +34,7 @@ import {
 } from '@/lib/sfxAssetLock'
 // BELL-FREEZE-GUARD-001: centralized frozen guard (frozenGuard + freezePreflight)
 import { checkFrozenGuard } from '@/lib/guards/frozenGuard'
+import { findUnlabeledStoryBodyLines } from '@/lib/scriptLabels'
 import { EL_VOICE_CODE_LABEL } from '@/lib/voice-providers/elevenlabs/constants'
 // ATL-FOLLOWUP-002: transcript QC normalization + comparison extracted to a
 // shared, testable module. Both sides (script text and Whisper STT output)
@@ -1714,40 +1715,6 @@ function normalizeVoiceGender(gender: string | null | undefined): CharacterInfo[
   const normalized = (gender || '').trim().toLowerCase()
   if (normalized === 'male' || normalized === 'female') return normalized
   return 'unknown'
-}
-
-function findUnlabeledStoryBodyLines(script: string) {
-  const rawLines = script.split('\n')
-  const startIdx = rawLines.findIndex(line => line.includes('[START AUDIO DRAMA SCRIPT]'))
-  if (startIdx === -1) return []
-
-  const allowedSectionMarkers = new Set([
-    'BELLE B ANNOUNCEMENT',
-    'BELLE B INTRO',
-    'BELLE B OUTRO',
-    '[START AUDIO DRAMA SCRIPT]',
-    '[END AUDIO DRAMA SCRIPT]',
-  ])
-  // END-EPISODE-MARKER-001 (Type A, proof-run 2 Oct 3): Hal series scripts close
-  // with [END EPISODE N], a structural marker that is never a spoken line.
-  // Accept it (and the canonical end marker) via regex — mirrors
-  // lib/scriptLineIndex.ts, which already skips all bare bracket lines.
-  const structuralEndMarkerRe = /^\[END (AUDIO DRAMA SCRIPT|EPISODE \d+(?:\s*[\u2014\u2013-]\s*.+)?)\]$/i
-  const speakerLabelRe = /^([A-Z][A-ZÀ-Ú0-9\s'.()/&-]+?):\s*(.+)$/
-  const bracketCueRe = /^\[(BEAT|PAUSE(?::\d+(?:\.\d+)?)?|SFX:\s*.+)\]$/i
-
-  return rawLines
-    .slice(startIdx + 1)
-    .map((line, offset) => ({ lineNumber: startIdx + offset + 2, text: line.trim() }))
-    .filter(({ text }) => {
-      if (!text) return false
-      if (/^-{3,}$/.test(text)) return false
-      if (allowedSectionMarkers.has(text.toUpperCase())) return false
-      if (structuralEndMarkerRe.test(text)) return false
-      if (bracketCueRe.test(text)) return false
-      if (speakerLabelRe.test(text)) return false
-      return true
-    })
 }
 
 function findInlineProductionCues(lines: ScriptLine[]) {

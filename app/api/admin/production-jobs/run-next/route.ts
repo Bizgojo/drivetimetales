@@ -39,6 +39,7 @@ import { numeralPreTtsScan, buildNumeralPreflightFailure } from '@/lib/numeralPr
 import { shouldPurgeVoiceSegments, musicUrlReusable } from '@/app/lib/pipeline-gates'
 import { runVoiceMapGate } from '@/lib/voiceMapGate'
 import { checkNarrationPresence } from '@/lib/narrationPresence'
+import { normalizeScriptFormat } from '@/lib/scriptLabels'
 import {
   briefMinutesOf,
   briefRuntimeImpossible,
@@ -5959,7 +5960,7 @@ CURRENT published rules:
 - Belle B intro/outro must never use "Tonight" or any time-of-day reference.
 - Belle B announcement must never include a greeting/opener, the author, narrator, or "an Endless Tales original"; author and narrator credits belong only in the FINALE episode's Belle B outro.
 - ${belleOutroRule}
-- SFX: at most 3 per episode (SFX-001). Use sparingly; never exceed 3.
+- SFX: at most 3 per episode (SFX-001). Use sparingly; never exceed 3. Write each one on its own line in exactly this form: [SFX: short description]. Never write "SFX:" as a speaker label and never number or name the cues.
 - Final title must be 1 to 5 words and 28 characters or fewer so it fits one line on story cards.
 
 ${namePaletteBlock}
@@ -6002,7 +6003,7 @@ Belle B hard rules (checked automatically before any audio is made):
 
 Production-format hard rules:
 - Write EVERY number as words in every spoken line: times ("three twelve in the morning"), years, ages, money, counts, addresses, and codes, serial numbers, receipts, plates or lane numbers ("transaction zero zero one", "lane three"). Never use digits in NARRATOR, character, or BELLE B lines. The only digits allowed are in header lines (TITLE, EPISODE, SERIES_TOTAL and similar) and the words "Episode ${currentEpisodeNumber}".
-- Speaker labels are for spoken words only.
+- Speaker labels are for spoken words only. Write every speaker label in CAPITAL LETTERS, exactly as in the CHARACTER GUIDE (for example "NELL FARADAY:", never "Nell Faraday:").
 - Character-labeled lines must contain only words that character says aloud.
 - Never put action, facial reactions, movement, blocking, inner thought, or narration under a character label.
 - Put all action/reaction lines under NARRATOR.
@@ -6468,10 +6469,12 @@ async function generateOneSeriesEpisodeScript(job: ProductionJob, model: string)
         .join('')
         .trim()
       const normalized = normalizeScriptDescription(rawScript, brief.description || targetEpisode.description || '')
+      // SCRIPT-LABELS-001: format-only repair (label case, SFX cue form) before the self-check.
+      const formatted = normalizeScriptFormat(normalized.script)
       return {
-        script: normalized.script,
+        script: formatted.script,
         description: normalized.description,
-        raw: rawScript,
+        raw: normalizeScriptFormat(rawScript).script,
         inputTokens: response.usage?.input_tokens ?? 0,
         outputTokens: response.usage?.output_tokens ?? 0,
       }
