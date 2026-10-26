@@ -146,10 +146,10 @@ async function maybeSetSfxDisabled(supabaseClient: ReturnType<typeof createClien
 // touched in this long, or when its lock is older than this threshold.
 const ZOMBIE_STALE_MS = 15 * 60 * 1000
 const NEXT_STEP_AFTER_CREATE = 'generate_script'
-const NEXT_STEP_AFTER_STANDALONE_SCRIPT = 'validate_voice_conformance'
+const NEXT_STEP_AFTER_STANDALONE_SCRIPT = 'validate_script'
 const STEP_VALIDATE_VOICE_CONFORMANCE = 'validate_voice_conformance'
 const NEXT_STEP_AFTER_VOICE_CONFORMANCE = 'validate_script'
-const NEXT_STEP_AFTER_STANDALONE_VALIDATION = 'validate_story_resolution'
+const NEXT_STEP_AFTER_STANDALONE_VALIDATION = 'voice_preflight'
 const NEXT_STEP_AFTER_STANDALONE_RESOLUTION = 'voice_preflight'
 const NEXT_STEP_AFTER_STANDALONE_PREFLIGHT = 'generate_voices'
 const NEXT_STEP_AFTER_STANDALONE_VOICES = 'generate_belle_assets'
@@ -4230,6 +4230,8 @@ async function runStandaloneVoicePreflight(job: ProductionJob, origin: string) {
         passed: gateIssues.length === 0,
         issueCount: gateIssues.length,
         checkedAt: nowIso(),
+        introText: gateIntro || null,
+        outroText: gateOutro || null,
       }
       if (gateIssues.length > 0) {
         const gateKind = classifyBelleIssues(gateIssues)
@@ -4458,11 +4460,20 @@ async function validateStandaloneBelleAssets(job: ProductionJob) {
   const standalone = !story.series_id && Number(story.series_total_episodes || 1) <= 1 && String(story.story_type || '').toLowerCase() !== 'series'
   // ATL-PIPE-012: narrator credit check now included in validateBelleText
   const narratorFromScript = extractHeader(String(story.script || ''), 'NARRATOR').trim() || null
+  // SIMPLIFY-PIPELINE-V2 batch-A cut 2 (Belle text-check dedupe): identical
+  // validateBelleText verdicts already ran pre-voice (before paid spend) — skip
+  // the re-check when the gate passed for these exact texts. Asset-existence
+  // checks stay here; audio/transcript QC stays in validate_belle_quality.
+  const preVoiceGateFold = (state as any)?.preVoiceContentGate
+  const preVoiceTextCoveredFold = preVoiceGateFold?.passed === true
+    && typeof preVoiceGateFold?.introText === 'string'
+    && preVoiceGateFold.introText === introText
+    && (preVoiceGateFold.outroText ?? null) === (outroText ?? null)
   const issues = [
     ...(introAssets.length > 0 ? [] : ['intro asset is missing.']),
     ...(outroAssets.length > 0 ? [] : ['outro asset is missing.']),
-    ...(await validateBelleText('intro', introText, { standalone, title: story.title, author: story.author, narrator: narratorFromScript })),
-    ...(await validateBelleText('outro', outroText, { standalone, title: story.title, author: story.author, narrator: narratorFromScript })),
+    ...(preVoiceTextCoveredFold ? [] : (await validateBelleText('intro', introText, { standalone, title: story.title, author: story.author, narrator: narratorFromScript }))),
+    ...(preVoiceTextCoveredFold ? [] : (await validateBelleText('outro', outroText, { standalone, title: story.title, author: story.author, narrator: narratorFromScript }))),
   ]
   const success = issues.length === 0
   const report = {
@@ -9170,6 +9181,89 @@ export async function POST(req: NextRequest) {
         })
       }
 
+      // SIMPLIFY-PIPELINE-V2 batch-A cut 1 (voice-conformance fold): the
+      // deterministic banned-phrase scan runs inline in validate_script — no
+      // separate validate_voice_conformance round trip for new jobs. The legacy
+      // step block below is retained for in-flight jobs. Semantics mirror it:
+      // skip without a voice profile, regenerate on violations (attempts < 2),
+      // needs_attention + continue when exhausted.
+      {
+        const vcFoldStoryId = lockedJob.story_id || (lockedJob.state_json as any)?.storyId
+        if (vcFoldStoryId) {
+          const { data: vcFoldStory } = await supabase
+            .from('stories')
+            .select('id,script,voice_profile_id')
+            .eq('id', vcFoldStoryId)
+            .single()
+          const vcFoldAttempts = Number((lockedJob.state_json as any)?.voiceConformanceAttempts ?? 0)
+          let vcFoldProfile: VoiceProfile | null = null
+          if ((vcFoldStory as any)?.voice_profile_id) {
+            const { data: vcFoldRow } = await supabase
+              .from('voice_profiles')
+              .select('*')
+              .eq('id', (vcFoldStory as any).voice_profile_id)
+              .single()
+            vcFoldProfile = (vcFoldRow as unknown as VoiceProfile) || null
+          }
+          if ((vcFoldStory as any)?.script && vcFoldProfile) {
+            const vcFoldResult = await runVoiceConformanceGate({
+              script: String((vcFoldStory as any).script || ''),
+              voiceProfile: vcFoldProfile,
+              storyId: String((vcFoldStory as any).id),
+              attempts: vcFoldAttempts,
+            })
+            if (!vcFoldResult.passed && vcFoldResult.shouldRegenerate) {
+              const vcFoldNext = vcFoldAttempts + 1
+              await supabase
+                .from('stories')
+                .update({ script: null, status: 'brief_complete' })
+                .eq('id', vcFoldStoryId)
+              const vcFoldLogs = appendLog(lockedJob,
+                `validate_voice_conformance FAIL (folded) — resetting to generate_script (attempt ${vcFoldNext}/2)`, {
+                  storyId: vcFoldStoryId,
+                  violations: vcFoldResult.violations,
+                  attempts: vcFoldNext,
+                  nextStep: NEXT_STEP_AFTER_CREATE,
+                })
+              await recordStageFailed(lockedJob, 'validate_voice_conformance', 'voice_conformance violations (folded)')
+              const { data: vcFoldRetry, error: vcFoldRetryError } = await supabase
+                .from('production_jobs')
+                .update({
+                  status: 'queued',
+                  current_step: NEXT_STEP_AFTER_CREATE,
+                  state_json: {
+                    ...((lockedJob.state_json as any) || {}),
+                    voiceConformanceAttempts: vcFoldNext,
+                    voiceConformanceLastViolations: vcFoldResult.violations,
+                  },
+                  error_json: null,
+                  logs: vcFoldLogs,
+                  locked_at: null,
+                  locked_by: null,
+                })
+                .match(ownedJobFence(lockedJob, lockHolderId))
+                .select('*')
+                .single()
+              if (vcFoldRetryError) throw new Error(`Failed to save folded voice-conformance retry: ${vcFoldRetryError.message}`)
+              return NextResponse.json({
+                success: true,
+                jobId: vcFoldRetry!.id,
+                currentStep: step,
+                nextStep: vcFoldRetry!.current_step,
+                storyId: vcFoldStoryId,
+                voiceConformance: { passed: false, folded: true, attempts: vcFoldNext },
+              })
+            }
+            if (!vcFoldResult.passed && vcFoldResult.exhausted) {
+              console.warn(`[voice-conformance] exhausted (folded) story=${vcFoldStoryId} — flagging needs_attention, continuing to validate_script`)
+              await markStoryNeedsAttention(
+                String((vcFoldStory as any).id),
+                `Voice conformance exhausted (folded) after ${vcFoldAttempts} attempts.`,
+              )
+            }
+          }
+        }
+      }
       const result = await validateStandaloneScript(lockedJob, validationModel)
       const logs = appendLog(lockedJob, result.passed
         ? (result.skipped ? 'Reused existing standalone validation pass' : 'Validated standalone script')
@@ -9377,6 +9471,66 @@ export async function POST(req: NextRequest) {
         }, { status: 422 })
       }
 
+      // SIMPLIFY-PIPELINE-V2 batch-A cut 3 (resolution fold): the
+      // story-resolution verdict runs in this same invocation — no separate
+      // validate_story_resolution round trip for new jobs. The legacy step block
+      // below is retained for in-flight jobs. Failure preserves legacy
+      // semantics: terminal failed status for Marc review (no autonomous retry).
+      {
+        const resFold = await validateStandaloneStoryResolution(lockedJob, validationModel)
+        if (!resFold.passed) {
+          const resFoldLogs = appendLog(lockedJob, 'Standalone story resolution validation failed (folded)', {
+            storyId: resFold.storyId,
+            endingTypeDetected: (resFold.report as any)?.endingTypeDetected,
+            storyTypeDetected: (resFold.report as any)?.storyTypeDetected,
+            issueCount: Array.isArray((resFold.report as any)?.issues) ? (resFold.report as any).issues.length : 0,
+          })
+          const { data: resFoldFailed, error: resFoldFailError } = await supabase
+            .from('production_jobs')
+            .update({
+              status: 'failed',
+              current_step: NEXT_STEP_AFTER_VOICE_CONFORMANCE,
+              state_json: {
+                ...(resFold.state as any),
+                ...(result.state as any),
+                storyResolutionPassed: false,
+                storyResolutionStoryId: resFold.storyId,
+                storyResolutionReport: resFold.report,
+              },
+              error_json: {
+                step,
+                storyId: resFold.storyId,
+                storyResolutionReport: resFold.report,
+                folded: true,
+                at: nowIso(),
+              },
+              logs: resFoldLogs,
+              locked_at: null,
+              locked_by: null,
+            })
+            .match(ownedJobFence(lockedJob, lockHolderId))
+            .select('*')
+            .single()
+          if (resFoldFailError) throw new Error(`Failed to save folded story-resolution failure: ${resFoldFailError.message}`)
+          return NextResponse.json({
+            success: false,
+            jobId: resFoldFailed!.id,
+            currentStep: step,
+            status: resFoldFailed!.status,
+            storyId: resFold.storyId,
+            storyResolutionReport: resFold.report,
+            folded: true,
+            marcRequired: true,
+            logs: resFoldLogs,
+          }, { status: 422 })
+        }
+        Object.assign(result.state as any, {
+          storyResolutionPassed: true,
+          storyResolutionStoryId: resFold.storyId,
+          storyResolutionReport: resFold.report,
+          storyResolutionValidatedAt: ((resFold.state as any)?.storyResolutionValidatedAt as string) || nowIso(),
+        })
+      }
       const { data: updatedJob, error: updateError } = await supabase
         .from('production_jobs')
         .update({
