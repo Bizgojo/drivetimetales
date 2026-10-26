@@ -395,3 +395,23 @@ describe('review round 3: no lock theft, and a hard per-episode spend cap', () =
     expect(guard).toMatch(/return bad\('Series writer already in progress/)
   })
 })
+
+import { classifyTransientFailure, stripQuotedScriptText } from '@/lib/transientFailure'
+
+describe('review round 3 follow-up: outages do not use up the writer cap', () => {
+  const src = readFileSync(join(__dirname, '..', 'app/api/admin/production-jobs/run-next/route.ts'), 'utf8')
+  const fn = src.slice(src.indexOf('async function generateOneSeriesEpisodeScript('), src.indexOf('\nfunction validateSeriesMetadata('))
+  test('transient check runs before recording/flagging in the thrown-call path', () => {
+    const c = fn.slice(fn.indexOf('} catch (err) {'), fn.indexOf('const script = selfCheck.script'))
+    expect(c.indexOf('classifyTransientFailure(stripQuotedScriptText(msg))')).toBeGreaterThan(-1)
+    expect(c.indexOf('classifyTransientFailure(stripQuotedScriptText(msg))')).toBeLessThan(c.indexOf('recordWriterFailure(msg)'))
+  })
+  test('the real classifier treats the Oct 16 credit outage as transient and a per-draft timeout as not', () => {
+    const credit = 'WRITER-SELF-CHECK-001: episode 1 writer call failed: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your credit balance is too low to access the Anthropic API. Please go to Plans & Billing to upgrade or purchase credits."}}'
+    expect(classifyTransientFailure(stripQuotedScriptText(credit))).toBeTruthy()
+    const wrap = (m: string) => classifyTransientFailure(stripQuotedScriptText('WRITER-SELF-CHECK-001: episode 1 writer call failed: ' + m))
+    expect(wrap('529 overloaded_error')).toBe('provider_overloaded')
+    // A per-draft timeout already cost money: it counts toward the cap.
+    expect(wrap('Request timed out.')).toBeNull()
+  })
+})

@@ -6423,8 +6423,12 @@ async function generateOneSeriesEpisodeScript(job: ProductionJob, model: string)
     }),
   })
   } catch (err) {
-    // A draft call that throws (timeout, API error) still counts toward the cap.
     const msg = `WRITER-SELF-CHECK-001: episode ${targetEpisodeNumber} writer call failed: ${err instanceof Error ? err.message : String(err)}`
+    // TRANSIENT-FAILURE-001: outside failures (credits, auth, overload,
+    // network) must not use up the episode's cap or flag it; failJob tags
+    // them transient and dispatch backs off globally (review round 3).
+    if (classifyTransientFailure(stripQuotedScriptText(msg))) throw new Error(msg)
+    // Any other thrown draft call (e.g. a per-draft timeout) counts toward the cap.
     await recordWriterFailure(msg)
     await markStoryNeedsAttention(String(targetEpisode.id), msg)
     throw new Error(msg)
