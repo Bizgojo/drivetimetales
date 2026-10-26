@@ -40,6 +40,7 @@ type Story = {
 }
 
 type LibraryRow = {
+  last_played?: string | null
   story_id: string
   progress: number | null
   completed: boolean | null
@@ -115,6 +116,7 @@ function mergeLibraryWithLocalProgress(serverRows: LibraryRow[], userId?: string
     const existing = byStoryId.get(storyId)
     const merged = mergePlayerProgress(existing, local)
     byStoryId.set(storyId, {
+      ...existing,
       story_id: storyId,
       progress: merged.progress,
       completed: merged.completed,
@@ -311,7 +313,7 @@ export default function LibraryPage() {
         if (!authWaitExpired && user?.id) {
           const { data: libraryData, error: libraryError } = await supabase
             .from('user_library')
-            .select('story_id, progress, completed, not_for_me')
+            .select('story_id, progress, completed, not_for_me, last_played')
             .eq('user_id', user.id)
           if (libraryError) throw new Error(`user_library failed: ${libraryError.message}`)
           if (!cancelled && libraryData) {

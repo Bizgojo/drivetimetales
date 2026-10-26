@@ -661,7 +661,7 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
   }
 
   const persistLocalProgress = (progressSeconds: number, done = false) => {
-    if (!Number.isFinite(progressSeconds) || progressSeconds <= 0) return
+    if (!Number.isFinite(progressSeconds) || progressSeconds < 0) return
     const totalSeconds = getProgressTotalSeconds()
     saveLocalPlayerProgress(storyId, progressSeconds, {
       userId: user?.id,
@@ -1295,9 +1295,9 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
           const localProgress = getLocalPlayerProgress(storyId, user?.id)
           if (!skipResumeForFreshPlaylistItem) {
             const localMerged = mergePlayerProgress(null, localProgress)
-            if (!localMerged.completed && localMerged.progress > resumeRef.current) {
+            if (!localMerged.completed && localProgress) {
               resumeRef.current = localMerged.progress
-              setHasProgress(true)
+              setHasProgress(localMerged.progress > 0)
             }
           } else {
             setHasProgress(false)
@@ -1505,14 +1505,14 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
         if (user?.id) {
           stage = 'user-progress'
           const { data: lib } = await supabase.from('user_library')
-            .select('progress,completed,not_for_me').eq('user_id', user.id).eq('story_id', storyId).maybeSingle()
+            .select('progress,completed,not_for_me,last_played').eq('user_id', user.id).eq('story_id', storyId).maybeSingle()
           const localProgress = getLocalPlayerProgress(storyId, user.id)
           const mergedProgress = mergePlayerProgress(lib, localProgress)
-          if (!skipResumeForFreshPlaylistItem && mergedProgress.progress > 0 && !lib?.not_for_me) {
-            resumeRef.current = mergedProgress.completed ? 0 : Math.max(resumeRef.current, mergedProgress.progress)
-            setHasProgress(!mergedProgress.completed)
+          if (!skipResumeForFreshPlaylistItem && (lib || localProgress) && !lib?.not_for_me) {
+            resumeRef.current = mergedProgress.completed ? 0 : mergedProgress.progress
+            setHasProgress(!mergedProgress.completed && mergedProgress.progress > 0)
           }
-          if (!lib?.not_for_me && !mergedProgress.completed && localProgress?.progress && localProgress.progress > Number(lib?.progress || 0)) {
+          if (!lib?.not_for_me && !mergedProgress.completed && localProgress && mergedProgress.progress === localProgress.progress && localProgress.progress !== Number(lib?.progress || 0)) {
             void supabase.from('user_library').upsert({
               user_id: user.id,
               story_id: storyId,
@@ -2087,6 +2087,8 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
       setPlaybackEnded(false)
       setEndStateCandidate(null)
     }
+    // Persist explicit seeks immediately, including paused seeks and a seek to zero.
+    void saveProgress(nextTime)
     if (isASC3) {
       seekASC3ToGlobalTime(nextTime)
       return

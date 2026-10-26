@@ -71,9 +71,9 @@ export function saveLocalPlayerProgress(
     ? Math.floor(Number(options.durationSecs))
     : existing?.durationSecs ?? null
 
-  const nextProgress = completed
-    ? Math.max(progress, existing?.progress || 0)
-    : Math.max(progress, existing?.progress || 0)
+  // Resume follows the last listening position, including an intentional rewind.
+  // Completion remains sticky independently of the current position.
+  const nextProgress = progress
 
   const map = readProgressMap(options.userId)
   map[storyId] = {
@@ -99,15 +99,19 @@ export function clearLocalPlayerProgress(storyId: string, userId?: string | null
 }
 
 export function mergePlayerProgress(
-  server: { progress?: number | null; completed?: boolean | null } | null | undefined,
+  server: { progress?: number | null; completed?: boolean | null; last_played?: string | null } | null | undefined,
   local: PlayerProgressRecord | null | undefined
 ) {
   const serverProgress = Number(server?.progress || 0)
   const localProgress = Number(local?.progress || 0)
   const completed = Boolean(server?.completed || local?.completed)
-  const progress = completed
-    ? Math.max(serverProgress, localProgress)
-    : Math.max(serverProgress, localProgress)
+  const serverTime = Date.parse(server?.last_played || '')
+  const localTime = Date.parse(local?.updatedAt || '')
+  // A newer local seek must survive refresh even while the server write is pending.
+  // A newer server position still wins when listening continues on another device.
+  const useLocal = Boolean(local) && (!server || !Number.isFinite(serverTime)
+    || (Number.isFinite(localTime) && localTime >= serverTime))
+  const progress = useLocal ? localProgress : serverProgress
   return {
     progress: Number.isFinite(progress) && progress > 0 ? Math.floor(progress) : 0,
     completed,
