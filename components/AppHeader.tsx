@@ -112,11 +112,11 @@ export default function AppHeader() {
             type="button"
             onClick={() => window.location.assign('/account')}
             className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full bg-orange-500 text-lg font-bold text-white transition-colors hover:bg-orange-400"
-            disabled={loading && !accountUser}
-            aria-busy={loading && !accountUser}
-            aria-label={accountUser ? 'Go to account' : loading ? 'Loading account' : 'Sign in or view account'}
+            disabled={loading}
+            aria-busy={loading}
+            aria-label={loading ? 'Loading account' : accountUser ? 'Go to account' : 'Sign in or view account'}
           >
-            {initial ? initial : loading ? <span aria-hidden="true">…</span> : <User className="h-6 w-6" aria-hidden="true" />}
+            {loading ? <span aria-hidden="true">…</span> : initial ? initial : <User className="h-6 w-6" aria-hidden="true" />}
           </button>
         </div>
       </div>
