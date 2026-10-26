@@ -263,7 +263,8 @@ describe('review L2–L7', () => {
     expect(helper).toMatch(/markStoriesNeedAttention\(/)
   })
   test('L3: every writer refusal flags the episode before throwing', () => {
-    expect((fn.match(/await markStoryNeedsAttention\(String\(targetEpisode\.id\), msg\)\s*\n\s*throw new Error\(msg\)/g) || []).length).toBe(3)
+    // impossible brief, narrator, spend cap, thrown writer call, failed drafts
+    expect((fn.match(/await markStoryNeedsAttention\(String\(targetEpisode\.id\), msg\)\s*\n\s*throw new Error\(msg\)/g) || []).length).toBe(5)
   })
   test('L4: spend is metered per draft inside generate, not once at the end', () => {
     const gen = fn.slice(fn.indexOf('generate: async (feedback) => {'), fn.indexOf('check: (draftScript) =>'))
@@ -340,5 +341,57 @@ describe('review round 2', () => {
   test('RUNTIME-BRIEF needs an explicit standalone type', () => {
     const r = checkScriptReadiness({ script: episodeScript(32), briefMinutes: 20 })
     expect(r.blockers.map((b) => b.gate)).not.toContain('RUNTIME-BRIEF')
+  })
+})
+
+// ── Review round 3 ──────────────────────────────────────────────────────────
+import { countWriterFailures, WRITER_MAX_FAILED_INVOCATIONS } from '@/lib/scriptReadiness'
+
+describe('review round 3: no lock theft, and a hard per-episode spend cap', () => {
+  const src = readFileSync(join(__dirname, '..', 'app/api/admin/production-jobs/run-next/route.ts'), 'utf8')
+  const fn = src.slice(src.indexOf('async function generateOneSeriesEpisodeScript('), src.indexOf('\nfunction validateSeriesMetadata('))
+
+  test('countWriterFailures counts only failures after the last human reset', () => {
+    const sj = { writer_self_check_failures: [{ at: '2026-10-26T10:00:00Z' }, { at: '2026-10-26T12:00:00Z' }, { at: 'garbage' }] }
+    expect(countWriterFailures(sj, null)).toBe(2)
+    expect(countWriterFailures(sj, '2026-10-26T11:00:00Z')).toBe(1)
+    expect(countWriterFailures({}, null)).toBe(0)
+    expect(countWriterFailures(null, null)).toBe(0)
+  })
+
+  test('cap: at most 2 failed writer runs (≤ 6 paid drafts) per episode between resets', () => {
+    expect(WRITER_MAX_FAILED_INVOCATIONS).toBe(2)
+    expect(WRITER_MAX_FAILED_INVOCATIONS * (1 + WRITER_SELF_CHECK_MAX_REWRITES)).toBe(6)
+  })
+
+  test('the cap is checked before any writing call and before the narrator check', () => {
+    const cap = fn.indexOf('priorWriterFailures >= WRITER_MAX_FAILED_INVOCATIONS')
+    expect(cap).toBeGreaterThan(-1)
+    expect(cap).toBeLessThan(fn.indexOf('writeWithSelfCheck({'))
+    expect(cap).toBeLessThan(fn.indexOf('is not in narrator_voices'))
+  })
+
+  test('every paid-writer failure (failed drafts AND thrown calls) is recorded on the episode before throwing', () => {
+    expect((fn.match(/await recordWriterFailure\(msg\)\s*\n\s*await markStoryNeedsAttention/g) || []).length).toBe(2)
+    const rec = fn.slice(fn.indexOf('const recordWriterFailure = async'), fn.indexOf('// Narrator must resolve before any writing spend'))
+    expect(rec).toMatch(/\.from\('stories'\)/)
+    expect(rec).not.toMatch(/ownedJobFence|locked_at/)
+  })
+
+  test('the loader fetches the reset stamp the cap uses', () => {
+    const loader = src.slice(src.indexOf('async function loadSeriesEpisodes('), src.indexOf('async function loadSeriesEpisodes(') + 900)
+    expect(loader).toMatch(/dispatch_failure_reset_at/)
+  })
+
+  test('a busy writer is detected BEFORE lockJob (no locked_at rewrite, no clearLock)', () => {
+    const post = src.slice(src.indexOf('const candidate = await selectCandidate(requestedJobId)'))
+    expect(post.indexOf('writerClaimIsFresh(candidate.state_json, Date.now())')).toBeGreaterThan(-1)
+    expect(post.indexOf('writerClaimIsFresh(candidate.state_json, Date.now())')).toBeLessThan(post.indexOf('lockedJob = await lockJob(candidate, lockHolderId)'))
+  })
+
+  test('one-job-guard path returns before adopting a job whose writer is busy', () => {
+    const guard = src.slice(src.indexOf('.eq(\'locked_by\', lockHolderId)'), src.indexOf('lockedJob = existingJob as ProductionJob'))
+    expect(guard).toMatch(/writerClaimIsFresh\(\(existingJob as ProductionJob\)\.state_json, Date\.now\(\)\)/)
+    expect(guard).toMatch(/return bad\('Series writer already in progress/)
   })
 })

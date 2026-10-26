@@ -412,3 +412,20 @@ export function writerClaimIsFresh(stateJson: unknown, nowMs: number): boolean {
   const at = Date.parse(String(claim?.at || ''))
   return Number.isFinite(at) && nowMs - at < WRITER_CLAIM_STALE_MS
 }
+
+/**
+ * WRITER-SPEND-CAP-001 (review round 3): hard per-episode cap on failed
+ * writer invocations, independent of job locks. Failures are recorded on the
+ * EPISODE (stories.script_json.writer_self_check_failures) with an unfenced
+ * write before the writer throws, so a lost job lock can never turn a failing
+ * episode into endless paid drafts. A human reset (dispatch_failure_reset_at,
+ * stamped by content-approval clear_needs_attention) re-opens the budget.
+ */
+export const WRITER_MAX_FAILED_INVOCATIONS = 2
+
+export function countWriterFailures(scriptJson: unknown, resetAtIso?: string | null): number {
+  const list = (scriptJson as any)?.writer_self_check_failures
+  if (!Array.isArray(list)) return 0
+  const resetMs = Date.parse(String(resetAtIso || '')) || 0
+  return list.filter((entry: any) => (Date.parse(String(entry?.at || '')) || 0) > resetMs).length
+}

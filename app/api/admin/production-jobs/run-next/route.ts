@@ -47,6 +47,8 @@ import {
   writeWithSelfCheck,
   writerClaimIsFresh,
   writerDraftTimeoutMs,
+  countWriterFailures,
+  WRITER_MAX_FAILED_INVOCATIONS,
   WRITER_SELF_CHECK_BUDGET_MS,
 } from '@/lib/scriptReadiness'
 import { runVoiceConformanceGate, type VoiceProfile } from '@/lib/voiceConformanceGate'
@@ -2885,7 +2887,7 @@ async function createStoryRow(job: ProductionJob) {
 async function loadSeriesEpisodes(seriesId: string) {
   const { data, error } = await supabase
     .from('stories')
-    .select('id,title,author,author_style,genre,narrative_voice,description,brief_json,status,script,script_json,script_version,series_id,series_name,episode_number,series_episode_number,series_total_episodes,series_is_finale,story_type,validator_result,validator_report,validator_passed_at,narrator_voice_id,narrator_voice_name,audio_url,story_audio_url,duration_mins')
+    .select('id,title,author,author_style,genre,narrative_voice,description,brief_json,status,script,script_json,script_version,series_id,series_name,episode_number,series_episode_number,series_total_episodes,series_is_finale,story_type,validator_result,validator_report,validator_passed_at,narrator_voice_id,narrator_voice_name,audio_url,story_audio_url,duration_mins,dispatch_failure_reset_at')
     .eq('series_id', seriesId)
     // Rule-1 doctrine (Marc 2026-07-09): cold_storage episodes are retired from
     // production and must not contaminate series validation/production - a
@@ -6340,6 +6342,24 @@ async function generateOneSeriesEpisodeScript(job: ProductionJob, model: string)
     await markStoryNeedsAttention(String(targetEpisode.id), msg)
     throw new Error(msg)
   }
+  // WRITER-SPEND-CAP-001: hard cap on failed writer invocations per episode.
+  const priorWriterFailures = countWriterFailures(targetEpisode.script_json, targetEpisode.dispatch_failure_reset_at)
+  if (priorWriterFailures >= WRITER_MAX_FAILED_INVOCATIONS) {
+    const msg = `WRITER-SPEND-CAP-001: episode ${targetEpisodeNumber} already failed ${priorWriterFailures} writer runs since the last reset (cap ${WRITER_MAX_FAILED_INVOCATIONS}); no writing call made. Fix the brief/series, then clear needs_attention to reset.`
+    await markStoryNeedsAttention(String(targetEpisode.id), msg)
+    throw new Error(msg)
+  }
+  // Records the failure on the EPISODE (unfenced) before throwing, so a lost
+  // job lock can never hide it from the cap above.
+  const recordWriterFailure = async (reason: string) => {
+    const existing = targetEpisode.script_json && typeof targetEpisode.script_json === 'object' ? targetEpisode.script_json : {}
+    const failures = Array.isArray((existing as any).writer_self_check_failures) ? (existing as any).writer_self_check_failures : []
+    const { error } = await supabase
+      .from('stories')
+      .update({ script_json: { ...existing, writer_self_check_failures: [...failures, { at: nowIso(), reason: reason.slice(0, 500) }] } })
+      .eq('id', targetEpisode.id)
+    if (error) console.warn(`[WRITER-SPEND-CAP-001] failed to record writer failure for ${targetEpisode.id}: ${error.message}`)
+  }
   // Narrator must resolve before any writing spend (review L5).
   if (!selfCheckVoices.some((name) => String(name || '').trim().toLowerCase() === assignedNarratorName.trim().toLowerCase())) {
     const msg = `WRITER-SELF-CHECK-001: episode ${targetEpisodeNumber} narrator "${assignedNarratorName}" is not in narrator_voices (no writing call made)`
@@ -6351,7 +6371,9 @@ async function generateOneSeriesEpisodeScript(job: ProductionJob, model: string)
   const selfCheckIsFinale = Boolean(targetEpisode.series_is_finale) || (selfCheckTotal > 0 && targetEpisodeNumber >= selfCheckTotal)
   let writerDraftIndex = 0
   const writerStepStartedAt = Date.now()
-  const selfCheck = await writeWithSelfCheck({
+  let selfCheck: Awaited<ReturnType<typeof writeWithSelfCheck>>
+  try {
+  selfCheck = await writeWithSelfCheck({
     briefMinutes: selfCheckBriefMinutes,
     budgetMs: WRITER_SELF_CHECK_BUDGET_MS,
     generate: async (feedback) => {
@@ -6400,6 +6422,13 @@ async function generateOneSeriesEpisodeScript(job: ProductionJob, model: string)
       briefMinutes: selfCheckBriefMinutes,
     }),
   })
+  } catch (err) {
+    // A draft call that throws (timeout, API error) still counts toward the cap.
+    const msg = `WRITER-SELF-CHECK-001: episode ${targetEpisodeNumber} writer call failed: ${err instanceof Error ? err.message : String(err)}`
+    await recordWriterFailure(msg)
+    await markStoryNeedsAttention(String(targetEpisode.id), msg)
+    throw new Error(msg)
+  }
   const script = selfCheck.script
   const description = selfCheck.description
   const writerAttempts = selfCheck.attempts
@@ -6409,6 +6438,7 @@ async function generateOneSeriesEpisodeScript(job: ProductionJob, model: string)
     const msg =
       `WRITER-SELF-CHECK-001: episode ${targetEpisodeNumber} still fails pre-save checks after ${writerAttempts.length} drafts ` +
       `(nothing saved, no audio spend): ${(last?.blockers || []).join(' | ')}`
+    await recordWriterFailure(msg)
     await markStoryNeedsAttention(String(targetEpisode.id), msg)
     throw new Error(msg)
   }
@@ -8435,6 +8465,11 @@ export async function POST(req: NextRequest) {
         .order('locked_at', { ascending: false })
         .limit(1)
         .maybeSingle()
+      if (existingJob && normalizeStep((existingJob as ProductionJob).current_step) === NEXT_STEP_AFTER_SERIES_CREATE && writerClaimIsFresh((existingJob as ProductionJob).state_json, Date.now())) {
+        // WRITER-CLAIM-001: return without adopting the job, so the finally
+        // block never clears the running writer's lock.
+        return bad('Series writer already in progress for this job', 409, { jobId: (existingJob as ProductionJob).id, reason: 'writer_in_progress' })
+      }
       if (existingJob) {
         // Worker already has a running job - use it instead of picking a new one
         lockedJob = existingJob as ProductionJob
@@ -8453,6 +8488,13 @@ export async function POST(req: NextRequest) {
       const candidate = await selectCandidate(requestedJobId)
       if (!candidate) {
         return NextResponse.json({ success: true, message: 'No queued or running production job found', job: null, markedZombies })
+      }
+
+      // WRITER-CLAIM-001 (review round 3): step aside BEFORE taking the lock.
+      // A same-holder re-entry that locks first would rewrite locked_at and
+      // break the running writer's fenced writes.
+      if (normalizeStep(candidate.current_step) === NEXT_STEP_AFTER_SERIES_CREATE && writerClaimIsFresh(candidate.state_json, Date.now())) {
+        return bad('Series writer already in progress for this job', 409, { jobId: candidate.id, reason: 'writer_in_progress' })
       }
 
       lockedJob = await lockJob(candidate, lockHolderId)
