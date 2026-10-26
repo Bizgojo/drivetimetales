@@ -50,6 +50,7 @@ import {
   countWriterFailures,
   WRITER_MAX_FAILED_INVOCATIONS,
   WRITER_SELF_CHECK_BUDGET_MS,
+  seriesSpokenWordTarget,
 } from '@/lib/scriptReadiness'
 import { runVoiceConformanceGate, type VoiceProfile } from '@/lib/voiceConformanceGate'
 // R1-V3 step map (decision r1-v3-step-map-approved-oct6, 2026-10-06):
@@ -5854,14 +5855,25 @@ async function verifyStandaloneReadyForReview(job: ProductionJob) {
 function buildSeriesEpisodePrompt(series: any, episode: any, allEpisodes: any[], continuityBundle: any[], namePaletteBlock: string, authorVoiceBlock: string, assignedNarratorName: string, seriesCharacterRosterBlock: string) {
   const brief = episode.brief_json || {}
   const target = runtimeTarget(brief.runtime || '')
+  const spokenTarget = seriesSpokenWordTarget(target.runtime)
   const currentEpisodeNumber = episodeNumber(episode, 1)
   const totalEpisodes = Number(episode.series_total_episodes || brief.series_total_episodes || allEpisodes.length)
   const isFinale = Boolean(episode.series_is_finale ?? brief.series_is_finale ?? currentEpisodeNumber === totalEpisodes)
+  // WRITER-PROMPT-GATES-001: state the downstream gates' exact requirements in
+  // the prompt (job fd2521c4 — the prompt asked for things the Belle, numeral,
+  // and runtime gates then rejected, so self-check rewrites could not converge).
+  const belleSeriesName = String(episode.series_name || series.title || brief.series_name || '').trim()
+  const belleEpisodeTitle = String(episode.title || brief.episode_title || '').trim()
+  const belleAuthorName = String(episode.author || brief.author || '').trim()
+  const belleIntroRequirement = `The Belle B announcement MUST contain, word for word: the series title "${belleSeriesName}", the words "Episode ${currentEpisodeNumber}", and the episode title "${belleEpisodeTitle}" in quotes.`
+  const belleOutroRequirement = isFinale
+    ? `The Belle B outro MUST name the series title "${belleSeriesName}", the author "${belleAuthorName}", and the narrator "${assignedNarratorName}". It must not invite a next episode.`
+    : `The Belle B outro MUST do all three: (1) reflect on the emotional cost or meaning using at least one of these words: truth, secret, choice, question, cost, moment, revelation; (2) speak warmly to the listener using "you" or "we"; (3) point to what comes next using the words "next episode". It must NOT name the author "${belleAuthorName}" or the narrator "${assignedNarratorName}", must not say "an Endless Tales original", and must not sound like the series is over.`
   const belleOutroRule = isFinale
-    ? 'Belle B outro must resolve/close the series, must not encourage the next episode, and may include the author/narrator credit and "an Endless Tales original".'
-    : 'Belle B outro must restate the episode cliffhanger, invite the listener to continue to the next episode, must not say "an Endless Tales original", and must not sound like a full-series ending.'
+    ? 'Belle B outro must resolve/close the series, must not encourage the next episode, must name the series and credit the author and narrator, and may say "an Endless Tales original".'
+    : 'Belle B outro must reflect on what the cliffhanger means (not retell the plot), speak to the listener, point to the next episode, must not say "an Endless Tales original", and must not sound like a full-series ending.'
   const belleOutroTemplate = isFinale
-    ? '[one or two short sentences, reflective series closure, no time-of-day reference, no next-episode invitation, may credit the author/narrator and say "an Endless Tales original"]'
+    ? '[one or two short sentences, reflective series closure, no time-of-day reference, no next-episode invitation, names the series, credits the author and narrator, may say "an Endless Tales original"]'
     : '[one or two short sentences, reflective cliffhanger tease, no time-of-day reference, invites the next episode, no author/narrator credit, no "Endless Tales original", not a full-series ending]'
 
   return `You are the Endless Tales Stage 2 series script writer.
@@ -5945,7 +5957,7 @@ CURRENT published rules:
 - Belle B is never labeled ANNOUNCER or SANDY.
 - Belle B announcement must not include [LISTENER_NAME] or any listener name; the shared name opener handles greeting/personalization.
 - Belle B intro/outro must never use "Tonight" or any time-of-day reference.
-- Belle B announcement must never include a greeting/opener, the author, narrator, or "an Endless Tales original"; those credits belong only in the Belle B outro.
+- Belle B announcement must never include a greeting/opener, the author, narrator, or "an Endless Tales original"; author and narrator credits belong only in the FINALE episode's Belle B outro.
 - ${belleOutroRule}
 - SFX: at most 3 per episode (SFX-001). Use sparingly; never exceed 3.
 - Final title must be 1 to 5 words and 28 characters or fewer so it fits one line on story cards.
@@ -5974,7 +5986,7 @@ CHARACTER GUIDE
 
 BELLE B ANNOUNCEMENT
 ---
-BELLE B: [one or two short sentences, warm, specific, sensory. Includes the episode title in quotes and references something specific from the episode. NO [LISTENER_NAME]. NO greeting/opener (e.g. no "settle in", "welcome") - the name opener handles that. NO author credit, NO narrator credit, no time-of-day, no "Endless Tales original".]
+BELLE B: [one or two short sentences, warm, specific, sensory. Names the series "${belleSeriesName}", says "Episode ${currentEpisodeNumber}", includes the episode title "${belleEpisodeTitle}" in quotes, and references something specific from the episode. NO [LISTENER_NAME]. NO greeting/opener (e.g. no "settle in", "welcome") - the name opener handles that. NO author credit, NO narrator credit, no time-of-day, no "Endless Tales original".]
 
 [START AUDIO DRAMA SCRIPT]
 NARRATOR: ...
@@ -5984,7 +5996,12 @@ BELLE B OUTRO
 ---
 BELLE B: ${belleOutroTemplate}
 
+Belle B hard rules (checked automatically before any audio is made):
+- ${belleIntroRequirement}
+- ${belleOutroRequirement}
+
 Production-format hard rules:
+- Write EVERY number as words in every spoken line: times ("three twelve in the morning"), years, ages, money, counts, addresses. Never use digits in NARRATOR, character, or BELLE B lines. The only digits allowed are in header lines (TITLE, EPISODE, SERIES_TOTAL and similar) and the words "Episode ${currentEpisodeNumber}".
 - Speaker labels are for spoken words only.
 - Character-labeled lines must contain only words that character says aloud.
 - Never put action, facial reactions, movement, blocking, inner thought, or narration under a character label.
@@ -6001,7 +6018,7 @@ Series rules:
 - ${isFinale ? 'This is the finale. Resolve the season arc completely.' : 'This is not the finale. End on a specific cliffhanger with forward momentum. Do not use "to be continued" phrasing.'}
 
 Additional rules:
-- DESCRIPTION must be a COMPLETE sentence, ≤24 words, present tense only (DISC-001). Before final output, self-check DESCRIPTION word count; if it is over 24 words, rewrite it internally until it is complete and ≤24 words. Never cut DESCRIPTION mid-word or mid-phrase. Never output a fragment. DESCRIPTION must TEASE a question, never reveal the episode's climax, twist, final discovery, or resolution payoff. Raise curiosity about the setup or mystery; do NOT state the outcome. Example: tease "strange notes under a neighbor's door at 3:12 a.m."; do NOT reveal "someone is trapped inside."
+- DESCRIPTION must be a COMPLETE sentence, ≤24 words, present tense only (DISC-001). Before final output, self-check DESCRIPTION word count; if it is over 24 words, rewrite it internally until it is complete and ≤24 words. Never cut DESCRIPTION mid-word or mid-phrase. Never output a fragment. DESCRIPTION must TEASE a question, never reveal the episode's climax, twist, final discovery, or resolution payoff. Raise curiosity about the setup or mystery; do NOT state the outcome. Example: tease "strange notes under a neighbor's door at three in the morning"; do NOT reveal "someone is trapped inside."
 - If NARRATOR_IS_CHARACTER is false, NARRATOR must not be a story character name and must not include "(character)".
 - If the narrator is a story character, NARRATOR_IS_CHARACTER must be true and the script must use consistent first-person narration.
 - Keep narrator voice consistent.
@@ -6009,8 +6026,11 @@ Additional rules:
 
 RUNTIME TARGET:
 Requested runtime: ${target.runtime}
-Target script length: ${target.range} words total.
-Hard maximum: ${target.max.toLocaleString()} words total.
+Length is measured in SPOKEN words: the words in NARRATOR and character lines only (not headers, the character guide, sound cues, or Belle B).
+Target: about ${spokenTarget.target.toLocaleString()} spoken words (${spokenTarget.minutes} minutes at ${SCRIPT_RUNTIME_PREFLIGHT.CALIBRATED_WPM} words per minute).
+Minimum: ${spokenTarget.min.toLocaleString()} spoken words. Scripts under this are rejected automatically before audio.
+Maximum: ${spokenTarget.max.toLocaleString()} spoken words.
+Reach the length with real scenes and beats, not padding. Before you finish, estimate your spoken word count; if it is under ${spokenTarget.min.toLocaleString()}, add another full scene.
 
 USER NOTES / CONSTRAINTS:
 ${String(brief.requirements || '').trim() || 'None'}
@@ -6411,13 +6431,22 @@ async function generateOneSeriesEpisodeScript(job: ProductionJob, model: string)
   selfCheck = await writeWithSelfCheck({
     briefMinutes: selfCheckBriefMinutes,
     budgetMs: WRITER_SELF_CHECK_BUDGET_MS,
-    generate: async (feedback) => {
+    generate: async (feedback, previousDraft) => {
       writerDraftIndex += 1
+      // WRITER-REVISE-001: a rewrite revises the previous draft (multi-turn)
+      // instead of regenerating from scratch, which did not converge (fd2521c4).
+      const writerMessages: Array<{ role: 'user' | 'assistant'; content: string }> = previousDraft
+        ? [
+            { role: 'user', content: prompt },
+            { role: 'assistant', content: previousDraft },
+            { role: 'user', content: feedback },
+          ]
+        : [{ role: 'user', content: prompt + feedback }]
       const response = await anthropic.messages.create({
         model,
         max_tokens: 12000,
-        temperature: 0.65,
-        messages: [{ role: 'user', content: prompt + feedback }],
+        temperature: previousDraft ? 0.4 : 0.65,
+        messages: writerMessages,
       }, {
         // Hard per-draft limit, no hidden SDK retries (review round 2).
         timeout: writerDraftTimeoutMs(Date.now() - writerStepStartedAt),
@@ -6442,6 +6471,7 @@ async function generateOneSeriesEpisodeScript(job: ProductionJob, model: string)
       return {
         script: normalized.script,
         description: normalized.description,
+        raw: rawScript,
         inputTokens: response.usage?.input_tokens ?? 0,
         outputTokens: response.usage?.output_tokens ?? 0,
       }

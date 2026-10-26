@@ -267,7 +267,7 @@ describe('review L2–L7', () => {
     expect((fn.match(/await markStoryNeedsAttention\(String\(targetEpisode\.id\), msg\)\s*\n\s*throw new Error\(msg\)/g) || []).length).toBe(5)
   })
   test('L4: spend is metered per draft inside generate, not once at the end', () => {
-    const gen = fn.slice(fn.indexOf('generate: async (feedback) => {'), fn.indexOf('check: (draftScript) =>'))
+    const gen = fn.slice(fn.indexOf('generate: async (feedback, previousDraft) => {'), fn.indexOf('check: (draftScript) =>'))
     expect(gen).toMatch(/logAnthropicCall\(/)
     expect((fn.match(/logAnthropicCall\(/g) || []).length).toBe(1)
   })

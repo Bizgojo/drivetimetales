@@ -297,13 +297,13 @@ export function buildWriterRewriteFeedback(report: ReadinessReport, briefMinutes
     }
   }
   return [
-    '',
-    '---',
-    'REWRITE REQUIRED. Your previous draft failed these automatic production checks.',
-    'Write the COMPLETE episode script again, in the same format, fixing every item:',
+    'REWRITE REQUIRED. Your draft above failed these automatic production checks.',
+    'REVISE that draft: keep every scene, line, character, and Belle B block that already works,',
+    'and change only what is needed to fix every item below.',
+    'Write the COMPLETE episode script again (the whole revised script, not a list of changes), in the same format:',
     ...Array.from(new Set(lines)),
-    'Keep characters, names, places, and continuity exactly as given above.',
-    '---',
+    'Keep characters, names, places, and continuity exactly as given in the original instructions.',
+    'Output ONLY the revised script. No commentary.',
   ].join('\n')
 }
 
@@ -315,7 +315,14 @@ export function briefMinutesOf(story: { duration_mins?: number | null; brief_jso
   return m ? Number(m[1]) : null
 }
 
-export type WriterDraft = { script: string; description: string; inputTokens?: number; outputTokens?: number }
+export type WriterDraft = {
+  script: string
+  description: string
+  /** Exact model output, sent back on the next turn so the rewrite revises it (WRITER-REVISE-001). */
+  raw?: string
+  inputTokens?: number
+  outputTokens?: number
+}
 
 export type WriterSelfCheckResult = {
   ok: boolean
@@ -327,11 +334,14 @@ export type WriterSelfCheckResult = {
 }
 
 /**
- * Bounded write → check → rewrite loop. `generate` receives '' on the first
- * draft and rewrite feedback afterwards. Makes at most 1 + maxRewrites calls.
+ * Bounded write → check → rewrite loop. `generate` receives ('', null) on the
+ * first draft; afterwards it receives the rewrite feedback AND the previous
+ * draft, so the model revises that draft instead of starting over
+ * (WRITER-REVISE-001: fresh rewrites did not converge — job fd2521c4).
+ * Makes at most 1 + maxRewrites calls.
  */
 export async function writeWithSelfCheck(opts: {
-  generate: (feedback: string) => Promise<WriterDraft>
+  generate: (feedback: string, previousDraft: string | null) => Promise<WriterDraft>
   check: (script: string) => ReadinessReport | Promise<ReadinessReport>
   briefMinutes?: number | null
   maxRewrites?: number
@@ -349,7 +359,8 @@ export async function writeWithSelfCheck(opts: {
   let report: ReadinessReport | null = null
   for (let attempt = 0; attempt <= maxRewrites; attempt++) {
     if (attempt > 0 && opts.budgetMs !== undefined && now() - startedAt > opts.budgetMs) break
-    draft = await opts.generate(feedback)
+    const previousDraft: string | null = draft ? (draft.raw ?? draft.script) : null
+    draft = await opts.generate(feedback, previousDraft)
     usage.input += draft.inputTokens ?? 0
     usage.output += draft.outputTokens ?? 0
     report = await opts.check(draft.script)
@@ -428,4 +439,21 @@ export function countWriterFailures(scriptJson: unknown, resetAtIso?: string | n
   if (!Array.isArray(list)) return 0
   const resetMs = Date.parse(String(resetAtIso || '')) || 0
   return list.filter((entry: any) => (Date.parse(String(entry?.at || '')) || 0) > resetMs).length
+}
+
+/**
+ * WRITER-PROMPT-GATES-001: series length target in SPOKEN words, the unit the
+ * pre-spend gate measures (SCRIPT-RUNTIME-PREFLIGHT-001, 160 wpm). The old
+ * "1,800 to 2,100 words total" for 15 min (headers included) sat below the
+ * 2,000-spoken-word floor, so the prompt itself produced short scripts.
+ */
+export function seriesSpokenWordTarget(runtime: string): { minutes: number; target: number; min: number; max: number } {
+  const parsed = parseInt(String(runtime || '').match(/\d+/)?.[0] || '15', 10)
+  const minutes = parsed > 0 ? parsed : 15
+  const wpm = SCRIPT_RUNTIME_PREFLIGHT.CALIBRATED_WPM
+  const floor = Math.ceil(SCRIPT_RUNTIME_PREFLIGHT.MIN_ESTIMATED_MINUTES * wpm)
+  const target = Math.max(floor, Math.round(minutes * wpm))
+  const min = Math.max(floor, Math.round(minutes * 0.9 * wpm))
+  const max = Math.max(target + 200, Math.round(minutes * 1.1 * wpm))
+  return { minutes, target, min, max }
 }
