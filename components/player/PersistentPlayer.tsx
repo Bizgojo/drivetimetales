@@ -30,6 +30,8 @@ export interface PlaybackSnapshot {
 }
 const NowPlayingContext = createContext<PlaybackSnapshot | null>(null)
 export function useNowPlaying() { return useContext(NowPlayingContext) }
+const OpenPlayerContext = createContext<((url: string) => void) | null>(null)
+export function useOpenPlayer() { return useContext(OpenPlayerContext) }
 const PlayerContext = createContext<((selection: PlaybackSelection) => void) | null>(null)
 
 // Lives inside the root layout, outside changing page segments. Hiding the
@@ -48,7 +50,7 @@ export default function PersistentPlayer({ children }: { children: ReactNode }) 
   const liveVisible = liveSnapshot && liveSnapshot.storyId === selection?.storyId && !liveSnapshot.completed && !dismissedIds.includes(liveSnapshot.storyId)
   const snapshot: PlaybackSnapshot | null = liveVisible ? liveSnapshot : saved ? {
     storyId: saved.id, title: saved.title, coverUrl: saved.coverUrl, currentTime: saved.progress, duration: saved.duration, isPlaying: false,
-    toggle: () => router.push(`/player/${saved.id}?resume=${saved.progress}&autoplay=1&playNow=1`),
+    toggle: () => openPlayer(`/player/${saved.id}?resume=${saved.progress}&autoplay=1&playNow=1`),
   } : null
   useEffect(() => { setDismissedIds([]); setRemoveError(''); setSavedStories([]) }, [user?.id])
   useEffect(() => {
@@ -77,6 +79,20 @@ export default function PersistentPlayer({ children }: { children: ReactNode }) 
     setSelection(previous => previous?.storyId === next.storyId && previous?.mode === next.mode
       ? previous.navigationKey === next.navigationKey ? previous : { ...previous, navigationKey: next.navigationKey } : next)
   }, [])
+
+  function openPlayer(url: string) {
+    const target = new URL(url, window.location.origin)
+    const match = target.pathname.match(/^\/player\/([^/]+)$/)
+    if (!match || target.origin !== window.location.origin) return
+    const storyId = decodeURIComponent(match[1])
+    if (liveSnapshot?.storyId === storyId && !liveSnapshot.isPlaying) liveSnapshot.toggle()
+    request({ storyId, resumeParam: target.searchParams.get('resume'),
+      mode: target.searchParams.get('playlist') === '1' ? 'playlist' : target.searchParams.get('mode') === 'series' ? 'series' : 'story',
+      navigationKey: target.searchParams.toString() })
+    // The root host already owns the full player. Update the route without a
+    // document reload or RSC fetch, retaining this document's playback grant.
+    window.history.pushState(null, '', target.pathname + target.search)
+  }
 
   useEffect(() => {
     if (loading) return
@@ -114,7 +130,7 @@ export default function PersistentPlayer({ children }: { children: ReactNode }) 
   }
   const miniature = !playerPage && !clearForRoute && !pathname?.startsWith('/admin') && snapshot
 
-  return <PlayerContext.Provider value={request}><NowPlayingContext.Provider value={miniature ? snapshot : null}>
+  return <OpenPlayerContext.Provider value={openPlayer}><PlayerContext.Provider value={request}><NowPlayingContext.Provider value={miniature ? snapshot : null}>
     <div style={{ paddingTop: miniature ? 120 : 0 }}>{children}</div>
     {selection && !clearForRoute && <div hidden={!playerPage} style={playerPage
       ? { position: 'fixed', top: 56, bottom: 0, left: 0, right: 0, zIndex: 40, overflowY: 'auto', background: '#020617' }
@@ -127,7 +143,7 @@ export default function PersistentPlayer({ children }: { children: ReactNode }) 
       <aside aria-label="Continue listening" style={{ position: 'fixed', top: 64, left: 12, right: 12,
         zIndex: 45, padding: 10, borderRadius: 14, background: '#1e293b', color: 'white', border: '1px solid #475569' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <button type="button" aria-label={`Open player for ${snapshot.title}`} onClick={() => router.push(`/player/${snapshot.storyId}${selection?.mode === 'playlist' ? '?playlist=1' : selection?.mode === 'series' ? '?mode=series' : ''}`)}
+          <button type="button" aria-label={`Open player for ${snapshot.title}`} onClick={() => openPlayer(`/player/${snapshot.storyId}${selection?.mode === 'playlist' ? '?playlist=1' : selection?.mode === 'series' ? '?mode=series' : ''}`)}
             style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 10, textAlign: 'left', background: 'none', border: 0, color: 'white', cursor: 'pointer' }}>
             {snapshot.coverUrl && <img src={snapshot.coverUrl} alt="" width={40} height={40} style={{ objectFit: 'cover', borderRadius: 6, flexShrink: 0 }} />}
             <span style={{ minWidth: 0 }}>
@@ -147,7 +163,7 @@ export default function PersistentPlayer({ children }: { children: ReactNode }) 
         </div>
       </aside>
     </>}
-  </NowPlayingContext.Provider></PlayerContext.Provider>
+  </NowPlayingContext.Provider></PlayerContext.Provider></OpenPlayerContext.Provider>
 }
 
 // Route pages request a track, but never own an audio element. Returning to

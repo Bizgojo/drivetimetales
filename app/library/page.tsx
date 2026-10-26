@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/contexts/AuthContext'
 import ReviewModal from '@/components/ReviewModal'
-import { useNowPlaying } from '@/components/player/PersistentPlayer'
+import { useNowPlaying, useOpenPlayer } from '@/components/player/PersistentPlayer'
 import { isActiveLibraryCard } from '@/lib/playerControls'
 import { buildSeriesPlaybackTarget, storeSeriesPlayback } from '@/lib/seriesPlayback'
 import { getAllLocalPlayerProgress, mergePlayerProgress } from '@/lib/playerProgress'
@@ -139,6 +139,7 @@ function parsePlaylistKeys(raw: string | null): string[] | null {
 }
 
 export default function LibraryPage() {
+  const openPlayer = useOpenPlayer()
   const activePlayerStoryId = useNowPlaying()?.storyId || null
   const router = useRouter()
   const { user, session, loading: authLoading } = useAuth()
@@ -579,6 +580,7 @@ export default function LibraryPage() {
 
   function navigateToPlayer(targetUrl: string, payload: Record<string, unknown>) {
     console.info('[Library] Play tapped', payload)
+    if (openPlayer) { openPlayer(targetUrl); return }
     router.push(targetUrl)
 
     window.setTimeout(() => {
