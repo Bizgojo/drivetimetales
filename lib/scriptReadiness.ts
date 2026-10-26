@@ -159,7 +159,8 @@ export function checkScriptReadiness(input: ReadinessInput): ReadinessReport {
   // adds the estimator's calibration spread (155.7–169.9 wpm ≈ ±5%) so only
   // scripts that will almost surely fail after spend are stopped.
   const brief = Number(input.briefMinutes || 0)
-  const isStandaloneType = !input.storyType || input.storyType === 'single' || input.storyType === 'standalone'
+  // Explicit only: a caller that omits storyType must not get a standalone-only gate (review round 2).
+  const isStandaloneType = input.storyType === 'single' || input.storyType === 'standalone'
   if (isStandaloneType && !runtime.skipped && brief > 0) {
     const dev = (runtime.estimatedMins - brief) / brief
     if (Math.abs(dev) > RUNTIME_BRIEF_PRESPEND_TOLERANCE)
@@ -384,5 +385,30 @@ export function briefRuntimeImpossible(briefMinutes: number | null | undefined):
   return null
 }
 
-/** Writer step budget: stop starting new drafts after 7 min (step fetch timeout is 10 min). */
-export const WRITER_SELF_CHECK_BUDGET_MS = 420_000
+/**
+ * Writer step time limits (review round 2). The runner aborts the step fetch
+ * at 720s (RUN_NEXT_TIMEOUT_MS_BY_STEP.generate_episode_script) inside its
+ * 740s deadline. No draft STARTS after 400s; every draft call is capped at
+ * 300s with no SDK retries; the whole step therefore ends by ~700s.
+ */
+export const WRITER_SELF_CHECK_BUDGET_MS = 400_000
+export const WRITER_DRAFT_TIMEOUT_MS = 300_000
+export const WRITER_STEP_HARD_LIMIT_MS = 700_000
+
+/** Per-draft call timeout given the time already used by the writer step. */
+export function writerDraftTimeoutMs(elapsedMs: number): number {
+  return Math.max(30_000, Math.min(WRITER_DRAFT_TIMEOUT_MS, WRITER_STEP_HARD_LIMIT_MS - elapsedMs))
+}
+
+/**
+ * WRITER-CLAIM-001 (review round 2): one writer per series job at a time.
+ * The runner can re-enter the same job every minute (same holder, re-entrant
+ * lock), which would start overlapping paid writers on the same episode.
+ */
+export const WRITER_CLAIM_STALE_MS = 12 * 60_000
+
+export function writerClaimIsFresh(stateJson: unknown, nowMs: number): boolean {
+  const claim = (stateJson as any)?.writerClaim
+  const at = Date.parse(String(claim?.at || ''))
+  return Number.isFinite(at) && nowMs - at < WRITER_CLAIM_STALE_MS
+}

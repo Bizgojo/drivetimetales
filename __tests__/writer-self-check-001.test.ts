@@ -211,8 +211,8 @@ describe('review B1: RUNTIME-BRIEF is standalone-only (RUNTIME-GATE-001 never ru
 })
 
 describe('review B2: writer step cannot be aborted mid-write and re-run', () => {
-  test('generate_episode_script gets a 10-minute fetch budget', () => {
-    expect(runNextTimeoutMs('generate_episode_script')).toBe(600_000)
+  test('generate_episode_script gets an extended fetch budget (others keep 90s)', () => {
+    expect(runNextTimeoutMs('generate_episode_script')).toBe(720_000)
     expect(runNextTimeoutMs('voice_preflight')).toBe(90_000)
   })
   test('writer stops starting new drafts once its time budget is spent', async () => {
@@ -227,11 +227,6 @@ describe('review B2: writer step cannot be aborted mid-write and re-run', () => 
     })
     expect(calls).toBe(2) // draft 1 at t=0, draft 2 at t=300 (<400), no draft 3 at t=600
     expect(res.ok).toBe(false)
-  })
-  test('episode save only writes an episode that is still empty', () => {
-    const src = readFileSync(join(__dirname, '..', 'app/api/admin/production-jobs/run-next/route.ts'), 'utf8')
-    const fn = src.slice(src.indexOf('async function generateOneSeriesEpisodeScript('), src.indexOf('\nfunction validateSeriesMetadata('))
-    expect(fn).toMatch(/\.eq\('id', targetEpisode\.id\)\s*\n\s*\/\/[^\n]*\n\s*\.or\('script\.is\.null,script\.eq\.'\)/)
   })
 })
 
@@ -288,5 +283,62 @@ describe('review L2–L7', () => {
     expect(check(14)(noBelle).blockers.map((b) => b.gate)).not.toContain('BELLE')
     const plain = episodeScript(32).replace(/BELLE B:[^\n]*\n/, '')
     expect(check(14)(plain).blockers.map((b) => b.gate)).toContain('BELLE')
+  })
+})
+
+// ── Review round 2 ──────────────────────────────────────────────────────────
+import { writerClaimIsFresh, writerDraftTimeoutMs, WRITER_CLAIM_STALE_MS, WRITER_SELF_CHECK_BUDGET_MS, WRITER_DRAFT_TIMEOUT_MS, WRITER_STEP_HARD_LIMIT_MS } from '@/lib/scriptReadiness'
+
+describe('review round 2', () => {
+  const src = readFileSync(join(__dirname, '..', 'app/api/admin/production-jobs/run-next/route.ts'), 'utf8')
+
+  test('writer claim: fresh claim blocks, stale or missing claim allows', () => {
+    const now = Date.parse('2026-10-26T16:00:00Z')
+    expect(writerClaimIsFresh({ writerClaim: { at: '2026-10-26T15:55:00Z' } }, now)).toBe(true)
+    expect(writerClaimIsFresh({ writerClaim: { at: new Date(now - WRITER_CLAIM_STALE_MS - 1).toISOString() } }, now)).toBe(false)
+    expect(writerClaimIsFresh({}, now)).toBe(false)
+    expect(writerClaimIsFresh(null, now)).toBe(false)
+  })
+
+  test('claim stale window outlives the longest possible writer step', () => {
+    expect(WRITER_CLAIM_STALE_MS).toBeGreaterThan(WRITER_STEP_HARD_LIMIT_MS)
+  })
+
+  test('time limits: no draft can run past the hard limit, and the hard limit sits inside the runner abort', () => {
+    expect(WRITER_SELF_CHECK_BUDGET_MS + WRITER_DRAFT_TIMEOUT_MS).toBeLessThanOrEqual(WRITER_STEP_HARD_LIMIT_MS)
+    expect(WRITER_STEP_HARD_LIMIT_MS).toBeLessThan(runNextTimeoutMs('generate_episode_script'))
+    expect(runNextTimeoutMs('generate_episode_script')).toBeLessThanOrEqual(740_000)
+    expect(writerDraftTimeoutMs(0)).toBe(WRITER_DRAFT_TIMEOUT_MS)
+    expect(writerDraftTimeoutMs(WRITER_SELF_CHECK_BUDGET_MS)).toBe(WRITER_STEP_HARD_LIMIT_MS - WRITER_SELF_CHECK_BUDGET_MS)
+    expect(writerDraftTimeoutMs(WRITER_STEP_HARD_LIMIT_MS)).toBe(30_000)
+  })
+
+  test('every draft call has a timeout and no SDK retries', () => {
+    const fn = src.slice(src.indexOf('async function generateOneSeriesEpisodeScript('), src.indexOf('\nfunction validateSeriesMetadata('))
+    expect(fn).toMatch(/timeout: writerDraftTimeoutMs\(Date\.now\(\) - writerStepStartedAt\),\s*\n\s*maxRetries: 0,/)
+  })
+
+  test('writer step claims the job (compare-and-set on updated_at) before writing, and steps aside with 409', () => {
+    const branch = src.slice(src.indexOf('if (step === NEXT_STEP_AFTER_SERIES_CREATE) {'), src.indexOf('const result = await generateOneSeriesEpisodeScript(lockedJob, model)'))
+    expect(branch).toMatch(/writerClaimIsFresh\(claimState, Date\.now\(\)\)/)
+    expect(branch).toMatch(/\.eq\('updated_at', lockedJob\.updated_at\)/)
+    expect((branch.match(/status: 409/g) || []).length).toBe(2)
+  })
+
+  test('episode save uses an optimistic script_version check (no empty-string filter)', () => {
+    const fn = src.slice(src.indexOf('async function generateOneSeriesEpisodeScript('), src.indexOf('\nfunction validateSeriesMetadata('))
+    expect(fn).not.toMatch(/script\.eq\./)
+    expect(fn).toMatch(/episodeSave\.is\('script_version', null\)/)
+    expect(fn).toMatch(/episodeSave\.eq\('script_version', targetEpisode\.script_version\)/)
+  })
+
+  test('series loader fetches the brief of record (duration_mins) the writer uses', () => {
+    const loader = src.slice(src.indexOf('async function loadSeriesEpisodes('), src.indexOf('async function loadSeriesEpisodes(') + 900)
+    expect(loader).toMatch(/duration_mins/)
+  })
+
+  test('RUNTIME-BRIEF needs an explicit standalone type', () => {
+    const r = checkScriptReadiness({ script: episodeScript(32), briefMinutes: 20 })
+    expect(r.blockers.map((b) => b.gate)).not.toContain('RUNTIME-BRIEF')
   })
 })

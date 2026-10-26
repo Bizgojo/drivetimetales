@@ -45,6 +45,8 @@ import {
   checkScriptReadiness,
   checkSeriesCastContinuity,
   writeWithSelfCheck,
+  writerClaimIsFresh,
+  writerDraftTimeoutMs,
   WRITER_SELF_CHECK_BUDGET_MS,
 } from '@/lib/scriptReadiness'
 import { runVoiceConformanceGate, type VoiceProfile } from '@/lib/voiceConformanceGate'
@@ -2883,7 +2885,7 @@ async function createStoryRow(job: ProductionJob) {
 async function loadSeriesEpisodes(seriesId: string) {
   const { data, error } = await supabase
     .from('stories')
-    .select('id,title,author,author_style,genre,narrative_voice,description,brief_json,status,script,script_json,script_version,series_id,series_name,episode_number,series_episode_number,series_total_episodes,series_is_finale,story_type,validator_result,validator_report,validator_passed_at,narrator_voice_id,narrator_voice_name,audio_url,story_audio_url')
+    .select('id,title,author,author_style,genre,narrative_voice,description,brief_json,status,script,script_json,script_version,series_id,series_name,episode_number,series_episode_number,series_total_episodes,series_is_finale,story_type,validator_result,validator_report,validator_passed_at,narrator_voice_id,narrator_voice_name,audio_url,story_audio_url,duration_mins')
     .eq('series_id', seriesId)
     // Rule-1 doctrine (Marc 2026-07-09): cold_storage episodes are retired from
     // production and must not contaminate series validation/production - a
@@ -6348,6 +6350,7 @@ async function generateOneSeriesEpisodeScript(job: ProductionJob, model: string)
   const selfCheckTotal = Number(targetEpisode.series_total_episodes || 0) || Number(series.total_episodes || 0) || episodes.length
   const selfCheckIsFinale = Boolean(targetEpisode.series_is_finale) || (selfCheckTotal > 0 && targetEpisodeNumber >= selfCheckTotal)
   let writerDraftIndex = 0
+  const writerStepStartedAt = Date.now()
   const selfCheck = await writeWithSelfCheck({
     briefMinutes: selfCheckBriefMinutes,
     budgetMs: WRITER_SELF_CHECK_BUDGET_MS,
@@ -6358,6 +6361,10 @@ async function generateOneSeriesEpisodeScript(job: ProductionJob, model: string)
         max_tokens: 12000,
         temperature: 0.65,
         messages: [{ role: 'user', content: prompt + feedback }],
+      }, {
+        // Hard per-draft limit, no hidden SDK retries (review round 2).
+        timeout: writerDraftTimeoutMs(Date.now() - writerStepStartedAt),
+        maxRetries: 0,
       })
       // Meter every draft as it happens, so a later throw never hides spend (review L4).
       logAnthropicCall({
@@ -6439,7 +6446,7 @@ async function generateOneSeriesEpisodeScript(job: ProductionJob, model: string)
     raw_script: script,
   }
 
-  const { data: updated, error: updateError } = await supabase
+  const episodeSave = supabase
     .from('stories')
     .update({
       title: generatedTitle,
@@ -6451,8 +6458,11 @@ async function generateOneSeriesEpisodeScript(job: ProductionJob, model: string)
       script_version: (targetEpisode.script_version || 1) + 1,
     })
     .eq('id', targetEpisode.id)
-    // Never overwrite an episode another (overlapping) invocation already wrote (review B2).
-    .or('script.is.null,script.eq.')
+  // Optimistic version check: never overwrite an episode another
+  // (overlapping) invocation already saved (review B2, round 2).
+  const { data: updated, error: updateError } = await (targetEpisode.script_version == null
+    ? episodeSave.is('script_version', null)
+    : episodeSave.eq('script_version', targetEpisode.script_version))
     .select('id,title,status,script,series_id,episode_number,series_episode_number')
     .single()
 
@@ -8520,6 +8530,24 @@ export async function POST(req: NextRequest) {
     await recordStageStarted(lockedJob, step)
 
     if (step === NEXT_STEP_AFTER_SERIES_CREATE) {
+      // WRITER-CLAIM-001: one writer per series job at a time. The runner can
+      // re-enter this job every minute with the same (re-entrant) lock, which
+      // would start overlapping paid writers on the same episode.
+      const claimState = lockedJob.state_json && typeof lockedJob.state_json === 'object' ? lockedJob.state_json : {}
+      if (writerClaimIsFresh(claimState, Date.now())) {
+        return NextResponse.json({ success: false, error: 'writer_in_progress', jobId: lockedJob.id, currentStep: step }, { status: 409 })
+      }
+      const { data: writerClaimRows, error: writerClaimError } = await supabase
+        .from('production_jobs')
+        .update({ state_json: { ...claimState, writerClaim: { holder: lockHolderId, at: nowIso() } } })
+        .eq('id', lockedJob.id)
+        // Compare-and-set: only the invocation that read the current row wins.
+        .eq('updated_at', lockedJob.updated_at)
+        .select('id')
+      if (writerClaimError) throw new Error(`Writer claim failed: ${writerClaimError.message}`)
+      if (!writerClaimRows || writerClaimRows.length === 0) {
+        return NextResponse.json({ success: false, error: 'writer_in_progress', jobId: lockedJob.id, currentStep: step }, { status: 409 })
+      }
       const result = await generateOneSeriesEpisodeScript(lockedJob, model)
       const logs = appendLog(lockedJob, result.generated ? 'Generated one series episode script' : 'All series episode scripts already exist', {
         seriesId: result.seriesId,
