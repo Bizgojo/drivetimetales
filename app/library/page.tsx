@@ -1,4 +1,5 @@
 'use client'
+import { latestPublication } from '@/lib/publicationDate'
 
 import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
@@ -22,6 +23,7 @@ import {
 type Story = {
   id: string
   title: string
+  published_on?: string | null
   genre: string | null
   author: string | null
   duration_mins: number | null
@@ -65,6 +67,7 @@ type CardItem = {
   totalDuration?: number
   cover?: string | null
   author?: string | null
+  published_on?: string | null
   genre?: string | null
   description?: string | null
   flag?: string | null
@@ -235,7 +238,7 @@ export default function LibraryPage() {
 
         const { data: publicRows, error: publicError } = await supabase
           .from('stories')
-          .select('id')
+          .select('id,published_on')
           .eq('status', 'published')
           .eq('is_hidden', false)
 
@@ -254,7 +257,8 @@ export default function LibraryPage() {
             .order('created_at', { ascending: false })
 
           if (storiesError) throw new Error(`story_analytics failed: ${storiesError.message}`)
-          storiesData = analyticsData || []
+          const publicationDates = new Map((publicRows || []).map(row => [row.id, row.published_on]))
+          storiesData = (analyticsData || []).map(row => ({ ...row, published_on: publicationDates.get(row.id) || null }))
         }
         if (cancelled) return
         if (storiesData) {
@@ -384,6 +388,7 @@ export default function LibraryPage() {
           cover: s.cover_url,
           author: s.author,
           genre: s.genre,
+          published_on: s.published_on,
           description: s.description,
           flag: s.flag,
           avgRating: s.avg_rating,
@@ -419,6 +424,7 @@ export default function LibraryPage() {
         cover: first.cover_url,
         author: first.author,
         genre: first.genre,
+        published_on: latestPublication(sorted.map(episode => episode.published_on)),
         description: first.description,
         flag: first.flag,
         avgRating: first.avg_rating,
