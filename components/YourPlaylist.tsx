@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { usePathname, useRouter } from 'next/navigation'
 import { useOpenPlayer } from '@/components/player/PersistentPlayer'
-import { ACTIVE_PLAYLIST_KEY, PLAYLIST_INDEX_KEY, PLAYLIST_UPDATED_FLAG } from '@/lib/playlistState'
+import { ACTIVE_PLAYLIST_KEY, PLAYLIST_INDEX_KEY } from '@/lib/playlistState'
 
 interface PlaylistItem {
   type: 'single' | 'series'
@@ -26,10 +26,7 @@ interface SavedPlaylist {
 }
 
 function formatRemainingMinutes(minutes: number) {
-  if (minutes < 60) return `${minutes}m remaining`
-  const hours = Math.floor(minutes / 60)
-  const mins = minutes % 60
-  return mins > 0 ? `${hours}h ${mins}m remaining` : `${hours}h remaining`
+  return `${Math.floor(minutes / 60)}h ${minutes % 60}m remaining`
 }
 
 function playlistStoryIds(items: PlaylistItem[]) {
@@ -46,7 +43,6 @@ export default function YourPlaylist({ onIdsLoaded, sticky = false }: { onIdsLoa
   const pathname = usePathname()
   const openPlayer = useOpenPlayer()
   const [playlist, setPlaylist] = useState<SavedPlaylist | null>(null)
-  const [showUpdated, setShowUpdated] = useState(false)
 
   function loadPlaylist() {
     try {
@@ -86,13 +82,7 @@ export default function YourPlaylist({ onIdsLoaded, sticky = false }: { onIdsLoa
 
   useEffect(() => {
     loadPlaylist()
-    try {
-      if (sessionStorage.getItem(PLAYLIST_UPDATED_FLAG) === 'true') {
-        sessionStorage.removeItem(PLAYLIST_UPDATED_FLAG)
-        setShowUpdated(true)
-        window.setTimeout(() => setShowUpdated(false), 2200)
-      }
-    } catch {}
+
 
     const handleFocus = () => loadPlaylist()
     const handlePlaylistSaved = () => loadPlaylist()
@@ -132,7 +122,6 @@ export default function YourPlaylist({ onIdsLoaded, sticky = false }: { onIdsLoa
       ? playlist.remaining_mins
       : calculatedMins
   )
-  const nextTitles = items.slice(completed, completed + 3).map(s => s.type === 'series' ? (s.series_name || 'Series') : (s.title || ''))
 
   function play() {
     const ids = playlistStoryIds(items)
@@ -143,34 +132,9 @@ export default function YourPlaylist({ onIdsLoaded, sticky = false }: { onIdsLoa
   }
 
   return (
-    <section aria-label={sticky ? 'Playlist controls' : 'Your Playlist'} style={sticky
+    <section aria-label={sticky ? 'Playlist controls' : 'My Playlist'} style={sticky
       ? { position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 46, padding: '8px 12px calc(8px + env(safe-area-inset-bottom))', background: '#020617' }
       : { padding: '1.5rem 1rem 0' }}>
-      {!sticky && <div style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '0 0 8px' }}>
-        <h2 style={{ color: 'white', fontSize: 18, fontWeight: 800, margin: 0 }}>Your Playlist</h2>
-        {showUpdated && (
-          <span
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: 5,
-              color: '#fed7aa',
-              background: 'rgba(249,115,22,0.12)',
-              border: '1px solid rgba(251,146,60,0.28)',
-              borderRadius: 999,
-              padding: '3px 8px',
-              fontSize: 11,
-              fontWeight: 800,
-              lineHeight: 1,
-              pointerEvents: 'none',
-              animation: 'playlistUpdated 2.1s ease-out forwards',
-            }}
-          >
-            <span style={{ display: 'inline-block', animation: 'tinyClap 0.36s ease-out 2' }}>👏</span>
-            ✓ Playlist Updated
-          </span>
-        )}
-      </div>}
       <div
         style={{
           background: '#1e293b',
@@ -179,16 +143,14 @@ export default function YourPlaylist({ onIdsLoaded, sticky = false }: { onIdsLoa
           overflow: 'hidden',
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'flex-end', gap: 10, padding: 10 }}>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontWeight: 700, fontSize: 13, color: 'white', lineHeight: 1.3, marginBottom: 3 }}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: 10 }}>
+          <img src="/images/playlist_icon.png" alt="" width={84} height={84} style={{ width: 84, height: 84, flexShrink: 0, objectFit: 'cover', borderRadius: 7, background: 'white' }} />
+          <div style={{ flex: 1, minWidth: 0, minHeight: 84, display: 'flex', flexDirection: 'column' }}>
+            <h2 style={{ fontWeight: 800, fontSize: 22, color: 'white', lineHeight: '24px', margin: 0 }}>My Playlist</h2>
+            <div style={{ fontWeight: 600, fontSize: 12, color: '#cbd5e1', lineHeight: '16px' }}>
               {remaining} {remaining === 1 ? 'Story' : 'Stories'} · {formatRemainingMinutes(totalMins)}
             </div>
-            {completed > 0 && <div style={{ fontSize: 10, color: '#64748b', marginBottom: 3 }}>{completed} of {items.length} completed</div>}
-            <div style={{ overflow: 'hidden', maxHeight: 46 }}>
-              {nextTitles.map((title, i) => <div key={i} style={{ fontSize: 11, color: '#94a3b8', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', lineHeight: 1.4 }}>{i === 0 ? '▶ ' : '· '}{title}</div>)}
-            </div>
-            <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+            <div style={{ display: 'flex', gap: 8, marginTop: 'auto', paddingTop: 4 }}>
               <button type="button" onClick={play}
                 style={{ flex: 1, minWidth: 0, minHeight: 40, padding: '8px 4px', background: playlist.started ? '#22c55e' : '#f97316', color: 'white', border: 'none', borderRadius: 10, fontSize: 12, fontWeight: 800, cursor: 'pointer' }}>
                 ▶ {playlist.started ? 'Continue' : 'Play'}
@@ -199,22 +161,8 @@ export default function YourPlaylist({ onIdsLoaded, sticky = false }: { onIdsLoa
               </button>
             </div>
           </div>
-          <img src="/images/playlist_icon.png" alt="Playlist" width={76} height={76} style={{ width: 76, height: 76, flexShrink: 0, objectFit: 'cover', borderRadius: 7, background: 'white' }} />
         </div>
       </div>
-      <style>{`
-        @keyframes playlistUpdated {
-          0% { opacity: 0; transform: translateY(3px) scale(0.98); }
-          15% { opacity: 1; transform: translateY(0) scale(1); }
-          78% { opacity: 1; transform: translateY(0) scale(1); }
-          100% { opacity: 0; transform: translateY(-2px) scale(0.99); }
-        }
-        @keyframes tinyClap {
-          0%, 100% { transform: rotate(0deg) scale(1); }
-          45% { transform: rotate(-8deg) scale(1.08); }
-          70% { transform: rotate(6deg) scale(1.02); }
-        }
-      `}</style>
     </section>
   )
 }
