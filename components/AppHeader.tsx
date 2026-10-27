@@ -6,18 +6,11 @@ import { usePathname, useRouter } from 'next/navigation'
 import { User } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
 
-function getInitial(user: ReturnType<typeof useAuth>['user']) {
-  const firstName = user?.first_name || user?.user_metadata?.first_name || user?.user_metadata?.name
-  const fallback = user?.email
-  return (firstName || fallback || '').trim().charAt(0).toUpperCase()
-}
-
 export default function AppHeader() {
   const router = useRouter()
   const pathname = usePathname()
   const { user, session, loading } = useAuth()
   const accountUser = user || session?.user || null
-  const initial = getInitial(accountUser)
   const nameValue = (accountUser && 'first_name' in accountUser ? accountUser.first_name : '') || accountUser?.user_metadata?.first_name || accountUser?.user_metadata?.full_name || accountUser?.user_metadata?.name
   const firstName = typeof nameValue === 'string' ? nameValue.trim().split(/\s+/)[0] : ''
   const showGreeting = pathname === '/home' && !loading && !!firstName
@@ -134,7 +127,7 @@ export default function AppHeader() {
             aria-label={loading ? 'Loading account' : accountUser ? 'Go to account' : 'Sign in or view account'}
           >
             <span className="flex h-11 w-11 items-center justify-center rounded-full bg-orange-500">
-              {loading ? <span aria-hidden="true">…</span> : accountUser?.user_metadata?.et_photo ? <img src={`/api/user/photo?v=${encodeURIComponent(accountUser.user_metadata.et_photo)}`} alt="Your profile" className="h-full w-full rounded-full object-cover" /> : initial ? initial : <User className="h-6 w-6" aria-hidden="true" />}
+              {accountUser?.user_metadata?.et_photo ? <img src={`/api/user/photo?v=${encodeURIComponent(accountUser.user_metadata.et_photo)}`} alt="" className="h-full w-full rounded-full object-cover" /> : !loading ? <User className="h-6 w-6" aria-hidden="true" /> : null}
             </span>
           </button>
         </div>
