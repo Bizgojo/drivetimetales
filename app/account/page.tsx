@@ -1,5 +1,6 @@
 'use client';
 
+import { isIphone } from '@/lib/magicInvite';
 import React, { useEffect, useState } from 'react';
 import SubscriberUpdates from '@/components/SubscriberUpdates';
 import Link from 'next/link';
@@ -11,6 +12,7 @@ export default function AccountPage() {
   const isAdmin = user?.email?.toLowerCase().trim() === 'm.postlewaite@gmail.com';
   const router = useRouter();
   const [mounted, setMounted] = useState(false);
+  const [iphone, setIphone] = useState(false);
   const [travelInsightsEnabled, setTravelInsightsEnabled] = useState(false);
   const [travelInsightsMode, setTravelInsightsMode] = useState<'no' | 'yes' | 'while_using'>('no');
   const [travelInsightsTouched, setTravelInsightsTouched] = useState(false);
@@ -23,6 +25,7 @@ export default function AccountPage() {
   // Wait for client-side mount
   useEffect(() => {
     setMounted(true);
+    setIphone(isIphone(navigator.userAgent));
   }, []);
 
   useEffect(() => {
@@ -264,7 +267,7 @@ export default function AccountPage() {
           {isAdmin && (
             <>
               <a href="/admin" className="w-full py-3 text-center text-sm font-bold" style={{ color: '#f97316', border: '1px solid rgba(249,115,22,0.3)', borderRadius: '10px' }}>Admin Panel</a>
-              <a href="/admin/promo?action=new" className="w-full py-3 text-center text-sm font-bold" style={{ color: '#f97316', border: '1px solid rgba(249,115,22,0.3)', borderRadius: '10px' }}>✉ Add Magic Link</a>
+              {iphone && <a href="/admin/promo/new" className="w-full py-3 text-center text-sm font-bold" style={{ color: '#f97316', border: '1px solid rgba(249,115,22,0.3)', borderRadius: '10px' }}>✉ Add Magic Link</a>}
             </>
           )}
         </div>

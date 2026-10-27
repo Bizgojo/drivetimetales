@@ -3,6 +3,9 @@
  * Creates user account, applies promo, stores first_name,
  * generates one-click magic link, sends branded email.
  */
+import { resolveRequestOrigin } from '@/lib/requestOrigin'
+import { accountUser } from '@/lib/server/accountUser'
+import { isMagicInviteOwner, isIphone, magicInviteOrigin, magicInvitationUrl, magicInviteCode } from '@/lib/magicInvite'
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { Resend } from 'resend'
@@ -16,7 +19,6 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
 const resend = new Resend(process.env.RESEND_API_KEY)
-const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://app.endless-tales.com'
 
 // Twilio client (only initialized if credentials are configured)
 const twilioClient = process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN
@@ -25,11 +27,16 @@ const twilioClient = process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_T
 const TWILIO_FROM = process.env.TWILIO_PHONE_NUMBER || ''
 
 export async function POST(req: NextRequest) {
+  const owner = await accountUser()
+  if (!isMagicInviteOwner(owner?.email)) return NextResponse.json({ error: 'This invitation tool is private to Marc’s account.' }, { status: 403 })
+  if (!isIphone(req.headers.get('user-agent') || '')) return NextResponse.json({ error: 'Please use Add Magic Link on your iPhone.' }, { status: 403 })
+  if (req.headers.get('origin') && req.headers.get('origin') !== resolveRequestOrigin(req)) return NextResponse.json({ error: 'Invalid request origin' }, { status: 403 })
+  const APP_URL = magicInviteOrigin(req)
   try {
-    const { email, firstName, lastName, phone, promoCode, subscription_days, channel, personalNote } = await req.json()
+    const { email, firstName, lastName, phone, promoCode, subscription_days, channel, personalNote, inviteRequestId } = await req.json()
     const sendChannel: 'email' | 'sms' = channel === 'sms' ? 'sms' : 'email'
     const trimmedNote = String(personalNote || '').trim()
-    if (!email || !firstName) {
+    if (typeof email !== 'string' || !email.includes('@') || typeof firstName !== 'string' || !firstName.trim() || email.length > 254 || firstName.length > 100 || trimmedNote.length > 2000) {
       return NextResponse.json({ error: 'email and firstName are required' }, { status: 400 })
     }
 
@@ -42,7 +49,12 @@ export async function POST(req: NextRequest) {
     let upperCode = promoCode ? String(promoCode).trim().toUpperCase() : ''
 
     if (!upperCode) {
-      const generatedCode = 'MAGIC-' + safeDays + '-' + crypto.randomUUID().slice(0, 8).toUpperCase()
+      const stableId = typeof inviteRequestId === 'string' && /^[a-f0-9-]{36}$/i.test(inviteRequestId) ? inviteRequestId : crypto.randomUUID()
+      const generatedCode = magicInviteCode(safeDays, stableId)
+      const { data: prior } = await supabase.from('promo_codes').select('code,sent_to_email').eq('code', generatedCode).maybeSingle()
+      if (prior && prior.sent_to_email && prior.sent_to_email !== trimmedEmail) return NextResponse.json({ error: 'Start a new invitation for this recipient.' }, { status: 409 })
+      if (prior) upperCode = prior.code
+      else {
       const { data: createdPromo, error: createPromoError } = await supabase
         .from('promo_codes')
         .insert({
@@ -65,6 +77,7 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: 'Failed to create invite access code: ' + createPromoError?.message }, { status: 500 })
       }
       upperCode = createdPromo.code
+      }
     }
 
     // 1. Validate promo code
@@ -72,8 +85,6 @@ export async function POST(req: NextRequest) {
       .from('promo_codes').select('*').eq('code', upperCode).single()
     if (promoError || !promo) return NextResponse.json({ error: 'Invalid promo code' }, { status: 404 })
     if (!promo.is_active) return NextResponse.json({ error: 'Code no longer active' }, { status: 400 })
-    if (promo.max_uses !== null && promo.uses_count >= promo.max_uses)
-      return NextResponse.json({ error: 'Code usage limit reached' }, { status: 400 })
 
     // 2. Create or find user
     let userId: string
@@ -95,46 +106,14 @@ export async function POST(req: NextRequest) {
       userId = newUser.user.id
     }
 
-    // 3. Store name + apply subscription
-    const now = new Date()
-    const { data: userData } = await supabase
-      .from('users').select('subscription_ends_at, plan').eq('id', userId).single()
-
-    const base = userData?.subscription_ends_at && new Date(userData.subscription_ends_at) > now
-      ? new Date(userData.subscription_ends_at) : now
-    const newEndsAt = new Date(base.getTime() + promo.subscription_days * 24 * 60 * 60 * 1000)
-
-    // Build profile payload
-    const plan = userData?.plan && userData.plan !== 'free' ? userData.plan : 'standard'
-    const coreProfile: Record<string, any> = {
-      first_name: trimmedName,
-      subscription_type: 'active',
-      subscription_ends_at: newEndsAt.toISOString(),
-      plan,
-    }
-    if (trimmedLastName) coreProfile.last_name = trimmedLastName
-
-    if (existingUser) {
-      // Existing user — UPDATE only (safe: no unknown-column risk, no insert conflicts)
-      const { error: updateError } = await supabase.from('users').update(coreProfile).eq('id', userId)
-      if (updateError) {
-        await supabase.from('users').update({
-          subscription_type: 'active',
-          subscription_ends_at: newEndsAt.toISOString(),
-          plan,
-        }).eq('id', userId)
-      }
-    } else {
-      // New user — UPSERT to create the users row (auth trigger may not have fired yet)
-      // display_name is NOT NULL — must be included
-      const insertPayload: Record<string, any> = {
-        id: userId,
-        email: trimmedEmail,
-        display_name: [trimmedName, trimmedLastName].filter(Boolean).join(' '),
-        ...coreProfile,
-      }
-      await supabase.from('users').upsert(insertPayload, { onConflict: 'id' })
-    }
+    // Grant and record access atomically. A retry of the same invite never
+    // stacks days again, even if delivery failed after the first grant.
+    const { data: grant, error: grantError } = await supabase.rpc('grant_magic_invite_once', {
+      p_code: upperCode, p_user_id: userId, p_email: trimmedEmail,
+      p_first_name: trimmedName, p_last_name: trimmedLastName,
+    })
+    if (grantError || !grant?.subscription_ends_at) return NextResponse.json({ error: 'Could not save invitation access. Please try again.' }, { status: 500 })
+    const newEndsAt = new Date(grant.subscription_ends_at)
 
     // 3b. PERS-FIX-002: key the account + ensure the name pool exists.
     // This path wrote first_name but NEVER enqueued name-clip generation —
@@ -147,33 +126,17 @@ export async function POST(req: NextRequest) {
       console.error('[promo/send-magic-link] ensureNamePoolForUser failed (non-fatal):', nameErr)
     }
 
-    // 4. Log redemption + update code
-    await supabase.from('promo_redemptions').insert({
-      promo_code_id: promo.id, code: upperCode, user_id: userId, email: trimmedEmail,
-      redeemed_at: now.toISOString(), days_granted: promo.subscription_days,
-      campaign: promo.campaign, label: promo.label,
-    })
-    const newCount = (promo.uses_count || 0) + 1
-    await supabase.from('promo_codes').update({
-      uses_count: newCount,
-      is_redeemed: promo.max_uses === 1,
-      sent_to_email: trimmedEmail, sent_to_name: trimmedName, sent_at: now.toISOString(),
-    }).eq('id', promo.id)
-
-    // 5. Generate one-click magic link
-    // Use /auth/callback (server-side SSR) not /auth/confirm (client-side).
-    // The SSR callback sets session cookies in the HTTP response before redirecting,
-    // so middleware always sees the session. Client-side confirm has a race condition
-    // where the cookie isn't set yet when middleware checks, causing redirect to /signin.
+    // The email opens a non-consuming landing page. An explicit POST then
+    // uses the established server callback to set cookies before Home loads.
     const { data: linkData, error: linkError } = await supabase.auth.admin.generateLink({
       type: 'magiclink',
       email: trimmedEmail,
-      options: { redirectTo: APP_URL + '/auth/callback' },
+      options: { redirectTo: APP_URL + '/auth/invitation' },
     })
     if (linkError || !linkData?.properties?.hashed_token)
       return NextResponse.json({ error: 'Failed to generate link: ' + linkError?.message }, { status: 500 })
 
-    const magicUrl = APP_URL + '/auth/callback?token_hash=' + linkData.properties.hashed_token + '&type=magiclink'
+    const magicUrl = magicInvitationUrl(APP_URL, linkData.properties.hashed_token)
 
     // 6. Send via selected channel
     if (sendChannel === 'sms') {
@@ -202,18 +165,20 @@ export async function POST(req: NextRequest) {
     }
 
     // Email (default)
-    await resend.emails.send({
+    const delivery = await resend.emails.send({
       from: 'Marc at Endless Tales <hello@endless-tales.com>',
       replyTo: 'hello.endlesstales@gmail.com',
       to: trimmedEmail,
       subject: trimmedName + ', you are invited to Endless Tales',
-      html: '<!DOCTYPE html><html><head><meta charset="utf-8"></head><body style="margin:0;padding:0;background:#0f0f1a;font-family:-apple-system,sans-serif;"><div style="max-width:560px;margin:0 auto;padding:40px 24px;"><div style="text-align:center;margin-bottom:32px;"><img src="https://app.endless-tales.com/images/et-logo.png" alt="Endless Tales" style="height:48px;" /><div style="font-size:22px;font-weight:900;color:#fff;margin-top:8px;">Endless <span style="color:#f97316;">Tales</span></div></div><div style="background:#1a1a2e;border-radius:16px;padding:32px 28px;border:1px solid rgba(249,115,22,0.2);"><div style="color:rgba(255,255,255,0.85);font-size:16px;line-height:1.8;">Hi ' + trimmedName + ',<br><br>I wanted to personally invite you to try Endless Tales \u2014 original audio dramas made for people on the move. Mystery, thriller, sci-fi, horror, romance, and more. Perfect for your commute or road trip.' + (trimmedNote ? '<br><br><span style="color:#fff;font-style:italic;">' + trimmedNote + '</span>' : '') + '<br><br>I\'m giving you <strong style="color:#f97316;">' + promo.subscription_days + ' days completely free</strong>. Card required. Cancel anytime. Just click below and you\'re in.</div><div style="text-align:center;margin-top:28px;"><a href="' + magicUrl + '" style="display:inline-block;background:#f97316;color:white;text-decoration:none;padding:16px 40px;border-radius:12px;font-size:17px;font-weight:800;">Start Listening Free</a></div><div style="color:rgba(255,255,255,0.4);font-size:12px;text-align:center;margin-top:16px;">One click. No password. Card required.</div></div><p style="color:rgba(255,255,255,0.3);font-size:12px;margin-top:28px;text-align:center;">Questions? Reply to this email.<br>\u2014 Marc</p></div></body></html>',
+      html: '<!DOCTYPE html><html><head><meta charset="utf-8"></head><body style="margin:0;padding:0;background:#0f0f1a;font-family:-apple-system,sans-serif;"><div style="max-width:560px;margin:0 auto;padding:40px 24px;"><div style="text-align:center;margin-bottom:32px;"><img src="https://app.endless-tales.com/images/et-logo.png" alt="Endless Tales" style="height:48px;" /><div style="font-size:22px;font-weight:900;color:#fff;margin-top:8px;">Endless <span style="color:#f97316;">Tales</span></div></div><div style="background:#1a1a2e;border-radius:16px;padding:32px 28px;border:1px solid rgba(249,115,22,0.2);"><div style="color:rgba(255,255,255,0.85);font-size:16px;line-height:1.8;">Hi ' + trimmedName + ',<br><br>I wanted to personally invite you to try Endless Tales \u2014 original audio dramas made for people on the move. Mystery, thriller, sci-fi, horror, romance, and more. Perfect for your commute or road trip.' + (trimmedNote ? '<br><br><span style="color:#fff;font-style:italic;">' + trimmedNote + '</span>' : '') + '<br><br>I\'m giving you <strong style="color:#f97316;">' + promo.subscription_days + ' days completely free</strong>. Card required. Cancel anytime. Open the link below, then tap Start Listening.</div><div style="text-align:center;margin-top:28px;"><a href="' + magicUrl + '" style="display:inline-block;background:#f97316;color:white;text-decoration:none;padding:16px 40px;border-radius:12px;font-size:17px;font-weight:800;">Start Listening Free</a></div><div style="color:rgba(255,255,255,0.4);font-size:12px;text-align:center;margin-top:16px;">Tap Start Listening. No password. Card required.</div></div><p style="color:rgba(255,255,255,0.3);font-size:12px;margin-top:28px;text-align:center;">Questions? Reply to this email.<br>\u2014 Marc</p></div></body></html>',
     })
+
+    if (delivery.error) return NextResponse.json({ error: 'The invitation could not be emailed. Please try again or contact support.' }, { status: 502 })
 
     console.log('[promo/send-magic-link] Email sent to ' + trimmedEmail + ' (' + trimmedName + '), code ' + upperCode)
     return NextResponse.json({ success: true, email: trimmedEmail, firstName: trimmedName, daysGranted: promo.subscription_days, subscriptionEndsAt: newEndsAt.toISOString(), channel: 'email' })
   } catch (err) {
     console.error('[promo/send-magic-link] Error:', err)
-    return NextResponse.json({ error: String(err) }, { status: 500 })
+    return NextResponse.json({ error: 'The invitation could not be sent. Please try again.' }, { status: 500 })
   }
 }

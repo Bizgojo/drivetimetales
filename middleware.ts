@@ -11,7 +11,7 @@ const PUBLIC_ROUTES = new Set([
   // unauthenticated — gating this page behind auth bounced them to /signin
   // with no explanation (found in LAUNCHEVE Battery 1, Marc-approved freeze
   // exception 2026-07-16).
-  '/auth/link-expired',
+  '/auth/link-expired', '/auth/invitation', '/auth/invitation/accept',
   '/subscribe',
   // SUS/ATL-LANDING-001: /go is the paid-ads campaign landing page. It must
   // render identically for anonymous and signed-in visitors — no auth checks,
