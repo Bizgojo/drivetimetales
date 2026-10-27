@@ -1,4 +1,5 @@
 'use client'
+import { publicationMonth, latestPublication } from '@/lib/publicationDate'
 import MediaButtonLabel from '@/components/MediaButtonLabel'
 import { selectNewestArrivals, episodeNumber } from '@/lib/newArrivals'
 import { useState, useEffect, useRef } from 'react'
@@ -135,6 +136,7 @@ export default function NewReleases({ onIdsLoaded }: { onIdsLoaded?: (ids: strin
           const href = s.series_id ? `/series/${s.series_id}` : `/player/${s.id}?autoplay=1&playNow=1`
           const epNum = episodeNumber(s)
           const episodes = s.episodes || [s]
+          const published = publicationMonth(latestPublication(episodes.map(episode => episode.published_on)))
           const total = Math.round(episodes.reduce((sum, ep) => sum + Number(ep.duration_mins || 0), 0))
           const key = s.series_id ? `series-${s.series_id}` : `single-${s.id}`
           const description = s.description || ''
@@ -154,7 +156,7 @@ export default function NewReleases({ onIdsLoaded }: { onIdsLoaded?: (ids: strin
               <div style={{ marginTop: '0.5rem', display: 'flex', flexDirection: 'column', flex: 1 }}>
                 <h3 className="text-xs font-bold text-white line-clamp-2 leading-tight">{s.series_name ? s.series_name : s.title}</h3>
                 {s.series_name && <p style={{ color: '#fff', fontSize: '0.65rem', fontWeight: 600 }}>{s.title}</p>}
-                <p style={{ color: '#fff', fontSize: '0.7rem' }}>{s.genre}</p>
+                <p style={{ color: '#fff', fontSize: '0.7rem' }}>{s.genre}{published ? ` · ${published}` : ''}</p>
                 <p style={{ color: '#fff', fontSize: '0.7rem' }}>by {s.author}</p>
                 <p style={{ color: '#fff', fontSize: '0.7rem' }}>Narrated By {s.narrator_voice_name || 'Not listed'}</p>
                 <p style={{ color: '#fff', fontSize: '0.7rem', fontWeight: 600 }}>{episodes.length} Episode{episodes.length === 1 ? '' : 's'} · {formatMinutes(total)} total</p>

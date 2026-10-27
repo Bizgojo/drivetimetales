@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { parseCharacterGuide, characterVoiceKeys, type CharacterInfo } from '@/lib/characterGuide'
+export { parseCharacterGuide, characterVoiceKeys }
 import { dramaUseCaseBonus, isUnsuitableAutoCastVoice } from '@/lib/castingVoiceFilter'
 import { createClient } from '@supabase/supabase-js'
 import { execFile } from 'child_process'
@@ -578,6 +580,17 @@ async function applySegmentGainLimit(input: Buffer, gainDb: number): Promise<Buf
   }
 }
 
+// TRIM-TAIL-001 (job a21df7bd EP3 segment_0035, 2026-10-27): with a positive
+// stop_periods, ffmpeg's silenceremove stops at the FIRST pause longer than
+// stop_duration and drops everything after it. "And two days later... Frank
+// drowned." came back as ~1.0 s "And two days later..." on all 24 candidates
+// (Marsh Crossing "Miss Faraday." -> "Miss." is the same cut). Trim only the
+// leading and trailing silence: trim the start, reverse, trim the start
+// again (the old end), reverse back. Pauses inside the line are kept.
+export const SEGMENT_SILENCE_TRIM_FILTER =
+  'silenceremove=start_periods=1:start_duration=0.08:start_threshold=-45dB,' +
+  'areverse,silenceremove=start_periods=1:start_duration=0.12:start_threshold=-45dB,areverse'
+
 async function trimSegmentSilenceBuffer(input: Buffer): Promise<Buffer> {
   const tmpBase = path.join(os.tmpdir(), `et_voice_trim_${Date.now()}_${Math.random().toString(16).slice(2)}`)
   const inputPath = `${tmpBase}_in.mp3`
@@ -586,7 +599,7 @@ async function trimSegmentSilenceBuffer(input: Buffer): Promise<Buffer> {
     await fs.writeFile(inputPath, input)
     await _execFileAsync(FFMPEG_PATH, [
       '-i', inputPath,
-      '-af', 'silenceremove=start_periods=1:start_duration=0.08:start_threshold=-45dB:stop_periods=1:stop_duration=0.12:stop_threshold=-45dB',
+      '-af', SEGMENT_SILENCE_TRIM_FILTER,
       '-ar', '44100', '-ac', '2', '-b:a', '192k',
       '-y', outputPath
     ])
@@ -1407,12 +1420,8 @@ interface ScriptLine {
   rawLineNumber?: number; sourceLine?: string
 }
 
-interface CharacterInfo {
-  name: string
-  gender: 'male' | 'female' | 'unknown'
-  description: string
-  isProtagonist: boolean
-}
+// CAST-GUIDE-001: CharacterInfo, parseCharacterGuide and characterVoiceKeys moved
+// verbatim to lib/characterGuide.ts so the series writer runs the same check.
 
 interface NarratorVoiceRecord {
   name: string
@@ -1460,83 +1469,6 @@ function validateOrRepairBelleLine(kind: 'intro' | 'outro', line: ScriptLine | u
   }
 
   return { line, repaired: false, originalText, errors: [...errors, ...fallbackErrors] }
-}
-
-// CREEK-CASTING-GAP-001: separator class includes pipe (|) because script-writer
-// prompts say only "list each speaking character" and the model sometimes emits
-// pipe-delimited guide lines ("KATHERINE | female, 60s | ..."). Without this,
-// nameMatch failed, the character was silently skipped, availableGuideCharacters
-// came back empty, and casting hard-gated with character_description_missing.
-// Exported for unit test (creek-character-guide-pipe.test.ts).
-export function parseCharacterGuide(script: string): CharacterInfo[] {
-  const chars: CharacterInfo[] = []
-  const guideMatch = script.match(/CHARACTER GUIDE\s*\n---\s*\n([\s\S]*?)(?:\n---|\[START AUDIO DRAMA SCRIPT\])/i)
-  if (!guideMatch) return chars
-  const guideLines = guideMatch[1].split('\n').filter(l => l.trim())
-  for (const line of guideLines) {
-    const nameMatch = line.match(/^([A-Za-z\u00C0-\u00D6\u00D8-\u00F6\u00F8-\u00FF][A-Za-z\u00C0-\u00D6\u00D8-\u00F6\u00F8-\u00FF\s'.()/]+?)\s*(?:[\u2014\u2013\-|:])/)
-    if (!nameMatch) continue
-    const name = nameMatch[1].trim()
-    const lower = line.toLowerCase()
-    let gender: CharacterInfo['gender'] = 'unknown'
-    if (lower.includes(', male') || lower.includes(' male,') || lower.includes('male ')) gender = 'male'
-    if (lower.includes(', female') || lower.includes(' female,') || lower.includes('female ')) gender = 'female'
-    const isProtagonist = lower.includes('protagonist') || lower.includes('narrator') || chars.length === 0
-    chars.push({ name, gender, description: line, isProtagonist })
-  }
-  return chars
-}
-
-// CREEK-CASTING-GAP-001: exported for unit test. Note: characterVoiceKeys already
-// registers each name part (first/last) as a lookup key, so a first-name-only
-// speaker label ("KATHERINE") resolves against a full-name guide entry
-// ("Katherine Whitfield") and vice versa — no parser change needed for that.
-export function characterVoiceKeys(name: string): string[] {
-  const titleMatch = name.match(/^\s*(Dr|Doctor|Mr|Mrs|Ms|Miss|Director|Deputy|Officer|Agent|Colonel|Captain|Lieutenant|Sergeant|Sheriff)\.?\s+(.+)$/i)
-  const cleaned = name
-    .replace(/\b(Dr|Doctor|Mr|Mrs|Ms|Miss|Director|Deputy|Officer|Agent|Colonel|Captain|Lieutenant|Sergeant|Sheriff)\.?\b/gi, '')
-    .trim()
-  const withoutParentheticals = cleaned
-    .replace(/\s*\([^)]*\)\s*/g, ' ')
-    .trim()
-  const descriptorExpanded = cleaned
-    .replace(/[()]/g, ' ')
-    .trim()
-
-  const keys = new Set<string>()
-
-  const addKeysForName = (rawName: string) => {
-    const normalized = rawName.replace(/\s+/g, ' ').trim()
-    const parts = normalized
-      .split(/\s+/)
-      .map(part => part.replace(/[^A-Za-zÀ-ÖØ-öø-ÿ'.-]/g, '').trim())
-      .filter(part => part.length > 1)
-
-    if (normalized) keys.add(normalized.toUpperCase())
-    parts.forEach(part => keys.add(part.toUpperCase()))
-    if (parts.length >= 2) keys.add(parts.slice(-2).join(' ').toUpperCase())
-  }
-
-  addKeysForName(withoutParentheticals || descriptorExpanded)
-  addKeysForName(descriptorExpanded)
-  if (titleMatch) {
-    const title = titleMatch[1].replace(/^Dr$/i, 'Doctor')
-    const titleRest = titleMatch[2]
-      .replace(/\s*\([^)]*\)\s*/g, ' ')
-      .replace(/[()]/g, ' ')
-      .trim()
-    const titleParts = titleRest
-      .split(/\s+/)
-      .map(part => part.replace(/[^A-Za-zÀ-ÖØ-öø-ÿ'.-]/g, '').trim())
-      .filter(part => part.length > 1)
-    const lastName = titleParts[titleParts.length - 1]
-    if (lastName) addKeysForName(`${title} ${lastName}`)
-  }
-  cleaned.split('/').forEach(alias => {
-    addKeysForName(alias.replace(/\s*\([^)]*\)\s*/g, ' '))
-    addKeysForName(alias.replace(/[()]/g, ' '))
-  })
-  return Array.from(keys)
 }
 
 export function assignCharacterVoice(voiceMap: Record<string, string>, characterName: string, voiceId: string) {

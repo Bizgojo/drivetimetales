@@ -1,4 +1,5 @@
 'use client'
+import { latestPublication } from '@/lib/publicationDate'
 import { cleanListeningPreferences, preferenceScore, avoidsStory } from '@/lib/listeningPreferences'
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
@@ -18,6 +19,7 @@ interface Story {
   avg_rating?: number | null; review_count?: number
 }
 interface SeriesGroup {
+  published_on?: string | null
   id: string; series_name: string; genre: string; author: string | null; episode_count: number
   total_duration_mins: number; cover_url: string | null; description: string | null
   avg_episode_duration: number
@@ -222,6 +224,7 @@ export default function RecommendedForYou({ excludeIds = [] }: { excludeIds?: st
         .sort((a, b) => episodeNumber(a) - episodeNumber(b))
       const episodes = fullSeriesRows
         .map((story, index) => ({ id: story.id, episode_number: episodeNumber(story) || index + 1 }))
+      group.published_on = latestPublication(fullSeriesRows.map(story => story.published_on))
       group.episode_count = fullSeriesRows.length
       group.total_duration_mins = fullSeriesRows.reduce((sum, story) => sum + (story.duration_mins || 0), 0)
       group.avg_episode_duration = group.episode_count > 0 ? Math.round(group.total_duration_mins / group.episode_count) : 0
@@ -306,6 +309,7 @@ export default function RecommendedForYou({ excludeIds = [] }: { excludeIds?: st
                   cover: g.cover_url,
                   author: g.author || 'Endless Tales',
                   genre: g.genre,
+                  published_on: g.published_on,
                   description: g.description,
                   seriesInProgress: !!g.is_in_progress,
                 }}
@@ -330,6 +334,7 @@ export default function RecommendedForYou({ excludeIds = [] }: { excludeIds?: st
                 cover: st.cover_url,
                 author: st.author || 'Endless Tales',
                 genre: st.genre,
+                published_on: st.published_on,
                 description: st.description,
                 avgRating: st.avg_rating,
                 reviewCount: st.review_count,
