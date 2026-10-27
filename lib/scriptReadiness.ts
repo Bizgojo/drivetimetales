@@ -21,6 +21,7 @@
  * deterministic. A script that passes here can still fail those.
  */
 
+import { speakersMissingFromCharacterGuide } from './characterGuide'
 import { findUnlabeledStoryBodyLines, findSfxLabelLines } from './scriptLabels'
 import { numeralPreTtsScan } from './numeralPreTtsScan'
 import { checkScriptRuntimeMeetsMinimum, SCRIPT_RUNTIME_PREFLIGHT } from './scriptRuntimeEstimate'
@@ -60,6 +61,8 @@ export type ReadinessInput = {
   sfxMax?: number
   /** stories.duration_mins — the brief-of-record RUNTIME-GATE-001 measures the final mix against. */
   briefMinutes?: number | null
+  /** CAST-GUIDE-001: series writer only — block speakers missing from the CHARACTER GUIDE. */
+  requireCastGuide?: boolean
 }
 
 export type ReadinessReport = {
@@ -225,7 +228,19 @@ export function checkScriptReadiness(input: ReadinessInput): ReadinessReport {
   // scripts without one (e.g. "The Woman Who Took My Place") produced fine.
   const guideMatch = script.match(/CHARACTER GUIDE([\s\S]*?)(\n---\s*\n[\s\S]*?\n---|\n\n\n)/)
   const guide = ((guideMatch?.[1] || '') + (guideMatch?.[2] || '')).toUpperCase()
-  if (guide.trim()) {
+  if (isSeries && input.requireCastGuide) {
+    // CAST-GUIDE-001 (job a21df7bd: EP3 voices stopped on FRANK, one line, no
+    // guide entry). Series voice casting reads this script's own guide, so
+    // the writer must list every voiced character there. Same rule as the
+    // voice step (lib/characterGuide.ts).
+    const missingCast = speakersMissingFromCharacterGuide(script, voicedCharacterSpeakers(script))
+    if (missingCast.length)
+      blockers.push({
+        gate: 'CHARACTER-GUIDE',
+        detail: `${missingCast.length} speaking character(s) not in the CHARACTER GUIDE (voice casting would stop): ${missingCast.slice(0, 8).join(', ')}`,
+        evidence: missingCast.slice(0, 8),
+      })
+  } else if (guide.trim()) {
     const missing = Array.from(voicedCharacterSpeakers(script)).filter((s) => !guide.includes(s) && !guide.includes(s.split(/\s+/)[0]))
     if (missing.length) warnings.push({ gate: 'CHARACTER-GUIDE', detail: `voiced characters without guide entry: ${missing.slice(0, 5).join(', ')}` })
   }
@@ -336,6 +351,11 @@ export function buildWriterRewriteFeedback(report: ReadinessReport, briefMinutes
         `- LENGTH: the script has ${report.metrics.spokenWords} spoken words (~${report.metrics.estimatedMins} min). ` +
         `It must have about ${targetWords} spoken words (${target} min at ${SCRIPT_RUNTIME_PREFLIGHT.CALIBRATED_WPM} wpm, within ±10%). ` +
         `Add real scenes and beats; do not pad.`,
+      )
+    } else if (b.gate === 'CHARACTER-GUIDE' && b.evidence?.length) {
+      lines.push(
+        `- CHARACTER-GUIDE: these speaking characters have no line in the CHARACTER GUIDE, so they cannot be cast a voice: ${b.evidence.join(', ')}. ` +
+        `Add one guide line for each, in the same form as the others (NAME — age, male or female, accent, manner), or give their lines to a character already in the guide.`,
       )
     } else if (b.gate === 'RUNTIME-SERIES-MAX') {
       lines.push(
