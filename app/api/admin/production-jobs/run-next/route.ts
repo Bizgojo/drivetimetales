@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import Anthropic from '@anthropic-ai/sdk'
 import { logAnthropicCall } from '@/app/lib/anthropic-logger'
+import { checkEpisodeSpendCap } from '@/app/lib/spend-ledger'
 import { sanitizeSeriesTitle } from '@/lib/seriesTitle'
 import { buildNamePalettePromptBlock } from '@/lib/story/namePalette'
 import { recordProductionLearningEvent } from '@/lib/productionLearning'
@@ -33,6 +34,9 @@ import { checkDuplicateSegments } from '@/lib/validation-gate/check1-duplicate-s
 // GATE 5 (GATE-GAPS-SPEC-20261004 §5): generation-side numeral scan — blocks
 // digit-form numerals BEFORE any ElevenLabs call at voice_preflight.
 import { numeralPreTtsScan, buildNumeralPreflightFailure } from '@/lib/numeralPreTtsScan'
+// SIMPLIFY-PIPELINE (Marc 2026-10-26): canonical critical-path order + resume
+// predicates. Content gates sort before paid steps; resumes reuse valid stages.
+import { shouldPurgeVoiceSegments, musicUrlReusable } from '@/app/lib/pipeline-gates'
 import { runVoiceMapGate } from '@/lib/voiceMapGate'
 import { runVoiceConformanceGate, type VoiceProfile } from '@/lib/voiceConformanceGate'
 // R1-V3 step map (decision r1-v3-step-map-approved-oct6, 2026-10-06):
@@ -4064,7 +4068,9 @@ async function runStandaloneVoicePreflight(job: ProductionJob, origin: string) {
   // ── Narrator validation - must pass before any ElevenLabs call ──────────────
   const { data: storyForNarrator, error: narratorFetchError } = await supabase
     .from('stories')
-    .select('id,script,narrator_voice_id,narrator_voice_name')
+    // SIMPLIFY-PIPELINE: title/author/type fields feed the pre-voice content
+    // gate below (same Belle-text checks validate_belle_assets runs later).
+    .select('id,script,title,author,story_type,series_id,series_total_episodes,narrator_voice_id,narrator_voice_name')
     .eq('id', storyId)
     .single()
   if (narratorFetchError || !storyForNarrator) {
@@ -4189,6 +4195,77 @@ async function runStandaloneVoicePreflight(job: ProductionJob, origin: string) {
     }
   }
 
+  // SIMPLIFY-PIPELINE: passed-gate marker merged into the success-state below.
+  let preVoiceContentGateMarker: Record<string, unknown> | null = null
+
+  // ── SIMPLIFY-PIPELINE pre-voice content gate ────────────────────────────────
+  // Content gates (hook, Belle text quality) run HERE — before ANY paid call —
+  // instead of first failing after voice + Belle TTS spend in
+  // validate_belle_assets / validate_belle_quality. This runs the SAME
+  // validateBelleText checks the later gates run (identical verdicts, no new
+  // rules, later gates kept as defense-in-depth). Outro is checked only when
+  // its section already exists in the script; a missing intro section fails
+  // (the validator requires the BELLE B ANNOUNCEMENT block). Promo/No-Belle-B
+  // variants skip (the belle chain is skipped for them downstream).
+  // Audio-dependent checks (audio artifact/consistency, LLM quality judge)
+  // stay at their post-audio steps — they cannot run before audio exists.
+  {
+    const gateScript = String((storyForNarrator as any).script || '')
+    const gateVariant = extractHeader(gateScript, 'VARIANT')
+    const gateBelleExempt = /LANDING-STORY-001|No Belle B/i.test(gateVariant)
+    if (!gateBelleExempt) {
+      const gateStandalone = !(storyForNarrator as any).series_id
+        && Number((storyForNarrator as any).series_total_episodes || 1) <= 1
+        && String((storyForNarrator as any).story_type || '').toLowerCase() !== 'series'
+      const gateNarrator = extractHeader(gateScript, 'NARRATOR').trim() || null
+      const gateIntro = extractBelleSection(gateScript, 'intro')
+      const gateOutro = extractBelleSection(gateScript, 'outro')
+      const gateIssues = [
+        ...(!gateIntro ? ['intro text is required.'] : []),
+        ...(gateIntro ? await validateBelleText('intro', gateIntro, { standalone: gateStandalone, title: (storyForNarrator as any).title, author: (storyForNarrator as any).author, narrator: gateNarrator }) : []),
+        ...(gateOutro ? await validateBelleText('outro', gateOutro, { standalone: gateStandalone, title: (storyForNarrator as any).title, author: (storyForNarrator as any).author, narrator: gateNarrator }) : []),
+      ]
+      const gateMarker = {
+        gateId: 'SIMPLIFY-PIPELINE-PREVOICE-CONTENT',
+        passed: gateIssues.length === 0,
+        issueCount: gateIssues.length,
+        checkedAt: nowIso(),
+      }
+      if (gateIssues.length > 0) {
+        const gateKind = classifyBelleIssues(gateIssues)
+        return {
+          passed: false,
+          skipped: false,
+          narratorIssues: [] as string[],
+          storyId: String(storyId),
+          report: {
+            success: false,
+            preflightOnly: true,
+            kind: gateKind,
+            blockingReasons: gateIssues.slice(0, 20),
+            preVoiceContentGate: gateMarker,
+          },
+          state: {
+            ...state,
+            storyId: String(storyId),
+            voicePreflightPassed: false,
+            voicePreflightStoryId: String(storyId),
+            voicePreflight: null,
+            voicePreflightAt: nowIso(),
+            narratorValidation: {
+              passed: true,
+              resolvedVoiceId: narratorResult.resolvedVoiceId,
+              resolvedVoiceName: narratorResult.resolvedVoiceName,
+              checkedAt: nowIso(),
+            },
+            preVoiceContentGate: { ...gateMarker, issues: gateIssues.slice(0, 20) },
+          },
+        }
+      }
+      preVoiceContentGateMarker = gateMarker
+    }
+  }
+
   // ── Generate-voices preflight (ElevenLabs metadata check) ────────────────────
   const { responseOk, report } = await runGenerateVoicesPreflightRequest(origin, String(storyId))
   const passed = responseOk && report.success === true
@@ -4213,6 +4290,9 @@ async function runStandaloneVoicePreflight(job: ProductionJob, origin: string) {
         checkedAt: nowIso(),
       },
       scriptRuntimePreflight: scriptRuntimeMarker,
+      // SIMPLIFY-PIPELINE: audit marker proving the content gate passed
+      // pre-spend (null when the Belle-exempt promo path skipped the gate).
+      ...(preVoiceContentGateMarker ? { preVoiceContentGate: preVoiceContentGateMarker } : {}),
     },
   }
 }
@@ -4250,8 +4330,10 @@ async function runStandaloneVoiceSegment(job: ProductionJob, origin: string): Pr
   // Detection: previous.lastUpdatedAt is null/undefined on a fresh job. If it
   // is set the job is resuming a partial run (e.g. after a transient failure)
   // and we must NOT purge — the existing segments are good.
-  const isFirstVoiceGenInvocation = !previous.lastUpdatedAt && !previous.presentCount
-  const purgeExisting = isFirstVoiceGenInvocation
+  // SIMPLIFY-PIPELINE: resume reuses valid stages — purge stored segments only
+  // on the very first invocation (no prior progress); a post-failure resume
+  // keeps existing segments via retryMissingOnly below.
+  const purgeExisting = shouldPurgeVoiceSegments(previous)
 
   const response = await fetch(endpoint, {
     method: 'POST',
@@ -4451,13 +4533,7 @@ async function validateStandaloneBelleQuality(job: ProductionJob, model: string)
     story.series_is_finale ? `series_is_finale=${story.series_is_finale}` : '',
   ].filter(Boolean).join(', ') || 'standalone inferred from production job'
 
-  const response = await anthropic.messages.create({
-    model,
-    max_tokens: 1000,
-    temperature: 0,
-    messages: [{
-      role: 'user',
-      content: `${BELLE_QUALITY_VALIDATOR_PROMPT}
+  const validatorPrompt = `${BELLE_QUALITY_VALIDATOR_PROMPT}
 
 DECLARED METADATA:
 ${declaredStoryType}
@@ -4475,16 +4551,40 @@ BELLE OUTRO:
 ${outroText}
 
 SCRIPT ENDING CONTEXT:
-${scriptTail(story.script, 2200)}`,
-    }],
-  })
+${scriptTail(story.script, 2200)}`
 
-  const rawReport = response.content
-    .map((c: any) => ('text' in c ? c.text : ''))
-    .join('')
-    .trim()
-  if (!rawReport) throw new Error('Belle quality validator returned an empty report')
+  // JUDGE-JSON-RETRY-001 (2026-10-25): the judge model occasionally returns
+  // prose with no JSON object at all ("No JSON object found in model
+  // response" - EP1 b50011ae 2026-10-25). One bounded retry of the identical
+  // call; the gate is unchanged (valid parsed JSON still required to pass).
+  // Extra cost: at most one additional Anthropic call per validation.
+  let validatorUsage;
+  const callBelleQualityValidator = async (): Promise<string> => {
+    const retryResponse = await anthropic.messages.create({
+      model,
+      max_tokens: 1000,
+      temperature: 0,
+      messages: [{ role: 'user', content: validatorPrompt }],
+    })
+    const retryRaw = retryResponse.content
+      .map((c: any) => ('text' in c ? c.text : ''))
+      .join('')
+      .trim()
+    if (!retryRaw) throw new Error('Belle quality validator returned an empty report')
+    validatorUsage = retryResponse;
+    return retryRaw
+  }
 
+  let rawReport = await callBelleQualityValidator()
+  try {
+    parseJsonObject(rawReport)
+  } catch (firstErr) {
+    if (String((firstErr as Error)?.message || '').includes('empty report')) throw firstErr
+    console.warn(`  Belle quality validator first response unparseable for story ${storyId}, retrying once: ${String((firstErr as Error)?.message || firstErr).slice(0, 120)}`)
+    rawReport = await callBelleQualityValidator()
+  }
+
+  const response = validatorUsage;
   const parsed = parseJsonObject(rawReport)
   const introScore = typeof parsed.introScore === 'number' ? parsed.introScore : Number(parsed.introScore || 0)
   const outroScore = typeof parsed.outroScore === 'number' ? parsed.outroScore : Number(parsed.outroScore || 0)
@@ -4785,7 +4885,9 @@ async function runStandaloneMusicGeneration(job: ProductionJob, origin: string) 
 
   const prompt = musicPromptFor(story.script, story.title || '', story.genre || '')
   const existingUrl = String(story.background_music_url || '').trim()
-  if (existingUrl && !existingUrl.startsWith('pending:')) {
+  // SIMPLIFY-PIPELINE: resume reuses valid stages — never re-render music
+  // that already exists (storage-existence verify below stays).
+  if (musicUrlReusable(existingUrl)) {
     // HAL-PIPE-002 fix: verify background_music.mp3 actually exists in storage before reusing.
     // Same class of bug as render_final_mix - DB URL can be set even if file was not persisted.
     const { data: musicFiles } = await supabase.storage.from('audio').list(`asc3/${storyId}`, { limit: 500 })
@@ -7299,6 +7401,89 @@ async function runSeriesVoicePreflight(job: ProductionJob, origin: string) {
     }
   }
 
+  // ── SIMPLIFY-PIPELINE pre-voice content gate (per episode) ─────────────────
+  // Same doctrine as the standalone path: Belle text + hook/position content
+  // gates run HERE — before ANY ElevenLabs spend — instead of first failing
+  // at complete_story_package after voice/music/mix. Runs the SAME functions
+  // the later gates run (identical verdicts, no new rules, later gates kept).
+  // Outro-gated checks run only when the outro section already exists in the
+  // script (BELLE B OUTRO is pipeline-generated later); a missing intro
+  // section fails. Belle-exempt variants skip, mirroring complete_story_package.
+  {
+    const epScript = String((nextEpisode as any).script || '')
+    const epVariant = extractHeader(epScript, 'VARIANT')
+    const epBelleExempt = /LANDING-STORY-001|No Belle B/i.test(epVariant)
+    if (!epBelleExempt) {
+      const epNarrator = extractHeader(epScript, 'NARRATOR').trim() || null
+      const epIntro = extractBelleSection(epScript, 'intro')
+      const epOutro = extractBelleSection(epScript, 'outro')
+      const epIssues = [
+        ...(!epIntro ? ['intro text is required.'] : []),
+        ...(epIntro ? await validateBelleText('intro', epIntro, { standalone: false, title: (nextEpisode as any).title, author: (nextEpisode as any).author, narrator: epNarrator }) : []),
+        ...(epOutro ? await validateBelleText('outro', epOutro, { standalone: false, title: (nextEpisode as any).title, author: (nextEpisode as any).author, narrator: epNarrator }) : []),
+      ]
+      if (epIntro && epOutro) {
+        const epPosition = await validateIntroOutroPositionRules({
+          title: (nextEpisode as any).title,
+          author: (nextEpisode as any).author,
+          script: epScript,
+          series_id: (nextEpisode as any).series_id,
+          series_name: (nextEpisode as any).series_name,
+          episode_number: episodeNumber(nextEpisode, 0),
+          series_total_episodes: (nextEpisode as any).series_total_episodes,
+          series_is_finale: (nextEpisode as any).series_is_finale,
+        }, epIntro, epOutro)
+        if (!epPosition.passed) epIssues.push(...epPosition.issues)
+      }
+      if (epIssues.length > 0) {
+        const epKind = classifyBelleIssues(epIssues)
+        const failedEpisodeEntry = {
+          storyId,
+          title: nextEpisode.title,
+          episodeNumber: number,
+          passed: false,
+          narratorIssues: [] as string[],
+          belleContentIssues: epIssues.slice(0, 20),
+          checkedAt: nowIso(),
+          report: {
+            success: false,
+            preflightOnly: true,
+            kind: epKind,
+            blockingReasons: epIssues.slice(0, 20),
+            preVoiceContentGate: { gateId: 'SIMPLIFY-PIPELINE-PREVOICE-CONTENT', passed: false, checkedAt: nowIso() },
+          },
+        }
+        const nextFailedEpisodes = [
+          ...failedEpisodes.filter((episode: any) => String(episode.storyId) !== storyId),
+          failedEpisodeEntry,
+        ]
+        return {
+          passed: false,
+          failed: true,
+          complete: false,
+          seriesId: String(seriesId),
+          episodeResult: failedEpisodeEntry as any,
+          report: failedEpisodeEntry.report,
+          narratorIssues: [] as string[],
+          nextStep: NEXT_STEP_AFTER_SERIES_VALIDATION,
+          state: {
+            ...state,
+            seriesId: String(seriesId),
+            seriesVoicePreflight: {
+              episodeCount: episodes.length,
+              checkedEpisodes,
+              failedEpisodes: nextFailedEpisodes,
+              nextEpisodeNumber: number,
+              reportsByEpisode,
+              narratorsByEpisode,
+              narratorIssues: [] as string[],
+            },
+          },
+        }
+      }
+    }
+  }
+
   // ── Generate-voices preflight ──────────────────────────────────────────────
   const { responseOk, report } = await runGenerateVoicesPreflightRequest(origin, storyId)
   const passed = responseOk && report.success === true
@@ -7741,7 +7926,9 @@ async function runSeriesMusicGeneration(job: ProductionJob, origin: string) {
     const { data: story } = await supabase.from('stories').select('id,title,genre,script,background_music_url').eq('id', storyId).single()
     // Skip if music already generated
     const existingUrl = String(story?.background_music_url || '').trim()
-    if (existingUrl && !existingUrl.startsWith('pending:')) {
+    // SIMPLIFY-PIPELINE: resume reuses valid stages — never re-render music
+    // that already exists.
+    if (musicUrlReusable(existingUrl)) {
       doneByEp[key] = true
       byEpisode[key] = 0 // success — reset this episode's counter
       processedEp = num
@@ -8164,6 +8351,69 @@ export async function POST(req: NextRequest) {
       lockedJob = await lockJob(candidate, lockHolderId)
       if (!lockedJob) {
         return bad('Production job is already locked', 409, { jobId: candidate.id })
+      }
+    }
+
+    // CREEK-PAUSE-AND-REPAIR (B): per-episode spend cap — enforced BEFORE any
+    // paid step runs. Blocks new spend when the routine-production cap is
+    // reached. Fail-OPEN while the ledger table is not yet live (migration
+    // unapplied): getEpisodeSpend reports ledgerLive=false and allowed=true.
+    if (lockedJob.story_id) {
+      const spendGate = await checkEpisodeSpendCap(lockedJob.story_id).catch((gateErr) => {
+        console.warn('[spend-ledger] Cap check failed OPEN:', gateErr instanceof Error ? gateErr.message : String(gateErr))
+        return null
+      })
+      if (spendGate && spendGate.ledgerLive && !spendGate.allowed) {
+        const alreadyBlocked = (lockedJob.error_json as Record<string, unknown> | null)?.kind === 'spend_cap_reached'
+        const gateMsg =
+          'Routine-production spend cap reached for story ' + lockedJob.story_id + ': ' +
+          'USD ' + spendGate.estimatedTotalUsd.toFixed(2) + ' metered new spend vs USD ' + spendGate.capUsd.toFixed(2) + ' cap' +
+          (spendGate.unknownCount > 0
+            ? ' (+' + spendGate.unknownCount + ' UNKNOWN-value ' + (spendGate.unknownCount === 1 ? 'entry' : 'entries') + ' flagged — cap applies to metered new spend only)'
+            : '') +
+          '. No further paid steps until Marc reviews.'
+        console.error('[run-next] SPEND_CAP_BLOCKED job=' + lockedJob.id.slice(0, 8) + ' step=' + normalizeStep(lockedJob.current_step) + ' ' + gateMsg)
+        await supabase
+          .from('production_jobs')
+          .update({
+            status: 'queued',
+            locked_at: null,
+            locked_by: null,
+            error_json: {
+              kind: 'spend_cap_reached',
+              at: nowIso(),
+              step: normalizeStep(lockedJob.current_step),
+              estimatedTotalUsd: spendGate.estimatedTotalUsd,
+              capUsd: spendGate.capUsd,
+              unknownCount: spendGate.unknownCount,
+            },
+            logs: alreadyBlocked ? lockedJob.logs : appendLog(lockedJob, 'Blocked: routine-production spend cap reached (no paid steps run)', {
+              kind: 'spend_cap_reached',
+              estimatedTotalUsd: spendGate.estimatedTotalUsd,
+              capUsd: spendGate.capUsd,
+              unknownCount: spendGate.unknownCount,
+            }),
+          })
+          .match(ownedJobFence(lockedJob, lockHolderId))
+        return NextResponse.json(
+          {
+            success: false,
+            error: gateMsg,
+            spendCap: {
+              allowed: false,
+              estimatedTotalUsd: spendGate.estimatedTotalUsd,
+              capUsd: spendGate.capUsd,
+              unknownCount: spendGate.unknownCount,
+            },
+          },
+          { status: 402 },
+        )
+      }
+      if (spendGate && spendGate.unknownCount > 0 && spendGate.allowed) {
+        console.warn(
+          '[run-next] spend-ledger UNKNOWN flag job=' + lockedJob.id.slice(0, 8) + ' story=' + lockedJob.story_id + ' ' +
+          'unknownEntries=' + spendGate.unknownCount + ' (cap applies to metered new spend only)',
+        )
       }
     }
 
@@ -9283,6 +9533,11 @@ export async function POST(req: NextRequest) {
         // Classify failure type: numeral pre-TTS, narrator mismatch, unlabeled lines, or unknown
         // GATE 5 (GATE-GAPS-SPEC-20261004 §5): digit-form numeral defect.
         const isNumeralPreTts = (result.report as any)?.kind === 'numeral_pre_tts'
+        // SIMPLIFY-PIPELINE: pre-voice Belle content gate failure (hook/title/
+        // structure). Same kinds validate_belle_assets reports — the gate moved
+        // before spend, the verdicts did not change.
+        const preVoiceContentKind = String((result.report as any)?.kind || '')
+        const isPreVoiceContentGate = preVoiceContentKind.startsWith('belle_quality_')
         // SCRIPT-RUNTIME-PREFLIGHT-001: short-script bounce carries kind 'script_runtime_short'.
         const isScriptRuntimeShort = (result.report as any)?.kind === SCRIPT_RUNTIME_PREFLIGHT.SHORT_KIND
         const numeralFailures = Array.isArray((result.report as any)?.failures)
@@ -9323,6 +9578,14 @@ export async function POST(req: NextRequest) {
           failureKind = 'script_unlabeled_lines'
           isAutonomousRetryable = true   // unlabeled lines are repairable via generate_script retry
           recommendedAction = `${unlabeledLineCount} unlabeled story body lines found. Re-generate script with HAL-SCRIPT-002 enforced: every line must start with NARRATOR: or CHARACTER NAME:.`
+        } else if (isPreVoiceContentGate) {
+          // SIMPLIFY-PIPELINE: Belle content defect caught pre-spend (no
+          // narration was spent). Hal regenerates the script with corrected
+          // BELLE B INTRO/OUTRO; same clear-and-regenerate mechanics and cap
+          // as unlabeled lines, then needs_attention on exhaustion.
+          failureKind = preVoiceContentKind as StructuredErrorJsonKind
+          isAutonomousRetryable = true
+          recommendedAction = `Belle content gate failed before voice spend (${preVoiceContentKind}): ${blockingReasons[0] || 'intro/outro text defect'}. Re-generate script with corrected BELLE B INTRO/OUTRO (concrete narrative hook, story title, no forbidden language).`
         }
 
         const retryCount = Number((lockedJob.state_json as any)?.voicePreflightScriptRetryCount ?? 0)
@@ -9398,7 +9661,7 @@ export async function POST(req: NextRequest) {
 
           const retryLogs = appendLog(lockedJob, preservePassValidatedScript
             ? `Auto-retry ${nextRetryCount}/${MAX_RETRIES}: numeral_pre_tts — re-queuing to generate_script WITHOUT clearing validated script (Seedlight guard)`
-            : `Auto-retry ${nextRetryCount}/${MAX_RETRIES}: unlabeled lines detected, re-queuing to generate_script`, {
+            : `Auto-retry ${nextRetryCount}/${MAX_RETRIES}: ${failureKind} — re-queuing to generate_script`, {
             source: 'autonomous-runner',
             storyId: result.storyId,
             failureKind,
@@ -9483,8 +9746,9 @@ export async function POST(req: NextRequest) {
         }
 
         // Kinds that resume to generate_script (Hal re-generates the script).
+        // SIMPLIFY-PIPELINE: pre-voice Belle content failures resume there too.
         const resumesToGenerateScript =
-          failureKind === 'script_unlabeled_lines' || failureKind === 'numeral_pre_tts'
+          failureKind === 'script_unlabeled_lines' || failureKind === 'numeral_pre_tts' || isPreVoiceContentGate
 
         // No auto-retry: fail with structured error_json
         const errorJsonPayload = buildStructuredError(

@@ -1,7 +1,10 @@
 'use client'
 
-import React, { useEffect, useMemo, useState } from 'react'
+import { useAuth } from '@/contexts/AuthContext'
+import { isIphone, isMagicInviteOwner, inviteSmsHref } from '@/lib/magicInvite'
+import React, { useEffect, useMemo, useState, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
+import './promo.css'
 
 type SortKey = 'first_name' | 'last_name' | 'last_used' | 'finished'
 
@@ -170,7 +173,11 @@ function mergePeople(redemptions: RedemptionRow[], storiesByUser: Map<string, St
   return Array.from(people.values())
 }
 
-export default function AdminPromoPage() {
+export default function AdminPromoPage({ formOnly = false }: { formOnly?: boolean } = {}) {
+  const { user } = useAuth()
+  const [iphone, setIphone] = useState(false)
+  useEffect(() => { setIphone(isIphone(navigator.userAgent)); if (!formOnly && (isIphone(navigator.userAgent) || new URLSearchParams(window.location.search).get('action') === 'new')) window.location.replace('/admin/promo/new') }, [formOnly])
+  const draft = useRef<{ email: string; duration: string; id: string } | null>(null)
   const [email, setEmail] = useState('')
   const [firstName, setFirstName] = useState('')
   const [lastName, setLastName] = useState('')
@@ -180,6 +187,7 @@ export default function AdminPromoPage() {
   const [showLastName, setShowLastName] = useState(true)
   const [sending, setSending] = useState(false)
   const [message, setMessage] = useState('')
+  const [manualSms, setManualSms] = useState<{ href: string; text: string } | null>(null)
   const [loading, setLoading] = useState(true)
   const [people, setPeople] = useState<InvitePerson[]>([])
   const [sortBy, setSortBy] = useState<SortKey>('last_used')
@@ -187,8 +195,9 @@ export default function AdminPromoPage() {
   const [previewChannel, setPreviewChannel] = useState<'email' | 'sms' | null>(null)
 
   useEffect(() => {
-    loadInvites()
-  }, [])
+    if (!formOnly) loadInvites()
+    else setLoading(false)
+  }, [formOnly])
 
   async function loadStoriesForUsers(userIds: string[]) {
     const storiesByUser = new Map<string, StoryDetail[]>()
@@ -327,13 +336,16 @@ export default function AdminPromoPage() {
       return
     }
 
+    if (!draft.current || draft.current.email !== email.trim().toLowerCase() || draft.current.duration !== duration) draft.current = { email: email.trim().toLowerCase(), duration, id: crypto.randomUUID() }
     setSending(true)
     setMessage('')
+    setManualSms(null)
     try {
       const res = await fetch('/api/promo/send-magic-link', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          inviteRequestId: draft.current.id,
           email: email.trim(),
           firstName: firstName.trim(),
           lastName: showLastName ? lastName.trim() : '',
@@ -353,21 +365,22 @@ export default function AdminPromoPage() {
             setMessage(`Text sent to ${firstName.trim()} ✓ — ${data.daysGranted || duration} days granted.`)
           } else if (data.magicUrl) {
             // Fallback: open Messages app
-            const smsBody = encodeURIComponent(data.smsText || `Hi ${firstName.trim()}! Marc here — I wanted to personally invite you to try Endless Tales free for ${data.daysGranted || duration} days. Tap to start listening: ${data.magicUrl}`)
             const phoneDigits = phone.trim().replace(/[^\d+]/g, '')
-            window.open(`sms:${phoneDigits}?body=${smsBody}`, '_blank')
-            setMessage(`Text ready for ${firstName.trim()} — ${data.daysGranted || duration} days granted. Your SMS app should open.`)
+            const text = data.smsText || `Hi ${firstName.trim()}! Start listening: ${data.magicUrl}`
+            setManualSms({ href: inviteSmsHref(phoneDigits, text, navigator.userAgent), text })
+            setMessage(`Invitation ready for ${firstName.trim()}. Tap Open Messages below, then send the text.`)
           }
         } else {
           setMessage(`Email sent to ${firstName.trim()} — ${data.daysGranted || duration} days granted.`)
         }
+        draft.current = null
         setEmail('')
         setFirstName('')
         setLastName('')
         setPhone('')
         setDuration('30')
         setPersonalNote('')
-        await loadInvites()
+        if (!formOnly) await loadInvites()
       }
     } catch (err) {
       setMessage('Error: ' + String(err))
@@ -399,17 +412,18 @@ export default function AdminPromoPage() {
   }, [people, sortBy])
 
   return (
-    <div className="min-h-screen bg-[#f5f4f0] px-4 py-8 text-[#1a1a1a] sm:px-8">
-      <div className="mx-auto max-w-[1200px]">
-        <h1 className="mb-1 text-[26px] font-bold tracking-normal">Magic Link Invites</h1>
+    <div className={`magic-invite-page min-h-screen bg-[#f5f4f0] px-4 py-8 text-[#1a1a1a] sm:px-8`}>
+      <div className={`mx-auto ${formOnly ? 'max-w-lg' : 'max-w-[1200px]'}`}>
+        {formOnly && <a href="/account" aria-label="Close Magic Link form and return to Account" className="fixed right-4 top-4 z-50 flex h-11 w-11 items-center justify-center rounded-full bg-slate-200 text-2xl text-slate-900">×</a>}
+        <h1 className="mb-1 pr-12 text-[26px] font-bold tracking-normal">{formOnly ? 'Send a Magic Link' : 'Magic Link Invites'}</h1>
         <p className="mb-6 text-sm text-[#666]">
-          Send one-click invites with free access. Recipients click the link and are instantly in - no code entry needed.
+          Send one-click invites with free access. Recipients open the link and tap Start Listening—no code entry needed.
         </p>
 
-        <section className="mb-5 rounded-xl border border-[#e5e5e5] bg-white p-6">
+        {isMagicInviteOwner(user?.email) && iphone && <section className="mb-5 rounded-xl border border-[#e5e5e5] bg-white p-6">
           <h2 className="mb-1.5 text-[17px] font-semibold">Send a Magic Link</h2>
           <p className="mb-5 text-[13px] text-[#666]">
-            Creates an account, applies free access, and stores their name for Belle. One click and they&apos;re listening.
+            Creates an account, applies free access, and stores their name for Belle. The link opens a simple Start Listening screen.
           </p>
 
           {/* Last name toggle — desktop only */}
@@ -542,7 +556,8 @@ export default function AdminPromoPage() {
             {phone.trim() && <button type="button" onClick={() => setPreviewChannel('sms')} className="text-[12px] font-medium text-[#f97316] underline underline-offset-2">Preview Text</button>}
           </div>
 
-          {message && <p className={`mt-3 text-[13px] font-semibold ${message.startsWith('Error') ? 'text-red-600' : 'text-green-700'}`}>{message}</p>}
+          {manualSms && <a href={manualSms.href} className="mt-4 inline-block rounded-xl bg-orange-500 px-5 py-3 font-bold text-white">Open Messages</a>}
+          {message && <p role="status" className={`mt-3 text-[13px] font-semibold ${message.startsWith('Error') ? 'text-red-600' : 'text-green-700'}`}>{message}</p>}
 
           {/* Preview modal */}
           {previewChannel && (
@@ -578,7 +593,7 @@ export default function AdminPromoPage() {
                       <div style={{ textAlign: 'center', marginTop: '24px' }}>
                         <span style={{ display: 'inline-block', background: '#f97316', color: 'white', padding: '14px 36px', borderRadius: '12px', fontSize: '16px', fontWeight: 800 }}>Start Listening Free</span>
                       </div>
-                      <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '12px', textAlign: 'center', marginTop: '14px' }}>One click. No password. Card required.</div>
+                      <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '12px', textAlign: 'center', marginTop: '14px' }}>Tap Start Listening. No password. Card required.</div>
                     </div>
                     <p style={{ color: 'rgba(255,255,255,0.3)', fontSize: '12px', marginTop: '20px', textAlign: 'center' }}>Questions? Reply to this email.<br />— Marc</p>
                   </div>
@@ -599,9 +614,9 @@ export default function AdminPromoPage() {
               </div>
             </div>
           )}
-        </section>
+        </section>}
 
-        <section className="hidden md:block rounded-xl border border-[#e5e5e5] bg-white p-6">
+        {!formOnly && <section className="hidden md:block rounded-xl border border-[#e5e5e5] bg-white p-6">
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
             <h2 className="text-[17px] font-semibold">
               Invited People <span className="text-sm font-normal text-[#999]">({sortedPeople.length})</span>
@@ -686,7 +701,7 @@ export default function AdminPromoPage() {
           <div className="mt-5 rounded-lg border border-[#fed7aa] bg-[#fff7ed] px-4 py-3 text-[13px] text-[#92400e]">
             <strong>Started</strong> count is clickable - tap to see each story&apos;s metadata and completion status. <strong>Email</strong> opens your mail client. <strong>Text</strong> opens SMS. <strong>Test</strong> users are marked for metric review.
           </div>
-        </section>
+        </section>}
       </div>
 
       {selectedPerson && (

@@ -54,12 +54,19 @@ export async function GET(req: NextRequest) {
 
   const { data: story, error: storyError } = await supabaseAdmin
     .from('stories')
-    .select('id, title, author, series_id, series_name, episode_number, duration_mins, cover_url, is_free, status, is_hidden')
+    .select('id, title, author, series_id, series_name, episode_number, duration_mins, cover_url, audio_url, is_free, status, is_hidden')
     .eq('id', storyId)
     .maybeSingle()
   if (storyError) return NextResponse.json({ error: 'lookup_failed' }, { status: 503 })
   if (!story || story.status !== 'published' || story.is_hidden) {
     return NextResponse.json({ license, allowed: false, reason: 'not_available' }, { status: 404 })
+  }
+  let mainCover = story.cover_url
+  if (story.series_id) {
+    const { data: firstEpisode } = await supabaseAdmin.from('stories')
+      .select('cover_url').eq('series_id', story.series_id).eq('status', 'published')
+      .eq('is_hidden', false).order('episode_number', { ascending: true }).limit(1).maybeSingle()
+    mainCover = firstEpisode?.cover_url || mainCover
   }
   const allowed = Boolean(story.is_free) || entitled
   return NextResponse.json(
@@ -75,7 +82,8 @@ export async function GET(req: NextRequest) {
         seriesName: story.series_name,
         episodeNumber: story.episode_number,
         durationMins: story.duration_mins,
-        coverUrl: story.cover_url,
+        coverUrl: mainCover,
+        finalMixUrl: story.audio_url,
         isFree: Boolean(story.is_free),
       },
     },

@@ -1,0 +1,71 @@
+.magic-invite-page {
+  color-scheme: light;
+}
+
+@media (max-width: 767px) {
+  .magic-invite-page {
+    background: #fff;
+    color: #111827;
+  }
+
+  .magic-invite-page section {
+    border-color: #cbd5e1;
+    padding: 20px 16px;
+  }
+
+  .magic-invite-page p {
+    color: #334155;
+    font-size: 16px;
+    line-height: 1.5;
+  }
+
+  .magic-invite-page label > span,
+  .magic-invite-page label > span span {
+    color: #1e293b;
+    font-size: 15px;
+    letter-spacing: normal;
+    text-transform: none;
+  }
+
+  .magic-invite-page input,
+  .magic-invite-page select,
+  .magic-invite-page textarea {
+    background: #fff;
+    border: 2px solid #64748b;
+    color: #111827;
+    -webkit-text-fill-color: #111827;
+    font-size: 18px;
+    min-height: 50px;
+  }
+
+  .magic-invite-page input::placeholder,
+  .magic-invite-page textarea::placeholder {
+    color: #475569;
+    -webkit-text-fill-color: #475569;
+    opacity: 1;
+  }
+
+  .magic-invite-page button {
+    font-size: 16px;
+    min-height: 44px;
+  }
+
+  .magic-invite-page button[class*='bg-[#f97316]'],
+  .magic-invite-page a[class*='bg-orange-500'] {
+    background: #c2410c;
+    color: #fff;
+  }
+
+  .magic-invite-page button[class*='text-[#f97316]'] {
+    color: #9a3412;
+  }
+
+  .magic-invite-page input:focus-visible,
+  .magic-invite-page textarea:focus-visible,
+  .magic-invite-page select:focus-visible,
+  .magic-invite-page button:focus-visible,
+  .magic-invite-page a:focus-visible {
+    outline: 3px solid #1d4ed8;
+    outline-offset: 3px;
+  }
+}

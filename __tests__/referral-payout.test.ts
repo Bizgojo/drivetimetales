@@ -89,3 +89,22 @@ describe('payReferrerAfterFirstPayment (webhook)', () => {
     expect(tables.referrals[0].offer_id).toBe('o1')
   })
 })
+
+describe('both rewards after payment', () => {
+  it('pays both sides once and retries only the unpaid side', async () => {
+    const { tables, db } = setup()
+    const grant = jest.fn(async (_admin: any, _id: string, _days: number, _key: string) => ({}))
+    expect(await payReferrerAfterFirstPayment(db, 'B', grant)).toMatchObject({ days: 14, referredDays: 14 })
+    expect(grant).toHaveBeenCalledTimes(2)
+    expect(tables.referrals[0]).toMatchObject({ referred_credited: true, referrer_credited: true })
+    expect(await payReferrerAfterFirstPayment(db, 'B', grant)).toBeNull()
+    expect(grant).toHaveBeenCalledTimes(2)
+  })
+  it('finishes the friend reward even when the referrer was already credited', async () => {
+    const { db } = setup({ referrer_credited: true })
+    const grant = jest.fn(async (_admin: any, _id: string, _days: number, _key: string) => ({}))
+    expect(await payReferrerAfterFirstPayment(db, 'B', grant)).toMatchObject({ days: 0, referredDays: 14 })
+    expect(grant).toHaveBeenCalledTimes(1)
+    expect(grant.mock.calls[0][1]).toBe('B')
+  })
+})

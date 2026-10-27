@@ -49,9 +49,9 @@ describe('canPlayOffline', () => {
 })
 
 describe('checkDownloadCaps', () => {
-  it('enforces 10 episodes and 500 MB', () => {
-    expect(checkDownloadCaps({ count: 9, bytes: 0 }, 1)).toEqual({ ok: true })
-    expect(checkDownloadCaps({ count: 10, bytes: 0 }, 1)).toEqual({ ok: false, reason: 'max_episodes' })
+  it('enforces 50 episodes and 2 GB', () => {
+    expect(checkDownloadCaps({ count: 49, bytes: 0 }, 1)).toEqual({ ok: true })
+    expect(checkDownloadCaps({ count: 50, bytes: 0 }, 1)).toEqual({ ok: false, reason: 'max_episodes' })
     expect(checkDownloadCaps({ count: 1, bytes: OFFLINE_MAX_BYTES - 10 }, 11)).toEqual({ ok: false, reason: 'max_bytes' })
   })
 })
@@ -59,15 +59,18 @@ describe('checkDownloadCaps', () => {
 // ── Download orchestration (store mocked in-memory; real IndexedDB is covered by the browser check) ──
 const mem = { episodes: new Map<string, any>(), blobs: new Map<string, Blob>(), license: null as any, deleted: [] as string[] }
 jest.mock('@/lib/offline/store', () => ({
+  getEpisode: async (id: string) => mem.episodes.get(id) || null,
+  getBlob: async (key: string) => mem.blobs.get(key) || null,
+  sharedCoverKey: (id: string) => `series-cover:${id}`,
   segmentKey: (id: string, i: number) => `${id}:seg:${i}`,
   coverKey: (id: string) => `${id}:cover`,
-  listEpisodes: async () => [...mem.episodes.values()],
-  usage: async () => ({ count: mem.episodes.size, bytes: [...mem.episodes.values()].reduce((s, e) => s + e.totalBytes, 0) }),
+  listEpisodes: async () => Array.from(mem.episodes.values()),
+  usage: async () => ({ count: mem.episodes.size, bytes: Array.from(mem.episodes.values()).reduce((s, e) => s + e.totalBytes, 0) }),
   putBlob: async (k: string, b: Blob) => { mem.blobs.set(k, b) },
   putEpisode: async (e: any) => { mem.episodes.set(e.storyId, e) },
   deleteEpisode: async (id: string) => {
     mem.deleted.push(id); mem.episodes.delete(id)
-    for (const k of [...mem.blobs.keys()]) if (k.startsWith(`${id}:`)) mem.blobs.delete(k)
+    for (const k of Array.from(mem.blobs.keys())) if (k.startsWith(`${id}:`)) mem.blobs.delete(k)
   },
   getLicense: async () => mem.license,
   putLicense: async (l: any) => { mem.license = l },
@@ -117,8 +120,8 @@ describe('downloadEpisode', () => {
     const ep = await downloadEpisode({ storyId: 's1', accessToken: 'tok', firstName: 'George', onProgress: p => progress.push(p) })
     expect(ep.segments.map(s => [s.label, s.bytes])).toEqual([['Welcome', 1000], ['Story intro', 2000], ['The Pattern', 30000]])
     expect(ep.totalBytes).toBe(33000)
-    expect(ep).toMatchObject({ title: 'The Pattern', seriesName: 'What the Ground Keeps', episodeNumber: 2, durationMins: 16, isFree: false, userId: 'u1', coverKey: 's1:cover' })
-    expect([...mem.blobs.keys()].sort()).toEqual(['s1:cover', 's1:seg:0', 's1:seg:1', 's1:seg:2'])
+    expect(ep).toMatchObject({ title: 'The Pattern', seriesName: 'What the Ground Keeps', episodeNumber: 2, durationMins: 16, isFree: false, userId: 'u1', coverKey: 'series-cover:ser' })
+    expect(Array.from(mem.blobs.keys()).sort()).toEqual(['s1:seg:0', 's1:seg:1', 's1:seg:2', 'series-cover:ser'])
     expect(mem.license).toEqual(LICENSE)
     // Auth header on the gate, firstName passed to the playlist (same as the player)
     expect(calls[0].init?.headers).toMatchObject({ Authorization: 'Bearer tok' })
@@ -148,14 +151,14 @@ describe('downloadEpisode', () => {
     expect(mem.blobs.size).toBe(0)
   })
 
-  it('10-episode cap is checked before any network call', async () => {
-    for (let i = 0; i < 10; i++) mem.episodes.set(`e${i}`, { storyId: `e${i}`, totalBytes: 1, isFree: false, userId: 'u1' })
+  it('50-episode cap is checked before any network call', async () => {
+    for (let i = 0; i < 50; i++) mem.episodes.set(`e${i}`, { storyId: `e${i}`, totalBytes: 1, isFree: false, userId: 'u1' })
     const calls = installFetch({})
     await expect(downloadEpisode({ storyId: 's1', accessToken: 'tok' })).rejects.toMatchObject({ code: 'max_episodes' })
     expect(calls).toHaveLength(0)
   })
 
-  it('500 MB cap: aborts and cleans up partial blobs', async () => {
+  it('2 GB cap: aborts and cleans up partial blobs', async () => {
     mem.episodes.set('big', { storyId: 'big', totalBytes: OFFLINE_MAX_BYTES - 1500, isFree: false, userId: 'u1' })
     installFetch({
       '/api/offline/license': json({ allowed: true, license: LICENSE, story: STORY }),
@@ -165,7 +168,54 @@ describe('downloadEpisode', () => {
     })
     await expect(downloadEpisode({ storyId: 's1', accessToken: 'tok' })).rejects.toMatchObject({ code: 'max_bytes' })
     expect(mem.deleted).toContain('s1')
-    expect([...mem.blobs.keys()].some(k => k.startsWith('s1:'))).toBe(false)
+    expect(Array.from(mem.blobs.keys()).some(k => k.startsWith('s1:'))).toBe(false)
+    expect(mem.episodes.has('s1')).toBe(false)
+  })
+
+  it('shares a series cover and skips an already completed download', async () => {
+    const routes = {
+      '/api/offline/license': json({ allowed: true, license: LICENSE, story: STORY }),
+      '/api/asc3/story-playlist': json({ useFinalMix: true, finalMixUrl: 'https://cdn/body.mp3' }),
+      'https://cdn/body.mp3': () => bytesResponse(100),
+      'https://cdn/cover.jpg': () => bytesResponse(10, 'image/jpeg'),
+    }
+    const calls = installFetch(routes)
+    await downloadEpisode({ storyId: 's1', accessToken: 'tok' })
+    await downloadEpisode({ storyId: 's2', accessToken: 'tok' })
+    expect(mem.episodes.get('s1').coverKey).toBe(mem.episodes.get('s2').coverKey)
+    expect(calls.filter(c => c.url.startsWith('https://cdn/cover.jpg'))).toHaveLength(1)
+    const before = calls.length
+    await downloadEpisode({ storyId: 's1', accessToken: 'tok' })
+    expect(calls).toHaveLength(before)
+  })
+
+  it('automatically saves the complete published mix when an old outro link is missing', async () => {
+    const calls = installFetch({
+      '/api/offline/license': json({ allowed: true, license: LICENSE, story: { ...STORY, finalMixUrl: 'https://cdn/published.mp3' } }),
+      '/api/asc3/story-playlist': json({ queue: [
+        { url: 'https://cdn/body.mp3', type: 'story', label: 'Story' },
+        { url: 'https://cdn/missing-outro.mp3', type: 'outro', label: 'Outro' },
+      ] }),
+      'https://cdn/body.mp3': () => bytesResponse(100),
+      'https://cdn/missing-outro.mp3': () => new Response('', { status: 400 }),
+      'https://cdn/published.mp3': () => bytesResponse(250),
+      'https://cdn/cover.jpg': () => bytesResponse(10, 'image/jpeg'),
+    })
+    const ep = await downloadEpisode({ storyId: 's1', accessToken: 'tok' })
+    expect(ep.segments).toHaveLength(1)
+    expect(ep.totalBytes).toBe(250)
+    expect((mem.blobs.get('s1:seg:0') as Blob).size).toBe(250)
+    expect(calls.filter(c => c.url.startsWith('https://cdn/published.mp3'))).toHaveLength(1)
+    expect(mem.episodes.has('s1')).toBe(true)
+  })
+  it('never labels an incomplete episode as downloaded if both the segment and published mix are missing', async () => {
+    installFetch({
+      '/api/offline/license': json({ allowed: true, license: LICENSE, story: { ...STORY, finalMixUrl: 'https://cdn/missing-master.mp3' } }),
+      '/api/asc3/story-playlist': json({ queue: [{ url: 'https://cdn/missing-outro.mp3', type: 'outro', label: 'Outro' }] }),
+      'https://cdn/missing-outro.mp3': () => new Response('', { status: 400 }),
+      'https://cdn/missing-master.mp3': () => new Response('', { status: 404 }),
+    })
+    await expect(downloadEpisode({ storyId: 's1', accessToken: 'tok' })).rejects.toMatchObject({ code: 'asset_unavailable' })
     expect(mem.episodes.has('s1')).toBe(false)
   })
 
@@ -202,7 +252,7 @@ describe('refreshOfflineLicense', () => {
     installFetch({ '/api/offline/license': json({ license: { ...LICENSE, entitled: false, validUntil: null } }) })
     const r = await refreshOfflineLicense('tok')
     expect(r.purged).toBe(1)
-    expect([...mem.episodes.keys()]).toEqual(['free'])
+    expect(Array.from(mem.episodes.keys())).toEqual(['free'])
     expect(mem.license.validUntil).toBeNull()
   })
   it('different user signed in on this device → their downloads are removed', async () => {

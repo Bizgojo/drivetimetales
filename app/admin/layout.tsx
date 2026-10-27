@@ -1,5 +1,6 @@
 'use client'
 
+import { isMagicInviteOwner, isIphone } from '@/lib/magicInvite'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { useEffect, useState, useRef, useCallback } from 'react'
@@ -42,6 +43,7 @@ const NAV_GROUPS = [
   ]},
   { id: 'subscribers', label: 'Subscribers', icon: '👥', items: [
     { href: '/admin/users', label: 'Users' },
+    { href: '/admin/listener-preferences', label: 'Listener Preferences' },
     { href: '/admin/subscriptions', label: 'Subscriptions' },
     { href: '/admin/promo', label: 'Magic Link Invites' },
     { href: '/admin/referrals', label: 'Referrals' },
@@ -86,6 +88,9 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const pathname = usePathname()
   const router = useRouter()
   const { user, loading } = useAuth()
+  const [iphone, setIphone] = useState(false)
+  const [deviceReady, setDeviceReady] = useState(false)
+  useEffect(() => { setIphone(isIphone(navigator.userAgent)); setDeviceReady(true) }, [])
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [sidebarLoaded, setSidebarLoaded] = useState(false)
   const [sessionState, setSessionState] = useState<SessionState>('loading')
@@ -326,6 +331,13 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const email = (user?.email || '').toLowerCase()
   if (!user || !ADMIN_EMAILS.has(email)) return <div style={{ minHeight: '100vh', background: '#f5f5f5' }} />
 
+  if (pathname?.startsWith('/admin/promo') && !isMagicInviteOwner(email)) return <div className="p-6 text-slate-900 bg-white min-h-screen"><h1 className="font-bold text-xl">Private invitation tool</h1><p>This tool is available only to Marc’s account.</p><a href="/account" className="underline">Return to Account</a></div>
+  if (pathname === '/admin/promo/new') {
+    if (!deviceReady) return <p className="p-6">Loading…</p>
+    if (!iphone) return <div className="p-6 text-slate-900 bg-white min-h-screen"><p>Open Add Magic Link from your Account page on your iPhone.</p><a href="/account" className="underline">Return to Account</a></div>
+    return <div className="min-h-screen w-full bg-[#f5f4f0]">{children}</div>
+  }
+
   const toggleGroup = (id: string) => {
     setOpenGroups(prev => {
       const next = new Set(prev)
@@ -399,10 +411,10 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                   </button>
                   {isOpen && (
                     <div style={{ marginLeft: '20px', borderLeft: '1px solid #334155', paddingLeft: '12px', marginTop: '2px', marginBottom: '6px' }}>
-                      {group.items.map((item) => {
+                      {group.items.filter(item => item.href !== '/admin/promo' || (isMagicInviteOwner(email) && iphone)).map((item) => {
                         const isActive = isActivePath(pathname, item.href)
                         return (
-                          <Link key={item.href} href={item.href} style={{ display: 'block', padding: '0.45rem 0.75rem', borderRadius: '5px', backgroundColor: isActive ? '#f97316' : 'transparent', color: isActive ? 'white' : '#e2e8f0', textDecoration: 'none', fontWeight: isActive ? 600 : 400, fontSize: '13px' }}>
+                          <Link key={item.href} href={item.href === '/admin/promo' && iphone ? '/admin/promo/new' : item.href} style={{ display: 'block', padding: '0.45rem 0.75rem', borderRadius: '5px', backgroundColor: isActive ? '#f97316' : 'transparent', color: isActive ? 'white' : '#e2e8f0', textDecoration: 'none', fontWeight: isActive ? 600 : 400, fontSize: '13px' }}>
                             {item.label}
                           </Link>
                         )

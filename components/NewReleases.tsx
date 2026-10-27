@@ -1,121 +1,116 @@
 'use client'
-import { useState, useEffect } from 'react'
+import MediaButtonLabel from '@/components/MediaButtonLabel'
+import { selectNewestArrivals, episodeNumber } from '@/lib/newArrivals'
+import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/contexts/AuthContext'
+import { useOpenPlayer } from '@/components/player/PersistentPlayer'
+import { formatMinutes } from '@/components/LibraryStoryCard'
+import { ACTIVE_PLAYLIST_KEY, saveActivePlaylist, clearActivePlaylist } from '@/lib/playlistState'
+import { downloadQueuedItemOffline, removeQueuedItemOffline } from '@/lib/offline/queueDownload'
 
 interface Story {
   id: string; title: string; genre: string; author: string
   duration_mins: number; cover_url: string | null
+  description: string | null
+  narrator_voice_name?: string | null
+  episodes?: Story[]
   series_id: string | null; series_number: number | null; series_name: string | null
   episode_number?: number | null
+  series_total?: number | null
   published_on?: string | null
   avg_rating?: number | null; review_count?: number
 }
 
-// Use series_number with episode_number as fallback — matches Library/RecommendedForYou behavior.
-function episodeNumber(story: Story) {
-  return Number(story.series_number || story.episode_number || 0)
-}
+const buttonStyle = { flex: 1, minWidth: 0, height: 58, padding: 4, borderRadius: 6, fontSize: 12, lineHeight: 1.25, fontWeight: 800, color: '#fff', cursor: 'pointer' } as const
 
-function newestTime(stories: Story[]) {
-  return Math.max(...stories.map(story => Date.parse(story.published_on || '') || 0), 0)
-}
-
-function completeSeriesLaunchRows(rows: Story[]) {
-  const groups = new Map<string, Story[]>()
-  rows.forEach((story) => {
-    if (!story.series_id) return
-    groups.set(story.series_id, [...(groups.get(story.series_id) || []), story])
-  })
-
-    return Array.from(groups.values())
-    .filter((episodes) => {
-      const episodeNumbers = new Set(episodes.map(episodeNumber).filter(Boolean))
-      if (episodeNumbers.size <= 1) return false
-      const highestEpisode = Math.max(...episodeNumbers)
-      return episodeNumbers.size === highestEpisode && episodeNumbers.has(1)
-    })
-    .map((episodes) => episodes.slice().sort((a, b) => episodeNumber(a) - episodeNumber(b))[0])
-    .sort((a, b) => newestTime(rows.filter(story => story.series_id === b.series_id)) - newestTime(rows.filter(story => story.series_id === a.series_id)))
-}
-
-function isLaunchInventory(story: Story) {
-  return !/\b(test|sample|draft)\b/i.test(`${story.title} ${story.series_name || ''}`)
-}
-
-export default function NewReleases({ excludeIds = [], onIdsLoaded }: { excludeIds?: string[]; onIdsLoaded?: (ids: string[]) => void }) {
-  const { user } = useAuth()
+export default function NewReleases({ onIdsLoaded }: { onIdsLoaded?: (ids: string[]) => void }) {
+  const { user, session } = useAuth()
+  const openPlayer = useOpenPlayer()
+  const [playlist, setPlaylist] = useState<string[]>([])
+  const playlistKey = user ? `et_current_playlist_${user.id}` : 'et_current_playlist'
   const router = useRouter()
   const [stories, setStories] = useState<Story[]>([])
   const [loading, setLoading] = useState(true)
+  const loadVersion = useRef(0)
 
-  useEffect(() => { load() }, [user?.id, excludeIds.join(',')])
+  useEffect(() => {
+    load()
+    const refresh = () => { if (document.visibilityState === 'visible') void load(true) }
+    window.addEventListener('focus', refresh)
+    document.addEventListener('visibilitychange', refresh)
+    const timer = window.setInterval(refresh, 60000)
+    return () => { loadVersion.current++; window.removeEventListener('focus', refresh); document.removeEventListener('visibilitychange', refresh); window.clearInterval(timer) }
+  }, [])
 
-  async function load() {
-    setLoading(true)
-    const { data: publicRows } = await supabase
-      .from('stories')
-      .select('id')
-      .eq('status', 'published')
-      .eq('is_hidden', false)
-
-    const publicIds = (publicRows || []).map((row) => row.id)
-    if (publicIds.length === 0) {
-      setStories([])
-      setLoading(false)
-      onIdsLoaded?.([])
-      return
+  useEffect(() => {
+    const sync = () => {
+      try { setPlaylist(JSON.parse(localStorage.getItem(playlistKey) || '[]')) } catch { setPlaylist([]) }
     }
-
-    const { data } = await supabase.from('story_analytics')
-      .select('id, title, genre, author, duration_mins, cover_url, avg_rating, review_count, series_id, series_number, series_name, published_on')
-      .not('cover_url', 'is', null).eq('is_hidden', false)
-      .in('id', publicIds)
-      .order('published_on', { ascending: false }).limit(60)
-    if (!data) { setLoading(false); onIdsLoaded?.([]); return }
-
-    const ex = new Set(excludeIds)
-    const playedSeriesIds = new Set<string>()
-
-    if (user?.id) {
-      const { data: lib } = await supabase.from('user_library').select('story_id, progress, completed, not_for_me, last_played').eq('user_id', user.id)
-      if (lib) {
-        lib.forEach((e: any) => { if (e.progress > 0 || e.completed || e.not_for_me || e.last_played) ex.add(e.story_id) })
-        const playedIds = new Set(lib.filter((e: any) => e.last_played).map((e: any) => e.story_id))
-        data.forEach((s: any) => {
-          if (s.series_id && playedIds.has(s.id)) {
-            playedSeriesIds.add(s.series_id)
-          }
-        })
-      }
-      try {
-        const raw = localStorage.getItem('dtt_active_playlist') || localStorage.getItem('dtt_playlist')
-        if (raw) {
-          const pl = JSON.parse(raw)
-          const playlistItems = pl.items || pl.stories || pl
-          ;(Array.isArray(playlistItems) ? playlistItems : []).forEach((s: any) => {
-            if (s.type === 'series' && Array.isArray(s.episodes)) {
-              s.episodes.forEach((episode: any) => { if (episode?.id) ex.add(episode.id) })
-            } else if (s.id) ex.add(s.id)
-          })
-        }
-      } catch {}
+    sync()
+    window.addEventListener('et_playlist_saved', sync)
+    window.addEventListener('et_playlist_cleared', sync)
+    return () => {
+      window.removeEventListener('et_playlist_saved', sync)
+      window.removeEventListener('et_playlist_cleared', sync)
     }
+  }, [playlistKey])
 
-    const storyRows = (data as Story[]).filter(isLaunchInventory)
-    const excludedSeriesIds = new Set(storyRows.filter(story => story.series_id && ex.has(story.id)).map(story => story.series_id as string))
-    const completeSeriesRows = completeSeriesLaunchRows(storyRows)
-    const result = [
-      ...completeSeriesRows.filter((s) => {
-        const sid = s.series_id
-        return sid && !playedSeriesIds.has(sid) && !excludedSeriesIds.has(sid) && !ex.has(s.id)
-      }),
-      ...storyRows.filter((s) => !s.series_id && !ex.has(s.id)),
-    ].sort((a, b) => (Date.parse(b.published_on || '') || 0) - (Date.parse(a.published_on || '') || 0)).slice(0, 2)
+  function navigate(url: string) {
+    if (openPlayer) openPlayer(url)
+    else router.push(url)
+  }
 
+  function togglePlaylist(story: Story) {
+    const key = story.series_id ? `series-${story.series_id}` : `single-${story.id}`
+    const episodes = story.episodes || [story]
+    const adding = !playlist.includes(key)
+    const next = adding ? [...playlist, key] : playlist.filter(k => k !== key)
+    let saved: any = {}
+    try { saved = JSON.parse(localStorage.getItem(ACTIVE_PLAYLIST_KEY) || '{}') } catch {}
+    const items = (saved.items || saved.stories || []).filter((item: any) =>
+      (item.type === 'series' ? `series-${item.series_id || item.id}` : `single-${item.id}`) !== key)
+    if (adding) items.push(story.series_id ? {
+      type: 'series', id: story.series_id, series_id: story.series_id,
+      title: story.series_name, series_name: story.series_name, author: story.author,
+      genre: story.genre, cover_url: story.cover_url, episode_count: episodes.length,
+      total_mins: episodes.reduce((sum, ep) => sum + Number(ep.duration_mins || 0), 0),
+      episodes: episodes.map(ep => ({ id: ep.id, episode_number: episodeNumber(ep) })),
+    } : { ...story, type: 'single' })
+    localStorage.setItem(playlistKey, JSON.stringify(next))
+    setPlaylist(next)
+    if (items.length) saveActivePlaylist({ ...saved, id: saved.id || `home-${Date.now()}`, items,
+      remaining_mins: items.reduce((sum: number, item: any) => sum + Number(item.total_mins || item.duration_mins || 0), 0),
+    }, next)
+    else clearActivePlaylist()
+    const target = story.series_id
+      ? { type: 'series' as const, episodeIds: episodes.map(ep => ep.id) }
+      : { type: 'single' as const, id: story.id }
+    if (adding && user && session?.access_token) {
+      downloadQueuedItemOffline(target, { userId: user.id, accessToken: session.access_token, firstName: (user as any)?.first_name || null }).catch(() => {})
+    } else if (!adding) removeQueuedItemOffline(target, user?.id).catch(() => {})
+  }
+
+  async function load(background = false) {
+    const version = ++loadVersion.current
+    if (!background) setLoading(true)
+    const rows: Story[] = []
+    // Read complete groups; a fixed row limit can cut a recent series in half.
+    for (let start = 0; ; start += 1000) {
+      const { data, error } = await supabase.from('stories')
+        .select('id,title,genre,author,description,duration_mins,cover_url,narrator_voice_name,series_id,series_number,episode_number,series_name,series_total,published_on')
+        .eq('status', 'published').eq('is_hidden', false)
+        .order('published_on', { ascending: false, nullsFirst: false }).order('id', { ascending: true })
+        .range(start, start + 999)
+      if (version !== loadVersion.current) return
+      if (error || !data) { setLoading(false); onIdsLoaded?.([]); return }
+      rows.push(...data as Story[])
+      if (data.length < 1000) break
+    }
+    const result = selectNewestArrivals(rows)
     setStories(result)
-    onIdsLoaded?.(result.map(s => s.id))
+    onIdsLoaded?.(result.map(story => story.id))
     setLoading(false)
   }
 
@@ -139,25 +134,36 @@ export default function NewReleases({ excludeIds = [], onIdsLoaded }: { excludeI
           // Standalone stories keep existing direct-player behavior.
           const href = s.series_id ? `/series/${s.series_id}` : `/player/${s.id}?autoplay=1&playNow=1`
           const epNum = episodeNumber(s)
+          const episodes = s.episodes || [s]
+          const total = Math.round(episodes.reduce((sum, ep) => sum + Number(ep.duration_mins || 0), 0))
+          const key = s.series_id ? `series-${s.series_id}` : `single-${s.id}`
+          const description = s.description || ''
+          const shortDescription = description.length > 70 ? description.slice(0, 67).trimEnd() + '…' : description
           return (
             <div
               key={s.id}
-              onClick={() => router.push(href)}
               className="bg-slate-800 rounded-xl hover:bg-slate-700 transition"
-              style={{ display: 'block', padding: '0.5rem', cursor: 'pointer' }}
+              style={{ display: 'flex', flexDirection: 'column', padding: '0.5rem', color: '#fff' }}
             >
-              <div className="rounded-lg overflow-hidden cover-glow" style={{ position: 'relative' }}>
+              <div onClick={() => router.push(href)} className="rounded-lg overflow-hidden cover-glow" style={{ position: 'relative' }}>
                 <img src={s.cover_url || '/images/default-cover.png'} alt={s.series_name || s.title} style={{ width: '100%', aspectRatio: '1/1', objectFit: 'cover' }} />
                 {s.series_name && epNum > 0 && (
-                  <div style={{ position: 'absolute', bottom: 4, left: 4, background: 'rgba(0,0,0,0.75)', borderRadius: 4, padding: '2px 6px', fontSize: 9, fontWeight: 700, color: '#f97316' }}>EP. {epNum}</div>
+                  <div style={{ position: 'absolute', bottom: 4, left: 4, background: 'rgba(0,0,0,0.75)', borderRadius: 4, padding: '2px 6px', fontSize: 9, fontWeight: 700, color: '#fff' }}>EP. {epNum}</div>
                 )}
               </div>
-              <div style={{ marginTop: '0.5rem' }}>
+              <div style={{ marginTop: '0.5rem', display: 'flex', flexDirection: 'column', flex: 1 }}>
                 <h3 className="text-xs font-bold text-white line-clamp-2 leading-tight">{s.series_name ? s.series_name : s.title}</h3>
-                {s.series_name && <p style={{ color: '#f97316', fontSize: '0.65rem', fontWeight: 600 }}>{s.title}</p>}
-                <p style={{ color: '#94a3b8', fontSize: '0.7rem' }}>{s.genre}</p>
-                <p style={{ color: '#94a3b8', fontSize: '0.7rem' }}>by {s.author}</p>
-                <p style={{ color: '#fff', fontSize: '0.7rem', fontWeight: 600 }}>{s.duration_mins} min</p>
+                {s.series_name && <p style={{ color: '#fff', fontSize: '0.65rem', fontWeight: 600 }}>{s.title}</p>}
+                <p style={{ color: '#fff', fontSize: '0.7rem' }}>{s.genre}</p>
+                <p style={{ color: '#fff', fontSize: '0.7rem' }}>by {s.author}</p>
+                <p style={{ color: '#fff', fontSize: '0.7rem' }}>Narrated By {s.narrator_voice_name || 'Not listed'}</p>
+                <p style={{ color: '#fff', fontSize: '0.7rem', fontWeight: 600 }}>{episodes.length} Episode{episodes.length === 1 ? '' : 's'} · {formatMinutes(total)} total</p>
+                {shortDescription && <p style={{ color: '#fff', fontSize: '0.7rem', lineHeight: 1.45, margin: '5px 0' }}>{shortDescription}</p>}
+                <div style={{ display: 'flex', gap: 4, marginTop: 'auto', paddingTop: 8 }}>
+                  <button onClick={() => navigate(`/player/${s.id}?autoplay=1&playNow=1`)} style={{ ...buttonStyle, background: '#f97316', color: '#000' }}><MediaButtonLabel kind="listen">Listen</MediaButtonLabel></button>
+                  <button onClick={() => togglePlaylist(s)} style={{ ...buttonStyle, background: playlist.includes(key) ? '#93c5fd' : '#3b82f6', color: playlist.includes(key) ? '#1e3a8a' : '#fff' }}>{playlist.includes(key) ? 'On Playlist' : 'Add to Playlist'}</button>
+                  <button onClick={() => navigate(`/player/${s.id}?openReader=1`)} style={{ ...buttonStyle, background: '#eab308', color: '#000' }}><MediaButtonLabel kind="read">Read</MediaButtonLabel></button>
+                </div>
               </div>
             </div>
           )

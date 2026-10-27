@@ -31,7 +31,7 @@ function DismissModal({ label, onConfirm, onCancel }: { label: string; onConfirm
 // showing a story, this list must NOT repeat it — same title stacked twice on
 // /home. Keep unfinished stories available below the active mini-player;
 // exclude the hero and the active story by ID, without altering saved rows.
-export default function ContinueListening({ onIdsLoaded, excludeStoryId = null }: { onIdsLoaded?: (ids: string[]) => void; excludeStoryId?: string | null } = {}) {
+export default function ContinueListening({ onIdsLoaded, excludeStoryId = null, renderCard = true }: { onIdsLoaded?: (ids: string[]) => void; excludeStoryId?: string | null; renderCard?: boolean } = {}) {
   const { user } = useAuth()
   const router = useRouter()
   const [cards, setCards] = useState<ContinueCard[]>([])
@@ -72,7 +72,7 @@ export default function ContinueListening({ onIdsLoaded, excludeStoryId = null }
     setCards(remaining); setShowDismiss(null); onIdsLoaded?.(remaining.map(card => card.story_id))
   }
 
-  if (loading || nowPlaying) return null
+  if (!renderCard || loading || nowPlaying) return null
   return <>{cards.slice(0, 1).map(card => {
   const displayTitle = card.series_name || card.title
   const resumeAt = Math.max(0, card.progress)
