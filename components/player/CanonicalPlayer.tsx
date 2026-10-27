@@ -1,4 +1,5 @@
 'use client'
+import MediaButtonLabel from '@/components/MediaButtonLabel'
 
 import * as Sentry from '@sentry/nextjs'
 import { useState, useEffect, useRef, useCallback } from 'react'
@@ -2981,7 +2982,7 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
 
         {/* Read It pill */}
         <button onClick={() => setActiveModal('prose')} style={{ display:'flex', flexDirection:'column', alignItems:'center', padding:'8px 14px', borderRadius:'14px', border:'1px solid rgba(255,255,255,0.18)', background:'rgba(255,255,255,0.12)', color:'white', cursor:'pointer', minWidth:90 }}>
-          <span style={{ fontSize:'12px', fontWeight:700, whiteSpace:'nowrap' }}>📖 {prosePillText}</span>
+          <span style={{ fontSize:'12px', fontWeight:700, whiteSpace:'nowrap' }}><MediaButtonLabel kind="read">{prosePillText}</MediaButtonLabel></span>
           {proseAvailable && <span style={{ fontSize:'10px', color:'rgba(255,255,255,0.6)', marginTop:'2px' }}>{readingProgressState?.completed ? 'Finished' : (readingProgressState?.paragraphIndex || 0) > 0 ? 'Saved' : 'Available'}</span>}
         </button>
 

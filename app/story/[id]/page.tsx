@@ -1,4 +1,5 @@
 'use client'
+import MediaButtonLabel from '@/components/MediaButtonLabel'
 
 /*
 ================================================================================
@@ -142,7 +143,7 @@ export default function StoryDetailPage() {
   if (loading) return <div style={{ background: '#020617', minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><div style={{ color: 'white', fontSize: '14px' }}>Loading...</div></div>
   if (unavailable || !story) return <div style={{ background: '#020617', minHeight: '100vh', color: 'white', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 24, textAlign: 'center' }}><p style={{ marginBottom: 16 }}>This story isn’t available yet.</p><button onClick={() => router.push('/library')} style={{ color: '#f97316', background: 'none', border: '1px solid rgba(249,115,22,0.35)', borderRadius: 10, padding: '10px 16px', cursor: 'pointer', fontWeight: 700 }}>Back to Library</button></div>
 
-  const btnLabel = completed ? 'Play Again' : inProgress ? 'Continue' : 'Play Now'
+  const btnLabel = completed ? 'Play Again' : inProgress ? 'Continue' : 'Listen'
   const btnColor = completed ? '#3b82f6' : inProgress ? '#22c55e' : '#f97316'
   const btnShadow = completed ? '0 4px 12px rgba(59,130,246,0.35)' : inProgress ? '0 4px 12px rgba(34,197,94,0.35)' : '0 4px 12px rgba(249,115,22,0.35)'
 
@@ -208,17 +209,16 @@ export default function StoryDetailPage() {
       <div style={{ padding: '14px 16px 0', display: 'flex', gap: 10 }}>
         <button
           onClick={handlePlay}
-          style={{ flex: 1, padding: '14px', background: btnColor, color: 'white', border: 'none', borderRadius: 12, fontFamily: 'var(--font-outfit, sans-serif)', fontSize: 15, fontWeight: 800, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, boxShadow: btnShadow }}
+          style={{ flex: 1, padding: '14px', background: btnColor, color: '#000', border: 'none', borderRadius: 12, fontFamily: 'var(--font-outfit, sans-serif)', fontSize: 15, fontWeight: 800, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, boxShadow: btnShadow }}
         >
-          <svg width="12" height="14" viewBox="0 0 12 14" fill="white"><path d="M1 1l10 6-10 6V1z"/></svg>
-          {btnLabel}
+          <MediaButtonLabel kind="listen">{btnLabel}</MediaButtonLabel>
         </button>
         {hasEbook && (
           <button
             onClick={() => router.push(`/player/${story.id}?openReader=1`)}
-            style={{ flex: 1, padding: '14px', background: '#3b82f6', color: 'white', border: 'none', borderRadius: 12, fontFamily: 'var(--font-outfit, sans-serif)', fontSize: 15, fontWeight: 800, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, boxShadow: '0 4px 12px rgba(59,130,246,0.35)' }}
+            style={{ flex: 1, padding: '14px', background: '#eab308', color: '#000', border: 'none', borderRadius: 12, fontFamily: 'var(--font-outfit, sans-serif)', fontSize: 15, fontWeight: 800, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, boxShadow: '0 4px 12px rgba(59,130,246,0.35)' }}
           >
-            📖 Read the eBook
+            <MediaButtonLabel kind="read">Read</MediaButtonLabel>
           </button>
         )}
       </div>

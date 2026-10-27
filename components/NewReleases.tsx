@@ -1,4 +1,5 @@
 'use client'
+import MediaButtonLabel from '@/components/MediaButtonLabel'
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
@@ -226,9 +227,9 @@ export default function NewReleases({ excludeIds = [], onIdsLoaded }: { excludeI
                 <p style={{ color: '#fff', fontSize: '0.7rem', fontWeight: 600 }}>{episodes.length} Episode{episodes.length === 1 ? '' : 's'} · {formatMinutes(total)} total</p>
                 {shortDescription && <p style={{ color: '#fff', fontSize: '0.7rem', lineHeight: 1.45, margin: '5px 0' }}>{shortDescription}</p>}
                 <div style={{ display: 'flex', gap: 4, marginTop: 'auto', paddingTop: 8 }}>
-                  <button onClick={() => navigate(`/player/${s.id}?autoplay=1&playNow=1`)} style={{ ...buttonStyle, background: '#ea580c' }}>Listen</button>
-                  <button onClick={() => togglePlaylist(s)} style={{ ...buttonStyle, background: '#2563eb' }}>{playlist.includes(key) ? 'On Playlist' : 'Add to Playlist'}</button>
-                  <button onClick={() => navigate(`/player/${s.id}?openReader=1`)} style={{ ...buttonStyle, background: '#b45309' }}>Read</button>
+                  <button onClick={() => navigate(`/player/${s.id}?autoplay=1&playNow=1`)} style={{ ...buttonStyle, background: '#f97316', color: '#000' }}><MediaButtonLabel kind="listen">Listen</MediaButtonLabel></button>
+                  <button onClick={() => togglePlaylist(s)} style={{ ...buttonStyle, background: playlist.includes(key) ? '#93c5fd' : '#3b82f6', color: playlist.includes(key) ? '#1e3a8a' : '#fff' }}>{playlist.includes(key) ? 'On Playlist' : 'Add to Playlist'}</button>
+                  <button onClick={() => navigate(`/player/${s.id}?openReader=1`)} style={{ ...buttonStyle, background: '#eab308', color: '#000' }}><MediaButtonLabel kind="read">Read</MediaButtonLabel></button>
                 </div>
               </div>
             </div>

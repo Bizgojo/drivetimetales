@@ -1,4 +1,5 @@
 'use client'
+import MediaButtonLabel from '@/components/MediaButtonLabel'
 import React, { useState, useEffect } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
@@ -268,24 +269,23 @@ export default function SeriesDetailPage() {
           const p = userProgress[ep.id]
           return p && p.progress_seconds > 0 && !p.completed
         })
-        const btnLabel = allCompleted ? 'Play Again' : anyInProgress ? 'Continue Where You Left Off' : 'Listen to Series'
+        const btnLabel = allCompleted ? 'Play Again' : anyInProgress ? 'Continue Where You Left Off' : 'Listen'
         const btnColor = allCompleted ? '#3b82f6' : anyInProgress ? '#22c55e' : '#f97316'
         const btnShadow = allCompleted ? '0 4px 12px rgba(59,130,246,0.35)' : anyInProgress ? '0 4px 12px rgba(34,197,94,0.35)' : '0 4px 12px rgba(249,115,22,0.35)'
         return (
           <div style={{ padding: '14px 16px 0', display: 'flex', gap: 10 }}>
             <button
               onClick={handlePlayAll}
-              style={{ flex: 1, padding: '14px', background: btnColor, color: 'white', border: 'none', borderRadius: 12, fontFamily: 'var(--font-outfit, sans-serif)', fontSize: 15, fontWeight: 800, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, boxShadow: btnShadow }}
+              style={{ flex: 1, padding: '14px', background: btnColor, color: '#000', border: 'none', borderRadius: 12, fontFamily: 'var(--font-outfit, sans-serif)', fontSize: 15, fontWeight: 800, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, boxShadow: btnShadow }}
             >
-              <svg width="12" height="14" viewBox="0 0 12 14" fill="white"><path d="M1 1l10 6-10 6V1z"/></svg>
-              {btnLabel}
+              <MediaButtonLabel kind="listen">{btnLabel}</MediaButtonLabel>
             </button>
             {proseChapters.length > 0 && (
               <button
                 onClick={() => router.push(`/player/${episodes[0].id}?openReader=1`)}
-                style={{ flex: 1, padding: '14px', background: '#3b82f6', color: 'white', border: 'none', borderRadius: 12, fontFamily: 'var(--font-outfit, sans-serif)', fontSize: 15, fontWeight: 800, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, boxShadow: '0 4px 12px rgba(59,130,246,0.35)' }}
+                style={{ flex: 1, padding: '14px', background: '#eab308', color: '#000', border: 'none', borderRadius: 12, fontFamily: 'var(--font-outfit, sans-serif)', fontSize: 15, fontWeight: 800, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, boxShadow: '0 4px 12px rgba(59,130,246,0.35)' }}
               >
-                📖 Read the eBook
+                <MediaButtonLabel kind="read">Read</MediaButtonLabel>
               </button>
             )}
           </div>
