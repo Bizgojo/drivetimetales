@@ -112,7 +112,7 @@ export type StructuredErrorJsonKind =
   // ATL-PIPE-009: voice_preflight script structural failure
   | 'script_unlabeled_lines'             // story body contains prose not starting with NARRATOR:/CHARACTER: (retryable)
   // SCRIPT-RUNTIME-PREFLIGHT-001: script estimates below the pre-spend runtime floor — bounce before ElevenLabs spend (marc_required, never auto-retry: length shortfall needs editorial judgment, not a rewrite loop)
-  | 'script_runtime_short'                // estimated finished minutes < 15.5 at calibrated 160 wpm; extend the script and re-run voice_preflight
+  | 'script_runtime_short'                // estimated finished minutes < 12.5 at calibrated 160 wpm; extend the script and re-run voice_preflight
   // GATE 5 (GATE-GAPS-SPEC-20261004 §5): digit-form numeral found in script body at voice_preflight; blocks before TTS, Class B story defect, re-queues to generate_script (retryable)
   | 'numeral_pre_tts'                     // digit-form numeral ("4.6", "13.8", "2,000") in a voice line — TTS misreads; spell out in words
   // ATL-PIPE-012: ready_for_review gate failures
