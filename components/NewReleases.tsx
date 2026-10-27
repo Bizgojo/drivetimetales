@@ -7,6 +7,7 @@ import { useAuth } from '@/contexts/AuthContext'
 interface Story {
   id: string; title: string; genre: string; author: string
   duration_mins: number; cover_url: string | null
+  description: string | null
   series_id: string | null; series_number: number | null; series_name: string | null
   episode_number?: number | null
   published_on?: string | null
@@ -69,7 +70,7 @@ export default function NewReleases({ excludeIds = [], onIdsLoaded }: { excludeI
     }
 
     const { data } = await supabase.from('story_analytics')
-      .select('id, title, genre, author, duration_mins, cover_url, avg_rating, review_count, series_id, series_number, series_name, published_on')
+      .select('id, title, genre, author, description, duration_mins, cover_url, avg_rating, review_count, series_id, series_number, series_name, published_on')
       .not('cover_url', 'is', null).eq('is_hidden', false)
       .in('id', publicIds)
       .order('published_on', { ascending: false }).limit(60)
@@ -149,14 +150,15 @@ export default function NewReleases({ excludeIds = [], onIdsLoaded }: { excludeI
               <div className="rounded-lg overflow-hidden cover-glow" style={{ position: 'relative' }}>
                 <img src={s.cover_url || '/images/default-cover.png'} alt={s.series_name || s.title} style={{ width: '100%', aspectRatio: '1/1', objectFit: 'cover' }} />
                 {s.series_name && epNum > 0 && (
-                  <div style={{ position: 'absolute', bottom: 4, left: 4, background: 'rgba(0,0,0,0.75)', borderRadius: 4, padding: '2px 6px', fontSize: 9, fontWeight: 700, color: '#f97316' }}>EP. {epNum}</div>
+                  <div style={{ position: 'absolute', bottom: 4, left: 4, background: 'rgba(0,0,0,0.75)', borderRadius: 4, padding: '2px 6px', fontSize: 9, fontWeight: 700, color: '#fff' }}>EP. {epNum}</div>
                 )}
               </div>
               <div style={{ marginTop: '0.5rem' }}>
                 <h3 className="text-xs font-bold text-white line-clamp-2 leading-tight">{s.series_name ? s.series_name : s.title}</h3>
-                {s.series_name && <p style={{ color: '#f97316', fontSize: '0.65rem', fontWeight: 600 }}>{s.title}</p>}
-                <p style={{ color: '#94a3b8', fontSize: '0.7rem' }}>{s.genre}</p>
-                <p style={{ color: '#94a3b8', fontSize: '0.7rem' }}>by {s.author}</p>
+                {s.series_name && <p style={{ color: '#fff', fontSize: '0.65rem', fontWeight: 600 }}>{s.title}</p>}
+                <p style={{ color: '#fff', fontSize: '0.7rem' }}>{s.genre}</p>
+                <p style={{ color: '#fff', fontSize: '0.7rem' }}>by {s.author}</p>
+                {s.description && <p style={{ color: '#fff', fontSize: '0.7rem', lineHeight: 1.45, margin: '5px 0' }}>{s.description}</p>}
                 <p style={{ color: '#fff', fontSize: '0.7rem', fontWeight: 600 }}>{s.duration_mins} min</p>
               </div>
             </div>
