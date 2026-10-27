@@ -7143,9 +7143,17 @@ async function scoreValidateSeriesPackage(job: ProductionJob, model: string) {
     ? [...existingValidation.failedEpisodes]
     : []
 
+  const notPassed = (episode: any) => !(episode.status === 'validator_passed' || episode.validator_result === 'PASS')
+  // VALIDATION-RESUME-001 (timing test a21df7bd): a failed episode ends the
+  // job, so a queued job that still lists failed episodes was resumed by a
+  // human. Re-validate those once every other episode is done; before this,
+  // they were skipped forever and the step threw "state is inconsistent".
   const nextEpisode = episodes.find((episode: any) =>
-    !(episode.status === 'validator_passed' || episode.validator_result === 'PASS')
+    notPassed(episode)
       && !failedEpisodes.some((failed: any) => String(failed.storyId) === String(episode.id))
+  ) || episodes.find((episode: any) =>
+    notPassed(episode)
+      && failedEpisodes.some((failed: any) => String(failed.storyId) === String(episode.id))
   )
 
   const rosterEnsureThroughEpisode = nextEpisode
