@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { parseCharacterGuide, characterVoiceKeys, type CharacterInfo } from '@/lib/characterGuide'
 export { parseCharacterGuide, characterVoiceKeys }
+import { dramaUseCaseBonus, isUnsuitableAutoCastVoice } from '@/lib/castingVoiceFilter'
 import { createClient } from '@supabase/supabase-js'
 import { execFile } from 'child_process'
 import { promisify } from 'util'
@@ -970,10 +971,8 @@ function scoreVoice(voice: CharacterVoiceRow, meta: { gender: string; age: strin
     if (regionalTags.includes(tag)) score += 25
   }
   // Prefer character/conversational use cases over narrator-style voices
-  const useCase = (labels.use_case || '').toLowerCase()
-  if (useCase.includes('character')) score += 8
-  else if (useCase.includes('conversational')) score += 5
-  else if (useCase.includes('entertainment')) score += 4
+  // CAST-VOICE-FIT-001: "characters_animation" no longer earns the character bonus.
+  score += dramaUseCaseBonus(labels.use_case)
   return score
 }
 
@@ -1006,6 +1005,8 @@ function scoreCharacterVoiceCandidates(
 ) {
   return characterVoices
     .filter(v => !blockedVoiceIds.has(v.voice_id) && !isBelleBVoiceId(v.voice_id))
+    // CAST-VOICE-FIT-001: no cartoon/novelty or non-English-labelled voices for drama characters.
+    .filter(v => !isUnsuitableAutoCastVoice(v))
     .map(v => ({ voice: v, score: scoreVoice(v, meta) }))
     .filter(x => x.score > -999)
     .sort((a, b) => b.score - a.score)
@@ -1333,6 +1334,7 @@ async function findVoiceForCharacter(
       !usedVoiceIds.has(v.voice_id) &&
       v.voice_id !== narratorVoiceId &&
       !isBelleBVoiceId(v.voice_id) &&
+      !isUnsuitableAutoCastVoice(v) &&
       (!meta.gender || characterVoiceLabels(v).gender.toLowerCase() === meta.gender.toLowerCase())
     )
     if (genderFallback) {
