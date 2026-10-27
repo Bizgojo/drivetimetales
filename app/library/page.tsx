@@ -168,29 +168,34 @@ export default function LibraryPage() {
   useEffect(() => {
     if (!user) return
     const syncPlaylist = () => {
+      // Saved/cleared notifications can echo our own persistence effect.
+      // Preserve the state reference when selection is unchanged so an empty
+      // queue does not recursively clear and rehydrate itself.
+      const setSyncedPlaylist = (keys: string[]) => setPlaylist(current =>
+        current.length === keys.length && keys.every((key, index) => key === current[index]) ? current : keys)
       try {
         const storedKeys = parsePlaylistKeys(localStorage.getItem(playlistKey))
         if (storedKeys) {
-          setPlaylist(storedKeys)
+          setSyncedPlaylist(storedKeys)
           setPlaylistHydrated(true)
           return
         }
         const activeRaw = localStorage.getItem(ACTIVE_PLAYLIST_KEY)
         if (!activeRaw) {
-          setPlaylist([])
+          setSyncedPlaylist([])
           setPlaylistHydrated(true)
           return
         }
         const active = JSON.parse(activeRaw)
         const items = active.items || active.stories || []
-        setPlaylist((Array.isArray(items) ? items : [])
+        setSyncedPlaylist((Array.isArray(items) ? items : [])
           .map((item: any) => item.type === 'series'
             ? item.series_id || item.id ? `series-${item.series_id || item.id}` : null
             : item.id ? `single-${item.id}` : null)
           .filter((key: string | null): key is string => Boolean(key)))
         setPlaylistHydrated(true)
       } catch {
-        setPlaylist([])
+        setSyncedPlaylist([])
         setPlaylistHydrated(true)
       }
     }
