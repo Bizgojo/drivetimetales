@@ -5867,9 +5867,15 @@ function buildSeriesEpisodePrompt(series: any, episode: any, allEpisodes: any[],
   // the prompt (job fd2521c4 — the prompt asked for things the Belle, numeral,
   // and runtime gates then rejected, so self-check rewrites could not converge).
   const belleSeriesName = String(episode.series_name || series.title || brief.series_name || '').trim()
-  const belleEpisodeTitle = String(episode.title || brief.episode_title || '').trim()
+  // WRITER-TITLE-PLACEHOLDER-001 (timing test dd3e0949): episodes are created
+  // titled "Episode N" until the writer names them, and the prompt told Belle
+  // to quote that placeholder ("Episode 1" as the episode title).
+  const rawEpisodeTitle = String(brief.episode_title || episode.title || '').trim()
+  const episodeTitleIsPlaceholder = !rawEpisodeTitle || /^episode\s+(\d+|[a-z]+)$/i.test(rawEpisodeTitle)
+  const belleEpisodeTitle = episodeTitleIsPlaceholder ? '' : rawEpisodeTitle
+  const belleEpisodeTitleRef = belleEpisodeTitle ? `the episode title "${belleEpisodeTitle}"` : 'the episode title you write on the TITLE: line (never "Episode N")'
   const belleAuthorName = String(episode.author || brief.author || '').trim()
-  const belleIntroRequirement = `The Belle B announcement MUST contain, word for word: the series title "${belleSeriesName}", the words "Episode ${currentEpisodeNumber}", and the episode title "${belleEpisodeTitle}" in quotes. It MUST state the episode's concrete danger, secret, mystery, or impossible event in plain words (mood or setting alone does not count), and MUST use at least one of these exact words: secret, hidden, missing, impossible, stolen, betrayed, conspiracy, warning. At most 38 words in total. Never use the words reveal, reveals, revealed, spoiler, or "turns out" in either Belle B line.`
+  const belleIntroRequirement = `The Belle B announcement MUST contain, word for word: the series title "${belleSeriesName}", the words "Episode ${currentEpisodeNumber}", and ${belleEpisodeTitleRef} in quotes. It MUST state the episode's concrete danger, secret, mystery, or impossible event in plain words (mood or setting alone does not count), and MUST use at least one of these exact words: secret, hidden, missing, impossible, stolen, betrayed, conspiracy, warning. At most 38 words in total. Never use the words reveal, reveals, revealed, spoiler, or "turns out" in either Belle B line.`
   const belleOutroRequirement = isFinale
     ? `The Belle B outro MUST name the series title "${belleSeriesName}", the author "${belleAuthorName}", and the narrator "${assignedNarratorName}", and MUST include the words "an Endless Tales original". It must not invite a next episode. At most 55 words.`
     : `The Belle B outro MUST do all three: (1) reflect on the emotional cost or meaning using at least one of these words: truth, secret, choice, question, cost, moment, revelation; (2) speak warmly to the listener using "you" or "we"; (3) point to what comes next using the words "next episode". It must NOT name the author "${belleAuthorName}" or the narrator "${assignedNarratorName}", must not say "an Endless Tales original", and must not sound like the series is over: never use the words end, ended, final, concludes, conclusion, or complete. At most 55 words.`
@@ -5969,10 +5975,10 @@ CURRENT published rules:
 ${namePaletteBlock}
 
 Required script structure:
-TITLE: [${brief.episode_title || episode.title}; 1 to 5 words, 28 characters or fewer]
+TITLE: [${belleEpisodeTitle || 'an original episode title, not "Episode N" and not the series title'}; 1 to 5 words, 28 characters or fewer]
 SERIES: ${series.title || brief.series_name || ''}
 EPISODE: ${currentEpisodeNumber}
-EPISODE_TITLE: ${brief.episode_title || episode.title}
+EPISODE_TITLE: ${belleEpisodeTitle || '[same as TITLE]'}
 SERIES_TOTAL_EPISODES: ${totalEpisodes}
 SERIES_IS_FINALE: ${isFinale ? 'true' : 'false'}
 AUTHOR: ${episode.author || brief.author || ''}
@@ -5990,7 +5996,7 @@ CHARACTER GUIDE
 
 BELLE B ANNOUNCEMENT
 ---
-BELLE B: [one or two short sentences, warm, specific, sensory. Names the series "${belleSeriesName}", says "Episode ${currentEpisodeNumber}", includes the episode title "${belleEpisodeTitle}" in quotes, and references something specific from the episode. NO [LISTENER_NAME]. NO greeting/opener (e.g. no "settle in", "welcome") - the name opener handles that. NO author credit, NO narrator credit, no time-of-day, no "Endless Tales original".]
+BELLE B: [one or two short sentences, warm, specific, sensory. Names the series "${belleSeriesName}", says "Episode ${currentEpisodeNumber}", includes ${belleEpisodeTitleRef} in quotes, and references something specific from the episode. NO [LISTENER_NAME]. NO greeting/opener (e.g. no "settle in", "welcome") - the name opener handles that. NO author credit, NO narrator credit, no time-of-day, no "Endless Tales original".]
 
 [START AUDIO DRAMA SCRIPT]
 NARRATOR: ...
@@ -7011,9 +7017,17 @@ function classifyDescriptionValidatorFailure(report: string): null | {
   const descriptionLine = /\bdescription\b|story-card|teaser|present tense|70 characters|24 words|characters or fewer|words or fewer|blocked word|past-tense/i
   if (!failureLines.every((line) => descriptionLine.test(line))) return null
 
-  const substantive = /spoiler|reveals?|climax|twist|final discovery|resolution payoff|outcome|culprit|survivor|protagonist.*mismatch|mismatch.*protagonist|role.*mismatch|description\s+does not match\s+(?:the\s+)?(?:protagonist|role)|weak plot|weak hook|editorial/i
+  const substantive = /protagonist.*mismatch|mismatch.*protagonist|role.*mismatch|description\s+does not match\s+(?:the\s+)?(?:protagonist|role)|weak plot|weak hook|editorial/i
   if (failureLines.some((line) => substantive.test(line))) {
     return { retryable: false, kind: 'substantive', reason: failureLines.join('; '), failureLines }
+  }
+  // DESCRIPTION-SPOILER-RETRY-001 (timing test dd3e0949): a card DESCRIPTION
+  // that gives away the payoff is card copy, not story content — rewrite it
+  // from the validator's feedback (bounded by MAX_SERIES_DESCRIPTION_RETRIES)
+  // and re-validate, instead of stopping the whole series for a human.
+  const spoiler = /spoiler|reveals?|climax|twist|final discovery|resolution payoff|outcome|culprit|survivor/i
+  if (failureLines.some((line) => spoiler.test(line))) {
+    return { retryable: true, kind: 'mechanical', reason: failureLines.join('; '), failureLines }
   }
 
   const mechanical = /required|missing|70 characters|24 words|characters or fewer|words or fewer|too long|present tense|past-tense|blocked word|format|punctuation|complete sentence|truncated|fragment|incomplete|mid-phrase|mid-word/i

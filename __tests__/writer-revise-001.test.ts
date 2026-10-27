@@ -63,7 +63,7 @@ describe('WRITER-PROMPT-GATES-001: series prompt states the gates', () => {
   const fn = src.slice(src.indexOf('function buildSeriesEpisodePrompt('), src.indexOf('\nfunction ', src.indexOf('function buildSeriesEpisodePrompt(') + 10))
 
   test('Belle intro must name series title, episode number and episode title', () => {
-    expect(fn).toMatch(/MUST contain, word for word: the series title "\$\{belleSeriesName\}", the words "Episode \$\{currentEpisodeNumber\}", and the episode title/)
+    expect(fn).toMatch(/MUST contain, word for word: the series title "\$\{belleSeriesName\}", the words "Episode \$\{currentEpisodeNumber\}", and \$\{belleEpisodeTitleRef\} in quotes/)
   })
 
   test('non-finale outro states reflection, companion and next-episode words that the matchers accept', () => {
