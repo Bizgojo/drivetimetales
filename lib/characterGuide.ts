@@ -101,7 +101,7 @@ export function speakersMissingFromCharacterGuide(script: string, speakers: Iter
     for (const k of characterVoiceKeys(c.name)) keys.add(k)
   }
   const missing: string[] = []
-  for (const speaker of speakers) {
+  for (const speaker of Array.from(speakers)) {
     const raw = speaker.replace(/\s+/g, ' ').trim().toUpperCase()
     if (keys.has(raw) || characterVoiceKeys(speaker).some((k) => keys.has(k))) continue
     missing.push(speaker)
