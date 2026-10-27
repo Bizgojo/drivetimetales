@@ -818,7 +818,12 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
       const nextIndex = playlistRef.current.findIndex((item) => item.id === candidate.story.id)
       if (nextIndex >= 0) localStorage.setItem('dtt_playlist_index', String(nextIndex))
     }
-    router.push(`/player/${candidate.story.id}?autoplay=1&playNow=1&${isSeriesContinuation ? 'seriesContinue=1' : 'autoAdvance=1'}`)
+    if (onAdvanceInPlace) {
+      playlistAutoplayPendingRef.current = true
+      onAdvanceInPlace(candidate.story.id)
+    } else {
+      router.push(`/player/${candidate.story.id}?autoplay=1&playNow=1&${isSeriesContinuation ? 'seriesContinue=1' : 'autoAdvance=1'}`)
+    }
   }
 
   const startAutoAdvanceTo = (candidate: AutoAdvanceCandidate) => {
@@ -1217,7 +1222,7 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
           // Any other case (never started yet, or a different index) = this
           // story is newly active this run = start at 0:00.
           const wasAlreadyCurrentItem = idx !== null && Number(idx) === found
-          if (!parsed.started || !wasAlreadyCurrentItem) {
+          if (playlistAutoplayPendingRef.current || !parsed.started || !wasAlreadyCurrentItem) {
             forceFreshStartRef.current = true
           }
           playlistIndexRef.current = found
@@ -1709,7 +1714,7 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
   useEffect(() => {
     if (loading || !audioRef.current || seriesContinueAutoplayAttemptedRef.current) return
     const params = new URLSearchParams(window.location.search)
-    if (!shouldAutoStartPlayer(window.location.search)) return
+    if (!playlistAutoplayPendingRef.current && !shouldAutoStartPlayer(window.location.search)) return
     if (isASC3 && !queue.length) return
     if (!isASC3 && !audioSrc) return
     if (waitForSegmentResume(isASC3, resumeRef.current, hasAllQueueDurations())) return
@@ -1719,7 +1724,7 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
     // set by navigateToAutoAdvanceCandidate()/advancePlaylist() (auto-advance
     // chains); plain autoplay+playNow/playlist intents are 'autoplay'.
     const autoStartSource: PlayStartSource =
-      params.get('seriesContinue') === '1' || params.get('autoAdvance') === '1'
+      playlistAutoplayPendingRef.current || params.get('seriesContinue') === '1' || params.get('autoAdvance') === '1'
         ? 'auto_advance'
         : 'autoplay'
     const audio = audioRef.current
@@ -1731,6 +1736,7 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
         .then(() => {
           if (cancelled) return
           started = true
+          playlistAutoplayPendingRef.current = false
           setIsPlaying(true)
           setAutoplayBlocked(false)
           startAnalyticsSession(autoStartSource)
@@ -1758,42 +1764,8 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
     }
   }, [loading, isASC3, queue, audioSrc, storyId, totalDur])
 
-  // MARC-PLAYLIST-HANDSFREE-001: after an in-place playlist advance
-  // (onAdvanceInPlace swapped storyId without a page navigation — see
-  // maybeAutoAdvanceFromNaturalEnd), this effect presses play once the new
-  // story's audio is actually ready. Mirrors the URL-param autoplay effect
-  // above, but driven by playlistAutoplayPendingRef instead of a URL param,
-  // since there is no new navigation/URL here to read intent from.
-  useEffect(() => {
-    if (!playlistAutoplayPendingRef.current) return
-    if (loading || !audioRef.current) return
-    if (isASC3 && !queue.length) return
-    if (!isASC3 && !audioSrc) return
-
-    const audio = audioRef.current
-    const attemptPlay = () => {
-      playlistAutoplayPendingRef.current = false
-      audio.play()
-        .then(() => {
-          setIsPlaying(true)
-          setAutoplayBlocked(false)
-          startAnalyticsSession('auto_advance')
-          if (mode === 'playlist') markPlaylistStarted()
-        })
-        .catch((error) => {
-          console.warn('[player] in-place playlist advance autoplay blocked:', error)
-          setAutoplayBlocked(true)
-          setIsPlaying(false)
-        })
-    }
-
-    if (audio.readyState >= 2) {
-      attemptPlay()
-    } else {
-      audio.addEventListener('canplay', attemptPlay, { once: true })
-      return () => audio.removeEventListener('canplay', attemptPlay)
-    }
-  }, [loading, isASC3, queue, audioSrc, storyId])
+  // Series and playlist handoffs share the autoplay effect above. Running
+  // a second play effect here used to race the new source's load/seek.
 
   useEffect(() => {
     if (activeModal !== 'prose') return
@@ -2603,7 +2575,7 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
     autoAdvanceCandidate?.reason === 'untouched_catalog' ? 'Fresh pick' :
     autoAdvanceCandidate?.reasonLabel || ''
 
-  if (loading) return <div style={{ height:'100dvh', backgroundColor:'#020617', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:'14px' }}><div style={{ width:'40px', height:'40px', border:'4px solid #f97316', borderTopColor:'transparent', borderRadius:'50%', animation:'spin 1s linear infinite' }} /><p style={{ color:'rgba(255,255,255,0.72)', fontSize:'14px', fontWeight:600, margin:0 }}>Loading story...</p><style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style></div>
+  if (loading && !story) return <div style={{ height:'100dvh', backgroundColor:'#020617', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:'14px' }}><div style={{ width:'40px', height:'40px', border:'4px solid #f97316', borderTopColor:'transparent', borderRadius:'50%', animation:'spin 1s linear infinite' }} /><p style={{ color:'rgba(255,255,255,0.72)', fontSize:'14px', fontWeight:600, margin:0 }}>Loading story...</p><style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style></div>
   if (!story)   return <div style={{ height:'100dvh', backgroundColor:'#020617', color:'white', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', padding:'24px', textAlign:'center' }}><p style={{ marginBottom:'16px' }}>This story isn’t available yet.</p><button onClick={() => { disableAutoAdvanceForSession('navigation'); returnToSource('/library') }} style={{ color:'#f97316', background:'none', border:'1px solid rgba(249,115,22,0.35)', borderRadius:'10px', padding:'10px 16px', cursor:'pointer', fontWeight:700 }}>{safeReturnUrl ? 'Back to Approval' : 'Back to Library'}</button></div>
 
   return (

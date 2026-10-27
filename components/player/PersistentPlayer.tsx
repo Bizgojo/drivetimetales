@@ -109,13 +109,22 @@ export default function PersistentPlayer({ children }: { children: ReactNode }) 
     if (clearForRoute) { setSelection(null); setSnapshot(null) }
   }, [clearForRoute])
 
+  const selectionRef = useRef(selection)
+  selectionRef.current = selection
   const advance = useCallback((storyId: string) => {
-    setSelection(previous => previous ? { ...previous, storyId, resumeParam: null } : previous)
-    // Do not pull a listener away from Home/Library at a natural track ending.
+    const previous = selectionRef.current
+    if (!previous) return
+    const params = new URLSearchParams({ autoplay: '1', playNow: '1' })
+    if (previous.mode === 'playlist') params.set('playlist', '1')
+    else params.set('seriesContinue', '1')
+    if (previous.mode === 'series') params.set('mode', 'series')
+    setSelection({ ...previous, storyId, resumeParam: null, navigationKey: params.toString() })
+    // Keep the same document and media element, including its playback grant.
+    // Background playback must not take the listener away from Home/Library.
     if (window.location.pathname.startsWith('/player/')) {
-      router.replace(`/player/${storyId}?playlist=1&autoplay=1&playNow=1`)
+      window.history.replaceState(null, '', `/player/${storyId}?${params}`)
     }
-  }, [router])
+  }, [])
   async function removeCurrent() {
     if (!snapshot || !user || removing) return
     const id = snapshot.storyId
@@ -184,6 +193,12 @@ export default function PersistentPlayer({ children }: { children: ReactNode }) 
 // the same track leaves its media element, position and pause state intact.
 export function PlayerRoute({ storyId, resumeParam = null, mode = 'story', navigationKey = '' }: PlaybackSelection) {
   const request = useContext(PlayerContext)
-  useEffect(() => { request?.({ storyId, resumeParam, mode, navigationKey }) }, [request, storyId, resumeParam, mode, navigationKey])
+  const pathname = usePathname()
+  // Native history handoffs retain the route tree. Dynamic route params can
+  // still name the finished episode, so follow the current player URL.
+  const pathStoryId = pathname?.match(/^\/player\/([^/]+)$/)?.[1]
+  const currentStoryId = pathStoryId && pathStoryId !== 'playlist' && pathStoryId !== 'series'
+    ? decodeURIComponent(pathStoryId) : storyId
+  useEffect(() => { request?.({ storyId: currentStoryId, resumeParam, mode, navigationKey }) }, [request, currentStoryId, resumeParam, mode, navigationKey])
   return <div role="status" aria-label="Loading player" />
 }
