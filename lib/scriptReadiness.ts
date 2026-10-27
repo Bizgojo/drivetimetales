@@ -202,6 +202,19 @@ export function checkScriptReadiness(input: ReadinessInput): ReadinessReport {
       })
   }
 
+  // 5c. SERIES-RUNTIME-MAX-001 (job a21df7bd: EP2 of a 15-min series came
+  // out at 3,801 spoken words, ~24 min). Series had a floor but no ceiling.
+  // Generous on purpose: the approved proof series ran 17-20 min on 15-min
+  // briefs, so only clear overruns (> brief x 1.35) are stopped.
+  if (isSeries && !runtime.skipped && brief > 0) {
+    const maxWords = seriesMaxSpokenWords(brief)
+    if (runtime.spokenWords > maxWords)
+      blockers.push({
+        gate: 'RUNTIME-SERIES-MAX',
+        detail: `${runtime.spokenWords} spoken words (~${runtime.estimatedMins.toFixed(1)} min) vs ${brief}-min brief; max ${maxWords} spoken words`,
+      })
+  }
+
   // 6. Belle intro present
   // LANDING-STORY-001 / "No Belle B" variants are Belle-exempt in production.
   const belleExempt = /LANDING-STORY-001|No Belle B/i.test(header(script, 'VARIANT'))
@@ -323,6 +336,12 @@ export function buildWriterRewriteFeedback(report: ReadinessReport, briefMinutes
         `- LENGTH: the script has ${report.metrics.spokenWords} spoken words (~${report.metrics.estimatedMins} min). ` +
         `It must have about ${targetWords} spoken words (${target} min at ${SCRIPT_RUNTIME_PREFLIGHT.CALIBRATED_WPM} wpm, within ±10%). ` +
         `Add real scenes and beats; do not pad.`,
+      )
+    } else if (b.gate === 'RUNTIME-SERIES-MAX') {
+      lines.push(
+        `- LENGTH: the script is too long: ${report.metrics.spokenWords} spoken words (~${report.metrics.estimatedMins} min). ` +
+        `Cut it to about ${Math.round(Number(briefMinutes || 15) * SCRIPT_RUNTIME_PREFLIGHT.CALIBRATED_WPM)} spoken words. ` +
+        `Remove or merge whole scenes; keep every clue and the cliffhanger.`,
       )
     } else if (b.gate === 'NUMERAL-PRETTS' && b.evidence?.length) {
       // WRITER-NUMERAL-EVIDENCE-001 (job 1dcbe89e: EP2 kept "001, 002, 003"
@@ -507,6 +526,13 @@ export function countWriterFailures(scriptJson: unknown, resetAtIso?: string | n
  * "1,800 to 2,100 words total" for 15 min (headers included) sat below the
  * 2,000-spoken-word floor, so the prompt itself produced short scripts.
  */
+export const SERIES_RUNTIME_MAX_FACTOR = 1.35
+
+/** SERIES-RUNTIME-MAX-001: spoken-word ceiling for a series episode brief. */
+export function seriesMaxSpokenWords(briefMinutes: number): number {
+  return Math.round(briefMinutes * SERIES_RUNTIME_MAX_FACTOR * SCRIPT_RUNTIME_PREFLIGHT.CALIBRATED_WPM)
+}
+
 export function seriesSpokenWordTarget(runtime: string): { minutes: number; target: number; min: number; max: number } {
   const parsed = parseInt(String(runtime || '').match(/\d+/)?.[0] || '15', 10)
   const minutes = parsed > 0 ? parsed : 15
