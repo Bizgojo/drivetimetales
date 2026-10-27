@@ -35,7 +35,7 @@ import {
 // BELL-FREEZE-GUARD-001: centralized frozen guard (frozenGuard + freezePreflight)
 import { checkFrozenGuard } from '@/lib/guards/frozenGuard'
 import { findUnlabeledStoryBodyLines } from '@/lib/scriptLabels'
-import { isEmptyTranscriptFailure } from '@/lib/emptyTranscriptRetry'
+import { durationGateTranscriptConfirms, isEmptyTranscriptFailure } from '@/lib/emptyTranscriptRetry'
 import {
   buildBelleValidationContext,
   cleanBelleText,
@@ -1917,7 +1917,29 @@ async function generateVoiceLine(rawText: string, voiceId: string, storyId: stri
       // (ElevenLabs stopped) — reject BEFORE paid extras (retry-TTS regenerate,
       // trim/gain work, Whisper transcript QC). Seeds a zero-coverage transcript
       // failure so the tail path routes to split rescue instead of accepting.
+      // DURATION-GATE-CONFIRM-001 (proof job 9d56b9a8, EP2 seg 38): the gate
+      // rejected six reads of an 18-word line at 4.13-4.44 s (min 4.50 s) from a
+      // fast narrator voice; every read was consistent, i.e. complete, just fast.
+      // Before rejecting, ask the transcript: audio that is really cut off cannot
+      // transcribe as the full line. Override ONLY on a strong full match
+      // (passed, coverage and similarity >= 0.9, Whisper actually ran).
+      let durationGateConfirmedByTranscript = false
       if (isAudioTooShortForText(candidateDuration, text)) {
+        try {
+          const confirm = await validateSegmentTranscript(candidateBuf, text, fileName, storyId)
+          durationGateConfirmedByTranscript = durationGateTranscriptConfirms(confirm)
+          if (durationGateConfirmedByTranscript) {
+            console.warn(
+              `  ⚠️ DURATION-GATE-CONFIRM-001 ${fileName} speaker="${speaker}" audio=${candidateDuration.toFixed(2)}s ` +
+              `< ${minPlausibleSpeechSeconds(text).toFixed(2)}s but transcript matches the full line ` +
+              `(coverage=${confirm.coverage.toFixed(2)} similarity=${(confirm.similarity ?? 0).toFixed(2)}) - fast read, not a cut-off; continuing normal QC.`
+            )
+          }
+        } catch (confirmErr) {
+          console.warn(`  DURATION-GATE-CONFIRM-001 transcript check failed for ${fileName}: ${String(confirmErr).slice(0, 160)}`)
+        }
+      }
+      if (!durationGateConfirmedByTranscript && isAudioTooShortForText(candidateDuration, text)) {
         logSegmentQc(fileName, speaker, text, metrics, 'fail_duration_implausible')
         updateBest(candidate, metrics, 'fail_duration_implausible')
         console.warn(
