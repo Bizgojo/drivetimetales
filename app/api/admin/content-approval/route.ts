@@ -858,14 +858,26 @@ export async function GET(req: NextRequest) {
 
     let storyJobs: ProductionJobRow[] = []
     if (!seriesId && storyIds.length > 0) {
-      const { data, error } = await supabase
-        .from('production_jobs')
-        .select('id,story_id,series_id,status,current_step,created_at,updated_at,completed_at,state_json,error_json')
-        .in('story_id', storyIds)
-        .order('updated_at', { ascending: false })
-        .limit(500)
-      if (error) return json({ success: false, error: error.message }, 500)
-      storyJobs = (data || []) as ProductionJobRow[]
+      // CONTENT-APPROVAL-IN-CHUNK-001 (2026-10-27): with ~585 stories the single
+      // .in('story_id', [...]) put ~22 KB of ids in one request URL and the
+      // request failed ("TypeError: fetch failed"), so the whole Content
+      // Approval page showed 0 everywhere. Query in chunks; keep the newest 500
+      // overall, as before.
+      const IN_CHUNK = 100
+      const collected: ProductionJobRow[] = []
+      for (let i = 0; i < storyIds.length; i += IN_CHUNK) {
+        const { data, error } = await supabase
+          .from('production_jobs')
+          .select('id,story_id,series_id,status,current_step,created_at,updated_at,completed_at,state_json,error_json')
+          .in('story_id', storyIds.slice(i, i + IN_CHUNK))
+          .order('updated_at', { ascending: false })
+          .limit(500)
+        if (error) return json({ success: false, error: error.message }, 500)
+        collected.push(...((data || []) as ProductionJobRow[]))
+      }
+      storyJobs = collected
+        .sort((a, b) => Date.parse(b.updated_at || '') - Date.parse(a.updated_at || ''))
+        .slice(0, 500)
     }
 
     const jobsById = new Map<string, ProductionJobRow>()
