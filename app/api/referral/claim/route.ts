@@ -1,39 +1,8 @@
-/**
- * /api/referral/claim — REFERRAL-SIGNUP-001 (2026-09-19)
- *
- * Records a "help a friend" referral for the signed-in user and pays the
- * REFERRED friend's reward: FREE DAYS (the app no longer uses credits).
- *
- *  1. process_referral() (DB) only RECORDS the referral: referrals row
- *     (status 'completed', offer_id), users.referred_by, referrer's
- *     referral_count. No payout in SQL.
- *  2. This route grants the friend offer.referred_reward days (default
- *     "2 Weeks Free" = 14) via lib/referralPayout → lib/freeDays, the same
- *     mechanism promo codes use (users.subscription_type/_ends_at/plan).
- *  3. The REFERRER is NOT paid here (referrer_credited stays false). They are
- *     paid by the Stripe webhook after the friend's first successful non-zero
- *     payment (Option A) — throwaway signups earn the referrer nothing.
- *
- * Exactly-once: referred_credited is flipped false→true before granting
- * (reverted on failure); a retry lands in the "already referred" branch and
- * finishes the payout if it didn't complete.
- *
- * Called by lib/referral.ts claimStoredReferral() — from ReferralCapture once
- * a session exists (password, Google OAuth, magic-link signups) and from the
- * signup page before the Stripe handoff.
- *
- * Security:
- *  - The referred user is ALWAYS the bearer-token user, never a body param.
- *  - Only brand-new accounts may claim (CLAIM_WINDOW_MS).
- *  - Service role only; process_referral EXECUTE is revoked from anon/authenticated.
- *
- * Response contract: { success, error?, retry? }. retry:true → client keeps
- * the stored code and tries again later.
- */
+/** Record an invitation at signup. Both rewards wait for the first non-zero paid invoice. */
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { normalizeReferralCode } from '@/lib/referral'
-import { loadReferralByReferred, payReferralSide, resolveReferralOffer } from '@/lib/referralPayout'
+import { loadReferralByReferred } from '@/lib/referralPayout'
 
 const CLAIM_WINDOW_MS = 7 * 24 * 60 * 60 * 1000
 
@@ -41,20 +10,6 @@ const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
-
-async function payReferredSide(referredUserId: string) {
-  const referral = await loadReferralByReferred(supabaseAdmin, referredUserId)
-  if (!referral) return null
-  const offer = await resolveReferralOffer(supabaseAdmin, referral)
-  if (!offer) {
-    // Referral stays recorded (offer_id NULL, *_credited false) so it can be
-    // reconciled once an active default free_days offer exists.
-    console.error(`[ReferralClaim] NO active default free_days referral_offers row — referral ${referral.id} recorded, NOT rewarded`)
-    return { referralId: referral.id, offerId: null, referredDays: 0 }
-  }
-  const referredDays = await payReferralSide(supabaseAdmin, referral, offer, 'referred')
-  return { referralId: referral.id, offerId: offer.id, referredDays }
-}
 
 export async function POST(req: NextRequest) {
   const token = req.headers.get('authorization')?.replace(/^Bearer\s+/i, '')
@@ -121,19 +76,7 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  try {
-    const payout = await payReferredSide(user.id)
-    if (!payout) {
-      return NextResponse.json({ success: false, error: 'already_referred' }, { status: 409 })
-    }
-    console.log(
-      `[ReferralClaim] ok user=${user.id.slice(0, 8)} code=${code} referral=${payout.referralId} ` +
-      `offer=${payout.offerId} +${payout.referredDays}d referred (referrer paid after first payment)` +
-      (alreadyRecorded ? ' (resumed)' : '')
-    )
-    return NextResponse.json({ success: true, ...payout })
-  } catch (err) {
-    console.error('[ReferralClaim] payout failed (will retry):', err)
-    return NextResponse.json({ success: false, error: 'payout_failed', retry: true }, { status: 500 })
-  }
+  const referral = await loadReferralByReferred(supabaseAdmin, user.id)
+  if (!referral) return NextResponse.json({ success: false, error: 'record_pending', retry: true }, { status: 409 })
+  return NextResponse.json({ success: true, referralId: referral.id, rewardPending: true })
 }

@@ -2,7 +2,7 @@
 
 import { Suspense } from 'react'
 import { useParams, useSearchParams } from 'next/navigation'
-import CanonicalPlayer from '@/components/player/CanonicalPlayer'
+import { PlayerRoute } from '@/components/player/PersistentPlayer'
 
 function PlayerContent() {
   const params = useParams()
@@ -16,7 +16,7 @@ function PlayerContent() {
   // queue tracking the moment one episode finished.
   const isPlaylist = searchParams.get('playlist') === '1'
 
-  return <CanonicalPlayer storyId={storyId} resumeParam={resumeParam} mode={isPlaylist ? 'playlist' : 'story'} />
+  return <PlayerRoute storyId={storyId} resumeParam={resumeParam} navigationKey={searchParams.toString()} mode={isPlaylist ? 'playlist' : searchParams.get('mode') === 'series' ? 'series' : 'story'} />
 }
 
 export default function PlayerPage() {

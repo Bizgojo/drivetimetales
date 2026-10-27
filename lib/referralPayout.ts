@@ -5,7 +5,7 @@
 //
 // Timing (Option A — closes the throwaway-signup farming hole and matches the
 // "after their first payment clears" copy):
-//   - REFERRED friend: paid at signup by /api/referral/claim.
+//   - REFERRED friend: paid after first successful non-zero payment.
 //   - REFERRER: paid only after the friend's FIRST successful (non-zero)
 //     payment, from the Stripe webhook's invoice.paid handler.
 //
@@ -64,7 +64,7 @@ export async function resolveReferralOffer(admin: SupabaseClient, referral: Refe
 
 // Returns days granted (0 if already paid / zero reward). Throws if the grant
 // fails (flag reverted).
-export async function payReferralSide(admin: SupabaseClient, referral: ReferralRow, offer: ReferralOffer, side: ReferralSide): Promise<number> {
+export async function payReferralSide(admin: SupabaseClient, referral: ReferralRow, offer: ReferralOffer, side: ReferralSide, grant: (admin: SupabaseClient, userId: string, days: number, rewardKey: string) => Promise<unknown> = grantFreeDays): Promise<number> {
   const flag = side === 'referrer' ? 'referrer_credited' : 'referred_credited'
   const days = Number(side === 'referrer' ? offer.referrer_reward : offer.referred_reward) || 0
   if (days <= 0) return 0
@@ -80,7 +80,7 @@ export async function payReferralSide(admin: SupabaseClient, referral: ReferralR
   if (!claimed?.length) return 0 // already paid (or concurrently being paid)
 
   try {
-    await grantFreeDays(admin, userId, days)
+    await grant(admin, userId, days, `${referral.id}-${side}`)
     return days
   } catch (err) {
     await admin.from('referrals').update({ [flag]: false }).eq('id', referral.id)
@@ -90,17 +90,18 @@ export async function payReferralSide(admin: SupabaseClient, referral: ReferralR
 
 /**
  * Stripe webhook hook: the referred user just made a successful NON-ZERO
- * payment. Pays the referrer once. No-op if the user wasn't referred, the
- * referrer is already credited, or there is no usable offer.
+ * payment. Pays both sides once. No-op if the user wasn't referred, the
+ * both sides are already credited, or there is no usable offer.
  */
-export async function payReferrerAfterFirstPayment(admin: SupabaseClient, referredUserId: string) {
+export async function payReferrerAfterFirstPayment(admin: SupabaseClient, referredUserId: string, grant?: Parameters<typeof payReferralSide>[4]) {
   const referral = await loadReferralByReferred(admin, referredUserId)
-  if (!referral || referral.referrer_credited) return null
+  if (!referral || (referral.referrer_credited && referral.referred_credited)) return null
   const offer = await resolveReferralOffer(admin, referral)
   if (!offer) {
     console.error(`[referral] NO active default free_days offer — referrer of referral ${referral.id} NOT rewarded`)
     return { referralId: referral.id, referrerId: referral.referrer_id, days: 0 }
   }
-  const days = await payReferralSide(admin, referral, offer, 'referrer')
-  return { referralId: referral.id, referrerId: referral.referrer_id, days }
+  const referredDays = await payReferralSide(admin, referral, offer, 'referred', grant)
+  const days = await payReferralSide(admin, referral, offer, 'referrer', grant)
+  return { referralId: referral.id, referrerId: referral.referrer_id, days, referredDays }
 }

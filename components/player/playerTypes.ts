@@ -8,6 +8,10 @@ export interface PlayerStory {
   author?: string | null;
   description?: string | null;
   genre?: string | null;
+  primary_genre?: string | null;
+  genre_secondary?: string | null;
+  genre_third?: string | null;
+  sub_genres?: string[] | null;
   duration_mins?: number | null;
   cover_url?: string | null;
   audio_url?: string | null;

@@ -1,8 +1,9 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
-import { ACTIVE_PLAYLIST_KEY, PLAYLIST_UPDATED_FLAG } from '@/lib/playlistState'
+import { usePathname, useRouter } from 'next/navigation'
+import { useOpenPlayer } from '@/components/player/PersistentPlayer'
+import { ACTIVE_PLAYLIST_KEY, PLAYLIST_INDEX_KEY } from '@/lib/playlistState'
 
 interface PlaylistItem {
   type: 'single' | 'series'
@@ -12,6 +13,7 @@ interface PlaylistItem {
   series_name?: string
   total_mins?: number
   episode_count?: number
+  episodes?: Array<{ id: string }>
   cover_url?: string | null
 }
 interface SavedPlaylist {
@@ -24,10 +26,7 @@ interface SavedPlaylist {
 }
 
 function formatRemainingMinutes(minutes: number) {
-  if (minutes < 60) return `${minutes}m remaining`
-  const hours = Math.floor(minutes / 60)
-  const mins = minutes % 60
-  return mins > 0 ? `${hours}h ${mins}m remaining` : `${hours}h remaining`
+  return `${Math.floor(minutes / 60)}h ${minutes % 60}m remaining`
 }
 
 function playlistStoryIds(items: PlaylistItem[]) {
@@ -39,10 +38,11 @@ function playlistStoryIds(items: PlaylistItem[]) {
   })
 }
 
-export default function YourPlaylist({ onIdsLoaded }: { onIdsLoaded?: (ids: string[]) => void } = {}) {
+export default function YourPlaylist({ onIdsLoaded, sticky = false }: { onIdsLoaded?: (ids: string[]) => void; sticky?: boolean } = {}) {
   const router = useRouter()
+  const pathname = usePathname()
+  const openPlayer = useOpenPlayer()
   const [playlist, setPlaylist] = useState<SavedPlaylist | null>(null)
-  const [showUpdated, setShowUpdated] = useState(false)
 
   function loadPlaylist() {
     try {
@@ -82,13 +82,7 @@ export default function YourPlaylist({ onIdsLoaded }: { onIdsLoaded?: (ids: stri
 
   useEffect(() => {
     loadPlaylist()
-    try {
-      if (sessionStorage.getItem(PLAYLIST_UPDATED_FLAG) === 'true') {
-        sessionStorage.removeItem(PLAYLIST_UPDATED_FLAG)
-        setShowUpdated(true)
-        window.setTimeout(() => setShowUpdated(false), 2200)
-      }
-    } catch {}
+
 
     const handleFocus = () => loadPlaylist()
     const handlePlaylistSaved = () => loadPlaylist()
@@ -112,8 +106,9 @@ export default function YourPlaylist({ onIdsLoaded }: { onIdsLoaded?: (ids: stri
       window.removeEventListener('et_playlist_cleared', handlePlaylistSaved)
       document.removeEventListener('visibilitychange', handleVisibility)
     }
-  }, [])
+  }, [pathname])
 
+  if (sticky && pathname !== '/library' && pathname !== '/library-new') return null
   if (!playlist || !playlist.items || playlist.items.length === 0) return null
 
   const items = playlist.items
@@ -127,35 +122,19 @@ export default function YourPlaylist({ onIdsLoaded }: { onIdsLoaded?: (ids: stri
       ? playlist.remaining_mins
       : calculatedMins
   )
-  const nextTitles = items.slice(completed, completed + 3).map(s => s.type === 'series' ? (s.series_name || 'Series') : (s.title || ''))
+
+  function play() {
+    const ids = playlistStoryIds(items)
+    const savedIndex = Number.parseInt(localStorage.getItem(PLAYLIST_INDEX_KEY) || '0', 10)
+    const storyId = ids[Number.isFinite(savedIndex) && savedIndex >= 0 ? savedIndex : 0] || ids[0]
+    if (storyId && openPlayer) openPlayer(`/player/${storyId}?autoplay=1&playNow=1&playlist=1`)
+    else router.push('/player/playlist?autoplay=1&playlist=1')
+  }
 
   return (
-    <section style={{ padding: '1.5rem 1rem 0' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '0 0 8px' }}>
-        <h2 style={{ color: 'white', fontSize: 18, fontWeight: 800, margin: 0 }}>Your Playlist</h2>
-        {showUpdated && (
-          <span
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: 5,
-              color: '#fed7aa',
-              background: 'rgba(249,115,22,0.12)',
-              border: '1px solid rgba(251,146,60,0.28)',
-              borderRadius: 999,
-              padding: '3px 8px',
-              fontSize: 11,
-              fontWeight: 800,
-              lineHeight: 1,
-              pointerEvents: 'none',
-              animation: 'playlistUpdated 2.1s ease-out forwards',
-            }}
-          >
-            <span style={{ display: 'inline-block', animation: 'tinyClap 0.36s ease-out 2' }}>👏</span>
-            ✓ Playlist Updated
-          </span>
-        )}
-      </div>
+    <section aria-label={sticky ? 'Playlist controls' : 'My Playlist'} style={sticky
+      ? { position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 46, padding: '8px 12px calc(8px + env(safe-area-inset-bottom))', background: '#020617' }
+      : { padding: '1.5rem 1rem 0' }}>
       <div
         style={{
           background: '#1e293b',
@@ -164,67 +143,26 @@ export default function YourPlaylist({ onIdsLoaded }: { onIdsLoaded?: (ids: stri
           overflow: 'hidden',
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'flex-start', padding: '9px 9px 0' }}>
-          {/* Playlist icon */}
-          <div style={{ width: 76, height: 76, flexShrink: 0, borderRadius: 7, background: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <img src="/images/playlist_icon.png" alt="Playlist" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 7 }} />
-          </div>
-
-          {/* Body */}
-          <div style={{ flex: 1, padding: '0 0 9px 9px', minWidth: 0 }}>
-            <div style={{ fontWeight: 700, fontSize: 13, color: 'white', lineHeight: 1.2, marginBottom: 2 }}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: 10 }}>
+          <img src="/images/playlist_icon.png" alt="" width={84} height={84} style={{ width: 84, height: 84, flexShrink: 0, objectFit: 'cover', borderRadius: 7, background: 'white' }} />
+          <div style={{ flex: 1, minWidth: 0, minHeight: 84, display: 'flex', flexDirection: 'column' }}>
+            <h2 style={{ fontWeight: 800, fontSize: 22, color: 'white', lineHeight: '24px', margin: 0 }}>My Playlist</h2>
+            <div style={{ fontWeight: 600, fontSize: 12, color: '#cbd5e1', lineHeight: '16px' }}>
               {remaining} {remaining === 1 ? 'Story' : 'Stories'} · {formatRemainingMinutes(totalMins)}
             </div>
-            {completed > 0 && (
-              <div style={{ fontSize: 10, color: '#64748b', marginBottom: 4 }}>
-                {completed} of {items.length} completed
-              </div>
-            )}
-            <div style={{ overflow: 'hidden', maxHeight: 36 }}>
-              {nextTitles.map((title, i) => (
-                <div key={i} style={{ fontSize: 11, color: '#94a3b8', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', lineHeight: 1.4 }}>
-                  {i === 0 ? '▶ ' : '· '}{title}
-                </div>
-              ))}
+            <div style={{ display: 'flex', gap: 8, marginTop: 'auto', paddingTop: 4 }}>
+              <button type="button" onClick={play}
+                style={{ flex: 1, minWidth: 0, minHeight: 40, padding: '8px 4px', background: playlist.started ? '#22c55e' : '#f97316', color: 'white', border: 'none', borderRadius: 10, fontSize: 12, fontWeight: 800, cursor: 'pointer' }}>
+                ▶ {playlist.started ? 'Continue' : 'Play'}
+              </button>
+              <button type="button" onClick={() => window.location.assign(`/playlist?returnTo=${encodeURIComponent(pathname === '/library' || pathname === '/library-new' ? '/library' : '/home')}`)}
+                style={{ flex: 1, minWidth: 0, minHeight: 40, padding: '8px 4px', background: '#3b82f6', color: 'white', border: 'none', borderRadius: 10, fontSize: 12, fontWeight: 800, cursor: 'pointer' }}>
+                My Downloads
+              </button>
             </div>
           </div>
         </div>
-
-        {/* Marc 2026-10-04: two explicit actions — Play/Continue and My Downloads
-            (replaces the old click-anywhere-to-play + top-right "x" clear).
-            Play/Continue reacts to `started` (set once playback begins in
-            playlist mode — see lib/playlistState.ts markPlaylistStarted),
-            not the dead `completed` counter. */}
-        <div style={{ display: 'flex', gap: 8, padding: '9px' }}>
-          <button
-            type="button"
-            onClick={() => router.push('/player/playlist?autoplay=1&playlist=1')}
-            style={{ flex: 1, padding: '10px', background: playlist.started ? '#22c55e' : '#f97316', color: 'white', border: 'none', borderRadius: 10, fontSize: 13, fontWeight: 800, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}
-          >
-            ▶ {playlist.started ? 'Continue' : 'Play'}
-          </button>
-          <button
-            type="button"
-            onClick={() => router.push('/playlist')}
-            style={{ flex: 1, padding: '10px', background: '#3b82f6', color: 'white', border: 'none', borderRadius: 10, fontSize: 13, fontWeight: 800, cursor: 'pointer' }}
-          >
-            My Downloads
-          </button>
-        </div>
       </div>
-      <style>{`
-        @keyframes playlistUpdated {
-          0% { opacity: 0; transform: translateY(3px) scale(0.98); }
-          15% { opacity: 1; transform: translateY(0) scale(1); }
-          78% { opacity: 1; transform: translateY(0) scale(1); }
-          100% { opacity: 0; transform: translateY(-2px) scale(0.99); }
-        }
-        @keyframes tinyClap {
-          0%, 100% { transform: rotate(0deg) scale(1); }
-          45% { transform: rotate(-8deg) scale(1.08); }
-          70% { transform: rotate(6deg) scale(1.02); }
-        }
-      `}</style>
     </section>
   )
 }

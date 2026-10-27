@@ -16,7 +16,7 @@ Visual canon (do not fork):
 - author/genre in green, amber stars + (count)
 - description capped at 70 chars
 - buttons (always 3, both types — Marc 2026-10-04): orange headset "Listen"
-  (single)/"Listen Now" (series)/"Continue Listening"/"Play Again", green
+  (single)/"Listen" (series)/"Continue Listening"/"Play Again", green
   while in-progress, large bold type (Marc 2026-10-08); middle blue "Add to
   Playlist"/"On Playlist" (Marc 2026-10-07, was "+ Queue"/"✓ Remove"); red
   Rate prompt; right amber "Read", switching to green "Continue Reading"
@@ -26,18 +26,7 @@ Visual canon (do not fork):
 ================================================================================
 */
 
-// Marc 2026-10-07: shared "defined" headset glyph for all audio-listening
-// button states (Listen Now / Continue Listening / Play Again) — replaces
-// the plain 🎧 emoji, which rendered too faint/thin to read at this size.
-function HeadsetIcon({ size = 15 }: { size?: number }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="#000" strokeWidth="2.75" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
-      <path d="M3 14v-2a9 9 0 0 1 18 0v2" />
-      <path d="M21 14v4a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3Z" />
-      <path d="M3 14v4a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3Z" />
-    </svg>
-  )
-}
+import MediaButtonLabel from '@/components/MediaButtonLabel'
 
 // Marc 2026-10-08: all 3 row-6 buttons share ONE size/weight so the row
 // reads as one consistent set — sized as large as fits "Continue Listening"
@@ -59,16 +48,6 @@ const cardButtonStyle = {
   justifyContent: 'center',
   textAlign: 'center',
 } as const
-// Marc 2026-10-08: headset icon stacked ABOVE the words (not beside them) —
-// lets "Continue Listening" fit without the icon eating into the text width.
-const cardButtonLabelStyle = {
-  display: 'inline-flex',
-  flexDirection: 'column',
-  alignItems: 'center',
-  justifyContent: 'center',
-  gap: '2px',
-} as const
-
 export function formatMinutes(mins: number) {
   if (mins < 60) return `${mins}min`
   const h = Math.floor(mins / 60)
@@ -275,29 +254,9 @@ export default function LibraryStoryCard({
                 border: 'none',
               }}
             >
-              {showPlayAgain ? (
-                <span style={cardButtonLabelStyle}>
-                  <HeadsetIcon size={14} />
-                  Play Again
-                </span>
-              ) : inProgress ? (
-                <span style={cardButtonLabelStyle}>
-                  <HeadsetIcon size={14} />
-                  Continue Listening
-                </span>
-              ) : readingOnly ? (
-                '📖 Continue Reading'
-              ) : isSeries ? (
-                <span style={cardButtonLabelStyle}>
-                  <HeadsetIcon size={14} />
-                  Listen Now
-                </span>
-              ) : (
-                <span style={cardButtonLabelStyle}>
-                  <HeadsetIcon size={14} />
-                  Listen
-                </span>
-              )}
+              <MediaButtonLabel kind={readingOnly ? 'read' : 'listen'}>
+                {showPlayAgain ? 'Play Again' : inProgress ? 'Continue Listening' : readingOnly ? 'Continue Reading' : 'Listen'}
+              </MediaButtonLabel>
             </button>
             {showRate ? (
               <button
@@ -349,7 +308,7 @@ export default function LibraryStoryCard({
                 border: state.readingInProgress ? 'none' : '1px solid rgba(234,179,8,0.9)',
               }}
             >
-              {state.readingInProgress ? '📖 Continue Reading' : '📖 Read'}
+              <MediaButtonLabel kind="read">{state.readingInProgress ? 'Continue Reading' : 'Read'}</MediaButtonLabel>
             </button>
           </div>
 

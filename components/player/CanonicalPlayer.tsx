@@ -1,4 +1,6 @@
 'use client'
+import StoryContributorCredit from '@/components/StoryContributorCredit'
+import MediaButtonLabel from '@/components/MediaButtonLabel'
 
 import * as Sentry from '@sentry/nextjs'
 import { useState, useEffect, useRef, useCallback } from 'react'
@@ -8,6 +10,9 @@ import { supabaseBrowser } from '@/lib/supabase-browser'
 import { trackPlayStart, trackPlayEnd, trackSpuriousEndedRecovered, trackCardWallView, type PlayStartSource } from '@/lib/analytics'
 import { useAuth } from '@/contexts/AuthContext'
 import ReviewModal from '@/components/ReviewModal'
+import PlayerTransport from './PlayerTransport'
+import type { PlaybackSnapshot } from './PersistentPlayer'
+import { getPlayerGenres, shouldAutoStartPlayer, waitForSegmentResume } from '@/lib/playerControls'
 import InstallAppBanner from '@/components/InstallAppBanner'
 import { requestInstallReoffer } from '@/lib/installReoffer'
 import { welcomeClipCompleted } from '@/lib/welcomePlayback'
@@ -20,6 +25,7 @@ import { isEntitled } from '@/lib/entitlement'
 // and per-episode cleanup once an episode finishes (removed from playlist + offline store).
 import { markPlaylistStarted, removeEpisodeFromActivePlaylist } from '@/lib/playlistState'
 import { deleteEpisode } from '@/lib/offline/store'
+import { forgetDownloads } from '@/lib/offline/pending'
 import type { AutoAdvanceCandidate, AutoAdvanceDisabledReason, PlayerMode, PlayerStory } from './playerTypes'
 import { clearLocalPlayerProgress, getLocalPlayerProgress, mergePlayerProgress, saveLocalPlayerProgress } from '@/lib/playerProgress'
 import { MONTHLY_PRICE_LABEL } from '@/lib/pricing'
@@ -70,9 +76,11 @@ interface CanonicalPlayerProps {
   // under an earlier gesture. Only /player/playlist/page.tsx (the actual
   // playlist entry point) supplies this; without it, behavior is unchanged.
   onAdvanceInPlace?: (nextId: string) => void
+  onPlaybackSnapshot?: (snapshot: PlaybackSnapshot) => void
+  navigationKey?: string
 }
 
-export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 'story', onAdvanceInPlace }: CanonicalPlayerProps) {
+export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 'story', onAdvanceInPlace, onPlaybackSnapshot, navigationKey = '' }: CanonicalPlayerProps) {
   const router  = useRouter()
   const { user, session, loading: authLoading } = useAuth()
   const userEmail = String(user?.email || '').trim().toLowerCase()
@@ -89,10 +97,10 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
   const onboardAudioRef = useRef<HTMLAudioElement | null>(null)
 
   const audioRef = useRef<HTMLAudioElement>(null)  // voice
+  const audioStoryIdRef = useRef<string | null>(null)
   const musicRef = useRef<HTMLAudioElement>(null)  // single music track
   const nextSegRef = useRef<HTMLAudioElement | null>(null)
   const preloadRef = useRef<HTMLAudioElement | null>(null)
-  const progressBarRef = useRef<HTMLDivElement>(null)
 
   const volTimer   = useRef<ReturnType<typeof setInterval> | null>(null)
   const schedTimer = useRef<ReturnType<typeof setTimeout>  | null>(null)
@@ -101,7 +109,6 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
   const typeRef    = useRef<'intro' | 'story' | 'outro'>('intro')
   const switchingRef = useRef(false) // true while swapping music src
   const analyticsTrackedRef = useRef(false) // true after first play tracked
-  const scrubbingRef = useRef(false)
   const finalMixRetryCountRef = useRef(0)
   const finalMixRetryResumeRef = useRef<number | null>(null)
   const finalMixRetryAutoplayRef = useRef(false)
@@ -115,6 +122,7 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
   const [currentTime, setCurrentTime] = useState(0)
   const [duration, setDuration]   = useState(0)
   const [hasProgress, setHasProgress] = useState(false)
+  const [hasPlaybackStarted, setHasPlaybackStarted] = useState(false)
   const [queue, setQueue]           = useState<QueueItem[]>([])
   const [queueIndex, setQueueIndex] = useState(0)
   const [isASC3, setIsASC3]         = useState(false)
@@ -130,6 +138,7 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
   const activeQueueIndexRef = useRef(0)
   const pendingQueueSeekRef = useRef<number | null>(null)
   const pendingQueueSeekPlayRef = useRef(false)
+  const resumePlayRequestedRef = useRef(false)
   const sessionStartRef = useRef<number | null>(null)
   const playlistRef      = useRef<{id:string,episode_number:number}[]>([])
   const playlistIndexRef = useRef<number>(-1)
@@ -168,6 +177,7 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
   // completed end-state card (Play Again / Next episode) and the CTA label —
   // a finished episode must never show "▶ Continue" at 0.0 min left.
   const [playbackEnded, setPlaybackEnded] = useState(false)
+  const removedFromContinueRef = useRef(false)
   // Display-only next-episode candidate for the end-state card when
   // auto-advance is disarmed (e.g. after a manual pause). Fetched via the same
   // live-validated fetchDirectSeriesAutoAdvanceCandidate() query; navigation
@@ -233,7 +243,7 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
   // pages navigate here with ?openReader=1 instead of reimplementing this
   // reader — this is the one canonical prose reader. Guard ref so it only
   // auto-opens once per navigation, not on every proseAvailable re-render.
-  const openReaderAppliedRef = useRef(false)
+  const openReaderAppliedRef = useRef<string | null>(null)
   // Marc 2026-10-07: when the reader was opened via the ?openReader=1 deep
   // link (tapped "Read eBook" from the library/home card), closing it ("x")
   // should return to wherever that tap came from — not reveal this player
@@ -614,7 +624,7 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
       returnUrl: returnUrl.startsWith('/') && !returnUrl.startsWith('//') ? returnUrl : '',
       approvalReview: params.get('approvalReview') === '1',
     })
-  }, [])
+  }, [navigationKey])
 
   useEffect(() => {
     if (!returnContext.approvalReview) return
@@ -656,7 +666,7 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
   }
 
   const persistLocalProgress = (progressSeconds: number, done = false) => {
-    if (!Number.isFinite(progressSeconds) || progressSeconds <= 0) return
+    if (!Number.isFinite(progressSeconds) || progressSeconds < 0) return
     const totalSeconds = getProgressTotalSeconds()
     saveLocalPlayerProgress(storyId, progressSeconds, {
       userId: user?.id,
@@ -812,7 +822,12 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
       const nextIndex = playlistRef.current.findIndex((item) => item.id === candidate.story.id)
       if (nextIndex >= 0) localStorage.setItem('dtt_playlist_index', String(nextIndex))
     }
-    router.push(`/player/${candidate.story.id}?autoplay=1&playNow=1&${isSeriesContinuation ? 'seriesContinue=1' : 'autoAdvance=1'}`)
+    if (onAdvanceInPlace) {
+      playlistAutoplayPendingRef.current = true
+      onAdvanceInPlace(candidate.story.id)
+    } else {
+      router.push(`/player/${candidate.story.id}?autoplay=1&playNow=1&${isSeriesContinuation ? 'seriesContinue=1' : 'autoAdvance=1'}`)
+    }
   }
 
   const startAutoAdvanceTo = (candidate: AutoAdvanceCandidate) => {
@@ -999,7 +1014,6 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
       // when the last item is removed — don't blindly wipe it after, or any
       // other still-queued stories would be lost along with this episode.
       try { removeEpisodeFromActivePlaylist(storyId, user?.id || null) } catch {}
-      deleteEpisode(storyId).catch(() => {})
 
       if (next?.id) {
         // Keep playing straight through the queue — don't stop and wait for
@@ -1065,12 +1079,16 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
   }, [])
 
   useEffect(() => {
+    removedFromContinueRef.current = false
     isAdvancingRef.current = false
     seriesContinueAutoplayAttemptedRef.current = false
+    setHasPlaybackStarted(false)
     activeQueueIndexRef.current = 0
+    setQueueIndex(0)
     completedRef.current = 0
     pendingQueueSeekRef.current = null
     pendingQueueSeekPlayRef.current = false
+    resumePlayRequestedRef.current = false
     reviewPromptHandledRef.current = false
     installReofferFiredRef.current = false
     lastLocalProgressWriteRef.current = 0
@@ -1208,7 +1226,7 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
           // Any other case (never started yet, or a different index) = this
           // story is newly active this run = start at 0:00.
           const wasAlreadyCurrentItem = idx !== null && Number(idx) === found
-          if (!parsed.started || !wasAlreadyCurrentItem) {
+          if (playlistAutoplayPendingRef.current || !parsed.started || !wasAlreadyCurrentItem) {
             forceFreshStartRef.current = true
           }
           playlistIndexRef.current = found
@@ -1234,6 +1252,7 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
   // ── Load story ─────────────────────────────────────────────────────────────
 
   useEffect(() => {
+    if (authLoading) return
     let cancelled = false
     async function load() {
       let redirected = false
@@ -1244,12 +1263,12 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
         setAudioErrorMessage('')
         // MARC-PLAYLIST-FRESH-001: captured once per load(), before anything
         // below can reset the ref for a *subsequent* in-place advance.
-        const skipResumeForFreshPlaylistItem = mode === 'playlist' && forceFreshStartRef.current
+        const skipResumeForFreshPlaylistItem = playlistAutoplayPendingRef.current || (mode === 'playlist' && forceFreshStartRef.current)
         forceFreshStartRef.current = false
         stage = 'story-row'
         const { data, error } = await supabase
           .from('stories')
-          .select('id,title,author,genre,audio_url,cover_url,duration_mins,intro_audio_url,outro_audio_url,background_music_url,episode_number,series_episode_number,series_id,series_name,series_is_finale,is_free,prose_text,content_start_ms,content_end_ms,author_id,narrator_voice_id,narrator_voice_name,status,is_hidden,published_on')
+          .select('id,title,author,genre,primary_genre,genre_secondary,genre_third,sub_genres,audio_url,cover_url,duration_mins,intro_audio_url,outro_audio_url,background_music_url,episode_number,series_episode_number,series_id,series_name,series_is_finale,is_free,prose_text,content_start_ms,content_end_ms,author_id,narrator_voice_id,narrator_voice_name,status,is_hidden,published_on')
           .eq('id', storyId)
           .maybeSingle()
 
@@ -1287,9 +1306,9 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
           const localProgress = getLocalPlayerProgress(storyId, user?.id)
           if (!skipResumeForFreshPlaylistItem) {
             const localMerged = mergePlayerProgress(null, localProgress)
-            if (!localMerged.completed && localMerged.progress > resumeRef.current) {
+            if (!localMerged.completed && localProgress) {
               resumeRef.current = localMerged.progress
-              setHasProgress(true)
+              setHasProgress(localMerged.progress > 0)
             }
           } else {
             setHasProgress(false)
@@ -1389,6 +1408,7 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
           })
           setAudioErrorMessage('Audio is not available for this story yet.')
         }
+        if (cancelled) return
         setQueue(resolvedQueue)
         setIsASC3(resolvedIsASC3)
 
@@ -1496,14 +1516,14 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
         if (user?.id) {
           stage = 'user-progress'
           const { data: lib } = await supabase.from('user_library')
-            .select('progress,completed,not_for_me').eq('user_id', user.id).eq('story_id', storyId).maybeSingle()
+            .select('progress,completed,not_for_me,last_played').eq('user_id', user.id).eq('story_id', storyId).maybeSingle()
           const localProgress = getLocalPlayerProgress(storyId, user.id)
           const mergedProgress = mergePlayerProgress(lib, localProgress)
-          if (!skipResumeForFreshPlaylistItem && mergedProgress.progress > 0 && !lib?.not_for_me) {
-            resumeRef.current = mergedProgress.completed ? 0 : Math.max(resumeRef.current, mergedProgress.progress)
-            setHasProgress(!mergedProgress.completed)
+          if (!skipResumeForFreshPlaylistItem && (lib || localProgress) && !lib?.not_for_me) {
+            resumeRef.current = mergedProgress.completed ? 0 : mergedProgress.progress
+            setHasProgress(!mergedProgress.completed && mergedProgress.progress > 0)
           }
-          if (!lib?.not_for_me && !mergedProgress.completed && localProgress?.progress && localProgress.progress > Number(lib?.progress || 0)) {
+          if (!lib?.not_for_me && !mergedProgress.completed && localProgress && mergedProgress.progress === localProgress.progress && localProgress.progress !== Number(lib?.progress || 0)) {
             void supabase.from('user_library').upsert({
               user_id: user.id,
               story_id: storyId,
@@ -1586,11 +1606,13 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
     return () => {
       cancelled = true
     }
-  }, [storyId, user, userEmail, authLoading, resumeParam])
+  // Profile/session refreshes for the same identity must not reload live audio.
+  }, [storyId, user?.id, userEmail, authLoading, resumeParam])
 
   // Init audio once loaded
   useEffect(() => {
     if (loading || !audioRef.current) return
+    audioStoryIdRef.current = storyId
     if (inWelcomeRef.current && welcomeQueueRef.current.length > 0) {
       // Welcome mode — load first welcome clip
       audioRef.current.src = welcomeQueueRef.current[0]
@@ -1662,6 +1684,9 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
           storyId,
           failedSegments: failed.map((entry) => entry.index),
         })
+        if (resumeRef.current > 0) {
+          setAudioErrorMessage('Could not restore your saved position. Try again or choose Start Over.')
+        }
       }
       durations.forEach(({ index, duration: segmentDuration }) => {
         if (segmentDuration > 0) segDursRef.current[index] = segmentDuration
@@ -1682,36 +1707,42 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
     // and the listener already pressed play from 0:00, don't yank their
     // position — the resume intent is stale at that point.
     if (isPlaying) { resumeRef.current = 0; return }
-    seekASC3ToGlobalTime(resumeRef.current, false)
+    if (!hasAllQueueDurations()) return
+    const shouldPlay = resumePlayRequestedRef.current || Boolean(audioRef.current && !audioRef.current.paused)
+    const target = resumeRef.current
     resumeRef.current = 0
+    resumePlayRequestedRef.current = false
+    seekASC3ToGlobalTime(target, shouldPlay)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isASC3, queue, loading, totalDur])
 
   useEffect(() => {
     if (loading || !audioRef.current || seriesContinueAutoplayAttemptedRef.current) return
     const params = new URLSearchParams(window.location.search)
-    const hasInternalAutoplayIntent =
-      params.get('seriesContinue') === '1' ||
-      params.get('autoAdvance') === '1' ||
-      params.get('playNow') === '1' ||
-      params.get('playlist') === '1'
-    if (params.get('autoplay') !== '1' || !hasInternalAutoplayIntent) return
+    if (!playlistAutoplayPendingRef.current && !shouldAutoStartPlayer(window.location.search)) return
     if (isASC3 && !queue.length) return
     if (!isASC3 && !audioSrc) return
+    if (waitForSegmentResume(isASC3, resumeRef.current, hasAllQueueDurations())) return
 
-    seriesContinueAutoplayAttemptedRef.current = true
     // ORION-ANALYTICS-GAP-001: this is the auto-started playback path — it was
     // completely invisible to analytics. seriesContinue/autoAdvance params are
     // set by navigateToAutoAdvanceCandidate()/advancePlaylist() (auto-advance
     // chains); plain autoplay+playNow/playlist intents are 'autoplay'.
     const autoStartSource: PlayStartSource =
-      params.get('seriesContinue') === '1' || params.get('autoAdvance') === '1'
+      playlistAutoplayPendingRef.current || params.get('seriesContinue') === '1' || params.get('autoAdvance') === '1'
         ? 'auto_advance'
         : 'autoplay'
     const audio = audioRef.current
+    let cancelled = false
+    let started = false
     const attemptPlay = () => {
+      seriesContinueAutoplayAttemptedRef.current = true
       audio.play()
         .then(() => {
+          if (cancelled) return
+          started = true
+          playlistAutoplayPendingRef.current = false
+          setShowSeriesContinueOverlay(false)
           setIsPlaying(true)
           setAutoplayBlocked(false)
           startAnalyticsSession(autoStartSource)
@@ -1721,6 +1752,7 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
           if (mode === 'playlist') markPlaylistStarted()
         })
         .catch((error) => {
+          if (cancelled) return
           console.warn('[player] series continuation autoplay blocked:', error)
           setAutoplayBlocked(true)
           setIsPlaying(false)
@@ -1728,50 +1760,18 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
         })
     }
 
-    if (audio.readyState >= 2) {
-      attemptPlay()
-    } else {
-      audio.addEventListener('canplay', attemptPlay, { once: true })
-      return () => audio.removeEventListener('canplay', attemptPlay)
+    // play() queues playback until media is ready. Waiting for canplay moves
+    // the request farther from the Continue gesture and its listener could be
+    // removed by a duration update before it ever requested playback.
+    attemptPlay()
+    return () => {
+      cancelled = true
+      if (!started) seriesContinueAutoplayAttemptedRef.current = false
     }
-  }, [loading, isASC3, queue, audioSrc, storyId])
+  }, [loading, isASC3, queue, audioSrc, storyId, totalDur])
 
-  // MARC-PLAYLIST-HANDSFREE-001: after an in-place playlist advance
-  // (onAdvanceInPlace swapped storyId without a page navigation — see
-  // maybeAutoAdvanceFromNaturalEnd), this effect presses play once the new
-  // story's audio is actually ready. Mirrors the URL-param autoplay effect
-  // above, but driven by playlistAutoplayPendingRef instead of a URL param,
-  // since there is no new navigation/URL here to read intent from.
-  useEffect(() => {
-    if (!playlistAutoplayPendingRef.current) return
-    if (loading || !audioRef.current) return
-    if (isASC3 && !queue.length) return
-    if (!isASC3 && !audioSrc) return
-
-    const audio = audioRef.current
-    const attemptPlay = () => {
-      playlistAutoplayPendingRef.current = false
-      audio.play()
-        .then(() => {
-          setIsPlaying(true)
-          setAutoplayBlocked(false)
-          startAnalyticsSession('auto_advance')
-          if (mode === 'playlist') markPlaylistStarted()
-        })
-        .catch((error) => {
-          console.warn('[player] in-place playlist advance autoplay blocked:', error)
-          setAutoplayBlocked(true)
-          setIsPlaying(false)
-        })
-    }
-
-    if (audio.readyState >= 2) {
-      attemptPlay()
-    } else {
-      audio.addEventListener('canplay', attemptPlay, { once: true })
-      return () => audio.removeEventListener('canplay', attemptPlay)
-    }
-  }, [loading, isASC3, queue, audioSrc, storyId])
+  // Series and playlist handoffs share the autoplay effect above. Running
+  // a second play effect here used to race the new source's load/seek.
 
   useEffect(() => {
     if (activeModal !== 'prose') return
@@ -1838,6 +1838,9 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
         }
       }
     } else if (source === 'natural_ended') {
+      if (user?.id) forgetDownloads(user.id, [storyId])
+      if (mode !== 'playlist') { try { removeEpisodeFromActivePlaylist(storyId, user?.id || null) } catch {} }
+      deleteEpisode(storyId).catch(() => {})
       const completedSeconds = getQueueTotalSeconds() || completedRef.current || duration
       setCumTime(completedSeconds)
       raise(0); setIsPlaying(false); saveProgress(completedSeconds, true)
@@ -1919,12 +1922,21 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
   // replaying is fresh listening, not a stop gesture (PLAYER-SERIES-ADVANCE-001
   // ruling: Start Over must not kill auto-advance for the session).
   const restartFromBeginning = () => {
+    if (autoAdvanceDisabledReason === 'manual_pause') {
+      autoAdvanceEnabledRef.current = true
+      setAutoAdvanceDisabledReason(null)
+    }
     setPlaybackEnded(false)
     setEndStateCandidate(null)
     setCatalogExhausted(false)
+    // Once Start Over is explicitly chosen, the old resume failure is obsolete.
+    setAudioErrorMessage('')
+    resumePlayRequestedRef.current = false
     clearLocalPlayerProgress(storyId, user?.id)
     lastLocalProgressWriteRef.current = 0
     resumeRef.current = 0
+    // Persist the explicit reset as well as moving the current audio element.
+    void saveProgress(0)
     if (!isASC3) {
       const a = audioRef.current
       if (a) {
@@ -1955,12 +1967,17 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
 
   const handlePlayPause = () => {
     if (!audioRef.current) return
+    if (waitForSegmentResume(isASC3, resumeRef.current, hasAllQueueDurations())) {
+      resumePlayRequestedRef.current = !resumePlayRequestedRef.current
+      return
+    }
     if (isPlaying) {
       disableAutoAdvanceForSession('manual_pause')
       audioRef.current.pause(); musicRef.current?.pause()
       endAnalyticsSession('manual_pause')
       saveProgress(getProgressSeconds()); setIsPlaying(false)
     } else {
+      removedFromContinueRef.current = false
       // ORION-PLAYER-ENDSTATE-001 §2: at a natural end, "play" means replay —
       // resuming from the final seconds is the tail-loop trap Marc hit 3×.
       if (isAtNaturalEnd()) {
@@ -2020,7 +2037,7 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
       // the stored value untouched (inserts fall back to the column default false).
       const progressRow: Record<string, unknown> = {
         user_id: user.id, story_id: storyId, progress: Math.floor(t),
-        hide_from_home: false,  // Reset dismiss if user plays again
+        hide_from_home: removedFromContinueRef.current, // Keep a removed card hidden through pause/periodic saves
         not_for_me: false,      // Clear not_for_me if user plays again
         last_played: new Date().toISOString()
       }
@@ -2042,23 +2059,6 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
     }
   }
 
-  const seekToClientX = (clientX: number) => {
-    const audio = audioRef.current
-    const bar = progressBarRef.current
-    if (!audio || !bar) return
-
-    const actualDuration = isASC3
-      ? getQueueTotalSeconds()
-      : (Number.isFinite(audio.duration) && audio.duration > 0 ? audio.duration : duration)
-    if (!actualDuration || !Number.isFinite(actualDuration)) return
-
-    const rect = bar.getBoundingClientRect()
-    if (!rect.width) return
-
-    const ratio = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width))
-    seekToSeconds(ratio * actualDuration)
-  }
-
   // Shared by the scrub bar and the car / lock-screen controls (CAR-MEDIA-001).
   const seekToSeconds = (targetSeconds: number) => {
     const audio = audioRef.current
@@ -2078,40 +2078,14 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
       setPlaybackEnded(false)
       setEndStateCandidate(null)
     }
+    // Persist explicit seeks immediately, including paused seeks and a seek to zero.
+    void saveProgress(nextTime)
     if (isASC3) {
       seekASC3ToGlobalTime(nextTime)
       return
     }
     audio.currentTime = nextTime
     setCurrentTime(nextTime)
-  }
-
-  const handleSeek = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (!audioRef.current) return
-    seekToClientX(e.clientX)
-  }
-
-  const handleSeekPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
-    e.preventDefault()
-    scrubbingRef.current = true
-    e.currentTarget.setPointerCapture(e.pointerId)
-    seekToClientX(e.clientX)
-  }
-
-  const handleSeekPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
-    if (!scrubbingRef.current) return
-    e.preventDefault()
-    seekToClientX(e.clientX)
-  }
-
-  const handleSeekPointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
-    if (!scrubbingRef.current) return
-    e.preventDefault()
-    seekToClientX(e.clientX)
-    scrubbingRef.current = false
-    if (e.currentTarget.hasPointerCapture(e.pointerId)) {
-      e.currentTarget.releasePointerCapture(e.pointerId)
-    }
   }
 
   const handleNotForMe = async () => {
@@ -2368,14 +2342,14 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
   // prose modal once the story/series prose has loaded; does nothing if the
   // param is absent or there's no prose to show.
   useEffect(() => {
-    if (openReaderAppliedRef.current) return
+    if (openReaderAppliedRef.current === navigationKey) return
     const params = new URLSearchParams(window.location.search)
     if (params.get('openReader') !== '1') return
     if (!proseAvailable) return
-    openReaderAppliedRef.current = true
+    openReaderAppliedRef.current = navigationKey
     openedReaderViaDeepLinkRef.current = true
     setActiveModal('prose')
-  }, [proseAvailable])
+  }, [proseAvailable, navigationKey])
 
   useEffect(() => {
     if (!proseAvailable || totalProseParagraphs <= 0) return
@@ -2438,7 +2412,6 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
   }, [activeModal, totalProseParagraphs, proseTotalPages, storyId, user?.id, session?.access_token, prosePage])
 
   const fmt = (s: number) => `${Math.floor(s / 60)}:${Math.floor(s % 60).toString().padStart(2, '0')}`
-  const fmtMin = (s: number) => (s / 60).toFixed(1) + ' min'
   const actualAudioDuration = Number.isFinite(duration) && duration > 0 ? duration : 0
   // POST-TRIAL-BELLE-001: fetch Belle wall audio when the trial wall becomes visible.
   // The wall is shown IMMEDIATELY on trialWallVisible=true; Belle audio is a non-blocking
@@ -2580,7 +2553,16 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
     ? (totalDur > 0 ? totalDur : (story?.duration_mins || 0) * 60)
     : (actualAudioDuration || (story?.duration_mins || 0) * 60)
   const effCur   = isASC3 ? cumTime : currentTime
-  const pct      = effTotal > 0 ? Math.min(100, (effCur / effTotal) * 100) : 0
+  const playerGenres = getPlayerGenres(story)
+  const miniSeekRef = useRef(seekToSeconds)
+  miniSeekRef.current = seekToSeconds
+  const miniToggleRef = useRef(handlePlayPause)
+  miniToggleRef.current = handlePlayPause
+  useEffect(() => {
+    if (!story) return
+    onPlaybackSnapshot?.({ storyId, title: story.title, coverUrl: story.cover_url, seek: seconds => miniSeekRef.current(seconds), completed: playbackEnded, markRemoved: () => { removedFromContinueRef.current = true }, isPlaying, currentTime: effCur, duration: effTotal,
+      toggle: () => miniToggleRef.current() })
+  }, [storyId, story?.title, isPlaying, playbackEnded, effCur, effTotal, onPlaybackSnapshot])
   // Position: the OS extrapolates from (position, playbackRate), so update on
   // play/pause, seeks and every 5s bucket rather than on every timeupdate.
   // Uses the same global (multi-segment) position/total as the progress bar.
@@ -2602,13 +2584,14 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
     autoAdvanceCandidate?.reason === 'untouched_catalog' ? 'Fresh pick' :
     autoAdvanceCandidate?.reasonLabel || ''
 
-  if (loading) return <div style={{ height:'100dvh', backgroundColor:'#020617', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:'14px' }}><div style={{ width:'40px', height:'40px', border:'4px solid #f97316', borderTopColor:'transparent', borderRadius:'50%', animation:'spin 1s linear infinite' }} /><p style={{ color:'rgba(255,255,255,0.72)', fontSize:'14px', fontWeight:600, margin:0 }}>Loading story...</p><style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style></div>
+  if (loading && !story) return <div style={{ height:'100dvh', backgroundColor:'#020617', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:'14px' }}><div style={{ width:'40px', height:'40px', border:'4px solid #f97316', borderTopColor:'transparent', borderRadius:'50%', animation:'spin 1s linear infinite' }} /><p style={{ color:'rgba(255,255,255,0.72)', fontSize:'14px', fontWeight:600, margin:0 }}>Loading story...</p><style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style></div>
   if (!story)   return <div style={{ height:'100dvh', backgroundColor:'#020617', color:'white', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', padding:'24px', textAlign:'center' }}><p style={{ marginBottom:'16px' }}>This story isn’t available yet.</p><button onClick={() => { disableAutoAdvanceForSession('navigation'); returnToSource('/library') }} style={{ color:'#f97316', background:'none', border:'1px solid rgba(249,115,22,0.35)', borderRadius:'10px', padding:'10px 16px', cursor:'pointer', fontWeight:700 }}>{safeReturnUrl ? 'Back to Approval' : 'Back to Library'}</button></div>
 
   return (
     <div data-auto-advance-disabled-reason={autoAdvanceDisabledReason || undefined} style={{ height:'100dvh', backgroundColor:'#020617', color:'white', display:'flex', flexDirection:'column', overflow:'hidden' }}>
       <audio ref={audioRef}
         onLoadedMetadata={(e) => {
+          if (loading || audioStoryIdRef.current !== storyId) return
           const d = e.currentTarget.duration; setDuration(d)
           const activeIndex = isASC3 ? activeQueueIndexRef.current : queueIndex
           segDursRef.current[activeIndex] = d
@@ -2628,6 +2611,7 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
           if (isPlaying && typeRef.current === 'intro' && bgMusicRef.current) schedSwap(bgMusicRef.current, VOL_STORY_MUSIC, 3)
         }}
         onTimeUpdate={(e) => {
+          if (loading || audioStoryIdRef.current !== storyId) return
           const t = e.currentTarget.currentTime; setCurrentTime(t); setCumTime(completedRef.current + t)
           // POST-TRIAL-BELLE-001: 60-second cutoff for lapsed standalone users
           if (isLapsedRef.current && !story?.series_id && t >= 60 && !trialWallFiredRef.current) {
@@ -2670,6 +2654,7 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
           }
         }}
         onPlay={() => {
+          setHasPlaybackStarted(true)
           setIsPlaying(true)
           if (!noMusicRef.current) duck()
         }}
@@ -2677,9 +2662,15 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
         // confirms/clears it from actual currentTime movement.
         onWaiting={() => setIsBuffering(true)}
         onStalled={() => setIsBuffering(true)}
-        onPlaying={() => setIsBuffering(false)}
+        onPlaying={() => {
+          if (loading || audioStoryIdRef.current !== storyId) return
+          setIsBuffering(false)
+          setAutoplayBlocked(false)
+          setShowSeriesContinueOverlay(false)
+        }}
         onPause={() => setIsPlaying(false)}
         onEnded={() => {
+          if (loading || audioStoryIdRef.current !== storyId || !audioRef.current?.ended) return
           // ── Welcome chain ────────────────────────────────────────────────
           if (inWelcomeRef.current) {
             const nextIdx = welcomeIndexRef.current + 1
@@ -2794,6 +2785,9 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
             }
           }
           if (!isASC3) {
+            if (user?.id) forgetDownloads(user.id, [storyId])
+            if (mode !== 'playlist') { try { removeEpisodeFromActivePlaylist(storyId, user?.id || null) } catch {} }
+            deleteEpisode(storyId).catch(() => {})
             setIsPlaying(false); saveProgress(duration, true)
             // POST-TRIAL-BELLE-001: for lapsed users on series EP1, show wall at natural end
             if (isLapsedRef.current && story?.series_id) {
@@ -2826,11 +2820,10 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
           }
         }}
         onCanPlay={() => {
-          if (isASC3 && resumeRef.current > 0 && getQueueTotalSeconds() > 0) {
-            seekASC3ToGlobalTime(resumeRef.current, false)
-            resumeRef.current = 0
-            return
-          }
+          if (loading || audioStoryIdRef.current !== storyId) return
+          // Segmented resume is applied once, after the complete duration map
+          // resolves, by the resume effect before autoplay is allowed. A canplay
+          // event for the intro must never start a competing seek/load here.
           if (!isASC3 && audioRef.current) {
             if (finalMixRetryResumeRef.current !== null) {
               audioRef.current.currentTime = finalMixRetryResumeRef.current
@@ -2848,6 +2841,7 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
           }
         }}
         onError={(e) => {
+          if (loading || audioStoryIdRef.current !== storyId) return
           if (!isASC3 && audioSrc && audioRef.current) {
             const audio = audioRef.current
             const retryAt = Math.max(0, Number.isFinite(audio.currentTime) ? audio.currentTime : currentTime)
@@ -2995,14 +2989,14 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
 
         {/* Read It pill */}
         <button onClick={() => setActiveModal('prose')} style={{ display:'flex', flexDirection:'column', alignItems:'center', padding:'8px 14px', borderRadius:'14px', border:'1px solid rgba(255,255,255,0.18)', background:'rgba(255,255,255,0.12)', color:'white', cursor:'pointer', minWidth:90 }}>
-          <span style={{ fontSize:'12px', fontWeight:700, whiteSpace:'nowrap' }}>📖 {prosePillText}</span>
+          <span style={{ fontSize:'12px', fontWeight:700, whiteSpace:'nowrap' }}><MediaButtonLabel kind="read">{prosePillText}</MediaButtonLabel></span>
           {proseAvailable && <span style={{ fontSize:'10px', color:'rgba(255,255,255,0.6)', marginTop:'2px' }}>{readingProgressState?.completed ? 'Finished' : (readingProgressState?.paragraphIndex || 0) > 0 ? 'Saved' : 'Available'}</span>}
         </button>
 
       </div>
 
       {/* Controls */}
-      <div style={{ flex:1, display:'flex', flexDirection:'column', justifyContent:'center', padding:'10px 20px calc(14px + env(safe-area-inset-bottom))', gap:'10px', minHeight:0 }}>
+      <div style={{ flex:1, display:'flex', flexDirection:'column', justifyContent:'flex-start', padding:'18px 16px calc(14px + env(safe-area-inset-bottom))', gap:'10px', minHeight:0 }}>
         <div>
           {playerSeriesTitle && (
             <div style={{ color:'white', fontSize:'22px', fontWeight:900, margin:'0 0 6px', textAlign:'center', lineHeight:1.08, fontFamily:'Inter, system-ui, sans-serif' }}>{playerSeriesTitle}</div>
@@ -3011,7 +3005,11 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
             <p style={{ color:'white', fontSize:'13px', margin:'0 0 2px', textAlign:'center', fontWeight:700, opacity:0.9 }}>Episode {(story as any).episode_number}</p>
           )}
           <h1 style={{ fontSize: playerSeriesTitle ? '18px' : '20px', fontWeight:800, margin:0, color:'white', textAlign:'center', lineHeight:1.2 }}>{story.title}</h1>
+          <StoryContributorCredit storyId={storyId} />
           <p style={{ color:'white', fontSize:'13px', margin:'3px 0 0', textAlign:'center', opacity:0.7 }}>by {story.author || 'Endless Tales'}</p>
+          {playerGenres.length > 0 && <ul aria-label="Genres" style={{ listStyle:'none', padding:0, margin:'9px 0 0', display:'flex', flexWrap:'wrap', gap:'6px', justifyContent:'center' }}>
+            {playerGenres.map(genre => <li key={genre} style={{ fontSize:'11px', color:'#fdba74', border:'1px solid rgba(249,115,22,.3)', background:'rgba(249,115,22,.08)', borderRadius:'20px', padding:'4px 9px' }}>{genre}</li>)}
+          </ul>}
           {/* QUEUE-OFFLINE-001 (Marc, 2026-10-04): manual per-episode download
               button removed — queueing a story now auto-saves it offline
               (see lib/offline/queueDownload.ts). Manage/remove saved
@@ -3129,74 +3127,18 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
           </div>
         )}
         {/* autoplayBlocked: "Ready to continue" card removed — bottom ▶ Continue button handles this */}
-        <div>
-          <div
-            ref={progressBarRef}
-            onClick={handleSeek}
-            onPointerDown={handleSeekPointerDown}
-            onPointerMove={handleSeekPointerMove}
-            onPointerUp={handleSeekPointerUp}
-            onPointerCancel={handleSeekPointerUp}
-            style={{ height:'22px', display:'flex', alignItems:'center', cursor:'pointer', touchAction:'none' }}
-          >
-            <div style={{ height:'6px', width:'100%', backgroundColor:'rgba(255,255,255,0.15)', borderRadius:'3px', overflow:'hidden' }}>
-              <div style={{ height:'100%', backgroundColor:'#f97316', width:`${pct}%`, transition:'width 0.1s', borderRadius:'3px' }} />
-            </div>
-          </div>
-          <div style={{ display:'flex', justifyContent:'space-between', fontSize:'11px', color:'white', marginTop:'5px' }}>
-            <span style={{ opacity:0.9 }}>{fmtMin(effTotal)} total</span>
-            <span style={{ opacity:0.9 }}>{fmtMin(Math.max(0, effTotal - effCur))} left</span>
-          </div>
-        </div>
-        <div style={{ display:'flex', gap:'12px' }}>
-          {/* BELL-ONBOARD-003: onboarding gate — one required tap satisfies iOS autoplay policy;
-               the real episode page (cover/title/author) is fully visible behind this button.
-               Non-onboarding users see the normal play button below. */}
-          {onboardActive ? (
-            // BELL-ONBOARD-007 Fix 3: position:fixed — always visible at viewport bottom
-            // regardless of page height or scroll state. window.scrollTo was unreliable
-            // on mobile Safari; fixed positioning is deterministic.
-            <button
-              onClick={handleOnboardContinue}
-              style={{ position:'fixed', bottom:'32px', left:'16px', right:'16px', zIndex:9998, padding:'18px', borderRadius:'14px', border:'none', fontSize:'17px', fontWeight:700, cursor:'pointer', backgroundColor:'#f97316', color:'white', touchAction:'manipulation', boxShadow:'0 4px 24px rgba(0,0,0,0.45)' }}
-            >
-              ▶ Continue your story
-            </button>
-          ) : (
-            <button onClick={handlePlayPause} style={{ flex:2, padding:'16px', borderRadius:'14px', border:'none', fontSize:'16px', fontWeight:700, cursor:'pointer', backgroundColor: isPlaying ? '#f97316' : '#22c55e', color:'white' }}>
-              {/* ORION-PLAYER-ENDSTATE-001 §2: never '▶ Continue' at 0.0 min left — a finished episode replays from 0 */}
-              {/* PLAYER-UX-001 (Bug 1): label is 'Continue' when mid-episode (position > 0 s), 'Play' for fresh start */}
-              {isPlaying ? (isBuffering ? '⏳ Buffering…' : '⏸ Pause') : isAtNaturalEnd() ? '▶ Play Again' : getProgressSeconds() > 0 ? '▶ Continue' : '▶ Play'}
-            </button>
-          )}
-          {hasProgress && (
-            <button onClick={() => {
-                // PLAYER-SERIES-ADVANCE-001: do NOT disable auto-advance here.
-                // "Start Over" is fresh listening, not a stop gesture — see
-                // restartFromBeginning() comment (ORION-PLAYER-ENDSTATE-001 §1).
-                // Calling disableAutoAdvanceForSession('stop') was permanently
-                // disabling auto-advance for the session: users with prior progress
-                // who pressed Start Over (common on Safari where autoplay is blocked
-                // and the story loads at a resumed position) ended up dead-ended
-                // at Ep end instead of auto-advancing to the next episode.
-                clearLocalPlayerProgress(storyId, user?.id)
-                lastLocalProgressWriteRef.current = 0
-                if (!isASC3 && story?.audio_url) {
-                  resumeRef.current = 0
-                  setHasProgress(false)
-                  const a = audioRef.current
-                  if (a) { a.currentTime = 0; a.play().catch(() => {}) }
-                  setCurrentTime(0); setCumTime(0); setIsPlaying(true)
-                } else {
-                  completedRef.current=0; activeQueueIndexRef.current=0; setQueueIndex(0); setSectionLabel(queue[0]?.label||''); typeRef.current='intro'
-                  const m=musicRef.current; if(m){m.src=introMusicRef.current;m.loop=true;m.volume=0}
-                  if(audioRef.current){audioRef.current.src=queue[0]?.url||'';audioRef.current.load()}
-                  setTimeout(()=>{audioRef.current?.play().catch(()=>{});const mu=musicRef.current;if(mu){mu.play().catch(()=>{});animVol(mu,0,VOL_INTRO_MUSIC,2000)};setIsPlaying(true)},100)
-                  setCurrentTime(0); setCumTime(0)
-                }
-              }} style={{ flex:1, padding:'16px', borderRadius:'14px', border:'none', fontSize:'13px', fontWeight:600, cursor:'pointer', backgroundColor:'rgba(255,255,255,0.08)', color:'white' }}>Start Over</button>
-          )}
-        </div>
+        <PlayerTransport
+          key={storyId}
+          currentTime={effCur} duration={effTotal}
+          seekEnabled={(isASC3 ? getQueueTotalSeconds() : actualAudioDuration) > 0}
+          isPlaying={isPlaying} isBuffering={isBuffering}
+          hasStarted={hasPlaybackStarted || hasProgress || effCur > 0 || playbackEnded}
+          ended={isAtNaturalEnd()} autoplayBlocked={autoplayBlocked}
+          onboarding={onboardActive}
+          onToggle={onboardActive ? handleOnboardContinue : handlePlayPause}
+          onSeek={seekToSeconds}
+          onRestart={restartFromBeginning}
+        />
         {!hasProgress && !((story as any)?.episode_number && (story as any).episode_number > 1) && (
           <button onClick={handleNotForMe} style={{ alignSelf:'center', marginTop:'-2px', padding:'6px 12px', border:'none', background:'transparent', color:'rgba(255,255,255,0.45)', fontSize:'12px', fontWeight:600, cursor:'pointer' }}>Not for me</button>
         )}
@@ -3401,6 +3343,7 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
                       {isSeriesReadIt ? (
                         <>
                           <h1 style={{ fontSize: proseFontSize + 9 + 'px', lineHeight: 1.12, color: proseDark ? 'white' : '#1a1a1a', margin:'0 0 28px', letterSpacing:0, fontWeight:700 }}>{proseBookTitle}</h1>
+                          <div style={{ color: proseDark ? 'white' : '#1a1a1a' }}><StoryContributorCredit storyId={storyId} /></div>
                           {seriesProseSections.map((chapter, chapterIndex) => (
                             <section key={chapter.id} style={{ marginTop: chapterIndex === 0 ? 0 : 42, paddingTop: chapterIndex === 0 ? 0 : 28, borderTop: chapterIndex === 0 ? 'none' : proseDark ? '1px solid rgba(255,255,255,0.09)' : '1px solid rgba(0,0,0,0.12)' }}>
                               <div style={{ fontFamily:'Inter, system-ui, sans-serif', fontSize:'11px', fontWeight:900, color: proseDark ? '#fb923c' : '#9a3412', letterSpacing:'0.12em', textTransform:'uppercase', marginBottom:8 }}>

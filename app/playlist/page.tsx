@@ -7,6 +7,7 @@
 // lib/playlistState.ts) — this page is for the person's own changes.
 
 import { useEffect, useState } from 'react'
+import PlaylistDownloadStatus from '@/components/PlaylistDownloadStatus'
 import { useAuth } from '@/contexts/AuthContext'
 import { ACTIVE_PLAYLIST_KEY, LIBRARY_PLAYLIST_KEY, clearActivePlaylist, saveActivePlaylist } from '@/lib/playlistState'
 import { removeQueuedItemOffline, type QueueDownloadTarget } from '@/lib/offline/queueDownload'
@@ -114,7 +115,7 @@ export default function PlaylistPage() {
     try {
       persist(playlist.items.filter((i) => i !== item))
       // Un-queued — it no longer needs to be saved for offline play.
-      await removeQueuedItemOffline(targetFor(item))
+      await removeQueuedItemOffline(targetFor(item), user?.id)
     } finally {
       setBusyKey(null)
     }
@@ -133,19 +134,24 @@ export default function PlaylistPage() {
   const storyCount = items.length
 
   return (
-    <div style={{ minHeight: '100dvh', background: '#1e1b4b', color: 'white', padding: '16px' }}>
+    <div aria-label="My Downloads" style={{ minHeight: '100dvh', background: '#1e1b4b', color: 'white', padding: '16px' }}>
       <div style={{ maxWidth: 560, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 12 }}>
-        <h1 style={{ fontSize: 22, fontWeight: 800, margin: 0 }}>My Downloads</h1>
-
-        {items.length === 0 && (
-          <div style={{ color: '#c7d2fe', fontSize: 14, textAlign: 'center', padding: '40px 0' }}>
-            Nothing queued yet. Tap <b style={{ color: 'white' }}>+ Queue</b> on a story to add it here.
-          </div>
-        )}
+        <div style={{ position: 'sticky', top: 'var(--et-continue-bottom, 56px)', zIndex: 46, background: '#1e1b4b', marginTop: -16, paddingTop: 16, paddingBottom: 12, display: 'flex', flexDirection: 'column', gap: 16 }}>
 
         {items.length > 0 && (
           <div style={{ background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: 12, padding: '14px 16px', fontSize: 15, fontWeight: 700 }}>
-            You have downloaded {storyCount} {storyCount === 1 ? 'story' : 'stories'} to your playlist — {formatMins(totalMins)}
+            You have {storyCount} {storyCount === 1 ? 'story' : 'stories'} in your playlist — {formatMins(totalMins)}
+          </div>
+        )}
+
+        {items.length > 0 && <p className="text-sm text-white" style={{ margin: 0, lineHeight: 1.5 }}>
+          <span className="block">Adding a story downloads all its episodes automatically.</span>
+          <span className="block">Downloads may pause when you leave the app and resume automatically when you return.</span>
+        </p>}
+        </div>
+        {items.length === 0 && (
+          <div style={{ color: '#c7d2fe', fontSize: 14, textAlign: 'center', padding: '40px 0' }}>
+            Nothing queued yet. Tap <b style={{ color: 'white' }}>+ Queue</b> on a story to add it here.
           </div>
         )}
 
@@ -155,7 +161,8 @@ export default function PlaylistPage() {
           const mins = item.type === 'series' ? (item.total_mins || 0) : (item.duration_mins || 0)
           const busy = busyKey === key
           return (
-            <div key={key} style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 14, padding: 12, display: 'flex', gap: 12, alignItems: 'center' }}>
+            <div key={key} style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 14, padding: 12 }}>
+              <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
               {item.cover_url
                 ? <img src={item.cover_url} alt="" style={{ width: 56, height: 56, borderRadius: 8, objectFit: 'cover', flexShrink: 0 }} />
                 : <div style={{ width: 56, height: 56, borderRadius: 8, background: 'rgba(255,255,255,0.12)', flexShrink: 0 }} />}
@@ -167,9 +174,6 @@ export default function PlaylistPage() {
                 )}
                 <div style={{ fontWeight: 700, fontSize: 14, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                   {title}
-                </div>
-                <div style={{ color: '#c7d2fe', fontSize: 12, marginTop: 2 }}>
-                  {item.type === 'series' ? `${item.episode_count || (item.episodes || []).length} episodes · ` : ''}{formatMins(mins)}
                 </div>
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
@@ -200,6 +204,8 @@ export default function PlaylistPage() {
               >
                 {busy ? '…' : 'Remove'}
               </button>
+              </div>
+              <PlaylistDownloadStatus target={targetFor(item)} durationMins={mins} />
             </div>
           )
         })}

@@ -1,0 +1,7 @@
+'use client'
+import {useEffect,useState} from 'react'
+export default function InvitationPage(){
+ const [token,setToken]=useState(''),[ready,setReady]=useState(false),[submitting,setSubmitting]=useState(false)
+ useEffect(()=>{const hash=new URLSearchParams(window.location.hash.slice(1)).get('token_hash')||new URLSearchParams(window.location.search).get('token_hash')||'';setToken(hash);setReady(true)},[])
+ return <main className="min-h-screen bg-slate-950 text-white px-5 py-14 flex items-start justify-center"><meta name="referrer" content="no-referrer"/><div className="w-full max-w-md rounded-2xl border border-slate-700 bg-slate-900 p-6 text-center"><h1 className="text-2xl font-bold mb-4">Welcome to Endless Tales</h1>{!ready?<p>Opening your invitation…</p>:!token?<><p>This invitation is incomplete. Please open the full link from your email or text message.</p><a href="/signin" className="inline-block mt-5 text-orange-300 underline">Sign in</a></>:<><p className="mb-6">Your invitation is ready. Tap below to sign in and start enjoying your stories.</p><form action="/auth/invitation/accept" method="post" onSubmit={()=>setSubmitting(true)}><input type="hidden" name="token_hash" value={token}/><button disabled={submitting} className="w-full px-5 py-4 bg-orange-500 text-black font-bold rounded-xl disabled:opacity-60">{submitting?'Signing you in…':'Start Listening'}</button></form><p className="mt-5 text-sm">No password or code entry needed. Invitation links can be used once.</p></>}</div></main>
+}

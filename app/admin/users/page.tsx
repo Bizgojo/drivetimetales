@@ -1,4 +1,5 @@
-'use client';
+'use client'
+import AdminListenerPreferences from '@/components/AdminListenerPreferences';
 
 import React, { useEffect, useState } from 'react';
 
@@ -774,9 +775,10 @@ export default function UsersPage() {
             borderRadius: '16px',
             padding: '1.5rem',
             maxWidth: '400px',
-            width: '100%'
+            width: '100%', maxHeight: '90dvh', overflowY: 'auto'
           }}>
             <h2 style={{ fontSize: '18px', fontWeight: 600, color: '#1e293b', marginBottom: '1.5rem' }}>Edit User</h2>
+            <div className="mb-4"><AdminListenerPreferences userId={selectedUser.id} /></div>
             
             <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
               <div>

@@ -5,6 +5,9 @@ import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/contexts/AuthContext'
 import ReviewModal from '@/components/ReviewModal'
+import YourPlaylist from '@/components/YourPlaylist'
+import { useNowPlaying, useOpenPlayer } from '@/components/player/PersistentPlayer'
+import { isActiveLibraryCard } from '@/lib/playerControls'
 import { buildSeriesPlaybackTarget, storeSeriesPlayback } from '@/lib/seriesPlayback'
 import { getAllLocalPlayerProgress, mergePlayerProgress } from '@/lib/playerProgress'
 import LibraryStoryCard, { formatMinutes } from '@/components/LibraryStoryCard'
@@ -38,6 +41,7 @@ type Story = {
 }
 
 type LibraryRow = {
+  last_played?: string | null
   story_id: string
   progress: number | null
   completed: boolean | null
@@ -113,6 +117,7 @@ function mergeLibraryWithLocalProgress(serverRows: LibraryRow[], userId?: string
     const existing = byStoryId.get(storyId)
     const merged = mergePlayerProgress(existing, local)
     byStoryId.set(storyId, {
+      ...existing,
       story_id: storyId,
       progress: merged.progress,
       completed: merged.completed,
@@ -135,6 +140,8 @@ function parsePlaylistKeys(raw: string | null): string[] | null {
 }
 
 export default function LibraryPage() {
+  const openPlayer = useOpenPlayer()
+  const activePlayerStoryId = useNowPlaying()?.storyId || null
   const router = useRouter()
   const { user, session, loading: authLoading } = useAuth()
 
@@ -161,29 +168,28 @@ export default function LibraryPage() {
   useEffect(() => {
     if (!user) return
     const syncPlaylist = () => {
+      // Saved/cleared notifications can echo our own persistence effect.
+      // Preserve the state reference when selection is unchanged so an empty
+      // queue does not recursively clear and rehydrate itself.
+      const setSyncedPlaylist = (keys: string[]) => setPlaylist(current =>
+        current.length === keys.length && keys.every((key, index) => key === current[index]) ? current : keys)
       try {
-        const storedKeys = parsePlaylistKeys(localStorage.getItem(playlistKey))
-        if (storedKeys) {
-          setPlaylist(storedKeys)
-          setPlaylistHydrated(true)
-          return
-        }
         const activeRaw = localStorage.getItem(ACTIVE_PLAYLIST_KEY)
         if (!activeRaw) {
-          setPlaylist([])
+          setSyncedPlaylist(parsePlaylistKeys(localStorage.getItem(playlistKey)) || [])
           setPlaylistHydrated(true)
           return
         }
         const active = JSON.parse(activeRaw)
         const items = active.items || active.stories || []
-        setPlaylist((Array.isArray(items) ? items : [])
+        setSyncedPlaylist((Array.isArray(items) ? items : [])
           .map((item: any) => item.type === 'series'
             ? item.series_id || item.id ? `series-${item.series_id || item.id}` : null
             : item.id ? `single-${item.id}` : null)
           .filter((key: string | null): key is string => Boolean(key)))
         setPlaylistHydrated(true)
       } catch {
-        setPlaylist([])
+        setSyncedPlaylist([])
         setPlaylistHydrated(true)
       }
     }
@@ -200,22 +206,8 @@ export default function LibraryPage() {
     }
   }, [user, playlistKey])
 
-  // Persist playlist
-  useEffect(() => {
-    if (!playlistHydrated || !user) return
-    try {
-      if (playlist.length > 0) localStorage.setItem(playlistKey, JSON.stringify(playlist))
-      else {
-        // UX-PLAYLIST-002 (2026-07-15): the user-scoped key must be removed too.
-        // clearActivePlaylist() only clears the unscoped keys, then fires
-        // et_playlist_cleared/saved — which syncPlaylist() answers by rehydrating
-        // from this stale user-scoped key, silently resurrecting the removed item.
-        // Net effect: tapping "✓ Remove" on the LAST playlist item did nothing.
-        localStorage.removeItem(playlistKey)
-        clearActivePlaylist()
-      }
-    } catch {}
-  }, [playlistHydrated, playlist])
+  // Reading Library must never clear or rebuild the active queue. Queue
+  // writes belong to explicit Add/Remove actions and natural completion.
 
   useEffect(() => {
     if (!authLoading) {
@@ -308,7 +300,7 @@ export default function LibraryPage() {
         if (!authWaitExpired && user?.id) {
           const { data: libraryData, error: libraryError } = await supabase
             .from('user_library')
-            .select('story_id, progress, completed, not_for_me')
+            .select('story_id, progress, completed, not_for_me, last_played')
             .eq('user_id', user.id)
           if (libraryError) throw new Error(`user_library failed: ${libraryError.message}`)
           if (!cancelled && libraryData) {
@@ -453,14 +445,14 @@ export default function LibraryPage() {
       activeGenre === 'All'
         ? cardItems
         : cardItems.filter((i) => (i.genre || '').toLowerCase() === activeGenre.toLowerCase())
-    return filtered.slice().sort((a, b) => {
+    return filtered.filter(item => !isActiveLibraryCard(item, activePlayerStoryId)).sort((a, b) => {
       if (a.notForMe !== b.notForMe) return a.notForMe ? 1 : -1
       const aCount = a.type === 'single' ? 1 : a.episodeCount || 0
       const bCount = b.type === 'single' ? 1 : b.episodeCount || 0
       if (aCount !== bCount) return aCount - bCount
       return a.durationForSort - b.durationForSort
     })
-  }, [cardItems, activeGenre])
+  }, [cardItems, activeGenre, activePlayerStoryId])
 
   const availableGenres = useMemo(() => {
     const populated = new Set(cardItems.map((item) => (item.genre || '').toLowerCase()).filter(Boolean))
@@ -530,12 +522,6 @@ export default function LibraryPage() {
     return playlist.filter((key) => validKeys.has(key))
   }, [playlist, cardItems])
 
-  useEffect(() => {
-    if (loading) return
-    if (validPlaylist.length === playlist.length) return
-    setPlaylist(validPlaylist)
-  }, [loading, playlist, validPlaylist])
-
   // Playlist running totals
   const playlistTotalMins = useMemo(() => {
     let mins = 0
@@ -554,7 +540,19 @@ export default function LibraryPage() {
   // queue action itself.
   function togglePlaylist(key: string) {
     const adding = !playlist.includes(key)
-    setPlaylist((p) => (p.includes(key) ? p.filter((k) => k !== key) : [...p, key]))
+    const nextKeys = adding ? [...playlist, key] : playlist.filter(itemKey => itemKey !== key)
+    // Persist the click before notifying subscribers; hydration must not read
+    // the previous selection while React is still committing this update.
+    if (user) {
+      if (nextKeys.length) localStorage.setItem(playlistKey, JSON.stringify(nextKeys))
+      else localStorage.removeItem(playlistKey)
+    }
+    setPlaylist(nextKeys)
+    if (nextKeys.length) {
+      const items = buildActivePlaylistItems(nextKeys)
+      saveActivePlaylist({ id: `library-${Date.now()}`, items,
+        remaining_mins: items.reduce((sum, item) => sum + Number(item?.type === 'series' ? item.total_mins || 0 : item?.duration_mins || 0), 0), completed: 0 }, nextKeys)
+    } else clearActivePlaylist()
 
     const item = cardItems.find((i) => i.key === key)
     if (!item) return
@@ -565,15 +563,16 @@ export default function LibraryPage() {
 
     if (adding) {
       if (user && session?.access_token) {
-        downloadQueuedItemOffline(target, { accessToken: session.access_token, firstName: (user as any)?.first_name || null }).catch(() => {})
+        downloadQueuedItemOffline(target, { userId: user.id, accessToken: session.access_token, firstName: (user as any)?.first_name || null }).catch(() => {})
       }
     } else {
-      removeQueuedItemOffline(target).catch(() => {})
+      removeQueuedItemOffline(target, user?.id).catch(() => {})
     }
   }
 
   function navigateToPlayer(targetUrl: string, payload: Record<string, unknown>) {
     console.info('[Library] Play tapped', payload)
+    if (openPlayer) { openPlayer(targetUrl); return }
     router.push(targetUrl)
 
     window.setTimeout(() => {
@@ -706,8 +705,8 @@ export default function LibraryPage() {
     }
   }
 
-  function buildActivePlaylistItems() {
-    return validPlaylist
+  function buildActivePlaylistItems(selectionKeys = validPlaylist) {
+    return selectionKeys
       .map((key) => {
           const item = cardItems.find((i) => i.key === key)
           if (!item) return null
@@ -760,29 +759,6 @@ export default function LibraryPage() {
     } catch {}
   }
 
-  // Marc 2026-07-13: queueing in the library must show up on /home without the
-  // extra "Save to home" tap — auto-sync the queue to the home playlist card
-  // whenever it changes. Equality guard prevents save-event feedback loops and
-  // preserves the existing playlist's completed count when nothing changed.
-  useEffect(() => {
-    if (loading || !playlistHydrated || validPlaylist.length === 0) return
-    try {
-      const raw = localStorage.getItem(ACTIVE_PLAYLIST_KEY)
-      if (raw) {
-        const active = JSON.parse(raw)
-        const items = active?.items || active?.stories || []
-        const existingKeys = (Array.isArray(items) ? items : [])
-          .map((item: any) => item?.type === 'series'
-            ? (item.series_id || item.id ? `series-${item.series_id || item.id}` : null)
-            : (item?.id ? `single-${item.id}` : null))
-          .filter(Boolean)
-        if (existingKeys.length === validPlaylist.length && existingKeys.every((k: string, i: number) => k === validPlaylist[i])) return
-      }
-      syncQueueToHome()
-    } catch {}
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loading, playlistHydrated, validPlaylist, playlistTotalMins])
-
   function getCardState(item: CardItem) {
     const inPlaylist = validPlaylist.includes(item.key)
     let progress = 0
@@ -824,12 +800,13 @@ export default function LibraryPage() {
       style={{
         minHeight: '100vh',
         backgroundColor: '#0a0a0a',
-        paddingBottom: validPlaylist.length > 0 ? '90px' : '20px',
+        paddingBottom: validPlaylist.length > 0 ? 'calc(180px + env(safe-area-inset-bottom))' : '20px',
       }}
     >
 
-      {/* Genre picker — established one-row treatment */}
-      <div style={{ position: 'sticky', top: '60px', zIndex: 40, padding: '0 12px 12px' }}>
+      {/* Reserve the fixed genre row below the shared Continue shell. */}
+      <div aria-hidden="true" style={{ height: 70 }} />
+      <nav aria-label="Story genres" style={{ position: 'fixed', top: 'var(--et-continue-bottom, 56px)', left: 0, right: 0, zIndex: 44, padding: '0 12px 12px', background: '#020617' }}>
         <div style={{ backgroundColor: '#1e293b', borderRadius: '12px', padding: '8px' }}>
           <div style={{ display: 'flex', gap: '6px', alignItems: 'center', justifyContent: 'stretch', overflowX: 'auto' }}>
             {visibleGenres.map((g) => (
@@ -924,7 +901,7 @@ export default function LibraryPage() {
             )}
           </div>
         </div>
-      </div>
+      </nav>
 
       {/* Cards */}
       <div style={{ padding: '0 12px' }}>
@@ -976,32 +953,8 @@ export default function LibraryPage() {
         })}
       </div>
 
-      {/* QUEUE-OFFLINE-001 (Marc, 2026-10-04): informational-only status bar —
-          no buttons, distinct color so it reads as "stuff is downloaded",
-          not an action bar. Tap-through to /playlist (My Downloads) for
-          remove/reorder. */}
-      {validPlaylist.length > 0 && (
-        <div
-          onClick={() => router.push('/playlist')}
-          style={{
-            position: 'fixed',
-            bottom: 0,
-            left: 0,
-            right: 0,
-            background: '#ffffff',
-            borderTop: '1px solid rgba(0,0,0,0.12)',
-            borderRadius: '14px 14px 0 0',
-            padding: '12px 16px',
-            boxShadow: '0 -8px 24px rgba(0,0,0,0.2), 0 -2px 12px rgba(0,0,0,0.12)',
-            zIndex: 40,
-            cursor: 'pointer',
-          }}
-        >
-          <div style={{ color: '#000', fontSize: '13px', fontWeight: 700 }}>
-            {validPlaylist.length} {validPlaylist.length === 1 ? 'story' : 'stories'} ({formatMinutes(playlistTotalMins)}) downloaded to your playlist for offline playing
-          </div>
-        </div>
-      )}
+      {/* Use the same playlist card as Home; it hides itself when empty. */}
+      <YourPlaylist sticky />
 
       {reviewTarget && user?.id && (
         <ReviewModal
