@@ -1,6 +1,7 @@
 'use client'
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import { signupName } from '@/lib/signupName';
 import { useAuth } from '@/contexts/AuthContext';
 
 const GENRES = [
@@ -21,7 +22,7 @@ const GENRES = [
 const TERMS = [
   'This is my own idea, and I have the right to submit it.',
   'I give Endless Tales permission to adapt and use this idea. Submission does not give me ownership of the resulting story or a right to payment.',
-  'If my idea is used, Endless Tales will notify me and credit me as a contributing author using the name above. Submission does not guarantee selection.',
+  'If my idea is used, Endless Tales will notify me and credit me as a contributing author using my signup name. Submission does not guarantee selection.',
 ];
 
 export default function SuggestStoryPage() {
@@ -45,7 +46,7 @@ export default function SuggestStoryPage() {
 
   useEffect(() => {
     if (user) {
-      const fullName = [user.first_name, user.last_name].filter(Boolean).join(' ');
+      const fullName = signupName(user, user.user_metadata);
       setForm(prev => ({
         ...prev,
         email: user.email || prev.email,
@@ -97,7 +98,7 @@ export default function SuggestStoryPage() {
       const res = await fetch('/api/suggest-story', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...form, consent: true, consentVersion: '2026-10-27' }),
+        body: JSON.stringify({ genre: form.genre, title: form.title, idea: form.idea, consent: true, consentVersion: '2026-10-27' }),
       });
 
       if (res.ok) {
@@ -191,16 +192,20 @@ export default function SuggestStoryPage() {
         <form onSubmit={handleSubmit} className="space-y-5">
           {/* Name */}
           <div>
-            <label className="block text-sm font-medium text-gray-300 mb-1">Name to Use for Your Author Credit</label>
+            <label className="block text-sm font-medium text-gray-300 mb-1">Your Signup Name</label>
             <input
               type="text"
+              readOnly
               value={form.name}
-              onChange={e => setForm(prev => ({ ...prev, name: e.target.value }))}
-              placeholder="Full name"
+              aria-label="Your Signup Name"
+              placeholder="Signup name unavailable"
               className="w-full bg-gray-900 border border-gray-700 rounded-xl px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-orange-500"
               required
             />
           </div>
+
+          <p className="text-white text-sm">Your signup name will be used for contributing-author credit. It cannot be changed on this form.</p>
+          {!form.name && <p role="alert" className="text-orange-300">Your signup name is missing. Please <a href="/account/help" className="underline">contact support</a> before submitting an idea.</p>}
 
           {/* Email */}
           <div>

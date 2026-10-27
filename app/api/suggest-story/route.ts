@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { signupName } from '@/lib/signupName';
 import { accountUser } from '@/lib/server/accountUser';
 import { createClient } from '@supabase/supabase-js';
 
@@ -45,7 +46,11 @@ export async function POST(request: NextRequest) {
   try {
     const user = await accountUser();
     if (!user?.email) return NextResponse.json({ error: 'Please sign in.' }, { status: 401 });
-    const { name, genre, title, idea, consent, consentVersion } = await request.json();
+    const { genre, title, idea, consent, consentVersion } = await request.json();
+    const { data: profile, error: profileError } = await supabaseAdmin.from('users').select('first_name,last_name').eq('id', user.id).single();
+    if (profileError) throw profileError;
+    const name = signupName(profile, user.user_metadata);
+    if (!name) return NextResponse.json({ error: 'Your signup name is missing. Please contact support before submitting an idea.' }, { status: 400 });
     const email = user.email;
     const userId = user.id;
     if (consent !== true || consentVersion !== '2026-10-27') return NextResponse.json({ error: 'Please accept the submission terms.' }, { status: 400 });
