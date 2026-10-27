@@ -1,4 +1,5 @@
 'use client'
+import StoryContributorCredit from '@/components/StoryContributorCredit'
 import MediaButtonLabel from '@/components/MediaButtonLabel'
 import React, { useState, useEffect } from 'react'
 import { useParams, useRouter } from 'next/navigation'
@@ -211,6 +212,7 @@ export default function SeriesDetailPage() {
         <div style={{ flex: 1, minWidth: 0, paddingTop: 2 }}>
           <div style={{ fontSize: 10, color: '#f97316', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: 6 }}>{seriesInfo.genre || 'Series'}</div>
           <h1 style={{ fontFamily: 'var(--font-outfit, sans-serif)', fontWeight: 900, fontSize: 24, color: 'white', lineHeight: 1.05, margin: '0 0 10px' }}>{seriesInfo.name}</h1>
+          <StoryContributorCredit seriesId={String(seriesId)} />
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px 10px', alignItems: 'center', color: 'white', fontSize: 11, lineHeight: 1.35 }}>
             <span>{episodes.length} episodes</span>
             <span style={{ color: '#334155' }}>•</span>

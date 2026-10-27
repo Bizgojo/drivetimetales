@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
+import SubscriberUpdates from '@/components/SubscriberUpdates';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
@@ -207,6 +208,8 @@ export default function AccountPage() {
           <p className="text-gray-400 text-sm">{user.email}</p>
           <p className="text-orange-400 text-sm mt-1">Member since {memberSince}</p>
         </div>
+
+        <SubscriberUpdates />
 
         {/* Menu Items */}
         <div className="space-y-2 mb-6">

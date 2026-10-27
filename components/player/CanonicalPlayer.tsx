@@ -1,4 +1,5 @@
 'use client'
+import StoryContributorCredit from '@/components/StoryContributorCredit'
 import MediaButtonLabel from '@/components/MediaButtonLabel'
 
 import * as Sentry from '@sentry/nextjs'
@@ -2998,6 +2999,7 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
             <p style={{ color:'white', fontSize:'13px', margin:'0 0 2px', textAlign:'center', fontWeight:700, opacity:0.9 }}>Episode {(story as any).episode_number}</p>
           )}
           <h1 style={{ fontSize: playerSeriesTitle ? '18px' : '20px', fontWeight:800, margin:0, color:'white', textAlign:'center', lineHeight:1.2 }}>{story.title}</h1>
+          <StoryContributorCredit storyId={storyId} />
           <p style={{ color:'white', fontSize:'13px', margin:'3px 0 0', textAlign:'center', opacity:0.7 }}>by {story.author || 'Endless Tales'}</p>
           {playerGenres.length > 0 && <ul aria-label="Genres" style={{ listStyle:'none', padding:0, margin:'9px 0 0', display:'flex', flexWrap:'wrap', gap:'6px', justifyContent:'center' }}>
             {playerGenres.map(genre => <li key={genre} style={{ fontSize:'11px', color:'#fdba74', border:'1px solid rgba(249,115,22,.3)', background:'rgba(249,115,22,.08)', borderRadius:'20px', padding:'4px 9px' }}>{genre}</li>)}
@@ -3335,6 +3337,7 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
                       {isSeriesReadIt ? (
                         <>
                           <h1 style={{ fontSize: proseFontSize + 9 + 'px', lineHeight: 1.12, color: proseDark ? 'white' : '#1a1a1a', margin:'0 0 28px', letterSpacing:0, fontWeight:700 }}>{proseBookTitle}</h1>
+                          <div style={{ color: proseDark ? 'white' : '#1a1a1a' }}><StoryContributorCredit storyId={storyId} /></div>
                           {seriesProseSections.map((chapter, chapterIndex) => (
                             <section key={chapter.id} style={{ marginTop: chapterIndex === 0 ? 0 : 42, paddingTop: chapterIndex === 0 ? 0 : 28, borderTop: chapterIndex === 0 ? 'none' : proseDark ? '1px solid rgba(255,255,255,0.09)' : '1px solid rgba(0,0,0,0.12)' }}>
                               <div style={{ fontFamily:'Inter, system-ui, sans-serif', fontSize:'11px', fontWeight:900, color: proseDark ? '#fb923c' : '#9a3412', letterSpacing:'0.12em', textTransform:'uppercase', marginBottom:8 }}>

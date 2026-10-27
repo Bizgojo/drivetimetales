@@ -1,4 +1,5 @@
 'use client'
+import StoryContributorCredit from '@/components/StoryContributorCredit'
 import MediaButtonLabel from '@/components/MediaButtonLabel'
 
 /*
@@ -158,6 +159,7 @@ export default function StoryDetailPage() {
         <div style={{ flex: 1, minWidth: 0, paddingTop: 2 }}>
           <div style={{ fontSize: 10, color: '#f97316', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: 6 }}>{story.genre || 'Story'}</div>
           <h1 style={{ fontFamily: 'var(--font-outfit, sans-serif)', fontWeight: 900, fontSize: 24, color: 'white', lineHeight: 1.05, margin: '0 0 10px' }}>{story.title}</h1>
+          <StoryContributorCredit storyId={story.id} />
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px 10px', alignItems: 'center', color: 'white', fontSize: 11, lineHeight: 1.35 }}>
             <span style={{ background: '#2563eb', color: 'white', fontSize: 13, padding: '3px 10px', borderRadius: 8, fontWeight: 900, boxShadow: '0 0 0 1px rgba(255,255,255,0.25)' }}>1 Episode</span>
             <span style={{ color: '#334155' }}>•</span>

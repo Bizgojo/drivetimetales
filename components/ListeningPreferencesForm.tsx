@@ -3,18 +3,23 @@ import { useEffect, useState } from 'react'
 import { useAuth } from '@/contexts/AuthContext'
 import { LISTENING_GENRES, cleanListeningPreferences } from '@/lib/listeningPreferences'
 export default function ListeningPreferencesForm() {
-  const { user, refreshUser } = useAuth()
+  const { user } = useAuth()
   const [form, setForm] = useState(cleanListeningPreferences(null))
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState('')
-  useEffect(() => { setForm(cleanListeningPreferences(user?.user_metadata?.listening_preferences)) }, [user?.user_metadata?.listening_preferences])
+  const [loaded, setLoaded] = useState(false)
+  useEffect(() => {
+    let cancelled = false
+    setLoaded(false)
+    fetch('/api/user/preferences', { cache: 'no-store' }).then(r => { if (!r.ok) throw new Error('Could not load saved preferences.'); return r.json() }).then(data => { if (!cancelled) { setForm(cleanListeningPreferences(data.preferences)); setLoaded(true) } }).catch(err => { if (!cancelled) setMessage(err.message) })
+    return () => { cancelled = true }
+  }, [user?.id])
   async function save(e: React.FormEvent) {
     e.preventDefault(); setBusy(true); setMessage('')
     try {
       const res = await fetch('/api/user/preferences', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(form) })
       const data = await res.json(); if (!res.ok) throw new Error(data.error)
-      const { supabaseBrowser } = await import('@/lib/supabase-browser')
-      await supabaseBrowser.auth.refreshSession(); await refreshUser()
+      setForm(cleanListeningPreferences(data.preferences))
       setMessage('Saved! Your Home page recommendations will use these preferences.')
     } catch (err) { setMessage(err instanceof Error ? err.message : 'Could not save. Please try again.') }
     finally { setBusy(false) }
@@ -26,6 +31,6 @@ export default function ListeningPreferencesForm() {
     <label className="block">Things you’d rather avoid<textarea className={input} maxLength={500} placeholder="Separate topics with commas" value={form.avoid} onChange={e => setForm({ ...form, avoid: e.target.value })} /></label>
     <p className="text-sm">We match these topics against story descriptions. This helps personalize your choices, but cannot guarantee that a story contains no unwanted themes.</p>
     <label className="block">Preferred listening length per episode<select className={input} value={form.minutes} onChange={e => setForm({ ...form, minutes: Number(e.target.value) })}><option value="0">Any length</option><option value="15">About 15 minutes</option><option value="30">About 30 minutes</option><option value="60">About an hour</option></select></label>
-    <button disabled={busy} className="px-4 py-3 rounded-xl bg-orange-500 text-black font-bold disabled:opacity-50">{busy ? 'Saving…' : 'Save My Preferences'}</button><p role="status">{message}</p>{message.startsWith('Saved!') && <a href="/home" className="block underline text-orange-300">See My Recommendations</a>}
+    <button disabled={busy || !loaded} className="px-4 py-3 rounded-xl bg-orange-500 text-black font-bold disabled:opacity-50">{busy ? 'Saving…' : !loaded ? 'Loading preferences…' : 'Save My Preferences'}</button><p role="status">{message}</p>{message.startsWith('Saved!') && <a href="/home" className="block underline text-orange-300">See My Recommendations</a>}
   </form>
 }

@@ -42,6 +42,7 @@ const NAV_GROUPS = [
   ]},
   { id: 'subscribers', label: 'Subscribers', icon: '👥', items: [
     { href: '/admin/users', label: 'Users' },
+    { href: '/admin/listener-preferences', label: 'Listener Preferences' },
     { href: '/admin/subscriptions', label: 'Subscriptions' },
     { href: '/admin/promo', label: 'Magic Link Invites' },
     { href: '/admin/referrals', label: 'Referrals' },

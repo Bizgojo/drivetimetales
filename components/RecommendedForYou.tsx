@@ -36,7 +36,7 @@ function episodeNumber(story: Story) {
 function isCompleteSeriesGroup(stories: Story[]) {
   const episodeNumbers = new Set(stories.map(episodeNumber).filter(Boolean))
   if (episodeNumbers.size <= 1) return false
-  const highestEpisode = Math.max(...episodeNumbers)
+  const highestEpisode = Math.max(...Array.from(episodeNumbers))
   return episodeNumbers.size === highestEpisode && episodeNumbers.has(1)
 }
 
@@ -157,8 +157,13 @@ export default function RecommendedForYou({ excludeIds = [] }: { excludeIds?: st
     let prefersSeries = false
     let avgDuration = 20
 
+    let explicit = cleanListeningPreferences(user?.user_metadata?.listening_preferences)
     if (user?.id) {
-      const { data: lib } = await supabase.from('user_library').select('story_id, progress, completed, not_for_me, last_played').eq('user_id', user.id)
+      const [{ data: lib }, { data: savedPreferences }] = await Promise.all([
+        supabase.from('user_library').select('story_id, progress, completed, not_for_me, last_played').eq('user_id', user.id),
+        supabase.from('listener_preferences').select('genres,interests,avoid,preferred_minutes').eq('user_id', user.id).maybeSingle(),
+      ])
+      if (savedPreferences) explicit = cleanListeningPreferences({ ...savedPreferences, minutes: savedPreferences.preferred_minutes })
       if (lib) {
         userLibraryRows = lib as LibraryRow[]
         userLibraryRows.forEach((e) => { if (e.progress > 0 || e.completed || e.not_for_me || e.last_played) ex.add(e.story_id) })
@@ -232,7 +237,6 @@ export default function RecommendedForYou({ excludeIds = [] }: { excludeIds?: st
       group.is_in_progress = target.isInProgress
     })
 
-    const explicit = cleanListeningPreferences(user?.user_metadata?.listening_preferences)
     function scoreStory(s: Story): number {
       let score = preferenceScore(`${s.title} ${s.description || ''} ${s.genre}`, s.genre, s.duration_mins, explicit)
       const gr = topGenres.indexOf(s.genre)
