@@ -760,6 +760,12 @@ export function transcriptTokens(text: string): string[] {
     // Fires ONLY for year-range first-halves (10–25) that were NOT already split
     // by the clock-time rule above (those have first-half ≤ 12, minutes ≤ 59).
     .replace(/\b(1[3-9]|2[0-5])(\d{2})\b/g, '$1 $2')
+    // QC-SPOKEN-DASH-001 (Toll at Marsh Crossing EP2 seg19, 2026-10-26): codes
+    // spelled for TTS say the separator aloud ("four four seven dash zero zero
+    // one nine"); Whisper writes the code back as "447-0019", so the spoken
+    // word "dash"/"hyphen" between two numbers is the same separator. Only
+    // drops it when digits sit on BOTH sides; "dash" in ordinary prose stays.
+    .replace(/\b(\d+)\s+(?:dash|hyphen)\s+(?=\d)/g, '$1 ')
     .replace(/[^a-z0-9\s]/g, ' ')
     .split(/\s+/)
     .filter((tok: string) => tok.length > 0)  // explicit guard — catches any edge .filter(Boolean) misses

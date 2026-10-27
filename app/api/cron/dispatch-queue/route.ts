@@ -22,6 +22,13 @@ import { ACCOUNT_WIDE_CAUSES, type TransientCause } from '@/lib/transientFailure
 import { findQueueDuplicates, type QueueDedupRow } from '@/lib/dispatchDedup'
 import { failureDestinationForStory, ONE_REPAIR_PASS_REASON } from '@/lib/workflowTransitions'
 import { syncPremiseIndexForTransition } from '@/lib/premiseIndex'
+import {
+  isSeriesMemberTypedStandalone,
+  mistypedSeriesRows,
+  seriesTypeMismatchReason,
+  type SeriesTypeRow,
+} from '@/lib/seriesTypeConsistency'
+import { dispatchReadinessReasons } from '@/lib/scriptReadiness'
 
 export const runtime = 'nodejs'
 export const maxDuration = 60
@@ -173,6 +180,57 @@ async function handleDispatchQueue(request: NextRequest) {
     process.env.SUPABASE_SERVICE_ROLE_KEY!,
     { auth: { persistSession: false, autoRefreshToken: false } },
   )
+
+  // DISPATCH-READINESS-GATE-001: every free deterministic gate (incl.
+  // runtime-vs-brief and series cast continuity) runs BEFORE a job exists.
+  let narratorVoiceNamesCache: string[] | null = null
+  async function narratorVoiceNames(): Promise<string[] | null> {
+    if (narratorVoiceNamesCache) return narratorVoiceNamesCache
+    const { data, error } = await supabase.from('narrator_voices').select('name')
+    // Review B3: a failed/empty lookup must never park every candidate as
+    // "narrator not found". Skip the readiness step this run instead.
+    if (error || !data || data.length === 0) return null
+    narratorVoiceNamesCache = (data as Array<{ name: string | null }>).map((v) => String(v.name || ''))
+    return narratorVoiceNamesCache
+  }
+  async function readinessReasonsFor(storyIds: string[], seriesIdForContinuity?: string): Promise<string[] | { error: string }> {
+    const voices = await narratorVoiceNames()
+    if (!voices) return { error: 'narrator_voices lookup failed or empty — readiness skipped this run, nothing flagged' }
+    const { data, error } = await supabase
+      .from('stories')
+      .select('id,title,script,story_type,series_id,series_total_episodes,episode_number,series_episode_number,series_is_finale,duration_mins')
+      .in('id', storyIds)
+    if (error) return { error: error.message }
+    let continuity: Array<{ episodeNumber?: number | null; script?: string | null }> | undefined
+    if (seriesIdForContinuity) {
+      const { data: all, error: allError } = await supabase
+        .from('stories')
+        .select('script,episode_number,series_episode_number,workflow_state')
+        .eq('series_id', seriesIdForContinuity)
+        .neq('workflow_state', 'cold_storage')
+      if (allError) return { error: allError.message }
+      continuity = ((all || []) as any[]).map((row) => ({
+        episodeNumber: row.episode_number || row.series_episode_number,
+        script: row.script,
+      }))
+    }
+    return dispatchReadinessReasons(((data || []) as any[]).map((row) => ({
+      id: row.id,
+      title: row.title,
+      script: row.script,
+      storyType: row.story_type,
+      seriesId: row.series_id,
+      seriesTotalEpisodes: row.series_total_episodes,
+      episodeNumber: row.episode_number || row.series_episode_number,
+      isFinale: row.series_is_finale,
+      briefMinutes: row.duration_mins,
+      narratorVoiceNames: voices,
+    })), continuity)
+  }
+  function readinessReason(reasons: string[]): string {
+    const head = reasons.slice(0, 12).join(' | ')
+    return `DISPATCH-READINESS-GATE-001: ${reasons.length} pre-spend blocker(s) found before any job was created — ${head}${reasons.length > 12 ? ` | +${reasons.length - 12} more` : ''}. Fix the script(s), then clear needs_attention.`
+  }
 
   const dispatched: DispatchResult[] = []
   const skipped: Array<Record<string, unknown>> = []
@@ -532,11 +590,27 @@ async function handleDispatchQueue(request: NextRequest) {
         .from('stories')
         .select('id,title,author,story_type,workflow_state,series_id,series_name,episode_number,series_episode_number,series_total_episodes,needs_attention')
         .eq('series_id', seriesId)
-        .eq('story_type', 'series_episode')
 
       if (seriesStoriesError) {
         console.error('[dispatch-queue] Failed to load series stories:', seriesId, seriesStoriesError)
         skipped.push({ seriesId, reason: 'series_load_failed', error: seriesStoriesError.message })
+        continue
+      }
+
+      // SERIES-TYPE-CONSISTENCY-001: mixed story_type inside one series used to
+      // be skipped silently forever ("series_not_fully_written"). Flag it.
+      const mistyped = mistypedSeriesRows((seriesStories || []) as SeriesTypeRow[])
+      if (mistyped.length > 0) {
+        const reason = seriesTypeMismatchReason(seriesId, mistyped)
+        const { error: typeFlagError } = await supabase
+          .from('stories')
+          .update({ needs_attention: true, needs_attention_reason: reason, needs_attention_at: now })
+          .eq('series_id', seriesId)
+          .neq('workflow_state', 'cold_storage')
+          .or('needs_attention.is.null,needs_attention.eq.false')
+        if (typeFlagError) console.error('[dispatch-queue] Failed to flag mixed-type series:', seriesId, typeFlagError)
+        console.warn('[dispatch-queue] Skipped (mixed story_type in series):', seriesId, reason)
+        skipped.push({ seriesId, reason: 'series_story_type_mismatch', mistypedIds: mistyped.map((row) => row.id) })
         continue
       }
 
@@ -577,6 +651,32 @@ async function handleDispatchQueue(request: NextRequest) {
           expectedEpisodeCount: expectedEpisodeCount(episodes),
         })
         continue
+      }
+
+      // DISPATCH-READINESS-GATE-001 (series)
+      {
+        // Review L1: only queued episodes get per-script checks and flags;
+        // continuity is judged across the whole (non-cold) series.
+        const queuedIds = episodes
+          .filter((episode) => cleanState(episode.workflow_state) === 'stories_in_queue')
+          .map((episode) => episode.id)
+        const readiness = await readinessReasonsFor(queuedIds, seriesId)
+        if (!Array.isArray(readiness)) {
+          skipped.push({ seriesId, reason: 'readiness_lookup_failed', error: readiness.error })
+          continue
+        }
+        if (readiness.length > 0) {
+          const reason = readinessReason(readiness)
+          const { error: readinessFlagError } = await supabase
+            .from('stories')
+            .update({ needs_attention: true, needs_attention_reason: reason, needs_attention_at: now })
+            .eq('series_id', seriesId)
+            .eq('workflow_state', 'stories_in_queue')
+          if (readinessFlagError) console.error('[dispatch-queue] Failed to flag series readiness:', seriesId, readinessFlagError)
+          console.warn('[dispatch-queue] Skipped (readiness gate):', seriesId, reason)
+          skipped.push({ seriesId, reason: 'readiness_gate_failed', blockers: readiness.slice(0, 20) })
+          continue
+        }
       }
 
       const episodeCount = expectedEpisodeCount(episodes)
@@ -707,6 +807,39 @@ async function handleDispatchQueue(request: NextRequest) {
       if (activeStandaloneStoryIds.has(story.id)) {
         skipped.push({ storyId: story.id, reason: 'active_job_exists' })
         continue
+      }
+
+      // SERIES-TYPE-CONSISTENCY-001: never produce a series member as a standalone.
+      if (isSeriesMemberTypedStandalone(story as SeriesTypeRow)) {
+        const reason = seriesTypeMismatchReason(String(story.series_id), [story as SeriesTypeRow])
+        const { error: typeFlagError } = await supabase
+          .from('stories')
+          .update({ needs_attention: true, needs_attention_reason: reason, needs_attention_at: now })
+          .eq('id', story.id)
+        if (typeFlagError) console.error('[dispatch-queue] Failed to flag series member typed standalone:', story.id, typeFlagError)
+        needsAttentionSkipped += 1
+        skipped.push({ storyId: story.id, reason: 'series_member_typed_standalone' })
+        continue
+      }
+
+      // DISPATCH-READINESS-GATE-001 (standalone)
+      {
+        const readiness = await readinessReasonsFor([story.id])
+        if (!Array.isArray(readiness)) {
+          skipped.push({ storyId: story.id, reason: 'readiness_lookup_failed', error: readiness.error })
+          continue
+        }
+        if (readiness.length > 0) {
+          const reason = readinessReason(readiness)
+          const { error: readinessFlagError } = await supabase
+            .from('stories')
+            .update({ needs_attention: true, needs_attention_reason: reason, needs_attention_at: now })
+            .eq('id', story.id)
+          if (readinessFlagError) console.error('[dispatch-queue] Failed to flag story readiness:', story.id, readinessFlagError)
+          needsAttentionSkipped += 1
+          skipped.push({ storyId: story.id, reason: 'readiness_gate_failed', blockers: readiness.slice(0, 20) })
+          continue
+        }
       }
 
       // ── ATL-DISPATCH-DEFECTS-001: story-level failure circuit ───────────

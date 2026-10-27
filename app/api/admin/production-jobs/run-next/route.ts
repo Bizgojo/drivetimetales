@@ -38,6 +38,24 @@ import { numeralPreTtsScan, buildNumeralPreflightFailure } from '@/lib/numeralPr
 // predicates. Content gates sort before paid steps; resumes reuse valid stages.
 import { shouldPurgeVoiceSegments, musicUrlReusable } from '@/app/lib/pipeline-gates'
 import { runVoiceMapGate } from '@/lib/voiceMapGate'
+import { checkNarrationPresence } from '@/lib/narrationPresence'
+import { normalizeScriptFormat } from '@/lib/scriptLabels'
+import { evaluateBelleCopyForPublish } from '@/lib/publicationBelleGate'
+import { buildBelleValidationContext, validateBelleLine } from '@/lib/voiceBelleRules'
+import {
+  briefMinutesOf,
+  briefRuntimeImpossible,
+  checkScriptReadiness,
+  checkSeriesCastContinuity,
+  writeWithSelfCheck,
+  writerClaimIsFresh,
+  writerDraftTimeoutMs,
+  countWriterFailures,
+  WRITER_MAX_FAILED_INVOCATIONS,
+  WRITER_SELF_CHECK_BUDGET_MS,
+  seriesSpokenWordTarget,
+} from '@/lib/scriptReadiness'
+import { shouldContinueSeriesVoiceBatch } from '@/lib/voiceBatch'
 import { runVoiceConformanceGate, type VoiceProfile } from '@/lib/voiceConformanceGate'
 // R1-V3 step map (decision r1-v3-step-map-approved-oct6, 2026-10-06):
 // central per-step model router. STEP_MODELS below derives from it with
@@ -1452,6 +1470,14 @@ function validateNarratorAssignmentSync(
     return { passed: false, narratorIssues: issues, resolvedVoiceId: null, resolvedVoiceName: null }
   }
 
+  // NARRATION-PRESENCE-001: a declared narrator must actually narrate.
+  // Blocks scripts whose narration is attributed to characters (Creek series).
+  const narration = checkNarrationPresence(script)
+  if (!narration.passed) {
+    issues.push(...narration.issues.map((issue) => `${px}${issue}`))
+    return { passed: false, narratorIssues: issues, resolvedVoiceId: null, resolvedVoiceName: null }
+  }
+
   // Rule 2: Must exist in narrator_voices table (case-insensitive exact match)
   const normalizedScript = scriptNarratorName.toLowerCase()
   const matchedVoice = voices.find(
@@ -1685,7 +1711,7 @@ Use the CURRENT rules:
 - DESCRIPTION SPOILER RULE: DESCRIPTION is a story-card teaser, not a plot summary. It must raise a question, not answer it. HARD FAIL if DESCRIPTION reveals: the survivor, the culprit, the missing person's status, a hidden person alive or dead, the final discovery, or the resolution payoff. Examples of failing DESCRIPTION phrases: "to a survivor", "to the killer", "reveals who did it", "the missing child is alive".
 - The script must include the required header fields.
 - The script must include a CHARACTER GUIDE.
-- The script must include a BELLE B ANNOUNCEMENT block. BELLE B OUTRO is pipeline-generated at a later production step and must not be required to be present in the script at this validation stage — do not fail a script for a missing BELLE B OUTRO.
+- The script must include a BELLE B ANNOUNCEMENT block. BELLE B OUTRO is pipeline-generated at a later production step and must not be required to be present in the script at this validation stage — do not fail a script for a missing BELLE B OUTRO. A BELLE B OUTRO block that IS present is allowed and expected (the episode writer is instructed to write one) — never fail a script for including a BELLE B OUTRO block.
 - Standalone stories must end conclusively.
 - Series non-finales must end on a specific cliffhanger. A question-form cliffhanger qualifies if it is specific and propelling — it must name a character, invert the situation, or open a precise dread that the next episode answers. A vague "what happens next" question does not qualify. Do not require an action beat when a sharp, specific question directly names the next episode's central mystery.
 - Difficult Solution Rule: the main problem must feel genuinely difficult at the beginning, the middle must reveal leverage and escalating consequences that make the solution possible, and the ending must feel emotionally and logically earned.
@@ -2866,7 +2892,7 @@ async function createStoryRow(job: ProductionJob) {
 async function loadSeriesEpisodes(seriesId: string) {
   const { data, error } = await supabase
     .from('stories')
-    .select('id,title,author,author_style,genre,narrative_voice,description,brief_json,status,script,script_json,script_version,series_id,series_name,episode_number,series_episode_number,series_total_episodes,series_is_finale,story_type,validator_result,validator_report,validator_passed_at,narrator_voice_id,narrator_voice_name,audio_url,story_audio_url')
+    .select('id,title,author,author_style,genre,narrative_voice,description,brief_json,status,script,script_json,script_version,series_id,series_name,episode_number,series_episode_number,series_total_episodes,series_is_finale,story_type,validator_result,validator_report,validator_passed_at,narrator_voice_id,narrator_voice_name,audio_url,story_audio_url,duration_mins,dispatch_failure_reset_at')
     .eq('series_id', seriesId)
     // Rule-1 doctrine (Marc 2026-07-09): cold_storage episodes are retired from
     // production and must not contaminate series validation/production - a
@@ -5833,14 +5859,31 @@ async function verifyStandaloneReadyForReview(job: ProductionJob) {
 function buildSeriesEpisodePrompt(series: any, episode: any, allEpisodes: any[], continuityBundle: any[], namePaletteBlock: string, authorVoiceBlock: string, assignedNarratorName: string, seriesCharacterRosterBlock: string) {
   const brief = episode.brief_json || {}
   const target = runtimeTarget(brief.runtime || '')
+  const spokenTarget = seriesSpokenWordTarget(target.runtime)
   const currentEpisodeNumber = episodeNumber(episode, 1)
   const totalEpisodes = Number(episode.series_total_episodes || brief.series_total_episodes || allEpisodes.length)
   const isFinale = Boolean(episode.series_is_finale ?? brief.series_is_finale ?? currentEpisodeNumber === totalEpisodes)
+  // WRITER-PROMPT-GATES-001: state the downstream gates' exact requirements in
+  // the prompt (job fd2521c4 — the prompt asked for things the Belle, numeral,
+  // and runtime gates then rejected, so self-check rewrites could not converge).
+  const belleSeriesName = String(episode.series_name || series.title || brief.series_name || '').trim()
+  // WRITER-TITLE-PLACEHOLDER-001 (timing test dd3e0949): episodes are created
+  // titled "Episode N" until the writer names them, and the prompt told Belle
+  // to quote that placeholder ("Episode 1" as the episode title).
+  const rawEpisodeTitle = String(brief.episode_title || episode.title || '').trim()
+  const episodeTitleIsPlaceholder = !rawEpisodeTitle || /^episode\s+(\d+|[a-z]+)$/i.test(rawEpisodeTitle)
+  const belleEpisodeTitle = episodeTitleIsPlaceholder ? '' : rawEpisodeTitle
+  const belleEpisodeTitleRef = belleEpisodeTitle ? `the episode title "${belleEpisodeTitle}"` : 'the episode title you write on the TITLE: line (never "Episode N")'
+  const belleAuthorName = String(episode.author || brief.author || '').trim()
+  const belleIntroRequirement = `The Belle B announcement MUST contain, word for word: the series title "${belleSeriesName}", the words "Episode ${currentEpisodeNumber}", and ${belleEpisodeTitleRef} in quotes. It MUST state the episode's concrete danger, secret, mystery, or impossible event in plain words (mood or setting alone does not count), and MUST use at least one of these exact words: secret, hidden, missing, impossible, stolen, betrayed, conspiracy, warning. At most 38 words in total. Never use the words reveal, reveals, revealed, spoiler, or "turns out" in either Belle B line.`
+  const belleOutroRequirement = isFinale
+    ? `The Belle B outro MUST name the series title "${belleSeriesName}", the author "${belleAuthorName}", and the narrator "${assignedNarratorName}", and MUST include the words "an Endless Tales original". It must not invite a next episode. At most 55 words.`
+    : `The Belle B outro MUST do all three: (1) reflect on the emotional cost or meaning using at least one of these words: truth, secret, choice, question, cost, moment, revelation; (2) speak warmly to the listener using "you" or "we"; (3) point to what comes next using the words "next episode". It must NOT name the author "${belleAuthorName}" or the narrator "${assignedNarratorName}", must not say "an Endless Tales original", and must not sound like the series is over: never use the words end, ended, final, concludes, conclusion, or complete. At most 55 words.`
   const belleOutroRule = isFinale
-    ? 'Belle B outro must resolve/close the series, must not encourage the next episode, and may include the author/narrator credit and "an Endless Tales original".'
-    : 'Belle B outro must restate the episode cliffhanger, invite the listener to continue to the next episode, must not say "an Endless Tales original", and must not sound like a full-series ending.'
+    ? 'Belle B outro must resolve/close the series, must not encourage the next episode, must name the series and credit the author and narrator, and may say "an Endless Tales original".'
+    : 'Belle B outro must reflect on what the cliffhanger means (not retell the plot), speak to the listener, point to the next episode, must not say "an Endless Tales original", and must not sound like a full-series ending.'
   const belleOutroTemplate = isFinale
-    ? '[one or two short sentences, reflective series closure, no time-of-day reference, no next-episode invitation, may credit the author/narrator and say "an Endless Tales original"]'
+    ? '[one or two short sentences, reflective series closure, no time-of-day reference, no next-episode invitation, names the series, credits the author and narrator, may say "an Endless Tales original"]'
     : '[one or two short sentences, reflective cliffhanger tease, no time-of-day reference, invites the next episode, no author/narrator credit, no "Endless Tales original", not a full-series ending]'
 
   return `You are the Endless Tales Stage 2 series script writer.
@@ -5924,18 +5967,18 @@ CURRENT published rules:
 - Belle B is never labeled ANNOUNCER or SANDY.
 - Belle B announcement must not include [LISTENER_NAME] or any listener name; the shared name opener handles greeting/personalization.
 - Belle B intro/outro must never use "Tonight" or any time-of-day reference.
-- Belle B announcement must never include a greeting/opener, the author, narrator, or "an Endless Tales original"; those credits belong only in the Belle B outro.
+- Belle B announcement must never include a greeting/opener, the author, narrator, or "an Endless Tales original"; author and narrator credits belong only in the FINALE episode's Belle B outro.
 - ${belleOutroRule}
-- SFX: at most 3 per episode (SFX-001). Use sparingly; never exceed 3.
+- SFX: at most 3 per episode (SFX-001). Use sparingly; never exceed 3. Write each one on its own line in exactly this form: [SFX: short description]. Never write "SFX:" as a speaker label and never number or name the cues.
 - Final title must be 1 to 5 words and 28 characters or fewer so it fits one line on story cards.
 
 ${namePaletteBlock}
 
 Required script structure:
-TITLE: [${brief.episode_title || episode.title}; 1 to 5 words, 28 characters or fewer]
+TITLE: [${belleEpisodeTitle || 'an original episode title, not "Episode N" and not the series title'}; 1 to 5 words, 28 characters or fewer]
 SERIES: ${series.title || brief.series_name || ''}
 EPISODE: ${currentEpisodeNumber}
-EPISODE_TITLE: ${brief.episode_title || episode.title}
+EPISODE_TITLE: ${belleEpisodeTitle || '[same as TITLE]'}
 SERIES_TOTAL_EPISODES: ${totalEpisodes}
 SERIES_IS_FINALE: ${isFinale ? 'true' : 'false'}
 AUTHOR: ${episode.author || brief.author || ''}
@@ -5953,7 +5996,7 @@ CHARACTER GUIDE
 
 BELLE B ANNOUNCEMENT
 ---
-BELLE B: [one or two short sentences, warm, specific, sensory. Includes the episode title in quotes and references something specific from the episode. NO [LISTENER_NAME]. NO greeting/opener (e.g. no "settle in", "welcome") - the name opener handles that. NO author credit, NO narrator credit, no time-of-day, no "Endless Tales original".]
+BELLE B: [one or two short sentences, warm, specific, sensory. Names the series "${belleSeriesName}", says "Episode ${currentEpisodeNumber}", includes ${belleEpisodeTitleRef} in quotes, and references something specific from the episode. NO [LISTENER_NAME]. NO greeting/opener (e.g. no "settle in", "welcome") - the name opener handles that. NO author credit, NO narrator credit, no time-of-day, no "Endless Tales original".]
 
 [START AUDIO DRAMA SCRIPT]
 NARRATOR: ...
@@ -5963,8 +6006,13 @@ BELLE B OUTRO
 ---
 BELLE B: ${belleOutroTemplate}
 
+Belle B hard rules (checked automatically before any audio is made):
+- ${belleIntroRequirement}
+- ${belleOutroRequirement}
+
 Production-format hard rules:
-- Speaker labels are for spoken words only.
+- Write EVERY number as words in every spoken line: times ("three twelve in the morning"), years, ages, money, counts, addresses, and codes, serial numbers, receipts, plates or lane numbers ("transaction zero zero one", "lane three"). Never use digits in NARRATOR, character, or BELLE B lines. The only digits allowed are in header lines (TITLE, EPISODE, SERIES_TOTAL and similar) and the words "Episode ${currentEpisodeNumber}".
+- Speaker labels are for spoken words only. Write every speaker label in CAPITAL LETTERS, exactly as in the CHARACTER GUIDE (for example "NELL FARADAY:", never "Nell Faraday:").
 - Character-labeled lines must contain only words that character says aloud.
 - Never put action, facial reactions, movement, blocking, inner thought, or narration under a character label.
 - Put all action/reaction lines under NARRATOR.
@@ -5980,7 +6028,7 @@ Series rules:
 - ${isFinale ? 'This is the finale. Resolve the season arc completely.' : 'This is not the finale. End on a specific cliffhanger with forward momentum. Do not use "to be continued" phrasing.'}
 
 Additional rules:
-- DESCRIPTION must be a COMPLETE sentence, ≤24 words, present tense only (DISC-001). Before final output, self-check DESCRIPTION word count; if it is over 24 words, rewrite it internally until it is complete and ≤24 words. Never cut DESCRIPTION mid-word or mid-phrase. Never output a fragment. DESCRIPTION must TEASE a question, never reveal the episode's climax, twist, final discovery, or resolution payoff. Raise curiosity about the setup or mystery; do NOT state the outcome. Example: tease "strange notes under a neighbor's door at 3:12 a.m."; do NOT reveal "someone is trapped inside."
+- DESCRIPTION must be a COMPLETE sentence, ≤24 words, present tense only (DISC-001). Before final output, self-check DESCRIPTION word count; if it is over 24 words, rewrite it internally until it is complete and ≤24 words. Never cut DESCRIPTION mid-word or mid-phrase. Never output a fragment. DESCRIPTION must TEASE a question, never reveal the episode's climax, twist, final discovery, or resolution payoff. Raise curiosity about the setup or mystery; do NOT state the outcome. Example: tease "strange notes under a neighbor's door at three in the morning"; do NOT reveal "someone is trapped inside."
 - If NARRATOR_IS_CHARACTER is false, NARRATOR must not be a story character name and must not include "(character)".
 - If the narrator is a story character, NARRATOR_IS_CHARACTER must be true and the script must use consistent first-person narration.
 - Keep narrator voice consistent.
@@ -5988,8 +6036,11 @@ Additional rules:
 
 RUNTIME TARGET:
 Requested runtime: ${target.runtime}
-Target script length: ${target.range} words total.
-Hard maximum: ${target.max.toLocaleString()} words total.
+Length is measured in SPOKEN words: the words in NARRATOR and character lines only (not headers, the character guide, sound cues, or Belle B).
+Target: about ${spokenTarget.target.toLocaleString()} spoken words (${spokenTarget.minutes} minutes at ${SCRIPT_RUNTIME_PREFLIGHT.CALIBRATED_WPM} words per minute).
+Minimum: ${spokenTarget.min.toLocaleString()} spoken words. Scripts under this are rejected automatically before audio.
+Maximum: ${spokenTarget.max.toLocaleString()} spoken words.
+Reach the length with real scenes and beats, not padding. Before you finish, estimate your spoken word count; if it is under ${spokenTarget.min.toLocaleString()}, add another full scene.
 
 USER NOTES / CONSTRAINTS:
 ${String(brief.requirements || '').trim() || 'None'}
@@ -6197,6 +6248,56 @@ async function createSeriesPackage(job: ProductionJob) {
   }
 }
 
+/**
+ * SIMPLIFY-PIPELINE pre-voice Belle content rules for one series episode —
+ * the single implementation shared by series_voice_preflight and the series
+ * writer's self-check (WRITER-SELF-CHECK-001), so their verdicts cannot drift.
+ * Belle-exempt variants return no issues. Outro-gated checks run only when an
+ * outro section exists; a missing intro fails.
+ */
+async function seriesEpisodeBelleContentIssues(
+  episode: {
+    title?: string | null
+    author?: string | null
+    series_id?: string | null
+    series_name?: string | null
+    episode_number?: number | null
+    series_total_episodes?: number | null
+    series_is_finale?: boolean | null
+  },
+  script: string,
+): Promise<string[]> {
+  if (/LANDING-STORY-001|No Belle B/i.test(extractHeader(script, 'VARIANT'))) return []
+  const narrator = extractHeader(script, 'NARRATOR').trim() || null
+  const intro = extractBelleSection(script, 'intro')
+  const outro = extractBelleSection(script, 'outro')
+  const issues = [
+    ...(!intro ? ['intro text is required.'] : []),
+    ...(intro ? await validateBelleText('intro', intro, { standalone: false, title: episode.title, author: episode.author, narrator }) : []),
+    ...(outro ? await validateBelleText('outro', outro, { standalone: false, title: episode.title, author: episode.author, narrator }) : []),
+  ]
+  if (intro && outro) {
+    const position = await validateIntroOutroPositionRules({ ...episode, script }, intro, outro)
+    if (!position.passed) issues.push(...position.issues)
+  }
+  return issues
+}
+
+/**
+ * SERIES-CAST-CONTINUITY-001 for the series writer: fail closed and flag every
+ * episode (series jobs carry no story_id, so failJob alone flags nothing).
+ */
+async function assertSeriesCastContinuity(seriesId: string, episodes: any[]) {
+  const castBlockers = checkSeriesCastContinuity(
+    episodes.map((episode: any) => ({ episodeNumber: episodeNumber(episode, 0), script: episode.script })),
+  )
+  if (castBlockers.length === 0) return
+  const msg = `SERIES-CAST-CONTINUITY-001: series ${seriesId} episodes do not share a cast (no audio spend): ` +
+    castBlockers.map((b) => b.detail).join(' | ')
+  await markStoriesNeedAttention(episodes.map((episode: any) => episode.id), msg)
+  throw new Error(msg)
+}
+
 async function generateOneSeriesEpisodeScript(job: ProductionJob, model: string) {
   const state = job.state_json && typeof job.state_json === 'object' ? job.state_json : {}
   const seriesId = job.series_id || state.seriesId
@@ -6215,6 +6316,9 @@ async function generateOneSeriesEpisodeScript(job: ProductionJob, model: string)
 
   const targetEpisode = episodes.find((episode: any) => !episode.script)
   if (!targetEpisode) {
+    // SERIES-CAST-CONTINUITY-001 also guards the resume path (all scripts
+    // already exist) so a re-queued job cannot skip it (review L2).
+    await assertSeriesCastContinuity(String(seriesId), episodes)
     // COVER-PIPELINE-DECOUPLE-001: backfill the cover phase for series whose
     // scripts already exist (idempotent — skipped when state already has it).
     // Pure state write; no image calls; never throws.
@@ -6292,20 +6396,196 @@ async function generateOneSeriesEpisodeScript(job: ProductionJob, model: string)
   const seriesCharacterRosterBlock = buildSeriesCharacterRosterPromptBlock(seriesCharacterRoster)
   const prompt = buildSeriesEpisodePrompt(series, targetEpisode, episodes, continuityBundle, namePaletteBlock, authorVoiceBlock, assignedNarratorName, seriesCharacterRosterBlock)
 
-  const response = await anthropic.messages.create({
-    model,
-    max_tokens: 12000,
-    temperature: 0.65,
-    messages: [{ role: 'user', content: prompt }],
+  // WRITER-SELF-CHECK-001: check every draft with the free production gates
+  // before saving; rewrite with the exact failures, at most
+  // WRITER_SELF_CHECK_MAX_REWRITES times; fail closed if still failing.
+  const selfCheckVoices = (await fetchAllNarratorVoices()).map((voice) => voice.name)
+  const selfCheckBriefMinutes = briefMinutesOf(targetEpisode)
+  const impossibleBrief = briefRuntimeImpossible(selfCheckBriefMinutes)
+  if (impossibleBrief) {
+    const msg = `WRITER-SELF-CHECK-001: episode ${targetEpisodeNumber} cannot be written to pass (no writing call made): ${impossibleBrief}`
+    await markStoryNeedsAttention(String(targetEpisode.id), msg)
+    throw new Error(msg)
+  }
+  // WRITER-SPEND-CAP-001: hard cap on failed writer invocations per episode.
+  const priorWriterFailures = countWriterFailures(targetEpisode.script_json, targetEpisode.dispatch_failure_reset_at)
+  if (priorWriterFailures >= WRITER_MAX_FAILED_INVOCATIONS) {
+    const msg = `WRITER-SPEND-CAP-001: episode ${targetEpisodeNumber} already failed ${priorWriterFailures} writer runs since the last reset (cap ${WRITER_MAX_FAILED_INVOCATIONS}); no writing call made. Fix the brief/series, then clear needs_attention to reset.`
+    await markStoryNeedsAttention(String(targetEpisode.id), msg)
+    throw new Error(msg)
+  }
+  // Records the failure on the EPISODE (unfenced) before throwing, so a lost
+  // job lock can never hide it from the cap above.
+  const recordWriterFailure = async (reason: string) => {
+    const existing = targetEpisode.script_json && typeof targetEpisode.script_json === 'object' ? targetEpisode.script_json : {}
+    const failures = Array.isArray((existing as any).writer_self_check_failures) ? (existing as any).writer_self_check_failures : []
+    const { error } = await supabase
+      .from('stories')
+      .update({ script_json: { ...existing, writer_self_check_failures: [...failures, { at: nowIso(), reason: reason.slice(0, 500) }] } })
+      .eq('id', targetEpisode.id)
+    if (error) console.warn(`[WRITER-SPEND-CAP-001] failed to record writer failure for ${targetEpisode.id}: ${error.message}`)
+  }
+  // Narrator must resolve before any writing spend (review L5).
+  if (!selfCheckVoices.some((name) => String(name || '').trim().toLowerCase() === assignedNarratorName.trim().toLowerCase())) {
+    const msg = `WRITER-SELF-CHECK-001: episode ${targetEpisodeNumber} narrator "${assignedNarratorName}" is not in narrator_voices (no writing call made)`
+    await markStoryNeedsAttention(String(targetEpisode.id), msg)
+    throw new Error(msg)
+  }
+  // Finale / total from the episode row, as production's preflight does (review L6).
+  const selfCheckTotal = Number(targetEpisode.series_total_episodes || 0) || Number(series.total_episodes || 0) || episodes.length
+  const selfCheckIsFinale = Boolean(targetEpisode.series_is_finale) || (selfCheckTotal > 0 && targetEpisodeNumber >= selfCheckTotal)
+  let writerDraftIndex = 0
+  const writerStepStartedAt = Date.now()
+  let selfCheck: Awaited<ReturnType<typeof writeWithSelfCheck>>
+  try {
+  selfCheck = await writeWithSelfCheck({
+    briefMinutes: selfCheckBriefMinutes,
+    budgetMs: WRITER_SELF_CHECK_BUDGET_MS,
+    generate: async (feedback, previousDraft) => {
+      writerDraftIndex += 1
+      // WRITER-REVISE-001: a rewrite revises the previous draft (multi-turn)
+      // instead of regenerating from scratch, which did not converge (fd2521c4).
+      const writerMessages: Array<{ role: 'user' | 'assistant'; content: string }> = previousDraft
+        ? [
+            { role: 'user', content: prompt },
+            { role: 'assistant', content: previousDraft },
+            { role: 'user', content: feedback },
+          ]
+        : [{ role: 'user', content: prompt + feedback }]
+      const response = await anthropic.messages.create({
+        model,
+        max_tokens: 12000,
+        temperature: previousDraft ? 0.4 : 0.65,
+        messages: writerMessages,
+      }, {
+        // Hard per-draft limit, no hidden SDK retries (review round 2).
+        timeout: writerDraftTimeoutMs(Date.now() - writerStepStartedAt),
+        maxRetries: 0,
+      })
+      // Meter every draft as it happens, so a later throw never hides spend (review L4).
+      logAnthropicCall({
+        route: '/api/admin/production-jobs/run-next',
+        purpose: 'series-episode-script',
+        model,
+        inputTokens: response.usage?.input_tokens ?? 0,
+        outputTokens: response.usage?.output_tokens ?? 0,
+        storyId: targetEpisode.id,
+        storyTitle: String(targetEpisode.title || ''),
+        metadata: { is_v2: true, series_id: String(seriesId), episode_number: targetEpisodeNumber, writer_draft: writerDraftIndex },
+      }).catch(() => {})
+      const rawScript = response.content
+        .map((c: any) => ('text' in c ? c.text : ''))
+        .join('')
+        .trim()
+      const normalized = normalizeScriptDescription(rawScript, brief.description || targetEpisode.description || '')
+      // SCRIPT-LABELS-001: format-only repair (label case, SFX cue form) before the self-check.
+      const formatted = normalizeScriptFormat(normalized.script)
+      return {
+        script: formatted.script,
+        description: normalized.description,
+        raw: normalizeScriptFormat(rawScript).script,
+        inputTokens: response.usage?.input_tokens ?? 0,
+        outputTokens: response.usage?.output_tokens ?? 0,
+      }
+    },
+    check: async (draftScript) => {
+      const report = checkScriptReadiness({
+        script: draftScript,
+        storyType: 'series_episode',
+        seriesId: String(seriesId),
+        seriesTotalEpisodes: selfCheckTotal,
+        episodeNumber: targetEpisodeNumber,
+        isFinale: selfCheckIsFinale,
+        narratorVoiceNames: selfCheckVoices,
+        briefMinutes: selfCheckBriefMinutes,
+      })
+      // The same Belle rules series_voice_preflight enforces (shared function).
+      const belleIssues = await seriesEpisodeBelleContentIssues({
+        title: extractTitle(draftScript) || targetEpisode.title,
+        author: targetEpisode.author,
+        series_id: String(seriesId),
+        series_name: targetEpisode.series_name || series.title,
+        episode_number: targetEpisodeNumber,
+        series_total_episodes: selfCheckTotal,
+        series_is_finale: selfCheckIsFinale,
+      }, draftScript)
+      // WRITER-PUBLISH-BELLE-001 (job f77a0696): the voice step and publication
+      // run evaluateBelleCopyForPublish, whose hook check is deterministic (no
+      // LLM fallback). The writer's position check passed EP2's intro via the
+      // LLM fallback; voice preflight then refused it. Run the publish gate too.
+      const belleTitleForGate = extractTitle(draftScript) || targetEpisode.title
+      const publishVerdict = evaluateBelleCopyForPublish({
+        id: String(targetEpisode.id),
+        title: belleTitleForGate,
+        author: targetEpisode.author,
+        script: draftScript,
+        series_id: String(seriesId),
+        series_name: targetEpisode.series_name || series.title,
+        episode_number: targetEpisodeNumber,
+        series_is_finale: selfCheckIsFinale,
+      })
+      if (!publishVerdict.ok && 'blockers' in publishVerdict) {
+        for (const b of publishVerdict.blockers) if (!belleIssues.includes(b)) belleIssues.push(b)
+      }
+      // WRITER-VOICE-BELLE-001 (job 60761b4a): generate-voices runs its own Belle
+      // line rules (word limits, spoiler/final words, credits) and REPLACES a
+      // failing line with a template, which then fails publish conformance.
+      // Run those exact rules here so the writer fixes the line itself.
+      const voiceBelleCtx = buildBelleValidationContext({
+        title: belleTitleForGate,
+        author: targetEpisode.author,
+        series_name: targetEpisode.series_name || series.title,
+        episode_number: targetEpisodeNumber,
+        series_total_episodes: selfCheckTotal,
+        series_is_finale: selfCheckIsFinale,
+      }, draftScript, String(targetEpisode.id))
+      for (const [kind, text] of [['intro', extractBelleSection(draftScript, 'intro')], ['outro', extractBelleSection(draftScript, 'outro')]] as const) {
+        if (!text) continue
+        for (const e of validateBelleLine(kind, text, voiceBelleCtx)) {
+          const issue = `voice step (${kind}): ${e}`
+          if (!belleIssues.includes(issue)) belleIssues.push(issue)
+        }
+      }
+      // WRITER-BELLE-EVIDENCE-001 (job ea6976c3: finale EP3 failed 3 drafts on
+      // "outro appears cut off" with near-identical drafts — the writer never
+      // saw which text was judged): quote the current Belle line back.
+      const belleIntroText = extractBelleSection(draftScript, 'intro')
+      const belleOutroText = extractBelleSection(draftScript, 'outro')
+      const blockers = [
+        ...report.blockers,
+        ...belleIssues.map((detail) => {
+          const isOutro = /\boutro\b/i.test(detail)
+          const current = isOutro ? belleOutroText : /\bintro\b/i.test(detail) ? belleIntroText : ''
+          return { gate: 'BELLE-CONTENT', detail, ...(current ? { evidence: [`current ${isOutro ? 'outro' : 'intro'}: BELLE B: ${current}`] } : {}) }
+        }),
+      ]
+      return { ...report, blockers, ready: blockers.length === 0 }
+    },
   })
+  } catch (err) {
+    const msg = `WRITER-SELF-CHECK-001: episode ${targetEpisodeNumber} writer call failed: ${err instanceof Error ? err.message : String(err)}`
+    // TRANSIENT-FAILURE-001: outside failures (credits, auth, overload,
+    // network) must not use up the episode's cap or flag it; failJob tags
+    // them transient and dispatch backs off globally (review round 3).
+    if (classifyTransientFailure(stripQuotedScriptText(msg))) throw new Error(msg)
+    // Any other thrown draft call (e.g. a per-draft timeout) counts toward the cap.
+    await recordWriterFailure(msg)
+    await markStoryNeedsAttention(String(targetEpisode.id), msg)
+    throw new Error(msg)
+  }
+  const script = selfCheck.script
+  const description = selfCheck.description
+  const writerAttempts = selfCheck.attempts
 
-  const rawScript = response.content
-    .map((c: any) => ('text' in c ? c.text : ''))
-    .join('')
-    .trim()
-  const normalized = normalizeScriptDescription(rawScript, brief.description || targetEpisode.description || '')
-  const script = normalized.script
-  const description = normalized.description
+  if (!selfCheck.ok) {
+    const last = writerAttempts[writerAttempts.length - 1]
+    const msg =
+      `WRITER-SELF-CHECK-001: episode ${targetEpisodeNumber} still fails pre-save checks after ${writerAttempts.length} drafts ` +
+      `(nothing saved, no audio spend): ${(last?.blockers || []).join(' | ')}`
+    await recordWriterFailure(msg)
+    await markStoryNeedsAttention(String(targetEpisode.id), msg)
+    throw new Error(msg)
+  }
   const generatedTitle = extractTitle(script) || targetEpisode.title || ''
   const wordCount = countWords(generatedTitle)
 
@@ -6328,6 +6608,7 @@ async function generateOneSeriesEpisodeScript(job: ProductionJob, model: string)
       series_id: String(seriesId),
       continuity_bundle_used: continuityBundle,
       continuity_pins_used: continuityPinsUsed,
+      writer_self_check: { passed: true, attempts: writerAttempts },
       summary: {
         title: generatedTitle,
         description,
@@ -6339,7 +6620,7 @@ async function generateOneSeriesEpisodeScript(job: ProductionJob, model: string)
     raw_script: script,
   }
 
-  const { data: updated, error: updateError } = await supabase
+  const episodeSave = supabase
     .from('stories')
     .update({
       title: generatedTitle,
@@ -6351,6 +6632,11 @@ async function generateOneSeriesEpisodeScript(job: ProductionJob, model: string)
       script_version: (targetEpisode.script_version || 1) + 1,
     })
     .eq('id', targetEpisode.id)
+  // Optimistic version check: never overwrite an episode another
+  // (overlapping) invocation already saved (review B2, round 2).
+  const { data: updated, error: updateError } = await (targetEpisode.script_version == null
+    ? episodeSave.is('script_version', null)
+    : episodeSave.eq('script_version', targetEpisode.script_version))
     .select('id,title,status,script,series_id,episode_number,series_episode_number')
     .single()
 
@@ -6358,20 +6644,15 @@ async function generateOneSeriesEpisodeScript(job: ProductionJob, model: string)
     throw new Error(updateError?.message || `Episode ${targetEpisodeNumber} update failed`)
   }
 
-  logAnthropicCall({
-    route: '/api/admin/production-jobs/run-next',
-    purpose: 'series-episode-script',
-    model,
-    inputTokens: response.usage?.input_tokens ?? 0,
-    outputTokens: response.usage?.output_tokens ?? 0,
-    storyId: targetEpisode.id,
-    storyTitle: generatedTitle,
-    metadata: { is_v2: true, series_id: String(seriesId), episode_number: targetEpisodeNumber },
-  }).catch(() => {})
+  // Writer spend is metered per draft inside writeWithSelfCheck's generate (WRITER-SELF-CHECK-001).
 
   const refreshedEpisodes = await loadSeriesEpisodes(String(seriesId))
   const allScriptsGenerated = refreshedEpisodes.every((episode: any) => Boolean(episode.script))
   const nextStep = allScriptsGenerated ? NEXT_STEP_AFTER_SERIES_SCRIPTS : NEXT_STEP_AFTER_SERIES_CREATE
+
+  // SERIES-CAST-CONTINUITY-001: once every episode is written, the cast must
+  // carry across episodes before the series moves toward validation and spend.
+  if (allScriptsGenerated) await assertSeriesCastContinuity(String(seriesId), refreshedEpisodes)
 
   // COVER-PIPELINE-DECOUPLE-001 (Tasks 1-3): cover_generation_phase trigger.
   // Fires right after the series blueprint + episode briefs/scripts exist —
@@ -6736,9 +7017,17 @@ function classifyDescriptionValidatorFailure(report: string): null | {
   const descriptionLine = /\bdescription\b|story-card|teaser|present tense|70 characters|24 words|characters or fewer|words or fewer|blocked word|past-tense/i
   if (!failureLines.every((line) => descriptionLine.test(line))) return null
 
-  const substantive = /spoiler|reveals?|climax|twist|final discovery|resolution payoff|outcome|culprit|survivor|protagonist.*mismatch|mismatch.*protagonist|role.*mismatch|description\s+does not match\s+(?:the\s+)?(?:protagonist|role)|weak plot|weak hook|editorial/i
+  const substantive = /protagonist.*mismatch|mismatch.*protagonist|role.*mismatch|description\s+does not match\s+(?:the\s+)?(?:protagonist|role)|weak plot|weak hook|editorial/i
   if (failureLines.some((line) => substantive.test(line))) {
     return { retryable: false, kind: 'substantive', reason: failureLines.join('; '), failureLines }
+  }
+  // DESCRIPTION-SPOILER-RETRY-001 (timing test dd3e0949): a card DESCRIPTION
+  // that gives away the payoff is card copy, not story content — rewrite it
+  // from the validator's feedback (bounded by MAX_SERIES_DESCRIPTION_RETRIES)
+  // and re-validate, instead of stopping the whole series for a human.
+  const spoiler = /spoiler|reveals?|climax|twist|final discovery|resolution payoff|outcome|culprit|survivor/i
+  if (failureLines.some((line) => spoiler.test(line))) {
+    return { retryable: true, kind: 'mechanical', reason: failureLines.join('; '), failureLines }
   }
 
   const mechanical = /required|missing|70 characters|24 words|characters or fewer|words or fewer|too long|present tense|past-tense|blocked word|format|punctuation|complete sentence|truncated|fragment|incomplete|mid-phrase|mid-word/i
@@ -6854,9 +7143,17 @@ async function scoreValidateSeriesPackage(job: ProductionJob, model: string) {
     ? [...existingValidation.failedEpisodes]
     : []
 
+  const notPassed = (episode: any) => !(episode.status === 'validator_passed' || episode.validator_result === 'PASS')
+  // VALIDATION-RESUME-001 (timing test a21df7bd): a failed episode ends the
+  // job, so a queued job that still lists failed episodes was resumed by a
+  // human. Re-validate those once every other episode is done; before this,
+  // they were skipped forever and the step threw "state is inconsistent".
   const nextEpisode = episodes.find((episode: any) =>
-    !(episode.status === 'validator_passed' || episode.validator_result === 'PASS')
+    notPassed(episode)
       && !failedEpisodes.some((failed: any) => String(failed.storyId) === String(episode.id))
+  ) || episodes.find((episode: any) =>
+    notPassed(episode)
+      && failedEpisodes.some((failed: any) => String(failed.storyId) === String(episode.id))
   )
 
   const rosterEnsureThroughEpisode = nextEpisode
@@ -7411,30 +7708,17 @@ async function runSeriesVoicePreflight(job: ProductionJob, origin: string) {
   // section fails. Belle-exempt variants skip, mirroring complete_story_package.
   {
     const epScript = String((nextEpisode as any).script || '')
-    const epVariant = extractHeader(epScript, 'VARIANT')
-    const epBelleExempt = /LANDING-STORY-001|No Belle B/i.test(epVariant)
+    const epBelleExempt = /LANDING-STORY-001|No Belle B/i.test(extractHeader(epScript, 'VARIANT'))
     if (!epBelleExempt) {
-      const epNarrator = extractHeader(epScript, 'NARRATOR').trim() || null
-      const epIntro = extractBelleSection(epScript, 'intro')
-      const epOutro = extractBelleSection(epScript, 'outro')
-      const epIssues = [
-        ...(!epIntro ? ['intro text is required.'] : []),
-        ...(epIntro ? await validateBelleText('intro', epIntro, { standalone: false, title: (nextEpisode as any).title, author: (nextEpisode as any).author, narrator: epNarrator }) : []),
-        ...(epOutro ? await validateBelleText('outro', epOutro, { standalone: false, title: (nextEpisode as any).title, author: (nextEpisode as any).author, narrator: epNarrator }) : []),
-      ]
-      if (epIntro && epOutro) {
-        const epPosition = await validateIntroOutroPositionRules({
-          title: (nextEpisode as any).title,
-          author: (nextEpisode as any).author,
-          script: epScript,
-          series_id: (nextEpisode as any).series_id,
-          series_name: (nextEpisode as any).series_name,
-          episode_number: episodeNumber(nextEpisode, 0),
-          series_total_episodes: (nextEpisode as any).series_total_episodes,
-          series_is_finale: (nextEpisode as any).series_is_finale,
-        }, epIntro, epOutro)
-        if (!epPosition.passed) epIssues.push(...epPosition.issues)
-      }
+      const epIssues = await seriesEpisodeBelleContentIssues({
+        title: (nextEpisode as any).title,
+        author: (nextEpisode as any).author,
+        series_id: (nextEpisode as any).series_id,
+        series_name: (nextEpisode as any).series_name,
+        episode_number: episodeNumber(nextEpisode, 0),
+        series_total_episodes: (nextEpisode as any).series_total_episodes,
+        series_is_finale: (nextEpisode as any).series_is_finale,
+      }, epScript)
       if (epIssues.length > 0) {
         const epKind = classifyBelleIssues(epIssues)
         const failedEpisodeEntry = {
@@ -8328,6 +8612,11 @@ export async function POST(req: NextRequest) {
         .order('locked_at', { ascending: false })
         .limit(1)
         .maybeSingle()
+      if (existingJob && normalizeStep((existingJob as ProductionJob).current_step) === NEXT_STEP_AFTER_SERIES_CREATE && writerClaimIsFresh((existingJob as ProductionJob).state_json, Date.now())) {
+        // WRITER-CLAIM-001: return without adopting the job, so the finally
+        // block never clears the running writer's lock.
+        return bad('Series writer already in progress for this job', 409, { jobId: (existingJob as ProductionJob).id, reason: 'writer_in_progress' })
+      }
       if (existingJob) {
         // Worker already has a running job - use it instead of picking a new one
         lockedJob = existingJob as ProductionJob
@@ -8346,6 +8635,13 @@ export async function POST(req: NextRequest) {
       const candidate = await selectCandidate(requestedJobId)
       if (!candidate) {
         return NextResponse.json({ success: true, message: 'No queued or running production job found', job: null, markedZombies })
+      }
+
+      // WRITER-CLAIM-001 (review round 3): step aside BEFORE taking the lock.
+      // A same-holder re-entry that locks first would rewrite locked_at and
+      // break the running writer's fenced writes.
+      if (normalizeStep(candidate.current_step) === NEXT_STEP_AFTER_SERIES_CREATE && writerClaimIsFresh(candidate.state_json, Date.now())) {
+        return bad('Series writer already in progress for this job', 409, { jobId: candidate.id, reason: 'writer_in_progress' })
       }
 
       lockedJob = await lockJob(candidate, lockHolderId)
@@ -8423,6 +8719,24 @@ export async function POST(req: NextRequest) {
     await recordStageStarted(lockedJob, step)
 
     if (step === NEXT_STEP_AFTER_SERIES_CREATE) {
+      // WRITER-CLAIM-001: one writer per series job at a time. The runner can
+      // re-enter this job every minute with the same (re-entrant) lock, which
+      // would start overlapping paid writers on the same episode.
+      const claimState = lockedJob.state_json && typeof lockedJob.state_json === 'object' ? lockedJob.state_json : {}
+      if (writerClaimIsFresh(claimState, Date.now())) {
+        return NextResponse.json({ success: false, error: 'writer_in_progress', jobId: lockedJob.id, currentStep: step }, { status: 409 })
+      }
+      const { data: writerClaimRows, error: writerClaimError } = await supabase
+        .from('production_jobs')
+        .update({ state_json: { ...claimState, writerClaim: { holder: lockHolderId, at: nowIso() } } })
+        .eq('id', lockedJob.id)
+        // Compare-and-set: only the invocation that read the current row wins.
+        .eq('updated_at', lockedJob.updated_at)
+        .select('id')
+      if (writerClaimError) throw new Error(`Writer claim failed: ${writerClaimError.message}`)
+      if (!writerClaimRows || writerClaimRows.length === 0) {
+        return NextResponse.json({ success: false, error: 'writer_in_progress', jobId: lockedJob.id, currentStep: step }, { status: 409 })
+      }
       const result = await generateOneSeriesEpisodeScript(lockedJob, model)
       const logs = appendLog(lockedJob, result.generated ? 'Generated one series episode script' : 'All series episode scripts already exist', {
         seriesId: result.seriesId,
@@ -10043,25 +10357,43 @@ export async function POST(req: NextRequest) {
 
     if (step === NEXT_STEP_AFTER_SERIES_PREFLIGHT) {
       const origin = new URL(req.url).origin
-      const result = await runSeriesVoiceSegment(lockedJob, origin)
+      const logSeriesVoiceResult = (job: ProductionJob, r: Awaited<ReturnType<typeof runSeriesVoiceSegment>>) => {
+        const vg = r.state.seriesVoiceGeneration || {}
+        return appendLog(job, r.complete
+          ? 'All series voice segments are present'
+          : r.episodeComplete
+            ? 'Completed voice generation for one series episode'
+            : r.skippedNonSegment
+              ? 'Skipped non-story series segment index'
+              : 'Processed one series voice segment', {
+          seriesId: r.seriesId,
+          storyId: r.storyId || null,
+          episodeNumber: r.episodeNumber || null,
+          segmentNumber: r.segmentNumber,
+          nextStep: r.complete ? NEXT_STEP_AFTER_SERIES_VOICES : NEXT_STEP_AFTER_SERIES_PREFLIGHT,
+          currentEpisodeNumber: vg.currentEpisodeNumber,
+          nextSegmentNumber: vg.nextSegmentNumber,
+          presentCount: vg.presentCount,
+          missingCount: Array.isArray(vg.missingSegments) ? vg.missingSegments.length : null,
+        })
+      }
+      // VOICE-BATCH-001: several segments per invocation (one-per-call plus
+      // the loop's idle wait made a 145-line episode take ~45 min). Each
+      // segment is still generated and QC'd individually, in order; the batch
+      // stops on any failure, episode boundary, completion, or time budget,
+      // and progress is saved once at the end exactly as before.
+      const batchStartedAt = Date.now()
+      let batchJob: ProductionJob = lockedJob
+      let result = await runSeriesVoiceSegment(batchJob, origin)
+      let logs = logSeriesVoiceResult(batchJob, result)
+      let batchCount = 1
+      while (shouldContinueSeriesVoiceBatch(result, batchCount, Date.now() - batchStartedAt)) {
+        batchJob = { ...batchJob, state_json: result.state, logs }
+        result = await runSeriesVoiceSegment(batchJob, origin)
+        logs = logSeriesVoiceResult(batchJob, result)
+        batchCount += 1
+      }
       const voiceGeneration = result.state.seriesVoiceGeneration || {}
-      const logs = appendLog(lockedJob, result.complete
-        ? 'All series voice segments are present'
-        : result.episodeComplete
-          ? 'Completed voice generation for one series episode'
-          : result.skippedNonSegment
-            ? 'Skipped non-story series segment index'
-            : 'Processed one series voice segment', {
-        seriesId: result.seriesId,
-        storyId: result.storyId || null,
-        episodeNumber: result.episodeNumber || null,
-        segmentNumber: result.segmentNumber,
-        nextStep: result.complete ? NEXT_STEP_AFTER_SERIES_VOICES : NEXT_STEP_AFTER_SERIES_PREFLIGHT,
-        currentEpisodeNumber: voiceGeneration.currentEpisodeNumber,
-        nextSegmentNumber: voiceGeneration.nextSegmentNumber,
-        presentCount: voiceGeneration.presentCount,
-        missingCount: Array.isArray(voiceGeneration.missingSegments) ? voiceGeneration.missingSegments.length : null,
-      })
 
       if (result.hardFailure) {
         const { data: failedJob, error: updateError } = await supabase
