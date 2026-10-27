@@ -739,11 +739,10 @@ function HomeContent() {
             {/* Signed-in listeners use the shared compact card above both pages. */}
             {!user && <ContinueSampleHero onStoryId={(id) => { setHeroStoryId(id); setContinueIds(prev => Array.from(new Set([id, ...prev]))); setAllExcludeIds(prev => Array.from(new Set([id, ...prev]))) }} />}
             <ContinueListening key={clKey} renderCard={false} excludeStoryId={heroStoryId} onIdsLoaded={(ids) => { setContinueIds(prev => Array.from(new Set([...prev, ...ids]))); setAllExcludeIds(prev => Array.from(new Set([...prev, ...ids, ...playlistIds]))) }} />
-            <YourPlaylist onIdsLoaded={(ids) => { setPlaylistIds(ids); setAllExcludeIds(prev => [...new Set([...prev, ...ids])]) }} />
+            <YourPlaylist onIdsLoaded={(ids) => { setPlaylistIds(ids); setAllExcludeIds(prev => Array.from(new Set([...prev, ...ids]))) }} />
             <NewReleases
-              excludeIds={[...new Set([...continueIds, ...playlistIds])]}
               onIdsLoaded={(ids) => {
-                setAllExcludeIds(prev => [...new Set([...prev, ...ids])])
+                setAllExcludeIds(prev => Array.from(new Set([...prev, ...ids])))
                 setNewArrivalsReady(true)
               }}
             />

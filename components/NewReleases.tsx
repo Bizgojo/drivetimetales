@@ -1,6 +1,7 @@
 'use client'
 import MediaButtonLabel from '@/components/MediaButtonLabel'
-import { useState, useEffect } from 'react'
+import { selectNewestArrivals, episodeNumber } from '@/lib/newArrivals'
+import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/contexts/AuthContext'
@@ -17,44 +18,14 @@ interface Story {
   episodes?: Story[]
   series_id: string | null; series_number: number | null; series_name: string | null
   episode_number?: number | null
+  series_total?: number | null
   published_on?: string | null
   avg_rating?: number | null; review_count?: number
 }
 
-// Use series_number with episode_number as fallback — matches Library/RecommendedForYou behavior.
-function episodeNumber(story: Story) {
-  return Number(story.series_number || story.episode_number || 0)
-}
-
-function newestTime(stories: Story[]) {
-  return Math.max(...stories.map(story => Date.parse(story.published_on || '') || 0), 0)
-}
-
-function completeSeriesLaunchRows(rows: Story[]) {
-  const groups = new Map<string, Story[]>()
-  rows.forEach((story) => {
-    if (!story.series_id) return
-    groups.set(story.series_id, [...(groups.get(story.series_id) || []), story])
-  })
-
-    return Array.from(groups.values())
-    .filter((episodes) => {
-      const episodeNumbers = new Set(episodes.map(episodeNumber).filter(Boolean))
-      if (episodeNumbers.size <= 1) return false
-      const highestEpisode = Math.max(...Array.from(episodeNumbers))
-      return episodeNumbers.size === highestEpisode && episodeNumbers.has(1)
-    })
-    .map((episodes) => episodes.slice().sort((a, b) => episodeNumber(a) - episodeNumber(b))[0])
-    .sort((a, b) => newestTime(rows.filter(story => story.series_id === b.series_id)) - newestTime(rows.filter(story => story.series_id === a.series_id)))
-}
-
-function isLaunchInventory(story: Story) {
-  return !/\b(test|sample|draft)\b/i.test(`${story.title} ${story.series_name || ''}`)
-}
-
 const buttonStyle = { flex: 1, minWidth: 0, height: 58, padding: 4, borderRadius: 6, fontSize: 12, lineHeight: 1.25, fontWeight: 800, color: '#fff', cursor: 'pointer' } as const
 
-export default function NewReleases({ excludeIds = [], onIdsLoaded }: { excludeIds?: string[]; onIdsLoaded?: (ids: string[]) => void }) {
+export default function NewReleases({ onIdsLoaded }: { onIdsLoaded?: (ids: string[]) => void }) {
   const { user, session } = useAuth()
   const openPlayer = useOpenPlayer()
   const [playlist, setPlaylist] = useState<string[]>([])
@@ -62,8 +33,16 @@ export default function NewReleases({ excludeIds = [], onIdsLoaded }: { excludeI
   const router = useRouter()
   const [stories, setStories] = useState<Story[]>([])
   const [loading, setLoading] = useState(true)
+  const loadVersion = useRef(0)
 
-  useEffect(() => { load() }, [user?.id, excludeIds.join(',')])
+  useEffect(() => {
+    load()
+    const refresh = () => { if (document.visibilityState === 'visible') void load(true) }
+    window.addEventListener('focus', refresh)
+    document.addEventListener('visibilitychange', refresh)
+    const timer = window.setInterval(refresh, 60000)
+    return () => { loadVersion.current++; window.removeEventListener('focus', refresh); document.removeEventListener('visibilitychange', refresh); window.clearInterval(timer) }
+  }, [])
 
   useEffect(() => {
     const sync = () => {
@@ -113,71 +92,25 @@ export default function NewReleases({ excludeIds = [], onIdsLoaded }: { excludeI
     } else if (!adding) removeQueuedItemOffline(target, user?.id).catch(() => {})
   }
 
-  async function load() {
-    setLoading(true)
-    const { data: publicRows } = await supabase
-      .from('stories')
-      .select('id, narrator_voice_name')
-      .eq('status', 'published')
-      .eq('is_hidden', false)
-
-    const publicIds = (publicRows || []).map((row) => row.id)
-    if (publicIds.length === 0) {
-      setStories([])
-      setLoading(false)
-      onIdsLoaded?.([])
-      return
+  async function load(background = false) {
+    const version = ++loadVersion.current
+    if (!background) setLoading(true)
+    const rows: Story[] = []
+    // Read complete groups; a fixed row limit can cut a recent series in half.
+    for (let start = 0; ; start += 1000) {
+      const { data, error } = await supabase.from('stories')
+        .select('id,title,genre,author,description,duration_mins,cover_url,narrator_voice_name,series_id,series_number,episode_number,series_name,series_total,published_on')
+        .eq('status', 'published').eq('is_hidden', false)
+        .order('published_on', { ascending: false, nullsFirst: false }).order('id', { ascending: true })
+        .range(start, start + 999)
+      if (version !== loadVersion.current) return
+      if (error || !data) { setLoading(false); onIdsLoaded?.([]); return }
+      rows.push(...data as Story[])
+      if (data.length < 1000) break
     }
-
-    const { data } = await supabase.from('story_analytics')
-      .select('id, title, genre, author, description, duration_mins, cover_url, avg_rating, review_count, series_id, series_number, series_name, published_on')
-      .not('cover_url', 'is', null).eq('is_hidden', false)
-      .in('id', publicIds)
-      .order('published_on', { ascending: false }).limit(60)
-    if (!data) { setLoading(false); onIdsLoaded?.([]); return }
-
-    const ex = new Set(excludeIds)
-    const playedSeriesIds = new Set<string>()
-
-    if (user?.id) {
-      const { data: lib } = await supabase.from('user_library').select('story_id, progress, completed, not_for_me, last_played').eq('user_id', user.id)
-      if (lib) {
-        lib.forEach((e: any) => { if (e.progress > 0 || e.completed || e.not_for_me || e.last_played) ex.add(e.story_id) })
-        const playedIds = new Set(lib.filter((e: any) => e.last_played).map((e: any) => e.story_id))
-        data.forEach((s: any) => {
-          if (s.series_id && playedIds.has(s.id)) {
-            playedSeriesIds.add(s.series_id)
-          }
-        })
-      }
-      try {
-        const raw = localStorage.getItem('dtt_active_playlist') || localStorage.getItem('dtt_playlist')
-        if (raw) {
-          const pl = JSON.parse(raw)
-          const playlistItems = pl.items || pl.stories || pl
-          ;(Array.isArray(playlistItems) ? playlistItems : []).forEach((s: any) => {
-            if (s.type === 'series' && Array.isArray(s.episodes)) {
-              s.episodes.forEach((episode: any) => { if (episode?.id) ex.add(episode.id) })
-            } else if (s.id) ex.add(s.id)
-          })
-        }
-      } catch {}
-    }
-
-    const narratorById = new Map((publicRows || []).map(row => [row.id, row.narrator_voice_name]))
-    const storyRows = (data as Story[]).filter(isLaunchInventory).map(story => ({ ...story, narrator_voice_name: narratorById.get(story.id) }))
-    const excludedSeriesIds = new Set(storyRows.filter(story => story.series_id && ex.has(story.id)).map(story => story.series_id as string))
-    const completeSeriesRows = completeSeriesLaunchRows(storyRows)
-    const result = [
-      ...completeSeriesRows.filter((s) => {
-        const sid = s.series_id
-        return sid && !playedSeriesIds.has(sid) && !excludedSeriesIds.has(sid) && !ex.has(s.id)
-      }),
-      ...storyRows.filter((s) => !s.series_id && !ex.has(s.id)),
-    ].sort((a, b) => (Date.parse(b.published_on || '') || 0) - (Date.parse(a.published_on || '') || 0)).slice(0, 2)
-
-    setStories(result.map(story => ({ ...story, episodes: story.series_id ? storyRows.filter(ep => ep.series_id === story.series_id).sort((a, b) => episodeNumber(a) - episodeNumber(b)) : [story] })))
-    onIdsLoaded?.(result.map(s => s.id))
+    const result = selectNewestArrivals(rows)
+    setStories(result)
+    onIdsLoaded?.(result.map(story => story.id))
     setLoading(false)
   }
 
