@@ -1,4 +1,5 @@
 'use client'
+import { publicationMonth } from '@/lib/publicationDate'
 
 /*
 ================================================================================
@@ -73,6 +74,7 @@ export type CanonCardItem = {
   totalDuration?: number
   cover?: string | null
   author?: string | null
+  published_on?: string | null
   genre?: string | null
   description?: string | null
   flag?: string | null
@@ -224,6 +226,7 @@ export default function LibraryStoryCard({
           <div style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '10px' }}>
             <span style={{ color: '#4ade80', fontWeight: 500 }}>{item.author || 'Unknown'}</span>
             {item.genre && <span style={{ color: '#4ade80' }}>· {item.genre}</span>}
+            {publicationMonth(item.published_on) && <span style={{ color: '#4ade80' }}>· {publicationMonth(item.published_on)}</span>}
             <div style={{ flex: 1 }} />
             {(item.avgRating || 0) > 0 && (
               <span style={{ display: 'inline-flex', alignItems: 'baseline', gap: '4px', color: '#f59e0b', fontSize: '13px' }}>
