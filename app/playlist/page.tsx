@@ -145,6 +145,10 @@ export default function PlaylistPage() {
           </div>
         )}
 
+        {items.length > 0 && <p className="text-sm text-white" style={{ margin: 0, lineHeight: 1.5 }}>
+          <span className="block">Adding a story downloads all its episodes automatically.</span>
+          <span className="block">Downloads may pause when you leave the app and resume automatically when you return.</span>
+        </p>}
         </div>
         {items.length === 0 && (
           <div style={{ color: '#c7d2fe', fontSize: 14, textAlign: 'center', padding: '40px 0' }}>
@@ -152,7 +156,6 @@ export default function PlaylistPage() {
           </div>
         )}
 
-        {items.length > 0 && <p className="text-sm text-white">Adding a story downloads all its episodes automatically. Keep the app open until it says Ready offline.</p>}
         {items.map((item, i) => {
           const key = item.type === 'series' ? `series-${item.series_id || item.id}` : `single-${item.id}`
           const title = item.type === 'series' ? (item.series_name || 'Series') : (item.title || '')
