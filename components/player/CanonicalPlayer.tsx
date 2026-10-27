@@ -1082,6 +1082,7 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
     seriesContinueAutoplayAttemptedRef.current = false
     setHasPlaybackStarted(false)
     activeQueueIndexRef.current = 0
+    setQueueIndex(0)
     completedRef.current = 0
     pendingQueueSeekRef.current = null
     pendingQueueSeekPlayRef.current = false
