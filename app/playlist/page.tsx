@@ -150,7 +150,7 @@ export default function PlaylistPage() {
           </div>
         )}
 
-        {items.length > 0 && <p className="text-sm text-white">Keep Endless Tales open until every story says Ready offline. Up to 50 episodes or 2 GB can be saved. Automatic refills run while the app is open and your browser confirms Wi-Fi. On iPhone or browsers that cannot identify Wi-Fi, connect to Wi-Fi and use Download remaining episodes. Finished episodes are removed automatically.</p>}
+        {items.length > 0 && <p className="text-sm text-white">Keep this page open while downloading. “Ready offline” means you can listen without internet.</p>}
         {items.map((item, i) => {
           const key = item.type === 'series' ? `series-${item.series_id || item.id}` : `single-${item.id}`
           const title = item.type === 'series' ? (item.series_name || 'Series') : (item.title || '')
