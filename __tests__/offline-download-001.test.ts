@@ -59,15 +59,18 @@ describe('checkDownloadCaps', () => {
 // ── Download orchestration (store mocked in-memory; real IndexedDB is covered by the browser check) ──
 const mem = { episodes: new Map<string, any>(), blobs: new Map<string, Blob>(), license: null as any, deleted: [] as string[] }
 jest.mock('@/lib/offline/store', () => ({
+  getEpisode: async (id: string) => mem.episodes.get(id) || null,
+  getBlob: async (key: string) => mem.blobs.get(key) || null,
+  sharedCoverKey: (id: string) => `series-cover:${id}`,
   segmentKey: (id: string, i: number) => `${id}:seg:${i}`,
   coverKey: (id: string) => `${id}:cover`,
-  listEpisodes: async () => [...mem.episodes.values()],
-  usage: async () => ({ count: mem.episodes.size, bytes: [...mem.episodes.values()].reduce((s, e) => s + e.totalBytes, 0) }),
+  listEpisodes: async () => Array.from(mem.episodes.values()),
+  usage: async () => ({ count: mem.episodes.size, bytes: Array.from(mem.episodes.values()).reduce((s, e) => s + e.totalBytes, 0) }),
   putBlob: async (k: string, b: Blob) => { mem.blobs.set(k, b) },
   putEpisode: async (e: any) => { mem.episodes.set(e.storyId, e) },
   deleteEpisode: async (id: string) => {
     mem.deleted.push(id); mem.episodes.delete(id)
-    for (const k of [...mem.blobs.keys()]) if (k.startsWith(`${id}:`)) mem.blobs.delete(k)
+    for (const k of Array.from(mem.blobs.keys())) if (k.startsWith(`${id}:`)) mem.blobs.delete(k)
   },
   getLicense: async () => mem.license,
   putLicense: async (l: any) => { mem.license = l },
@@ -117,8 +120,8 @@ describe('downloadEpisode', () => {
     const ep = await downloadEpisode({ storyId: 's1', accessToken: 'tok', firstName: 'George', onProgress: p => progress.push(p) })
     expect(ep.segments.map(s => [s.label, s.bytes])).toEqual([['Welcome', 1000], ['Story intro', 2000], ['The Pattern', 30000]])
     expect(ep.totalBytes).toBe(33000)
-    expect(ep).toMatchObject({ title: 'The Pattern', seriesName: 'What the Ground Keeps', episodeNumber: 2, durationMins: 16, isFree: false, userId: 'u1', coverKey: 's1:cover' })
-    expect([...mem.blobs.keys()].sort()).toEqual(['s1:cover', 's1:seg:0', 's1:seg:1', 's1:seg:2'])
+    expect(ep).toMatchObject({ title: 'The Pattern', seriesName: 'What the Ground Keeps', episodeNumber: 2, durationMins: 16, isFree: false, userId: 'u1', coverKey: 'series-cover:ser' })
+    expect(Array.from(mem.blobs.keys()).sort()).toEqual(['s1:seg:0', 's1:seg:1', 's1:seg:2', 'series-cover:ser'])
     expect(mem.license).toEqual(LICENSE)
     // Auth header on the gate, firstName passed to the playlist (same as the player)
     expect(calls[0].init?.headers).toMatchObject({ Authorization: 'Bearer tok' })
@@ -165,8 +168,25 @@ describe('downloadEpisode', () => {
     })
     await expect(downloadEpisode({ storyId: 's1', accessToken: 'tok' })).rejects.toMatchObject({ code: 'max_bytes' })
     expect(mem.deleted).toContain('s1')
-    expect([...mem.blobs.keys()].some(k => k.startsWith('s1:'))).toBe(false)
+    expect(Array.from(mem.blobs.keys()).some(k => k.startsWith('s1:'))).toBe(false)
     expect(mem.episodes.has('s1')).toBe(false)
+  })
+
+  it('shares a series cover and skips an already completed download', async () => {
+    const routes = {
+      '/api/offline/license': json({ allowed: true, license: LICENSE, story: STORY }),
+      '/api/asc3/story-playlist': json({ useFinalMix: true, finalMixUrl: 'https://cdn/body.mp3' }),
+      'https://cdn/body.mp3': () => bytesResponse(100),
+      'https://cdn/cover.jpg': () => bytesResponse(10, 'image/jpeg'),
+    }
+    const calls = installFetch(routes)
+    await downloadEpisode({ storyId: 's1', accessToken: 'tok' })
+    await downloadEpisode({ storyId: 's2', accessToken: 'tok' })
+    expect(mem.episodes.get('s1').coverKey).toBe(mem.episodes.get('s2').coverKey)
+    expect(calls.filter(c => c.url.startsWith('https://cdn/cover.jpg'))).toHaveLength(1)
+    const before = calls.length
+    await downloadEpisode({ storyId: 's1', accessToken: 'tok' })
+    expect(calls).toHaveLength(before)
   })
 
   it('network failure mid-download → no episode record, partial blobs removed', async () => {
@@ -202,7 +222,7 @@ describe('refreshOfflineLicense', () => {
     installFetch({ '/api/offline/license': json({ license: { ...LICENSE, entitled: false, validUntil: null } }) })
     const r = await refreshOfflineLicense('tok')
     expect(r.purged).toBe(1)
-    expect([...mem.episodes.keys()]).toEqual(['free'])
+    expect(Array.from(mem.episodes.keys())).toEqual(['free'])
     expect(mem.license.validUntil).toBeNull()
   })
   it('different user signed in on this device → their downloads are removed', async () => {

@@ -38,6 +38,7 @@ export interface OfflineEpisode {
 
 export const segmentKey = (storyId: string, i: number) => `${storyId}:seg:${i}`
 export const coverKey = (storyId: string) => `${storyId}:cover`
+export const sharedCoverKey = (seriesId: string) => `series-cover:${seriesId}`
 
 let dbPromise: Promise<IDBDatabase> | null = null
 
@@ -105,15 +106,29 @@ export async function putEpisode(episode: OfflineEpisode): Promise<void> {
   const tx = db.transaction('episodes', 'readwrite')
   tx.objectStore('episodes').put(episode)
   await done(tx)
+  if (typeof window !== 'undefined') window.dispatchEvent(new Event('et_downloads_changed'))
 }
 
 /** Deletes the episode record and every blob for it (including orphans from an aborted download). */
 export async function deleteEpisode(storyId: string): Promise<void> {
   const db = await openDb()
   const tx = db.transaction(['episodes', 'blobs'], 'readwrite')
-  tx.objectStore('episodes').delete(storyId)
-  tx.objectStore('blobs').delete(IDBKeyRange.bound(`${storyId}:`, `${storyId}:￿`))
+  const episodes = tx.objectStore('episodes')
+  const blobs = tx.objectStore('blobs')
+  const pending = episodes.get(storyId)
+  pending.onsuccess = () => {
+    const ep = pending.result as OfflineEpisode | undefined
+    episodes.delete(storyId)
+    blobs.delete(IDBKeyRange.bound(`${storyId}:`, `${storyId}:￿`))
+    if (ep?.coverKey?.startsWith('series-cover:')) {
+      const others = episodes.getAll()
+      others.onsuccess = () => {
+        if (!(others.result as OfflineEpisode[]).some(other => other.coverKey === ep.coverKey)) blobs.delete(ep.coverKey!)
+      }
+    }
+  }
   await done(tx)
+  if (typeof window !== 'undefined') window.dispatchEvent(new Event('et_downloads_changed'))
 }
 
 export async function getLicense(): Promise<OfflineLicense | null> {

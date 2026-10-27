@@ -89,7 +89,7 @@
     objectUrls: [], lastSave: 0
   }
 
-  // ── IndexedDB (read-only here) ────────────────────────────────────────────
+  // ── IndexedDB ────────────────────────────────────────────
   function openDb() {
     return new Promise(function (resolve, reject) {
       var req = indexedDB.open(DB_NAME, DB_VERSION)
@@ -113,6 +113,54 @@
         r.onerror = function () { reject(r.error) }
       })
     })
+  }
+
+  // Delete only the completed audio; retain a shared cover while another episode uses it.
+  function deleteFinished(ep) {
+    dbp = dbp || openDb()
+    return dbp.then(function (db) {
+      return new Promise(function (resolve, reject) {
+        var tx = db.transaction(['episodes', 'blobs'], 'readwrite')
+        var eps = tx.objectStore('episodes'), blobs = tx.objectStore('blobs')
+        eps.delete(ep.storyId)
+        blobs.delete(IDBKeyRange.bound(ep.storyId + ':', ep.storyId + ':￿'))
+        var remaining = eps.getAll()
+        remaining.onsuccess = function () {
+          if (ep.coverKey && ep.coverKey.indexOf('series-cover:') === 0 && !remaining.result.some(function (other) { return other.coverKey === ep.coverKey })) blobs.delete(ep.coverKey)
+        }
+        tx.oncomplete = resolve
+        tx.onerror = function () { reject(tx.error) }
+        tx.onabort = function () { reject(tx.error || new Error('Cleanup interrupted')) }
+      })
+    })
+  }
+  function removeFinishedFromPlaylist(ep) {
+    try {
+      var parsed = JSON.parse(localStorage.getItem('dtt_active_playlist') || 'null')
+      if (!parsed) return
+      var items = parsed.items || parsed.stories || []
+      var changed = false
+      var remaining = items.map(function (item) {
+        if (item.type === 'series' && Array.isArray(item.episodes)) {
+          var episodes = item.episodes.filter(function (e) { return e.id !== ep.storyId })
+          if (episodes.length === item.episodes.length) return item
+          changed = true
+          if (!episodes.length) return null
+          var mins = Math.round((item.total_mins || 0) * episodes.length / item.episodes.length)
+          return Object.assign({}, item, { episodes: episodes, episode_count: episodes.length, total_mins: mins })
+        }
+        if (item.id === ep.storyId) { changed = true; return null }
+        return item
+      }).filter(Boolean)
+      if (!changed) return
+      var keys = remaining.map(function (item) { return item.type === 'series' ? 'series-' + (item.series_id || item.id) : 'single-' + item.id })
+      if (remaining.length) {
+        parsed.items = remaining
+        parsed.remaining_mins = remaining.reduce(function (sum, item) { return sum + (item.type === 'series' ? item.total_mins || 0 : item.duration_mins || 0) }, 0)
+        localStorage.setItem('dtt_active_playlist', JSON.stringify(parsed))
+      } else localStorage.removeItem('dtt_active_playlist')
+      ;['et_current_playlist', 'et_saved_playlist', 'et_current_playlist_' + ep.userId].forEach(function (key) { localStorage.setItem(key, JSON.stringify(keys)) })
+    } catch (e) { console.warn('[offline] Playlist cleanup failed', e) }
   }
 
   // ── License (mirrors lib/offline/license.ts canPlayOffline) ────────────────
@@ -248,8 +296,13 @@
     if (c.index < c.urls.length - 1) { loadSegment(c.index + 1, 0, true); return }
     saveProgress(c.ep, c.total, true)
     var next = neighbour(1)
+    state.current = null
+    state.episodes = state.episodes.filter(function (ep) { return ep.storyId !== c.ep.storyId })
+    removeFinishedFromPlaylist(c.ep)
+    if (listCovers[c.ep.storyId]) { URL.revokeObjectURL(listCovers[c.ep.storyId]); delete listCovers[c.ep.storyId] }
+    deleteFinished(c.ep).catch(function () { $('status').textContent = 'Finished playing. Storage cleanup failed; remove this download when online.' })
     if (next) start(next, true)
-    else { render(); syncMedia() }
+    else { audio.removeAttribute('src'); audio.load(); releaseUrls(); render(); if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'none' }
   })
   audio.addEventListener('timeupdate', function () {
     var now = Date.now()
@@ -383,7 +436,19 @@
 
   if (!('indexedDB' in window)) { $('status').textContent = 'This browser can’t store downloads.'; return }
   Promise.all([get('episodes'), get('meta', 'license')]).then(function (res) {
-    state.episodes = (res[0] || []).sort(sortEpisodes)
+    var episodes = (res[0] || []).sort(sortEpisodes)
+    var order = []
+    try {
+      var playlist = JSON.parse(localStorage.getItem('dtt_active_playlist') || 'null')
+      ;((playlist && (playlist.items || playlist.stories)) || []).forEach(function (item) {
+        if (item.type === 'series') (item.episodes || []).forEach(function (ep) { order.push(ep.id) })
+        else order.push(item.id)
+      })
+    } catch (e) {}
+    state.episodes = episodes.sort(function (a, b) {
+      var ai = order.indexOf(a.storyId), bi = order.indexOf(b.storyId)
+      return (ai < 0 ? 100000 : ai) - (bi < 0 ? 100000 : bi)
+    })
     state.license = res[1] || null
     render()
     var wanted = decodeURIComponent((location.hash || '').slice(1))

@@ -1,46 +1,63 @@
 'use client'
 
-// QUEUE-OFFLINE-001 (Marc, 2026-10-04): queueing a story/series now auto-saves
-// it for offline playback; un-queueing removes the offline copy. Shared by
-// every "+ Queue" entry point (Library, Recommended For You) so they all
-// behave the same way. Best-effort: a failed/capped download never blocks or
-// reverses the queue action itself — the story stays queued and simply plays
-// online if it couldn't be saved offline (storage/episode caps, not signed
-// in, not entitled, etc.).
-
 import { downloadEpisode, DownloadError } from './download'
-import { deleteEpisode, offlineSupported } from './store'
+import { deleteEpisode, getEpisode, offlineSupported } from './store'
 
 export type QueueDownloadTarget =
   | { type: 'single'; id: string }
   | { type: 'series'; episodeIds: string[] }
+export type QueueDownloadStatus = { state: 'waiting' | 'downloading' | 'error'; percent?: number; message?: string }
+export const downloadStatuses = new Map<string, QueueDownloadStatus>()
+const tasks = new Map<string, AbortController>()
+let tail: Promise<void> = Promise.resolve()
 
+function notify() { if (typeof window !== 'undefined') window.dispatchEvent(new Event('et_downloads_changed')) }
+function status(id: string, value: QueueDownloadStatus) { downloadStatuses.set(id, value); notify() }
 function idsFor(target: QueueDownloadTarget): string[] {
   return target.type === 'single' ? [target.id] : target.episodeIds
 }
 
-/** Downloads every episode in the target, one at a time, stopping quietly at the first failure (storage/episode cap reached, not entitled, offline unsupported, etc). */
-export async function downloadQueuedItemOffline(
-  target: QueueDownloadTarget,
-  opts: { accessToken: string; firstName?: string | null }
-): Promise<void> {
+/** Serialize saves across stories so simultaneous clicks respect storage limits. */
+export async function downloadQueuedItemOffline(target: QueueDownloadTarget, opts: { accessToken: string; firstName?: string | null }): Promise<void> {
   if (!offlineSupported()) return
-  for (const storyId of idsFor(target)) {
-    try {
-      await downloadEpisode({ storyId, accessToken: opts.accessToken, firstName: opts.firstName })
-    } catch (err) {
-      if (err instanceof DownloadError) {
-        console.warn('[Queue] offline save stopped:', err.code, err.message)
-      } else {
-        console.warn('[Queue] offline save failed:', err)
+  const pending = idsFor(target).filter(Boolean).filter(id => !tasks.has(id)).map(id => {
+    const controller = new AbortController()
+    tasks.set(id, controller)
+    status(id, { state: 'waiting' })
+    return { id, controller }
+  })
+  const run = tail.then(async () => {
+    for (const { id, controller } of pending) {
+      if (controller.signal.aborted) continue
+      try {
+        if (!(await getEpisode(id))) {
+          status(id, { state: 'downloading' })
+          await downloadEpisode({ storyId: id, ...opts, signal: controller.signal, onProgress: p => {
+            status(id, { state: 'downloading', percent: Math.min(99, Math.round(((p.segment + (p.totalBytes ? p.receivedBytes / p.totalBytes : 0)) / p.segments) * 100)) })
+          } })
+        }
+        // A removal during the final database write must not resurrect the download.
+        if (controller.signal.aborted) await deleteEpisode(id)
+        downloadStatuses.delete(id)
+      } catch (err) {
+        if (!controller.signal.aborted) status(id, { state: 'error', message: err instanceof DownloadError ? err.message : 'Download interrupted. Connect to the internet and try again.' })
+      } finally {
+        if (tasks.get(id) === controller) tasks.delete(id)
+        notify()
       }
-      break
     }
-  }
+  })
+  tail = run.catch(() => {})
+  await run
 }
 
-/** Deletes any offline copies for the target (un-queue). Safe to call even if nothing was ever downloaded. */
 export async function removeQueuedItemOffline(target: QueueDownloadTarget): Promise<void> {
   if (!offlineSupported()) return
-  await Promise.all(idsFor(target).map((storyId) => deleteEpisode(storyId).catch(() => {})))
+  for (const id of idsFor(target)) {
+    tasks.get(id)?.abort()
+    tasks.delete(id)
+    downloadStatuses.delete(id)
+    await deleteEpisode(id)
+  }
+  notify()
 }

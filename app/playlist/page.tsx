@@ -7,6 +7,7 @@
 // lib/playlistState.ts) — this page is for the person's own changes.
 
 import { useEffect, useState } from 'react'
+import PlaylistDownloadStatus from '@/components/PlaylistDownloadStatus'
 import { useAuth } from '@/contexts/AuthContext'
 import { ACTIVE_PLAYLIST_KEY, LIBRARY_PLAYLIST_KEY, clearActivePlaylist, saveActivePlaylist } from '@/lib/playlistState'
 import { removeQueuedItemOffline, type QueueDownloadTarget } from '@/lib/offline/queueDownload'
@@ -145,10 +146,11 @@ export default function PlaylistPage() {
 
         {items.length > 0 && (
           <div style={{ background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: 12, padding: '14px 16px', fontSize: 15, fontWeight: 700 }}>
-            You have downloaded {storyCount} {storyCount === 1 ? 'story' : 'stories'} to your playlist — {formatMins(totalMins)}
+            You have {storyCount} {storyCount === 1 ? 'story' : 'stories'} in your playlist — {formatMins(totalMins)}
           </div>
         )}
 
+        {items.length > 0 && <p className="text-sm text-white">Keep Endless Tales open until every story says Ready offline. Up to 10 episodes or 500 MB can be saved. Finished episodes are removed automatically.</p>}
         {items.map((item, i) => {
           const key = item.type === 'series' ? `series-${item.series_id || item.id}` : `single-${item.id}`
           const title = item.type === 'series' ? (item.series_name || 'Series') : (item.title || '')
@@ -171,6 +173,7 @@ export default function PlaylistPage() {
                 <div style={{ color: '#c7d2fe', fontSize: 12, marginTop: 2 }}>
                   {item.type === 'series' ? `${item.episode_count || (item.episodes || []).length} episodes · ` : ''}{formatMins(mins)}
                 </div>
+                <PlaylistDownloadStatus target={targetFor(item)} />
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                 <button

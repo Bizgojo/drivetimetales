@@ -1013,7 +1013,6 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
       // when the last item is removed — don't blindly wipe it after, or any
       // other still-queued stories would be lost along with this episode.
       try { removeEpisodeFromActivePlaylist(storyId, user?.id || null) } catch {}
-      deleteEpisode(storyId).catch(() => {})
 
       if (next?.id) {
         // Keep playing straight through the queue — don't stop and wait for
@@ -1838,6 +1837,7 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
         }
       }
     } else if (source === 'natural_ended') {
+      deleteEpisode(storyId).catch(() => {})
       const completedSeconds = getQueueTotalSeconds() || completedRef.current || duration
       setCumTime(completedSeconds)
       raise(0); setIsPlaying(false); saveProgress(completedSeconds, true)
@@ -2782,6 +2782,7 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
             }
           }
           if (!isASC3) {
+            deleteEpisode(storyId).catch(() => {})
             setIsPlaying(false); saveProgress(duration, true)
             // POST-TRIAL-BELLE-001: for lapsed users on series EP1, show wall at natural end
             if (isLapsedRef.current && story?.series_id) {

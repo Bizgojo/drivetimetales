@@ -11,7 +11,7 @@ import {
   checkDownloadCaps, OFFLINE_MAX_BYTES, OFFLINE_MAX_EPISODES, type OfflineLicense,
 } from './license'
 import {
-  coverKey, deleteEpisode, getLicense, listEpisodes, putBlob, putEpisode, putLicense, segmentKey, usage,
+  coverKey, sharedCoverKey, getBlob, getEpisode, deleteEpisode, getLicense, listEpisodes, putBlob, putEpisode, putLicense, segmentKey, usage,
   type OfflineEpisode, type OfflineSegment,
 } from './store'
 
@@ -91,6 +91,8 @@ export async function downloadEpisode(opts: {
 }): Promise<OfflineEpisode> {
   const { storyId, accessToken, onProgress, signal } = opts
 
+  const existing = await getEpisode(storyId)
+  if (existing) return existing
   const before = await usage()
   if (before.count >= OFFLINE_MAX_EPISODES) {
     throw new DownloadError('max_episodes', `You can keep up to ${OFFLINE_MAX_EPISODES} downloaded episodes. Remove one to make room.`)
@@ -148,9 +150,12 @@ export async function downloadEpisode(opts: {
     let storedCover: string | null = null
     if (story.coverUrl) {
       try {
-        const { blob } = await fetchBlob(story.coverUrl, () => {}, signal)
-        await putBlob(coverKey(storyId), blob)
-        storedCover = coverKey(storyId)
+        const key = story.seriesId ? sharedCoverKey(story.seriesId) : coverKey(storyId)
+        if (!(await getBlob(key))) {
+          const { blob } = await fetchBlob(story.coverUrl, () => {}, signal)
+          await putBlob(key, blob)
+        }
+        storedCover = key
       } catch { /* fall back to app icon */ }
     }
 
