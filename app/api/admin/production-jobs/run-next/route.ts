@@ -6498,6 +6498,7 @@ async function generateOneSeriesEpisodeScript(job: ProductionJob, model: string)
         isFinale: selfCheckIsFinale,
         narratorVoiceNames: selfCheckVoices,
         briefMinutes: selfCheckBriefMinutes,
+        requireCastGuide: true,
       })
       // The same Belle rules series_voice_preflight enforces (shared function).
       const belleIssues = await seriesEpisodeBelleContentIssues({
