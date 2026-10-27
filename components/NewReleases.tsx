@@ -3,11 +3,17 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/contexts/AuthContext'
+import { useOpenPlayer } from '@/components/player/PersistentPlayer'
+import { formatMinutes } from '@/components/LibraryStoryCard'
+import { ACTIVE_PLAYLIST_KEY, saveActivePlaylist, clearActivePlaylist } from '@/lib/playlistState'
+import { downloadQueuedItemOffline, removeQueuedItemOffline } from '@/lib/offline/queueDownload'
 
 interface Story {
   id: string; title: string; genre: string; author: string
   duration_mins: number; cover_url: string | null
   description: string | null
+  narrator_voice_name?: string | null
+  episodes?: Story[]
   series_id: string | null; series_number: number | null; series_name: string | null
   episode_number?: number | null
   published_on?: string | null
@@ -45,19 +51,72 @@ function isLaunchInventory(story: Story) {
   return !/\b(test|sample|draft)\b/i.test(`${story.title} ${story.series_name || ''}`)
 }
 
+const buttonStyle = { flex: 1, minWidth: 0, height: 58, padding: 4, borderRadius: 6, fontSize: 12, lineHeight: 1.25, fontWeight: 800, color: '#fff', cursor: 'pointer' } as const
+
 export default function NewReleases({ excludeIds = [], onIdsLoaded }: { excludeIds?: string[]; onIdsLoaded?: (ids: string[]) => void }) {
-  const { user } = useAuth()
+  const { user, session } = useAuth()
+  const openPlayer = useOpenPlayer()
+  const [playlist, setPlaylist] = useState<string[]>([])
+  const playlistKey = user ? `et_current_playlist_${user.id}` : 'et_current_playlist'
   const router = useRouter()
   const [stories, setStories] = useState<Story[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => { load() }, [user?.id, excludeIds.join(',')])
 
+  useEffect(() => {
+    const sync = () => {
+      try { setPlaylist(JSON.parse(localStorage.getItem(playlistKey) || '[]')) } catch { setPlaylist([]) }
+    }
+    sync()
+    window.addEventListener('et_playlist_saved', sync)
+    window.addEventListener('et_playlist_cleared', sync)
+    return () => {
+      window.removeEventListener('et_playlist_saved', sync)
+      window.removeEventListener('et_playlist_cleared', sync)
+    }
+  }, [playlistKey])
+
+  function navigate(url: string) {
+    if (openPlayer) openPlayer(url)
+    else router.push(url)
+  }
+
+  function togglePlaylist(story: Story) {
+    const key = story.series_id ? `series-${story.series_id}` : `single-${story.id}`
+    const episodes = story.episodes || [story]
+    const adding = !playlist.includes(key)
+    const next = adding ? [...playlist, key] : playlist.filter(k => k !== key)
+    let saved: any = {}
+    try { saved = JSON.parse(localStorage.getItem(ACTIVE_PLAYLIST_KEY) || '{}') } catch {}
+    const items = (saved.items || saved.stories || []).filter((item: any) =>
+      (item.type === 'series' ? `series-${item.series_id || item.id}` : `single-${item.id}`) !== key)
+    if (adding) items.push(story.series_id ? {
+      type: 'series', id: story.series_id, series_id: story.series_id,
+      title: story.series_name, series_name: story.series_name, author: story.author,
+      genre: story.genre, cover_url: story.cover_url, episode_count: episodes.length,
+      total_mins: episodes.reduce((sum, ep) => sum + Number(ep.duration_mins || 0), 0),
+      episodes: episodes.map(ep => ({ id: ep.id, episode_number: episodeNumber(ep) })),
+    } : { ...story, type: 'single' })
+    localStorage.setItem(playlistKey, JSON.stringify(next))
+    setPlaylist(next)
+    if (items.length) saveActivePlaylist({ ...saved, id: saved.id || `home-${Date.now()}`, items,
+      remaining_mins: items.reduce((sum: number, item: any) => sum + Number(item.total_mins || item.duration_mins || 0), 0),
+    }, next)
+    else clearActivePlaylist()
+    const target = story.series_id
+      ? { type: 'series' as const, episodeIds: episodes.map(ep => ep.id) }
+      : { type: 'single' as const, id: story.id }
+    if (adding && user && session?.access_token) {
+      downloadQueuedItemOffline(target, { accessToken: session.access_token, firstName: (user as any)?.first_name || null }).catch(() => {})
+    } else if (!adding) removeQueuedItemOffline(target).catch(() => {})
+  }
+
   async function load() {
     setLoading(true)
     const { data: publicRows } = await supabase
       .from('stories')
-      .select('id')
+      .select('id, narrator_voice_name')
       .eq('status', 'published')
       .eq('is_hidden', false)
 
@@ -104,7 +163,8 @@ export default function NewReleases({ excludeIds = [], onIdsLoaded }: { excludeI
       } catch {}
     }
 
-    const storyRows = (data as Story[]).filter(isLaunchInventory)
+    const narratorById = new Map((publicRows || []).map(row => [row.id, row.narrator_voice_name]))
+    const storyRows = (data as Story[]).filter(isLaunchInventory).map(story => ({ ...story, narrator_voice_name: narratorById.get(story.id) }))
     const excludedSeriesIds = new Set(storyRows.filter(story => story.series_id && ex.has(story.id)).map(story => story.series_id as string))
     const completeSeriesRows = completeSeriesLaunchRows(storyRows)
     const result = [
@@ -115,7 +175,7 @@ export default function NewReleases({ excludeIds = [], onIdsLoaded }: { excludeI
       ...storyRows.filter((s) => !s.series_id && !ex.has(s.id)),
     ].sort((a, b) => (Date.parse(b.published_on || '') || 0) - (Date.parse(a.published_on || '') || 0)).slice(0, 2)
 
-    setStories(result)
+    setStories(result.map(story => ({ ...story, episodes: story.series_id ? storyRows.filter(ep => ep.series_id === story.series_id).sort((a, b) => episodeNumber(a) - episodeNumber(b)) : [story] })))
     onIdsLoaded?.(result.map(s => s.id))
     setLoading(false)
   }
@@ -140,26 +200,36 @@ export default function NewReleases({ excludeIds = [], onIdsLoaded }: { excludeI
           // Standalone stories keep existing direct-player behavior.
           const href = s.series_id ? `/series/${s.series_id}` : `/player/${s.id}?autoplay=1&playNow=1`
           const epNum = episodeNumber(s)
+          const episodes = s.episodes || [s]
+          const total = Math.round(episodes.reduce((sum, ep) => sum + Number(ep.duration_mins || 0), 0))
+          const key = s.series_id ? `series-${s.series_id}` : `single-${s.id}`
+          const description = s.description || ''
+          const shortDescription = description.length > 70 ? description.slice(0, 67).trimEnd() + '…' : description
           return (
             <div
               key={s.id}
-              onClick={() => router.push(href)}
               className="bg-slate-800 rounded-xl hover:bg-slate-700 transition"
-              style={{ display: 'block', padding: '0.5rem', cursor: 'pointer' }}
+              style={{ display: 'flex', flexDirection: 'column', padding: '0.5rem', color: '#fff' }}
             >
-              <div className="rounded-lg overflow-hidden cover-glow" style={{ position: 'relative' }}>
+              <div onClick={() => router.push(href)} className="rounded-lg overflow-hidden cover-glow" style={{ position: 'relative' }}>
                 <img src={s.cover_url || '/images/default-cover.png'} alt={s.series_name || s.title} style={{ width: '100%', aspectRatio: '1/1', objectFit: 'cover' }} />
                 {s.series_name && epNum > 0 && (
                   <div style={{ position: 'absolute', bottom: 4, left: 4, background: 'rgba(0,0,0,0.75)', borderRadius: 4, padding: '2px 6px', fontSize: 9, fontWeight: 700, color: '#fff' }}>EP. {epNum}</div>
                 )}
               </div>
-              <div style={{ marginTop: '0.5rem' }}>
+              <div style={{ marginTop: '0.5rem', display: 'flex', flexDirection: 'column', flex: 1 }}>
                 <h3 className="text-xs font-bold text-white line-clamp-2 leading-tight">{s.series_name ? s.series_name : s.title}</h3>
                 {s.series_name && <p style={{ color: '#fff', fontSize: '0.65rem', fontWeight: 600 }}>{s.title}</p>}
                 <p style={{ color: '#fff', fontSize: '0.7rem' }}>{s.genre}</p>
                 <p style={{ color: '#fff', fontSize: '0.7rem' }}>by {s.author}</p>
-                {s.description && <p style={{ color: '#fff', fontSize: '0.7rem', lineHeight: 1.45, margin: '5px 0' }}>{s.description}</p>}
-                <p style={{ color: '#fff', fontSize: '0.7rem', fontWeight: 600 }}>{s.duration_mins} min</p>
+                <p style={{ color: '#fff', fontSize: '0.7rem' }}>Narrated By {s.narrator_voice_name || 'Not listed'}</p>
+                <p style={{ color: '#fff', fontSize: '0.7rem', fontWeight: 600 }}>{episodes.length} Episode{episodes.length === 1 ? '' : 's'} · {formatMinutes(total)} total</p>
+                {shortDescription && <p style={{ color: '#fff', fontSize: '0.7rem', lineHeight: 1.45, margin: '5px 0' }}>{shortDescription}</p>}
+                <div style={{ display: 'flex', gap: 4, marginTop: 'auto', paddingTop: 8 }}>
+                  <button onClick={() => navigate(`/player/${s.id}?autoplay=1&playNow=1`)} style={{ ...buttonStyle, background: '#ea580c' }}>Listen</button>
+                  <button onClick={() => togglePlaylist(s)} style={{ ...buttonStyle, background: '#2563eb' }}>{playlist.includes(key) ? 'On Playlist' : 'Add to Playlist'}</button>
+                  <button onClick={() => navigate(`/player/${s.id}?openReader=1`)} style={{ ...buttonStyle, background: '#b45309' }}>Read</button>
+                </div>
               </div>
             </div>
           )
