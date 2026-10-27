@@ -577,6 +577,17 @@ async function applySegmentGainLimit(input: Buffer, gainDb: number): Promise<Buf
   }
 }
 
+// TRIM-TAIL-001 (job a21df7bd EP3 segment_0035, 2026-10-27): with a positive
+// stop_periods, ffmpeg's silenceremove stops at the FIRST pause longer than
+// stop_duration and drops everything after it. "And two days later... Frank
+// drowned." came back as ~1.0 s "And two days later..." on all 24 candidates
+// (Marsh Crossing "Miss Faraday." -> "Miss." is the same cut). Trim only the
+// leading and trailing silence: trim the start, reverse, trim the start
+// again (the old end), reverse back. Pauses inside the line are kept.
+export const SEGMENT_SILENCE_TRIM_FILTER =
+  'silenceremove=start_periods=1:start_duration=0.08:start_threshold=-45dB,' +
+  'areverse,silenceremove=start_periods=1:start_duration=0.12:start_threshold=-45dB,areverse'
+
 async function trimSegmentSilenceBuffer(input: Buffer): Promise<Buffer> {
   const tmpBase = path.join(os.tmpdir(), `et_voice_trim_${Date.now()}_${Math.random().toString(16).slice(2)}`)
   const inputPath = `${tmpBase}_in.mp3`
@@ -585,7 +596,7 @@ async function trimSegmentSilenceBuffer(input: Buffer): Promise<Buffer> {
     await fs.writeFile(inputPath, input)
     await _execFileAsync(FFMPEG_PATH, [
       '-i', inputPath,
-      '-af', 'silenceremove=start_periods=1:start_duration=0.08:start_threshold=-45dB:stop_periods=1:stop_duration=0.12:stop_threshold=-45dB',
+      '-af', SEGMENT_SILENCE_TRIM_FILTER,
       '-ar', '44100', '-ac', '2', '-b:a', '192k',
       '-y', outputPath
     ])
