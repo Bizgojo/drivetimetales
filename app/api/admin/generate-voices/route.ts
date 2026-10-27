@@ -13,6 +13,7 @@ import { evaluateBelleCopyForPublish } from '@/lib/publicationBelleGate'
 // delegate all counting to this function so [PAUSE] drift can never recur.
 import { parseScriptPositions, isWordlessSpokenText, SCENE_BREAK_PAUSE_SECONDS } from '@/lib/scriptLineIndex'
 import { isAudioTooShortForText, minPlausibleSpeechSeconds } from '@/lib/speechDuration'
+import { recordLedgerSpend, estimateElevenLabsCostUsd, estimateWhisperCostUsd } from '@/app/lib/spend-ledger'
 // CASTING-ALIAS-001: structured error builder for character_description_missing gate
 import { buildStructuredError } from '@/lib/pipeline-runner/types'
 import { checkCastCollisions, formatCastCollisions } from '@/lib/castCollision'
@@ -44,6 +45,7 @@ import {
   transcriptSimilarity,
   transcriptTokenMatches,
   evaluateTranscriptQC,
+  transcriptFlakeWarrantsExtraCandidate,
   QC_MODULE_MARKER,
 } from '@/lib/transcriptQC'
 
@@ -179,8 +181,9 @@ async function normalizeSpokenBuffer(input: Buffer, rawText: string, prefix: str
     ])
     return await fs.readFile(outputPath)
   } catch (e) {
-    console.warn(`Spoken loudness normalization failed for ${prefix}; using raw ElevenLabs audio:`, e)
-    return input
+    // CREEK-PAUSE-AND-REPAIR (A)(iii): loudnorm failure is fail_invalid_loudness —
+    // NEVER silently return raw un-normalized audio into the mix chain.
+    throw new Error(`fail_invalid_loudness: Spoken loudness normalization failed for ${prefix}; refusing to pass through raw audio: ${e instanceof Error ? e.message : String(e)}`)
   } finally {
     await fs.unlink(inputPath).catch(() => {})
     await fs.unlink(outputPath).catch(() => {})
@@ -257,10 +260,31 @@ async function transcribeSegmentBuffer(buf: Buffer, fileName: string): Promise<s
   return String(parsed.text || '').trim()
 }
 
-async function validateSegmentTranscript(buf: Buffer, expectedText: string, fileName: string) {
+// CREEK-PAUSE-AND-REPAIR (B): fire-and-forget Whisper metering. Never throws,
+// never blocks the QC path.
+async function recordSegmentWhisperLedger(buf: Buffer, fileName: string, storyId?: string): Promise<void> {
+  try {
+    const seconds = await getAudioDurationBuffer(buf)
+    await recordLedgerSpend({
+      storyId: storyId ?? null,
+      provider: 'openai',
+      operation: 'whisper_transcript_qc',
+      estimatedCostUsd: estimateWhisperCostUsd(seconds),
+      detail: { file: fileName, audioSeconds: Number.isFinite(seconds) ? +seconds.toFixed(2) : null },
+    })
+  } catch {
+    // recordLedgerSpend already fails open; probe failure just skips metering detail.
+  }
+}
+
+async function validateSegmentTranscript(buf: Buffer, expectedText: string, fileName: string, storyId?: string) {
   let detectedText: string
   try {
     detectedText = await transcribeSegmentBuffer(buf, fileName)
+    // CREEK-PAUSE-AND-REPAIR (B): meter every Whisper transcript-QC call
+    // (incl. retries). Only successful calls are billed, so record here —
+    // failures that throw below are not metered.
+    void recordSegmentWhisperLedger(buf, fileName, storyId)
   } catch (e) {
     const msg = String(e)
     // OpenAI Whisper endpoint unavailable (404 / account restriction) - infrastructure
@@ -1864,6 +1888,16 @@ async function generateVoiceLine(rawText: string, voiceId: string, storyId: stri
     })
     if (!res.ok) throw new Error(`ElevenLabs error ${res.status}: ${(await res.text()).slice(0, 200)}`)
     const rawBuf = Buffer.from(await res.arrayBuffer())
+    // CREEK-PAUSE-AND-REPAIR (B): meter every ElevenLabs call (incl. retries,
+    // repairs, split-rescue chunks — all flow through here). Successful audio
+    // responses are billed per character, so record before SILENCE checks.
+    void recordLedgerSpend({
+      storyId,
+      provider: 'elevenlabs',
+      operation: `tts_${prefix}`,
+      estimatedCostUsd: estimateElevenLabsCostUsd(inputText.length),
+      detail: { chars: inputText.length, file: fileName },
+    })
     // ATL-PIPE-001: Reject silence placeholder buffers before any processing
     // Text-length-aware threshold: short segments (< 10 words) use 5KB floor; standard uses 20KB
     const segmentWordCount = inputText.trim().split(/\s+/).length
@@ -1931,6 +1965,10 @@ async function generateVoiceLine(rawText: string, voiceId: string, storyId: stri
     // a long inter-sentence pause and retrying won't help.  The segment should
     // be split into shorter sub-segments instead.
     const transcriptDetectedTexts: string[] = []
+    // CREEK-PAUSE-AND-REPAIR (A)(i): set when the duration gate rejects a buffer
+    // whose audio is itself cut off — lets split rescue run for buffers Whisper
+    // never heard (isAmbiguousTranscriptFailure would otherwise block it).
+    let durationGateTripped = false
     const splitRescueDiagnostics = emptySplitRescueDiagnostics()
 
     const actionForMetrics = (metrics: LoudnessMetrics): string => {
@@ -1967,18 +2005,25 @@ async function generateVoiceLine(rawText: string, voiceId: string, storyId: stri
           }
 
           const action = actionForMetrics(metrics)
-          logSegmentQc(chunkFileName, speaker, chunkText, metrics, `split_rescue_${action}`)
-          if (!isPassingAction(action)) {
-            lastChunkFailure = `loudness failed action=${action} lufs=${metrics.input_i.toFixed(2)} tp=${metrics.input_tp.toFixed(2)}`
-            continue
-          }
-
-          const transcriptCheck = await validateSegmentTranscript(chunkBuf, chunkText, chunkFileName)
+          const chunkDuration = await getAudioDurationBuffer(chunkBuf)
+          const transcriptCheck = await validateSegmentTranscript(chunkBuf, chunkText, chunkFileName, storyId)
           console.log(`  Split-rescue transcript QC ${chunkFileName} speaker="${speaker}" attempt=${attempt} coverage=${transcriptCheck.coverage.toFixed(2)} tail=${transcriptCheck.tailMatches ? 'pass' : 'fail'} result=${transcriptCheck.passed ? 'accept' : 'retry'} expected="${chunkText.slice(0, 120)}" detected="${transcriptCheck.detectedText.slice(0, 120)}"`)
           if (!transcriptCheck.passed) {
             lastChunkFailure = `transcript failed expected "${transcriptCheck.expectedText}", detected "${transcriptCheck.detectedText}" (similarity: ${((transcriptCheck.similarity ?? 0) * 100).toFixed(1)}%)`
             continue
           }
+          if (isAudioTooShortForText(chunkDuration, chunkText)) {
+            logSegmentQc(chunkFileName, speaker, chunkText, metrics, 'split_rescue_fail_duration_implausible')
+            lastChunkFailure = `duration implausible audio=${chunkDuration.toFixed(2)}s < min plausible ${minPlausibleSpeechSeconds(chunkText).toFixed(2)}s for chunk text`
+            continue
+          }
+          // CREEK-PAUSE-AND-REPAIR (A)(ii): accept split-rescue chunks on
+          // transcript-QC-pass + duration-plausibility regardless of the -18 LUFS
+          // floor. Loudness stays enforced at combine + final mix.
+          if (!isPassingAction(action)) {
+            console.warn(`  SPLIT_RESCUE_BELOW_FLOOR_ACCEPT ${chunkFileName} speaker="${speaker}" action=${action} lufs=${metrics.input_i.toFixed(2)} tp=${metrics.input_tp.toFixed(2)} — accepted on transcript-QC-pass + duration-plausibility; loudness enforced at combine + final mix`)
+          }
+          logSegmentQc(chunkFileName, speaker, chunkText, metrics, `split_rescue_${action}_accepted_on_transcript`)
 
           return chunkBuf
         } catch (e) {
@@ -1993,7 +2038,9 @@ async function generateVoiceLine(rawText: string, voiceId: string, storyId: stri
       if (!transcriptFailure) return null
       const shouldTrySplitRescue = prefix === 'segment'
         && hasMultipleSentenceOrClauseBoundaries(transcriptFailure.expectedText)
-        && !isAmbiguousTranscriptFailure(transcriptFailure)
+        // CREEK-PAUSE-AND-REPAIR (A)(i): duration-gate buffers were never sent to
+        // Whisper, so an empty detection must not count as ambiguous audio here.
+        && (!isAmbiguousTranscriptFailure(transcriptFailure) || durationGateTripped)
         && (
           isCleanDetectedPrefix(transcriptFailure.expectedText, transcriptFailure.detectedText)
           || isLowCoverageMissingTail(transcriptFailure)
@@ -2045,6 +2092,35 @@ async function generateVoiceLine(rawText: string, voiceId: string, storyId: stri
       let candidateBuf = buf
       let candidateDuration = candidate === 1 ? segmentDuration : await getAudioDurationBuffer(candidateBuf)
       let metrics = await analyzeLoudnessBuffer(candidateBuf)
+      // CREEK-PAUSE-AND-REPAIR (A)(i): duration-plausibility gate on the loudness path.
+      // A buffer physically too short to hold its text is genuinely truncated
+      // (ElevenLabs stopped) — reject BEFORE paid extras (retry-TTS regenerate,
+      // trim/gain work, Whisper transcript QC). Seeds a zero-coverage transcript
+      // failure so the tail path routes to split rescue instead of accepting.
+      if (isAudioTooShortForText(candidateDuration, text)) {
+        logSegmentQc(fileName, speaker, text, metrics, 'fail_duration_implausible')
+        updateBest(candidate, metrics, 'fail_duration_implausible')
+        console.warn(
+          `  REAL_TRUNCATION [CREEK-GATE] ${fileName} speaker="${speaker}" ` +
+          `audio=${candidateDuration.toFixed(2)}s < min plausible ${minPlausibleSpeechSeconds(text).toFixed(2)}s ` +
+          `for the full line — rejecting before paid extras; routing to split rescue.`
+        )
+        durationGateTripped = true
+        transcriptFailure = {
+          passed: false,
+          expectedText: text,
+          detectedText: '',
+          coverage: 0,
+          similarity: 0,
+          tailMatches: false,
+          shortLineMatches: false,
+          oneWordProperNameMatch: false,
+          safeTerminalTailDrop: false,
+          weakVerbTrailingS: false,
+        }
+        transcriptDetectedTexts.push('')
+        continue
+      }
       let hitAdaptiveGainCap = false
       let extremelyQuietBeforeGain = false
 
@@ -2102,7 +2178,7 @@ async function generateVoiceLine(rawText: string, voiceId: string, storyId: stri
         // prefix rescue (isPrefixAcceptable) can use it even when ALL candidates went
         // through this extended-gain path and lastLoudnessPassedBuf was never set elsewhere.
         lastLoudnessPassedBuf = candidateBuf
-        const transcriptCheck = await validateSegmentTranscript(candidateBuf, text, fileName)
+        const transcriptCheck = await validateSegmentTranscript(candidateBuf, text, fileName, storyId)
         console.log(`  Segment transcript QC ${fileName} speaker="${speaker}" candidate=${candidate} coverage=${transcriptCheck.coverage.toFixed(2)} tail=${transcriptCheck.tailMatches ? 'pass' : 'fail'} result=${transcriptCheck.passed ? 'extended_gain_rescue' : 'retry'} expected="${text.slice(0, 120)}" detected="${transcriptCheck.detectedText.slice(0, 120)}"`)
         if (!transcriptCheck.passed) {
           transcriptFailure = transcriptCheck
@@ -2159,7 +2235,7 @@ async function generateVoiceLine(rawText: string, voiceId: string, storyId: stri
       }
       if (isPassingAction(action)) {
         lastLoudnessPassedBuf = candidateBuf // ATL-PIPE-007: save loudness-passing buf for prefix-truncation rescue
-        const transcriptCheck = await validateSegmentTranscript(candidateBuf, text, fileName)
+        const transcriptCheck = await validateSegmentTranscript(candidateBuf, text, fileName, storyId)
         console.log(`  Segment transcript QC ${fileName} speaker="${speaker}" candidate=${candidate} coverage=${transcriptCheck.coverage.toFixed(2)} tail=${transcriptCheck.tailMatches ? 'pass' : 'fail'} result=${transcriptCheck.passed ? 'accept' : 'retry'} expected="${text.slice(0, 120)}" detected="${transcriptCheck.detectedText.slice(0, 120)}"`)
         if (!transcriptCheck.passed) {
           transcriptFailure = transcriptCheck
@@ -2190,6 +2266,67 @@ async function generateVoiceLine(rawText: string, voiceId: string, storyId: stri
 
     if (!accepted) {
       if (transcriptFailure) {
+        // SEG57-TRANSCRIPT-FLAKE-001 (2026-10-25): before the identical-truncation
+        // guardrail, grant bounded extra FULL candidates when the failure is a
+        // clean-prefix flake on loudness-passing audio. Each full re-render is
+        // an independent transcription sample (demonstrated: varying fragments
+        // across jobs for the same text). Cap = 2 paid renders; verification
+        // unchanged (candidate must pass the same transcript QC). Falls through
+        // to the existing guardrail/rescue/throw path when exhausted or N/A.
+        if (!accepted && transcriptFailure && lastLoudnessPassedBuf) {
+          let extraUsed = 0
+          while (
+            !accepted &&
+            transcriptFlakeWarrantsExtraCandidate(
+              {
+                expectedText: transcriptFailure.expectedText,
+                detectedText: transcriptFailure.detectedText,
+                coverage: transcriptFailure.coverage,
+                tailMatches: transcriptFailure.tailMatches,
+              },
+              extraUsed,
+            )
+          ) {
+            extraUsed += 1
+            try {
+              let extraBuf = await generateAttempt()
+              const extraDuration = await getAudioDurationBuffer(extraBuf)
+              let extraMetrics = await analyzeLoudnessBuffer(extraBuf)
+              const extraAction = actionForMetrics(extraMetrics)
+              logSegmentQc(fileName, speaker, text, extraMetrics, `transcript_flake_extra_${extraUsed}_${extraAction}`)
+              // NOTE: deliberately NOT pushed to transcriptDetectedTexts - that array
+              // feeds the identical-truncation guardrail below; marker strings
+              // would corrupt its all-identical evaluation and steal split-rescue.
+              if (!isPassingAction(extraAction)) {
+                continue
+              }
+              lastLoudnessPassedBuf = extraBuf
+              const extraCheck = await validateSegmentTranscript(extraBuf, text, fileName)
+              console.log(`  Segment transcript QC ${fileName} speaker="${speaker}" extra=${extraUsed} coverage=${extraCheck.coverage.toFixed(2)} tail=${extraCheck.tailMatches ? 'pass' : 'fail'} result=${extraCheck.passed ? 'accept-flake-rescue' : 'retry'} expected="${text.slice(0, 120)}" detected="${extraCheck.detectedText.slice(0, 120)}"`)
+              if (!extraCheck.passed) {
+                transcriptFailure = extraCheck
+                transcriptDetectedTexts.push(extraCheck.detectedText)
+                continue
+              }
+              updateBest(99 + extraUsed, extraMetrics, extraAction)
+              accepted = { buf: extraBuf, metrics: extraMetrics, action: extraAction, duration: extraDuration, candidate: 99 + extraUsed }
+            } catch (e) {
+              console.warn(`  transcript-flake extra candidate ${extraUsed} errored for ${fileName}:`, String(e).slice(0, 200))
+              break
+            }
+          }
+          // Persist the loudness-passing buffer for post-mortem retranscription:
+          // failed segments are otherwise never saved, leaving the next
+          // occurrence undiagnosable. Storage-only, no paid calls.
+          if (!accepted && lastLoudnessPassedBuf) {
+            supabase.storage.from('audio').upload(
+              `asc3/${storyId}/diag/${fileName.replace('.mp3', '.flake.mp3')}`,
+              Buffer.from(lastLoudnessPassedBuf),
+              { contentType: 'audio/mpeg', upsert: true },
+            ).then(() => console.warn(`  flake-diag sidecar saved for ${fileName}`)).catch((e: unknown) => console.warn(`  flake-diag sidecar upload failed for ${fileName}:`, String(e).slice(0, 160)))
+          }
+        }
+
         // ── Repeated-identical-truncation guardrail (Marc 2026-05-21) ──────────
         //
         // Case A - Low-coverage truncation (original rule):
@@ -2508,6 +2645,13 @@ async function generateVoiceLine(rawText: string, voiceId: string, storyId: stri
         // mismatch - Whisper was confused by the audio. Classify immediately as
         // transcript_question_mark to prevent silent retry loops.
         const detectedText = String(transcriptFailure.detectedText || '').trim()
+        // CREEK-PAUSE-AND-REPAIR (A)(i): duration-gate synthetic failure
+        // (coverage 0 — the buffer was never sent to Whisper because the audio
+        // itself is cut off). Offer split rescue before the ambiguous-audio throw.
+        if (detectedText === '' && (transcriptFailure.coverage ?? 1) === 0 && durationGateTripped) {
+          const gateRescueUrl = await trySplitTruncationRescue()
+          if (gateRescueUrl) return gateRescueUrl
+        }
         if (detectedText === '?' || detectedText === '??' || detectedText === '') {
           throw new Error(
             `TRANSCRIPT_AMBIGUOUS: Segment ${fileName} - Whisper returned "${detectedText || '(empty)'}". ` +

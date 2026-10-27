@@ -12,6 +12,7 @@
  */
 
 import { createClient } from '@supabase/supabase-js'
+import { recordLedgerSpend } from './spend-ledger'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -120,6 +121,14 @@ export async function logDalleCall({
       story_title: storyTitle ?? null,
       metadata: { size, quality, ...(metadata ?? {}) },
     })
+    // CREEK-PAUSE-AND-REPAIR (B): mirror into the per-episode spend ledger.
+    await recordLedgerSpend({
+      storyId: storyId ?? null,
+      provider: 'openai',
+      operation: 'image_' + model,
+      estimatedCostUsd: cost,
+      detail: { route, purpose, model, size, quality, images: n, storyTitle: storyTitle ?? null },
+    })
   } catch (err) {
     console.error('[openai-logger] Failed to log DALL-E usage:', err)
   }
@@ -159,6 +168,14 @@ export async function logGptCall({
       story_id: storyId ?? null,
       story_title: storyTitle ?? null,
       metadata: metadata ?? {},
+    })
+    // CREEK-PAUSE-AND-REPAIR (B): mirror into the per-episode spend ledger.
+    await recordLedgerSpend({
+      storyId: storyId ?? null,
+      provider: 'openai',
+      operation: 'chat_' + model,
+      estimatedCostUsd: cost,
+      detail: { route, purpose, model, inputTokens, outputTokens, storyTitle: storyTitle ?? null },
     })
   } catch (err) {
     console.error('[openai-logger] Failed to log GPT usage:', err)

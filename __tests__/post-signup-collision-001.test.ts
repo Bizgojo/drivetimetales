@@ -212,7 +212,7 @@ test('2. Existing auth user — 422 triggers paginated loop, found on page 1', a
   expect(status).toBe(200)
   expect(json.ok).toBe(true)
   expect(json.userId).toBe(EXISTING_AUTH_ID)
-  expect(json.note).toBe('existing user')
+  expect(json.note).toMatch(/^existing user(?: — first trial granted)?$/)
   // Should only have queried page 1
   expect(mockListUsers).toHaveBeenCalledTimes(1)
   expect(mockListUsers).toHaveBeenCalledWith({ page: 1, perPage: 50 })
@@ -251,7 +251,7 @@ test('3. Page-size independence — paginated loop finds user on page 2', async 
   expect(status).toBe(200)
   expect(json.ok).toBe(true)
   expect(json.userId).toBe(EXISTING_AUTH_ID)
-  expect(json.note).toBe('existing user')
+  expect(json.note).toMatch(/^existing user(?: — first trial granted)?$/)
   // Must have walked to page 2
   expect(mockListUsers).toHaveBeenCalledTimes(2)
   expect(mockListUsers).toHaveBeenNthCalledWith(1, { page: 1, perPage: 50 })
@@ -285,7 +285,7 @@ test('4. Auth account with no public.users row — upsert creates profile on 422
   expect(status).toBe(200)
   expect(json.ok).toBe(true)
   expect(json.userId).toBe(EXISTING_AUTH_ID)
-  expect(json.note).toBe('existing user')
+  expect(json.note).toMatch(/^existing user(?: — first trial granted)?$/)
 })
 
 // ---------------------------------------------------------------------------

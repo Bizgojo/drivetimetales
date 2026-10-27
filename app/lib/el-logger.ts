@@ -4,6 +4,7 @@
  * Uses with-timestamps endpoint to capture history_item_id when possible.
  */
 import { createClient } from '@supabase/supabase-js'
+import { recordLedgerSpend } from './spend-ledger'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -35,6 +36,17 @@ export async function logELCall(opts: {
       raw_text: opts.text.slice(0, 200),
       synced_at: new Date().toISOString(),
     }, { onConflict: 'history_item_id' })
+    // CREEK-PAUSE-AND-REPAIR (B): mirror into the per-episode spend ledger.
+    // el_usage_log carries no story id, so this records story_id NULL
+    // (unattributed/flagged). Segment TTS via generate-voices records the
+    // attributed row directly and does NOT call logELCall — no double-count.
+    await recordLedgerSpend({
+      storyId: null,
+      provider: 'elevenlabs',
+      operation: 'tts_' + opts.category,
+      estimatedCostUsd: +(opts.chars / 1000 * 0.30).toFixed(4),
+      detail: { voiceName: opts.voiceName, chars: opts.chars, category: opts.category, storyTitle: opts.storyTitle ?? null },
+    })
   } catch (e) {
     console.warn('[EL Logger] Non-blocking log failure:', e)
   }
