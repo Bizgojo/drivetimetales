@@ -134,10 +134,9 @@ export default function PlaylistPage() {
   const storyCount = items.length
 
   return (
-    <div style={{ minHeight: '100dvh', background: '#1e1b4b', color: 'white', padding: '16px' }}>
+    <div aria-label="My Downloads" style={{ minHeight: '100dvh', background: '#1e1b4b', color: 'white', padding: '16px' }}>
       <div style={{ maxWidth: 560, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 12 }}>
         <div style={{ position: 'sticky', top: 'var(--et-continue-bottom, 56px)', zIndex: 46, background: '#1e1b4b', marginTop: -16, paddingTop: 16, paddingBottom: 12, display: 'flex', flexDirection: 'column', gap: 16 }}>
-        <h1 style={{ fontSize: 22, fontWeight: 800, margin: 0 }}>My Downloads</h1>
 
         {items.length > 0 && (
           <div style={{ background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: 12, padding: '14px 16px', fontSize: 15, fontWeight: 700 }}>
