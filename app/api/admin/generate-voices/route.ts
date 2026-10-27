@@ -35,6 +35,7 @@ import {
 // BELL-FREEZE-GUARD-001: centralized frozen guard (frozenGuard + freezePreflight)
 import { checkFrozenGuard } from '@/lib/guards/frozenGuard'
 import { findUnlabeledStoryBodyLines } from '@/lib/scriptLabels'
+import { isEmptyTranscriptFailure } from '@/lib/emptyTranscriptRetry'
 import {
   buildBelleValidationContext,
   cleanBelleText,
@@ -3551,7 +3552,19 @@ export async function POST(req: NextRequest) {
             if (!characterVoiceId) throw new Error(`Missing character voice assignment for ${targetLine.speaker}`)
             voiceId = characterVoiceId
           }
-          const url = await generateVoiceLine(targetLine.text, voiceId, storyId, targetLine.index, 'segment', true, targetLine.speaker, 8, qcSkippedSegments)
+          // EMPTY-TRANSCRIPT-RETRY-001 (proof job 9d56b9a8, 2026-10-26): twice a plain
+          // single-sentence narrator line came back with an EMPTY transcript on both
+          // candidates and the job stopped; a later fresh regeneration of the same
+          // line passed. When every candidate's transcript is empty, make ONE more
+          // fresh attempt (2 more candidates) before reporting the failure.
+          let url: string
+          try {
+            url = await generateVoiceLine(targetLine.text, voiceId, storyId, targetLine.index, 'segment', true, targetLine.speaker, 8, qcSkippedSegments)
+          } catch (firstErr) {
+            if (!isEmptyTranscriptFailure(String(firstErr))) throw firstErr
+            console.warn(`  ⚠️ EMPTY-TRANSCRIPT-RETRY-001 ${targetFileName} speaker="${targetLine.speaker}" - empty transcript on all candidates; one fresh retry`)
+            url = await generateVoiceLine(targetLine.text, voiceId, storyId, targetLine.index, 'segment', true, targetLine.speaker, 8, qcSkippedSegments)
+          }
           generatedSegments.push({ index: targetLine.index, speaker: targetLine.speaker, type: targetLine.type, url })
         } else if (targetLine.type === 'sfx') {
           // CORRECTION-PERSIST-001: sfx_disabled gate — skip SFX generation if flag is set
