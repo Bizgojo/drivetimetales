@@ -18,6 +18,9 @@ export default function AppHeader() {
   const { user, session, loading } = useAuth()
   const accountUser = user || session?.user || null
   const initial = getInitial(accountUser)
+  const nameValue = (accountUser && 'first_name' in accountUser ? accountUser.first_name : '') || accountUser?.user_metadata?.first_name || accountUser?.user_metadata?.full_name || accountUser?.user_metadata?.name
+  const firstName = typeof nameValue === 'string' ? nameValue.trim().split(/\s+/)[0] : ''
+  const showGreeting = pathname === '/home' && !loading && !!firstName
 
   if (pathname?.startsWith('/admin')) return null
 
@@ -122,12 +125,15 @@ export default function AppHeader() {
           <button
             type="button"
             onClick={() => window.location.assign('/account')}
-            className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full bg-orange-500 text-lg font-bold text-white transition-colors hover:bg-orange-400"
+            className={`flex flex-shrink-0 items-center justify-center text-lg font-bold text-white transition-colors ${showGreeting ? 'h-14 max-w-[80px] flex-col gap-0.5 bg-transparent' : 'h-11 w-11 rounded-full bg-orange-500 hover:bg-orange-400'}`}
             disabled={loading}
             aria-busy={loading}
             aria-label={loading ? 'Loading account' : accountUser ? 'Go to account' : 'Sign in or view account'}
           >
-            {loading ? <span aria-hidden="true">…</span> : accountUser?.user_metadata?.et_photo ? <img src={`/api/user/photo?v=${encodeURIComponent(accountUser.user_metadata.et_photo)}`} alt="Your profile" className="h-11 w-11 rounded-full object-cover" /> : initial ? initial : <User className="h-6 w-6" aria-hidden="true" />}
+            <span className={`flex items-center justify-center rounded-full bg-orange-500 ${showGreeting ? 'h-8 w-8 text-base' : 'h-11 w-11'}`}>
+              {loading ? <span aria-hidden="true">…</span> : accountUser?.user_metadata?.et_photo ? <img src={`/api/user/photo?v=${encodeURIComponent(accountUser.user_metadata.et_photo)}`} alt="Your profile" className="h-full w-full rounded-full object-cover" /> : initial ? initial : <User className="h-6 w-6" aria-hidden="true" />}
+            </span>
+            {showGreeting && <span className="block max-w-[80px] truncate text-xs font-semibold leading-tight text-white" title={`Hi ${firstName}`}>Hi {firstName}</span>}
           </button>
         </div>
       </div>
