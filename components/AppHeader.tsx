@@ -131,7 +131,7 @@ export default function AppHeader() {
             aria-label={loading ? 'Loading account' : accountUser ? 'Go to account' : 'Sign in or view account'}
           >
             <span className="flex h-11 w-11 items-center justify-center rounded-full bg-orange-500">
-              {accountUser?.user_metadata?.et_photo ? <img src={`/api/user/photo?v=${encodeURIComponent(accountUser.user_metadata.et_photo)}`} alt="" className="h-full w-full rounded-full object-cover" /> : !loading ? <User className="h-6 w-6" aria-hidden="true" /> : null}
+              {accountUser?.user_metadata?.et_photo ? <img src={`/api/user/photo?v=${encodeURIComponent(accountUser.user_metadata.et_photo)}`} alt="" className="h-full w-full rounded-full object-cover" style={{ border: '2px solid #f97316', boxSizing: 'border-box' }} /> : !loading ? <User className="h-6 w-6" aria-hidden="true" /> : null}
             </span>
           </button>
         </div>
