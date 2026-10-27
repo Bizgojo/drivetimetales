@@ -86,10 +86,10 @@ export default function RecommendedForYou({ excludeIds = [] }: { excludeIds?: st
 
     if (adding) {
       if (user && session?.access_token) {
-        downloadQueuedItemOffline(target, { accessToken: session.access_token, firstName: (user as any)?.first_name || null }).catch(() => {})
+        downloadQueuedItemOffline(target, { userId: user.id, accessToken: session.access_token, firstName: (user as any)?.first_name || null }).catch(() => {})
       }
     } else {
-      removeQueuedItemOffline(target).catch(() => {})
+      removeQueuedItemOffline(target, user?.id).catch(() => {})
     }
   }
 

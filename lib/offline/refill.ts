@@ -30,6 +30,17 @@ export async function refillPlaylist(opts: { accessToken: string; userId: string
     const id = ids.find(id => !attempted.has(id) && !saved.some(ep => ep.storyId === id && ep.userId === opts.userId))
     if (!id || !opts.allowed()) return
     attempted.add(id)
-    await downloadQueuedItemOffline({ type: 'single', id }, { accessToken: opts.accessToken }, opts.allowed)
+    await downloadQueuedItemOffline({ type: 'single', id }, { accessToken: opts.accessToken, userId: opts.userId, remember: false }, opts.allowed)
+  }
+}
+
+/** Finish the series the listener already requested, even after changing pages. */
+export async function resumeRequestedDownloads(opts: { accessToken: string; userId: string; allowed: () => boolean }): Promise<void> {
+  const { pendingDownloads } = await import('./pending')
+  const ids = pendingDownloads(opts.userId)
+  for (const id of ids) {
+    if (!opts.allowed()) return
+    if (!pendingDownloads(opts.userId).includes(id)) continue
+    await downloadQueuedItemOffline({ type: 'single', id }, { accessToken: opts.accessToken, userId: opts.userId, remember: false }, opts.allowed)
   }
 }

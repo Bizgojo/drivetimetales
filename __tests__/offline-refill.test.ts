@@ -47,3 +47,28 @@ it('does not repeat a failed episode in the same pass or continue after Wi-Fi is
   await refillPlaylist({ accessToken: 't', userId: 'u', allowed: () => allowed })
   expect(downloadQueuedItemOffline).toHaveBeenCalledTimes(1)
 })
+
+it('remembers the full series across navigation and resumes the unfinished request without another click', async () => {
+  const values = new Map<string, string>()
+  ;(globalThis as any).localStorage = { getItem: (k: string) => values.get(k) || null, setItem: (k: string, v: string) => values.set(k, v) }
+  const { rememberDownloads, pendingDownloads, forgetDownloads } = await import('@/lib/offline/pending')
+  const { resumeRequestedDownloads } = await import('@/lib/offline/refill')
+  rememberDownloads('u', ['a', 'b', 'c'])
+  forgetDownloads('u', ['a']) // saved before leaving the page
+  expect(pendingDownloads('other')).toEqual([])
+  ;(downloadQueuedItemOffline as jest.Mock).mockImplementation(async target => forgetDownloads('u', [target.id]))
+  await resumeRequestedDownloads({ accessToken: 't', userId: 'u', allowed: () => true })
+  expect((downloadQueuedItemOffline as jest.Mock).mock.calls.map(c => c[0].id)).toEqual(['b', 'c'])
+  expect(pendingDownloads('u')).toEqual([])
+  expect(Array.from(values.values()).join()).not.toContain('accessToken')
+})
+it('keeps an interrupted request pending for the next connection', async () => {
+  const values = new Map<string, string>()
+  ;(globalThis as any).localStorage = { getItem: (k: string) => values.get(k) || null, setItem: (k: string, v: string) => values.set(k, v) }
+  const { rememberDownloads, pendingDownloads } = await import('@/lib/offline/pending')
+  const { resumeRequestedDownloads } = await import('@/lib/offline/refill')
+  rememberDownloads('u', ['a', 'b'])
+  await resumeRequestedDownloads({ accessToken: 't', userId: 'u', allowed: () => false })
+  expect(downloadQueuedItemOffline).not.toHaveBeenCalled()
+  expect(pendingDownloads('u')).toEqual(['a', 'b'])
+})

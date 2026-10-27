@@ -25,6 +25,7 @@ import { isEntitled } from '@/lib/entitlement'
 // and per-episode cleanup once an episode finishes (removed from playlist + offline store).
 import { markPlaylistStarted, removeEpisodeFromActivePlaylist } from '@/lib/playlistState'
 import { deleteEpisode } from '@/lib/offline/store'
+import { forgetDownloads } from '@/lib/offline/pending'
 import type { AutoAdvanceCandidate, AutoAdvanceDisabledReason, PlayerMode, PlayerStory } from './playerTypes'
 import { clearLocalPlayerProgress, getLocalPlayerProgress, mergePlayerProgress, saveLocalPlayerProgress } from '@/lib/playerProgress'
 import { MONTHLY_PRICE_LABEL } from '@/lib/pricing'
@@ -1837,6 +1838,7 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
         }
       }
     } else if (source === 'natural_ended') {
+      if (user?.id) forgetDownloads(user.id, [storyId])
       if (mode !== 'playlist') { try { removeEpisodeFromActivePlaylist(storyId, user?.id || null) } catch {} }
       deleteEpisode(storyId).catch(() => {})
       const completedSeconds = getQueueTotalSeconds() || completedRef.current || duration
@@ -2783,6 +2785,7 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
             }
           }
           if (!isASC3) {
+            if (user?.id) forgetDownloads(user.id, [storyId])
             if (mode !== 'playlist') { try { removeEpisodeFromActivePlaylist(storyId, user?.id || null) } catch {} }
             deleteEpisode(storyId).catch(() => {})
             setIsPlaying(false); saveProgress(duration, true)

@@ -115,7 +115,7 @@ export default function PlaylistPage() {
     try {
       persist(playlist.items.filter((i) => i !== item))
       // Un-queued — it no longer needs to be saved for offline play.
-      await removeQueuedItemOffline(targetFor(item))
+      await removeQueuedItemOffline(targetFor(item), user?.id)
     } finally {
       setBusyKey(null)
     }
@@ -150,7 +150,7 @@ export default function PlaylistPage() {
           </div>
         )}
 
-        {items.length > 0 && <p className="text-sm text-white">Keep this page open while downloading. “Ready offline” means you can listen without internet.</p>}
+        {items.length > 0 && <p className="text-sm text-white">Adding a story downloads all its episodes automatically. Keep the app open until it says Ready offline.</p>}
         {items.map((item, i) => {
           const key = item.type === 'series' ? `series-${item.series_id || item.id}` : `single-${item.id}`
           const title = item.type === 'series' ? (item.series_name || 'Series') : (item.title || '')

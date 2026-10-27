@@ -1,4 +1,4 @@
-// Endless Tales Service Worker v10
+// Endless Tales Service Worker v11
 // v10: refresh the offline player for completed-episode cleanup and shared covers.
 // v9 (OFFLINE-DL-001, 2026-09-19): offline downloads. Precaches the static
 // /offline-player.html (plain JS, no Next chunks — the chunk policy below is
@@ -22,7 +22,7 @@
 // uncached ranged requests to the network untouched, and only ever stores
 // full status-200 responses.
 
-const SHELL_CACHE  = 'et-shell-v10'
+const SHELL_CACHE  = 'et-shell-v11'
 const AUDIO_CACHE  = 'et-audio-v1'
 
 // App shell pages to cache on install

@@ -136,6 +136,11 @@
   }
   function removeFinishedFromPlaylist(ep) {
     try {
+      var pendingKey = 'et_pending_downloads:' + ep.userId
+      var pending = JSON.parse(localStorage.getItem(pendingKey) || '[]')
+      localStorage.setItem(pendingKey, JSON.stringify(pending.filter(function (id) { return id !== ep.storyId })))
+    } catch (e) {}
+    try {
       var parsed = JSON.parse(localStorage.getItem('dtt_active_playlist') || 'null')
       if (!parsed) return
       var items = parsed.items || parsed.stories || []

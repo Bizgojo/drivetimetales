@@ -48,6 +48,6 @@ export default function PlaylistDownloadStatus({ target }: { target: QueueDownlo
       {busy && <span aria-hidden="true" className="inline-block h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-white/40 border-t-white" />}
       <span>{label}</span>
     </p>
-    {retry && session?.access_token && <button type="button" className="mt-1 min-h-11 rounded-lg border border-white px-3 font-semibold" onClick={() => downloadQueuedItemOffline(target, { accessToken: session.access_token })}>{downloadStatuses.get(ids[0])?.state === 'error' ? 'Try again' : 'Download'}</button>}
+    {retry && session?.access_token && <button type="button" className="mt-1 min-h-11 rounded-lg border border-white px-3 font-semibold" onClick={() => downloadQueuedItemOffline(target, { userId: user?.id, accessToken: session.access_token })}>{downloadStatuses.get(ids[0])?.state === 'error' ? 'Try again' : 'Download'}</button>}
   </div>
 }

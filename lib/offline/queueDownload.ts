@@ -2,6 +2,7 @@
 
 import { downloadEpisode, DownloadError } from './download'
 import { deleteEpisode, getEpisode, offlineSupported } from './store'
+import { rememberDownloads, forgetDownloads } from './pending'
 
 export type QueueDownloadTarget =
   | { type: 'single'; id: string }
@@ -18,8 +19,9 @@ function idsFor(target: QueueDownloadTarget): string[] {
 }
 
 /** Serialize saves across stories so simultaneous clicks respect storage limits. */
-export async function downloadQueuedItemOffline(target: QueueDownloadTarget, opts: { accessToken: string; firstName?: string | null }, allowed: () => boolean = () => true): Promise<void> {
+export async function downloadQueuedItemOffline(target: QueueDownloadTarget, opts: { accessToken: string; firstName?: string | null; userId?: string; remember?: boolean }, allowed: () => boolean = () => true): Promise<void> {
   if (!offlineSupported()) return
+  if (opts.userId && opts.remember !== false) rememberDownloads(opts.userId, idsFor(target))
   const pending = idsFor(target).filter(Boolean).filter(id => !tasks.has(id)).map(id => {
     const controller = new AbortController()
     tasks.set(id, controller)
@@ -40,6 +42,7 @@ export async function downloadQueuedItemOffline(target: QueueDownloadTarget, opt
         }
         // A removal during the final database write must not resurrect the download.
         if (controller.signal.aborted) await deleteEpisode(id)
+        if (!controller.signal.aborted && opts.userId) forgetDownloads(opts.userId, [id])
         downloadStatuses.delete(id)
       } catch (err) {
         if (!controller.signal.aborted) status(id, { state: 'error', message: err instanceof DownloadError ? err.message : 'Download interrupted. Connect to the internet and try again.' })
@@ -55,8 +58,9 @@ export async function downloadQueuedItemOffline(target: QueueDownloadTarget, opt
   await run
 }
 
-export async function removeQueuedItemOffline(target: QueueDownloadTarget): Promise<void> {
+export async function removeQueuedItemOffline(target: QueueDownloadTarget, userId?: string): Promise<void> {
   if (!offlineSupported()) return
+  if (userId) forgetDownloads(userId, idsFor(target))
   for (const id of idsFor(target)) {
     tasks.get(id)?.abort()
     tasks.delete(id)

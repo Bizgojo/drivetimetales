@@ -41,7 +41,7 @@ function completeSeriesLaunchRows(rows: Story[]) {
     .filter((episodes) => {
       const episodeNumbers = new Set(episodes.map(episodeNumber).filter(Boolean))
       if (episodeNumbers.size <= 1) return false
-      const highestEpisode = Math.max(...episodeNumbers)
+      const highestEpisode = Math.max(...Array.from(episodeNumbers))
       return episodeNumbers.size === highestEpisode && episodeNumbers.has(1)
     })
     .map((episodes) => episodes.slice().sort((a, b) => episodeNumber(a) - episodeNumber(b))[0])
@@ -109,8 +109,8 @@ export default function NewReleases({ excludeIds = [], onIdsLoaded }: { excludeI
       ? { type: 'series' as const, episodeIds: episodes.map(ep => ep.id) }
       : { type: 'single' as const, id: story.id }
     if (adding && user && session?.access_token) {
-      downloadQueuedItemOffline(target, { accessToken: session.access_token, firstName: (user as any)?.first_name || null }).catch(() => {})
-    } else if (!adding) removeQueuedItemOffline(target).catch(() => {})
+      downloadQueuedItemOffline(target, { userId: user.id, accessToken: session.access_token, firstName: (user as any)?.first_name || null }).catch(() => {})
+    } else if (!adding) removeQueuedItemOffline(target, user?.id).catch(() => {})
   }
 
   async function load() {
