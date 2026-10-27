@@ -18,7 +18,7 @@ function idsFor(target: QueueDownloadTarget): string[] {
 }
 
 /** Serialize saves across stories so simultaneous clicks respect storage limits. */
-export async function downloadQueuedItemOffline(target: QueueDownloadTarget, opts: { accessToken: string; firstName?: string | null }): Promise<void> {
+export async function downloadQueuedItemOffline(target: QueueDownloadTarget, opts: { accessToken: string; firstName?: string | null }, allowed: () => boolean = () => true): Promise<void> {
   if (!offlineSupported()) return
   const pending = idsFor(target).filter(Boolean).filter(id => !tasks.has(id)).map(id => {
     const controller = new AbortController()
@@ -29,7 +29,9 @@ export async function downloadQueuedItemOffline(target: QueueDownloadTarget, opt
   const run = tail.then(async () => {
     for (const { id, controller } of pending) {
       if (controller.signal.aborted) continue
+      const guard = setInterval(() => { if (!allowed()) controller.abort() }, 500)
       try {
+        if (!allowed()) { downloadStatuses.delete(id); continue }
         if (!(await getEpisode(id))) {
           status(id, { state: 'downloading' })
           await downloadEpisode({ storyId: id, ...opts, signal: controller.signal, onProgress: p => {
@@ -42,6 +44,8 @@ export async function downloadQueuedItemOffline(target: QueueDownloadTarget, opt
       } catch (err) {
         if (!controller.signal.aborted) status(id, { state: 'error', message: err instanceof DownloadError ? err.message : 'Download interrupted. Connect to the internet and try again.' })
       } finally {
+        clearInterval(guard)
+        if (controller.signal.aborted) downloadStatuses.delete(id)
         if (tasks.get(id) === controller) tasks.delete(id)
         notify()
       }

@@ -27,7 +27,7 @@ export default function PlaylistDownloadStatus({ target }: { target: QueueDownlo
         const error = pending.find(s => s?.state === 'error')
         if (ids.length && ready === ids.length) { setLabel('✓ Ready offline'); setRetry(false) }
         else if (working || waiting) { setLabel(`Downloading${working?.percent === undefined ? '…' : ` ${working.percent}%`} · ${ready} of ${ids.length} episodes ready`); setRetry(false) }
-        else { setLabel(`${ready} of ${ids.length} episodes ready offline. ${error?.message || 'Keep this page open while downloading.'}`); setRetry(true) }
+        else { setLabel(`${ready} of ${ids.length} episodes ready offline. ${error?.message || 'Connect to Wi-Fi and download the remaining episodes.'}`); setRetry(true) }
       } catch { if (active) { setLabel('Downloads unavailable in this browser.'); setRetry(false) } }
     }
     update()

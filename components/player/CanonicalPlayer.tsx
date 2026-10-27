@@ -1837,6 +1837,7 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
         }
       }
     } else if (source === 'natural_ended') {
+      if (mode !== 'playlist') { try { removeEpisodeFromActivePlaylist(storyId, user?.id || null) } catch {} }
       deleteEpisode(storyId).catch(() => {})
       const completedSeconds = getQueueTotalSeconds() || completedRef.current || duration
       setCumTime(completedSeconds)
@@ -2782,6 +2783,7 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
             }
           }
           if (!isASC3) {
+            if (mode !== 'playlist') { try { removeEpisodeFromActivePlaylist(storyId, user?.id || null) } catch {} }
             deleteEpisode(storyId).catch(() => {})
             setIsPlaying(false); saveProgress(duration, true)
             // POST-TRIAL-BELLE-001: for lapsed users on series EP1, show wall at natural end

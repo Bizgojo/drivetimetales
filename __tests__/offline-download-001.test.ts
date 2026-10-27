@@ -49,9 +49,9 @@ describe('canPlayOffline', () => {
 })
 
 describe('checkDownloadCaps', () => {
-  it('enforces 10 episodes and 500 MB', () => {
-    expect(checkDownloadCaps({ count: 9, bytes: 0 }, 1)).toEqual({ ok: true })
-    expect(checkDownloadCaps({ count: 10, bytes: 0 }, 1)).toEqual({ ok: false, reason: 'max_episodes' })
+  it('enforces 50 episodes and 2 GB', () => {
+    expect(checkDownloadCaps({ count: 49, bytes: 0 }, 1)).toEqual({ ok: true })
+    expect(checkDownloadCaps({ count: 50, bytes: 0 }, 1)).toEqual({ ok: false, reason: 'max_episodes' })
     expect(checkDownloadCaps({ count: 1, bytes: OFFLINE_MAX_BYTES - 10 }, 11)).toEqual({ ok: false, reason: 'max_bytes' })
   })
 })
@@ -151,14 +151,14 @@ describe('downloadEpisode', () => {
     expect(mem.blobs.size).toBe(0)
   })
 
-  it('10-episode cap is checked before any network call', async () => {
-    for (let i = 0; i < 10; i++) mem.episodes.set(`e${i}`, { storyId: `e${i}`, totalBytes: 1, isFree: false, userId: 'u1' })
+  it('50-episode cap is checked before any network call', async () => {
+    for (let i = 0; i < 50; i++) mem.episodes.set(`e${i}`, { storyId: `e${i}`, totalBytes: 1, isFree: false, userId: 'u1' })
     const calls = installFetch({})
     await expect(downloadEpisode({ storyId: 's1', accessToken: 'tok' })).rejects.toMatchObject({ code: 'max_episodes' })
     expect(calls).toHaveLength(0)
   })
 
-  it('500 MB cap: aborts and cleans up partial blobs', async () => {
+  it('2 GB cap: aborts and cleans up partial blobs', async () => {
     mem.episodes.set('big', { storyId: 'big', totalBytes: OFFLINE_MAX_BYTES - 1500, isFree: false, userId: 'u1' })
     installFetch({
       '/api/offline/license': json({ allowed: true, license: LICENSE, story: STORY }),

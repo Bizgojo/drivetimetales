@@ -13,8 +13,8 @@
 
 export const OFFLINE_LICENSE_DAYS = 14
 export const OFFLINE_GRACE_DAYS = 3
-export const OFFLINE_MAX_EPISODES = 10
-export const OFFLINE_MAX_BYTES = 500 * 1024 * 1024
+export const OFFLINE_MAX_EPISODES = 50
+export const OFFLINE_MAX_BYTES = 2 * 1024 * 1024 * 1024
 
 const DAY_MS = 24 * 60 * 60 * 1000
 
