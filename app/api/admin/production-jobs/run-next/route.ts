@@ -7124,6 +7124,39 @@ ${JSON.stringify({
   return description
 }
 
+/**
+ * DESCRIPTION-REPAIR-PIN-001: after a header-only edit of one episode's script,
+ * move every downstream continuity pin that pointed at the old hash to the new
+ * hash. Pins that point at any other hash are left alone (they still fail
+ * closed, as designed).
+ */
+async function refreshPinsAfterHeaderOnlyRepair(episodes: any[], storyId: string, oldHash: string, newHash: string) {
+  if (oldHash === newHash) return
+  for (const episode of episodes || []) {
+    const sj = episode?.script_json && typeof episode.script_json === 'object' ? episode.script_json : null
+    const gen = sj?.series_generation && typeof sj.series_generation === 'object' ? sj.series_generation : null
+    const pins = gen?.continuity_pins_used && typeof gen.continuity_pins_used === 'object' ? gen.continuity_pins_used : null
+    if (!pins || pins[storyId] !== oldHash) continue
+    const { error } = await supabase
+      .from('stories')
+      .update({
+        script_json: {
+          ...sj,
+          series_generation: {
+            ...gen,
+            continuity_pins_used: { ...pins, [storyId]: newHash },
+            continuity_pin_refreshes: [
+              ...(Array.isArray(gen.continuity_pin_refreshes) ? gen.continuity_pin_refreshes : []),
+              { priorStoryId: storyId, from: oldHash, to: newHash, reason: 'header-only DESCRIPTION repair', at: nowIso() },
+            ],
+          },
+        },
+      })
+      .eq('id', String(episode.id))
+    if (error) throw new Error(`Failed to refresh continuity pin after DESCRIPTION repair: ${error.message}`)
+  }
+}
+
 async function scoreValidateSeriesPackage(job: ProductionJob, model: string) {
   const state = job.state_json && typeof job.state_json === 'object' ? job.state_json : {}
   const seriesId = job.series_id || state.seriesId
@@ -8854,6 +8887,19 @@ export async function POST(req: NextRequest) {
           if (storyUpdateError) {
             throw new Error(`Failed to save repaired series DESCRIPTION: ${storyUpdateError.message}`)
           }
+
+          // DESCRIPTION-REPAIR-PIN-001 (timing test a21df7bd): a later episode
+          // pinned this episode's script hash when it consumed it as
+          // continuity. The repair changed only the DESCRIPTION header (card
+          // copy, not story content), so re-pin exactly the pins that matched
+          // the pre-repair script; otherwise the package step fails closed on
+          // continuity_pin_mismatch for a change that carries no continuity.
+          await refreshPinsAfterHeaderOnlyRepair(
+            result.episodes,
+            String(targetEpisode.id),
+            hashScript(String(targetEpisode.script)),
+            hashScript(nextScript),
+          )
 
           const retryLogs = appendLog({ ...lockedJob, logs }, `Auto-retry ${retryCount}/${MAX_SERIES_DESCRIPTION_RETRIES}: repaired episode ${episodeNumber(targetEpisode, 0)} DESCRIPTION from validator feedback`, {
             seriesId: result.seriesId,
