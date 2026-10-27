@@ -16,14 +16,14 @@ import {
 } from './store'
 
 export class DownloadError extends Error {
-  constructor(public code: 'not_entitled' | 'not_available' | 'max_episodes' | 'max_bytes' | 'no_audio' | 'network' | 'storage' | 'not_authenticated', message: string) {
+  constructor(public code: 'asset_unavailable' | 'not_entitled' | 'not_available' | 'max_episodes' | 'max_bytes' | 'no_audio' | 'network' | 'storage' | 'not_authenticated', message: string) {
     super(message)
   }
 }
 
 // totalBytes = bytes finished so far + the current segment's size (known per
 // segment only), so the bar is exact for single-file downloads.
-export interface DownloadProgress { receivedBytes: number; totalBytes: number | null; segment: number; segments: number }
+export interface DownloadProgress { receivedBytes: number; totalBytes: number | null; segment: number; segments: number; segmentReceivedBytes?: number; segmentTotalBytes?: number | null }
 
 type PlaylistItem = { url: string; type: 'intro' | 'story' | 'outro'; label: string }
 
@@ -45,7 +45,7 @@ export function markDownloadUrl(url: string): string {
 
 async function fetchBlob(url: string, onChunk: (received: number, total: number | null) => void, signal?: AbortSignal): Promise<{ blob: Blob; mime: string }> {
   const res = await fetch(markDownloadUrl(url), { cache: 'no-store', signal })
-  if (!res.ok) throw new DownloadError('network', `HTTP ${res.status} for ${url.split('?')[0].split('/').pop()}`)
+  if (!res.ok) throw new DownloadError(res.status === 400 || res.status === 404 ? 'asset_unavailable' : 'network', `HTTP ${res.status} for ${url.split('?')[0].split('/').pop()}`)
   const mime = res.headers.get('content-type') || 'audio/mpeg'
   const total = Number(res.headers.get('content-length')) || null
   if (!res.body) {
@@ -88,6 +88,7 @@ export async function downloadEpisode(opts: {
   firstName?: string | null
   onProgress?: (p: DownloadProgress) => void
   signal?: AbortSignal
+  usePublishedMix?: boolean
 }): Promise<OfflineEpisode> {
   const { storyId, accessToken, onProgress, signal } = opts
 
@@ -106,15 +107,19 @@ export async function downloadEpisode(opts: {
   const license = auth.license as OfflineLicense
   const story = auth.story as {
     id: string; title: string; author: string | null; seriesId: string | null; seriesName: string | null
-    episodeNumber: number | null; durationMins: number | null; coverUrl: string | null; isFree: boolean
+    episodeNumber: number | null; durationMins: number | null; coverUrl: string | null; finalMixUrl?: string | null; isFree: boolean
   }
 
   // 2. Freeze what the player would play for this user (personalized queue or final mix).
   const params = new URLSearchParams({ storyId })
   if (opts.firstName) params.set('firstName', opts.firstName)
-  const plRes = await fetch(`/api/asc3/story-playlist?${params.toString()}`, { signal })
-  if (!plRes.ok) throw new DownloadError('no_audio', 'Audio isn’t available for this episode right now.')
-  const pl = await plRes.json()
+  let pl: any
+  if (opts.usePublishedMix && story.finalMixUrl) pl = { useFinalMix: true, finalMixUrl: story.finalMixUrl }
+  else {
+    const plRes = await fetch(`/api/asc3/story-playlist?${params.toString()}`, { signal })
+    if (!plRes.ok) throw new DownloadError('no_audio', 'Audio isn’t available for this episode right now.')
+    pl = await plRes.json()
+  }
   const items: PlaylistItem[] = pl.useFinalMix && pl.finalMixUrl
     ? [{ url: pl.finalMixUrl, type: 'story', label: story.title }]
     : (pl.queue || []).filter((q: PlaylistItem) => q?.url)
@@ -134,7 +139,7 @@ export async function downloadEpisode(opts: {
           const cap = checkDownloadCaps({ count: before.count, bytes: before.bytes + doneBytes }, total)
           if (!cap.ok) throw new DownloadError('max_bytes', `Downloads are limited to ${Math.round(OFFLINE_MAX_BYTES / 1024 / 1024)} MB. Remove an episode to make room.`)
         }
-        onProgress?.({ receivedBytes: doneBytes + received, totalBytes: total ? doneBytes + total : null, segment: i, segments: items.length })
+        onProgress?.({ receivedBytes: doneBytes + received, totalBytes: total ? doneBytes + total : null, segment: i, segments: items.length, segmentReceivedBytes: received, segmentTotalBytes: total })
       }, signal)
       const cap = checkDownloadCaps({ count: before.count, bytes: before.bytes + doneBytes }, blob.size)
       if (!cap.ok) throw new DownloadError('max_bytes', `Downloads are limited to ${Math.round(OFFLINE_MAX_BYTES / 1024 / 1024)} MB. Remove an episode to make room.`)
@@ -179,6 +184,10 @@ export async function downloadEpisode(opts: {
     return episode
   } catch (err) {
     await deleteEpisode(storyId).catch(() => {})
+    // A stale segment link must not block saving the complete published master.
+    if (err instanceof DownloadError && err.code === 'asset_unavailable' && story.finalMixUrl && !opts.usePublishedMix && !signal?.aborted) {
+      return downloadEpisode({ ...opts, usePublishedMix: true })
+    }
     if (err instanceof DownloadError) throw err
     if ((err as any)?.name === 'AbortError') throw err
     throw new DownloadError('network', 'The download was interrupted. Check your connection and try again.')

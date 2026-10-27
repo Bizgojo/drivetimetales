@@ -1,12 +1,16 @@
 'use client'
 
 import Image from 'next/image'
+import { useEffect, useState } from 'react'
+import { createPortal } from 'react-dom'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { User } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
 
 export default function AppHeader() {
+  const [mounted, setMounted] = useState(false)
+  useEffect(() => setMounted(true), [])
   const router = useRouter()
   const pathname = usePathname()
   const { user, session, loading } = useAuth()
@@ -63,8 +67,8 @@ export default function AppHeader() {
     router.back()
   }
 
-  return (
-    <header className="fixed left-0 right-0 top-0 z-50 h-14 w-full border-b border-slate-800 bg-slate-950 px-4">
+  const header = (
+    <header style={{ position: 'fixed', top: 0, left: 0, right: 0, height: 56, zIndex: 60 }} className="fixed left-0 right-0 top-0 z-50 h-14 w-full border-b border-slate-800 bg-slate-950 px-4">
       <div className="mx-auto flex h-full max-w-7xl items-center justify-between">
         {/* APP-HEADER-HOME-001: hide back button on /home — no meaningful back destination
              from the home screen (router.back() returns to /go ad teaser for funnel users). */}
@@ -134,4 +138,5 @@ export default function AppHeader() {
       </div>
     </header>
   )
+  return mounted ? createPortal(header, document.body) : header
 }

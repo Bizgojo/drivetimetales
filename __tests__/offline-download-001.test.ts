@@ -189,6 +189,36 @@ describe('downloadEpisode', () => {
     expect(calls).toHaveLength(before)
   })
 
+  it('automatically saves the complete published mix when an old outro link is missing', async () => {
+    const calls = installFetch({
+      '/api/offline/license': json({ allowed: true, license: LICENSE, story: { ...STORY, finalMixUrl: 'https://cdn/published.mp3' } }),
+      '/api/asc3/story-playlist': json({ queue: [
+        { url: 'https://cdn/body.mp3', type: 'story', label: 'Story' },
+        { url: 'https://cdn/missing-outro.mp3', type: 'outro', label: 'Outro' },
+      ] }),
+      'https://cdn/body.mp3': () => bytesResponse(100),
+      'https://cdn/missing-outro.mp3': () => new Response('', { status: 400 }),
+      'https://cdn/published.mp3': () => bytesResponse(250),
+      'https://cdn/cover.jpg': () => bytesResponse(10, 'image/jpeg'),
+    })
+    const ep = await downloadEpisode({ storyId: 's1', accessToken: 'tok' })
+    expect(ep.segments).toHaveLength(1)
+    expect(ep.totalBytes).toBe(250)
+    expect((mem.blobs.get('s1:seg:0') as Blob).size).toBe(250)
+    expect(calls.filter(c => c.url.startsWith('https://cdn/published.mp3'))).toHaveLength(1)
+    expect(mem.episodes.has('s1')).toBe(true)
+  })
+  it('never labels an incomplete episode as downloaded if both the segment and published mix are missing', async () => {
+    installFetch({
+      '/api/offline/license': json({ allowed: true, license: LICENSE, story: { ...STORY, finalMixUrl: 'https://cdn/missing-master.mp3' } }),
+      '/api/asc3/story-playlist': json({ queue: [{ url: 'https://cdn/missing-outro.mp3', type: 'outro', label: 'Outro' }] }),
+      'https://cdn/missing-outro.mp3': () => new Response('', { status: 400 }),
+      'https://cdn/missing-master.mp3': () => new Response('', { status: 404 }),
+    })
+    await expect(downloadEpisode({ storyId: 's1', accessToken: 'tok' })).rejects.toMatchObject({ code: 'asset_unavailable' })
+    expect(mem.episodes.has('s1')).toBe(false)
+  })
+
   it('network failure mid-download → no episode record, partial blobs removed', async () => {
     installFetch({
       '/api/offline/license': json({ allowed: true, license: LICENSE, story: STORY }),

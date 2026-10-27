@@ -54,7 +54,7 @@ export async function GET(req: NextRequest) {
 
   const { data: story, error: storyError } = await supabaseAdmin
     .from('stories')
-    .select('id, title, author, series_id, series_name, episode_number, duration_mins, cover_url, is_free, status, is_hidden')
+    .select('id, title, author, series_id, series_name, episode_number, duration_mins, cover_url, audio_url, is_free, status, is_hidden')
     .eq('id', storyId)
     .maybeSingle()
   if (storyError) return NextResponse.json({ error: 'lookup_failed' }, { status: 503 })
@@ -83,6 +83,7 @@ export async function GET(req: NextRequest) {
         episodeNumber: story.episode_number,
         durationMins: story.duration_mins,
         coverUrl: mainCover,
+        finalMixUrl: story.audio_url,
         isFree: Boolean(story.is_free),
       },
     },

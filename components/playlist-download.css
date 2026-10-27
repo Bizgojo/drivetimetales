@@ -1,0 +1,6 @@
+.et-download-track { height: 14px; overflow: hidden; border: 1px solid #94a3b8; border-radius: 999px; background: #0f172a; }
+.et-download-fill { height: 100%; border-radius: inherit; background-color: #f97316; background-image: repeating-linear-gradient(135deg, transparent 0, transparent 8px, rgba(255,255,255,.55) 8px, rgba(255,255,255,.55) 16px); background-size: 23px 23px; transition: width .2s ease; }
+.et-download-moving { animation: et-download-stripes .7s linear infinite; }
+.et-download-done { background: #22c55e; }
+@keyframes et-download-stripes { to { background-position: 23px 0; } }
+@media (prefers-reduced-motion: reduce) { .et-download-moving { animation: none; } }

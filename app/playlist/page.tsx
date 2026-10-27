@@ -157,7 +157,8 @@ export default function PlaylistPage() {
           const mins = item.type === 'series' ? (item.total_mins || 0) : (item.duration_mins || 0)
           const busy = busyKey === key
           return (
-            <div key={key} style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 14, padding: 12, display: 'flex', gap: 12, alignItems: 'center' }}>
+            <div key={key} style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 14, padding: 12 }}>
+              <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
               {item.cover_url
                 ? <img src={item.cover_url} alt="" style={{ width: 56, height: 56, borderRadius: 8, objectFit: 'cover', flexShrink: 0 }} />
                 : <div style={{ width: 56, height: 56, borderRadius: 8, background: 'rgba(255,255,255,0.12)', flexShrink: 0 }} />}
@@ -170,10 +171,6 @@ export default function PlaylistPage() {
                 <div style={{ fontWeight: 700, fontSize: 14, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                   {title}
                 </div>
-                <div style={{ color: '#c7d2fe', fontSize: 12, marginTop: 2 }}>
-                  {item.type === 'series' ? `${item.episode_count || (item.episodes || []).length} episodes · ` : ''}{formatMins(mins)}
-                </div>
-                <PlaylistDownloadStatus target={targetFor(item)} />
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                 <button
@@ -203,6 +200,8 @@ export default function PlaylistPage() {
               >
                 {busy ? '…' : 'Remove'}
               </button>
+              </div>
+              <PlaylistDownloadStatus target={targetFor(item)} durationMins={mins} />
             </div>
           )
         })}

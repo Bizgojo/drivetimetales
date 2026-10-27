@@ -7,7 +7,7 @@ import { rememberDownloads, forgetDownloads } from './pending'
 export type QueueDownloadTarget =
   | { type: 'single'; id: string }
   | { type: 'series'; episodeIds: string[] }
-export type QueueDownloadStatus = { state: 'waiting' | 'downloading' | 'error'; percent?: number; message?: string }
+export type QueueDownloadStatus = { state: 'waiting' | 'downloading' | 'error'; percent?: number; message?: string; code?: string }
 export const downloadStatuses = new Map<string, QueueDownloadStatus>()
 const tasks = new Map<string, AbortController>()
 let tail: Promise<void> = Promise.resolve()
@@ -36,16 +36,28 @@ export async function downloadQueuedItemOffline(target: QueueDownloadTarget, opt
         if (!allowed()) { downloadStatuses.delete(id); continue }
         if (!(await getEpisode(id))) {
           status(id, { state: 'downloading' })
-          await downloadEpisode({ storyId: id, ...opts, signal: controller.signal, onProgress: p => {
-            status(id, { state: 'downloading', percent: Math.min(99, Math.round(((p.segment + (p.totalBytes ? p.receivedBytes / p.totalBytes : 0)) / p.segments) * 100)) })
-          } })
+          for (let attempt = 0; ; attempt++) {
+            try {
+              if (controller.signal.aborted || !allowed()) throw new DOMException('Aborted', 'AbortError')
+              await downloadEpisode({ storyId: id, ...opts, signal: controller.signal, onProgress: p => {
+                const fraction = p.segmentTotalBytes ? (p.segmentReceivedBytes || 0) / p.segmentTotalBytes : 0
+                status(id, { state: 'downloading', percent: Math.min(99, Math.round(((p.segment + fraction) / p.segments) * 100)) })
+              } })
+              break
+            } catch (err) {
+              const transient = !(err instanceof DownloadError) || err.code === 'network'
+              if (!transient || attempt >= 2 || controller.signal.aborted || !allowed()) throw err
+              status(id, { state: 'waiting', message: 'Reconnecting automatically…' })
+              await new Promise(resolve => setTimeout(resolve, (attempt + 1) * 2000))
+            }
+          }
         }
         // A removal during the final database write must not resurrect the download.
         if (controller.signal.aborted) await deleteEpisode(id)
         if (!controller.signal.aborted && opts.userId) forgetDownloads(opts.userId, [id])
         downloadStatuses.delete(id)
       } catch (err) {
-        if (!controller.signal.aborted) status(id, { state: 'error', message: err instanceof DownloadError ? err.message : 'Download interrupted. Connect to the internet and try again.' })
+        if (!controller.signal.aborted) status(id, { state: 'error', percent: downloadStatuses.get(id)?.percent, code: err instanceof DownloadError ? err.code : 'network', message: err instanceof DownloadError ? err.message : 'Connection lost. Will resume automatically.' })
       } finally {
         clearInterval(guard)
         if (controller.signal.aborted) downloadStatuses.delete(id)
