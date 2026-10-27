@@ -94,6 +94,7 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
   const onboardAudioRef = useRef<HTMLAudioElement | null>(null)
 
   const audioRef = useRef<HTMLAudioElement>(null)  // voice
+  const audioStoryIdRef = useRef<string | null>(null)
   const musicRef = useRef<HTMLAudioElement>(null)  // single music track
   const nextSegRef = useRef<HTMLAudioElement | null>(null)
   const preloadRef = useRef<HTMLAudioElement | null>(null)
@@ -1259,7 +1260,7 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
         setAudioErrorMessage('')
         // MARC-PLAYLIST-FRESH-001: captured once per load(), before anything
         // below can reset the ref for a *subsequent* in-place advance.
-        const skipResumeForFreshPlaylistItem = mode === 'playlist' && forceFreshStartRef.current
+        const skipResumeForFreshPlaylistItem = playlistAutoplayPendingRef.current || (mode === 'playlist' && forceFreshStartRef.current)
         forceFreshStartRef.current = false
         stage = 'story-row'
         const { data, error } = await supabase
@@ -1608,6 +1609,7 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
   // Init audio once loaded
   useEffect(() => {
     if (loading || !audioRef.current) return
+    audioStoryIdRef.current = storyId
     if (inWelcomeRef.current && welcomeQueueRef.current.length > 0) {
       // Welcome mode — load first welcome clip
       audioRef.current.src = welcomeQueueRef.current[0]
@@ -1737,6 +1739,7 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
           if (cancelled) return
           started = true
           playlistAutoplayPendingRef.current = false
+          setShowSeriesContinueOverlay(false)
           setIsPlaying(true)
           setAutoplayBlocked(false)
           startAnalyticsSession(autoStartSource)
@@ -2582,6 +2585,7 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
     <div data-auto-advance-disabled-reason={autoAdvanceDisabledReason || undefined} style={{ height:'100dvh', backgroundColor:'#020617', color:'white', display:'flex', flexDirection:'column', overflow:'hidden' }}>
       <audio ref={audioRef}
         onLoadedMetadata={(e) => {
+          if (loading || audioStoryIdRef.current !== storyId) return
           const d = e.currentTarget.duration; setDuration(d)
           const activeIndex = isASC3 ? activeQueueIndexRef.current : queueIndex
           segDursRef.current[activeIndex] = d
@@ -2601,6 +2605,7 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
           if (isPlaying && typeRef.current === 'intro' && bgMusicRef.current) schedSwap(bgMusicRef.current, VOL_STORY_MUSIC, 3)
         }}
         onTimeUpdate={(e) => {
+          if (loading || audioStoryIdRef.current !== storyId) return
           const t = e.currentTarget.currentTime; setCurrentTime(t); setCumTime(completedRef.current + t)
           // POST-TRIAL-BELLE-001: 60-second cutoff for lapsed standalone users
           if (isLapsedRef.current && !story?.series_id && t >= 60 && !trialWallFiredRef.current) {
@@ -2651,9 +2656,15 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
         // confirms/clears it from actual currentTime movement.
         onWaiting={() => setIsBuffering(true)}
         onStalled={() => setIsBuffering(true)}
-        onPlaying={() => setIsBuffering(false)}
+        onPlaying={() => {
+          if (loading || audioStoryIdRef.current !== storyId) return
+          setIsBuffering(false)
+          setAutoplayBlocked(false)
+          setShowSeriesContinueOverlay(false)
+        }}
         onPause={() => setIsPlaying(false)}
         onEnded={() => {
+          if (loading || audioStoryIdRef.current !== storyId || !audioRef.current?.ended) return
           // ── Welcome chain ────────────────────────────────────────────────
           if (inWelcomeRef.current) {
             const nextIdx = welcomeIndexRef.current + 1
@@ -2800,6 +2811,7 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
           }
         }}
         onCanPlay={() => {
+          if (loading || audioStoryIdRef.current !== storyId) return
           // Segmented resume is applied once, after the complete duration map
           // resolves, by the resume effect before autoplay is allowed. A canplay
           // event for the intro must never start a competing seek/load here.
@@ -2820,6 +2832,7 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
           }
         }}
         onError={(e) => {
+          if (loading || audioStoryIdRef.current !== storyId) return
           if (!isASC3 && audioSrc && audioRef.current) {
             const audio = audioRef.current
             const retryAt = Math.max(0, Number.isFinite(audio.currentTime) ? audio.currentTime : currentTime)
