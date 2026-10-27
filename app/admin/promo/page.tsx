@@ -4,6 +4,7 @@ import { useAuth } from '@/contexts/AuthContext'
 import { isIphone, isMagicInviteOwner, inviteSmsHref } from '@/lib/magicInvite'
 import React, { useEffect, useMemo, useState, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
+import './promo.css'
 
 type SortKey = 'first_name' | 'last_name' | 'last_used' | 'finished'
 
@@ -411,7 +412,7 @@ export default function AdminPromoPage({ formOnly = false }: { formOnly?: boolea
   }, [people, sortBy])
 
   return (
-    <div className="min-h-screen bg-[#f5f4f0] px-4 py-8 text-[#1a1a1a] sm:px-8">
+    <div className={`magic-invite-page min-h-screen bg-[#f5f4f0] px-4 py-8 text-[#1a1a1a] sm:px-8`}>
       <div className={`mx-auto ${formOnly ? 'max-w-lg' : 'max-w-[1200px]'}`}>
         {formOnly && <a href="/account" aria-label="Close Magic Link form and return to Account" className="fixed right-4 top-4 z-50 flex h-11 w-11 items-center justify-center rounded-full bg-slate-200 text-2xl text-slate-900">×</a>}
         <h1 className="mb-1 pr-12 text-[26px] font-bold tracking-normal">{formOnly ? 'Send a Magic Link' : 'Magic Link Invites'}</h1>
