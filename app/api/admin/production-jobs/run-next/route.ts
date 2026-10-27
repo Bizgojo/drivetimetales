@@ -55,6 +55,7 @@ import {
   WRITER_SELF_CHECK_BUDGET_MS,
   seriesSpokenWordTarget,
 } from '@/lib/scriptReadiness'
+import { shouldContinueSeriesVoiceBatch } from '@/lib/voiceBatch'
 import { runVoiceConformanceGate, type VoiceProfile } from '@/lib/voiceConformanceGate'
 // R1-V3 step map (decision r1-v3-step-map-approved-oct6, 2026-10-06):
 // central per-step model router. STEP_MODELS below derives from it with
@@ -10334,25 +10335,43 @@ export async function POST(req: NextRequest) {
 
     if (step === NEXT_STEP_AFTER_SERIES_PREFLIGHT) {
       const origin = new URL(req.url).origin
-      const result = await runSeriesVoiceSegment(lockedJob, origin)
+      const logSeriesVoiceResult = (job: ProductionJob, r: Awaited<ReturnType<typeof runSeriesVoiceSegment>>) => {
+        const vg = r.state.seriesVoiceGeneration || {}
+        return appendLog(job, r.complete
+          ? 'All series voice segments are present'
+          : r.episodeComplete
+            ? 'Completed voice generation for one series episode'
+            : r.skippedNonSegment
+              ? 'Skipped non-story series segment index'
+              : 'Processed one series voice segment', {
+          seriesId: r.seriesId,
+          storyId: r.storyId || null,
+          episodeNumber: r.episodeNumber || null,
+          segmentNumber: r.segmentNumber,
+          nextStep: r.complete ? NEXT_STEP_AFTER_SERIES_VOICES : NEXT_STEP_AFTER_SERIES_PREFLIGHT,
+          currentEpisodeNumber: vg.currentEpisodeNumber,
+          nextSegmentNumber: vg.nextSegmentNumber,
+          presentCount: vg.presentCount,
+          missingCount: Array.isArray(vg.missingSegments) ? vg.missingSegments.length : null,
+        })
+      }
+      // VOICE-BATCH-001: several segments per invocation (one-per-call plus
+      // the loop's idle wait made a 145-line episode take ~45 min). Each
+      // segment is still generated and QC'd individually, in order; the batch
+      // stops on any failure, episode boundary, completion, or time budget,
+      // and progress is saved once at the end exactly as before.
+      const batchStartedAt = Date.now()
+      let batchJob: ProductionJob = lockedJob
+      let result = await runSeriesVoiceSegment(batchJob, origin)
+      let logs = logSeriesVoiceResult(batchJob, result)
+      let batchCount = 1
+      while (shouldContinueSeriesVoiceBatch(result, batchCount, Date.now() - batchStartedAt)) {
+        batchJob = { ...batchJob, state_json: result.state, logs }
+        result = await runSeriesVoiceSegment(batchJob, origin)
+        logs = logSeriesVoiceResult(batchJob, result)
+        batchCount += 1
+      }
       const voiceGeneration = result.state.seriesVoiceGeneration || {}
-      const logs = appendLog(lockedJob, result.complete
-        ? 'All series voice segments are present'
-        : result.episodeComplete
-          ? 'Completed voice generation for one series episode'
-          : result.skippedNonSegment
-            ? 'Skipped non-story series segment index'
-            : 'Processed one series voice segment', {
-        seriesId: result.seriesId,
-        storyId: result.storyId || null,
-        episodeNumber: result.episodeNumber || null,
-        segmentNumber: result.segmentNumber,
-        nextStep: result.complete ? NEXT_STEP_AFTER_SERIES_VOICES : NEXT_STEP_AFTER_SERIES_PREFLIGHT,
-        currentEpisodeNumber: voiceGeneration.currentEpisodeNumber,
-        nextSegmentNumber: voiceGeneration.nextSegmentNumber,
-        presentCount: voiceGeneration.presentCount,
-        missingCount: Array.isArray(voiceGeneration.missingSegments) ? voiceGeneration.missingSegments.length : null,
-      })
 
       if (result.hardFailure) {
         const { data: failedJob, error: updateError } = await supabase
