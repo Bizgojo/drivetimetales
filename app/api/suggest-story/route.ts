@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { accountUser } from '@/lib/server/accountUser';
 import { createClient } from '@supabase/supabase-js';
 
 const supabaseAdmin = createClient(
@@ -23,7 +24,9 @@ async function getLastSubmission(email: string) {
 
 // GET — check eligibility for this email
 export async function GET(request: NextRequest) {
-  const email = request.nextUrl.searchParams.get('email');
+  const user = await accountUser();
+  if (!user?.email) return NextResponse.json({ error: 'Please sign in.' }, { status: 401 });
+  const email = user.email;
   if (!email) return NextResponse.json({ eligible: true });
 
   try {
@@ -38,8 +41,15 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  if (request.headers.get('origin') && request.headers.get('origin') !== request.nextUrl.origin) return NextResponse.json({ error: 'Invalid request origin' }, { status: 403 });
   try {
-    const { name, email, genre, title, idea, userId } = await request.json();
+    const user = await accountUser();
+    if (!user?.email) return NextResponse.json({ error: 'Please sign in.' }, { status: 401 });
+    const { name, genre, title, idea, consent, consentVersion } = await request.json();
+    const email = user.email;
+    const userId = user.id;
+    if (consent !== true || consentVersion !== '2026-10-27') return NextResponse.json({ error: 'Please accept the submission terms.' }, { status: 400 });
+    if ([name, genre, title, idea].some(value => typeof value !== 'string' || !value.trim() || value.length > 2000)) return NextResponse.json({ error: 'Please complete all fields.' }, { status: 400 });
 
     if (!name || !email || !genre || !title || !idea) {
       return NextResponse.json({ error: 'All fields are required' }, { status: 400 });
@@ -69,7 +79,7 @@ export async function POST(request: NextRequest) {
         name,
         email,
         subject: `[Story Idea] ${title}`,
-        message: JSON.stringify({ genre, title, idea, wordCount }),
+        message: JSON.stringify({ genre, title, idea, wordCount, creditName: name, consent: true, consentVersion, consentedAt: new Date().toISOString() }),
         status: 'new',
       });
 

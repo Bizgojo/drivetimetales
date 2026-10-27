@@ -136,7 +136,7 @@ export default function StoryIdeasPage() {
           </span>
         </h1>
         <p style={{ color: '#666', marginTop: '4px', fontSize: '0.9rem' }}>
-          Review story ideas submitted by subscribers. Selected ideas earn the subscriber a story credit + 1 free week.
+          Review story ideas submitted by subscribers. If an idea is used, notify the subscriber and credit them as a contributing author.
         </p>
       </div>
 

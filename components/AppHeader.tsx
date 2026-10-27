@@ -127,7 +127,7 @@ export default function AppHeader() {
             aria-busy={loading}
             aria-label={loading ? 'Loading account' : accountUser ? 'Go to account' : 'Sign in or view account'}
           >
-            {loading ? <span aria-hidden="true">…</span> : initial ? initial : <User className="h-6 w-6" aria-hidden="true" />}
+            {loading ? <span aria-hidden="true">…</span> : accountUser?.user_metadata?.et_photo ? <img src={`/api/user/photo?v=${encodeURIComponent(accountUser.user_metadata.et_photo)}`} alt="Your profile" className="h-11 w-11 rounded-full object-cover" /> : initial ? initial : <User className="h-6 w-6" aria-hidden="true" />}
           </button>
         </div>
       </div>

@@ -19,10 +19,9 @@ const GENRES = [
 ];
 
 const TERMS = [
-  'No sexual content or graphic violence of any kind.',
-  'No real names for characters or specific real-world locations.',
-  'I understand there is no compensation for submitted ideas. If selected, I will receive a story credit and one week added free to my subscription.',
-  'If published, I accept full liability for any defamation, slander, or libel originating from my story idea.',
+  'This is my own idea, and I have the right to submit it.',
+  'I give Endless Tales permission to adapt and use this idea. Submission does not give me ownership of the resulting story or a right to payment.',
+  'If my idea is used, Endless Tales will notify me and credit me as a contributing author using the name above. Submission does not guarantee selection.',
 ];
 
 export default function SuggestStoryPage() {
@@ -36,7 +35,7 @@ export default function SuggestStoryPage() {
     title: '',
     idea: '',
   });
-  const [termsChecked, setTermsChecked] = useState([false, false, false, false]);
+  const [termsChecked, setTermsChecked] = useState(TERMS.map(() => false));
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState('');
@@ -97,7 +96,7 @@ export default function SuggestStoryPage() {
       const res = await fetch('/api/suggest-story', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...form, userId: user?.id || null }),
+        body: JSON.stringify({ ...form, consent: true, consentVersion: '2026-10-27' }),
       });
 
       if (res.ok) {
@@ -142,7 +141,7 @@ export default function SuggestStoryPage() {
             onClick={() => router.push('/account/faqs')}
             className="px-6 py-3 bg-orange-500 text-black font-bold rounded-xl"
           >
-            Back to FAQs
+            Back to Fun Facts
           </button>
         </div>
       </div>
@@ -157,13 +156,13 @@ export default function SuggestStoryPage() {
           <h1 className="text-2xl font-bold text-white mb-3">Idea Received!</h1>
           <p className="text-gray-400 max-w-sm mb-8">
             Thanks for sharing your story idea. Our team reviews every submission — if yours is selected,
-            we'll reach out and add a free week to your subscription.
+            we’ll notify you and credit you as a contributing author.
           </p>
           <button
             onClick={() => router.push('/account/faqs')}
             className="px-6 py-3 bg-orange-500 text-black font-bold rounded-xl"
           >
-            Back to FAQs
+            Back to Fun Facts
           </button>
         </div>
       </div>
@@ -180,14 +179,14 @@ export default function SuggestStoryPage() {
           <h1 className="text-2xl font-bold text-white mb-2">Suggest a Story Idea</h1>
           <p className="text-gray-400 text-sm">
             Got a great idea for a story? Tell us about it. If we pick yours,
-            you'll get a credit and a free week added to your subscription.
+            we’ll notify you and credit you as a contributing author.
           </p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-5">
           {/* Name */}
           <div>
-            <label className="block text-sm font-medium text-gray-300 mb-1">Your Name</label>
+            <label className="block text-sm font-medium text-gray-300 mb-1">Name to Use for Your Author Credit</label>
             <input
               type="text"
               value={form.name}
@@ -203,6 +202,7 @@ export default function SuggestStoryPage() {
             <label className="block text-sm font-medium text-gray-300 mb-1">Email Address</label>
             <input
               type="email"
+              readOnly
               value={form.email}
               onChange={e => setForm(prev => ({ ...prev, email: e.target.value }))}
               placeholder="you@example.com"
@@ -274,23 +274,8 @@ export default function SuggestStoryPage() {
             <div className="space-y-3">
               {TERMS.map((term, i) => (
                 <label key={i} className="flex items-start gap-3 cursor-pointer">
-                  <div
-                    onClick={() => handleToggleTerm(i)}
-                    className={`mt-0.5 flex-shrink-0 w-5 h-5 rounded border-2 flex items-center justify-center transition-colors ${
-                      termsChecked[i]
-                        ? 'bg-orange-500 border-orange-500'
-                        : 'bg-transparent border-gray-600'
-                    }`}
-                  >
-                    {termsChecked[i] && (
-                      <svg className="w-3 h-3 text-black" fill="none" viewBox="0 0 12 12">
-                        <path d="M2 6l3 3 5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                      </svg>
-                    )}
-                  </div>
-                  <span className="text-gray-300 text-sm leading-snug" onClick={() => handleToggleTerm(i)}>
-                    {term}
-                  </span>
+                  <input type="checkbox" className="mt-1" checked={termsChecked[i]} onChange={() => handleToggleTerm(i)} required />
+                  <span className="text-white text-sm leading-snug">{term}</span>
                 </label>
               ))}
             </div>

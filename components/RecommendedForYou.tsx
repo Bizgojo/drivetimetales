@@ -1,4 +1,5 @@
 'use client'
+import { cleanListeningPreferences, preferenceScore, avoidsStory } from '@/lib/listeningPreferences'
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/contexts/AuthContext'
@@ -92,7 +93,7 @@ export default function RecommendedForYou({ excludeIds = [] }: { excludeIds?: st
     }
   }
 
-  useEffect(() => { load() }, [user?.id, excludeIds.join(',')])
+  useEffect(() => { load() }, [user?.id, user?.user_metadata?.listening_preferences, excludeIds.join(',')])
 
   async function load() {
     setLoading(true)
@@ -231,8 +232,9 @@ export default function RecommendedForYou({ excludeIds = [] }: { excludeIds?: st
       group.is_in_progress = target.isInProgress
     })
 
+    const explicit = cleanListeningPreferences(user?.user_metadata?.listening_preferences)
     function scoreStory(s: Story): number {
-      let score = 0
+      let score = preferenceScore(`${s.title} ${s.description || ''} ${s.genre}`, s.genre, s.duration_mins, explicit)
       const gr = topGenres.indexOf(s.genre)
       if (gr === 0) score += 30; else if (gr === 1) score += 20; else if (gr >= 2) score += 10
       const dd = Math.abs((s.duration_mins || 0) - avgDuration)
@@ -243,7 +245,7 @@ export default function RecommendedForYou({ excludeIds = [] }: { excludeIds?: st
     }
 
     function scoreSeries(g: SeriesGroup): number {
-      let score = 0
+      let score = preferenceScore(`${g.series_name} ${g.description || ''} ${g.genre}`, g.genre, g.avg_episode_duration, explicit)
       const gr = topGenres.indexOf(g.genre)
       if (gr === 0) score += 30; else if (gr === 1) score += 20; else if (gr >= 2) score += 10
       if (prefersSeries) score += 20
@@ -256,7 +258,7 @@ export default function RecommendedForYou({ excludeIds = [] }: { excludeIds?: st
       ...singles.map(s => ({ type: 'single' as const, story: s, score: scoreStory(s), locationMatch: locationMatches[s.id] || 0 })),
       ...seriesList.map(g => ({ type: 'series' as const, group: g, score: scoreSeries(g),
         locationMatch: Math.max(0, ...g.episodes.map(episode => locationMatches[episode.id] || 0)) }))
-    ].sort(compareRecommendationRank)
+    ].filter(item => !avoidsStory(item.type === 'single' ? `${item.story.title} ${item.story.description || ''} ${item.story.genre}` : `${item.group.series_name} ${item.group.description || ''} ${item.group.genre}`, explicit)).sort(compareRecommendationRank)
 
     // ORION-HOME-WALK-001 fix 2 (Marc walk, 2026-07-12): cap at 3 (was 5).
     setDisplayItems(all.slice(0, 3).map(item => item.type === 'series' ? { type: 'series', group: item.group } : { type: 'single', story: item.story }))

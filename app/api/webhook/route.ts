@@ -5,6 +5,7 @@ import { Resend } from 'resend'
 import { isActivatableStatus, isAccessPreservingStatus, planFields } from '@/lib/webhookGuards'
 import { sendServerEvent } from '@/lib/tracking/capi'
 import { startTrialEventId, subscribeEventId } from '@/lib/tracking/events'
+import { grantReferralSubscriptionDays } from '@/lib/referralSubscriptionDays'
 import { payReferrerAfterFirstPayment } from '@/lib/referralPayout'
 import { ANNUAL_PRICE_LABEL, MONTHLY_PRICE_LABEL, TRIAL_DAYS } from '@/lib/pricing'
 import { resolveCancelledAt } from '@/lib/cancelState'
@@ -229,22 +230,23 @@ export async function POST(request: NextRequest) {
         console.error('[webhook] first_paid_date block threw (non-fatal):', fpdCatch)
       }
 
-      // REFERRAL-SIGNUP-001 (Option A): pay the REFERRER only once the referred
+      // Referral rewards: pay BOTH sides only once the referred
       // friend has actually paid. amount_paid > 0 is required — Stripe also
       // sends invoice.paid for the $0 trial-start invoice, which must NOT pay
       // out (a throwaway signup that cancels in trial earns nothing).
       // Exactly-once via referrals.referrer_credited false→true, so the
       // earliest non-zero paid invoice (= first payment) pays and every later
-      // invoice / webhook retry is a no-op. Non-fatal: if the grant fails the
-      // flag is reverted and the next paid invoice retries.
+      // invoice / webhook retry is a no-op. On failure, revert the claim and
+      // return 500 so Stripe retries the event.
       if ((invoice.amount_paid || 0) > 0) {
         try {
-          const payout = await payReferrerAfterFirstPayment(supabase, userId)
+          const payout = await payReferrerAfterFirstPayment(supabase, userId, (admin, id, days, key) => grantReferralSubscriptionDays(admin, stripe, id, days, key))
           if (payout?.days) {
             console.log(`[webhook] referral ${payout.referralId}: referrer ${payout.referrerId} +${payout.days} free days (friend ${userId} first payment, invoice ${invoice.id})`)
           }
         } catch (refErr) {
-          console.error('[webhook] referrer payout failed (non-fatal, retries on next paid invoice):', refErr)
+          console.error('[webhook] referral payout failed; Stripe should retry:', refErr)
+          return NextResponse.json({ error: 'Referral reward pending; retry required' }, { status: 500 })
         }
       }
 

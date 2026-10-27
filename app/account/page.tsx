@@ -192,9 +192,9 @@ export default function AccountPage() {
   const memberSince = new Date(user.created_at).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
 
   const menuItems = [
+    { href: '/account/faqs', icon: '😊', label: 'Fun Facts and Things to Do', desc: 'Make Endless Tales your own' },
     { href: '/account/billing', icon: '💎', label: 'Billing & Subscription', desc: 'Manage your plan' },
     { href: '/account/help', icon: '💬', label: 'Help & Support', desc: 'Contact us' },
-    { href: '/account/faqs', icon: '❓', label: 'FAQs', desc: 'Common questions' },
   ];
 
   return (
@@ -210,6 +210,21 @@ export default function AccountPage() {
 
         {/* Menu Items */}
         <div className="space-y-2 mb-6">
+          {menuItems.map(item => (
+            <Link
+              key={item.href}
+              href={item.href}
+              className="flex items-center gap-4 p-4 bg-gray-900 border border-gray-800 rounded-xl"
+            >
+              <span className="text-2xl">{item.icon}</span>
+              <div className="flex-1">
+                <p className="text-white font-medium">{item.label}</p>
+                <p className="text-gray-400 text-sm">{item.desc}</p>
+              </div>
+              <span className="text-gray-500">›</span>
+            </Link>
+          ))}
+
           <section className="p-4 bg-gray-900 border border-gray-800 rounded-xl">
             <div className="flex items-center gap-4">
               <span className="text-2xl">🚗</span>
@@ -236,20 +251,7 @@ export default function AccountPage() {
             )}
           </section>
 
-          {menuItems.map(item => (
-            <Link
-              key={item.href}
-              href={item.href}
-              className="flex items-center gap-4 p-4 bg-gray-900 border border-gray-800 rounded-xl"
-            >
-              <span className="text-2xl">{item.icon}</span>
-              <div className="flex-1">
-                <p className="text-white font-medium">{item.label}</p>
-                <p className="text-gray-400 text-sm">{item.desc}</p>
-              </div>
-              <span className="text-gray-500">›</span>
-            </Link>
-          ))}
+
 
         </div>
 
