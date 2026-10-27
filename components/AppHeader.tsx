@@ -22,6 +22,17 @@ export default function AppHeader() {
   if (pathname?.startsWith('/admin')) return null
 
   const goBack = () => {
+    if (pathname === '/playlist') {
+      const requested = new URLSearchParams(window.location.search).get('returnTo')
+      const allowed = (value: string | null) => value === '/home' || value === '/library'
+      let source: string | null = null
+      try {
+        const referrer = new URL(document.referrer)
+        if (referrer.origin === window.location.origin) source = referrer.pathname
+      } catch {}
+      window.location.assign(allowed(requested) ? requested! : allowed(source) ? source! : '/home')
+      return
+    }
     // Account can follow an OAuth redirect: browser history may point to Google.
     // Primary app screens must return to an app destination, never auth history.
     if (pathname === '/account' || pathname === '/library') {

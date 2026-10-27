@@ -174,15 +174,9 @@ export default function LibraryPage() {
       const setSyncedPlaylist = (keys: string[]) => setPlaylist(current =>
         current.length === keys.length && keys.every((key, index) => key === current[index]) ? current : keys)
       try {
-        const storedKeys = parsePlaylistKeys(localStorage.getItem(playlistKey))
-        if (storedKeys) {
-          setSyncedPlaylist(storedKeys)
-          setPlaylistHydrated(true)
-          return
-        }
         const activeRaw = localStorage.getItem(ACTIVE_PLAYLIST_KEY)
         if (!activeRaw) {
-          setSyncedPlaylist([])
+          setSyncedPlaylist(parsePlaylistKeys(localStorage.getItem(playlistKey)) || [])
           setPlaylistHydrated(true)
           return
         }
@@ -212,22 +206,8 @@ export default function LibraryPage() {
     }
   }, [user, playlistKey])
 
-  // Persist playlist
-  useEffect(() => {
-    if (!playlistHydrated || !user) return
-    try {
-      if (playlist.length > 0) localStorage.setItem(playlistKey, JSON.stringify(playlist))
-      else {
-        // UX-PLAYLIST-002 (2026-07-15): the user-scoped key must be removed too.
-        // clearActivePlaylist() only clears the unscoped keys, then fires
-        // et_playlist_cleared/saved — which syncPlaylist() answers by rehydrating
-        // from this stale user-scoped key, silently resurrecting the removed item.
-        // Net effect: tapping "✓ Remove" on the LAST playlist item did nothing.
-        localStorage.removeItem(playlistKey)
-        clearActivePlaylist()
-      }
-    } catch {}
-  }, [playlistHydrated, playlist])
+  // Reading Library must never clear or rebuild the active queue. Queue
+  // writes belong to explicit Add/Remove actions and natural completion.
 
   useEffect(() => {
     if (!authLoading) {
@@ -542,12 +522,6 @@ export default function LibraryPage() {
     return playlist.filter((key) => validKeys.has(key))
   }, [playlist, cardItems])
 
-  useEffect(() => {
-    if (loading) return
-    if (validPlaylist.length === playlist.length) return
-    setPlaylist(validPlaylist)
-  }, [loading, playlist, validPlaylist])
-
   // Playlist running totals
   const playlistTotalMins = useMemo(() => {
     let mins = 0
@@ -784,29 +758,6 @@ export default function LibraryPage() {
       router.push('/home')
     } catch {}
   }
-
-  // Marc 2026-07-13: queueing in the library must show up on /home without the
-  // extra "Save to home" tap — auto-sync the queue to the home playlist card
-  // whenever it changes. Equality guard prevents save-event feedback loops and
-  // preserves the existing playlist's completed count when nothing changed.
-  useEffect(() => {
-    if (loading || !playlistHydrated || validPlaylist.length === 0) return
-    try {
-      const raw = localStorage.getItem(ACTIVE_PLAYLIST_KEY)
-      if (raw) {
-        const active = JSON.parse(raw)
-        const items = active?.items || active?.stories || []
-        const existingKeys = (Array.isArray(items) ? items : [])
-          .map((item: any) => item?.type === 'series'
-            ? (item.series_id || item.id ? `series-${item.series_id || item.id}` : null)
-            : (item?.id ? `single-${item.id}` : null))
-          .filter(Boolean)
-        if (existingKeys.length === validPlaylist.length && existingKeys.every((k: string, i: number) => k === validPlaylist[i])) return
-      }
-      syncQueueToHome()
-    } catch {}
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loading, playlistHydrated, validPlaylist, playlistTotalMins])
 
   function getCardState(item: CardItem) {
     const inPlaylist = validPlaylist.includes(item.key)

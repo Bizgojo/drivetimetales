@@ -106,7 +106,7 @@ export default function YourPlaylist({ onIdsLoaded, sticky = false }: { onIdsLoa
       window.removeEventListener('et_playlist_cleared', handlePlaylistSaved)
       document.removeEventListener('visibilitychange', handleVisibility)
     }
-  }, [])
+  }, [pathname])
 
   if (sticky && pathname !== '/library' && pathname !== '/library-new') return null
   if (!playlist || !playlist.items || playlist.items.length === 0) return null
@@ -155,7 +155,7 @@ export default function YourPlaylist({ onIdsLoaded, sticky = false }: { onIdsLoa
                 style={{ flex: 1, minWidth: 0, minHeight: 40, padding: '8px 4px', background: playlist.started ? '#22c55e' : '#f97316', color: 'white', border: 'none', borderRadius: 10, fontSize: 12, fontWeight: 800, cursor: 'pointer' }}>
                 ▶ {playlist.started ? 'Continue' : 'Play'}
               </button>
-              <button type="button" onClick={() => window.location.assign('/playlist')}
+              <button type="button" onClick={() => window.location.assign(`/playlist?returnTo=${encodeURIComponent(pathname === '/library' || pathname === '/library-new' ? '/library' : '/home')}`)}
                 style={{ flex: 1, minWidth: 0, minHeight: 40, padding: '8px 4px', background: '#3b82f6', color: 'white', border: 'none', borderRadius: 10, fontSize: 12, fontWeight: 800, cursor: 'pointer' }}>
                 My Downloads
               </button>
