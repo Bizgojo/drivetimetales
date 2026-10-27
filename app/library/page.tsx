@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/contexts/AuthContext'
 import ReviewModal from '@/components/ReviewModal'
+import YourPlaylist from '@/components/YourPlaylist'
 import { useNowPlaying, useOpenPlayer } from '@/components/player/PersistentPlayer'
 import { isActiveLibraryCard } from '@/lib/playerControls'
 import { buildSeriesPlaybackTarget, storeSeriesPlayback } from '@/lib/seriesPlayback'
@@ -831,7 +832,7 @@ export default function LibraryPage() {
       style={{
         minHeight: '100vh',
         backgroundColor: '#0a0a0a',
-        paddingBottom: validPlaylist.length > 0 ? '90px' : '20px',
+        paddingBottom: validPlaylist.length > 0 ? 'calc(180px + env(safe-area-inset-bottom))' : '20px',
       }}
     >
 
@@ -984,32 +985,8 @@ export default function LibraryPage() {
         })}
       </div>
 
-      {/* QUEUE-OFFLINE-001 (Marc, 2026-10-04): informational-only status bar —
-          no buttons, distinct color so it reads as "stuff is downloaded",
-          not an action bar. Tap-through to /playlist (My Downloads) for
-          remove/reorder. */}
-      {validPlaylist.length > 0 && (
-        <div
-          onClick={() => router.push('/playlist')}
-          style={{
-            position: 'fixed',
-            bottom: 0,
-            left: 0,
-            right: 0,
-            background: '#ffffff',
-            borderTop: '1px solid rgba(0,0,0,0.12)',
-            borderRadius: '14px 14px 0 0',
-            padding: '12px 16px',
-            boxShadow: '0 -8px 24px rgba(0,0,0,0.2), 0 -2px 12px rgba(0,0,0,0.12)',
-            zIndex: 40,
-            cursor: 'pointer',
-          }}
-        >
-          <div style={{ color: '#000', fontSize: '13px', fontWeight: 700 }}>
-            {validPlaylist.length} {validPlaylist.length === 1 ? 'story' : 'stories'} ({formatMinutes(playlistTotalMins)}) downloaded to your playlist for offline playing
-          </div>
-        </div>
-      )}
+      {/* Use the same playlist card as Home; it hides itself when empty. */}
+      <YourPlaylist sticky />
 
       {reviewTarget && user?.id && (
         <ReviewModal
