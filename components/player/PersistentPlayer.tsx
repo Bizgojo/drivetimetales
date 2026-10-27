@@ -1,7 +1,7 @@
 'use client'
 
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react'
-import type { ReactNode } from 'react'
+import type { CSSProperties, ReactNode } from 'react'
 import { usePathname, useRouter } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
 import CanonicalPlayer from './CanonicalPlayer'
@@ -46,6 +46,8 @@ export default function PersistentPlayer({ children }: { children: ReactNode }) 
   const [dismissedIds, setDismissedIds] = useState<string[]>([])
   const [removeError, setRemoveError] = useState('')
   const [removing, setRemoving] = useState(false)
+  const continueShellRef = useRef<HTMLElement | null>(null)
+  const [continueHeight, setContinueHeight] = useState(126)
   const saved = savedStories.find(story => !dismissedIds.includes(story.id) && !(liveSnapshot?.completed && story.id === liveSnapshot.storyId))
   const liveVisible = liveSnapshot && liveSnapshot.storyId === selection?.storyId && !liveSnapshot.completed && !dismissedIds.includes(liveSnapshot.storyId)
   const snapshot: PlaybackSnapshot | null = liveVisible ? liveSnapshot : saved ? {
@@ -130,8 +132,18 @@ export default function PersistentPlayer({ children }: { children: ReactNode }) 
   }
   const miniature = !playerPage && !clearForRoute && !pathname?.startsWith('/admin') && snapshot
 
+  useEffect(() => {
+    const shell = continueShellRef.current
+    if (!miniature || !shell) return
+    const measure = () => setContinueHeight(Math.ceil(shell.getBoundingClientRect().height))
+    measure()
+    const observer = new ResizeObserver(measure)
+    observer.observe(shell)
+    return () => observer.disconnect()
+  }, [Boolean(miniature)])
+
   return <OpenPlayerContext.Provider value={openPlayer}><PlayerContext.Provider value={request}><NowPlayingContext.Provider value={miniature ? snapshot : null}>
-    <div style={{ paddingTop: miniature ? 120 : 0 }}>{children}</div>
+    <div style={{ paddingTop: miniature ? continueHeight : 0, '--et-continue-bottom': `${56 + (miniature ? continueHeight : 0)}px` } as CSSProperties}>{children}</div>
     {selection && !clearForRoute && <div hidden={!playerPage} style={playerPage
       ? { position: 'fixed', top: 56, bottom: 0, left: 0, right: 0, zIndex: 40, overflowY: 'auto', background: '#020617' }
       : { display: 'none' }}>
@@ -140,8 +152,9 @@ export default function PersistentPlayer({ children }: { children: ReactNode }) 
     </div>}
     {miniature && <>
 
-      <aside aria-label="Continue listening" style={{ position: 'fixed', top: 64, left: 12, right: 12,
-        zIndex: 45, padding: 10, borderRadius: 14, background: '#1e293b', color: 'white', border: '1px solid #475569' }}>
+      <aside ref={continueShellRef} aria-label="Continue listening" style={{ position: 'fixed', top: 56, left: 0, right: 0,
+        zIndex: 45, padding: '8px 12px 12px', background: '#020617', color: 'white' }}>
+        <div style={{ padding: 10, borderRadius: 14, background: '#1e293b', border: '1px solid #475569' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <button type="button" aria-label={`Open player for ${snapshot.title}`} onClick={() => openPlayer(`/player/${snapshot.storyId}${selection?.mode === 'playlist' ? '?playlist=1' : selection?.mode === 'series' ? '?mode=series' : ''}`)}
             style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 10, textAlign: 'left', background: 'none', border: 0, color: 'white', cursor: 'pointer' }}>
@@ -160,6 +173,7 @@ export default function PersistentPlayer({ children }: { children: ReactNode }) 
         {removeError && <p role="alert" style={{ color: '#fca5a5', fontSize: 12, margin: '2px 0' }}>{removeError}</p>}
         <div role="progressbar" aria-label="Listening progress" aria-valuemin={0} aria-valuemax={Math.max(1, snapshot.duration)} aria-valuenow={Math.min(snapshot.currentTime, snapshot.duration)} style={{ height: 4, background: '#475569', marginTop: 8, borderRadius: 4 }}>
           <div style={{ height: '100%', width: `${snapshot.duration > 0 ? Math.min(100, snapshot.currentTime / snapshot.duration * 100) : 0}%`, background: '#f97316', borderRadius: 4 }} />
+        </div>
         </div>
       </aside>
     </>}

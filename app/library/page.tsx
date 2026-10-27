@@ -835,8 +835,9 @@ export default function LibraryPage() {
       }}
     >
 
-      {/* Genre picker — established one-row treatment */}
-      <div style={{ position: 'sticky', top: '60px', zIndex: 40, padding: '0 12px 12px' }}>
+      {/* Reserve the fixed genre row below the shared Continue shell. */}
+      <div aria-hidden="true" style={{ height: 70 }} />
+      <nav aria-label="Story genres" style={{ position: 'fixed', top: 'var(--et-continue-bottom, 56px)', left: 0, right: 0, zIndex: 44, padding: '0 12px 12px', background: '#020617' }}>
         <div style={{ backgroundColor: '#1e293b', borderRadius: '12px', padding: '8px' }}>
           <div style={{ display: 'flex', gap: '6px', alignItems: 'center', justifyContent: 'stretch', overflowX: 'auto' }}>
             {visibleGenres.map((g) => (
@@ -931,7 +932,7 @@ export default function LibraryPage() {
             )}
           </div>
         </div>
-      </div>
+      </nav>
 
       {/* Cards */}
       <div style={{ padding: '0 12px' }}>
