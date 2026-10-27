@@ -60,7 +60,7 @@ export default function ReferralModal({ isOpen, onClose, userId, userName }: Ref
         {/* Header */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
           <span style={{ color: 'white', fontSize: '20px', fontWeight: 'bold' }}>🎁 Invite a Friend</span>
-          <button onClick={onClose} style={{ backgroundColor: 'transparent', border: 'none', color: 'white', fontSize: '24px', cursor: 'pointer' }}>×</button>
+          <button aria-label="Close and return to Fun Facts" onClick={onClose} style={{ backgroundColor: 'transparent', border: 'none', color: 'white', fontSize: '24px', cursor: 'pointer' }}>×</button>
         </div>
 
         {/* Description */}

@@ -27,6 +27,7 @@ const TERMS = [
 export default function SuggestStoryPage() {
   const { user } = useAuth();
   const router = useRouter();
+  const closeButton = <a href="/account/faqs" aria-label="Close story suggestion and return to Fun Facts" style={{ position: 'fixed', top: 'calc(var(--et-continue-bottom, 56px) + 8px)', right: 16, zIndex: 49 }} className="flex items-center justify-center w-11 h-11 rounded-full bg-slate-800 text-white text-2xl">×</a>;
 
   const [form, setForm] = useState({
     name: '',
@@ -118,6 +119,7 @@ export default function SuggestStoryPage() {
   if (checkingEligibility) {
     return (
       <div className="min-h-screen bg-gray-950 text-white">
+        {closeButton}
         <div className="flex items-center justify-center py-20">
           <div className="text-gray-400 text-sm">Checking eligibility…</div>
         </div>
@@ -128,6 +130,7 @@ export default function SuggestStoryPage() {
   if (cooldown.active && cooldown.nextAvailable) {
     return (
       <div className="min-h-screen bg-gray-950 text-white">
+        {closeButton}
         <div className="flex flex-col items-center justify-center px-6 py-20 text-center">
           <span className="text-6xl mb-6">⏳</span>
           <h1 className="text-2xl font-bold text-white mb-3">You're All Set for Now</h1>
@@ -151,6 +154,7 @@ export default function SuggestStoryPage() {
   if (submitted) {
     return (
       <div className="min-h-screen bg-gray-950 text-white">
+        {closeButton}
         <div className="flex flex-col items-center justify-center px-6 py-20 text-center">
           <span className="text-6xl mb-6">🎙️</span>
           <h1 className="text-2xl font-bold text-white mb-3">Idea Received!</h1>
@@ -171,6 +175,7 @@ export default function SuggestStoryPage() {
 
   return (
     <div className="min-h-screen bg-gray-950 text-white">
+        {closeButton}
 
       <div className="px-4 py-6 pb-24 max-w-xl mx-auto">
         {/* Header */}
