@@ -566,7 +566,19 @@ export default function LibraryPage() {
   // queue action itself.
   function togglePlaylist(key: string) {
     const adding = !playlist.includes(key)
-    setPlaylist((p) => (p.includes(key) ? p.filter((k) => k !== key) : [...p, key]))
+    const nextKeys = adding ? [...playlist, key] : playlist.filter(itemKey => itemKey !== key)
+    // Persist the click before notifying subscribers; hydration must not read
+    // the previous selection while React is still committing this update.
+    if (user) {
+      if (nextKeys.length) localStorage.setItem(playlistKey, JSON.stringify(nextKeys))
+      else localStorage.removeItem(playlistKey)
+    }
+    setPlaylist(nextKeys)
+    if (nextKeys.length) {
+      const items = buildActivePlaylistItems(nextKeys)
+      saveActivePlaylist({ id: `library-${Date.now()}`, items,
+        remaining_mins: items.reduce((sum, item) => sum + Number(item?.type === 'series' ? item.total_mins || 0 : item?.duration_mins || 0), 0), completed: 0 }, nextKeys)
+    } else clearActivePlaylist()
 
     const item = cardItems.find((i) => i.key === key)
     if (!item) return
@@ -719,8 +731,8 @@ export default function LibraryPage() {
     }
   }
 
-  function buildActivePlaylistItems() {
-    return validPlaylist
+  function buildActivePlaylistItems(selectionKeys = validPlaylist) {
+    return selectionKeys
       .map((key) => {
           const item = cardItems.find((i) => i.key === key)
           if (!item) return null
