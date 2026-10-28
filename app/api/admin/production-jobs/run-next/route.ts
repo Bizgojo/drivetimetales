@@ -12553,6 +12553,7 @@ export async function POST(req: NextRequest) {
         }
 
         const PROMOTABLE_STATES = new Set(['', 'stories_in_queue'])
+        const PUBLISH_PATH_STATES = new Set(['ready_for_review', 'approved_ready', 'published'])
         const episodeIdsToPromote = ((episodeWorkflowRows || []) as any[])
           .filter((story) => PROMOTABLE_STATES.has(String(story.workflow_state || '').trim()))
           .map((story) => story.id)
@@ -12627,11 +12628,23 @@ export async function POST(req: NextRequest) {
         // shared lib/directPublish promotion. Anything else holds at RFR.
         let directAutoPublish: DirectAutoPublishReport | null = null
         const hookSeriesId = String(result.seriesId || lockedJob.series_id || '').trim()
-        if (hookSeriesId && episodeIdsToPromote.length > 0) {
+        // PUBLISH-VISIBLE-001: hand the hook EVERY packaged episode that is
+        // on the publish path — not only the ones promoted just now. A
+        // re-run (restart, recast, re-render) leaves some episodes already
+        // ready_for_review / approved_ready / published, and the package
+        // step re-hides them (status=audio_ready, is_hidden=true). Leaving
+        // them out stranded them hidden (Chicago EP7, Oct 27).
+        const episodeIdsForPublish = Array.from(new Set([
+          ...episodeIdsToPromote,
+          ...((episodeWorkflowRows || []) as any[])
+            .filter((story) => PUBLISH_PATH_STATES.has(String(story.workflow_state || '').trim()))
+            .map((story) => String(story.id)),
+        ]))
+        if (hookSeriesId && episodeIdsForPublish.length > 0) {
           try {
             directAutoPublish = await maybeDirectPublishSeries(supabase, {
               seriesId: hookSeriesId,
-              episodeIds: episodeIdsToPromote,
+              episodeIds: episodeIdsForPublish,
               jobId: lockedJob.id,
             })
           } catch (e) {

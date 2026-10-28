@@ -423,7 +423,7 @@ describe('series mid-loop re-verify guard (3-fix N2)', () => {
     // ep-1 went live via a prior partial run (or a manual publish); ep-2/3
     // are freshly at RFR. The loop must NOT re-promote ep-1.
     const eps = [
-      readyStory({ id: 'ep-1', series_id: 'ser-9', episode_number: 1, script: seriesScript(1), workflow_state: 'published', status: 'published', is_hidden: false }),
+      readyStory({ id: 'ep-1', series_id: 'ser-9', episode_number: 1, script: seriesScript(1), workflow_state: 'published', status: 'published', is_hidden: false, published_on: '2026-10-20T12:00:00.000Z' }),
       readyStory({ id: 'ep-2', series_id: 'ser-9', episode_number: 2, script: seriesScript(2) }),
       readyStory({ id: 'ep-3', series_id: 'ser-9', episode_number: 3, script: seriesScript(3) }),
     ]
@@ -464,5 +464,60 @@ describe('standalone series-member guard (3-fix N3)', () => {
     expect(report.blockers?.join(' ')).toMatch(/series member|series hook/)
     expect(writes.filter((w) => w.table === 'stories')).toHaveLength(0)
     expect(writes.filter((w) => w.table === 'story_workflow_audit')).toHaveLength(0)
+  })
+})
+
+// ── PUBLISH-VISIBLE-001: re-run must not strand a hidden "published" episode ──
+
+describe('PUBLISH-VISIBLE-001 hidden published episodes are resurfaced', () => {
+  test('re-hidden published finale is made visible, keeps published_on, no re-promotion', async () => {
+    const eps = [1, 2, 3].map((n) =>
+      readyStory({ id: `ep-${n}`, series_id: 'ser-v', episode_number: n, script: seriesScript(n) })
+    )
+    // EP3 was published earlier, then the package step re-hid it.
+    Object.assign(eps[2], {
+      workflow_state: 'published',
+      status: 'audio_ready',
+      is_hidden: true,
+      published_on: '2026-10-27T12:00:00.000Z',
+    })
+    const { db, writes, stories } = makeDb({ settingsValue: 'direct', stories: eps, auditHasDirect: true })
+    const report = await maybeDirectPublishSeries(db as never, {
+      seriesId: 'ser-v',
+      episodeIds: ['ep-1', 'ep-2', 'ep-3'],
+      jobId: 'job-v',
+    })
+    expect(report.action).toBe('published')
+    expect(report.transitions).toContain('ep-3:resurfaced_hidden_published')
+    const ep3 = stories.find((s: Row) => s.id === 'ep-3') as Row
+    expect(ep3.status).toBe('published')
+    expect(ep3.is_hidden).toBe(false)
+    expect(ep3.published_on).toBe('2026-10-27T12:00:00.000Z')
+    const ep3Promotions = writes.filter(
+      (w) => w.table === 'stories' && w.op === 'update' && (w.filter as Row).id === 'ep-3' && (w.payload as Row).workflow_state
+    )
+    expect(ep3Promotions).toHaveLength(0)
+  })
+
+  test('visible published episode is skipped untouched', async () => {
+    const eps = [1, 2].map((n) =>
+      readyStory({ id: `ep-${n}`, series_id: 'ser-w', episode_number: n, script: seriesScript(n) })
+    )
+    Object.assign(eps[0], { workflow_state: 'published', status: 'published', is_hidden: false, published_on: '2026-10-27T12:00:00.000Z' })
+    const { db, writes } = makeDb({ settingsValue: 'direct', stories: eps, auditHasDirect: true })
+    const report = await maybeDirectPublishSeries(db as never, { seriesId: 'ser-w', episodeIds: ['ep-1', 'ep-2'], jobId: 'job-w' })
+    expect(report.action).toBe('published')
+    expect(report.transitions).toContain('ep-1:skipped_already_published')
+    expect(writes.filter((w) => w.table === 'stories' && (w.filter as Row)?.id === 'ep-1')).toHaveLength(0)
+  })
+
+  test('approved_ready episode publishes without a second approval write', async () => {
+    const eps = [readyStory({ id: 'ep-1', series_id: 'ser-a', episode_number: 1, script: seriesScript(1), workflow_state: 'approved_ready' })]
+    const { db, writes, stories } = makeDb({ settingsValue: 'direct', stories: eps, auditHasDirect: true })
+    const report = await maybeDirectPublishSeries(db as never, { seriesId: 'ser-a', episodeIds: ['ep-1'], jobId: 'job-a' })
+    expect(report.action).toBe('published')
+    const approvals = writes.filter((w) => w.table === 'stories' && (w.payload as Row).workflow_state === 'approved_ready')
+    expect(approvals).toHaveLength(0)
+    expect((stories[0] as Row).is_hidden).toBe(false)
   })
 })
