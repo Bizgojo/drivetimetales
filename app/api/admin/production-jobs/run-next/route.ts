@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { descriptionWordCountMiscount } from '@/lib/descriptionWordCountTruth'
 import { spellOutSpokenNumerals } from '@/lib/spokenNumerals'
 import { createClient } from '@supabase/supabase-js'
 import Anthropic from '@anthropic-ai/sdk'
@@ -6850,13 +6851,22 @@ ${script}`,
     }],
   })
 
-  const report = response.content
+  let report = response.content
     .map((c: any) => ('text' in c ? c.text : ''))
     .join('')
     .trim()
   if (!report) throw new Error(`Episode ${number} validator returned an empty report`)
 
-  const passed = /VALIDATOR RESULT:\s*PASS/i.test(report)
+  const llmPassed = /VALIDATOR RESULT:\s*PASS/i.test(report)
+  // DESC-WORDCOUNT-TRUTH-001: the validator miscounts description words; when
+  // that is its only failure and the real count is within the limit, pass.
+  const wordCountTruth = llmPassed
+    ? { override: false, actual: 0 }
+    : descriptionWordCountMiscount(extractValidatorFailureLines(report), normalizeHeaderValue(extractHeader(script, 'DESCRIPTION')))
+  const passed = llmPassed || wordCountTruth.override
+  if (wordCountTruth.override) {
+    report = `${report}\n\nDESC-WORDCOUNT-TRUTH-001: the only failure was the DESCRIPTION word count; actual count is ${wordCountTruth.actual} (limit ${DESCRIPTION_MAX_WORDS}). VALIDATOR RESULT: PASS (deterministic override)`
+  }
   const validatedDescription = passed ? normalizeHeaderValue(extractHeader(script, 'DESCRIPTION')) : ''
   const passedAt = passed ? nowIso() : null
 
