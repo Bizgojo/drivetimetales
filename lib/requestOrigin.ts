@@ -36,3 +36,9 @@ function isLocalHostname(host: string): boolean {
   const name = host.split(':')[0].toLowerCase()
   return name === 'localhost' || name === '127.0.0.1' || name === '0.0.0.0' || name === '::1' || name.endsWith('.localhost')
 }
+
+/** Match browser form submissions against the public origin behind the proxy. */
+export function hasValidRequestOrigin(request: Request): boolean {
+  const origin = request.headers.get('origin')
+  return !origin || origin === resolveRequestOrigin(request)
+}
