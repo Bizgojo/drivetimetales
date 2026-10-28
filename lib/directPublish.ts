@@ -275,7 +275,7 @@ function emitFirstPublishMarker(args: { storyId?: string; seriesId?: string; job
 async function promoteStoryToPublished(
   db: DbClient,
   storyId: string,
-  opts: { reason: string; firstAutoPublish: boolean; sessionContext: string }
+  opts: { reason: string; firstAutoPublish: boolean; sessionContext: string; alreadyApproved?: boolean }
 ): Promise<{ publishedOn: string; transitions: string[] }> {
   const at = new Date().toISOString()
   const edges: Array<[string, string]> = [
@@ -296,8 +296,9 @@ async function promoteStoryToPublished(
     }
   }
   const transitions: string[] = []
-  // Step 1: mirror Marc's approval click (autonomous).
-  {
+  // Step 1: mirror Marc's approval click (autonomous). Skipped when the
+  // episode is already approved_ready (PUBLISH-VISIBLE-001 re-run path).
+  if (!opts.alreadyApproved) {
     const { error } = await db
       .from('stories')
       .update({
@@ -354,6 +355,55 @@ async function promoteStoryToPublished(
   }
   await syncPremiseBestEffort(db, [storyId])
   return { publishedOn: at, transitions }
+}
+
+/**
+ * PUBLISH-VISIBLE-001: a story listeners can actually find — the app filters
+ * on status='published' AND is_hidden=false (and orders by published_on).
+ */
+export function isListenerVisible(story: Record<string, unknown> | null | undefined): boolean {
+  if (!story) return false
+  return (
+    String(story.status ?? '') === 'published' &&
+    story.is_hidden === false &&
+    String(story.published_on ?? '').trim() !== ''
+  )
+}
+
+/**
+ * PUBLISH-VISIBLE-001: workflow_state is already 'published' but the row was
+ * re-hidden by a re-run. Restore the listener-facing columns only; the
+ * workflow state does not change, so no matrix edge is involved. Keeps the
+ * original published_on so the episode does not jump to the top of New.
+ */
+async function restoreVisibility(
+  db: DbClient,
+  storyId: string,
+  current: Record<string, unknown>,
+  opts: { reason: string; sessionContext: string }
+): Promise<void> {
+  try {
+    await assertPublishAllowed(db)
+  } catch (e) {
+    throw new Error(`global publication hold is ACTIVE; refusing visibility restore for story ${storyId} (${e instanceof Error ? e.message : String(e)})`)
+  }
+  const at = new Date().toISOString()
+  const publishedOn = String(current.published_on ?? '').trim() || at
+  const { error } = await db
+    .from('stories')
+    .update({ status: 'published', is_hidden: false, published_on: publishedOn })
+    .eq('id', storyId)
+  if (error) throw new Error(`visibility restore failed for ${storyId}: ${error.message}`)
+  console.warn(`[direct-publish] PUBLISH-VISIBLE-001 restored visibility for published story ${storyId} (was status=${String(current.status)}, is_hidden=${String(current.is_hidden)})`)
+  await insertAuditRow(db, {
+    story_id: storyId,
+    from_state: 'published',
+    to_state: 'published',
+    changed_by: DIRECT_PUBLISH_CHANGED_BY,
+    changed_at: at,
+    reason: `PUBLISH-VISIBLE-001: restored listener visibility after re-run. ${opts.reason}`,
+    session_context: opts.sessionContext,
+  })
 }
 
 async function fetchStory(db: DbClient, storyId: string): Promise<Record<string, unknown> | null> {
@@ -515,18 +565,41 @@ export async function maybeDirectPublishSeries(
         throw new Error(`pre-promote re-read failed for episode ${epId}: ${e instanceof Error ? e.message : String(e)}`)
       }
       if (current && String(current.workflow_state) === 'published') {
-        console.log(`[direct-publish] series ${args.seriesId}: episode ${epId} already published — skipping re-promotion`)
-        transitions.push(`${epId}:skipped_already_published`)
+        // PUBLISH-VISIBLE-001: "published" in workflow_state is not enough —
+        // a re-run's package step re-hides the row (status=audio_ready,
+        // is_hidden=true). Restore listener visibility instead of skipping.
+        if (isListenerVisible(current)) {
+          console.log(`[direct-publish] series ${args.seriesId}: episode ${epId} already published — skipping re-promotion`)
+          transitions.push(`${epId}:skipped_already_published`)
+          continue
+        }
+        await restoreVisibility(db, epId, current, { reason, sessionContext: args.jobId })
+        transitions.push(`${epId}:resurfaced_hidden_published`)
         continue
       }
       const { publishedOn: epAt, transitions: epTransitions } = await promoteStoryToPublished(db, epId, {
         reason,
         firstAutoPublish: firstRemaining,
         sessionContext: args.jobId,
+        alreadyApproved: Boolean(current && String(current.workflow_state) === 'approved_ready'),
       })
       firstRemaining = false
       publishedOn = publishedOn || epAt
       transitions.push(`${epId}:${epTransitions.join(',')}`)
+    }
+    // PUBLISH-VISIBLE-001: final read-back — every episode must be findable
+    // by listeners, not just marked published. One repair attempt, then fail
+    // loudly so the series never silently ships with a hidden episode.
+    for (const ep of relevant) {
+      const epId = String(ep.id)
+      const after = await fetchStory(db, epId)
+      if (isListenerVisible(after)) continue
+      if (after && String(after.workflow_state) === 'published') {
+        await restoreVisibility(db, epId, after, { reason, sessionContext: args.jobId })
+        transitions.push(`${epId}:resurfaced_on_readback`)
+        if (isListenerVisible(await fetchStory(db, epId))) continue
+      }
+      throw new Error(`episode ${epId} is not visible to listeners after publish (status=${String(after?.status)}, is_hidden=${String(after?.is_hidden)}, workflow_state=${String(after?.workflow_state)})`)
     }
     if (firstAutoPublish) {
       emitFirstPublishMarker({ seriesId: args.seriesId, jobId: args.jobId, publishedOn })
