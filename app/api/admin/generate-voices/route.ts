@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { parseCharacterGuide, characterVoiceKeys, type CharacterInfo } from '@/lib/characterGuide'
 export { parseCharacterGuide, characterVoiceKeys }
 import { dramaUseCaseBonus, isUnsuitableAutoCastVoice } from '@/lib/castingVoiceFilter'
+import { isReservedHeroVoice, voicePostEqFilter } from '@/lib/voiceEq'
 import { createClient } from '@supabase/supabase-js'
 import { execFile } from 'child_process'
 import { promisify } from 'util'
@@ -190,6 +191,21 @@ async function normalizeSpokenBuffer(input: Buffer, rawText: string, prefix: str
 // Applied BEFORE loudness normalization so filtered lines sit at correct level in mix.
 function isHeadphoneTaggedSpeaker(speaker: string): boolean {
   return /\(through headphones\)|\(through phone\)|\(filtered\)/i.test(speaker)
+}
+
+// VOICE-EQ-001: apply a per-voice ffmpeg EQ before loudness normalization.
+async function applyVoicePostEq(input: Buffer, filter: string): Promise<Buffer> {
+  const tmpBase = path.join(os.tmpdir(), `et_veq_${Date.now()}_${Math.random().toString(16).slice(2)}`)
+  const inputPath = `${tmpBase}_in.mp3`
+  const outputPath = `${tmpBase}_out.mp3`
+  try {
+    await fs.writeFile(inputPath, input)
+    await _execFileAsync(FFMPEG_PATH, ['-i', inputPath, '-af', filter, '-ar', '44100', '-ac', '2', '-b:a', '192k', '-y', outputPath])
+    return await fs.readFile(outputPath)
+  } finally {
+    await fs.unlink(inputPath).catch(() => {})
+    await fs.unlink(outputPath).catch(() => {})
+  }
 }
 
 // Phone/headphone bandpass: 300-3400 Hz + -15% volume to simulate earpiece/headset.
@@ -1007,6 +1023,8 @@ function scoreCharacterVoiceCandidates(
     .filter(v => !blockedVoiceIds.has(v.voice_id) && !isBelleBVoiceId(v.voice_id))
     // CAST-VOICE-FIT-001: no cartoon/novelty or non-English-labelled voices for drama characters.
     .filter(v => !isUnsuitableAutoCastVoice(v))
+    // VOICE-EQ-001: voices reserved for a recurring hero are never auto-cast.
+    .filter(v => !isReservedHeroVoice(v.voice_id))
     .map(v => ({ voice: v, score: scoreVoice(v, meta) }))
     .filter(x => x.score > -999)
     .sort((a, b) => b.score - a.score)
@@ -1335,6 +1353,7 @@ async function findVoiceForCharacter(
       v.voice_id !== narratorVoiceId &&
       !isBelleBVoiceId(v.voice_id) &&
       !isUnsuitableAutoCastVoice(v) &&
+      !isReservedHeroVoice(v.voice_id) &&
       (!meta.gender || characterVoiceLabels(v).gender.toLowerCase() === meta.gender.toLowerCase())
     )
     if (genderFallback) {
@@ -1667,9 +1686,12 @@ async function generateVoiceLine(rawText: string, voiceId: string, storyId: stri
     if (rawBufMd5 === SILENCE_BUFFER_KNOWN_ETAG) {
       throw new Error(`SILENCE_BUFFER: ${fileName} rejected - matches known silence eTag ${SILENCE_BUFFER_KNOWN_ETAG}`)
     }
-    const preBuf = isHeadphoneTaggedSpeaker(speaker)
+    const filteredBuf = isHeadphoneTaggedSpeaker(speaker)
       ? await applyHeadphoneFilter(rawBuf)
       : rawBuf
+    // VOICE-EQ-001: per-voice EQ Marc approved by ear (e.g. Nick Brennan bass lift).
+    const eqFilter = voicePostEqFilter(voiceId)
+    const preBuf = eqFilter ? await applyVoicePostEq(filteredBuf, eqFilter) : filteredBuf
     return normalizeSpokenBuffer(preBuf, inputText, prefix)
   }
   const generateAttempt = async (): Promise<Buffer> => generateAttemptForText(text)

@@ -24,7 +24,7 @@ describe('CAST-VOICE-FIT-001', () => {
   test('voice step applies the filter in scoring and the gender fallback', () => {
     const src = readFileSync(join(__dirname, '..', 'app/api/admin/generate-voices/route.ts'), 'utf8')
     expect(src).toMatch(/\.filter\(v => !isUnsuitableAutoCastVoice\(v\)\)/)
-    expect(src).toMatch(/!isUnsuitableAutoCastVoice\(v\) &&\n\s*\(!meta\.gender/)
+    expect(src).toMatch(/!isUnsuitableAutoCastVoice\(v\) &&\n(\s*!isReservedHeroVoice\(v\.voice_id\) &&\n)?\s*\(!meta\.gender/)
     expect(src).toMatch(/score \+= dramaUseCaseBonus\(labels\.use_case\)/)
   })
 })
