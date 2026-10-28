@@ -19,6 +19,7 @@ export type PersonalizationFallbackReason =
   | 'missing_outro_url'
   | 'name_pool_not_ready'
   | 'personalized_queue_error'
+  | 'series_replay_normal_intro'
 
 export type GateStory = {
   announcement_url?: string | null
