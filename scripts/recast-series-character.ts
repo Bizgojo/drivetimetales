@@ -24,6 +24,8 @@
  */
 import { createClient } from '@supabase/supabase-js'
 import { parseScriptPositions } from '../lib/scriptLineIndex'
+import { isBelleBVoiceId } from '../lib/voiceConstants'
+import { isReservedHeroVoice } from '../lib/voiceEq'
 
 export function speakerMatchesCharacter(speaker: string, canonicalName: string): boolean {
   const sp = String(speaker || '').trim().toUpperCase().replace(/\s+/g, ' ')
@@ -49,6 +51,7 @@ async function main() {
     .eq('canonical_name_normalized', characterName.trim().toUpperCase())
     .maybeSingle()
   if (rosterErr || !roster) throw new Error(`roster row for ${characterName} not found: ${rosterErr?.message || ''}`)
+  if (isBelleBVoiceId(newVoiceId) || isReservedHeroVoice(newVoiceId)) throw new Error(`voice ${newVoiceId} is reserved (Belle B or recurring hero) and cannot be used for a character`)
   const { data: voice } = await db.from('character_voices').select('voice_id,name').eq('voice_id', newVoiceId).maybeSingle()
   if (!voice) throw new Error(`voice ${newVoiceId} not in character_voices`)
   console.log(`Roster ${roster.canonical_name}: ${roster.voice_name} (${roster.voice_id}) -> ${voice.name} (${voice.voice_id})`)
