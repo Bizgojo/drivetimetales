@@ -1,3 +1,4 @@
+import { hasValidRequestOrigin } from '@/lib/requestOrigin'
 import { NextRequest, NextResponse } from 'next/server'
 import sharp from 'sharp'
 import { randomUUID } from 'crypto'
@@ -15,7 +16,7 @@ export async function GET() {
   return new NextResponse(await data.arrayBuffer(), { headers: { 'Content-Type': 'image/jpeg', 'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff' } })
 }
 export async function POST(req: NextRequest) {
-  if (req.headers.get('origin') && req.headers.get('origin') !== req.nextUrl.origin) return NextResponse.json({ error: 'Invalid request origin' }, { status: 403 });
+  if (!hasValidRequestOrigin(req)) return NextResponse.json({ error: 'Invalid request origin' }, { status: 403 });
   const user = await accountUser()
   if (!user) return NextResponse.json({ error: 'Please sign in again.' }, { status: 401 })
   try {

@@ -1,3 +1,4 @@
+import { hasValidRequestOrigin } from '@/lib/requestOrigin'
 import { NextRequest, NextResponse } from 'next/server';
 import { signupName } from '@/lib/signupName';
 import { accountUser } from '@/lib/server/accountUser';
@@ -42,7 +43,7 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  if (request.headers.get('origin') && request.headers.get('origin') !== request.nextUrl.origin) return NextResponse.json({ error: 'Invalid request origin' }, { status: 403 });
+  if (!hasValidRequestOrigin(request)) return NextResponse.json({ error: 'Invalid request origin' }, { status: 403 });
   try {
     const user = await accountUser();
     if (!user?.email) return NextResponse.json({ error: 'Please sign in.' }, { status: 401 });
