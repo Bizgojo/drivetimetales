@@ -64,14 +64,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true)
   const mergedReadingProgressForRef = useRef<string | null>(null)
 
+  const authRevisionRef = useRef(0)
+
   async function loadDbUser(authUser: User, accessToken?: string | null): Promise<void> {
+    const revision = authRevisionRef.current
+    const publishUser = (next: User & Partial<DbUser>) => {
+      if (revision === authRevisionRef.current) setUser(next)
+    }
     // Use direct fetch to bypass Supabase client issues
     const url = process.env.NEXT_PUBLIC_SUPABASE_URL
     const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
     
     if (!url || !key) {
       console.error('[AuthContext] Missing Supabase env vars')
-      setUser(authUser)
+      publishUser(authUser)
       return
     }
     
@@ -94,7 +100,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       
       if (!response.ok) {
         console.error('[AuthContext] Fetch error:', response.status)
-        setUser(authUser)
+        publishUser(authUser)
         return
       }
       
@@ -102,66 +108,58 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       
       if (data && data.length > 0) {
         const dbUser = data[0]
-        setUser({ ...authUser, ...dbUser })
+        publishUser({ ...authUser, ...dbUser })
       } else {
-        setUser(authUser)
+        publishUser(authUser)
       }
     } catch (err) {
       console.error('[AuthContext] Exception:', err)
-      setUser(authUser)
+      publishUser(authUser)
     }
   }
 
   useEffect(() => {
     let isMounted = true
-    
-    async function initAuth() {
-      try {
-        const { data: { session } } = await authClient.auth.getSession()
-        
-        if (!isMounted) return
-        
-        // ORION-ENTITLE-SYNC-001: keep the data client's auth in lockstep.
-        await mirrorSessionToDataClient(session)
-        
-        setSession(session)
-        
-        if (session?.user) {
-          await loadDbUser(session.user, session.access_token)
-        } else {
-          setUser(null)
-        }
-      } catch (err) {
-        console.error('[AuthContext] Init error:', err)
-      } finally {
-        if (isMounted) {
-          setLoading(false)
-        }
-      }
-    }
-    
-    initAuth()
+    let observedEvent = false
+    let mirrorTail = Promise.resolve()
 
-    const { data: { subscription } } = authClient.auth.onAuthStateChange(async (_event, session) => {
+    const acceptSession = (next: Session | null) => {
+      const revision = ++authRevisionRef.current
+      // Publish the authenticated identity immediately, independently of profile I/O.
+      setSession(next)
+      setUser(next?.user || null)
+      setLoading(true)
+      // Leave the auth callback before calling another auth client. Serialize
+      // mirrors so an older session can never overwrite a newer one.
+      mirrorTail = mirrorTail.then(async () => {
+        if (!isMounted || revision !== authRevisionRef.current) return
+        await mirrorSessionToDataClient(next)
+        if (!isMounted || revision !== authRevisionRef.current) return
+        setLoading(false)
+        if (next?.user) void loadDbUser(next.user, next.access_token)
+      }).catch(err => {
+        console.error('[AuthContext] session restore failed:', err)
+        if (isMounted && revision === authRevisionRef.current) setLoading(false)
+      })
+    }
+
+    const { data: { subscription } } = authClient.auth.onAuthStateChange((_event, next) => {
       if (!isMounted) return
-      
-      // ORION-ENTITLE-SYNC-001: mirror on every auth event (sign-in, refresh,
-      // sign-out) so the data client can never drift back to anon mid-session.
-      await mirrorSessionToDataClient(session)
-      
-      setSession(session)
-      
-      if (session?.user) {
-        await loadDbUser(session.user, session.access_token)
-      } else {
-        setUser(null)
-      }
-      
-      setLoading(false)
+      observedEvent = true
+      acceptSession(next)
+    })
+    // Fallback for clients that don't emit INITIAL_SESSION. A later result
+    // must not overwrite a sign-in or sign-out already observed above.
+    void authClient.auth.getSession().then(({ data: { session: initial } }) => {
+      if (isMounted && !observedEvent) acceptSession(initial)
+    }).catch(err => {
+      console.error('[AuthContext] Init error:', err)
+      if (isMounted && !observedEvent) setLoading(false)
     })
 
     return () => {
       isMounted = false
+      ++authRevisionRef.current
       subscription.unsubscribe()
     }
   }, [])
