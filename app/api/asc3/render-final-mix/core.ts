@@ -6,6 +6,7 @@ import { applyMixRebuildClearance, currentBelleFingerprint, BELLE_FRESHNESS_MARK
 import { loadManifest, validateManifestGate, saveManifest, emptyManifest } from '@/lib/sfxAssetLock'
 // ATL-PARSER-001: shared line-index parser — single source of truth for segment numbering
 import { parseScriptPositions } from '@/lib/scriptLineIndex'
+import { buildLayeredStoryBody, layeredMixEnabled, type BodyItem } from '@/lib/sfxLayeredMix'
 // BELL-FREEZE-GUARD-001 v1.1: frozen promo guard (ATL-GUARD-HOLE-FIX-001)
 import { checkFrozenGuard, type Decision } from '@/lib/guards/frozenGuard'
 import { logTmpPrefetchProbe, sweepStaleEtMixDirs, ET_MIX_SWEEP_STALE_MS, type TmpPrefetchProbe } from '@/lib/tmpSpace'
@@ -823,11 +824,43 @@ export async function runRenderFinalMix(storyId: string): Promise<{
     const rawConcatFile = path.join(tmpDir, 'raw_concat.txt')
     await fs.writeFile(rawConcatFile, bodyTimeline.map(t => `file '${t.path}'`).join('\n'))
     const normalizedConcatPath = path.join(tmpDir, 'norm_segments.mp3')
-    await execFileAsync(FFMPEG_PATH, [
-      '-f', 'concat', '-safe', '0', '-i', rawConcatFile,
-      '-af', 'loudnorm=I=-16:TP=-1.5:LRA=11',
-      '-ar', '44100', '-ac', '2', '-b:a', '192k', '-y', normalizedConcatPath
-    ])
+    // SFX-LAYERED-001 (behind SFX_LAYERED_MIX=on, default off): spot effects
+    // overlap the next line slightly; background effects keep running quietly
+    // under the narration. Falls back to the default concat on any error.
+    let layeredBuilt = false
+    if (layeredMixEnabled() && preparedSfx.length > 0) {
+      try {
+        const positions = parseScriptPositions(storyRow?.script || '')
+        const cueByIndex = new Map(positions.filter(p => p.kind === 'sfx').map(p => [p.index, String(p.text || '')]))
+        const sceneBreaks = new Set(positions.filter(p => p.kind === 'silence').map(p => p.index))
+        const items: BodyItem[] = []
+        for (const seg of preparedSegments) {
+          items.push({ kind: 'voice', idx: seg.segmentNumber, path: seg.path, dur: await getAudioDuration(seg.path), sceneBreak: sceneBreaks.has(seg.segmentNumber) })
+        }
+        for (const fx of preparedSfx) {
+          items.push({ kind: 'sfx', idx: fx.sfxNumber, path: fx.path, dur: await getAudioDuration(fx.path), cue: cueByIndex.get(fx.sfxNumber) || '' })
+        }
+        await buildLayeredStoryBody({
+          items,
+          tmpDir,
+          outPath: normalizedConcatPath,
+          ffmpeg: FFMPEG_PATH,
+          exec: (cmd, args) => execFileAsync(cmd, args),
+          log: (line) => console.log(line),
+        })
+        layeredBuilt = true
+        console.log('  SFX-LAYERED-001: layered story body built')
+      } catch (layerErr) {
+        console.warn('  SFX-LAYERED-001: layered build failed; using default concat:', layerErr instanceof Error ? layerErr.message : String(layerErr))
+      }
+    }
+    if (!layeredBuilt) {
+      await execFileAsync(FFMPEG_PATH, [
+        '-f', 'concat', '-safe', '0', '-i', rawConcatFile,
+        '-af', 'loudnorm=I=-16:TP=-1.5:LRA=11',
+        '-ar', '44100', '-ac', '2', '-b:a', '192k', '-y', normalizedConcatPath
+      ])
+    }
     const normalizedSegPaths = [normalizedConcatPath]
     const concatStat = await fs.stat(normalizedConcatPath)
     const concatDur = await getAudioDuration(normalizedConcatPath)
