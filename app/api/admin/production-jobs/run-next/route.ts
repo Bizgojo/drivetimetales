@@ -6032,6 +6032,7 @@ Series rules:
 - Episode ${currentEpisodeNumber} must match the current episode brief.
 - Carry forward consequences from prior episodes.
 - Do not repeat prior episode scenes except as brief context.
+- Do not reuse a prior episode's central object, discovery or secret device (for example, a second clock, or a second hidden note tucked inside something). Each episode needs its own. (EPISODE-VARIETY-001)
 - ${isFinale ? 'This is the finale. Resolve the season arc completely.' : 'This is not the finale. End on a specific cliffhanger with forward momentum. Do not use "to be continued" phrasing.'}
 
 Additional rules:

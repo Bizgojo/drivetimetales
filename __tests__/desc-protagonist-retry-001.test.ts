@@ -45,3 +45,10 @@ describe('DESC-PROTAGONIST-RETRY-001', () => {
     expect(fn).toMatch(/protagonist: \(parseCharacterGuide/)
   })
 })
+
+describe('EPISODE-VARIETY-001', () => {
+  test('the series writer is told not to reuse a prior episode\'s central object or secret device', () => {
+    const fn = src.slice(src.indexOf('function buildSeriesEpisodePrompt('), src.indexOf('function buildSeriesEpisodePrompt(') + 20000)
+    expect(fn).toContain("Do not reuse a prior episode's central object, discovery or secret device")
+  })
+})
