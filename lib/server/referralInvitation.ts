@@ -1,7 +1,7 @@
 import type { SupabaseClient, User } from '@supabase/supabase-js'
 import { referralTrialEnd } from '@/lib/referralInvitation'
 
-/** Called only after verifying the recipient's email token. Never extends a prior trial. */
+/** Used after verified email acceptance or server-created NEW trial signup. Never extends a prior trial. */
 export async function acceptReferralInvitation(admin: SupabaseClient, user: User, code: string) {
   if (!referralTrialEnd(user.created_at) || !user.email_confirmed_at) throw new Error('This free trial is for new, verified accounts. Please sign in to your existing account.')
   const name = String(user.user_metadata?.first_name || '').trim().slice(0, 100)

@@ -123,7 +123,7 @@ export default function ReferPage() {
 
         {loadError && <p role="alert" className="text-white mb-4">{loadError} <button className="underline" onClick={fetchReferralData}>Try Again</button></p>}
         <div className="flex gap-2 mb-4"><button onClick={() => setMode('qr')} aria-pressed={mode === 'qr'} className="flex-1 p-3 rounded-xl bg-orange-500 text-black font-bold">Friend is here</button><button onClick={() => setMode('share')} aria-pressed={mode === 'share'} className="flex-1 p-3 rounded-xl bg-blue-500 text-white font-bold">Send invitation</button></div>
-        {mode === 'qr' && <section className="rounded-xl bg-slate-800 p-4 mb-6 text-white text-center"><h2 className="font-bold mb-3">Scan for two free weeks</h2>{qr ? <img src={qr} width={280} height={280} alt="Scan this personal invitation QR code" className="mx-auto rounded-lg" /> : <p>Preparing your QR code…</p>}<p className="mt-3">Your friend scans this code with their phone camera, enters their first name and email, then confirms their email to start.</p><a href={referralLink} className="underline block mt-3">Open invitation form</a></section>}
+        {mode === 'qr' && <section className="rounded-xl bg-slate-800 p-4 mb-6 text-white text-center"><h2 className="font-bold mb-3">Scan for two free weeks</h2>{qr ? <img src={qr} width={280} height={280} alt="Scan this personal invitation QR code" className="mx-auto rounded-lg" /> : <p>Preparing your QR code…</p>}<p className="mt-3">Your friend scans this code with their phone camera, enters their first name and email, then starts listening immediately.</p><a href={referralLink} className="underline block mt-3">Open invitation form</a></section>}
         {mode === 'share' && <>
         {/* Steps */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '24px' }}>
@@ -171,7 +171,7 @@ export default function ReferPage() {
             </div>
             <div style={{ background: '#0f172a', borderRadius: '10px', padding: '14px', textAlign: 'center' }}>
               <div style={{ color: '#22c55e', fontSize: '24px', fontWeight: 900 }}>{stats.opened}</div>
-              <div style={{ color: 'white', fontSize: '11px', fontWeight: 600, marginTop: '4px' }}>Invitations Verified</div>
+              <div style={{ color: 'white', fontSize: '11px', fontWeight: 600, marginTop: '4px' }}>Friends Joined</div>
             </div>
             <div style={{ background: '#0f172a', borderRadius: '10px', padding: '14px', textAlign: 'center' }}>
               <div style={{ color: '#22c55e', fontSize: '24px', fontWeight: 900 }}>{stats.subscribed}</div>
