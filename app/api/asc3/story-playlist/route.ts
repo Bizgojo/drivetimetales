@@ -6,6 +6,8 @@ import {
   recordPersonalizationFallback,
 } from '@/lib/personalization/fallbackTelemetry'
 import { hasPriorSeriesPlay } from '@/lib/personalization/firstPlayedOpener'
+import { liveGreetingClipRoute, liveGreetingEnabledFor, spokenFirstName } from '@/lib/personalization/liveGreeting'
+import { loadGreetingStory, startGreetingClip } from '@/lib/personalization/liveGreetingService'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -252,6 +254,62 @@ async function buildPersonalizedQueue({
   }
 }
 
+/**
+ * PERS-LIVE-001: queue for a live story-specific name greeting.
+ *   first played episode of the series: announcement → live greeting → story
+ *   finale:                             … story (baked outro) → live sign-off
+ * Returns null when neither applies (caller keeps the existing path).
+ * Generation starts now so the clip is ready by the time the announcement
+ * (or the whole finale) has played; the clip route waits for it if needed.
+ */
+async function buildLiveGreetingQueue({
+  story,
+  storyId,
+  firstName,
+  firstPlayedInSeries,
+}: {
+  story: any
+  storyId: string
+  firstName: string
+  firstPlayedInSeries: boolean
+}): Promise<PersonalizedQueuePayload | null> {
+  const isFinale = Boolean(story?.series_is_finale)
+  if (!firstPlayedInSeries && !isFinale) return null
+
+  const announcementUrl = String(story?.announcement_url || '').trim()
+  const storyAudioUrl = String(story?.story_audio_url || '').trim()
+  const storyBodyWithOutroUrl = String(story?.story_body_with_outro_url || '').trim()
+  const outroUrl = String(story?.outro_with_music_url || story?.outro_audio_url || '').trim()
+  if (!announcementUrl || (!storyBodyWithOutroUrl && !storyAudioUrl)) return null
+
+  const greetingStory = await loadGreetingStory(storyId)
+  if (!greetingStory?.series_id) return null
+
+  const queue: PlaybackQueueItem[] = [
+    { url: announcementUrl, type: 'intro', label: 'Story intro' },
+  ]
+  if (firstPlayedInSeries) {
+    startGreetingClip(greetingStory, 'series_intro', firstName)
+    queue.push({ url: liveGreetingClipRoute(storyId, 'series_intro'), type: 'intro', label: 'Welcome' })
+  }
+  if (storyBodyWithOutroUrl) {
+    queue.push({ url: storyBodyWithOutroUrl, type: 'story', label: story.title || 'Story' })
+  } else {
+    queue.push({ url: storyAudioUrl, type: 'story', label: story.title || 'Story' })
+    if (outroUrl) queue.push({ url: outroUrl, type: 'outro', label: 'Outro' })
+  }
+  if (isFinale) {
+    startGreetingClip(greetingStory, 'finale_signoff', firstName)
+    queue.push({ url: liveGreetingClipRoute(storyId, 'finale_signoff'), type: 'outro', label: 'Goodbye' })
+  }
+
+  return {
+    queue,
+    toneCluster: 'live',
+    openerId: firstPlayedInSeries ? 'live:series_intro' : 'live:finale_signoff',
+  }
+}
+
 export async function GET(req: NextRequest) {
   const storyId = req.nextUrl.searchParams.get('storyId')
   const rawFirstName = req.nextUrl.searchParams.get('firstName')?.trim()
@@ -332,7 +390,33 @@ export async function GET(req: NextRequest) {
 
   let personalizedPayload: PersonalizedQueuePayload | null = null
   let fallbackReason: string | null = null
-  if (authUser?.id) {
+
+  // PERS-LIVE-001: live story-specific name greeting (behind LIVE_GREETINGS).
+  // Only when it applies — listener's first played episode of the series
+  // and/or the finale — does it replace the stock-opener queue below; every
+  // other play falls through to the existing path unchanged.
+  const liveFirstName = spokenFirstName(preferredName)
+  if (authUser?.id && seriesId && liveFirstName && liveGreetingEnabledFor(authUser.id)) {
+    try {
+      const live = await buildLiveGreetingQueue({
+        story,
+        storyId: story.id,
+        firstName: liveFirstName,
+        firstPlayedInSeries: !seriesReplay,
+      })
+      if (live) personalizedPayload = live
+    } catch (err) {
+      console.warn('[story-playlist] live greeting queue failed; using existing path:', {
+        storyId: story.id,
+        userId: authUser.id,
+        error: err instanceof Error ? err.message : String(err),
+      })
+    }
+  }
+
+  if (personalizedPayload) {
+    // live greeting queue chosen above
+  } else if (authUser?.id) {
     if (seriesReplay) {
       fallbackReason = 'series_replay_normal_intro'
     } else if (!pronunciationKey) {
