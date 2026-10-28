@@ -10,8 +10,8 @@ describe('DESCRIPTION-SPOILER-RETRY-001', () => {
     expect(fn.indexOf('const spoiler')).toBeGreaterThan(fn.indexOf('const substantive'))
     expect(fn).toMatch(/return \{ retryable: true, kind: 'mechanical'/)
   })
-  test('protagonist/role mismatch and weak-hook failures still stop for a human', () => {
-    expect(fn).toMatch(/const substantive = \/protagonist\.\*mismatch/)
+  test('weak plot / weak hook / editorial failures still stop for a human', () => {
+    expect(fn).toMatch(/const substantive = \/weak plot\|weak hook\|editorial\/i/)
     expect(fn).not.toMatch(/const substantive = \/spoiler/)
   })
   test('retries stay bounded', () => {

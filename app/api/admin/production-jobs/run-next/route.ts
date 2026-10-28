@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { selectableAuthors } from '@/lib/reservedTalent'
 import { belleOutroLooksCutOff } from '@/lib/belleOutroEnding'
+import { parseCharacterGuide } from '@/lib/characterGuide'
 import { descriptionWordCountMiscount } from '@/lib/descriptionWordCountTruth'
 import { spellOutSpokenNumerals } from '@/lib/spokenNumerals'
 import { createClient } from '@supabase/supabase-js'
@@ -6031,6 +6032,7 @@ Series rules:
 - Episode ${currentEpisodeNumber} must match the current episode brief.
 - Carry forward consequences from prior episodes.
 - Do not repeat prior episode scenes except as brief context.
+- Do not reuse a prior episode's central object, discovery or secret device (for example, a second clock, or a second hidden note tucked inside something). Each episode needs its own. (EPISODE-VARIETY-001)
 - ${isFinale ? 'This is the finale. Resolve the season arc completely.' : 'This is not the finale. End on a specific cliffhanger with forward momentum. Do not use "to be continued" phrasing.'}
 
 Additional rules:
@@ -7034,7 +7036,12 @@ function classifyDescriptionValidatorFailure(report: string): null | {
   const descriptionLine = /\bdescription\b|story-card|teaser|present tense|70 characters|24 words|characters or fewer|words or fewer|blocked word|past-tense/i
   if (!failureLines.every((line) => descriptionLine.test(line))) return null
 
-  const substantive = /protagonist.*mismatch|mismatch.*protagonist|role.*mismatch|description\s+does not match\s+(?:the\s+)?(?:protagonist|role)|weak plot|weak hook|editorial/i
+  // DESC-PROTAGONIST-RETRY-001 (Marc, 2026-10-28): a DESCRIPTION that centers
+  // the wrong character (e.g. the visitor instead of the shop owner) is card
+  // copy, not story content — the script is the source of truth, so rewrite
+  // the DESCRIPTION around the protagonist (bounded retries) instead of
+  // stopping the series. Weak plot / weak hook / editorial still stop.
+  const substantive = /weak plot|weak hook|editorial/i
   if (failureLines.some((line) => substantive.test(line))) {
     return { retryable: false, kind: 'substantive', reason: failureLines.join('; '), failureLines }
   }
@@ -7042,6 +7049,10 @@ function classifyDescriptionValidatorFailure(report: string): null | {
   // that gives away the payoff is card copy, not story content — rewrite it
   // from the validator's feedback (bounded by MAX_SERIES_DESCRIPTION_RETRIES)
   // and re-validate, instead of stopping the whole series for a human.
+  const protagonistMismatch = /protagonist.*mismatch|mismatch.*protagonist|role.*mismatch|description\s+does not match\s+(?:the\s+)?(?:protagonist|role)|centers? on .*(?:not|instead of) the protagonist/i
+  if (failureLines.some((line) => protagonistMismatch.test(line))) {
+    return { retryable: true, kind: 'mechanical', reason: failureLines.join('; '), failureLines }
+  }
   const spoiler = /spoiler|reveals?|climax|twist|final discovery|resolution payoff|outcome|culprit|survivor/i
   if (failureLines.some((line) => spoiler.test(line))) {
     return { retryable: true, kind: 'mechanical', reason: failureLines.join('; '), failureLines }
@@ -7100,7 +7111,8 @@ Use the validator feedback exactly.
 
 Rules:
 - Return JSON only: {"description": "text"}
-- DESCRIPTION must be a complete sentence, ≤24 words (DISC-001).
+- DESCRIPTION must be a complete sentence, ≤24 words (DISC-001). It must end on a complete thought — never stop mid-phrase (e.g. "the real reason it.").
+- DESCRIPTION must center on the PROTAGONIST below and what they are trying to do; other characters appear only as the situation they bring.
 - DESCRIPTION must be present tense.
 - DESCRIPTION must tease a question, not reveal the climax, twist, final discovery, culprit/survivor/status, or resolution payoff.
 - Before returning, self-check the word count and rewrite internally if it is over 24 words.
@@ -7114,6 +7126,7 @@ EPISODE:
 ${JSON.stringify({
   episodeNumber: episodeNumber(episode, 0),
   title: episode.title,
+  protagonist: (parseCharacterGuide(episode.script || '').find((c) => c.isProtagonist) || parseCharacterGuide(episode.script || '')[0])?.description || null,
   currentDescription: extractHeader(episode.script || '', 'DESCRIPTION') || episode.description || '',
 }, null, 2)}`,
     }],
