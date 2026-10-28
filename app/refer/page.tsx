@@ -4,14 +4,16 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/contexts/AuthContext'
+import QRCode from 'qrcode'
+import { referralInvitationPath, smsInvitationHref } from '@/lib/referralInvitation'
 
 interface Offer { id: string; name: string; description: string; offer_type: 'free_days' | 'credits'; referrer_reward: number; referred_reward: number; weight: number }
 interface ReferralStats { total: number; opened: number; signed_up: number; subscribed: number; rewarded: number }
-interface Referral { id: string; referred_email: string; status: string; created_at: string; opened_at: string | null }
+interface Referral { id: string; status: string; created_at: string; opened_at: string | null }
 
 export default function ReferPage() {
   const router = useRouter()
-  const { user } = useAuth()
+  const { user, loading: authLoading } = useAuth()
   const [referralCode, setReferralCode] = useState('')
   const [userName, setUserName] = useState('Friend')
   const [currentOffer, setCurrentOffer] = useState<Offer | null>(null)
@@ -21,28 +23,25 @@ export default function ReferPage() {
   const [facebookCopied, setFacebookCopied] = useState(false)
   const [twitterCopied, setTwitterCopied] = useState(false)
   const [loading, setLoading] = useState(true)
+  const [qr, setQr] = useState('')
+  const [mode, setMode] = useState<'qr' | 'share'>('qr')
+  const [loadError, setLoadError] = useState('')
+  const [publicOrigin, setPublicOrigin] = useState('')
+  useEffect(() => { setPublicOrigin(window.location.origin); setMode(new URLSearchParams(window.location.search).get('mode') === 'share' ? 'share' : 'qr') }, [])
 
-  useEffect(() => { if (user?.id) fetchReferralData() }, [user])
+  useEffect(() => { if (user?.id && !authLoading) fetchReferralData() }, [user?.id, authLoading])
 
   async function fetchReferralData() {
     setLoading(true)
-    const { data: userData } = await supabase.from('users').select('referral_code, first_name, display_name, default_offer_id').eq('id', user?.id).single()
-    
+    setLoadError('')
+    try {
+    const response = await fetch('/api/user/invite', { method: 'POST' })
+    const result = await response.json()
+    if (!response.ok) throw new Error(result.error || 'Could not load your invitation.')
+    setReferralCode(result.code)
+    const { data: userData } = await supabase.from('users').select('first_name, display_name, default_offer_id').eq('id', user?.id).single()
     if (userData) {
-      const firstName = userData.first_name || userData.display_name || 'Friend'
-      setUserName(firstName)
-      
-      if (userData.referral_code) { 
-        setReferralCode(userData.referral_code) 
-      } else { 
-        const rand3 = Math.random().toString(36).substring(2, 5).toUpperCase()
-        // REFERRAL-SIGNUP-001: process_referral matches UPPER(code) — a mixed-case
-        // code (e.g. 'Marc7QX') could never be redeemed. Uppercase alphanumeric only.
-        const newCode = firstName.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6) + rand3
-        await supabase.from('users').update({ referral_code: newCode }).eq('id', user?.id)
-        setReferralCode(newCode) 
-      }
-      
+      setUserName(userData.first_name || userData.display_name || 'Friend')
       let offerId = userData.default_offer_id
       
       if (!offerId) {
@@ -78,27 +77,32 @@ export default function ReferPage() {
       }
     }
 
-    const { data: referralsData } = await supabase.from('referrals').select('id, referred_email, status, created_at, opened_at').eq('referrer_id', user?.id).order('created_at', { ascending: false })
+    const { data: referralsData } = await supabase.from('referrals').select('id, status, created_at, opened_at').eq('referrer_id', user?.id).order('created_at', { ascending: false })
     if (referralsData) {
       setReferrals(referralsData)
       const newStats = { total: 0, opened: 0, signed_up: 0, subscribed: 0, rewarded: 0 }
-      referralsData.forEach(r => { newStats.total++; if (r.opened_at) newStats.opened++; if (['signed_up', 'subscribed', 'rewarded'].includes(r.status)) newStats.signed_up++; if (['subscribed', 'rewarded'].includes(r.status)) newStats.subscribed++; if (r.status === 'rewarded') newStats.rewarded++ })
+      referralsData.forEach(r => { newStats.total++; if (r.opened_at) newStats.opened++; if (['completed', 'signed_up', 'subscribed', 'rewarded'].includes(r.status)) newStats.signed_up++; if (['subscribed', 'rewarded'].includes(r.status)) newStats.subscribed++; if (r.status === 'rewarded') newStats.rewarded++ })
       setStats(newStats)
     }
-    setLoading(false)
+    } catch (err) { setLoadError(err instanceof Error ? err.message : 'Could not load invitations.') } finally { setLoading(false) }
   }
 
-  const baseUrl = (process.env.NEXT_PUBLIC_SITE_URL || 'https://endless-tales.com').trim().replace(/\/+$/, '')
-  const referralLink = baseUrl + '/welcome?ref=' + referralCode
+  const referralLink = publicOrigin + referralInvitationPath(referralCode)
+  useEffect(() => {
+    if (!publicOrigin || !referralCode) return
+    let cancelled = false
+    QRCode.toDataURL(referralLink, { width: 280, margin: 3, errorCorrectionLevel: 'M' }).then(url => { if (!cancelled) setQr(url) }).catch(() => setLoadError('Could not create QR code. Please reload.'))
+    return () => { cancelled = true }
+  }, [referralLink, publicOrigin, referralCode])
   const rewardText = currentOffer ? (currentOffer.offer_type === 'free_days' ? currentOffer.referrer_reward + ' days free' : 'a referral reward') : '2 weeks free'
   const shareText = 'Hey! ' + userName + ' is giving you 2 weeks free on Endless Tales — audio stories for your commute, road trip, or downtime. ' + userName + ' says you\'ll love it! Click the link and you both get ' + rewardText + ':'
   const shareTextWithLink = shareText + ' ' + referralLink
 
   const copyLink = async () => { await navigator.clipboard.writeText(shareTextWithLink); setCopied(true); setTimeout(() => setCopied(false), 2000) }
-  const shareViaSMS = () => { window.open('sms:?body=' + encodeURIComponent(shareTextWithLink), '_blank') }
+  const shareViaSMS = () => { window.location.assign(smsInvitationHref(shareTextWithLink, /iPhone|iPad|iPod/i.test(navigator.userAgent))) }
   const shareViaEmail = () => { window.open('mailto:?subject=' + encodeURIComponent(userName + ' is giving you 2 weeks free on Endless Tales!') + '&body=' + encodeURIComponent(shareTextWithLink), '_blank') }
   const shareViaWhatsApp = () => { window.open('https://wa.me/?text=' + encodeURIComponent(shareTextWithLink), '_blank') }
-  const shareViaTwitter = async () => { try { await navigator.clipboard.writeText(shareTextWithLink) } catch(e) {} setTwitterCopied(true); setTimeout(() => setTwitterCopied(false), 4000) }
+  const shareViaTwitter = () => { window.open('https://twitter.com/intent/tweet?text=' + encodeURIComponent(shareTextWithLink), '_blank', 'noopener,noreferrer') }
   const shareViaFacebook = () => { window.open('https://www.facebook.com/sharer/sharer.php?u=' + encodeURIComponent(referralLink) + '&quote=' + encodeURIComponent(shareText), '_blank') }
 
   if (loading) return (<div style={{ minHeight: '100vh', backgroundColor: '#0f172a', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><div style={{ width: '40px', height: '40px', border: '4px solid #f97316', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 1s linear infinite' }} /><style dangerouslySetInnerHTML={{ __html: '@keyframes spin { to { transform: rotate(360deg); } }' }} /></div>)
@@ -113,10 +117,14 @@ export default function ReferPage() {
           <h1 style={{ color: 'white', fontSize: '24px', fontWeight: 900, lineHeight: 1.2, marginBottom: '10px' }}>
             Give 2 Weeks Free.<br /><span style={{ color: '#f97316' }}>Get 2 Weeks Free.</span>
           </h1>
-          <p style={{ color: 'white', fontSize: '14px', lineHeight: 1.6 }}>Share with anyone. Every person who subscribes earns you both 14 free days.</p>
+          <p style={{ color: 'white', fontSize: '14px', lineHeight: 1.6 }}>Your friend gets 14 days free, with no card required. After their first paid subscription payment, you both earn 14 bonus days.</p>
           <div style={{ color: '#f97316', fontSize: '13px', fontWeight: 700, marginTop: '8px' }}>♾️ No limit — the more you share, the more you earn!</div>
         </div>
 
+        {loadError && <p role="alert" className="text-white mb-4">{loadError} <button className="underline" onClick={fetchReferralData}>Try Again</button></p>}
+        <div className="flex gap-2 mb-4"><button onClick={() => setMode('qr')} aria-pressed={mode === 'qr'} className="flex-1 p-3 rounded-xl bg-orange-500 text-black font-bold">Friend is here</button><button onClick={() => setMode('share')} aria-pressed={mode === 'share'} className="flex-1 p-3 rounded-xl bg-blue-500 text-white font-bold">Send invitation</button></div>
+        {mode === 'qr' && <section className="rounded-xl bg-slate-800 p-4 mb-6 text-white text-center"><h2 className="font-bold mb-3">Scan for two free weeks</h2>{qr ? <img src={qr} width={280} height={280} alt="Scan this personal invitation QR code" className="mx-auto rounded-lg" /> : <p>Preparing your QR code…</p>}<p className="mt-3">Your friend scans this code with their phone camera, enters their first name and email, then confirms their email to start.</p><a href={referralLink} className="underline block mt-3">Open invitation form</a></section>}
+        {mode === 'share' && <>
         {/* Steps */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '24px' }}>
 
@@ -148,6 +156,7 @@ export default function ReferPage() {
 
         </div>
 
+        </>}
         {/* Stats - Free Days Earned */}
         <div style={{ background: '#1e293b', borderRadius: '16px', padding: '20px' }}>
           <div style={{ color: 'white', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', textAlign: 'center', marginBottom: '16px' }}>Your Free Days Earned</div>
@@ -162,10 +171,10 @@ export default function ReferPage() {
             </div>
             <div style={{ background: '#0f172a', borderRadius: '10px', padding: '14px', textAlign: 'center' }}>
               <div style={{ color: '#22c55e', fontSize: '24px', fontWeight: 900 }}>{stats.opened}</div>
-              <div style={{ color: 'white', fontSize: '11px', fontWeight: 600, marginTop: '4px' }}>Links Opened</div>
+              <div style={{ color: 'white', fontSize: '11px', fontWeight: 600, marginTop: '4px' }}>Invitations Verified</div>
             </div>
             <div style={{ background: '#0f172a', borderRadius: '10px', padding: '14px', textAlign: 'center' }}>
-              <div style={{ color: '#22c55e', fontSize: '24px', fontWeight: 900 }}>{stats.signed_up}</div>
+              <div style={{ color: '#22c55e', fontSize: '24px', fontWeight: 900 }}>{stats.subscribed}</div>
               <div style={{ color: 'white', fontSize: '11px', fontWeight: 600, marginTop: '4px' }}>Subscribed</div>
             </div>
           </div>

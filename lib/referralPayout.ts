@@ -95,7 +95,12 @@ export async function payReferralSide(admin: SupabaseClient, referral: ReferralR
  */
 export async function payReferrerAfterFirstPayment(admin: SupabaseClient, referredUserId: string, grant?: Parameters<typeof payReferralSide>[4]) {
   const referral = await loadReferralByReferred(admin, referredUserId)
-  if (!referral || (referral.referrer_credited && referral.referred_credited)) return null
+  if (!referral) return null
+  const recordRewarded = async () => {
+    const { error } = await admin.from('referrals').update({ status: 'rewarded' }).eq('id', referral.id).eq('referrer_credited', true).eq('referred_credited', true)
+    if (error) throw error
+  }
+  if (referral.referrer_credited && referral.referred_credited) { await recordRewarded(); return null }
   const offer = await resolveReferralOffer(admin, referral)
   if (!offer) {
     console.error(`[referral] NO active default free_days offer — referrer of referral ${referral.id} NOT rewarded`)
@@ -103,5 +108,6 @@ export async function payReferrerAfterFirstPayment(admin: SupabaseClient, referr
   }
   const referredDays = await payReferralSide(admin, referral, offer, 'referred', grant)
   const days = await payReferralSide(admin, referral, offer, 'referrer', grant)
+  await recordRewarded()
   return { referralId: referral.id, referrerId: referral.referrer_id, days, referredDays }
 }

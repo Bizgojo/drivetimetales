@@ -33,7 +33,7 @@ export default function FunFactsPage() {
   const sections = [
     { id: 'preferences', icon: '🎧', title: 'Find your next favorite story', text: 'Tell us what you enjoy, and we’ll recommend stories picked for you on your Home page.', label: 'Tell Us What You Like' },
     { id: 'install', icon: '📱', title: 'Keep Endless Tales close', text: 'Add Endless Tales to your phone’s Home Screen so your next story is always a tap away.', label: 'Add to Home Screen' },
-    { id: 'invite', icon: '🎁', title: 'Stories are better with friends', text: 'Invite a friend to Endless Tales. After their first paid subscription payment, you’ll both receive two free weeks.', label: 'Invite a Friend' },
+    { id: 'invite', icon: '🎁', title: 'Stories are better with friends', text: 'Give a friend 14 days free without a card. Show them your QR code or send your personal invitation. After their first paid payment, you both earn 14 bonus days.', label: 'Invite a Friend' },
     { id: 'idea', icon: '💡', title: 'Your idea could become a story', text: 'Have an idea you’d love to hear? Send it to us. If we use it, we’ll notify you and credit you as a contributing author.', label: 'Suggest a Story' },
     { id: 'photo', icon: '📸', title: 'Put your smile here', text: 'Make Endless Tales feel more like yours. Replace your avatar with a favorite photo or a fresh selfie.', label: 'Add Your Photo' },
   ]

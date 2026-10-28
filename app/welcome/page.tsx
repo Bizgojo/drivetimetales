@@ -21,7 +21,7 @@ export default function WelcomePage() {
       if (session) {
         router.replace('/home')
       } else if (ref) {
-        router.replace(`/signup?ref=${encodeURIComponent(ref)}`)
+        router.replace(`/invite?ref=${encodeURIComponent(ref)}`)
       } else {
         router.replace('/guest')
       }
