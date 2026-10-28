@@ -100,6 +100,18 @@ async function main() {
     console.log('DRY RUN - nothing changed. Re-run with --apply.')
     return
   }
+  // RECAST-ASSIGN-001: generate-voices uses the STORY-level assignment before
+  // the series roster, so every episode's assignment must move too (otherwise
+  // the "re-recorded" lines come back in the old voice).
+  for (const ep of episodes || []) {
+    const { data: assigns } = await db.from('character_voice_assignments').select('id,character_name_normalized,voice_id').eq('story_id', ep.id)
+    for (const a of assigns || []) {
+      if (!speakerMatchesCharacter(a.character_name_normalized, roster.canonical_name) || a.voice_id === voice.voice_id) continue
+      const { error } = await db.from('character_voice_assignments').update({ voice_id: voice.voice_id, voice_name: voice.name }).eq('id', a.id)
+      if (error) throw new Error(`assignment update failed for EP${ep.series_episode_number}: ${error.message}`)
+      console.log(`EP${ep.series_episode_number}: story assignment ${a.character_name_normalized} -> ${voice.name}`)
+    }
+  }
   const { error: updErr } = await db
     .from('series_character_roster')
     .update({ voice_id: voice.voice_id, voice_name: voice.name, updated_at: new Date().toISOString() })
@@ -115,7 +127,10 @@ async function main() {
       progress[ep] = { ...prior, complete: false, nextSegmentNumber: first, lastUpdatedAt: prior.lastUpdatedAt || new Date().toISOString() }
     }
     const nextState = { ...state, seriesVoiceGeneration: { ...gen, progressByEpisode: progress } }
-    const { error } = await db.from('production_jobs').update({ state_json: nextState }).eq('id', job.id)
+    // The job may already be past the voice step (e.g. failed at render with
+    // VOICE-001); send it back to series_generate_voices so the moved lines are
+    // re-recorded.
+    const { error } = await db.from('production_jobs').update({ state_json: nextState, current_step: 'series_generate_voices' }).eq('id', job.id)
     if (error) throw new Error(`job state update failed: ${error.message}`)
     console.log(`Job ${job.id} voice progress pointed at: ${JSON.stringify(firstMovedByEpisode)}`)
   }
