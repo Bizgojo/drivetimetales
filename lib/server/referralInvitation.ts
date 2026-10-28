@@ -18,7 +18,7 @@ export async function acceptReferralInvitation(admin: SupabaseClient, user: User
   if (recordError || !recorded) throw new Error('Could not confirm your invitation record. Please try again.')
   const trialEnd = new Date(Date.parse(recorded.created_at) + 14 * 86400000).toISOString()
   // The unique referred_id preserves attribution; signup is not a paid reward.
-  const { error: statusError } = await admin.from('referrals').update({ status: 'signed_up' }).eq('referred_id', user.id).eq('status', 'completed').eq('referrer_credited', false).eq('referred_credited', false)
+  const { error: statusError } = await admin.from('referrals').update({ status: 'signed_up', opened_at: recorded.created_at }).eq('referred_id', user.id).eq('status', 'completed').eq('referrer_credited', false).eq('referred_credited', false)
   if (statusError) throw statusError
   // Conditional update and fixed expiry make simultaneous/repeated accepts safe.
   const { error } = await admin.from('users').update({ plan: 'standard', subscription_type: 'active', subscription_ends_at: trialEnd, signup_source: 'referral-invitation' })

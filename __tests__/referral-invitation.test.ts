@@ -39,7 +39,7 @@ it('records the referral before granting access, without awarding paid rewards',
   const user: any = { id: 'friend', email: 'friend@example.com', email_confirmed_at: new Date().toISOString(), created_at: new Date().toISOString(), user_metadata: { first_name: 'Jo' } }
   await acceptReferralInvitation(admin, user, 'MARC12')
   expect(admin.rpc).toHaveBeenCalledWith('process_referral', { p_referrer_code: 'MARC12', p_referred_user_id: 'friend' })
-  expect(calls).toContainEqual(['referrals', 'update', { status: 'signed_up' }])
+  expect(calls).toContainEqual(['referrals', 'update', expect.objectContaining({ status: 'signed_up', opened_at: expect.any(String) })])
   expect(calls).toContainEqual(['users', 'is', 'subscription_ends_at', null])
   expect(calls).toContainEqual(['users', 'is', 'stripe_subscription_id', null])
   expect(calls.some(c => c[1] === 'update' && c[2].referrer_credited === true)).toBe(false)

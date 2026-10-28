@@ -171,7 +171,7 @@ export default function ReferPage() {
             </div>
             <div style={{ background: '#0f172a', borderRadius: '10px', padding: '14px', textAlign: 'center' }}>
               <div style={{ color: '#22c55e', fontSize: '24px', fontWeight: 900 }}>{stats.opened}</div>
-              <div style={{ color: 'white', fontSize: '11px', fontWeight: 600, marginTop: '4px' }}>Links Opened</div>
+              <div style={{ color: 'white', fontSize: '11px', fontWeight: 600, marginTop: '4px' }}>Invitations Verified</div>
             </div>
             <div style={{ background: '#0f172a', borderRadius: '10px', padding: '14px', textAlign: 'center' }}>
               <div style={{ color: '#22c55e', fontSize: '24px', fontWeight: 900 }}>{stats.subscribed}</div>
