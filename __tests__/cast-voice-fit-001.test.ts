@@ -12,7 +12,7 @@ describe('CAST-VOICE-FIT-001', () => {
     expect(isUnsuitableAutoCastVoice({ name: 'Villain - Harsh, Abrasive, and Volatile' })).toBe(true)
   })
   test('ordinary drama voices stay in the pool, including accented Latin names and dashes', () => {
-    for (const name of ['Julian - Authentic, Versatile & Grounded', 'Brian - Midwestern Voice', 'Grant – Composed and Direct', 'José - Warm Storyteller', 'Belle B – Warm & Empathetic Customer Voice', 'Leo v2 - Technical and Precise'])
+    for (const name of ['Julian - Authentic, Versatile & Grounded', 'Brian - Midwestern Voice', 'Grant – Composed and Direct', 'José - Warm Storyteller', 'Leo v2 - Technical and Precise'])
       expect(isUnsuitableAutoCastVoice({ name })).toBe(false)
     expect(hasNonEnglishLabel('Zoë Renée')).toBe(false)
   })

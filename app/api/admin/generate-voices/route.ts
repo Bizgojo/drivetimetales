@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { parseCharacterGuide, characterVoiceKeys, type CharacterInfo } from '@/lib/characterGuide'
 export { parseCharacterGuide, characterVoiceKeys }
-import { dramaUseCaseBonus, isUnsuitableAutoCastVoice } from '@/lib/castingVoiceFilter'
+import { dramaUseCaseBonus, isUnsuitableAutoCastVoice, ageBandFromDescription, ageFitScore, energyFitPenalty } from '@/lib/castingVoiceFilter'
 import { isReservedHeroVoice, voicePostEqFilter } from '@/lib/voiceEq'
 import { createClient } from '@supabase/supabase-js'
 import { execFile } from 'child_process'
@@ -883,8 +883,8 @@ function parseCharacterMeta(description: string): { gender: string; age: string;
   const gender = d.includes('female') || d.includes('woman') || d.includes('girl') ? 'female'
     : d.includes('male') || d.includes('man') || d.includes('boy') ? 'male' : ''
   // Age
-  const ageNum = d.match(/(\d+)/)?.[1] ? parseInt(d.match(/(\d+)/)![1]) : 35
-  const age = ageNum < 25 ? 'young' : ageNum < 55 ? 'middle_aged' : 'old'
+  // CAST-BLOCK-001: age words ("older", "grizzled", "in his 60s") count, not just digits.
+  const age = ageBandFromDescription(d)
   // Accent - map to EL accent labels
   const accent = d.includes('british') || d.includes('english') || d.includes('london') ? 'british'
     : d.includes('irish') ? 'irish'
@@ -915,6 +915,10 @@ function parseCharacterMeta(description: string): { gender: string; age: string;
     'whispery': 'whispery', 'breathy': 'soft', 'intimate': 'soft',
     'gruff': 'rough', 'tough': 'intense', 'dark': 'serious',
     'meditative': 'meditative', 'soothing': 'calm', 'peaceful': 'meditative',
+    // CAST-BLOCK-001: action/thriller character words.
+    'menacing': 'intense', 'threatening': 'intense', 'ruthless': 'intense', 'cold': 'serious',
+    'urgent': 'intense', 'energetic': 'upbeat', 'brisk': 'crisp', 'sharp': 'crisp', 'driven': 'confident',
+    'dangerous': 'intense', 'hard-edged': 'intense', 'no-nonsense': 'serious',
   }
   const tones: string[] = []
   for (const [trait, label] of Object.entries(toneMap)) {
@@ -960,13 +964,10 @@ function scoreVoice(voice: CharacterVoiceRow, meta: { gender: string; age: strin
     if (labels.gender.toLowerCase() === meta.gender.toLowerCase()) score += 100
     else return -999 // Wrong gender - never use
   }
-  // Age match
-  if (labels.age === meta.age) score += 20
-  else if (labels.age && meta.age) {
-    const ages = ['young','middle_aged','old']
-    const diff = Math.abs(ages.indexOf(labels.age) - ages.indexOf(meta.age))
-    score += Math.max(0, 10 - diff * 10)
-  }
+  // Age match — CAST-BLOCK-001: exact +30, one band off -10, two bands off disqualifies.
+  const ageScore = ageFitScore(labels.age, meta.age)
+  if (ageScore <= -999) return -999
+  score += ageScore
   // Accent match
   if (meta.accent && labels.accent) {
     if (labels.accent.toLowerCase() === meta.accent.toLowerCase()) score += 15
@@ -982,6 +983,8 @@ function scoreVoice(voice: CharacterVoiceRow, meta: { gender: string; age: strin
   for (const tone of meta.tones) {
     if (desc.includes(tone.toLowerCase())) score += 10
   }
+  // CAST-BLOCK-001: intense/menacing characters never get a soft or chill voice.
+  score += energyFitPenalty(meta.tones, labels.descriptive)
   const regionalTags = voice.regional_tags || []
   for (const tag of meta.regionalTags || []) {
     if (regionalTags.includes(tag)) score += 25
