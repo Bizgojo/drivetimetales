@@ -7,6 +7,8 @@ import { loadManifest, validateManifestGate, saveManifest, emptyManifest } from 
 // ATL-PARSER-001: shared line-index parser — single source of truth for segment numbering
 import { parseScriptPositions } from '@/lib/scriptLineIndex'
 import { buildLayeredStoryBody, layeredMixEnabled, type BodyItem } from '@/lib/sfxLayeredMix'
+import { overlayBodyIndex, overlayEnabled } from '@/lib/sfxOverlay'
+import { ensureOverlayPlan } from '@/lib/sfxOverlayRunner'
 // BELL-FREEZE-GUARD-001 v1.1: frozen promo guard (ATL-GUARD-HOLE-FIX-001)
 import { checkFrozenGuard, type Decision } from '@/lib/guards/frozenGuard'
 import { logTmpPrefetchProbe, sweepStaleEtMixDirs, ET_MIX_SWEEP_STALE_MS, type TmpPrefetchProbe } from '@/lib/tmpSpace'
@@ -395,7 +397,7 @@ export async function runRenderFinalMix(storyId: string): Promise<{
     if (files.length === 0) return { success: false, error: 'No audio files found' }
     const { data: storyRow } = await supabase
       .from('stories')
-      .select('script, sfx_disabled')
+      .select('script, sfx_disabled, genre, primary_genre, brief_json')
       .eq('id', storyId)
       .single()
 
@@ -828,7 +830,7 @@ export async function runRenderFinalMix(storyId: string): Promise<{
     // overlap the next line slightly; background effects keep running quietly
     // under the narration. Falls back to the default concat on any error.
     let layeredBuilt = false
-    if (layeredMixEnabled() && preparedSfx.length > 0) {
+    if (layeredMixEnabled() && (preparedSfx.length > 0 || (overlayEnabled() && !sfxIsDisabled))) {
       try {
         const positions = parseScriptPositions(storyRow?.script || '')
         const cueByIndex = new Map(positions.filter(p => p.kind === 'sfx').map(p => [p.index, String(p.text || '')]))
@@ -839,6 +841,28 @@ export async function runRenderFinalMix(storyId: string): Promise<{
         }
         for (const fx of preparedSfx) {
           items.push({ kind: 'sfx', idx: fx.sfxNumber, path: fx.path, dur: await getAudioDuration(fx.path), cue: cueByIndex.get(fx.sfxNumber) || '' })
+        }
+        // SFX-OVERLAY-001 (SFX_OVERLAY=on): extra action effects anchored before
+        // existing lines — script and voice clips untouched. Made once per story.
+        if (overlayEnabled() && !sfxIsDisabled) {
+          try {
+            const genre = String((storyRow as any)?.primary_genre || (storyRow as any)?.genre || (storyRow as any)?.brief_json?.genre || '')
+            const plan = await ensureOverlayPlan({ db: supabase, storyId, script: storyRow?.script || '', genre, log: (line) => console.log(line) })
+            for (const cue of plan?.cues || []) {
+              if (!cue.file) continue
+              const rawPath = path.join(tmpDir, 'raw_' + cue.file)
+              const fxPath = path.join(tmpDir, cue.file)
+              try {
+                await download(`${BASE_STORAGE}/asc3/${storyId}/${cue.file}`, rawPath)
+                await execFileAsync(FFMPEG_PATH, ['-i', rawPath, '-ar', '44100', '-ac', '2', '-b:a', '192k', '-y', fxPath])
+                items.push({ kind: 'sfx', idx: overlayBodyIndex(cue.beforeIndex), path: fxPath, dur: await getAudioDuration(fxPath), cue: cue.cue })
+              } catch (fxErr) {
+                console.warn(`  SFX-OVERLAY-001 ${cue.file} skipped:`, fxErr instanceof Error ? fxErr.message : String(fxErr))
+              }
+            }
+          } catch (overlayErr) {
+            console.warn('  SFX-OVERLAY-001 overlay unavailable; mixing without it:', overlayErr instanceof Error ? overlayErr.message : String(overlayErr))
+          }
         }
         await buildLayeredStoryBody({
           items,
