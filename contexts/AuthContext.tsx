@@ -40,6 +40,7 @@ interface DbUser {
   last_name: string | null
   display_name: string | null
   credits: number
+  signup_source: string | null
   plan: string | null
   subscription_type: string | null
   subscription_ends_at: string | null
@@ -82,7 +83,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
     
     try {
-      const apiUrl = `${url}/rest/v1/users?id=eq.${authUser.id}&select=first_name,last_name,display_name,credits,plan,subscription_type,subscription_ends_at,is_founding_member`
+      const apiUrl = `${url}/rest/v1/users?id=eq.${authUser.id}&select=first_name,last_name,display_name,credits,signup_source,plan,subscription_type,subscription_ends_at,is_founding_member`
       
       // ORION-ENTITLE-SYNC-001: authorize as the USER, not the anon key — RLS
       // returns nothing for anon, which silently stripped subscription fields

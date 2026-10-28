@@ -36,6 +36,7 @@ function SubscribeContent() {
   const searchParams = useSearchParams()
   const { user, loading: authLoading } = useAuth()
   const firstName = (user as any)?.first_name || ''
+  const referralTrialUsed = (user as any)?.signup_source === 'referral-invitation'
   const returnTo = safeInternalPath(searchParams.get('returnTo'))
   // ORION-RESUB-FUNNEL-001: read the promo like /signup does ('promo' wins
   // over 'code') and carry it onto the anon signup path so the code survives
@@ -163,7 +164,7 @@ function SubscribeContent() {
         {/* ORION-RESUB-FUNNEL-001: trial copy is now promo-aware instead of a
             hardcoded trial pitch — a validated code shows its real length. */}
         <p style={{ color: 'rgba(255,255,255,0.65)', fontSize: '15px', lineHeight: 1.7, margin: '0 0 28px' }}>
-          Original audio dramas made for people on the move. Start your {trialDays}-day free trial and get full access to every story.
+          {referralTrialUsed ? 'Your 14 free days have ended. Choose a subscription to keep enjoying every story.' : `Original audio dramas made for people on the move. Start your ${trialDays}-day free trial and get full access to every story.`}
         </p>
 
         {promoCode && promoStatus === 'valid' && (
@@ -191,7 +192,7 @@ function SubscribeContent() {
             ✓ Full access to all stories<br />
             ✓ New stories added weekly<br />
             ✓ Listen or read — even offline<br />
-            ✓ Credit card required · cancel before trial ends and you won't be charged
+            {referralTrialUsed ? 'Payment required · cancel anytime' : "✓ Credit card required · cancel before trial ends and you won't be charged"}
           </div>
         </div>
 
@@ -219,7 +220,7 @@ function SubscribeContent() {
                 cursor: checkingOut ? 'not-allowed' : 'pointer', marginBottom: '12px',
               }}
             >
-              {checkingOut ? 'Starting checkout…' : 'Start Free Trial →'}
+              {checkingOut ? 'Starting checkout…' : referralTrialUsed ? 'Subscribe →' : 'Start Free Trial →'}
             </button>
             {checkoutError && (
               <div style={{ backgroundColor: '#dc2626', color: 'white', padding: '0.75rem', borderRadius: '8px', marginBottom: '12px', fontSize: '14px', textAlign: 'center' }}>

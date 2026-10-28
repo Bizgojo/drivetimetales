@@ -66,6 +66,8 @@ export default function AdminReferralsPage() {
   const [platformStats, setPlatformStats] = useState<PlatformStats | null>(null)
   const [users, setUsers] = useState<UserAssignment[]>([])
   const [loading, setLoading] = useState(true)
+  const [records, setRecords] = useState<any[]>([])
+  const [recordsError, setRecordsError] = useState('')
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [showAssignModal, setShowAssignModal] = useState(false)
   const [selectedUser, setSelectedUser] = useState<UserAssignment | null>(null)
@@ -91,6 +93,13 @@ export default function AdminReferralsPage() {
     if (platformData) setPlatformStats(platformData)
     const { data: usersData } = await supabase.from('user_offer_assignments').select('*')
     if (usersData) setUsers(usersData)
+    try {
+      const response = await fetch('/api/admin/referral-records', { cache: 'no-store' })
+      const result = await response.json()
+      if (!response.ok) throw new Error(result.error)
+      setRecords(result.records || [])
+      setRecordsError('')
+    } catch (err) { setRecordsError(err instanceof Error ? err.message : 'Could not load referral records.') }
     setLoading(false)
   }
 
@@ -187,6 +196,13 @@ export default function AdminReferralsPage() {
       </div>
 
       {/* Overview Tab */}
+      <section style={{ background: cardBg, color: textPrimary, padding: 20, borderRadius: 12, marginBottom: 20 }}>
+        <h2 style={{ fontSize: 20, fontWeight: 700 }}>Invitation signups</h2>
+        <p>Verified QR and shared-link signups appear here. Bonus days are awarded after the first paid payment.</p>
+        {recordsError && <p role="alert">{recordsError}</p>}
+        <div style={{ overflowX: 'auto' }}><table style={{ width: '100%', marginTop: 12 }}><thead><tr><th>Invited by</th><th>Friend</th><th>Recorded</th><th>Access until</th><th>Rewards</th></tr></thead><tbody>{records.map(row => <tr key={row.id}><td>{row.referrer?.first_name}<br />{row.referrer?.email}</td><td>{row.friend?.first_name}<br />{row.friend?.email}</td><td>{new Date(row.created_at).toLocaleDateString()}</td><td>{row.friend?.subscription_ends_at ? new Date(row.friend.subscription_ends_at).toLocaleDateString() : '—'}</td><td>{row.referrer_credited && row.referred_credited ? 'Both awarded' : 'Awaiting paid payment'}</td></tr>)}</tbody></table></div>
+        {!recordsError && records.length === 0 && <p>No invitation signups recorded yet.</p>}
+      </section>
       {activeTab === 'overview' && (
         <>
           {platformStats && (
