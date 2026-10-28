@@ -26,6 +26,7 @@ import { syncPremiseIndexForTransition } from '@/lib/premiseIndex'
 // read-once-at-RFR switch (rfr|direct, initial direct) + shared direct-publish
 // promotion. Manual admin paths untouched.
 import { maybeDirectPublishStandalone, maybeDirectPublishSeries, type DirectAutoPublishReport } from '@/lib/directPublish'
+import { transientResumeDecision, errorTextOf, MAX_TRANSIENT_RESUMES } from '@/lib/transientResume'
 import { verifyArtifactHttp } from '@/lib/artifactGate'
 import { runHookGateForStory, detectBelleQualityRepairEmpty } from '@/lib/hookGate'
 import { runStoryQualityGate } from '@/lib/storyQualityGate'
@@ -2373,6 +2374,62 @@ async function tryResumeBlockedBelleJob(explicitJobId?: string): Promise<{ resum
     .maybeSingle()
   if (error || !resumed) return { resumedId: null, exhaustedId: null }
   return { resumedId: candidate.id, exhaustedId: null }
+}
+
+async function tryResumeTransientNetworkJob(explicitJobId?: string): Promise<{ resumedId: string | null; exhaustedId: string | null }> {
+  let rows: ProductionJob[] = []
+  if (explicitJobId) {
+    const { data } = await supabase.from('production_jobs').select('*').eq('id', explicitJobId).maybeSingle()
+    rows = data ? [data as ProductionJob] : []
+  } else {
+    const { data } = await supabase
+      .from('production_jobs')
+      .select('*')
+      .eq('status', 'failed')
+      .not('job_type', 'like', 'TEST_%')
+      .gte('updated_at', new Date(Date.now() - 24 * 60 * 60_000).toISOString())
+      .order('updated_at', { ascending: true })
+      .limit(25)
+    rows = (Array.isArray(data) ? data : []) as ProductionJob[]
+  }
+  const now = Date.now()
+  for (const job of rows) {
+    const decision = transientResumeDecision(job as never, now)
+    if (!decision || decision.action === 'wait') continue
+    const state = job.state_json && typeof job.state_json === 'object' ? (job.state_json as Record<string, unknown>) : {}
+    if (decision.action === 'exhausted') {
+      // Mark once so the scan stops considering it; the job stays failed.
+      await supabase
+        .from('production_jobs')
+        .update({
+          error_json: { ...(job.error_json as object), exhausted: true, fixRecommendation: `RETRY-NET-001: ${decision.attempt} automatic resumes after network blips did not clear it. Check the webapp/runner, then restart the job.` },
+        })
+        .eq('id', job.id)
+        .eq('status', 'failed')
+      return { resumedId: null, exhaustedId: job.id }
+    }
+    const logs = appendLog(job, `RETRY-NET-001: auto-resumed after network blip (${decision.attempt}/${MAX_TRANSIENT_RESUMES}); retry from current step`, {
+      step: decision.step,
+      previousError: errorTextOf(job.error_json).slice(0, 300),
+    })
+    const { data: resumed, error } = await supabase
+      .from('production_jobs')
+      .update({
+        status: 'queued',
+        state_json: { ...state, transientResumeCount: decision.attempt, transientResumedAt: nowIso() },
+        error_json: null,
+        logs,
+        locked_at: null,
+        locked_by: null,
+      })
+      .eq('id', job.id)
+      .eq('status', 'failed')
+      .select('id')
+      .maybeSingle()
+    if (error || !resumed) continue
+    return { resumedId: job.id, exhaustedId: null }
+  }
+  return { resumedId: null, exhaustedId: null }
 }
 
 async function selectCandidate(jobId: string) {
@@ -8657,6 +8714,20 @@ export async function POST(req: NextRequest) {
       }
     } catch (resumeErr) {
       console.warn('[run-next] blocked-Belle auto-resume failed (non-fatal):', resumeErr instanceof Error ? resumeErr.message : String(resumeErr))
+    }
+
+    // RETRY-NET-001: re-queue one job that failed only on a self-fetch /
+    // transport blip (deploy window), after its back-off. Same step, saved
+    // progress kept — no human "restart voices" needed.
+    try {
+      const netResume = await tryResumeTransientNetworkJob(requestedJobId || undefined)
+      if (netResume.resumedId) {
+        console.log(`[run-next] RETRY-NET-001 auto-resumed job ${netResume.resumedId.slice(0, 8)} after a network blip`)
+      } else if (netResume.exhaustedId) {
+        console.warn(`[run-next] RETRY-NET-001 resume budget spent for job ${netResume.exhaustedId.slice(0, 8)} — left failed for a human`)
+      }
+    } catch (resumeErr) {
+      console.warn('[run-next] RETRY-NET-001 auto-resume failed (non-fatal):', resumeErr instanceof Error ? resumeErr.message : String(resumeErr))
     }
 
     // ── ONE JOB PER WORKER GUARD ──────────────────────────────────────────
