@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { spellOutSpokenNumerals } from '@/lib/spokenNumerals'
 import { createClient } from '@supabase/supabase-js'
 import Anthropic from '@anthropic-ai/sdk'
 import { logAnthropicCall } from '@/app/lib/anthropic-logger'
@@ -6479,11 +6480,12 @@ async function generateOneSeriesEpisodeScript(job: ProductionJob, model: string)
         .trim()
       const normalized = normalizeScriptDescription(rawScript, brief.description || targetEpisode.description || '')
       // SCRIPT-LABELS-001: format-only repair (label case, SFX cue form) before the self-check.
-      const formatted = normalizeScriptFormat(normalized.script)
+      // NUMERAL-AUTOFIX-001: spell simple spoken numerals before the self-check.
+      const formatted = spellOutSpokenNumerals(normalizeScriptFormat(normalized.script).script)
       return {
         script: formatted.script,
         description: normalized.description,
-        raw: normalizeScriptFormat(rawScript).script,
+        raw: spellOutSpokenNumerals(normalizeScriptFormat(rawScript).script).script,
         inputTokens: response.usage?.input_tokens ?? 0,
         outputTokens: response.usage?.output_tokens ?? 0,
       }

@@ -54,7 +54,7 @@ describe('WRITER-REVISE-001: rewrites revise the previous draft', () => {
     const gen = src.slice(src.indexOf('generate: async (feedback, previousDraft) => {'), src.indexOf('check: async (draftScript)'))
     expect(gen).toMatch(/\{ role: 'user', content: prompt \},\s*\{ role: 'assistant', content: previousDraft \},\s*\{ role: 'user', content: feedback \}/)
     expect(gen).toMatch(/messages: writerMessages/)
-    expect(gen).toMatch(/raw: normalizeScriptFormat\(rawScript\)\.script/)
+    expect(gen).toMatch(/raw: (spellOutSpokenNumerals\()?normalizeScriptFormat\(rawScript\)\.script/)
   })
 })
 

@@ -80,7 +80,7 @@ describe('SCRIPT-LABELS-001', () => {
   test('series writer applies the repair to every draft before the self-check', () => {
     const src = readFileSync(join(__dirname, '..', 'app/api/admin/production-jobs/run-next/route.ts'), 'utf8')
     const gen = src.slice(src.indexOf('generate: async (feedback, previousDraft) => {'), src.indexOf('check: async (draftScript)'))
-    expect(gen).toMatch(/const formatted = normalizeScriptFormat\(normalized\.script\)/)
+    expect(gen).toMatch(/const formatted = (spellOutSpokenNumerals\()?normalizeScriptFormat\(normalized\.script\)/)
     expect(gen).toMatch(/script: formatted\.script/)
   })
 })
