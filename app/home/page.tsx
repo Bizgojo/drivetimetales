@@ -536,7 +536,6 @@ function HomeContent() {
   const [newArrivalsReady, setNewArrivalsReady] = useState(false)
   const [showWelcome, setShowWelcome] = useState(false)
   const [seg1Url, setSeg1Url] = useState<string | null>(null)
-  const [authWaitExpired, setAuthWaitExpired] = useState(false)
   const [homeSearch, setHomeSearch] = useState('')
 
   // Key to force ContinueListening remount after updating user_library from /listen handoff
@@ -662,25 +661,12 @@ function HomeContent() {
     } catch {}
   }, [user?.id])
 
-  useEffect(() => {
-    if (!loading) {
-      setAuthWaitExpired(false)
-      return
-    }
-
-    const timer = window.setTimeout(() => {
-      console.warn('[Home] Auth loading timed out; rendering home without user-specific state')
-      setAuthWaitExpired(true)
-    }, 2500)
-
-    return () => window.clearTimeout(timer)
-  }, [loading])
 
   // HOOKS RULE: searchInputRef must be before the early return so hook order
   // is identical on every render (loading=true and loading=false both call it)
   const searchInputRef = useRef<HTMLInputElement>(null)
 
-  if (loading && !authWaitExpired) return <HomeSkeleton />
+  if (loading) return <HomeSkeleton />
 
   const firstName = (user as any)?.user_metadata?.first_name || ''
 

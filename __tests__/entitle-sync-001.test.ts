@@ -44,13 +44,10 @@ describe('ORION-ENTITLE-SYNC-001: session mirror (fix 1)', () => {
   })
 
   test('mirror runs on init AND on every auth state change', () => {
-    const initIdx = authSrc.indexOf('await mirrorSessionToDataClient(session)')
-    expect(initIdx).toBeGreaterThan(-1)
-    const secondIdx = authSrc.indexOf('await mirrorSessionToDataClient(session)', initIdx + 1)
-    expect(secondIdx).toBeGreaterThan(-1)
-    // The state-change mirror must live inside onAuthStateChange.
-    const onChangeIdx = authSrc.indexOf('onAuthStateChange')
-    expect(secondIdx).toBeGreaterThan(onChangeIdx)
+    expect(authSrc).toContain('await mirrorSessionToDataClient(next)')
+    expect(authSrc).toContain('acceptSession(next)')
+    expect(authSrc).toContain('acceptSession(initial)')
+    expect(authSrc).not.toContain('onAuthStateChange(async')
   })
 })
 
@@ -62,9 +59,9 @@ describe('ORION-ENTITLE-SYNC-001: paywall gate on the cookie client (fix 2)', ()
   })
 
   test('the users entitlement query goes through supabaseBrowser, not the plain client', () => {
-    const gate = playerSrc.slice(playerSrc.indexOf('── Paywall check'), playerSrc.indexOf('── Paywall check') + 2000)
+    const gate = playerSrc.slice(playerSrc.indexOf('── Paywall check'), playerSrc.indexOf('── Paywall check') + 3000)
     expect(gate).toContain('supabaseBrowser')
-    expect(gate).toContain("select('plan, subscription_type, subscription_ends_at')")
+    expect(gate).toContain("select('plan, subscription_type, subscription_ends_at, stripe_subscription_id')")
     expect(gate).not.toMatch(/await supabase\s*\n?\s*\.from\('users'\)/)
   })
 })
@@ -84,7 +81,8 @@ describe('ORION-ENTITLE-SYNC-001: loadDbUser authorizes as the user (fix 3)', ()
     // Match actual CALLS only — the explanatory comment names the API.
     expect(loadDbUserBody).not.toMatch(/await\s+authClient\.auth\.getSession/)
     // Every call site passes the token.
-    expect(authSrc.match(/loadDbUser\(session\.user, session\.access_token\)/g)?.length).toBe(3)
+    expect(authSrc).toContain('loadDbUser(next.user, next.access_token)')
+    expect(authSrc).toContain('loadDbUser(session.user, session.access_token)')
     expect(authSrc).not.toMatch(/loadDbUser\(session\.user\)/)
   })
 })
