@@ -1,6 +1,8 @@
 'use client'
 import StoryContributorCredit from '@/components/StoryContributorCredit'
 import MediaButtonLabel from '@/components/MediaButtonLabel'
+import EbookReaderToolbar from './EbookReaderToolbar'
+import { createPortal } from 'react-dom'
 
 import * as Sentry from '@sentry/nextjs'
 import { useState, useEffect, useRef, useCallback } from 'react'
@@ -230,9 +232,7 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
   // is deliberately left out of this: it stays exactly as before, session-only.
   const [proseFontSize, setProseFontSize] = useState(17)
   const [prosePage, setProsePage] = useState(1)
-  const [proseControlsOpen, setProseControlsOpen] = useState(false)
   const [proseHintVisible, setProseHintVisible] = useState(false)
-  const [proseHintSeen, setProseHintSeen] = useState(false)
   const [proseResumeToast, setProseResumeToast] = useState<{ pageNumber: number; totalPages: number } | null>(null)
   const [readingProgressState, setReadingProgressState] = useState<ReadingProgress | null>(null)
   const proseScrollRef = useRef<HTMLDivElement>(null)
@@ -2322,6 +2322,7 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
       const stored = window.localStorage.getItem(`et_prose_font_size:${user?.id || 'guest'}`)
       const parsed = stored ? Number.parseInt(stored, 10) : NaN
       if (Number.isFinite(parsed) && parsed >= 13 && parsed <= 26) setProseFontSize(parsed)
+      setProseDark(window.localStorage.getItem(`et_prose_dark:${user?.id || 'guest'}`) === 'true')
     } catch {}
   }, [authLoading, user?.id])
 
@@ -2329,8 +2330,9 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
     if (authLoading) return
     try {
       window.localStorage.setItem(`et_prose_font_size:${user?.id || 'guest'}`, String(proseFontSize))
+      window.localStorage.setItem(`et_prose_dark:${user?.id || 'guest'}`, String(proseDark))
     } catch {}
-  }, [proseFontSize, authLoading, user?.id])
+  }, [proseFontSize, proseDark, authLoading, user?.id])
 
   useEffect(() => {
     if (activeModal !== 'prose') proseResumeAppliedRef.current = false
@@ -3145,14 +3147,14 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
       </div>
 
       {/* ── Info Modal Sheet ─────────────────────────────────────────────────── */}
-      {activeModal && (
+      {activeModal && createPortal(
         <div
           onClick={() => activeModal === 'prose' ? closeProseReader() : setActiveModal(null)}
-          style={{ position:'fixed', inset:0, background:'#000', zIndex:200, display:'flex', alignItems:'flex-end' }}
+          style={{ position:'fixed', top:56, bottom:0, left:0, right:0, background:'#000', zIndex:200, display:'flex', alignItems:'flex-end' }}
         >
           <div
             onClick={e => e.stopPropagation()}
-            style={{ width:'100%', height:'100dvh', maxHeight:'100dvh', background: activeModal === 'prose' ? (proseDark ? '#0f172a' : '#faf7f2') : '#020617', borderRadius:'0', border:'none', display:'flex', flexDirection:'column', overflow:'hidden', transition:'background 0.2s', position:'relative' }}
+            style={{ width:'100%', height:'100%', maxHeight:'100%', background: activeModal === 'prose' ? (proseDark ? '#0f172a' : '#faf7f2') : '#020617', borderRadius:'0', border:'none', display:'flex', flexDirection:'column', overflow:'hidden', transition:'background 0.2s', position:'relative' }}
           >
             {/* Modal handle — hidden in prose */}
             {activeModal !== 'prose' && (
@@ -3273,40 +3275,14 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
               {/* PROSE — full-screen ebook reader */}
               {activeModal === 'prose' && (
                 proseAvailable ? (
-                  <div style={{ position:'relative', flex:1, display:'flex', flexDirection:'column', overflow:'hidden' }}>
+                  <div style={{ position:'relative', flex:1, minHeight:0, display:'flex', flexDirection:'column', overflow:'hidden' }}>
 
 
-                    {/* Sticky header: × | title | book */}
-                    <div style={{ flexShrink:0, display:'flex', alignItems:'center', padding:'10px 12px', borderBottom: proseDark ? '1px solid rgba(255,255,255,0.06)' : '1px solid rgba(0,0,0,0.07)', background: proseDark ? '#0f172a' : '#faf7f2' }}>
-                      <button onClick={closeProseReader} style={{ width:34, height:34, flexShrink:0, borderRadius:'50%', border: proseDark ? '1px solid rgba(255,255,255,0.18)' : '1px solid rgba(0,0,0,0.13)', background: proseDark ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.05)', color: proseDark ? 'rgba(255,255,255,0.7)' : '#555', fontSize:'17px', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center' }}>×</button>
-                      <div style={{ flex:1, textAlign:'center', padding:'0 8px' }}>
-                        <div style={{ fontSize:'15px', fontWeight:800, color: proseDark ? 'white' : '#1a1a1a', fontFamily:'Inter, system-ui, sans-serif' }}>{proseBookTitle}</div>
-                        <div style={{ fontSize:'11px', color: proseDark ? 'rgba(255,255,255,0.38)' : 'rgba(0,0,0,0.38)', marginTop:1, fontFamily:'Inter, system-ui, sans-serif' }}>{isSeriesReadIt ? `${seriesProseChapters.length} chapters` : `by ${story.author || 'Endless Tales'}`}</div>
-                      </div>
-                      <div style={{ position:'relative', flexShrink:0 }}>
-                      <button
-                        onClick={() => { setProseControlsOpen(o => !o); setProseHintSeen(true) }}
-                        style={{ width:34, height:34, borderRadius:'50%', border: proseDark ? '1px solid rgba(255,255,255,0.18)' : '1px solid rgba(0,0,0,0.13)', background: proseDark ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.05)', fontSize:17, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center' }}
-                      >📖</button>
-                      {proseControlsOpen && (
-                        <div style={{ position:'absolute', top:42, right:0, background: proseDark ? '#1e293b' : '#fff', border: proseDark ? '1px solid rgba(255,255,255,0.1)' : '1px solid rgba(0,0,0,0.1)', borderRadius:12, padding:'14px 16px', display:'flex', flexDirection:'column', gap:14, minWidth:190, boxShadow:'0 6px 24px rgba(0,0,0,0.18)', zIndex:40 }}>
-                          <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
-                            <span style={{ fontSize:'12px', fontWeight:600, color: proseDark ? 'rgba(255,255,255,0.45)' : 'rgba(0,0,0,0.4)' }}>Text Size</span>
-                            <div style={{ display:'flex', alignItems:'center', gap:6 }}>
-                              <button onClick={() => setProseFontSize(s => Math.max(13, s - 1))} style={{ width:32, height:32, borderRadius:6, border: proseDark ? '1px solid rgba(255,255,255,0.18)' : '1px solid rgba(0,0,0,0.12)', background:'transparent', color: proseDark ? 'white' : '#222', fontSize:'14px', fontWeight:700, cursor:'pointer' }}>A−</button>
-                              <span style={{ fontSize:'12px', color: proseDark ? 'rgba(255,255,255,0.4)' : 'rgba(0,0,0,0.35)', minWidth:22, textAlign:'center' }}>{proseFontSize}</span>
-                              <button onClick={() => setProseFontSize(s => Math.min(26, s + 1))} style={{ width:32, height:32, borderRadius:6, border: proseDark ? '1px solid rgba(255,255,255,0.18)' : '1px solid rgba(0,0,0,0.12)', background:'transparent', color: proseDark ? 'white' : '#222', fontSize:'17px', fontWeight:700, cursor:'pointer' }}>A+</button>
-                            </div>
-                          </div>
-                          <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
-                            <span style={{ fontSize:'12px', fontWeight:600, color: proseDark ? 'rgba(255,255,255,0.45)' : 'rgba(0,0,0,0.4)' }}>Theme</span>
-                            <button onClick={() => setProseDark(d => !d)} style={{ padding:'5px 12px', borderRadius:'999px', border: proseDark ? '1px solid rgba(255,255,255,0.18)' : '1px solid rgba(0,0,0,0.12)', background: proseDark ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.04)', color: proseDark ? 'white' : '#333', fontSize:'12px', fontWeight:600, cursor:'pointer' }}>{proseDark ? '☀️ Light' : '🌙 Dark'}</button>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-
-                    </div>
+                    <EbookReaderToolbar
+                      title={proseBookTitle} author={story.author || 'Endless Tales'}
+                      dark={proseDark} fontSize={proseFontSize} onClose={closeProseReader}
+                      onFontSize={setProseFontSize} onDark={setProseDark}
+                    />
                     {proseResumeToast && (
                       <div style={{ position:'absolute', top:62, left:'50%', transform:'translateX(-50%)', zIndex:35, background:'#1a1a1a', color:'#fff', borderRadius:'999px', padding:'10px 14px', boxShadow:'0 8px 24px rgba(0,0,0,0.28)', display:'flex', alignItems:'center', gap:12, maxWidth:'calc(100% - 32px)', fontFamily:'Inter, system-ui, sans-serif' }}>
                         <span style={{ color:'#fff', fontSize:'17px', fontWeight:800, whiteSpace:'nowrap' }}>Resuming on page {proseResumeToast.pageNumber} of {proseResumeToast.totalPages}</span>
@@ -3316,7 +3292,6 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
                     {/* Scrollable text */}
                     <div
                       ref={proseScrollRef}
-                      onClick={() => proseControlsOpen && setProseControlsOpen(false)}
                       onScroll={() => {
                         const el = proseScrollRef.current
                         if (!el || el.scrollHeight <= el.clientHeight) return
@@ -3331,6 +3306,8 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
                       {/* Marc 2026-10-04 (EBOOK-COVER-001): the story/series cover photo
                           as the ebook's front "page", like a real book cover — shown once,
                           before any chapter/paragraph text. */}
+                      <h1 style={{ fontSize: proseFontSize + 9, lineHeight: 1.2, textAlign: 'center', color: proseDark ? 'white' : '#1a1a1a', margin: '0 0 8px', fontWeight: 700 }}>{proseBookTitle}</h1>
+                      <p style={{ textAlign: 'center', color: proseDark ? 'white' : '#1a1a1a', margin: '0 0 24px', fontSize: proseFontSize }}>by {story.author || 'Endless Tales'}</p>
                       {story.cover_url && (
                         <div style={{ display:'flex', justifyContent:'center', margin:'4px 0 36px' }}>
                           <img
@@ -3342,12 +3319,11 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
                       )}
                       {isSeriesReadIt ? (
                         <>
-                          <h1 style={{ fontSize: proseFontSize + 9 + 'px', lineHeight: 1.12, color: proseDark ? 'white' : '#1a1a1a', margin:'0 0 28px', letterSpacing:0, fontWeight:700 }}>{proseBookTitle}</h1>
                           <div style={{ color: proseDark ? 'white' : '#1a1a1a' }}><StoryContributorCredit storyId={storyId} /></div>
                           {seriesProseSections.map((chapter, chapterIndex) => (
                             <section key={chapter.id} style={{ marginTop: chapterIndex === 0 ? 0 : 42, paddingTop: chapterIndex === 0 ? 0 : 28, borderTop: chapterIndex === 0 ? 'none' : proseDark ? '1px solid rgba(255,255,255,0.09)' : '1px solid rgba(0,0,0,0.12)' }}>
                               <div style={{ fontFamily:'Inter, system-ui, sans-serif', fontSize:'11px', fontWeight:900, color: proseDark ? '#fb923c' : '#9a3412', letterSpacing:'0.12em', textTransform:'uppercase', marginBottom:8 }}>
-                                Chapter {chapterIndex + 1}
+                                Chapter {chapter.episode_number || chapterIndex + 1}
                               </div>
                               <h2 style={{ fontSize: proseFontSize + 5 + 'px', lineHeight:1.18, color: proseDark ? 'white' : '#1a1a1a', margin:'0 0 22px', letterSpacing:0, fontWeight:700 }}>
                                 {chapter.title}
@@ -3402,7 +3378,7 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
 
             </div>
           </div>
-        </div>
+        </div>, document.body
       )}
 
       {/* POST-TRIAL-BELLE-001: Trial wall overlay
