@@ -134,7 +134,6 @@ export default function NewReleases({ onIdsLoaded }: { onIdsLoaded?: (ids: strin
           // Series-first: series cards open the series container, not EP1 directly.
           // Standalone stories keep existing direct-player behavior.
           const href = s.series_id ? `/series/${s.series_id}` : `/player/${s.id}?autoplay=1&playNow=1`
-          const epNum = episodeNumber(s)
           const episodes = s.episodes || [s]
           const published = publicationMonth(latestPublication(episodes.map(episode => episode.published_on)))
           const total = Math.round(episodes.reduce((sum, ep) => sum + Number(ep.duration_mins || 0), 0))
@@ -149,13 +148,10 @@ export default function NewReleases({ onIdsLoaded }: { onIdsLoaded?: (ids: strin
             >
               <div onClick={() => router.push(href)} className="rounded-lg overflow-hidden cover-glow" style={{ position: 'relative' }}>
                 <img src={s.cover_url || '/images/default-cover.png'} alt={s.series_name || s.title} style={{ width: '100%', aspectRatio: '1/1', objectFit: 'cover' }} />
-                {s.series_name && epNum > 0 && (
-                  <div style={{ position: 'absolute', bottom: 4, left: 4, background: 'rgba(0,0,0,0.75)', borderRadius: 4, padding: '2px 6px', fontSize: 9, fontWeight: 700, color: '#fff' }}>EP. {epNum}</div>
-                )}
+
               </div>
               <div style={{ marginTop: '0.5rem', display: 'flex', flexDirection: 'column', flex: 1 }}>
                 <h3 className="text-xs font-bold text-white line-clamp-2 leading-tight">{s.series_name ? s.series_name : s.title}</h3>
-                {s.series_name && <p style={{ color: '#fff', fontSize: '0.65rem', fontWeight: 600 }}>{s.title}</p>}
                 <p style={{ color: '#fff', fontSize: '0.7rem' }}>{s.genre}{published ? ` · ${published}` : ''}</p>
                 <p style={{ color: '#fff', fontSize: '0.7rem' }}>by {s.author}</p>
                 <p style={{ color: '#fff', fontSize: '0.7rem' }}>Narrated By {s.narrator_voice_name || 'Not listed'}</p>
