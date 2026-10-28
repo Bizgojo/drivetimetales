@@ -29,6 +29,8 @@
  */
 import { createClient } from '@supabase/supabase-js'
 import { parseScriptPositions } from '../lib/scriptLineIndex'
+import { isBelleBVoiceId } from '../lib/voiceConstants'
+import { isReservedHeroVoice } from '../lib/voiceEq'
 
 const MIX_FILES = ['final_mix.mp3', 'story_body.mp3', 'story_body_with_outro.mp3', 'outro_with_music.mp3']
 
@@ -54,6 +56,10 @@ async function main() {
     const at = spec.lastIndexOf('=')
     const source = spec.slice(0, at)
     const voiceId = spec.slice(at + 1)
+    // Belle B (current + legacy) and reserved hero voices are refused by the
+    // voice step for characters; refuse them here before touching anything.
+    if (isBelleBVoiceId(voiceId)) throw new Error(`voice ${voiceId} is a reserved Belle B voice and cannot be used for a character`)
+    if (isReservedHeroVoice(voiceId)) throw new Error(`voice ${voiceId} is reserved for a recurring hero`)
     const { data: voice } = await db.from('character_voices').select('name').eq('voice_id', voiceId).maybeSingle()
     if (!voice) throw new Error(`voice ${voiceId} not in character_voices`)
     recasts.push({ re: new RegExp(source, 'i'), source, voiceId, voiceName: voice.name })
