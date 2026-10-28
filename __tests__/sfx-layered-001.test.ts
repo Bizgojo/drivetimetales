@@ -89,7 +89,7 @@ describe('ffmpeg chain + wiring', () => {
     expect(layeredMixEnabled({})).toBe(false)
     expect(layeredMixEnabled({ SFX_LAYERED_MIX: 'on' })).toBe(true)
     const core = readFileSync(join(__dirname, '..', 'app/api/asc3/render-final-mix/core.ts'), 'utf8')
-    expect(core).toContain('if (layeredMixEnabled() && preparedSfx.length > 0)')
+    expect(core).toContain('if (layeredMixEnabled() && (preparedSfx.length > 0 || (overlayEnabled() && !sfxIsDisabled)))')
     expect(core).toContain('if (!layeredBuilt)')
   })
 })

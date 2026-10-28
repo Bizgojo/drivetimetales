@@ -19,6 +19,8 @@ import { mkdir, writeFile } from 'fs/promises'
 import path from 'path'
 import { parseScriptPositions } from '../lib/scriptLineIndex'
 import { buildLayeredStoryBody, type BodyItem } from '../lib/sfxLayeredMix'
+import { overlayBodyIndex } from '../lib/sfxOverlay'
+import { loadOverlayPlan } from '../lib/sfxOverlayRunner'
 
 const exec = promisify(execFile)
 const FFMPEG = process.env.FFMPEG_PATH || 'ffmpeg'
@@ -69,12 +71,27 @@ async function main() {
       ? { kind: 'voice', idx: f.idx, path: ready, dur, sceneBreak: sceneBreaks.has(f.idx) }
       : { kind: 'sfx', idx: f.idx, path: ready, dur, cue: cueByIndex.get(f.idx) || '' })
   }
+  // Current mix = script effects only. Layered mix also gets any saved
+  // SFX-OVERLAY-001 action effects (scripts/sfx-overlay.ts makes them).
+  const currentItems = [...items].sort((a, b) => a.idx - b.idx)
+  const overlay = await loadOverlayPlan(db as any, storyId)
+  for (const cue of overlay?.cues || []) {
+    if (!cue.file) continue
+    const raw = path.join(outDir, 'clips', 'raw_' + cue.file)
+    const ready = path.join(outDir, 'clips', cue.file)
+    const res = await fetch(`${url}/storage/v1/object/public/audio/asc3/${storyId}/${cue.file}`)
+    if (!res.ok) continue
+    await writeFile(raw, Buffer.from(await res.arrayBuffer()))
+    await exec(FFMPEG, ['-i', raw, '-ar', '44100', '-ac', '2', '-b:a', '192k', '-y', ready])
+    items.push({ kind: 'sfx', idx: overlayBodyIndex(cue.beforeIndex), path: ready, dur: await duration(ready), cue: cue.cue })
+  }
+  if (overlay?.cues?.length) console.log(`Overlay effects added to layered.mp3: ${overlay.cues.filter((c) => c.file).length}`)
   items.sort((a, b) => a.idx - b.idx)
   console.log(`${story.series_name || story.title} EP${story.series_episode_number}: ${items.filter((i) => i.kind === 'voice').length} voice clips, ${items.filter((i) => i.kind === 'sfx').length} effects`)
 
   // Current mix: exactly today's default (concat by index + loudnorm).
   const listPath = path.join(outDir, 'current_concat.txt')
-  await writeFile(listPath, items.map((i) => `file '${i.path}'`).join('\n'))
+  await writeFile(listPath, currentItems.map((i) => `file '${i.path}'`).join('\n'))
   const currentPath = path.join(outDir, 'current.mp3')
   await exec(FFMPEG, ['-f', 'concat', '-safe', '0', '-i', listPath, '-af', 'loudnorm=I=-16:TP=-1.5:LRA=11', '-ar', '44100', '-ac', '2', '-b:a', '192k', '-y', currentPath], { maxBuffer: 1 << 26 })
 
@@ -92,7 +109,7 @@ async function main() {
   // Short listening clips: 30 s around each effect, BEFORE (today) and AFTER (new).
   const currentStarts = new Map<number, number>()
   let t = 0
-  for (const i of items) { if (i.kind === 'sfx') currentStarts.set(i.idx, t); t += i.dur }
+  for (const i of currentItems) { if (i.kind === 'sfx') currentStarts.set(i.idx, t); t += i.dur }
   const clipPaths: string[] = []
   let n = 0
   for (const p of plan.sfx) {
