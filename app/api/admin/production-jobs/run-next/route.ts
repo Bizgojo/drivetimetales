@@ -1,4 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { selectableAuthors } from '@/lib/reservedTalent'
+import { belleOutroLooksCutOff } from '@/lib/belleOutroEnding'
+import { descriptionWordCountMiscount } from '@/lib/descriptionWordCountTruth'
 import { spellOutSpokenNumerals } from '@/lib/spokenNumerals'
 import { createClient } from '@supabase/supabase-js'
 import Anthropic from '@anthropic-ai/sdk'
@@ -1675,7 +1678,8 @@ async function validateBelleText(kind: 'intro' | 'outro', text: string, options:
     if (options.standalone && wordCount > 42) issues.push('outro must be 42 words or fewer.')
     if (options.standalone && sentenceCount > 2) issues.push('outro must be one or two short sentences.')
     if (/^\s*that was\b/i.test(text)) issues.push('outro must not use a flat "That was..." structure.')
-    if (/\b(and|or|but|with|to|of|for|from|by|into|before|after|while|when|where|under|beneath|inside|outside|near|below|above|through|around|across|behind|beyond|against|among|within|between|onto|upon|over|in|on|at|the|a|an)$/i.test(withoutPunctuation)) {
+    // OUTRO-ENDING-001: only words that cannot end a sentence count as cut off ("far from over" is fine).
+    if (belleOutroLooksCutOff(withoutPunctuation)) {
       issues.push('outro appears cut off or incomplete.')
     }
     if (options.standalone && /\b(next episode|next time|continue|keep listening|what happens next|find out|to be continued|cliffhanger)\b/i.test(lower)) {
@@ -1916,7 +1920,8 @@ async function pickAuthor(genre: string, requestedAuthor: string) {
 
   if (error) throw new Error(`Failed to load authors: ${error.message}`)
 
-  const authors = (data || []) as AuthorRow[]
+  // NICK-VOICE-001: reserved authors (Jack Malone = Nick Brennan's voice) only when asked for by name.
+  const authors = selectableAuthors((data || []) as AuthorRow[], requestedAuthor)
   if (authors.length === 0) throw new Error(`No active author for genre "${genre}"`)
 
   const requested = requestedAuthor.trim().toLowerCase()
@@ -6850,13 +6855,22 @@ ${script}`,
     }],
   })
 
-  const report = response.content
+  let report = response.content
     .map((c: any) => ('text' in c ? c.text : ''))
     .join('')
     .trim()
   if (!report) throw new Error(`Episode ${number} validator returned an empty report`)
 
-  const passed = /VALIDATOR RESULT:\s*PASS/i.test(report)
+  const llmPassed = /VALIDATOR RESULT:\s*PASS/i.test(report)
+  // DESC-WORDCOUNT-TRUTH-001: the validator miscounts description words; when
+  // that is its only failure and the real count is within the limit, pass.
+  const wordCountTruth = llmPassed
+    ? { override: false, actual: 0 }
+    : descriptionWordCountMiscount(extractValidatorFailureLines(report), normalizeHeaderValue(extractHeader(script, 'DESCRIPTION')))
+  const passed = llmPassed || wordCountTruth.override
+  if (wordCountTruth.override) {
+    report = `${report}\n\nDESC-WORDCOUNT-TRUTH-001: the only failure was the DESCRIPTION word count; actual count is ${wordCountTruth.actual} (limit ${DESCRIPTION_MAX_WORDS}). VALIDATOR RESULT: PASS (deterministic override)`
+  }
   const validatedDescription = passed ? normalizeHeaderValue(extractHeader(script, 'DESCRIPTION')) : ''
   const passedAt = passed ? nowIso() : null
 

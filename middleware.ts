@@ -138,7 +138,7 @@ export async function middleware(request: NextRequest) {
 
   if (!user) {
     const signinUrl = new URL('/signin', request.url)
-    signinUrl.searchParams.set('returnTo', pathname)
+    signinUrl.searchParams.set('returnTo', pathname + request.nextUrl.search)
     const redirect = NextResponse.redirect(signinUrl)
     request.cookies.getAll()
       .filter(c => c.name.startsWith('sb-'))

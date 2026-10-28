@@ -374,7 +374,7 @@ export function buildWriterRewriteFeedback(report: ReadinessReport, briefMinutes
     } else if (b.gate === 'BELLE-CONTENT') {
       lines.push(`- BELLE-CONTENT: ${b.detail}`)
       if (/cut off|incomplete/i.test(b.detail))
-        lines.push('    (The last word before the final period must be a strong word, not a small word such as on, in, at, of, to, the, a, and, or, but, with.)')
+        lines.push('    (The last word before the final period must finish the thought, not a word that needs more after it, such as of, to, the, a, and, or, but, with, from, into.)')
       if (/narrative hook/i.test(b.detail))
         lines.push('    (State the episode\'s concrete danger, secret, mystery, or impossible event in plain words, e.g. "a stranger pays the toll with coins that should not exist" — mood or setting alone does not count. The automatic check looks for words like: secret, hidden, missing, impossible, stolen, betrayed, conspiracy, warning. Use at least one of them.)')
       if (/too long/i.test(b.detail)) lines.push('    (Belle B announcement: at most 38 words. Belle B outro: at most 55 words.)')

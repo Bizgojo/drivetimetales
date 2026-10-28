@@ -155,7 +155,7 @@ describe('WRITER-BELLE-EVIDENCE-001: Belle failures quote the current Belle line
   test('feedback quotes the outro and explains the cut-off rule', () => {
     const text = buildWriterRewriteFeedback(report as any, 15)
     expect(text).toContain('current outro: BELLE B: And the river keeps moving on.')
-    expect(text).toMatch(/must be a strong word, not a small word such as on, in, at/)
+    expect(text).toMatch(/must finish the thought, not a word that needs more after it, such as of, to, the/)
   })
 
   test('attempt record (and so the failure message) carries the quoted line', async () => {

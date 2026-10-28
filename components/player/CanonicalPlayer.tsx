@@ -1418,7 +1418,7 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
           if (!user) {
             // Not logged in — middleware should have caught this, but belt+suspenders
             redirected = true
-            router.replace(`/signin?returnTo=/player/${storyId}`)
+            router.replace(`/signin?returnTo=${encodeURIComponent(window.location.pathname + window.location.search)}`)
             return
           }
           const isMarc = user.email === 'marc@endless-tales.com' || user.email === 'm.postlewaite@gmail.com'
