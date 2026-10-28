@@ -139,7 +139,6 @@ export default function NewReleases({ onIdsLoaded }: { onIdsLoaded?: (ids: strin
           const total = Math.round(episodes.reduce((sum, ep) => sum + Number(ep.duration_mins || 0), 0))
           const key = s.series_id ? `series-${s.series_id}` : `single-${s.id}`
           const description = s.description || ''
-          const shortDescription = description.length > 70 ? description.slice(0, 67).trimEnd() + '…' : description
           return (
             <div
               key={s.id}
@@ -156,7 +155,7 @@ export default function NewReleases({ onIdsLoaded }: { onIdsLoaded?: (ids: strin
                 <p style={{ color: '#fff', fontSize: '0.7rem' }}>by {s.author}</p>
                 <p style={{ color: '#fff', fontSize: '0.7rem' }}>Narrated By {s.narrator_voice_name || 'Not listed'}</p>
                 <p style={{ color: '#fff', fontSize: '0.7rem', fontWeight: 600 }}>{episodes.length} Episode{episodes.length === 1 ? '' : 's'} · {formatMinutes(total)} total</p>
-                {shortDescription && <p style={{ color: '#fff', fontSize: '0.7rem', lineHeight: 1.45, margin: '5px 0' }}>{shortDescription}</p>}
+                {description && <p style={{ color: '#fff', fontSize: '0.7rem', lineHeight: 1.45, margin: '5px 0' }}>{description}</p>}
                 <div style={{ display: 'flex', gap: 4, marginTop: 'auto', paddingTop: 8 }}>
                   <button onClick={() => navigate(`/player/${s.id}?autoplay=1&playNow=1`)} style={{ ...buttonStyle, background: '#f97316', color: '#000' }}><MediaButtonLabel kind="listen">Listen</MediaButtonLabel></button>
                   <button onClick={() => togglePlaylist(s)} style={{ ...buttonStyle, background: playlist.includes(key) ? '#93c5fd' : '#3b82f6', color: playlist.includes(key) ? '#1e3a8a' : '#fff' }}>{playlist.includes(key) ? 'On Playlist' : 'Add to Playlist'}</button>
