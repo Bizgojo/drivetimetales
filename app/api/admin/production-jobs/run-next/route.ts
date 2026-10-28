@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { belleOutroLooksCutOff } from '@/lib/belleOutroEnding'
 import { descriptionWordCountMiscount } from '@/lib/descriptionWordCountTruth'
 import { spellOutSpokenNumerals } from '@/lib/spokenNumerals'
 import { createClient } from '@supabase/supabase-js'
@@ -1676,7 +1677,8 @@ async function validateBelleText(kind: 'intro' | 'outro', text: string, options:
     if (options.standalone && wordCount > 42) issues.push('outro must be 42 words or fewer.')
     if (options.standalone && sentenceCount > 2) issues.push('outro must be one or two short sentences.')
     if (/^\s*that was\b/i.test(text)) issues.push('outro must not use a flat "That was..." structure.')
-    if (/\b(and|or|but|with|to|of|for|from|by|into|before|after|while|when|where|under|beneath|inside|outside|near|below|above|through|around|across|behind|beyond|against|among|within|between|onto|upon|over|in|on|at|the|a|an)$/i.test(withoutPunctuation)) {
+    // OUTRO-ENDING-001: only words that cannot end a sentence count as cut off ("far from over" is fine).
+    if (belleOutroLooksCutOff(withoutPunctuation)) {
       issues.push('outro appears cut off or incomplete.')
     }
     if (options.standalone && /\b(next episode|next time|continue|keep listening|what happens next|find out|to be continued|cliffhanger)\b/i.test(lower)) {
