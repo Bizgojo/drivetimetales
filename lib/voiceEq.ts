@@ -1,20 +1,25 @@
 /**
- * VOICE-EQ-001 (Marc 2026-10-27 22:16 EDT): Nick Brennan, a recurring hero,
- * uses ElevenLabs voice "Thomas" with a bass lift that Marc approved by ear
- * (+8 dB low shelf at 110 Hz, then the normal loudness normalization).
+ * VOICE-EQ-001 / NICK-VOICE-001.
  *
- * VOICE_POST_EQ: ffmpeg filter applied to every line of that voice, before
- * loudness normalization. RESERVED_HERO_VOICE_IDS: voices kept for a named
- * recurring hero; auto-cast never gives them to another character (the hero
- * gets the voice through an explicit story/series assignment).
+ * Nick Brennan is a recurring hero. On 2026-10-28 Marc chose, by ear, the
+ * voice he has in "Wrong Side of the River": narrator Vince Caulfield
+ * (ElevenLabs qD9ofb9chWh4dfRCWMPx), who voices Nick in first person. That
+ * voice now belongs to Nick: it is never auto-cast as any other character,
+ * and its author (Jack Malone, whose narrator it is) is used only for
+ * Nick Brennan stories (see lib/reservedTalent.ts). The earlier Thomas + bass
+ * choice (2026-10-27) is withdrawn, so Thomas is a normal pool voice again
+ * and no per-voice EQ is applied.
+ *
+ * VOICE_POST_EQ: per-voice ffmpeg filter applied before loudness
+ * normalization (kept as a mechanism; currently empty).
+ * RESERVED_HERO_VOICE_IDS: voices kept for a named recurring hero.
  */
 export const THOMAS_VOICE_ID = '7OEIvzKJrvam9mL2bzhW'
+export const NICK_BRENNAN_VOICE_ID = 'qD9ofb9chWh4dfRCWMPx'
 
-export const VOICE_POST_EQ: Record<string, string> = {
-  [THOMAS_VOICE_ID]: 'bass=g=8:f=110',
-}
+export const VOICE_POST_EQ: Record<string, string> = {}
 
-export const RESERVED_HERO_VOICE_IDS = new Set<string>([THOMAS_VOICE_ID])
+export const RESERVED_HERO_VOICE_IDS = new Set<string>([NICK_BRENNAN_VOICE_ID])
 
 export function voicePostEqFilter(voiceId: string | null | undefined): string | null {
   return VOICE_POST_EQ[String(voiceId || '')] || null
