@@ -133,14 +133,22 @@ export async function downloadEpisode(opts: {
   try {
     for (let i = 0; i < items.length; i++) {
       let capChecked = false
-      const { blob, mime } = await fetchBlob(items[i].url, (received, total) => {
+      // PERS-LIVE-001: a live name greeting is optional — if it can't be
+      // fetched (not ready, feature off), save the episode without it.
+      const optionalGreeting = String(items[i].url || '').startsWith('/api/personal-greeting/')
+      const fetched = await fetchBlob(items[i].url, (received, total) => {
         if (!capChecked && total) {
           capChecked = true
           const cap = checkDownloadCaps({ count: before.count, bytes: before.bytes + doneBytes }, total)
           if (!cap.ok) throw new DownloadError('max_bytes', `Downloads are limited to ${Math.round(OFFLINE_MAX_BYTES / 1024 / 1024)} MB. Remove an episode to make room.`)
         }
         onProgress?.({ receivedBytes: doneBytes + received, totalBytes: total ? doneBytes + total : null, segment: i, segments: items.length, segmentReceivedBytes: received, segmentTotalBytes: total })
-      }, signal)
+      }, signal).catch((err) => {
+        if (optionalGreeting && err instanceof DownloadError && (err.code === 'asset_unavailable' || err.code === 'network')) return null
+        throw err
+      })
+      if (!fetched) continue
+      const { blob, mime } = fetched
       const cap = checkDownloadCaps({ count: before.count, bytes: before.bytes + doneBytes }, blob.size)
       if (!cap.ok) throw new DownloadError('max_bytes', `Downloads are limited to ${Math.round(OFFLINE_MAX_BYTES / 1024 / 1024)} MB. Remove an episode to make room.`)
       const key = segmentKey(storyId, i)

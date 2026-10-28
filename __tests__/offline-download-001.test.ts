@@ -289,3 +289,24 @@ describe('service worker contract', () => {
     expect(html).toContain("'et_player_progress:'") // lib/playerProgress.ts key prefix
   })
 })
+
+describe('downloadEpisode — PERS-LIVE-001 live greeting segments', () => {
+  it('skips a live greeting that is not ready and saves the rest of the episode', async () => {
+    installFetch({
+      '/api/offline/license': json({ allowed: true, license: LICENSE, story: { ...STORY, coverUrl: null } }),
+      '/api/asc3/story-playlist': json({ useFinalMix: false, queue: [
+        { url: 'https://cdn/announce.mp3', type: 'intro', label: 'Story intro' },
+        { url: '/api/personal-greeting/clip?storyId=s1&kind=series_intro', type: 'intro', label: 'Welcome' },
+        { url: 'https://cdn/body.mp3', type: 'story', label: 'The Pattern' },
+        { url: '/api/personal-greeting/clip?storyId=s1&kind=finale_signoff', type: 'outro', label: 'Goodbye' },
+      ] }),
+      'https://cdn/announce.mp3': () => bytesResponse(2000),
+      '/api/personal-greeting/clip?storyId=s1&kind=series_intro': () => bytesResponse(800),
+      '/api/personal-greeting/clip?storyId=s1&kind=finale_signoff': () => new Response('', { status: 404 }),
+      'https://cdn/body.mp3': () => bytesResponse(30000),
+    })
+    const ep = await downloadEpisode({ storyId: 's1', accessToken: 'tok' })
+    expect(ep.segments.map(s => s.label)).toEqual(['Story intro', 'Welcome', 'The Pattern'])
+    expect(mem.episodes.has('s1')).toBe(true)
+  })
+})

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { createServerClient } from '@supabase/ssr'
 import { CANONICAL_BELLE_B_VOICE_ID } from '@/lib/voiceConstants'
 
 export const runtime = 'nodejs'
@@ -25,11 +26,36 @@ async function generateAudio(text: string): Promise<Buffer> {
   return Buffer.from(await res.arrayBuffer())
 }
 
+// PERS-LIVE-001 (security): this route spends ElevenLabs credits, so it is
+// limited to signed-in users and short texts. Before this it accepted any
+// text from anyone who found the URL.
+const MAX_INTRO_TEXT_CHARS = 400
+
+async function requestHasSignedInUser(req: NextRequest): Promise<boolean> {
+  try {
+    const authClient = createServerClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      { cookies: { getAll: () => req.cookies.getAll(), setAll: () => {} } }
+    )
+    const { data: { user } } = await authClient.auth.getUser()
+    return Boolean(user?.id)
+  } catch {
+    return false
+  }
+}
+
 export async function POST(req: NextRequest) {
+  if (!(await requestHasSignedInUser(req))) {
+    return NextResponse.json({ error: 'Authentication required' }, { status: 401 })
+  }
   const { storyId, firstName, introText, type } = await req.json()
   // type = 'welcome' | 'intro' | 'outro'
   if (!firstName || !introText || !type) {
     return NextResponse.json({ error: 'firstName, introText, type required' }, { status: 400 })
+  }
+  if (String(introText).length > MAX_INTRO_TEXT_CHARS || String(firstName).length > 40) {
+    return NextResponse.json({ error: 'text too long' }, { status: 400 })
   }
 
   const safeName = firstName.toLowerCase().replace(/[^a-z0-9]/g, '-')
