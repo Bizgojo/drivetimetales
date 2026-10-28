@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { selectableAuthors } from '@/lib/reservedTalent'
 import { belleOutroLooksCutOff } from '@/lib/belleOutroEnding'
 import { descriptionWordCountMiscount } from '@/lib/descriptionWordCountTruth'
 import { spellOutSpokenNumerals } from '@/lib/spokenNumerals'
@@ -1919,7 +1920,8 @@ async function pickAuthor(genre: string, requestedAuthor: string) {
 
   if (error) throw new Error(`Failed to load authors: ${error.message}`)
 
-  const authors = (data || []) as AuthorRow[]
+  // NICK-VOICE-001: reserved authors (Jack Malone = Nick Brennan's voice) only when asked for by name.
+  const authors = selectableAuthors((data || []) as AuthorRow[], requestedAuthor)
   if (authors.length === 0) throw new Error(`No active author for genre "${genre}"`)
 
   const requested = requestedAuthor.trim().toLowerCase()
