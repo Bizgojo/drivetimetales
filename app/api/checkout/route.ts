@@ -1,3 +1,4 @@
+import { referralCheckoutTrial } from '@/lib/referralInvitation'
 import { NextRequest, NextResponse } from 'next/server'
 import Stripe from 'stripe'
 import { createClient } from '@supabase/supabase-js'
@@ -120,7 +121,7 @@ export async function POST(req: NextRequest) {
     // Check if user already has a Stripe customer
     const { data: userData } = await supabase
       .from('users')
-      .select('stripe_customer_id, first_name')
+      .select('stripe_customer_id, first_name, signup_source, subscription_ends_at')
       .eq('id', userId)
       .single()
 
@@ -235,7 +236,9 @@ export async function POST(req: NextRequest) {
           fmAnnualApplied: 'false',
           ...compactMetadata(campaignMetadata),
         },
-        trial_period_days: trialDays > 0 ? trialDays : undefined
+        ...(userData?.signup_source === 'referral-invitation'
+          ? referralCheckoutTrial(userData.subscription_ends_at)
+          : { trial_period_days: trialDays > 0 ? trialDays : undefined })
       },
       // ATL-PIXEL-001: Stripe substitutes {CHECKOUT_SESSION_ID} at redirect.
       // /home reads ?cs= to fire client StartTrial with event_id st_<cs> —

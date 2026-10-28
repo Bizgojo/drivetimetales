@@ -12,7 +12,7 @@ const PUBLIC_ROUTES = new Set([
   // with no explanation (found in LAUNCHEVE Battery 1, Marc-approved freeze
   // exception 2026-07-16).
   '/auth/link-expired', '/auth/invitation', '/auth/invitation/accept',
-  '/subscribe',
+  '/subscribe', '/invite',
   // SUS/ATL-LANDING-001: /go is the paid-ads campaign landing page. It must
   // render identically for anonymous and signed-in visitors — no auth checks,
   // no subscription checks, no redirects (the '/' signed-in bounce below does
@@ -81,29 +81,42 @@ export async function middleware(request: NextRequest) {
 
   if (PUBLIC_PREFIXES.some(p => pathname.startsWith(p))) return NextResponse.next()
   if (ADDITIONAL_PUBLIC_PREFIXES.some(p => pathname.startsWith(p))) return NextResponse.next()
+  // Refresh cookies must reach both the current server render and every
+  // redirect response. Dropping a rotated refresh token loses the next launch.
+  let response = NextResponse.next({ request })
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll: () => request.cookies.getAll(),
+        setAll: (cookiesToSet) => {
+          const previous = response.cookies.getAll()
+          cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value))
+          response = NextResponse.next({ request })
+          previous.forEach(cookie => response.cookies.set(cookie))
+          cookiesToSet.forEach(({ name, value, options }) => response.cookies.set(name, value, options))
+        },
+      },
+    }
+  )
+  const withSessionCookies = (target: NextResponse) => {
+    response.cookies.getAll().forEach(cookie => target.cookies.set(cookie))
+    return target
+  }
   if (AUTH_ENTRY_ROUTES.has(pathname)) {
-    const authSupabase = createServerClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-      { cookies: { getAll: () => request.cookies.getAll(), setAll: () => {} } }
-    )
-    const { data: { user: authEntryUser } } = await authSupabase.auth.getUser()
+    const { data: { user: authEntryUser } } = await supabase.auth.getUser()
     if (authEntryUser) {
       const returnTo = request.nextUrl.searchParams.get('returnTo')
       const safeReturnTo = returnTo && returnTo.startsWith('/') && !returnTo.startsWith('//') ? returnTo : '/home'
-      return NextResponse.redirect(new URL(safeReturnTo, request.url))
+      return withSessionCookies(NextResponse.redirect(new URL(safeReturnTo, request.url)))
     }
-    return NextResponse.next()
+    return response
   }
   if (PUBLIC_ROUTES.has(pathname)) return NextResponse.next()
   // If user hits the root landing page with an active session, send them home
   if (pathname === '/') {
-    const tempSupabase = createServerClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-      { cookies: { getAll: () => request.cookies.getAll(), setAll: () => {} } }
-    )
-    const { data: { user: landingUser } } = await tempSupabase.auth.getUser()
+    const { data: { user: landingUser } } = await supabase.auth.getUser()
     if (landingUser) {
       // ORION-LANDING-PARAMS-001 (2026-07-11): carry the query string through
       // this redirect. A signed-in user clicking an ad link was bounced to
@@ -112,27 +125,10 @@ export async function middleware(request: NextRequest) {
       // chain. Params on /home are harmless; UtmCapture still records them.
       const homeUrl = new URL('/home', request.url)
       homeUrl.search = request.nextUrl.search
-      return NextResponse.redirect(homeUrl)
+      return withSessionCookies(NextResponse.redirect(homeUrl))
     }
-    return NextResponse.next()
+    return response
   }
-
-  const response = NextResponse.next()
-
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll: () => request.cookies.getAll(),
-        setAll: (cookiesToSet) => {
-          cookiesToSet.forEach(({ name, value, options }) => {
-            response.cookies.set(name, value, options)
-          })
-        },
-      },
-    }
-  )
 
   const { data: { user } } = await supabase.auth.getUser()
 
@@ -140,10 +136,9 @@ export async function middleware(request: NextRequest) {
     const signinUrl = new URL('/signin', request.url)
     signinUrl.searchParams.set('returnTo', pathname + request.nextUrl.search)
     const redirect = NextResponse.redirect(signinUrl)
-    request.cookies.getAll()
-      .filter(c => c.name.startsWith('sb-'))
-      .forEach(c => redirect.cookies.delete(c.name))
-    return redirect
+    // A temporary getUser failure is not an explicit sign-out. Preserve the
+    // browser session; apply only cookie updates requested by Supabase itself.
+    return withSessionCookies(redirect)
   }
 
   if (requiresSubscription(pathname)) {
@@ -167,7 +162,7 @@ export async function middleware(request: NextRequest) {
       // last (pathname only, as before) and overrides any inbound returnTo.
       subscribeUrl.search = carryQueryString(request.nextUrl.search)
       subscribeUrl.searchParams.set('returnTo', pathname)
-      return NextResponse.redirect(subscribeUrl)
+      return withSessionCookies(NextResponse.redirect(subscribeUrl))
     }
   }
 

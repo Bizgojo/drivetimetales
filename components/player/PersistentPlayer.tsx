@@ -139,7 +139,7 @@ export default function PersistentPlayer({ children }: { children: ReactNode }) 
     setDismissedIds(ids => [...ids, id])
     setSavedStories(stories => stories.filter(story => story.id !== id))
   }
-  const miniature = !playerPage && !clearForRoute && !pathname?.startsWith('/admin') && snapshot
+  const miniature = (pathname === '/home' || pathname === '/library') && snapshot
 
   useEffect(() => {
     const shell = continueShellRef.current

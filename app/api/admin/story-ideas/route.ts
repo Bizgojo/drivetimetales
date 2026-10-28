@@ -1,3 +1,4 @@
+import { hasValidRequestOrigin } from '@/lib/requestOrigin'
 import { NextRequest,NextResponse } from 'next/server'
 import { accountAdmin } from '@/lib/server/accountUser'
 import { feedbackAdmin } from '@/lib/server/feedbackAdmin'
@@ -12,7 +13,7 @@ export async function GET(){
  }catch(err){return NextResponse.json({error:err instanceof Error?err.message:'Could not load story ideas'},{status:500})}
 }
 export async function POST(req:NextRequest){
- if(req.headers.get('origin')&&req.headers.get('origin')!==req.nextUrl.origin)return NextResponse.json({error:'Invalid request origin'},{status:403})
+ if(!hasValidRequestOrigin(req))return NextResponse.json({error:'Invalid request origin'},{status:403})
  const user=await feedbackAdmin();if(!user)return NextResponse.json({error:'Admin access required'},{status:403})
  try{const {id,action}=await req.json();const admin=accountAdmin()
  if(action==='reconcile'){await reconcileFeedback(admin);return NextResponse.json(await deliverFeedbackEmails(admin))}
