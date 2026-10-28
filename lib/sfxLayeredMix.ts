@@ -56,7 +56,11 @@ export const LAYERED_DEFAULTS = {
   OVERLAP_SEC: 0.5,
   LEAD_SEC: 2.0,
   MAX_BED_SEC: 30,
-  BED_GAIN: 0.2,
+  BED_GAIN: 0.35,
+  /** SFX-LEVEL-001: target mean volume (dB) for each effect before mixing; voices sit near -20 */
+  SPOT_MEAN_DB: -19,
+  BED_MEAN_DB: -21,
+  PEAK_CEILING_DB: -1,
   BED_FADE_SEC: 3,
   MIN_LOOP_CLIP_SEC: 4,
 }
@@ -157,6 +161,28 @@ export function sfxFilterChain(placement: SfxPlacement, inputIndex: number, outL
 type ExecFile = (cmd: string, args: string[]) => Promise<unknown>
 
 /**
+ * Static gain (dB) that moves a clip's mean volume to target. A limiter after
+ * the gain catches peaks, so the gain may exceed the clean headroom by up to
+ * LIMITER_ALLOWANCE_DB (enough to lift a peaky phone buzz without crushing it).
+ */
+export const LIMITER_ALLOWANCE_DB = 8
+export function levelingGainDb(meanDb: number, maxDb: number, targetMeanDb: number, peakCeilingDb: number): number {
+  if (!Number.isFinite(meanDb) || !Number.isFinite(maxDb)) return 0
+  const wanted = targetMeanDb - meanDb
+  const headroom = peakCeilingDb - maxDb + LIMITER_ALLOWANCE_DB
+  return Math.max(-24, Math.min(wanted, headroom, 24))
+}
+
+async function levelGainDb(file: string, targetMeanDb: number, peakCeilingDb: number, ffmpeg: string, exec: ExecFile): Promise<number> {
+  const out: any = await exec(ffmpeg, ['-hide_banner', '-i', file, '-af', 'volumedetect', '-f', 'null', '-']).catch((e: any) => e)
+  const text = String(out?.stderr || '') + String(out?.stdout || '')
+  const mean = Number(text.match(/mean_volume:\s*(-?[\d.]+) dB/)?.[1])
+  const max = Number(text.match(/max_volume:\s*(-?[\d.]+) dB/)?.[1])
+  if (!Number.isFinite(mean) || !Number.isFinite(max)) throw new Error('could not measure volume')
+  return levelingGainDb(mean, max, targetMeanDb, peakCeilingDb)
+}
+
+/**
  * Builds the normalized voice+SFX body (same loudnorm as the default path) at
  * outPath. Returns the plan used, for logging.
  */
@@ -173,7 +199,26 @@ export async function buildLayeredStoryBody(params: {
   const log = params.log || (() => {})
   const path = await import('path')
   const fs = await import('fs/promises')
-  const plan = planLayeredBody(items, params.opts)
+  // SFX-LEVEL-001: ElevenLabs effects arrive at random levels (a phone buzz at
+  // -31 dB mean next to voices at -20). Level each effect with a static gain
+  // to its target before planning, never pushing its peak above the ceiling.
+  const o = { ...LAYERED_DEFAULTS, ...(params.opts || {}) }
+  const leveledItems: BodyItem[] = []
+  for (const item of items) {
+    if (item.kind !== 'sfx') { leveledItems.push(item); continue }
+    const role = classifySfxCue(item.cue)
+    const leveledPath = path.join(tmpDir, `leveled_${path.basename(item.path)}`)
+    try {
+      const gain = await levelGainDb(item.path, role === 'bed' ? o.BED_MEAN_DB : o.SPOT_MEAN_DB, o.PEAK_CEILING_DB, ffmpeg, exec)
+      await exec(ffmpeg, ['-i', item.path, '-af', `volume=${gain.toFixed(2)}dB,alimiter=limit=0.89:level=false`, '-ar', '44100', '-ac', '2', '-b:a', '192k', '-y', leveledPath])
+      log(`  SFX-LEVEL-001 ${path.basename(item.path)} ${role} gain ${gain >= 0 ? '+' : ''}${gain.toFixed(1)} dB`)
+      leveledItems.push({ ...item, path: leveledPath })
+    } catch (err) {
+      log(`  SFX-LEVEL-001 ${path.basename(item.path)} leveling skipped: ${err instanceof Error ? err.message : String(err)}`)
+      leveledItems.push(item)
+    }
+  }
+  const plan = planLayeredBody(leveledItems, params.opts)
 
   // 1. Voice track: voices in order with the effect gaps as silence.
   const lines: string[] = []

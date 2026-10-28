@@ -93,3 +93,17 @@ describe('ffmpeg chain + wiring', () => {
     expect(core).toContain('if (!layeredBuilt)')
   })
 })
+
+describe('SFX-LEVEL-001 leveling gain', () => {
+  const { levelingGainDb } = require('@/lib/sfxLayeredMix')
+  test('quiet phone buzz (-31 mean, -5 peak) is lifted ~12 dB toward the spot target (limiter catches peaks)', () => {
+    expect(levelingGainDb(-31.2, -5.1, -19, -1)).toBeCloseTo(12.1, 1)
+  })
+  test('loud engine (-12.5 mean, 0 peak) is turned down to the bed target', () => {
+    expect(levelingGainDb(-12.5, 0, -21, -1)).toBeCloseTo(-8.5, 1)
+  })
+  test('gain never exceeds headroom + limiter allowance, and unmeasurable clips are left alone', () => {
+    expect(levelingGainDb(-40, -2, -19, -1)).toBeCloseTo(9, 1)
+    expect(levelingGainDb(NaN, -2, -19, -1)).toBe(0)
+  })
+})

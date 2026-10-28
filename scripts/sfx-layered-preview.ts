@@ -88,6 +88,24 @@ async function main() {
     log: (line) => console.log(line),
   })
   await writeFile(path.join(outDir, 'plan.json'), JSON.stringify(plan.sfx, null, 2))
+
+  // Short listening clips: 30 s around each effect, BEFORE (today) and AFTER (new).
+  const currentStarts = new Map<number, number>()
+  let t = 0
+  for (const i of items) { if (i.kind === 'sfx') currentStarts.set(i.idx, t); t += i.dur }
+  const clipPaths: string[] = []
+  let n = 0
+  for (const p of plan.sfx) {
+    n += 1
+    const label = p.cue.split(/[,.]/)[0].trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 30) || 'effect'
+    for (const [tag, file, at] of [['BEFORE', currentPath, currentStarts.get(p.idx) ?? p.start], ['AFTER', layeredPath, p.start]] as Array<[string, string, number]>) {
+      const out = path.join(outDir, `${n}-${label}-${tag}.mp3`)
+      await exec(FFMPEG, ['-hide_banner', '-loglevel', 'error', '-ss', Math.max(0, at - 4).toFixed(2), '-t', '30', '-i', file, '-af', 'afade=t=in:d=0.3,afade=t=out:st=29.3:d=0.7', '-b:a', '192k', '-y', out])
+      clipPaths.push(out)
+    }
+  }
+  console.log('Listening clips:')
+  for (const c of clipPaths) console.log('  ' + c)
   console.log(`current.mp3 ${(await duration(currentPath)).toFixed(1)}s | layered.mp3 ${(await duration(layeredPath)).toFixed(1)}s`)
   for (const p of plan.sfx) {
     const mm = Math.floor(p.start / 60), ss = Math.round(p.start % 60)
