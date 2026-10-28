@@ -5,6 +5,7 @@ import {
   personalizedAssetGateReason,
   recordPersonalizationFallback,
 } from '@/lib/personalization/fallbackTelemetry'
+import { hasPriorSeriesPlay } from '@/lib/personalization/firstPlayedOpener'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -278,7 +279,7 @@ export async function GET(req: NextRequest) {
 
   const { data: story, error } = await supabase
     .from('stories')
-    .select('id,title,primary_genre,genre,audio_url,announcement_url,story_audio_url,story_body_with_outro_url,outro_with_music_url,outro_audio_url,updated_at')
+    .select('id,title,primary_genre,genre,audio_url,announcement_url,story_audio_url,story_body_with_outro_url,outro_with_music_url,outro_audio_url,updated_at,series_id,series_episode_number,series_is_finale')
     .eq('id', storyId)
     .single()
 
@@ -314,10 +315,27 @@ export async function GET(req: NextRequest) {
     }
   }
 
+  // FIRST-PLAYED-NAME-OPENER: series episodes earn the personalized name
+  // opener only on the listener's first played episode of the series (any
+  // episode number). A prior play_events row for ANY episode in the series
+  // means this play uses the normal Belle intro (baked final mix below).
+  // Standalones (no series_id) skip this check — path unchanged.
+  // FINALE OUTRO (2026-10-27): no per-user personalized-outro path exists —
+  // the outro is always the story's baked outro_with_music_url/outro_audio_url
+  // asset (see buildPersonalizedQueue + lib/personalizedFinalMix.ts), so the
+  // finale outro is intentionally untouched by this change.
+  const seriesId = String((story as any)?.series_id || '').trim()
+  let seriesReplay = false
+  if (authUser?.id && seriesId) {
+    seriesReplay = await hasPriorSeriesPlay(supabase, authUser.id, seriesId)
+  }
+
   let personalizedPayload: PersonalizedQueuePayload | null = null
   let fallbackReason: string | null = null
   if (authUser?.id) {
-    if (!pronunciationKey) {
+    if (seriesReplay) {
+      fallbackReason = 'series_replay_normal_intro'
+    } else if (!pronunciationKey) {
       fallbackReason = 'missing_pronunciation_key'
     } else {
       try {
@@ -361,6 +379,8 @@ export async function GET(req: NextRequest) {
     pronunciation_key: pronunciationKey || null,
     tone: personalizedPayload?.toneCluster || null,
     opener_id: personalizedPayload?.openerId || null,
+    series_id: seriesId || null,
+    series_replay: seriesReplay,
   })
 
   if (personalizedPayload) {
