@@ -1,5 +1,5 @@
 // __tests__/amendment1-gaps-814.test.ts — Amendment 1 Gap 8.4 + 8.1 fixes.
-import { isEtTestQuery, landingRouteMatches } from '@/lib/marketing/adTests'
+import { isEtTestQuery, landingRouteMatches, sanitizeEtTestId, appendEtTest } from '@/lib/marketing/adTests'
 
 describe('Gap 8.4 — et_test session detection (browser pixel suppression)', () => {
   it('detects et_test as first, middle, or only query param', () => {
@@ -45,5 +45,31 @@ describe('Gap 8.1 — exact landing route (not just 200)', () => {
       landingRouteMatches('https://evil.example.com/go/x', 'https://endless-tales.com/go/x')
     ).toBe(false)
     expect(landingRouteMatches('not-a-url', 'https://endless-tales.com/go/x')).toBe(false)
+  })
+})
+
+describe('Gap 8.4b — magic-link new-tab carry (et_test in redirect URLs)', () => {
+  it('accepts strict run ids, rejects anything else', () => {
+    expect(sanitizeEtTestId('adtest-123')).toBe('adtest-123')
+    expect(sanitizeEtTestId('run_1')).toBe('run_1')
+    expect(sanitizeEtTestId(null)).toBe(null)
+    expect(sanitizeEtTestId(undefined)).toBe(null)
+    expect(sanitizeEtTestId('')).toBe(null)
+    expect(sanitizeEtTestId('a b')).toBe(null)
+    expect(sanitizeEtTestId('x?y=1')).toBe(null)
+    expect(sanitizeEtTestId('<script>')).toBe(null)
+    expect(sanitizeEtTestId('x'.repeat(65))).toBe(null)
+  })
+  it('appends et_test to relative and absolute URLs', () => {
+    expect(appendEtTest('/home', 'run-1')).toBe('/home?et_test=run-1')
+    expect(appendEtTest('/home?welcome=true', 'run-1')).toBe('/home?welcome=true&et_test=run-1')
+    expect(appendEtTest('https://app.example.com/auth/confirm', 'run-1')).toBe(
+      'https://app.example.com/auth/confirm?et_test=run-1'
+    )
+  })
+  it('never duplicates or echoes invalid ids', () => {
+    expect(appendEtTest('/home?et_test=run-1', 'run-2')).toBe('/home?et_test=run-1')
+    expect(appendEtTest('/home', 'bad id')).toBe('/home')
+    expect(appendEtTest('/home', null)).toBe('/home')
   })
 })

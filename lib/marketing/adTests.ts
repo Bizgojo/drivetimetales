@@ -42,6 +42,25 @@ export function isEtTestQuery(search: string): boolean {
   return /(^|[?&])et_test=/.test(search || '')
 }
 
+/** Amendment 1 Gap 8.4b (magic-link new-tab carry): sessionStorage dies when
+ *  the magic link opens in a new tab, so the run id must travel in the URL
+ *  itself (signin → magic-link email → /auth/confirm → landing page). Only
+ *  strict run ids are carried — anything else is dropped, never echoed. */
+const ET_TEST_ID_RE = /^[A-Za-z0-9_-]{1,64}$/
+export function sanitizeEtTestId(value: unknown): string | null {
+  if (typeof value !== 'string') return null
+  const v = value.trim()
+  return ET_TEST_ID_RE.test(v) ? v : null
+}
+
+/** Append ?et_test=<run_id> to an absolute or relative URL. No-op when the
+ *  run id is invalid or the URL already carries et_test. */
+export function appendEtTest(rawUrl: string, runId: unknown): string {
+  const id = sanitizeEtTestId(runId)
+  if (!id || /(^|[?&])et_test=/.test(rawUrl)) return rawUrl
+  return `${rawUrl}${rawUrl.includes('?') ? '&' : '?'}et_test=${encodeURIComponent(id)}`
+}
+
 /** Amendment 1 Gap 8.1 blind spot: a 200 on our own domain is not enough —
  *  the fetch must land on the EXACT expected route. A mistyped path that
  *  still returns 200 (catch-all, homepage fallback) must Fail. Compares

@@ -141,22 +141,34 @@ export async function POST(request: NextRequest) {
         // only (em/external_id — hashing inside sendServerEvent); attribution
         // from checkout session metadata (written by /api/checkout). Replays
         // re-send the same event_id → deduped, harmless. Never throws, ≤4s.
-        await sendServerEvent({
-          name: 'StartTrial',
-          eventId: startTrialEventId(session.id),
-          email: session.customer_details?.email || session.customer_email || null,
-          externalId: userId,
-          value: 0,
-          currency: 'USD',
-          sourceUrl: 'https://endless-tales.com/signup',
-          customData: {
-            content_name: 'Endless Tales Trial',
-            utm_source: session.metadata?.utm_source,
-            utm_medium: session.metadata?.utm_medium,
-            utm_campaign: session.metadata?.utm_campaign,
-            promo_code: session.metadata?.promo_code,
-          },
-        })
+        // AMENDMENT-1 Gap 8.4b: test accounts must NEVER create production
+        // conversion rows — skip (trial emails + entitlements above still run).
+        // Dedicated lookup: userData above is scoped inside the email try.
+        let checkoutIsTestAccount = false
+        try {
+          const { data: flagRow } = await supabase.from('users').select('is_test_account').eq('id', userId).single()
+          checkoutIsTestAccount = (flagRow as any)?.is_test_account === true
+        } catch {}
+        if (checkoutIsTestAccount) {
+          console.log(`[webhook] checkout completed — user ${userId} is_test_account, StartTrial CAPI skipped (no production row).`)
+        } else {
+          await sendServerEvent({
+            name: 'StartTrial',
+            eventId: startTrialEventId(session.id),
+            email: session.customer_details?.email || session.customer_email || null,
+            externalId: userId,
+            value: 0,
+            currency: 'USD',
+            sourceUrl: 'https://endless-tales.com/signup',
+            customData: {
+              content_name: 'Endless Tales Trial',
+              utm_source: session.metadata?.utm_source,
+              utm_medium: session.metadata?.utm_medium,
+              utm_campaign: session.metadata?.utm_campaign,
+              promo_code: session.metadata?.promo_code,
+            },
+          })
+        }
       }
       break
     }
@@ -190,7 +202,7 @@ export async function POST(request: NextRequest) {
       try {
         const { data: existing } = await supabase
           .from('users')
-          .select('first_paid_date, email')
+          .select('first_paid_date, email, is_test_account')
           .eq('id', userId)
           .single()
         if (existing && !existing.first_paid_date) {
@@ -207,24 +219,29 @@ export async function POST(request: NextRequest) {
           // once-only first_paid_date transition; event_id sub_<invoice.id>
           // dedups Stripe webhook retries. Hashed identifiers only;
           // attribution from subscription metadata. Never throws, ≤4s.
-          await sendServerEvent({
-            name: 'Subscribe',
-            eventId: subscribeEventId(String(invoice.id)),
-            email: existing.email || invoice.customer_email || null,
-            externalId: userId,
-            value: (invoice.amount_paid || 0) / 100,
-            currency: (invoice.currency || 'usd').toUpperCase(),
-            sourceUrl: 'https://endless-tales.com',
-            customData: {
-              content_name: 'Endless Tales Subscription',
-              plan: planName,
-              billing_cycle: billingCycleIp || undefined,
-              utm_source: subscription.metadata?.utm_source,
-              utm_medium: subscription.metadata?.utm_medium,
-              utm_campaign: subscription.metadata?.utm_campaign,
-              promo_code: subscription.metadata?.promo_code,
-            },
-          })
+          // AMENDMENT-1 Gap 8.4b: test accounts never create production rows.
+          if ((existing as any)?.is_test_account === true) {
+            console.log(`[webhook] invoice paid — user ${userId} is_test_account, Subscribe CAPI skipped (no production row).`)
+          } else {
+            await sendServerEvent({
+              name: 'Subscribe',
+              eventId: subscribeEventId(String(invoice.id)),
+              email: existing.email || invoice.customer_email || null,
+              externalId: userId,
+              value: (invoice.amount_paid || 0) / 100,
+              currency: (invoice.currency || 'usd').toUpperCase(),
+              sourceUrl: 'https://endless-tales.com',
+              customData: {
+                content_name: 'Endless Tales Subscription',
+                plan: planName,
+                billing_cycle: billingCycleIp || undefined,
+                utm_source: subscription.metadata?.utm_source,
+                utm_medium: subscription.metadata?.utm_medium,
+                utm_campaign: subscription.metadata?.utm_campaign,
+                promo_code: subscription.metadata?.promo_code,
+              },
+            })
+          }
         }
       } catch (fpdCatch) {
         console.error('[webhook] first_paid_date block threw (non-fatal):', fpdCatch)
