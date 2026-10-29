@@ -32,8 +32,9 @@ import { RUNTIME_GATE } from './runtimeGate'
 // Mirrors app/api/admin/production-jobs/run-next/route.ts (pinned by test).
 export const RUNNEXT_TITLE_MAX_CHARS = 28
 export const RUNNEXT_DESCRIPTION_MAX_WORDS = 24
-export const RUNNEXT_DESCRIPTION_PAST_TENSE_RE =
-  /\b(vanished|was|were|had|found|discovered|left|moved|sealed|signed|forged|buried|hidden|lost)\b/i
+// DESC-TENSE-001: same narrow list as lib/validateCardCopy (was/were/had only).
+export { DESCRIPTION_PAST_TENSE_RE as RUNNEXT_DESCRIPTION_PAST_TENSE_RE } from '@/lib/validateCardCopy'
+import { DESCRIPTION_PAST_TENSE_RE as RUNNEXT_DESCRIPTION_PAST_TENSE_RE } from '@/lib/validateCardCopy'
 /** RUNTIME-GATE-001's ±10% plus the estimator's ≈±5% calibration spread. */
 export const RUNTIME_BRIEF_PRESPEND_TOLERANCE = 0.15
 /** Validator prompt rule SFX-001 ("at most 3 per episode"). Canon (Spec v1.5) allows 3–6. */
@@ -564,30 +565,3 @@ export function seriesSpokenWordTarget(runtime: string): { minutes: number; targ
   return { minutes, target, min, max }
 }
 
-/**
- * DESC-WORD-AUTOFIX-001 (job 0fa07149, The Nanny Cam EP2, 2026-10-29): the
- * premise is about "hidden cameras", so the writer kept putting "hidden" in
- * the card DESCRIPTION and failed all 3 drafts on the blocked-word rule.
- * Swap the blocked words that have a safe present-tense synonym. Words with
- * no safe swap (was/were/had/found/left...) are left for the writer.
- * Only the DESCRIPTION header line is touched.
- */
-const DESCRIPTION_WORD_SWAPS: Array<[RegExp, string]> = [
-  [/\bhidden\b/g, 'secret'],
-  [/\bHidden\b/g, 'Secret'],
-  [/\blost\b/g, 'missing'],
-  [/\bLost\b/g, 'Missing'],
-  [/\bvanished\b/g, 'missing'],
-  [/\bVanished\b/g, 'Missing'],
-]
-
-export function autofixDescriptionBlockedWords(script: string): { script: string; changed: boolean } {
-  let changed = false
-  const out = String(script || '').replace(/^(\s*DESCRIPTION\s*:\s*)(.*)$/im, (_m, head: string, body: string) => {
-    let next = body
-    for (const [re, sub] of DESCRIPTION_WORD_SWAPS) next = next.replace(re, sub)
-    if (next !== body) changed = true
-    return head + next
-  })
-  return { script: out, changed }
-}

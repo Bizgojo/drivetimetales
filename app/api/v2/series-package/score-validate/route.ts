@@ -16,7 +16,8 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-
 const EPISODE_SELECT = 'id,title,description,status,brief_json,script,script_json,validator_result,validator_report,validator_passed_at,series_id,series_name,episode_number,series_episode_number,series_total_episodes,series_is_finale,story_type'
 const TITLE_MAX_CHARS = 28
 const DESCRIPTION_MAX_CHARS = 70
-const DESCRIPTION_PAST_TENSE_RE = /\b(vanished|was|were|had|found|discovered|left|moved|sealed|signed|forged|buried|hidden)\b/i
+// DESC-TENSE-001: was/were/had only; tense itself is judged by the validator.
+const DESCRIPTION_PAST_TENSE_RE = /\b(was|were|had)\b/i
 
 function bad(message: string, status = 400, extra: Record<string, any> = {}) {
   return NextResponse.json({ success: false, error: message, ...extra }, { status })
