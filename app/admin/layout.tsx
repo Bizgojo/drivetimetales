@@ -18,56 +18,41 @@ const SIDEBAR_WIDTH = 230
 const SIDEBAR_STORAGE_KEY = 'admin_sidebar_open'
 
 const NAV_GROUPS = [
-  { id: 'dashboard', label: 'Dashboard', icon: '📊', items: [
-    { href: '/admin', label: 'Overview' },
-    // Launch Report and Listen Report removed from nav 2026-08-13 (Bell campaign analytics
-    // supersedes them). Pages still exist at /admin/launch-report and /admin/listen-report
-    // and remain fully functional — navigate directly to restore access.
-    { href: '/admin/command-center', label: 'Command Center' },
-    { href: '/admin/workspace', label: 'Workspace' },
-    { href: '/admin/accounts', label: 'Accounts & Integrations' },
+  { id: 'overview', label: 'Overview', icon: '📊', items: [
+    { href: '/admin', label: 'Business Overview' },
+    { href: '/admin/action-center', label: 'Action Center' },
+  ]},
+  { id: 'agents', label: 'Agents', icon: '🤖', items: [
+    { href: '/admin/command-center', label: 'Agent Command Center' },
+    { href: '/admin/ai-spending', label: 'AI Usage & Costs' },
+    { href: '/admin/accounts', label: 'Provider Connections' },
   ]},
   { id: 'production', label: 'Production', icon: '🎬', items: [
-    { href: '/admin/story-queue', label: 'Story Queue' },
-    { href: '/admin/story-production-v2', label: 'Story Production V2' },
-    { href: '/admin/asc', label: 'ASC' },
-    { href: '/admin/production/approval', label: 'Content Approval' },
-    { href: '/admin/authors-narrators-v2', label: 'Authors & Narrators' },
-    { href: '/admin/story-ideas', label: 'Story Ideas' },
-    { href: '/admin/genres', label: 'Genres' },
-    { href: '/admin/el-usage', label: 'ElevenLabs Usage' },
+    { href: '/admin/story-ideas', label: 'Ideas & Queue' },
+    { href: '/admin/story-production-v2', label: 'Production Status' },
+    { href: '/admin/production/approval', label: 'Review & Approval' },
   ]},
-  { id: 'library', label: 'Library', icon: '📚', items: [
-    { href: '/admin/stories', label: 'Published Stories' },
-    { href: '/admin/landing-stories', label: 'Landing Stories' },
+  { id: 'stories', label: 'Stories', icon: '📚', items: [
+    { href: '/admin/stories', label: 'Library & Episodes' },
   ]},
-  { id: 'subscribers', label: 'Subscribers', icon: '👥', items: [
-    { href: '/admin/users', label: 'Users' },
-    { href: '/admin/listener-preferences', label: 'Listener Preferences' },
-    { href: '/admin/subscriptions', label: 'Subscriptions' },
-    { href: '/admin/promo', label: 'Magic Link Invites' },
-    { href: '/admin/referrals', label: 'Referrals' },
+  { id: 'customers', label: 'Customers', icon: '👥', items: [
+    { href: '/admin/support', label: 'Customer Inbox' },
+    { href: '/admin/users', label: 'Subscribers & Users' },
+    { href: '/admin/listener-preferences', label: 'Listener Insights' },
+    { href: '/admin/referrals', label: 'Invitations & Referrals' },
   ]},
   { id: 'marketing', label: 'Marketing', icon: '📱', items: [
-    { href: '/admin/marketing/dashboard', label: 'Dashboard' },
-    { href: '/admin/marketing/campaign-intelligence', label: 'Campaign Intelligence' },
-    { href: '/admin/growth', label: 'Growth Command Center' },
-    { href: '/admin/marketing', label: 'Campaigns' },
-    { href: '/admin/waitlist', label: 'Waitlist' },
-    { href: '/admin/social-posting', label: 'Social Posting' },
-    { href: '/admin/social-analytics', label: 'Social Analytics' },
-    { href: '/admin/marketing-assets', label: 'Marketing Assets' },
-  ]},
-  { id: 'analytics', label: 'Analytics', icon: '📈', items: [
-    { href: '/admin/analytics', label: 'Overview' },
-    { href: '/admin/analytics/funnel', label: 'Funnel by Arm' },
-    { href: '/admin/analytics/signups', label: 'Signups & Behaviour' },
-    { href: '/admin/analytics/trial-paid', label: 'Trial to Paid' },
+    { href: '/admin/marketing/campaign-intelligence', label: 'Campaign Management' },
+    { href: '/admin/marketing', label: 'Campaigns & Plans' },
+    { href: '/admin/social-posting', label: 'Social & Responses' },
   ]},
   { id: 'finance', label: 'Finance', icon: '💰', items: [
-    { href: '/admin/finance', label: 'Revenue & Costs' },
-    { href: '/admin/ai-spending', label: 'AI Spending' },
-    { href: '/admin/cfo-report', label: '📊 CFO Morning Report' },
+    { href: '/admin/finance', label: 'Budget & Actuals' },
+    { href: '/admin/ai-spending', label: 'AI Expenses' },
+    { href: '/admin/cfo-report', label: 'CFO Report' },
+  ]},
+  { id: 'docs', label: 'Documentation', icon: '📖', items: [
+    { href: '/admin/workspace', label: 'Operating Reference' },
   ]},
 ]
 
