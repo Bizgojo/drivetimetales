@@ -261,6 +261,23 @@ export default function AccountPage() {
 
         </div>
 
+        {/* Customer legal documents */}
+        <section aria-label="Legal documents" className="mb-6 border-t border-gray-800 pt-5">
+          <h2 className="text-gray-400 text-xs font-bold uppercase tracking-wider mb-3">Legal</h2>
+          <div className="space-y-2">
+            {[
+              { href: '/privacy', label: 'Privacy Policy' },
+              { href: '/terms', label: 'Terms and Conditions' },
+              { href: '/license', label: 'Audio Content License' },
+            ].map(item => (
+              <Link key={item.href} href={item.href} className="flex items-center justify-between p-4 bg-gray-900 border border-gray-800 rounded-xl text-white text-sm">
+                <span>{item.label}</span><span className="text-gray-500">›</span>
+              </Link>
+            ))}
+          </div>
+          <p className="mt-2 text-xs text-gray-500">Drafts for legal review; not yet effective.</p>
+        </section>
+
         {/* Sign Out + Admin */}
         <div className="border-t border-gray-800 pt-6 flex flex-col gap-2">
           <button onClick={handleSignOut} className="w-full py-3 text-red-400 text-sm">Sign Out</button>
