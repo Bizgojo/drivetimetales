@@ -1,3 +1,5 @@
+import { ADMIN_EMAILS, validInternalToken } from '@/lib/admin-center/access-policy'
+import { hasValidRequestOrigin } from '@/lib/requestOrigin'
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
@@ -22,7 +24,7 @@ const PUBLIC_ROUTES = new Set([
   '/terms', '/privacy',
   // OFFLINE-DL-001: the Downloads screen only reads this device's IndexedDB.
   '/downloads',
-  '/sw.js',
+  '/sw.js', '/admin-push-sw.js',
 ])
 
 // Path prefixes that are always public (checked below)
@@ -77,6 +79,26 @@ export async function middleware(request: NextRequest) {
     redirectUrl.hostname = 'endless-tales.com'
     redirectUrl.port = ''
     return NextResponse.redirect(redirectUrl, 301)
+  }
+
+  // Admin APIs are never public. Machine access is narrowly scoped to the
+  // existing production self-fetch paths and requires a dedicated secret.
+  if (pathname === '/api/admin' || pathname.startsWith('/api/admin/')) {
+    const deny = (status: number) => NextResponse.json({ error: 'Administrator authorization required' }, { status, headers: { 'Cache-Control': 'private, no-store' } })
+    const provided = request.headers.get('x-et-internal-key') || request.headers.get('authorization')?.replace(/^Bearer\s+/i, '') || null
+    if (validInternalToken(provided, process.env.ADMIN_INTERNAL_TOKEN, pathname)) return NextResponse.next()
+    if (!['GET','HEAD','OPTIONS'].includes(request.method) && !hasValidRequestOrigin(request)) return deny(403)
+    try {
+      let refreshed: any[] = []
+      const auth = createServerClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!, { cookies: { getAll: () => request.cookies.getAll(), setAll: values => {refreshed=values;values.forEach(({name,value})=>request.cookies.set(name,value))} } })
+      const bearer = request.headers.get('authorization')?.replace(/^Bearer\s+/i, '')
+      const { data: { user }, error } = bearer ? await auth.auth.getUser(bearer) : await auth.auth.getUser()
+      if (error || !user || !ADMIN_EMAILS.has((user.email || '').toLowerCase())) return deny(403)
+      const response = NextResponse.next({request})
+      refreshed.forEach(({name,value,options})=>response.cookies.set(name,value,options))
+      response.headers.set('Cache-Control','private, no-store')
+      return response
+    } catch { return deny(503) }
   }
 
   if (PUBLIC_PREFIXES.some(p => pathname.startsWith(p))) return NextResponse.next()
@@ -170,5 +192,5 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/((?!_next/static|_next/image|favicon.ico|images|icons|api|podcast|manifest.json|sw.js|offline.html).*)'],
+  matcher: ['/api/admin/:path*', '/((?!_next/static|_next/image|favicon.ico|images|icons|api|podcast|manifest.json|sw.js|offline.html).*)'],
 }
