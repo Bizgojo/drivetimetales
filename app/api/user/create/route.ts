@@ -60,6 +60,13 @@ export async function POST(request: NextRequest) {
     };
     if (heardAbout) insertPayload.heard_about_us = heardAbout;
 
+    // AMENDMENT-1 (2026-10-29, Sec 6.4): ad-test sessions carry et_test=<run_id>.
+    // Flag these users as test accounts so production funnel/signup/trial-paid
+    // analytics (which already exclude is_test_account) stay clean.
+    const isAdTestSession =
+      typeof body.et_test === 'string' && body.et_test.trim().length > 0;
+    if (isAdTestSession) insertPayload.is_test_account = true;
+
     // Insert into users table
     let { data, error } = await supabaseAdmin
       .from('users')
