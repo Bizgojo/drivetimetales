@@ -3,7 +3,7 @@
 **Status:** APPROVED DESIGN; PARTIAL IMPLEMENTATION.  
 **Recorded:** October 29, 2026.  
 **Source of truth:** This file in GitHub. Changes to approved business rules must be explicitly authorized by the owner.  
-**Implementation:** PR #420 (development branch). **Do not treat a successful preview build as functional acceptance or an EC2 production deployment.**
+**Implementation:** PR #420 (foundation) and PR #421 (integrated development implementation; incomplete). **Do not treat a successful preview build as functional acceptance or an EC2 production deployment.**
 
 ## Mission and UX rules
 One responsive Admin at `/admin` for Mac, iPhone, and iPad. Replace the existing cluttered Admin interface, **not** establish two competing Admins. Keep screens brief; put advanced details in expandable areas or linked views. The owner should manage routine operations without leaving Admin wherever provider APIs allow. Preserve working services and underlying data during migration. Mobile-first, clear actionable status, verifiable numbers, and direct deep links.
@@ -25,14 +25,14 @@ One responsive Admin at `/admin` for Mac, iPhone, and iPad. Replace the existing
 4. Bart calculates verified monthly distributable surplus; owner wants automatic profit transfer into a separate **Mercury** account, with optional future external bank destination. **No live bank transfers enabled until Mercury permissions, secure controls, recipient, accounting/tax rules and sufficient-funds reconciliation are verified.** Profit is after expense and reserve commitments.
 5. One Admin interface replaces existing navigation/functions, preserving working integrations; validate on a development branch and against production data before deployment, with rollback. Maintain `main` as only deployment line and Orion as exclusive EC2 deployer.
 
-## Belle Alerts — approved concept, NOT yet wired
+## Belle Alerts — approved behavior; code in PR #421, live acceptance pending
 Four event categories:
 - Voice approval actually needed → Production review.
 - New story successfully published → published Story detail.
 - Urgent funding shortfall → Finance funding detail.
 - Susan campaign ready to review → Marketing campaign approval.
 
-When Admin is open and user has enabled audio: play licensed Endless Tales sting followed by short Belle spoken purpose. On closed iPhone/iPad Home Screen PWA, platform push notification with standard sound and text; custom background spoken audio cannot be assumed. Tapping opens exact relevant authorized Admin route. Unread actionable inbox is synchronized across devices. De-duplicate notifications; allow quiet hours for nonurgent items; user can configure alerts. Secure admin-only event and push subscription handling; requests for permission are user initiated. **No push, audio, or live counts currently implemented.**
+When Admin is open and user has enabled audio: play licensed Endless Tales sting followed by short Belle spoken purpose. On closed iPhone/iPad Home Screen PWA, platform push notification with standard sound and text; custom background spoken audio cannot be assumed. Tapping opens exact relevant authorized Admin route. Unread actionable inbox is synchronized across devices. De-duplicate notifications; allow quiet hours for nonurgent items; user can configure alerts. Secure admin-only event and push subscription handling; requests for permission are user initiated. **Event inbox, push and foreground-audio code now exist in PR #421. Live delivery, approved assets, provider configuration and actual-device acceptance remain unverified; no production activation has occurred.**
 
 ## Approved Meta CAC proof-of-concept
 - Claude/Strategos/Susan plan dated October 27, 2026, approved in principle.
@@ -79,3 +79,13 @@ Keep this file current whenever a business rule, implementation milestone, sourc
 The continuation of PR #420 implements a consolidated interface, authenticated data adapters, durable event inbox, explicit customer email approval, campaign draft/budget review, allocation/evidence ledger/scenarios, optional push worker and requested voice-review controls. Business rules above are unchanged. See [release record and Orion handoff](ADMIN-COMMAND-CENTER-RELEASE.md) for the exact tested scope and remaining blockers.
 
 Local production builds with placeholder credentials, focused tests, responsive Chromium fixture checks and rolled-back development database contract tests passed. Production data was inspected read-only; no production schema, jobs, ads or banking actions changed. The 111-episode reconciled library count uses source publication status in addition to analytics visibility. This is **not** functional acceptance, a production deployment, or a claim that provider permissions, real device delivery, complete finance reconciliation or autonomous operation have been verified.
+
+### October 29 follow-up requirements audit
+
+The owner identified the missing first-campaign spreadsheet and the missing interactive Information Flow / detailed process guide. A full [requirements audit](ADMIN-COMMAND-CENTER-REQUIREMENTS-AUDIT.md) records additional missing or incomplete functionality, independently of credential blockers. The recovered guide is now included as a protected process reference with demo financial displays removed. Existing Campaign Plan and other lost specialist-tool entry points are restored. This does not verify the specific six-week campaign record or complete its missing plan. Business decisions and deployment restrictions remain unchanged.
+
+### Owner amendment — Budget placeholder, October 29
+
+Finance must include a **Budget** link. The 12-month spreadsheet budget will be created **only after the 6+2-week test is completed**, with its budget period beginning after that completion. It is a placeholder now; do not invent a start date, populate budget figures or create the workbook before the test is complete.
+
+Planned workbook tabs: **Budget**, **Actual**, **Actual vs. Budget**, **Variance Analysis**. The spreadsheet will show Sources of Income; expenses in **Operating, Story Production, Marketing, and R&D**, with every expense account represented through detailed subcategories; totals for each category; Total Expenses; Profit; and Cash Flow. The earlier accounting class name Operations maps to the owner's displayed label Operating for this workbook. Existing scenario projections are separate from this future approved budget.

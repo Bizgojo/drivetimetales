@@ -76,3 +76,12 @@ npm run build
 ```
 
 The responsive test harness uses explicit TEST FIXTURE data and makes no provider calls. An alternate Chromium binary can be supplied with `ADMIN_QA_CHROMIUM`; it is not a production dependency. Full `npx tsc --noEmit` is a separate repository-wide check with the known historical failures described above.
+
+
+## Follow-up omissions audit
+
+The owner reported the missing campaign spreadsheet and Information Flow/process documentation. See `ADMIN-COMMAND-CENTER-REQUIREMENTS-AUDIT.md` for the complete source-based gap analysis. This follow-up restores the original interactive process reference (without financial demo displays), exposes the existing Airtable Campaign Plan spreadsheet/timeline, and restores other specialist-tool entry points inside the eight sections. These corrections do not resolve live integration, complete accounting, campaign identity/control, customer intelligence or delivery-lifecycle gaps. The first six-week campaign record and its next-week start remain unverified.
+
+The follow-up also disables Sentry build-plugin telemetry using the installed SDK's supported `telemetry: false` option. Runtime error-reporting configuration is unchanged. A local build-control action was rejected by automatic approval review because of possible telemetry to an unverified external destination; subsequent local checks use no Sentry DSN or upload token.
+
+Finance → Budget is an intentional placeholder, per the owner's follow-up instruction. Its four planned tabs and required categories/totals are documented, but no workbook, start date or figures will be created until the 6+2-week test is completed.

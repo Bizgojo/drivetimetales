@@ -24,6 +24,7 @@ const NAV_GROUPS = [
   ]},
   { id: 'agents', label: 'Agents', icon: '🤖', items: [
     { href: '/admin?section=agents', label: 'Agent Command Center' },
+    { href: '/admin/information-flow', label: 'Information Flow & Guide' },
     { href: '/admin/ai-spending', label: 'AI Usage & Costs' },
     { href: '/admin/accounts', label: 'Provider Connections' },
   ]},
@@ -43,12 +44,14 @@ const NAV_GROUPS = [
   ]},
   { id: 'marketing', label: 'Marketing', icon: '📱', items: [
     { href: '/admin?section=marketing', label: 'Campaign Management' },
+    { href: '/admin/marketing/campaign-plan', label: 'Campaign Plan Spreadsheet' },
     { href: '/admin/marketing', label: 'Campaigns & Plans' },
     { href: '/admin/social-posting', label: 'Social & Responses' },
     { href: '/admin/social-media', label: 'Social Media · Future' },
   ]},
   { id: 'finance', label: 'Finance', icon: '💰', items: [
-    { href: '/admin?section=finance', label: 'Budget & Actuals' },
+    { href: '/admin?section=finance', label: 'Finance Overview' },
+    { href: '/admin/finance/budget', label: 'Budget · After 6+2-week test' },
     { href: '/admin/ai-spending', label: 'AI Expenses' },
     { href: '/admin/cfo-report', label: 'CFO Report' },
   ]},

@@ -6,14 +6,15 @@ async function main(){
   'next/link':`import React from 'react'; export default function Link({href,children,...props}){return <a href={href} {...props}>{children}</a>}`,
   'next/navigation':`export function useSearchParams(){return new URLSearchParams(location.search)}`,
  }
- await esbuild.build({stdin:{contents:`import React from 'react';import{createRoot}from'react-dom/client';import CommandCenter from './app/admin/CommandCenter';createRoot(document.getElementById('root')).render(<CommandCenter/>);`,resolveDir:process.cwd(),loader:'tsx'},bundle:true,jsx:'automatic',outfile:output,loader:{'.css':'empty'},define:{'process.env.NODE_ENV':'"test"'},plugins:[{name:'next-stubs',setup(b){b.onResolve({filter:/^next\/(link|navigation)$/},a=>({path:a.path,namespace:'stub'}));b.onLoad({filter:/.*/,namespace:'stub'},a=>({contents:stubs[a.path],loader:'jsx',resolveDir:process.cwd()}))}}]})
+ await esbuild.build({stdin:{contents:`import React from 'react';import{createRoot}from'react-dom/client';import CommandCenter from './app/admin/CommandCenter';import BudgetPlaceholder from './app/admin/finance/budget/BudgetPlaceholder';createRoot(document.getElementById('root')).render(location.pathname==='/admin/finance/budget'?<BudgetPlaceholder/>:<CommandCenter/>);`,resolveDir:process.cwd(),loader:'tsx'},bundle:true,jsx:'automatic',outfile:output,loader:{'.css':'empty'},define:{'process.env.NODE_ENV':'"test"'},plugins:[{name:'next-stubs',setup(b){b.onResolve({filter:/^next\/(link|navigation)$/},a=>({path:a.path,namespace:'stub'}));b.onLoad({filter:/.*/,namespace:'stub'},a=>({contents:stubs[a.path],loader:'jsx',resolveDir:process.cwd()}))}}]})
  const browser=await chromium.launch({executablePath:process.env.ADMIN_QA_CHROMIUM||chromium.executablePath(),headless:true,args:process.env.ADMIN_QA_SPARTICUZ?require(process.env.ADMIN_QA_SPARTICUZ).args:['--no-sandbox','--disable-dev-shm-usage']})
  const results=[]
  try{const page=await browser.newPage();for(const [name,width,height] of [['iPhone',390,844],['iPad',820,1180],['Mac',1440,1000]]){
   await page.setViewportSize({width,height});const errors=[];page.on('pageerror',e=>errors.push(e.message))
   await page.route('https://admin-qa.invalid/**',async route=>{
    const u=new URL(route.request().url())
-   if(u.pathname==='/'){return route.fulfill({contentType:'text/html',body:'<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"></head><body><div id="root"></div></body></html>'})}
+   if(u.pathname==='/'||u.pathname==='/admin/finance/budget'){return route.fulfill({contentType:'text/html',body:'<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"></head><body><div id="root"></div></body></html>'})}
+   if(u.pathname==='/api/admin/center/information-flow')return route.fulfill({contentType:'text/html',body:fs.readFileSync('content/admin-information-flow.html','utf8')})
    const connected={status:'connected',data:[],source:'TEST FIXTURE'}
    let p={}
    if(u.pathname.endsWith('notifications'))p={events:[],readIds:[],settings:null}
@@ -32,8 +33,31 @@ async function main(){
    await page.getByText('Loading verified sources…').waitFor({state:'hidden'})
    const overflow=await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1)
    if(overflow)throw new Error(`${name} ${section} has horizontal page overflow`)
+   if(section==='Agents'||section==='Documentation'){
+    const frame=page.frameLocator('iframe[title="Information Flow and detailed process documentation"]')
+    await frame.getByRole('heading',{name:'Information Flow',exact:true}).waitFor()
+    for(const channel of ['Marketing','Both','Story production'])await frame.getByRole('button',{name:channel,exact:true}).click()
+    for(const tab of ['Handoff package','AI models & tools','Usage & costs','What happens'])await frame.getByRole('tab',{name:tab,exact:true}).click()
+    await frame.getByRole('heading',{name:'What starts this stage?',exact:true}).waitFor()
+    const frameOverflow=await frame.locator('body').evaluate(()=>document.documentElement.scrollWidth>innerWidth+1)
+    if(frameOverflow)throw new Error(`${name} process guide has horizontal document overflow`)
+   }
+   const tools=page.getByText('Existing tools and detailed controls',{exact:true})
+   if(await tools.count()&&!await tools.evaluate(el=>el.parentElement.open))await tools.click()
+   const restored={Stories:'Landing page stories',Customers:'Subscriptions',Production:'Authors & narrators',Marketing:'Campaign Plan spreadsheet & timeline',Documentation:'System settings'}[section]
+   if(restored)await page.getByRole('link',{name:restored+' →',exact:true}).waitFor()
    if(section==='Customers'){await page.getByRole('button',{name:'Read / reply'}).click();await page.getByRole('button',{name:'Approve & send email'}).waitFor();if(await page.getByRole('button',{name:'Approve & send email'}).isEnabled())throw new Error('Empty reply is sendable')}
   }
+  await page.goto('https://admin-qa.invalid/admin/finance/budget')
+  await page.addStyleTag({content:fs.readFileSync('app/admin/command-center.css','utf8')})
+  await page.addScriptTag({content:fs.readFileSync(output,'utf8')})
+  await page.getByRole('heading',{name:'12-Month Budget',exact:true}).waitFor()
+  for(const tab of ['Budget','Actual','Actual vs. Budget','Variance Analysis']){
+   await page.getByRole('tab',{name:tab,exact:true}).click()
+   await page.getByRole('tabpanel').getByText('Not yet created.',{exact:true}).waitFor()
+  }
+  if(await page.locator('input,textarea,table').count())throw new Error('Budget placeholder contains a populated/creation worksheet')
+  if(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1))throw new Error(`${name} budget placeholder overflows`)
   if(errors.length)throw new Error(errors.join('\n'))
   await page.screenshot({path:`tmp/admin-center-${name.toLowerCase()}.png`,fullPage:true})
   results.push({device:name,viewport:`${width}x${height}`,sections:8,overflow:false,errors:0,mode:'fixtures'})
