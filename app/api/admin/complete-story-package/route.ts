@@ -436,11 +436,27 @@ export async function POST(req: NextRequest) {
       }, 422)
     }
 
-    await updateStory(storyId, {
-      status: 'audio_ready',
-      is_hidden: true,
-      published_on: null,
-    })
+    // PACKAGE-NO-UNPUBLISH-001 (The Nanny Cam EP5, Oct 29 15:35Z; Chicago EP7,
+    // Oct 27): a late or repeated package call landed AFTER the series
+    // auto-published, flipping a live finale back to audio_ready / hidden.
+    // A story already published stays published — only the review-ready
+    // flags are skipped; every other package step above still ran.
+    const { data: liveCheck } = await supabase
+      .from('stories')
+      .select('workflow_state,status,is_hidden')
+      .eq('id', storyId)
+      .single()
+    const alreadyLive = liveCheck?.workflow_state === 'published' || (liveCheck?.status === 'published' && liveCheck?.is_hidden === false)
+    if (alreadyLive) {
+      console.warn(`[complete-story-package] PACKAGE-NO-UNPUBLISH-001: story ${storyId} is already published — leaving it visible (caller: ${req.headers.get('user-agent') || 'unknown'}, referer: ${req.headers.get('referer') || 'none'})`)
+    } else {
+      const { error: rfrErr } = await supabase
+        .from('stories')
+        .update({ status: 'audio_ready', is_hidden: true, published_on: null })
+        .eq('id', storyId)
+        .or('workflow_state.is.null,workflow_state.neq.published')
+      if (rfrErr) throw new Error(rfrErr.message)
+    }
 
     let belleVariants: Record<string, unknown> = { success: false, skipped: true }
     try {
@@ -467,11 +483,9 @@ export async function POST(req: NextRequest) {
       console.warn('[complete-story-package] Belle variant generation threw', belleVariants)
     }
 
-    const reviewReadyStory = {
-      ...refreshed,
-      status: 'audio_ready',
-      is_hidden: true,
-    }
+    const reviewReadyStory = alreadyLive
+      ? { ...refreshed }
+      : { ...refreshed, status: 'audio_ready', is_hidden: true }
 
     return json({
       success: true,
