@@ -673,11 +673,8 @@ function HomeContent() {
   return (
     <div className="min-h-screen bg-slate-950">
       <main className="pb-20">
-        <div style={{ padding: '1rem 1rem 0' }}>
-          {showWelcome ? (
-            /* BELLE-WELCOME-001 (Marc, 2026-08-11): audio player card in the search slot.
-               Auto-dismisses when both segments finish (~20.94s total).
-               Tapping the ▶ button starts/resumes audio (also the autoplay fallback). */
+        {showWelcome && (
+          <div style={{ padding: '1rem 1rem 0' }}>
             <WelcomeAudioCard
               seg1Url={seg1Url}
               firstName={firstName}
@@ -693,8 +690,25 @@ function HomeContent() {
                 void supabase.auth.updateUser({ data: { welcome_dismissed: true } })
               }}
             />
-          ) : (
-            <>
+          </div>
+        )}
+        {!homeSearch.trim() && (
+          <>
+            {/* Signed-in listeners use the shared compact card above both pages. */}
+            {!user && <ContinueSampleHero onStoryId={(id) => { setHeroStoryId(id); setContinueIds(prev => Array.from(new Set([id, ...prev]))); setAllExcludeIds(prev => Array.from(new Set([id, ...prev]))) }} />}
+            <ContinueListening key={clKey} renderCard={false} excludeStoryId={heroStoryId} onIdsLoaded={(ids) => { setContinueIds(prev => Array.from(new Set([...prev, ...ids]))); setAllExcludeIds(prev => Array.from(new Set([...prev, ...ids, ...playlistIds]))) }} />
+            <YourPlaylist onIdsLoaded={(ids) => { setPlaylistIds(ids); setAllExcludeIds(prev => Array.from(new Set([...prev, ...ids]))) }} />
+            <NewReleases
+              onIdsLoaded={(ids) => {
+                setAllExcludeIds(prev => Array.from(new Set([...prev, ...ids])))
+                setNewArrivalsReady(true)
+              }}
+            />
+            {newArrivalsReady && <RecommendedForYou excludeIds={allExcludeIds} />}
+          </>
+        )}
+        {!showWelcome && (
+          <div style={{ padding: '1rem 1rem 0' }}>
               <label htmlFor="home-story-search" style={{ display: 'block', color: 'white', fontSize: '12px', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: '0.5rem' }}>
                 Search stories
               </label>
@@ -715,26 +729,9 @@ function HomeContent() {
                   outline: 'none',
                 }}
               />
-            </>
-          )}
-        </div>
-        {homeSearch.trim() ? (
-          <HomeSearchResults query={homeSearch} />
-        ) : (
-          <>
-            {/* Signed-in listeners use the shared compact card above both pages. */}
-            {!user && <ContinueSampleHero onStoryId={(id) => { setHeroStoryId(id); setContinueIds(prev => Array.from(new Set([id, ...prev]))); setAllExcludeIds(prev => Array.from(new Set([id, ...prev]))) }} />}
-            <ContinueListening key={clKey} renderCard={false} excludeStoryId={heroStoryId} onIdsLoaded={(ids) => { setContinueIds(prev => Array.from(new Set([...prev, ...ids]))); setAllExcludeIds(prev => Array.from(new Set([...prev, ...ids, ...playlistIds]))) }} />
-            <YourPlaylist onIdsLoaded={(ids) => { setPlaylistIds(ids); setAllExcludeIds(prev => Array.from(new Set([...prev, ...ids]))) }} />
-            <NewReleases
-              onIdsLoaded={(ids) => {
-                setAllExcludeIds(prev => Array.from(new Set([...prev, ...ids])))
-                setNewArrivalsReady(true)
-              }}
-            />
-            {newArrivalsReady && <RecommendedForYou excludeIds={allExcludeIds} />}
-          </>
+          </div>
         )}
+        {homeSearch.trim() && <HomeSearchResults query={homeSearch} />}
       </main>
       {/* ORION-HOME-WALK-001 fix 3: banner must never obscure the bottom nav (Marc walk, 2026-07-12). */}
       <InstallAppBanner aboveBottomNav />
