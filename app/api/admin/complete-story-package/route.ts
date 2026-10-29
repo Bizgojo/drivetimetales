@@ -1,3 +1,4 @@
+import { internalAdminFetch } from '@/lib/admin-center/internal-fetch'
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { classifyCoverFailure, COVER_MAX_RETRIES, buildStrategosRetryPrompt } from '@/lib/cover/coverRetry'
@@ -68,7 +69,7 @@ Rules:
 Script:
 ${script}`
 
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
+  const res = await internalAdminFetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -282,7 +283,7 @@ export async function POST(req: NextRequest) {
         console.log('[complete-story-package] cover generation start', coverDiagnostics)
         while (coverAttempt < totalCoverAttempts && !coverSucceeded) {
           coverAttempt += 1
-          const coverRes = await fetch(coverEndpoint, {
+          const coverRes = await internalAdminFetch(coverEndpoint, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ storyId, genre: story.genre || story.primary_genre || '', ...(coverFeedback ? { coverFeedback } : {}) }),
@@ -460,7 +461,7 @@ export async function POST(req: NextRequest) {
 
     let belleVariants: Record<string, unknown> = { success: false, skipped: true }
     try {
-      const belleRes = await fetch(`${getOrigin(req)}/api/admin/generate-belle-variants`, {
+      const belleRes = await internalAdminFetch(`${getOrigin(req)}/api/admin/generate-belle-variants`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ storyId }),

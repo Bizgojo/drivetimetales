@@ -1,3 +1,4 @@
+import { internalAdminFetch } from '@/lib/admin-center/internal-fetch'
 import { NextRequest, NextResponse } from 'next/server'
 import { selectableAuthors } from '@/lib/reservedTalent'
 import { belleOutroLooksCutOff } from '@/lib/belleOutroEnding'
@@ -2699,7 +2700,7 @@ async function runGenerateVoicesPreflightRequest(origin: string, storyId: string
   // (c) tag the terminal failure transient so dispatch backs off instead of
   // re-dispatching a new job every cycle. Abort/timeout is single-shot (the
   // server may still be working) but still tagged transient.
-  const doPost = () => fetch(endpoint, {
+  const doPost = () => internalAdminFetch(endpoint, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ storyId, preflightOnly: true }),
@@ -4428,7 +4429,7 @@ async function runStandaloneVoiceSegment(job: ProductionJob, origin: string): Pr
   // keeps existing segments via retryMissingOnly below.
   const purgeExisting = shouldPurgeVoiceSegments(previous)
 
-  const response = await fetch(endpoint, {
+  const response = await internalAdminFetch(endpoint, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -4496,7 +4497,7 @@ async function runStandaloneBelleAssets(job: ProductionJob, origin: string) {
     throw new Error('Voice generation must be complete before generate_belle_assets')
   }
 
-  const response = await fetch(`${resolveSelfFetchOrigin(origin)}/api/admin/generate-voices`, {
+  const response = await internalAdminFetch(`${resolveSelfFetchOrigin(origin)}/api/admin/generate-voices`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ storyId, generateBelleOnly: true }),
@@ -5050,7 +5051,7 @@ async function runStandaloneMusicGeneration(job: ProductionJob, origin: string) 
 
   // GATE 3: increment the attempt counter immediately BEFORE the provider fetch.
   const nextMusicAttempts = musicAttempts + 1
-  const response = await fetch(`${resolveSelfFetchOrigin(origin)}/api/asc3/generate-music`, {
+  const response = await internalAdminFetch(`${resolveSelfFetchOrigin(origin)}/api/asc3/generate-music`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ storyId, prompt }),
@@ -5505,7 +5506,7 @@ async function runStandalonePackageCompletion(job: ProductionJob, origin: string
     throw new Error('Final mix outputs must exist before complete_story_package (audio_url and story_audio_url must be set in stories table)')
   }
 
-  const response = await fetch(`${resolveSelfFetchOrigin(origin)}/api/admin/complete-story-package`, {
+  const response = await internalAdminFetch(`${resolveSelfFetchOrigin(origin)}/api/admin/complete-story-package`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ storyId }),
@@ -5655,7 +5656,7 @@ async function runSeriesPackageCompletion(job: ProductionJob, origin: string) {
     const key = String(episode.episodeNumber || episode.storyId)
     if (doneByEp[key]) continue
 
-    const response = await fetch(`${resolveSelfFetchOrigin(origin)}/api/admin/complete-story-package`, {
+    const response = await internalAdminFetch(`${resolveSelfFetchOrigin(origin)}/api/admin/complete-story-package`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ storyId: episode.storyId }),
@@ -7973,7 +7974,7 @@ async function runSeriesCastReview(job: ProductionJob, origin: string) {
   if (!episodes.length) throw new Error('No child episodes found for cast review')
   const endpoint = `${resolveSelfFetchOrigin(origin)}/api/admin/generate-voices`
   for (const ep of episodes as any[]) {
-    const res = await fetch(endpoint, {
+    const res = await internalAdminFetch(endpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ storyId: ep.id, castOnly: true }),
@@ -8149,7 +8150,7 @@ async function runSeriesVoiceSegment(job: ProductionJob, origin: string): Promis
         console.log(`[SERIES-VOICE-RETRY] Ep${number} seg${segmentNumber} attempt ${attempt}/${MAX_SEGMENT_RETRIES}, waiting ${delayMs.toFixed(0)}ms`)
         await new Promise(r => setTimeout(r, delayMs))
       }
-      response = await fetch(`${resolveSelfFetchOrigin(origin)}/api/admin/generate-voices`, {
+      response = await internalAdminFetch(`${resolveSelfFetchOrigin(origin)}/api/admin/generate-voices`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -8338,7 +8339,7 @@ async function runSeriesBelleAssets(job: ProductionJob, origin: string) {
     }
 
     const storyId = String(ep.id)
-    const r = await fetch(`${resolveSelfFetchOrigin(origin)}/api/admin/generate-voices`, {
+    const r = await internalAdminFetch(`${resolveSelfFetchOrigin(origin)}/api/admin/generate-voices`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ storyId, generateBelleOnly: true }),
@@ -8431,7 +8432,7 @@ async function runSeriesMusicGeneration(job: ProductionJob, origin: string) {
     // fetch, so a crash mid-poll still counts the attempt and we never spin
     // the provider past the cap.
     byEpisode[key] = epAttempts + 1
-    const r = await fetch(`${resolveSelfFetchOrigin(origin)}/api/asc3/generate-music`, {
+    const r = await internalAdminFetch(`${resolveSelfFetchOrigin(origin)}/api/asc3/generate-music`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ storyId, prompt }),

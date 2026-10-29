@@ -72,3 +72,10 @@ PR #420 development branch already regrouped navigation into eight sections, add
 
 ## Project coordination
 Keep this file current whenever a business rule, implementation milestone, source-of-truth connection, or acceptance result changes. Record dates, corresponding PR/commit IDs and remaining blockers. Claude and Orion should read this spec before changing Admin. Do not imply work continues asynchronously or that development branches are production deployments.
+
+
+## October 29 implementation record — development only
+
+The continuation of PR #420 implements a consolidated interface, authenticated data adapters, durable event inbox, explicit customer email approval, campaign draft/budget review, allocation/evidence ledger/scenarios, optional push worker and requested voice-review controls. Business rules above are unchanged. See [release record and Orion handoff](ADMIN-COMMAND-CENTER-RELEASE.md) for the exact tested scope and remaining blockers.
+
+Local production builds with placeholder credentials, focused tests, responsive Chromium fixture checks and rolled-back development database contract tests passed. Production data was inspected read-only; no production schema, jobs, ads or banking actions changed. The 111-episode reconciled library count uses source publication status in addition to analytics visibility. This is **not** functional acceptance, a production deployment, or a claim that provider permissions, real device delivery, complete finance reconciliation or autonomous operation have been verified.

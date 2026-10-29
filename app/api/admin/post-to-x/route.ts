@@ -1,3 +1,4 @@
+import { adminAccess } from '@/lib/admin-center/auth'
 /**
  * POST /api/admin/post-to-x
  * Posts a tweet using OAuth 1.0a (User Context).
@@ -27,6 +28,8 @@ function buildOAuthHeader(method: string, url: string, oauthParams: Record<strin
 }
 
 export async function POST(req: NextRequest) {
+  const accessDenied = await adminAccess(req); if (accessDenied) return accessDenied
+
   const { text } = await req.json()
   if (!text) return NextResponse.json({ error: 'text required' }, { status: 400 })
 
