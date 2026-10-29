@@ -27,6 +27,8 @@ import { syncPremiseIndexForTransition } from '@/lib/premiseIndex'
 // promotion. Manual admin paths untouched.
 import { maybeDirectPublishStandalone, maybeDirectPublishSeries, type DirectAutoPublishReport } from '@/lib/directPublish'
 import { transientResumeDecision, errorTextOf, MAX_TRANSIENT_RESUMES } from '@/lib/transientResume'
+import { buildCastReview, needsCastReview, CAST_REVIEW_STATE_KEY } from '@/lib/castReview'
+import { sendCastReview } from '@/lib/castReviewTelegram'
 import { verifyArtifactHttp } from '@/lib/artifactGate'
 import { runHookGateForStory, detectBelleQualityRepairEmpty } from '@/lib/hookGate'
 import { runStoryQualityGate } from '@/lib/storyQualityGate'
@@ -7961,6 +7963,90 @@ async function runSeriesVoicePreflight(job: ProductionJob, origin: string) {
   }
 }
 
+// CAST-REVIEW-001: cast every episode up front (no audio), then send Marc one
+// clip per character and park the job until he approves.
+async function runSeriesCastReview(job: ProductionJob, origin: string) {
+  const state = job.state_json && typeof job.state_json === 'object' ? job.state_json : {}
+  const seriesId = String(job.series_id || state.seriesId || '')
+  if (!seriesId) throw new Error('Series job is missing series_id')
+  const episodes = await loadSeriesEpisodes(seriesId)
+  if (!episodes.length) throw new Error('No child episodes found for cast review')
+  const endpoint = `${resolveSelfFetchOrigin(origin)}/api/admin/generate-voices`
+  for (const ep of episodes as any[]) {
+    const res = await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ storyId: ep.id, castOnly: true }),
+    })
+    const report = await readJsonOrDiagnostic(res, '/api/admin/generate-voices') as any
+    if (!res.ok || report?.success !== true) {
+      const err = Object.assign(
+        new Error(`Cast review: casting failed for Ep${ep.episode_number}: ${report?.error || report?.error_json?.message || res.status}`),
+        { structuredErrorDetail: { castOnlyReport: report } },
+      )
+      throw err
+    }
+  }
+  const { data: roster, error: rosterError } = await supabase
+    .from('series_character_roster')
+    .select('canonical_name,aliases,description,voice_id,voice_name')
+    .eq('series_id', seriesId)
+  if (rosterError) throw new Error(`Cast review: roster load failed: ${rosterError.message}`)
+  const items = buildCastReview((roster || []) as any[], (episodes as any[]).map((ep) => ({
+    episodeNumber: Number(ep.episode_number || ep.series_episode_number || 0),
+    script: String(ep.script || ''),
+  })))
+  const first = (episodes as any[])[0] || {}
+  const seriesTitle = String(first.series_name || first.title || 'New series')
+  const delivery = await sendCastReview({ seriesTitle, narratorName: first.narrator_voice_name || null, items })
+  return { seriesId, seriesTitle, items, delivery }
+}
+
+async function parkJobForCastReview(
+  lockedJob: ProductionJob,
+  lockHolderId: string,
+  step: string,
+  review: Awaited<ReturnType<typeof runSeriesCastReview>>,
+) {
+  const priorState = lockedJob.state_json && typeof lockedJob.state_json === 'object' ? lockedJob.state_json : {}
+  const reviewState = {
+    requestedAt: nowIso(),
+    approvedAt: null,
+    seriesTitle: review.seriesTitle,
+    items: review.items.map((i) => ({ name: i.name, voiceId: i.voiceId, voiceName: i.voiceName, episodes: i.episodes, lines: i.lines })),
+    delivery: review.delivery,
+  }
+  const reviewLogs = appendLog(lockedJob, `Cast review sent to Marc (${review.items.length} voices) — waiting for approval before recording`, {
+    seriesId: review.seriesId,
+    clipsSent: review.delivery.clipsSent,
+    clipsFailed: review.delivery.clipsFailed,
+    chatId: review.delivery.chatId,
+    deliveryError: review.delivery.error || null,
+  })
+  const { data: parkedJob, error: parkError } = await supabase
+    .from('production_jobs')
+    .update({
+      status: 'waiting_for_external',
+      current_step: NEXT_STEP_AFTER_SERIES_PREFLIGHT,
+      state_json: { ...priorState, [CAST_REVIEW_STATE_KEY]: reviewState },
+      error_json: {
+        kind: 'awaiting_cast_approval',
+        step,
+        marc_required: true,
+        message: `Waiting for Marc to approve the ${review.items.length}-voice cast for "${review.seriesTitle}" (CAST-REVIEW-001).`,
+        at: nowIso(),
+      },
+      logs: reviewLogs,
+      locked_at: null,
+      locked_by: null,
+    })
+    .match(ownedJobFence(lockedJob, lockHolderId))
+    .select('*')
+    .single()
+  if (parkError) throw new Error(`Failed to park job for cast review: ${parkError.message}`)
+  return { parkedJob, reviewState }
+}
+
 async function runSeriesVoiceSegment(job: ProductionJob, origin: string): Promise<SeriesVoiceGenerationResult> {
   const state = job.state_json && typeof job.state_json === 'object' ? job.state_json : {}
   const seriesId = job.series_id || state.seriesId
@@ -10505,6 +10591,19 @@ export async function POST(req: NextRequest) {
 
     if (step === NEXT_STEP_AFTER_SERIES_PREFLIGHT) {
       const origin = new URL(req.url).origin
+      // CAST-REVIEW-001: stop before any recording until Marc approves the cast.
+      if (needsCastReview(lockedJob.state_json)) {
+        const review = await runSeriesCastReview(lockedJob, origin)
+        const { parkedJob, reviewState } = await parkJobForCastReview(lockedJob, lockHolderId, step, review)
+        return NextResponse.json({
+          success: true,
+          action: 'awaiting_cast_approval',
+          jobId: parkedJob.id,
+          currentStep: step,
+          status: parkedJob.status,
+          castReview: reviewState,
+        })
+      }
       const logSeriesVoiceResult = (job: ProductionJob, r: Awaited<ReturnType<typeof runSeriesVoiceSegment>>) => {
         const vg = r.state.seriesVoiceGeneration || {}
         return appendLog(job, r.complete

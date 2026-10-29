@@ -2637,6 +2637,8 @@ export async function POST(req: NextRequest) {
       characterVoices: characterVoicesParam,
       characterVoiceCodes = [] as VoiceCodeAssignment[],
       preflightOnly,
+      // CAST-REVIEW-001: run casting only (persist every speaker's voice) and return the cast; no audio.
+      castOnly,
       retryMissingOnly,
       segmentNumber,
       generateBelleOnly,
@@ -3340,6 +3342,17 @@ export async function POST(req: NextRequest) {
       console.log(`  ✅ ${formatCastCollisions(castCheck)}`)
     }
     warnings.forEach(w => console.warn(`  ⚠️ ${w}`))
+    // CAST-REVIEW-001: casting is complete and persisted (roster + story
+    // assignments). Report it without generating any audio.
+    if (castOnly === true) {
+      const nameById = new Map<string, string>()
+      for (const v of characterVoicePool) nameById.set(v.voice_id, String(v.name || v.voice_id))
+      const cast = characterSpeakers.map((speaker) => {
+        const voiceId = resolveVoiceForSpeaker(voiceMap, speaker) || null
+        return { speaker, voiceId, voiceName: voiceId ? nameById.get(voiceId) || null : null }
+      })
+      return NextResponse.json({ success: true, castOnly: true, storyId, cast, warnings })
+    }
     const segmentFilePattern = /^segment_\d{4}\.mp3$/
     const storyAudioFolder = `asc3/${storyId}`
     // ATL-SFX-INCR-001: include sfx-type lines so the incremental path tracks
