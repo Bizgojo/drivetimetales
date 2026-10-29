@@ -60,6 +60,7 @@ import {
   WRITER_MAX_FAILED_INVOCATIONS,
   WRITER_SELF_CHECK_BUDGET_MS,
   seriesSpokenWordTarget,
+  autofixDescriptionBlockedWords,
 } from '@/lib/scriptReadiness'
 import { shouldContinueSeriesVoiceBatch } from '@/lib/voiceBatch'
 import { runVoiceConformanceGate, type VoiceProfile } from '@/lib/voiceConformanceGate'
@@ -6542,7 +6543,12 @@ async function generateOneSeriesEpisodeScript(job: ProductionJob, model: string)
         .map((c: any) => ('text' in c ? c.text : ''))
         .join('')
         .trim()
-      const normalized = normalizeScriptDescription(rawScript, brief.description || targetEpisode.description || '')
+      const normalizedRaw = normalizeScriptDescription(rawScript, brief.description || targetEpisode.description || '')
+      // DESC-WORD-AUTOFIX-001: swap blocked DESCRIPTION words that have a safe synonym (hidden→secret).
+      const normalized = {
+        script: autofixDescriptionBlockedWords(normalizedRaw.script).script,
+        description: autofixDescriptionBlockedWords(`DESCRIPTION: ${normalizedRaw.description}`).script.replace(/^DESCRIPTION: /, ''),
+      }
       // SCRIPT-LABELS-001: format-only repair (label case, SFX cue form) before the self-check.
       // NUMERAL-AUTOFIX-001: spell simple spoken numerals before the self-check.
       const formatted = spellOutSpokenNumerals(normalizeScriptFormat(normalized.script).script)

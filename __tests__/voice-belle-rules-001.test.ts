@@ -20,7 +20,7 @@ const ctx = buildBelleValidationContext(
 describe('VOICE-BELLE-RULES-001', () => {
   test('the finale intro breaks the voice step\'s 38-word limit', () => {
     expect(ctx.episodeState).toBe('series_finale')
-    expect(validateBelleLine('intro', intro, ctx)).toContain('announcement is too long for a clean handoff')
+    expect(validateBelleLine('intro', intro, ctx).some((e: string) => e.startsWith('announcement is too long for a clean handoff ('))).toBe(true)
   })
 
   test('a finale outro without "Endless Tales" or the author fails the voice step', () => {
