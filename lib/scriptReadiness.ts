@@ -563,3 +563,31 @@ export function seriesSpokenWordTarget(runtime: string): { minutes: number; targ
   const max = Math.max(target + 200, Math.round(minutes * 1.1 * wpm))
   return { minutes, target, min, max }
 }
+
+/**
+ * DESC-WORD-AUTOFIX-001 (job 0fa07149, The Nanny Cam EP2, 2026-10-29): the
+ * premise is about "hidden cameras", so the writer kept putting "hidden" in
+ * the card DESCRIPTION and failed all 3 drafts on the blocked-word rule.
+ * Swap the blocked words that have a safe present-tense synonym. Words with
+ * no safe swap (was/were/had/found/left...) are left for the writer.
+ * Only the DESCRIPTION header line is touched.
+ */
+const DESCRIPTION_WORD_SWAPS: Array<[RegExp, string]> = [
+  [/\bhidden\b/g, 'secret'],
+  [/\bHidden\b/g, 'Secret'],
+  [/\blost\b/g, 'missing'],
+  [/\bLost\b/g, 'Missing'],
+  [/\bvanished\b/g, 'missing'],
+  [/\bVanished\b/g, 'Missing'],
+]
+
+export function autofixDescriptionBlockedWords(script: string): { script: string; changed: boolean } {
+  let changed = false
+  const out = String(script || '').replace(/^(\s*DESCRIPTION\s*:\s*)(.*)$/im, (_m, head: string, body: string) => {
+    let next = body
+    for (const [re, sub] of DESCRIPTION_WORD_SWAPS) next = next.replace(re, sub)
+    if (next !== body) changed = true
+    return head + next
+  })
+  return { script: out, changed }
+}

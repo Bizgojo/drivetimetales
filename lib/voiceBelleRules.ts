@@ -100,8 +100,8 @@ export function validateBelleLine(kind: 'intro' | 'outro', text: string, ctx: Be
   if (BELLE_GENERIC_PATTERNS.some(pattern => pattern.test(cleaned))) errors.push(`${kind} uses generic or repetitive Belle wording`)
   if (BELLE_EXACT_OR_CREEPY_TIME_PATTERNS.some(pattern => pattern.test(cleaned))) errors.push(`${kind} uses exact or creepy listener context`)
   if (/\b(spoiler|reveals?|revealed|killer is|turns out|will die|dies in the next)\b/i.test(cleaned)) errors.push(`${kind} risks spoiler language`)
-  if (kind === 'intro' && words > 38) errors.push('announcement is too long for a clean handoff')
-  if (kind === 'outro' && words > 55) errors.push('outro is too long for Belle')
+  if (kind === 'intro' && words > 38) errors.push(`announcement is too long for a clean handoff (${words} words; max 38 — cut at least ${words - 38})`)
+  if (kind === 'outro' && words > 55) errors.push(`outro is too long for Belle (${words} words; max 55 — cut at least ${words - 55})`)
   // [LISTENER_NAME] is a valid personalization placeholder in the script — do not reject it
   // ATL-BELLE-QC-BUG-002: strip quoted substrings before greeting check to allow series names like "The Welcome Committee".
   const cleanedForGreetingCheck = cleaned.replace(/"[^"]*"/g, ' ');
