@@ -85,3 +85,9 @@ The owner reported the missing campaign spreadsheet and Information Flow/process
 The follow-up also disables Sentry build-plugin telemetry using the installed SDK's supported `telemetry: false` option. Runtime error-reporting configuration is unchanged. A local build-control action was rejected by automatic approval review because of possible telemetry to an unverified external destination; subsequent local checks use no Sentry DSN or upload token.
 
 Finance → Budget is an intentional placeholder, per the owner's follow-up instruction. Its four planned tabs and required categories/totals are documented, but no workbook, start date or figures will be created until the 6+2-week test is completed.
+
+## External tools and authorized build recheck
+
+The sidebar includes ChatGPT, Claude, Telegram for Orion, and local Mac Terminal launch instructions. Telegram opens the web app; an exact verified Orion chat URL is not configured. Mac Terminal is a local-app instruction, not an executable browser link. All external tool links have a minimum 44px touch target.
+
+After the owner authorized the ElevenLabs build recheck, the local production build completed successfully (264 static pages, exit 0) with placeholder Supabase/Stripe/Resend values and Sentry build telemetry disabled. No ElevenLabs key was configured locally; this verifies compilation and packaging, not live provider access. Existing fetch failures against placeholder data sources remain expected. Information Flow HTML is present in the route file trace. Admin type checking passed (0 diagnostics, 53 entry files); all 44 tests in 7 suites passed. No production deployment or provider generation was initiated.
