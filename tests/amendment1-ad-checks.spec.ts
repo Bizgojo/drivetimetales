@@ -21,7 +21,14 @@ const DEST_URL = process.env.AD_DESTINATION_URL || `${PROD_URL}/`
 test.describe('Amendment 1 — six ad checks', () => {
   test('1-2. destination URL 200 with hero + play above the fold (desktop)', async ({ page }) => {
     await page.goto(DEST_URL, { waitUntil: 'domcontentloaded', timeout: 30000 })
-    expect(page.url()).toContain('endless-tales.com')
+    // Gap 8.1 blind spot: must land on the EXACT expected route — a
+    // mistyped path on our own domain that still returns 200 must Fail.
+    // Compare origin + pathname only (utm params may be added/stripped).
+    const norm = (p: string) => (p.length > 1 ? p.replace(/\/+$/, '') : p)
+    const landed = new URL(page.url())
+    const expected = new URL(DEST_URL)
+    expect(landed.origin).toBe(expected.origin)
+    expect(norm(landed.pathname)).toBe(norm(expected.pathname))
     const hero = page.locator('h1, [data-testid="hero"]').first()
     await expect(hero).toBeVisible({ timeout: 15000 })
     const play = page.getByRole('button', { name: /play|listen|start/i }).first()

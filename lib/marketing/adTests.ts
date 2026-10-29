@@ -34,6 +34,29 @@ function notTested(detail: string) {
   return { result: 'not_tested' as CheckResult, detail }
 }
 
+/** Amendment 1 Gap 8.4: any session carrying et_test=<run_id> is a test
+ *  session — browser pixels must not fire production events for it.
+ *  Duplicated inline in MetaPixel/TikTokPixel (client inline JS cannot
+ *  import this module); keep the regex identical. */
+export function isEtTestQuery(search: string): boolean {
+  return /(^|[?&])et_test=/.test(search || '')
+}
+
+/** Amendment 1 Gap 8.1 blind spot: a 200 on our own domain is not enough —
+ *  the fetch must land on the EXACT expected route. A mistyped path that
+ *  still returns 200 (catch-all, homepage fallback) must Fail. Compares
+ *  origin + normalized pathname only (utm params may be added/stripped). */
+export function landingRouteMatches(finalUrl: string, expectedUrl: string): boolean {
+  try {
+    const f = new URL(finalUrl)
+    const e = new URL(expectedUrl)
+    const norm = (p: string) => (p.length > 1 ? p.replace(/\/+$/, '') : p)
+    return f.origin === e.origin && norm(f.pathname) === norm(e.pathname)
+  } catch {
+    return false
+  }
+}
+
 async function checkVideoAudio(ctx: AdTestContext) {
   if (!ctx.videoUrl) return notTested('No source video URL on the creative; add video to test audio stream.')
   try {
@@ -57,6 +80,14 @@ async function checkDestinationUrl(ctx: AdTestContext) {
       headers: { 'User-Agent': 'EndlessTales-AdTest/1.0' },
     })
     if (res.status !== 200) return fail(`Production URL returned ${res.status} (expected 200).`)
+    if (!landingRouteMatches(res.url, ctx.destinationUrl)) {
+      let landed = res.url
+      try {
+        const u = new URL(res.url)
+        landed = u.origin + u.pathname
+      } catch { /* keep raw */ }
+      return fail(`Landed on ${landed}, expected route ${ctx.destinationUrl} — mistyped path still returned 200.`)
+    }
     const html = await res.text()
     const hasHero = /hero|og:title|__next/i.test(html)
     const hasPlay = /play|listen/i.test(html)
