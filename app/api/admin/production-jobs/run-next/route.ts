@@ -60,7 +60,6 @@ import {
   WRITER_MAX_FAILED_INVOCATIONS,
   WRITER_SELF_CHECK_BUDGET_MS,
   seriesSpokenWordTarget,
-  autofixDescriptionBlockedWords,
 } from '@/lib/scriptReadiness'
 import { shouldContinueSeriesVoiceBatch } from '@/lib/voiceBatch'
 import { runVoiceConformanceGate, type VoiceProfile } from '@/lib/voiceConformanceGate'
@@ -227,7 +226,8 @@ const NARRATIVE_HOOK_FALLBACK_TIMEOUT_MS = 8000
 const VOICE_PREFLIGHT_TIMEOUT_MS = 120_000
 const TITLE_MAX_CHARS = 28
 const DESCRIPTION_MAX_WORDS = 24
-const DESCRIPTION_PAST_TENSE_RE = /\b(vanished|was|were|had|found|discovered|left|moved|sealed|signed|forged|buried|hidden|lost)\b/i
+// DESC-TENSE-001: was/were/had only; tense itself is judged by the validator.
+const DESCRIPTION_PAST_TENSE_RE = /\b(was|were|had)\b/i
 
 // ATL-PIPE-008: Classify validate_script failure into canonical kinds.
 // isCardCopy=true means the failure came from validateCardCopy() (deterministic).
@@ -3454,7 +3454,7 @@ Additional production-format hard rules:
 - Right: NARRATOR: Pike's jaw tightened.
 
 Additional rules:
-- DESCRIPTION must be a COMPLETE sentence, ≤24 words, present tense only (DISC-001). If the brief-provided description exceeds 24 words or uses past-tense constructions, rewrite it to comply. Before final output, self-check DESCRIPTION word count; if it is over 24 words, rewrite it internally until it is complete and ≤24 words. Never cut DESCRIPTION mid-word or mid-phrase. Never output a fragment. Reject past-tense story-card phrasing such as "vanished", "was", "were", "had", "found", "discovered", "left", "moved", "sealed", "signed", "forged", "buried", "hidden", or "lost". DESCRIPTION must TEASE a question, never reveal the story's climax, twist, final discovery, or resolution payoff. Raise curiosity about the setup or mystery; do NOT state the outcome. Example: tease "strange notes under a neighbor's door at 3:12 a.m."; do NOT reveal "someone is trapped inside."
+- DESCRIPTION must be a COMPLETE sentence, ≤24 words, present tense only (DISC-001). If the brief-provided description exceeds 24 words or uses past-tense constructions, rewrite it to comply. Before final output, self-check DESCRIPTION word count; if it is over 24 words, rewrite it internally until it is complete and ≤24 words. Never cut DESCRIPTION mid-word or mid-phrase. Never output a fragment. Every sentence must be present tense; never use "was", "were" or "had". Words like "hidden" or "lost" are fine as descriptions ("hidden cameras record her"). DESCRIPTION must TEASE a question, never reveal the story's climax, twist, final discovery, or resolution payoff. Raise curiosity about the setup or mystery; do NOT state the outcome. Example: tease "strange notes under a neighbor's door at 3:12 a.m."; do NOT reveal "someone is trapped inside."
 - If NARRATOR_IS_CHARACTER is false, NARRATOR must not be a story character name and must not include "(character)".
 - If the narrator is a story character, NARRATOR_IS_CHARACTER must be true and the script must use consistent first-person narration.
 - Standalone stories must end conclusively.
@@ -6543,12 +6543,7 @@ async function generateOneSeriesEpisodeScript(job: ProductionJob, model: string)
         .map((c: any) => ('text' in c ? c.text : ''))
         .join('')
         .trim()
-      const normalizedRaw = normalizeScriptDescription(rawScript, brief.description || targetEpisode.description || '')
-      // DESC-WORD-AUTOFIX-001: swap blocked DESCRIPTION words that have a safe synonym (hidden→secret).
-      const normalized = {
-        script: autofixDescriptionBlockedWords(normalizedRaw.script).script,
-        description: autofixDescriptionBlockedWords(`DESCRIPTION: ${normalizedRaw.description}`).script.replace(/^DESCRIPTION: /, ''),
-      }
+      const normalized = normalizeScriptDescription(rawScript, brief.description || targetEpisode.description || '')
       // SCRIPT-LABELS-001: format-only repair (label case, SFX cue form) before the self-check.
       // NUMERAL-AUTOFIX-001: spell simple spoken numerals before the self-check.
       const formatted = spellOutSpokenNumerals(normalizeScriptFormat(normalized.script).script)

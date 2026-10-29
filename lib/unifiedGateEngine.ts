@@ -737,7 +737,8 @@ export function buildCoverPrompt(input: CoverInput): CoverPromptResult {
 
 export const DESCRIPTION_MAX_WORDS = 24
 export const TITLE_MAX_CHARS = 28
-const PAST_TENSE_RE = /\b(vanished|was|were|had|found|discovered|left|moved|sealed|signed|forged|buried|hidden|lost)\b/i
+// DESC-TENSE-001: was/were/had only (see lib/validateCardCopy).
+const PAST_TENSE_RE = /\b(was|were|had)\b/i
 
 export interface SeriesMetadataInput {
   seriesName: string

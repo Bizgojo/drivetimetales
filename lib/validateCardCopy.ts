@@ -12,8 +12,16 @@
 
 export const TITLE_MAX_CHARS = 28
 export const DESCRIPTION_MAX_CHARS = 70
-export const DESCRIPTION_PAST_TENSE_RE =
-  /\b(vanished|was|were|had|found|discovered|left|moved|sealed|signed|forged|buried|hidden)\b/i
+/**
+ * DESC-TENSE-001 (Marc 2026-10-29): the rule is "no past-tense sentences",
+ * not a list of banned words. Only was/were/had are blocked here because
+ * they nearly always mean a past-tense sentence. Words like "hidden",
+ * "lost" or "found" are fine as descriptions ("hidden cameras record her");
+ * whether a sentence is past tense is judged by the Claude validator
+ * (score_validate_package, "DESCRIPTION must be present tense") and fixed
+ * by its automatic DESCRIPTION repair.
+ */
+export const DESCRIPTION_PAST_TENSE_RE = /\b(was|were|had)\b/i
 export const DESCRIPTION_SFX_RE = /\[sfx:/i
 
 export function countWords(s: string): number {
