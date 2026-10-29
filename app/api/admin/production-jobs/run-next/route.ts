@@ -28,6 +28,7 @@ import { syncPremiseIndexForTransition } from '@/lib/premiseIndex'
 import { maybeDirectPublishStandalone, maybeDirectPublishSeries, type DirectAutoPublishReport } from '@/lib/directPublish'
 import { transientResumeDecision, errorTextOf, MAX_TRANSIENT_RESUMES } from '@/lib/transientResume'
 import { buildCastReview, needsCastReview, CAST_REVIEW_STATE_KEY } from '@/lib/castReview'
+import { extractValidatorFixList, planSeriesEpisodeRewrite, buildRewriteFeedbackBlock, MAX_SERIES_EPISODE_REWRITES } from '@/lib/seriesRewrite'
 import { sendCastReview } from '@/lib/castReviewTelegram'
 import { verifyArtifactHttp } from '@/lib/artifactGate'
 import { runHookGateForStory, detectBelleQualityRepairEmpty } from '@/lib/hookGate'
@@ -6463,6 +6464,8 @@ async function generateOneSeriesEpisodeScript(job: ProductionJob, model: string)
   const seriesCharacterRoster = await loadSeriesCharacterRoster(String(seriesId))
   const seriesCharacterRosterBlock = buildSeriesCharacterRosterPromptBlock(seriesCharacterRoster)
   const prompt = buildSeriesEpisodePrompt(series, targetEpisode, episodes, continuityBundle, namePaletteBlock, authorVoiceBlock, assignedNarratorName, seriesCharacterRosterBlock)
+    // SERIES-REWRITE-001: a validator-ordered rewrite carries the reviewer's fix list.
+    + buildRewriteFeedbackBlock((brief as any)?.validator_rewrite?.feedback, Number((brief as any)?.validator_rewrite?.attempt || 1))
 
   // WRITER-SELF-CHECK-001: check every draft with the free production gates
   // before saving; rewrite with the exact failures, at most
@@ -9158,6 +9161,84 @@ export async function POST(req: NextRequest) {
             repairedDescription,
             logs: retryLogs,
           })
+        }
+
+        // SERIES-REWRITE-001: a story-content failure re-writes the failed
+        // episode (with the reviewer's fix list) and every later episode,
+        // instead of stopping for a human. Bounded per episode.
+        if (!(result as any).continuityPinError && result.episodeResult?.report) {
+          const failedEpisodeNumber = Number(result.episodeResult?.episodeNumber || 0)
+          const priorState = lockedJob.state_json && typeof lockedJob.state_json === 'object' ? lockedJob.state_json : {}
+          const rewriteCounts: Record<string, number> = { ...((priorState as any).seriesRewrite?.counts || {}) }
+          const plan = planSeriesEpisodeRewrite({
+            failedEpisodeNumber,
+            episodes: (result.episodes || []).map((ep: any) => ({ id: String(ep.id), episodeNumber: episodeNumber(ep, 0), hasScript: Boolean(ep.script) })),
+            rewriteCounts,
+          })
+          if (plan.action === 'rewrite') {
+            const feedback = extractValidatorFixList(String(result.episodeResult.report))
+            for (const ep of (result.episodes || []) as any[]) {
+              if (!plan.clearStoryIds.includes(String(ep.id))) continue
+              const isFailed = episodeNumber(ep, 0) === plan.failedEpisodeNumber
+              const sj = ep.script_json && typeof ep.script_json === 'object' ? ep.script_json : {}
+              const backups = Array.isArray(sj.rewrite_backups) ? sj.rewrite_backups.slice(-2) : []
+              const { error: clearErr } = await supabase
+                .from('stories')
+                .update({
+                  script: null,
+                  status: 'brief_complete',
+                  validator_result: null,
+                  validator_report: null,
+                  validator_passed_at: null,
+                  brief_json: {
+                    ...(ep.brief_json || {}),
+                    validator_rewrite: isFailed ? { attempt: plan.attempt, feedback, at: nowIso() } : null,
+                  },
+                  script_json: {
+                    ...sj,
+                    rewrite_backups: [...backups, { at: nowIso(), reason: isFailed ? 'validator_content_fail' : 'follows_rewritten_episode', script: ep.script }],
+                  },
+                })
+                .eq('id', ep.id)
+              if (clearErr) throw new Error(`SERIES-REWRITE-001: failed to clear episode ${episodeNumber(ep, 0)}: ${clearErr.message}`)
+            }
+            rewriteCounts[String(plan.failedEpisodeNumber)] = plan.attempt
+            const rewriteLogs = appendLog({ ...lockedJob, logs }, `Auto-rewrite ${plan.attempt}/${MAX_SERIES_EPISODE_REWRITES}: episode ${plan.failedEpisodeNumber} failed review — rewriting it and ${plan.clearStoryIds.length - 1} later episode(s) with the reviewer's fix list`, {
+              seriesId: result.seriesId,
+              failedEpisodeNumber: plan.failedEpisodeNumber,
+              clearedStoryIds: plan.clearStoryIds,
+              fixList: feedback.slice(0, 600),
+            })
+            const { data: rewriteJob, error: rewriteErr } = await supabase
+              .from('production_jobs')
+              .update({
+                status: 'queued',
+                current_step: NEXT_STEP_AFTER_SERIES_CREATE,
+                state_json: {
+                  ...result.state,
+                  seriesValidation: null,
+                  seriesRewrite: { counts: rewriteCounts, last: { episode: plan.failedEpisodeNumber, attempt: plan.attempt, at: nowIso() } },
+                },
+                error_json: null,
+                logs: rewriteLogs,
+                locked_at: null,
+                locked_by: null,
+              })
+              .match(ownedJobFence(lockedJob, lockHolderId))
+              .select('*')
+              .single()
+            if (rewriteErr) throw new Error(`SERIES-REWRITE-001: failed to queue rewrite: ${rewriteErr.message}`)
+            return NextResponse.json({
+              success: true,
+              action: 'series_episode_rewrite',
+              jobId: rewriteJob.id,
+              currentStep: step,
+              nextStep: NEXT_STEP_AFTER_SERIES_CREATE,
+              failedEpisodeNumber: plan.failedEpisodeNumber,
+              attempt: plan.attempt,
+              logs: rewriteLogs,
+            })
+          }
         }
 
         await markStoriesNeedAttention(
