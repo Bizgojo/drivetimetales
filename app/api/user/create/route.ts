@@ -60,6 +60,13 @@ export async function POST(request: NextRequest) {
     };
     if (heardAbout) insertPayload.heard_about_us = heardAbout;
 
+    // AMENDMENT-1 (2026-10-29, Sec 6.4): ad-test sessions carry et_test=<run_id>.
+    // Flag these users as test accounts so production funnel/signup/trial-paid
+    // analytics (which already exclude is_test_account) stay clean.
+    const isAdTestSession =
+      typeof body.et_test === 'string' && body.et_test.trim().length > 0;
+    if (isAdTestSession) insertPayload.is_test_account = true;
+
     // Insert into users table
     let { data, error } = await supabaseAdmin
       .from('users')
@@ -94,14 +101,21 @@ export async function POST(request: NextRequest) {
     // signup page (reg_<userId>) → platforms dedup to one event. Covers
     // creation paths with no client pixel too (magic-link promo flow).
     // Fire-and-forget contract: sendServerEvent never throws, ≤4s.
-    await sendServerEvent({
-      name: 'CompleteRegistration',
-      eventId: registrationEventId(id),
-      email,
-      externalId: id,
-      sourceUrl: 'https://endless-tales.com/signup',
-      customData: { content_name: 'Endless Tales Account' },
-    });
+    // AMENDMENT-1 Gap 8.4b: ad-test signups must NEVER create production
+    // conversion rows — skip the server event entirely (test-event
+    // verification per Spec Sec 8.4 asserts zero new production rows).
+    if (isAdTestSession) {
+      console.log('[User Create] Ad-test session — CompleteRegistration CAPI skipped (no production row).')
+    } else {
+      await sendServerEvent({
+        name: 'CompleteRegistration',
+        eventId: registrationEventId(id),
+        email,
+        externalId: id,
+        sourceUrl: 'https://endless-tales.com/signup',
+        customData: { content_name: 'Endless Tales Account' },
+      });
+    }
 
     // Send welcome email (non-blocking)
     try {

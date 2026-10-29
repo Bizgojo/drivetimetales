@@ -6,9 +6,10 @@
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import { NextResponse } from 'next/server'
+import { sanitizeEtTestId } from '@/lib/marketing/adTests'
 
 export async function POST(request: Request) {
-  const { email, returnTo = '/home' } = await request.json()
+  const { email, returnTo = '/home', et_test } = await request.json()
 
   if (!email || typeof email !== 'string') {
     return NextResponse.json({ error: 'Email is required' }, { status: 400 })
@@ -17,7 +18,12 @@ export async function POST(request: Request) {
   const url = new URL(request.url)
   const appUrl = process.env.NEXT_PUBLIC_APP_URL || url.origin
   const isLocalhost = appUrl.includes('localhost')
-  const redirectTo = `${appUrl}/auth/confirm`
+  // AMENDMENT-1 Gap 8.4b: carry et_test=<run_id> in the magic-link redirect
+  // URL itself — the link opens in a NEW TAB where sessionStorage from the
+  // requesting tab does not exist. Without this the new tab looks like a
+  // real visitor and its trial/checkout fires production pixel events.
+  const etTestId = sanitizeEtTestId(et_test)
+  const redirectTo = `${appUrl}/auth/confirm${etTestId ? `?et_test=${encodeURIComponent(etTestId)}` : ''}`
 
   const cookieStore = cookies()
   const cookiesToSet: Array<{ name: string; value: string; options: Record<string, unknown> }> = []
@@ -83,6 +89,6 @@ export async function POST(request: Request) {
     path: '/',
   })
 
-  console.log(`[MagicLink] Sent to ${email.slice(0, 4)}*** redirectTo:${redirectTo}`)
+  console.log(`[MagicLink] Sent to ${email.slice(0, 4)}*** redirectTo:${redirectTo}${etTestId ? ' (+et_test)' : ''}`)
   return response
 }

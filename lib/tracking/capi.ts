@@ -177,18 +177,23 @@ async function postJson(url: string, body: unknown, headers: Record<string, stri
   }
 }
 
-async function sendMeta(evt: ServerTrackingEvent): Promise<void> {
+// AMENDMENT-1 (2026-10-29, Sec 6.4 + 11.1): test sessions (et_test=<run_id>)
+// route through Meta's Test Events tab via an explicit test_event_code
+// override, and are excluded from production analytics via
+// users.is_test_account. The override never changes dedup: event_id still
+// matches the client fire, so Test Events shows the dedup pair.
+async function sendMeta(evt: ServerTrackingEvent, testEventCodeOverride?: string | null): Promise<void> {
   const cfg = metaConfig()
   if (!cfg) return
-  const payload = buildMetaCapiPayload(evt, cfg.testEventCode)
+  const payload = buildMetaCapiPayload(evt, testEventCodeOverride !== undefined ? (testEventCodeOverride || undefined) : cfg.testEventCode)
   const url = `https://graph.facebook.com/${META_API_VERSION}/${cfg.pixelId}/events?access_token=${encodeURIComponent(cfg.token)}`
   await postJson(url, payload, {}, `meta capi ${evt.name}`)
 }
 
-async function sendTikTok(evt: ServerTrackingEvent): Promise<void> {
+async function sendTikTok(evt: ServerTrackingEvent, testEventCodeOverride?: string | null): Promise<void> {
   const cfg = tiktokConfig()
   if (!cfg) return
-  const payload = buildTikTokPayload(evt, cfg.pixelId, cfg.testEventCode)
+  const payload = buildTikTokPayload(evt, cfg.pixelId, testEventCodeOverride !== undefined ? (testEventCodeOverride || undefined) : cfg.testEventCode)
   await postJson(TIKTOK_TRACK_URL, payload, { 'Access-Token': cfg.token }, `tiktok events ${evt.name}`)
 }
 
@@ -198,9 +203,9 @@ async function sendTikTok(evt: ServerTrackingEvent): Promise<void> {
  * swallowed. Callers on the money path may `await` this safely — worst case
  * is TRACKING_TIMEOUT_MS, and platform sends run concurrently.
  */
-export async function sendServerEvent(evt: ServerTrackingEvent): Promise<void> {
+export async function sendServerEvent(evt: ServerTrackingEvent, opts?: { testEventCode?: string | null }): Promise<void> {
   try {
-    const results = await Promise.allSettled([sendMeta(evt), sendTikTok(evt)])
+    const results = await Promise.allSettled([sendMeta(evt, opts?.testEventCode), sendTikTok(evt, opts?.testEventCode)])
     for (let i = 0; i < results.length; i++) {
       const result = results[i]
       if (result.status === 'rejected') {

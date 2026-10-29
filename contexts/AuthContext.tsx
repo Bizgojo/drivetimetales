@@ -45,6 +45,7 @@ interface DbUser {
   subscription_type: string | null
   subscription_ends_at: string | null
   is_founding_member: boolean | null
+  is_test_account: boolean | null
 }
 
 interface AuthContextType {
@@ -83,7 +84,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
     
     try {
-      const apiUrl = `${url}/rest/v1/users?id=eq.${authUser.id}&select=first_name,last_name,display_name,credits,signup_source,plan,subscription_type,subscription_ends_at,is_founding_member`
+      const apiUrl = `${url}/rest/v1/users?id=eq.${authUser.id}&select=first_name,last_name,display_name,credits,signup_source,plan,subscription_type,subscription_ends_at,is_founding_member,is_test_account`
       
       // ORION-ENTITLE-SYNC-001: authorize as the USER, not the anon key — RLS
       // returns nothing for anon, which silently stripped subscription fields
@@ -110,6 +111,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (data && data.length > 0) {
         const dbUser = data[0]
         publishUser({ ...authUser, ...dbUser })
+        // AMENDMENT-1 Gap 8.4b: logged-in test accounts suppress browser
+        // pixels even with no et_test in the URL (trackClientEvent +
+        // pixel guards read these flags). Best-effort, never throws.
+        if (dbUser.is_test_account === true && typeof window !== 'undefined') {
+          try { window.localStorage.setItem('et_test_account', '1') } catch {}
+          try { (window as any).__etTestSession = true } catch {}
+        }
       } else {
         publishUser(authUser)
       }

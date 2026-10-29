@@ -18,6 +18,34 @@ declare global {
   }
 }
 
+/**
+ * AMENDMENT-1 Gap 8.4b: true for ad-test sessions and logged-in test
+ * accounts. Mirrors the inline predicate in MetaPixel/TikTokPixel (kept as
+ * a duplicate because that code runs as inline JS). When true, no browser
+ * pixel event may fire — this covers InitiateCheckout / CompleteRegistration
+ * / StartTrial button fires on signup/subscribe/home for test users.
+ */
+export function isTestSessionClient(): boolean {
+  if (typeof window === 'undefined') return false
+  try {
+    if ((window as any).__etTestSession === true) return true
+    if (/(^|[?&])et_test=/.test(window.location.search || '')) return true
+    try {
+      if (window.sessionStorage?.getItem('et_test')) return true
+    } catch {}
+    try {
+      if (window.localStorage?.getItem('et_test_account') === '1') return true
+    } catch {}
+    try {
+      const parts = `;${document.cookie || ''}`.split(';')
+      if (parts.some((c) => c.trim() === 'et_test_account=1')) return true
+    } catch {}
+  } catch {
+    return false
+  }
+  return false
+}
+
 export type ClientEventParams = Record<string, string | number | undefined | null>
 
 function compactParams(params: ClientEventParams): Record<string, string | number> {
@@ -40,6 +68,9 @@ export function trackClientEvent(
   eventId: string
 ): void {
   if (typeof window === 'undefined') return
+  // AMENDMENT-1 Gap 8.4b: test sessions and logged-in test accounts never
+  // fire production browser-pixel events (trial/checkout leak fix).
+  if (isTestSessionClient()) return
   const props = compactParams(params)
   try {
     window.fbq?.('track', metaEventName(name), props, { eventID: eventId })

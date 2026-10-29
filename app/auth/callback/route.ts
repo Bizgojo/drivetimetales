@@ -13,6 +13,7 @@ import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import { NextResponse } from 'next/server'
 import { isLocalOrigin, resolveRequestOrigin } from '@/lib/requestOrigin'
+import { sanitizeEtTestId, appendEtTest } from '@/lib/marketing/adTests'
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url)
@@ -109,12 +110,24 @@ export async function GET(request: Request) {
     )
   }
 
+  // AMENDMENT-1 Gap 8.4b: et_test=<run_id> must survive this hop — the
+  // callback frequently lands in a new tab where sessionStorage is empty.
+  const etTestId = sanitizeEtTestId(searchParams.get('et_test'))
+
+  // AMENDMENT-1 Gap 8.4 (test-account suppression): does this login belong
+  // to a test account? Best-effort, never blocks the redirect.
+  let isTestAccount = false
   try {
     const { user } = data.session
     const now = new Date().toISOString()
     // Update last_login on every sign-in — ensures Invited People table reflects activity
     await supabase.from('users').update({ last_login: now }).eq('id', user.id)
-    // Create users row if missing (non-blocking)
+    try {
+      const { data: flagRow } = await supabase.from('users').select('is_test_account').eq('id', user.id).single()
+      isTestAccount = (flagRow as any)?.is_test_account === true
+    } catch {}
+    // Create users row if missing (non-blocking). Forward et_test so a
+    // fresh ad-test signup is flagged is_test_account at creation.
     fetch(`${origin}/api/user/create`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -125,6 +138,7 @@ export async function GET(request: Request) {
           user.user_metadata?.given_name ||
           user.user_metadata?.full_name?.split(' ')[0] ||
           user.email?.split('@')[0],
+        ...(etTestId ? { et_test: etTestId } : {}),
       }),
     }).catch((e) => console.error('[AuthCallback] User create error (non-fatal):', e))
   } catch (e) {}
@@ -133,11 +147,25 @@ export async function GET(request: Request) {
   const returnTo = requestedReturnTo.startsWith('/') && !requestedReturnTo.startsWith('//') && !requestedReturnTo.includes('://')
     ? requestedReturnTo
     : '/home'
-  const redirectUrl = new URL(returnTo, origin)
+  const redirectUrl = new URL(appendEtTest(returnTo, etTestId), origin)
   if (type === 'magiclink' && redirectUrl.pathname === '/home') {
     redirectUrl.searchParams.set('welcome', 'true')
   }
   const response = NextResponse.redirect(redirectUrl)
+
+  // Persistent test-account flag for the browser pixel guards (MetaPixel /
+  // TikTokPixel read this cookie synchronously at page load — before any
+  // async profile fetch could run). Set when the login is a known test
+  // account OR the URL carries et_test (ad-test flows only; real visitors
+  // never have this param). Non-httpOnly by design: client JS must read it.
+  if (isTestAccount || etTestId) {
+    response.cookies.set('et_test_account', '1', {
+      maxAge: 31536000,
+      path: '/',
+      sameSite: 'lax',
+      secure: !isLocalhost,
+    })
+  }
 
   // Production/PWA cookies stay none/secure; localhost uses lax/insecure.
   cookiesToSet.forEach(({ name, value, options }) => {

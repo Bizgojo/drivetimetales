@@ -50,10 +50,18 @@ function SignInContent() {
     setError('')
     setMagicLoading(true)
     try {
+      // AMENDMENT-1 Gap 8.4b: forward et_test=<run_id> (URL or same-tab
+      // stash) so the magic-link email URL carries it into the new tab.
+      let etTest: string | null = null
+      try {
+        etTest = searchParams.get('et_test') || sessionStorage.getItem('et_test_run')
+        const fromUrl = searchParams.get('et_test')
+        if (fromUrl) sessionStorage.setItem('et_test_run', fromUrl)
+      } catch { etTest = searchParams.get('et_test') }
       const res = await fetch('/api/auth/magic-link', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: normalizeEmail(email), returnTo }),
+        body: JSON.stringify({ email: normalizeEmail(email), returnTo, ...(etTest ? { et_test: etTest } : {}) }),
       })
       if (!res.ok) {
         // ORION-MAGIC-VISIBILITY-001: surface the real reason — a swallowed
