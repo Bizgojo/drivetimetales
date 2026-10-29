@@ -44,7 +44,8 @@ const NAV_GROUPS = [
   ]},
   { id: 'marketing', label: 'Marketing', icon: '📱', items: [
     { href: '/admin?section=marketing', label: 'Campaign Management' },
-    { href: '/admin/marketing/campaign-plan', label: 'Campaign Plan Spreadsheet' },
+    { href: '/admin/marketing/test-plan', label: '6+2-Week Plan & Spreadsheet' },
+    { href: '/admin/marketing/campaign-plan', label: 'Live Campaign Plan Spreadsheet' },
     { href: '/admin/marketing', label: 'Campaigns & Plans' },
     { href: '/admin/social-posting', label: 'Social & Responses' },
     { href: '/admin/social-media', label: 'Social Media · Future' },
