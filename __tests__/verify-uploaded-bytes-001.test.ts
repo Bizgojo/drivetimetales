@@ -70,3 +70,18 @@ describe('verifyUploadedBytes — VERIFY-READ-001 stale-read correction', () => 
     ).rejects.toThrow(/verification download failed: socket hang up/)
   });
 });
+
+describe('VERIFY-WAIT-001: waits longer for a same-key re-upload to show', () => {
+  test('stale for 4 reads, fresh on the 5th → passes; sleeps grow', async () => {
+    const { verifyUploadedBytes } = require('@/lib/storage/verifyUploadedBytes')
+    const fresh = Buffer.from('fresh-bytes-123')
+    const stale = Buffer.from('stale')
+    let n = 0
+    const slept: number[] = []
+    await verifyUploadedBytes('https://x/y.mp3', fresh, 'story_body.mp3', async () => (++n < 5 ? stale : fresh), {
+      sleep: async (ms: number) => { slept.push(ms) },
+    })
+    expect(n).toBe(5)
+    expect(slept).toEqual([1000, 3000, 6000, 10000])
+  })
+})
