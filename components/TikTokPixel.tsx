@@ -25,6 +25,7 @@ export default function TikTokPixel() {
             var s = window.location.search || '';
             if (/(^|[?&])et_test=/.test(s)) { try { sessionStorage.setItem('et_test', '1'); } catch (e) {} return true; }
             try { if (sessionStorage.getItem('et_test')) return true; } catch (e) {}
+            try { if (localStorage.getItem('et_test_account') === '1') return true; } catch (e) {}
             try {
               var parts = (';' + (document.cookie || '')).split(';');
               for (var i = 0; i < parts.length; i++) {
