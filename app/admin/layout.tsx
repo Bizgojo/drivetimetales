@@ -45,6 +45,7 @@ const NAV_GROUPS = [
     { href: '/admin/marketing/campaign-intelligence', label: 'Campaign Management' },
     { href: '/admin/marketing', label: 'Campaigns & Plans' },
     { href: '/admin/social-posting', label: 'Social & Responses' },
+    { href: '/admin/social-media', label: 'Social Media · Future' },
   ]},
   { id: 'finance', label: 'Finance', icon: '💰', items: [
     { href: '/admin/finance', label: 'Budget & Actuals' },
