@@ -1,26 +1,41 @@
+import LegalDocument from '@/components/legal/LegalDocument';
 export default function PrivacyPolicy() {
-  return (
-    <div style={{ minHeight: "100vh", background: "#0a0a0f", color: "white", fontFamily: "system-ui, sans-serif" }}>
-      <div style={{ maxWidth: "720px", margin: "0 auto", padding: "48px 24px 80px" }}>
-        <div style={{ marginBottom: "48px" }}>
-          <a href="/" style={{ color: "#f0a030", fontSize: "14px", fontWeight: 600, textDecoration: "none", marginBottom: "32px", display: "block" }}>← Back to Endless Tales</a>
-          <h1 style={{ fontSize: "36px", fontWeight: 900, marginBottom: "8px" }}>Privacy Policy</h1>
-          <p style={{ color: "rgba(255,255,255,0.4)", fontSize: "14px" }}>Last updated: March 27, 2026</p>
-        </div>
-        <div style={{ display: "flex", flexDirection: "column", gap: "40px" }}>
-          <section><h2 style={{ fontSize: "20px", fontWeight: 800, color: "#f0a030", marginBottom: "12px" }}>1. Introduction</h2><p style={{ color: "rgba(255,255,255,0.75)", lineHeight: 1.7, fontSize: "15px" }}>Wonder Books Press operates Endless Tales at app.endless-tales.com. This Privacy Policy explains how we collect, use, and protect your personal information.</p></section>
-          <section><h2 style={{ fontSize: "20px", fontWeight: 800, color: "#f0a030", marginBottom: "12px" }}>2. Information We Collect</h2><p style={{ color: "rgba(255,255,255,0.75)", lineHeight: 1.7, fontSize: "15px" }}><strong style={{ color: "white" }}>You provide:</strong> name, email, payment info (via Stripe), referral codes, and story reviews. <strong style={{ color: "white" }}>Collected automatically:</strong> playback progress, listening history, library activity, device/browser info, and general location.</p></section>
-          <section><h2 style={{ fontSize: "20px", fontWeight: 800, color: "#f0a030", marginBottom: "12px" }}>3. How We Use Your Information</h2><p style={{ color: "rgba(255,255,255,0.75)", lineHeight: 1.7, fontSize: "15px" }}>To provide and improve the Service, process payments, personalize your experience, send transactional and promotional emails (opt-out anytime), and detect fraud.</p></section>
-          <section><h2 style={{ fontSize: "20px", fontWeight: 800, color: "#f0a030", marginBottom: "12px" }}>4. Third-Party Services</h2><p style={{ color: "rgba(255,255,255,0.75)", lineHeight: 1.7, fontSize: "15px" }}>We use <strong style={{ color: "white" }}>Supabase</strong> (database/auth), <strong style={{ color: "white" }}>Stripe</strong> (payments), <strong style={{ color: "white" }}>ElevenLabs</strong> (AI voice — your first name may be used for personalized audio greetings), <strong style={{ color: "white" }}>Vercel</strong> (hosting), and <strong style={{ color: "white" }}>Resend</strong> (email). We do not sell your personal information.</p></section>
-          <section><h2 style={{ fontSize: "20px", fontWeight: 800, color: "#f0a030", marginBottom: "12px" }}>5. Data Retention</h2><p style={{ color: "rgba(255,255,255,0.75)", lineHeight: 1.7, fontSize: "15px" }}>Data is retained while your account is active. Upon deletion, personal data is removed within 30 days except where required for legal or financial compliance.</p></section>
-          <section><h2 style={{ fontSize: "20px", fontWeight: 800, color: "#f0a030", marginBottom: "12px" }}>6. Your Rights</h2><p style={{ color: "rgba(255,255,255,0.75)", lineHeight: 1.7, fontSize: "15px" }}>You may access, correct, or delete your data and opt out of marketing emails at any time. Contact <a href="mailto:hello@endless-tales.com" style={{ color: "#f0a030", textDecoration: "none" }}>hello@endless-tales.com</a>.</p></section>
-          <section><h2 style={{ fontSize: "20px", fontWeight: 800, color: "#f0a030", marginBottom: "12px" }}>7. Cookies and Local Storage</h2><p style={{ color: "rgba(255,255,255,0.75)", lineHeight: 1.7, fontSize: "15px" }}>We use local storage for playback progress, guest history, and playlists. We use cookies for authentication sessions. No third-party advertising cookies.</p></section>
-          <section><h2 style={{ fontSize: "20px", fontWeight: 800, color: "#f0a030", marginBottom: "12px" }}>8. Children&apos;s Privacy</h2><p style={{ color: "rgba(255,255,255,0.75)", lineHeight: 1.7, fontSize: "15px" }}>The Service is not directed to children under 13. We do not knowingly collect data from children under 13.</p></section>
-          <section><h2 style={{ fontSize: "20px", fontWeight: 800, color: "#f0a030", marginBottom: "12px" }}>9. Security</h2><p style={{ color: "rgba(255,255,255,0.75)", lineHeight: 1.7, fontSize: "15px" }}>We use HTTPS, Supabase authentication, and database access controls to protect your data.</p></section>
-          <section><h2 style={{ fontSize: "20px", fontWeight: 800, color: "#f0a030", marginBottom: "12px" }}>10. Changes to This Policy</h2><p style={{ color: "rgba(255,255,255,0.75)", lineHeight: 1.7, fontSize: "15px" }}>We may update this policy and will notify you of significant changes by email or in-app notice.</p></section>
-          <section><h2 style={{ fontSize: "20px", fontWeight: 800, color: "#f0a030", marginBottom: "12px" }}>11. Contact</h2><p style={{ color: "rgba(255,255,255,0.75)", lineHeight: 1.7, fontSize: "15px" }}>Questions? <a href="mailto:hello@endless-tales.com" style={{ color: "#f0a030", textDecoration: "none" }}>hello@endless-tales.com</a> — Wonder Books Press, Elloree, SC</p></section>
-        </div>
-      </div>
-    </div>
-  )
+  return <LegalDocument title="Privacy Policy" sections={[
+    { heading: 'Scope and information we collect', paragraphs: [
+      'This policy describes how Wonder Books Press handles personal information when you use Endless Tales, including its website, player, subscriptions, downloads, and account features.',
+      'We collect information you give us, such as your name, email address, account details, profile photo if provided, preferences, feedback, referrals, story ideas, and support messages. Our payment provider processes payment credentials; we may receive transaction identifiers, subscription status, billing history, and limited payment details.',
+      'We collect device and browser information, IP address, approximate location inferred from network data, sign-in information, listening progress and history, playlists, downloads and associated status, usage events, and technical logs. Certain app features may save data on your device.'
+    ]},
+    { heading: 'Travel Insights and personalization', paragraphs: [
+      'If you enable Travel Insights, the app may use device location or motion signals to infer broad listening context for story recommendations. The Account page provides Always, Never, and Only While Using This App choices. Permission settings on your device also apply. We do not intend to retain exact routes or detailed GPS history through this feature.',
+      'We may use your listening activity, story selections, preferences, and account details to tailor recommendations and improve the stories we offer. Personalized audio greetings may use your first name and a synthetic voice service.'
+    ]},
+    { heading: 'Why we use information', paragraphs: [
+      'We use information to create and secure accounts, provide playback and offline features, process and administer subscriptions, deliver recommendations, provide customer support, send service notices, measure performance, prevent abuse, and meet legal obligations.',
+      'We may send marketing messages where permitted. You may opt out of promotional emails through their unsubscribe links; necessary account and transaction emails may continue.'
+    ]},
+    { heading: 'Service providers and advertising', paragraphs: [
+      'We use vendors to support authentication and storage (including Supabase), billing (Stripe), infrastructure and hosting, email delivery, analytics, and synthetic audio services (including ElevenLabs where enabled). Service providers receive information needed for their services under applicable arrangements.',
+      'We may measure advertising and campaign performance using advertising platforms such as Meta. Depending on implementation, cookies, device identifiers, or event data may be used. We will provide additional notice or choices where law requires. We do not claim that every service provider named here receives every type of data.',
+      'We do not sell personal information for money. Certain targeted advertising disclosures may qualify as sharing or a sale under applicable state privacy laws even without a monetary sale; requests to opt out will be handled as required by law.'
+    ]},
+    { heading: 'Cookies, local storage, and security', paragraphs: [
+      'We use cookies and local storage for login sessions, player state, downloads, saved preferences, and service operation. Third-party technologies, where deployed, are subject to applicable notice and choice requirements.',
+      'We use technical and organizational safeguards designed to protect data, but no system is completely secure.'
+    ]},
+    { heading: 'Retention and deletion', paragraphs: [
+      'We retain personal information for the period needed to provide services and for legitimate business, security, legal, tax, and dispute-resolution purposes. Retention depends on the data category, and backup or legally required records may persist after an account is closed.',
+      'You can request account or data deletion at hello@endless-tales.com. We will verify requests and respond within applicable legal deadlines. Deletion may affect access to listening history and downloads.'
+    ]},
+    { heading: 'Your choices and privacy rights', paragraphs: [
+      'You may update certain account settings, disable Travel Insights, opt out of promotional email, and contact us to request access, correction, deletion, or information about processing. Depending on your state, you may have additional rights to opt out of targeted advertising, profiling, or certain data disclosures, and to appeal a denied request. We will honor applicable rights after reasonable verification.',
+      'You may also control some cookies and location permissions through your browser or device. Turning off certain permissions may affect optional features.'
+    ]},
+    { heading: 'Children', paragraphs: [
+      'Endless Tales is not directed to children under 13, and we do not knowingly collect their personal information. If you believe a child under 13 provided information, contact us for review and deletion.'
+    ]},
+    { heading: 'Changes and contact', paragraphs: [
+      'We will update the date and provide additional notice when required if this policy changes materially. Contact hello@endless-tales.com for privacy questions or to exercise rights. Operator: Wonder Books Press, Elloree, South Carolina, USA.'
+    ]}
+  ]} />;
 }
