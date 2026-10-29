@@ -1,28 +1,39 @@
-import { ANNUAL_PRICE_LABEL, MONTHLY_PRICE_LABEL, TRIAL_LABEL } from '@/lib/pricing'
-export default function TermsOfService() {
-  return (
-    <div style={{ minHeight: "100vh", background: "#0a0a0f", color: "white", fontFamily: "system-ui, sans-serif" }}>
-      <div style={{ maxWidth: "720px", margin: "0 auto", padding: "48px 24px 80px" }}>
-        <div style={{ marginBottom: "48px" }}>
-          <a href="/" style={{ color: "#f0a030", fontSize: "14px", fontWeight: 600, textDecoration: "none", marginBottom: "32px", display: "block" }}>← Back to Endless Tales</a>
-          <h1 style={{ fontSize: "36px", fontWeight: 900, marginBottom: "8px" }}>Terms of Service</h1>
-          <p style={{ color: "rgba(255,255,255,0.4)", fontSize: "14px" }}>Last updated: March 27, 2026</p>
-        </div>
-        <div style={{ display: "flex", flexDirection: "column", gap: "40px" }}>
-          <section><h2 style={{ fontSize: "20px", fontWeight: 800, color: "#f0a030", marginBottom: "12px" }}>1. Acceptance of Terms</h2><p style={{ color: "rgba(255,255,255,0.75)", lineHeight: 1.7, fontSize: "15px" }}>By accessing or using Endless Tales, operated by Wonder Books Press, you agree to be bound by these Terms of Service.</p></section>
-          <section><h2 style={{ fontSize: "20px", fontWeight: 800, color: "#f0a030", marginBottom: "12px" }}>2. Description of Service</h2><p style={{ color: "rgba(255,255,255,0.75)", lineHeight: 1.7, fontSize: "15px" }}>Endless Tales is an audio storytelling platform providing subscribers access to a library of original audio dramas and stories for personal, non-commercial use only.</p></section>
-          <section><h2 style={{ fontSize: "20px", fontWeight: 800, color: "#f0a030", marginBottom: "12px" }}>3. Accounts and Registration</h2><p style={{ color: "rgba(255,255,255,0.75)", lineHeight: 1.7, fontSize: "15px" }}>You must be at least 13 to create an account. You agree to provide accurate information, keep credentials secure, and be responsible for all activity under your account.</p></section>
-          <section><h2 style={{ fontSize: "20px", fontWeight: 800, color: "#f0a030", marginBottom: "12px" }}>4. Subscription and Billing</h2><p style={{ color: "rgba(255,255,255,0.75)", lineHeight: 1.7, fontSize: "15px" }}>New subscribers receive a {TRIAL_LABEL}. A valid credit card is required but not charged until the trial ends. Subscriptions are available monthly ({MONTHLY_PRICE_LABEL}) or annually ({ANNUAL_PRICE_LABEL}) and renew automatically at the end of each billing period. Founding Member rates are locked for the life of an active subscription. Cancel anytime — upon cancellation, access continues until the end of the current paid period. No refunds are issued for partial periods. Payments processed by Stripe — we do not store card details.</p></section>
-          <section><h2 style={{ fontSize: "20px", fontWeight: 800, color: "#f0a030", marginBottom: "12px" }}>5. Content and Intellectual Property</h2><p style={{ color: "rgba(255,255,255,0.75)", lineHeight: 1.7, fontSize: "15px" }}>All content is the property of Wonder Books Press or its licensors. You receive a limited license to stream for personal use only. Downloading, reproducing, or distributing content is prohibited without written permission.</p></section>
-          <section><h2 style={{ fontSize: "20px", fontWeight: 800, color: "#f0a030", marginBottom: "12px" }}>6. Acceptable Use</h2><p style={{ color: "rgba(255,255,255,0.75)", lineHeight: 1.7, fontSize: "15px" }}>You agree not to use the Service unlawfully, attempt unauthorized access, scrape content, share credentials, or interfere with the Service.</p></section>
-          <section><h2 style={{ fontSize: "20px", fontWeight: 800, color: "#f0a030", marginBottom: "12px" }}>7. AI-Generated Content</h2><p style={{ color: "rgba(255,255,255,0.75)", lineHeight: 1.7, fontSize: "15px" }}>Some content is produced using AI tools including AI-generated voices, scripts, music, and cover art. All AI content is reviewed under the editorial oversight of Wonder Books Press.</p></section>
-          <section><h2 style={{ fontSize: "20px", fontWeight: 800, color: "#f0a030", marginBottom: "12px" }}>8. Disclaimers</h2><p style={{ color: "rgba(255,255,255,0.75)", lineHeight: 1.7, fontSize: "15px" }}>The Service is provided as-is without warranties. We reserve the right to modify, suspend, or discontinue the Service at any time without notice.</p></section>
-          <section><h2 style={{ fontSize: "20px", fontWeight: 800, color: "#f0a030", marginBottom: "12px" }}>9. Limitation of Liability</h2><p style={{ color: "rgba(255,255,255,0.75)", lineHeight: 1.7, fontSize: "15px" }}>Wonder Books Press is not liable for indirect or consequential damages. Total liability shall not exceed the amount you paid us in the three months preceding the claim.</p></section>
-          <section><h2 style={{ fontSize: "20px", fontWeight: 800, color: "#f0a030", marginBottom: "12px" }}>10. Governing Law</h2><p style={{ color: "rgba(255,255,255,0.75)", lineHeight: 1.7, fontSize: "15px" }}>These terms are governed by the laws of the State of South Carolina. Disputes are subject to the exclusive jurisdiction of courts in South Carolina.</p></section>
-          <section><h2 style={{ fontSize: "20px", fontWeight: 800, color: "#f0a030", marginBottom: "12px" }}>11. Changes to Terms</h2><p style={{ color: "rgba(255,255,255,0.75)", lineHeight: 1.7, fontSize: "15px" }}>We may update these terms at any time. Continued use after changes are posted constitutes acceptance.</p></section>
-          <section><h2 style={{ fontSize: "20px", fontWeight: 800, color: "#f0a030", marginBottom: "12px" }}>12. Contact</h2><p style={{ color: "rgba(255,255,255,0.75)", lineHeight: 1.7, fontSize: "15px" }}>Questions? <a href="mailto:hello@endless-tales.com" style={{ color: "#f0a030", textDecoration: "none" }}>hello@endless-tales.com</a> — Wonder Books Press, Elloree, SC</p></section>
-        </div>
-      </div>
-    </div>
-  )
+import LegalDocument from '@/components/legal/LegalDocument';
+import { MONTHLY_PRICE_LABEL, ANNUAL_PRICE_LABEL } from '@/lib/pricing';
+export default function Terms() {
+  return <LegalDocument title="Terms and Conditions of Use" sections={[
+    { heading: 'Agreement and eligibility', paragraphs: [
+      'These terms govern your use of Endless Tales, an audio storytelling service operated by Wonder Books Press. By creating an account, subscribing, or using the service, you agree to these terms and our Content License. Our Privacy Policy describes how we handle data.',
+      'You must be at least 13 to create an account; if you are under the age of majority where you live, your parent or legal guardian must approve your use. Keep account credentials secure and provide accurate registration information.'
+    ]},
+    { heading: 'Memberships and pricing', paragraphs: [
+      'Endless Tales offers recurring subscription plans. The currently advertised standard prices are ' + MONTHLY_PRICE_LABEL + ' monthly and ' + ANNUAL_PRICE_LABEL + ' annually. The price, billing interval, taxes, trial terms if any, and any eligible promotional or legacy rate shown at checkout control your particular purchase.',
+      'Your plan automatically renews for another billing period unless canceled before renewal. We charge the payment method on file through our payment processor. We may change prices with any legally required advance notice; changes affecting an existing plan take effect as disclosed and subject to law.',
+      'Trial or referral benefits, including any free listening period, apply only when explicitly offered and may have eligibility, expiration, or conversion conditions displayed at enrollment. Do not assume every registration includes a trial.'
+    ]},
+    { heading: 'Cancellation and refunds', paragraphs: [
+      'You may cancel your subscription in Account → Billing & Subscription through the available management flow. Cancellation stops future renewal charges, and paid access ordinarily continues through the end of the current paid billing period. For a trial, cancel before the disclosed conversion time to avoid a charge.',
+      'Fees are generally nonrefundable and we do not ordinarily prorate partial periods, except where the law requires a refund or a specific offer states otherwise. Contact hello@endless-tales.com if you believe you were billed in error. Cancellation does not automatically delete your account.'
+    ]},
+    { heading: 'Access and catalog changes', paragraphs: [
+      'An active subscription provides personal listening access to the available catalog, subject to the Content License and any disclosed feature limits. The service, catalog, narrations, series, and features may change. A particular title is not guaranteed to remain available indefinitely.',
+      'Offline downloads are temporary licensed copies for playback through supported Endless Tales features, not permanent purchases. Access may end after cancellation, expiration, rights changes, or technical revalidation.'
+    ]},
+    { heading: 'Permitted use and conduct', paragraphs: [
+      'Do not share accounts outside allowed household or account functionality; distribute, sell, rebroadcast, or copy stories; bypass content protection; scrape or bulk-download content; impersonate others; interfere with service security; or use the service unlawfully.',
+      'We may investigate abuse and suspend or terminate accounts for material violations, subject to applicable law. We will not deny statutory rights through these terms.'
+    ]},
+    { heading: 'Story submissions, feedback, and AI', paragraphs: [
+      'You retain rights you own in story ideas or other material you submit. By submitting material through a feature expressly inviting story suggestions or feedback, you grant Wonder Books Press a nonexclusive, worldwide, royalty-free license to review, store, adapt, develop, publish, and promote that material in connection with Endless Tales, to the extent you have rights to grant. Submission does not guarantee selection, compensation, or credit; any specific commitment requires a separate agreement. Do not submit confidential material or material you lack authority to share.',
+      'Endless Tales stories may be produced with AI-assisted scripts, synthetic narration, music, sound effects, or imagery. Characters and events may be fictional. We do not guarantee that every element generated solely by AI qualifies for copyright protection.'
+    ]},
+    { heading: 'Disclaimers and liability', paragraphs: [
+      'We seek to provide a dependable service, but availability may be interrupted by maintenance, connectivity, or third parties. To the maximum extent permitted by law, the service is provided as available without implied warranties. Nothing in these terms excludes nonwaivable consumer rights.',
+      'To the maximum extent permitted by law, Wonder Books Press is not responsible for indirect or consequential losses. Its aggregate liability arising from the service is limited to amounts you paid for the service in the three months preceding the claim, except where this limitation is prohibited by law.'
+    ]},
+    { heading: 'Applicable law, changes, and support', paragraphs: [
+      'South Carolina law governs these terms except where mandatory consumer-protection laws require otherwise. Any court proceedings will be brought in a court with lawful jurisdiction, subject to applicable venue and consumer rules.',
+      'We may revise these terms, with advance notice and renewed consent when legally required. Material changes will not retroactively eliminate accrued consumer rights. Questions, billing issues, and legal notices: hello@endless-tales.com, Wonder Books Press, Elloree, South Carolina, USA.'
+    ]}
+  ]} />;
 }
