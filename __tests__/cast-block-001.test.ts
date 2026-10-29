@@ -78,3 +78,18 @@ describe('CAST-BLOCK-001 energy fit', () => {
     expect(energyFitPenalty([], 'chill')).toBe(0)
   })
 })
+
+describe('AGE-WORDS-001 spelled ages and "old-money"', () => {
+  test.each([
+    ['EDWARD MONROE — forty-eight, male, old-money Southern accent, smooth and controlled', 'middle_aged'],
+    ['ELIZA CALLAHAN — twenty-six, female, mild North Carolina accent', 'young'],
+    ['SELMA SUTTER — fifty-nine, female, working-class Charlotte accent', 'old'],
+    ['VIOLA MONROE — forty-five, female, cultured Southern accent', 'middle_aged'],
+    ['RUSSELL GLASS — late fifties, male, deep Carolina drawl', 'old'],
+    ['an old-fashioned bookkeeper in his forties', 'middle_aged'],
+    ['a seventeen-year-old runaway', 'young'],
+    ['a grizzled old fisherman', 'old'],
+  ])('%s → %s', (desc, band) => {
+    expect(ageBandFromDescription(desc)).toBe(band)
+  })
+})

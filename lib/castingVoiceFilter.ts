@@ -46,30 +46,49 @@ export function isUnsuitableAutoCastVoice(voice: { name?: string | null; descrip
 
 export type AgeBand = 'young' | 'middle_aged' | 'old'
 
+const TENS: Record<string, number> = { twenty: 20, thirty: 30, forty: 40, fifty: 50, sixty: 60, seventy: 70, eighty: 80, ninety: 90 }
+const UNITS: Record<string, number> = { one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9 }
+const TEENS: Record<string, number> = { thirteen: 13, fourteen: 14, fifteen: 15, sixteen: 16, seventeen: 17, eighteen: 18, nineteen: 19 }
+
+/** AGE-WORDS-001: first spelled-out age in a description ("forty-eight", "sixty", "seventeen"). */
+export function spelledOutAge(text: string): number | null {
+  const m = text.match(/\b(twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety)(?:[- ](one|two|three|four|five|six|seven|eight|nine))?\b(?!\s*(?:minutes?|miles?|feet|dollars?|percent|times|seconds?|hours?|days?|steps?|yards?))/)
+  if (m) return TENS[m[1]] + (m[2] ? UNITS[m[2]] : 0)
+  const t = text.match(/\b(thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen)\b(?!\s*(?:minutes?|miles?|feet|dollars?|percent|times|seconds?|hours?|days?|steps?|yards?))/)
+  return t ? TEENS[t[1]] : null
+}
+
 /**
  * CAST-BLOCK-001: age band from a character description. A bare number is
  * read only when it looks like an age ("62", "in his 60s", "sixties"), and
  * age words win over the default. Default stays middle_aged (35).
  */
 export function ageBandFromDescription(description: string | null | undefined): AgeBand {
-  const d = String(description || '').toLowerCase()
+  // AGE-WORDS-001 (The Nanny Cam, Oct 29): "old-money" made a 48-year-old
+  // "old" and got him a mountain-man voice. Drop compounds where "old" is not
+  // an age, and read spelled-out ages ("forty-eight") before anything else.
+  const d = String(description || '')
+    .toLowerCase()
+    .replace(/\bold[- ](money|fashioned|school|friends?|town|house|habits?|world|guard|flame|ways?|family|south|southern|charleston|line)\b/g, ' ')
+  const spelled = spelledOutAge(d)
+  if (spelled !== null) return spelled < 30 ? 'young' : spelled < 55 ? 'middle_aged' : 'old'
   const decade = d.match(/\b(?:in (?:his|her|their) )?(\d)0s\b/)
   if (decade) {
     const n = Number(decade[1]) * 10
-    return n < 25 ? 'young' : n < 55 ? 'middle_aged' : 'old'
+    return n < 30 ? 'young' : n < 55 ? 'middle_aged' : 'old'
   }
   const word = d.match(/\b(teens?|twenties|thirties|forties|fifties|sixties|seventies|eighties|nineties)\b/)
   if (word) {
     const w = word[1]
     if (/^teen|twenties/.test(w)) return 'young'
     if (/thirties|forties/.test(w)) return 'middle_aged'
-    if (w === 'fifties') return 'middle_aged'
+    if (w === 'fifties') return /\blate fifties\b/.test(d) ? 'old' : 'middle_aged'
     return 'old'
   }
   const num = d.match(/\b(1[3-9]|[2-9]\d)(?:[- ]?(?:years?[- ]old|yo|y\/o))?\b/)
   if (num) {
     const n = Number(num[1])
-    return n < 25 ? 'young' : n < 55 ? 'middle_aged' : 'old'
+    return n < 30 ? 'young' : n < 55 ? 'middle_aged' : 'old'
   }
   if (/\b(elderly|old|older|aging|ageing|aged|grizzled|weathered|veteran|retired|grandfather|grandmother|grandpa|grandma|gray-haired|grey-haired|white-haired|silver-haired|old-timer|senior|patriarch|matriarch|ancient)\b/.test(d)) return 'old'
   if (/\b(young|teen|teenage|teenager|kid|boy|girl|student|rookie|youthful|college|cadet|intern)\b/.test(d)) return 'young'
