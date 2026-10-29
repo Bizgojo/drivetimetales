@@ -419,16 +419,24 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
           <div style={{ marginTop: '1.5rem', borderTop: '1px solid #334155', paddingTop: '0.75rem' }}>
             <div style={{ color: '#94a3b8', fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '0.5rem', paddingLeft: '0.75rem' }}>External Tools</div>
             {[
+              { href: 'https://chatgpt.com', label: 'ChatGPT', icon: '💬' },
+              { href: 'https://claude.ai', label: 'Claude', icon: '✳' },
+              { href: 'https://web.telegram.org', label: 'Telegram · Orion', icon: '✈' },
               { href: 'https://dashboard.stripe.com', label: 'Stripe', icon: '💳' },
               { href: 'https://vercel.com/dashboard', label: 'Vercel', icon: '▲' },
               { href: 'https://supabase.com/dashboard', label: 'Supabase', icon: '🗄' },
               { href: 'https://elevenlabs.io', label: 'ElevenLabs', icon: '🎙' },
             ].map(tool => (
-              <a key={tool.href} href={tool.href} target="_blank" rel="noopener noreferrer" style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', padding: '0.4rem 0.75rem', color: '#cbd5e1', textDecoration: 'none', fontSize: '12px' }}>
+              <a key={tool.href} href={tool.href} target="_blank" rel="noopener noreferrer" style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', padding: '0.4rem 0.75rem', minHeight: '44px', boxSizing: 'border-box', color: '#cbd5e1', textDecoration: 'none', fontSize: '12px' }}>
                 <span style={{ fontSize: '14px', width: '20px', textAlign: 'center' }}>{tool.icon}</span>
                 {tool.label}
               </a>
             ))}
+            <details style={{ padding: '0.5rem 0.75rem', color: '#cbd5e1', fontSize: '12px' }}>
+              <summary style={{ minHeight: '44px', cursor: 'pointer' }}>⌘ Mac Terminal · Local app</summary>
+              <p>On Mac, press ⌘ Space, type Terminal, then press Return. Terminal cannot be launched directly from this web page.</p>
+            </details>
+            <p style={{ padding: '0 0.75rem', color: '#94a3b8', fontSize: '11px' }}>Telegram opens the app; choose your existing Orion chat. A direct chat link is not configured.</p>
           </div>
           <div style={{ marginTop: '1rem', padding: '0 0.25rem 0.5rem' }}>
             <Link href="/home" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', padding: '0.6rem', backgroundColor: '#334155', color: 'white', textDecoration: 'none', borderRadius: '6px', fontSize: '12px', fontWeight: 500 }}>
