@@ -48,8 +48,11 @@ export async function verifyUploadedBytes(
   fetchBytes: FetchBytes = defaultFetchBytes,
   opts?: VerifyUploadedBytesOpts,
 ): Promise<void> {
-  const maxAttempts = opts?.maxAttempts ?? 3
-  const retryDelaysMs = opts?.retryDelaysMs ?? [500, 1500]
+  const maxAttempts = opts?.maxAttempts ?? 6
+  // VERIFY-WAIT-001 (The Nanny Cam, Oct 29): same-key re-uploads kept reading the
+  // previous object for longer than 2s (EP1/EP2 'story_body.mp3 size mismatch'),
+  // failing whole render attempts. Wait up to ~35s before calling it a mismatch.
+  const retryDelaysMs = opts?.retryDelaysMs ?? [1000, 3000, 6000, 10000, 15000]
   const sleep = opts?.sleep ?? defaultSleep
   const expectedHash = createHash('sha256').update(expected).digest('hex')
 
