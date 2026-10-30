@@ -13,6 +13,8 @@ import { trackPlayStart, trackPlayEnd, trackSpuriousEndedRecovered, trackCardWal
 import { useAuth } from '@/contexts/AuthContext'
 import ReviewModal from '@/components/ReviewModal'
 import PlayerTransport from './PlayerTransport'
+import EpisodeNavigation, {type NavigableEpisode} from './EpisodeNavigation'
+import { PlaybackCheckpoint } from '@/lib/playbackCheckpoint'
 import type { PlaybackSnapshot } from './PersistentPlayer'
 import { getPlayerGenres, shouldAutoStartPlayer, waitForSegmentResume } from '@/lib/playerControls'
 import InstallAppBanner from '@/components/InstallAppBanner'
@@ -107,6 +109,10 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
   const volTimer   = useRef<ReturnType<typeof setInterval> | null>(null)
   const schedTimer = useRef<ReturnType<typeof setTimeout>  | null>(null)
   const saveTimer  = useRef<ReturnType<typeof setTimeout>  | null>(null)
+  const checkpointRef = useRef(new PlaybackCheckpoint())
+  const loadedIdentityRef = useRef('')
+  const [seriesEpisodes, setSeriesEpisodes] = useState<NavigableEpisode[]>([])
+  const [episodeListError, setEpisodeListError] = useState('')
   const resumeRef  = useRef(0)
   const typeRef    = useRef<'intro' | 'story' | 'outro'>('intro')
   const switchingRef = useRef(false) // true while swapping music src
@@ -646,8 +652,12 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
     return hasAllQueueDurations() && measuredTotal > 0 ? measuredTotal : totalDur
   }
 
+  const playbackSource = () => ({storyId, source: audioRef.current?.currentSrc || audioRef.current?.src || '', segment: isASC3 ? activeQueueIndexRef.current : 0})
   const getProgressSeconds = () => {
-    return isASC3 ? cumTime : currentTime
+    const audio = audioRef.current
+    if (!audio || loading || audioStoryIdRef.current !== storyId || inWelcomeRef.current) return isASC3 ? cumTime : currentTime
+    const offset = checkpointRef.current.position(playbackSource(), audio.currentTime, audio.ended)
+    return (isASC3 ? completedRef.current : 0) + offset
   }
 
   const getProgressTotalSeconds = () => {
@@ -1079,6 +1089,9 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
   }, [])
 
   useEffect(() => {
+    checkpointRef.current.clear()
+    setSeriesEpisodes([])
+    setEpisodeListError('')
     removedFromContinueRef.current = false
     isAdvancingRef.current = false
     seriesContinueAutoplayAttemptedRef.current = false
@@ -1137,7 +1150,7 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
     // This fires a small keepalive fetch to /api/user/save-progress so the
     // latest position is persisted even when the tab/app is killed mid-listen.
     const flushProgressEvent = () => {
-      const currentProgress = isASC3 ? cumTime : currentTime
+      const currentProgress = getProgressSeconds()
       if (!Number.isFinite(currentProgress) || currentProgress <= 0) return
       const currentDuration = isASC3
         ? (totalDur > 0 ? totalDur : duration)
@@ -1166,6 +1179,7 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
 
     const handleVisibility = () => {
       if (document.visibilityState === 'hidden') {
+        flushProgressEvent()
         saveGuestMinutes()
         // ORION-ANALYTICS-GAP-001: a session left open with audio PAUSED when
         // the tab goes hidden (e.g. OS/lock-screen pause, which never routes
@@ -1253,7 +1267,11 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
 
   useEffect(() => {
     if (authLoading) return
+    const identity = JSON.stringify([storyId, user?.id || null, userEmail, resumeParam, user?.subscription_type, user?.subscription_ends_at, user?.plan])
+    // A token refresh/return from a call is not a new playback selection.
+    if (loadedIdentityRef.current === identity && audioStoryIdRef.current === storyId) return
     let cancelled = false
+    let loadedStory = false
     async function load() {
       let redirected = false
       let waitingForAuth = false
@@ -1289,6 +1307,7 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
         }
 
         if (data) {
+          loadedStory = true
           setStory(data)
 
           stage = 'resume-query'
@@ -1318,13 +1337,27 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
           const existingSeriesPlaylist = playlistRef.current
           const hasCurrentInSeriesPlaylist = existingSeriesPlaylist.some(ep => ep.id === storyId)
           if ((data as any).series_id) {
-            const { data: seriesEpisodes } = await supabase
+            const { data: seriesEpisodes, error: seriesError } = await supabase
               .from('stories')
-              .select('id, title, episode_number, prose_text, series_name')
+              .select('id, title, episode_number, prose_text, series_name, duration_mins')
               .eq('series_id', (data as any).series_id)
               .eq('status', 'published')
               .eq('is_hidden', false)
               .order('episode_number', { ascending: true })
+
+            setEpisodeListError(seriesError ? 'Episodes could not be loaded. Please reopen the player to retry.' : '')
+            let progressRows: Array<{story_id:string;progress:number;completed:boolean;last_played:string}> = []
+            let progressKnown = true
+            if (user?.id && seriesEpisodes?.length) {
+              const result = await supabase.from('user_library').select('story_id,progress,completed,last_played').eq('user_id', user.id).in('story_id', seriesEpisodes.map(ep=>ep.id))
+              progressRows = result.data || []
+              progressKnown = !result.error
+            }
+            if (!cancelled) setSeriesEpisodes((seriesEpisodes || []).filter(ep=>ep.id && ep.episode_number).map(ep=>{
+              const local = getLocalPlayerProgress(ep.id, user?.id)
+              const merged = mergePlayerProgress(progressRows.find(row=>row.story_id===ep.id), local)
+              return {id:ep.id,title:ep.title,number:ep.episode_number,progress:merged.progress,progressKnown:progressKnown || Boolean(local),completed:merged.completed,duration:local?.durationSecs || Number(ep.duration_mins || 0)*60}
+            }))
 
             const proseChapters = (seriesEpisodes || [])
               .filter(ep => ep.id && ep.title && ep.episode_number && ep.prose_text)
@@ -1598,6 +1631,7 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
         console.error('[player] load failed:', { storyId, stage, error })
       } finally {
         if (!cancelled && !redirected && !waitingForAuth) {
+          if (loadedStory) loadedIdentityRef.current = identity
           setLoading(false)
         }
       }
@@ -1607,7 +1641,7 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
       cancelled = true
     }
   // Profile/session refreshes for the same identity must not reload live audio.
-  }, [storyId, user?.id, userEmail, authLoading, resumeParam])
+  }, [storyId, user?.id, userEmail, authLoading, resumeParam, user?.subscription_type, user?.subscription_ends_at, user?.plan])
 
   // Init audio once loaded
   useEffect(() => {
@@ -1932,6 +1966,7 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
   // replaying is fresh listening, not a stop gesture (PLAYER-SERIES-ADVANCE-001
   // ruling: Start Over must not kill auto-advance for the session).
   const restartFromBeginning = () => {
+    checkpointRef.current.clear()
     if (autoAdvanceDisabledReason === 'manual_pause') {
       autoAdvanceEnabledRef.current = true
       setAutoAdvanceDisabledReason(null)
@@ -1981,7 +2016,7 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
       resumePlayRequestedRef.current = !resumePlayRequestedRef.current
       return
     }
-    if (isPlaying) {
+    if (!audioRef.current.paused) {
       disableAutoAdvanceForSession('manual_pause')
       audioRef.current.pause(); musicRef.current?.pause()
       endAnalyticsSession('manual_pause')
@@ -2002,6 +2037,7 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
         autoAdvanceEnabledRef.current = true
         setAutoAdvanceDisabledReason(null)
       }
+      checkpointRef.current.restore(audioRef.current, playbackSource())
       // src is pre-loaded in useEffect — play directly to preserve user gesture
       // Also clears autoplayBlocked so the redundant "Ready to continue" card is dismissed
       audioRef.current.play().then(() => {
@@ -2088,6 +2124,7 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
       setPlaybackEnded(false)
       setEndStateCandidate(null)
     }
+    checkpointRef.current.clear()
     // Persist explicit seeks immediately, including paused seeks and a seek to zero.
     void saveProgress(nextTime)
     if (isASC3) {
@@ -2511,8 +2548,8 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
   }
 
   mediaHandlersRef.current = {
-    play: () => { if (!isPlaying) handlePlayPause() },
-    pause: () => { if (isPlaying) handlePlayPause() },
+    play: () => { if (audioRef.current?.paused) handlePlayPause() },
+    pause: () => { if (audioRef.current && !audioRef.current.paused) handlePlayPause() },
     seekbackward: (d) => seekToSeconds(getProgressSeconds() - (d.seekOffset || SEEK_BACKWARD_SECONDS)),
     seekforward: (d) => seekToSeconds(getProgressSeconds() + (d.seekOffset || SEEK_FORWARD_SECONDS)),
     seekto: (d) => { if (typeof d.seekTime === 'number') seekToSeconds(d.seekTime) },
@@ -2604,6 +2641,7 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
       <audio ref={audioRef}
         onLoadedMetadata={(e) => {
           if (loading || audioStoryIdRef.current !== storyId) return
+          checkpointRef.current.restore(e.currentTarget, playbackSource())
           const d = e.currentTarget.duration; setDuration(d)
           const activeIndex = isASC3 ? activeQueueIndexRef.current : queueIndex
           segDursRef.current[activeIndex] = d
@@ -2624,7 +2662,8 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
         }}
         onTimeUpdate={(e) => {
           if (loading || audioStoryIdRef.current !== storyId) return
-          const t = e.currentTarget.currentTime; setCurrentTime(t); setCumTime(completedRef.current + t)
+          if (!inWelcomeRef.current) checkpointRef.current.capture(playbackSource(), e.currentTarget.currentTime)
+          const t = checkpointRef.current.position(playbackSource(), e.currentTarget.currentTime, e.currentTarget.ended); setCurrentTime(t); setCumTime(completedRef.current + t)
           // POST-TRIAL-BELLE-001: 60-second cutoff for lapsed standalone users
           if (isLapsedRef.current && !story?.series_id && t >= 60 && !trialWallFiredRef.current) {
             trialWallFiredRef.current = true
@@ -2666,6 +2705,7 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
           }
         }}
         onPlay={() => {
+          if (!loading && audioStoryIdRef.current === storyId && !inWelcomeRef.current && audioRef.current) checkpointRef.current.restore(audioRef.current, playbackSource())
           setHasPlaybackStarted(true)
           setIsPlaying(true)
           if (!noMusicRef.current) duck()
@@ -2680,7 +2720,14 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
           setAutoplayBlocked(false)
           setShowSeriesContinueOverlay(false)
         }}
-        onPause={() => setIsPlaying(false)}
+        onPause={(e) => {
+          setIsPlaying(false)
+          musicRef.current?.pause()
+          if (loading || audioStoryIdRef.current !== storyId || inWelcomeRef.current || e.currentTarget.ended) return
+          checkpointRef.current.capture(playbackSource(), e.currentTarget.currentTime)
+          if (saveTimer.current) clearTimeout(saveTimer.current)
+          void saveProgress(getProgressSeconds())
+        }}
         onEnded={() => {
           if (loading || audioStoryIdRef.current !== storyId || !audioRef.current?.ended) return
           // ── Welcome chain ────────────────────────────────────────────────
@@ -3139,6 +3186,10 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
           </div>
         )}
         {/* autoplayBlocked: "Ready to continue" card removed — bottom ▶ Continue button handles this */}
+        {(story as any)?.series_id && !onboardActive && <EpisodeNavigation
+          episodes={seriesEpisodes} currentId={storyId} currentProgress={effCur} error={episodeListError}
+          onSelect={leaveForEpisode}
+        />}
         <PlayerTransport
           key={storyId}
           currentTime={effCur} duration={effTotal}
