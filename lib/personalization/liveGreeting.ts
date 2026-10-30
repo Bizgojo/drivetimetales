@@ -1,11 +1,15 @@
 /**
  * PERS-LIVE-001 — live, story-specific listener-name greetings.
  *
- * A series greets the listener by name in exactly two places:
- *   1. series_intro    — after the episode announcement on the listener's
- *                        FIRST played episode of the series (the first-played
- *                        rule lives in firstPlayedOpener.ts).
- *   2. finale_signoff  — after the finale's baked outro.
+ * A series greets the listener by name in these places:
+ *   1. series_intro    — after the announcement when the listener starts
+ *                        Episode 1 from the beginning for the first time (or
+ *                        starts the series anywhere for the first time).
+ *   2. series_return   — the same moment when they have heard the series
+ *                        before: a warm "welcome back" (GREETING-REPLAY-001,
+ *                        Marc 2026-10-29).
+ *   3. finale_signoff  — right after the finale's last scene, BEFORE Belle's
+ *                        closing credits (FINALE-SIGNOFF-ORDER-001).
  *
  * The greeting TEXT is written once per series (one LLM call, validated,
  * cached in storage as a template with a [NAME] slot). The greeting AUDIO is
@@ -16,9 +20,9 @@
  * liveGreetingService.ts does the storage / LLM / TTS work.
  */
 
-export type LiveGreetingKind = 'series_intro' | 'finale_signoff'
+export type LiveGreetingKind = 'series_intro' | 'series_return' | 'finale_signoff'
 
-export const LIVE_GREETING_KINDS: LiveGreetingKind[] = ['series_intro', 'finale_signoff']
+export const LIVE_GREETING_KINDS: LiveGreetingKind[] = ['series_intro', 'series_return', 'finale_signoff']
 
 export const NAME_SLOT = '[NAME]'
 
@@ -32,7 +36,7 @@ export type LiveGreetingContext = {
 }
 
 export function isLiveGreetingKind(value: unknown): value is LiveGreetingKind {
-  return value === 'series_intro' || value === 'finale_signoff'
+  return value === 'series_intro' || value === 'series_return' || value === 'finale_signoff'
 }
 
 // ---------------------------------------------------------------------------
@@ -160,15 +164,31 @@ export function buildGreetingPrompt(kind: LiveGreetingKind, ctx: LiveGreetingCon
     ].filter((line) => line !== '').join('\n')
   }
 
+  if (kind === 'series_return') {
+    return [
+      ...shared,
+      `- [NAME] must be within the first six words.`,
+      '- The listener has heard this series before and is starting it again from the beginning. Welcome them back warmly and say, in a happy way, that they came back for it again. Make them feel good about choosing it again.',
+      '- Do not reveal any plot twist or ending, even though they know it. Do not say "episode one" or "first episode". Do not say goodbye.',
+      '- The line must include one of these words: back, again, return, another.',
+      '',
+      `Series: ${title}`,
+      `Genre: ${genre}`,
+      description ? `What it is about: ${description}` : '',
+      '',
+      'Example of the tone (different story): [NAME], welcome back! You came back for another ride through this one, and I love that. Settle in, it is even better the second time.',
+    ].filter((line) => line !== '').join('\n')
+  }
+
   return [
     ...shared,
-    '- This plays after the final episode has ended and Belle has already said the closing credits. It is a personal thank-you and goodbye to the listener.',
+    '- This plays the moment the final scene of the final episode ends, just before Belle reads the closing credits. It is a personal thank-you and goodbye to the listener.',
     '- Do not repeat the credits. Do not promise a next episode or a sequel. Do not reveal or retell the ending.',
     '',
     `Series: ${title}`,
     `Genre: ${genre}`,
     countWords ? `Length: ${countWords} episodes` : '',
-    ctx.finaleOutroText ? `What Belle just said (do not repeat it): ${String(ctx.finaleOutroText).trim()}` : '',
+    ctx.finaleOutroText ? `What Belle says right after this line (do not repeat it): ${String(ctx.finaleOutroText).trim()}` : '',
     '',
     'Example of the tone (different story): [NAME], thank you for riding along all five episodes. It meant a lot having you here. Come find me when you are ready for the next one.',
   ].filter((line) => line !== '').join('\n')
@@ -204,10 +224,11 @@ export function validateGreetingTemplate(kind: LiveGreetingKind, text: string): 
   if (/endless tales/i.test(t)) issues.push('mentions Endless Tales')
   if (!/[.!?]$/.test(t)) issues.push('does not end with punctuation')
 
-  if (kind === 'series_intro') {
+  if (kind === 'series_intro' || kind === 'series_return') {
     const firstSix = t.split(/\s+/).slice(0, 6).join(' ')
     if (slots === 1 && !firstSix.includes(NAME_SLOT)) issues.push(`${NAME_SLOT} not within the first six words`)
     if (/\b(episode\s+one|first\s+episode|goodbye|farewell|the\s+end)\b/i.test(t)) issues.push('intro mentions a specific episode or says goodbye')
+    if (kind === 'series_return' && !/\b(back|again|return(?:ing|ed)?|another)\b/i.test(t)) issues.push('welcome-back line does not acknowledge the return')
   } else {
     if (/\b(next\s+episode|sequel|season\s+two|stay\s+tuned)\b/i.test(t)) issues.push('sign-off promises more episodes')
   }
@@ -217,6 +238,9 @@ export function validateGreetingTemplate(kind: LiveGreetingKind, text: string): 
 /** Deterministic safe line used when the writer cannot produce a valid one. */
 export function fallbackGreetingTemplate(kind: LiveGreetingKind, ctx: LiveGreetingContext): string {
   const title = String(ctx.seriesTitle || '').trim() || 'this story'
+  if (kind === 'series_return') {
+    return `${NAME_SLOT}, welcome back to ${title}. I love that you came back for another listen. Settle in, it is even better the second time.`
+  }
   if (kind === 'series_intro') {
     return `${NAME_SLOT}, I am so glad you picked ${title}. Get comfortable, turn it up a little, and let it take you somewhere for a while.`
   }

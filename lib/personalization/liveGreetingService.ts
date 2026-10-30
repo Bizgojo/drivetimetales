@@ -243,7 +243,7 @@ export function ensureGreetingClip(story: GreetingStory, kind: LiveGreetingKind,
     const startedAt = Date.now()
     const record = await ensureGreetingTemplate(story, kind)
     const text = fillGreeting(record.template, firstName)
-    const audio = await toPlayerMp3(await belleTts(text), kind === 'finale_signoff' ? 1200 : 350)
+    const audio = await toPlayerMp3(await belleTts(text), kind === 'finale_signoff' ? 600 : 350 /* FINALE-SIGNOFF-ORDER-001: follows the last scene directly now */)
     const { error } = await db().storage.from(BUCKET).upload(path, audio, { contentType: 'audio/mpeg', upsert: true })
     if (error) throw new Error('clip upload failed: ' + error.message)
     console.log('[live-greeting] clip made', { seriesId, kind, slug, ms: Date.now() - startedAt, ttsModel: TTS_MODEL })
