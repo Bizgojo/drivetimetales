@@ -26,6 +26,9 @@ export type SfxLibraryEntry = {
   /** SFX-REVIEW-001: Marc's ear decides. Only 'approved' sounds are used in stories. */
   status?: 'approved' | 'rejected'
   reviewedAt?: string
+  /** SFX-PREFILTER-001: 'auto-prefilter' when removed automatically (Marc can restore). */
+  reviewedBy?: string
+  reviewNote?: string
 }
 
 export const SFX_CATEGORIES = [
