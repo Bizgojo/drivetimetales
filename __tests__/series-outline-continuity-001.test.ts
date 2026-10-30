@@ -117,3 +117,14 @@ describe('SERIES-STYLE-ACTION-001', () => {
     expect(validateOverlayCues(raw, lines, 18).cues).toHaveLength(2)
   })
 })
+
+describe('Marc 2026-10-29: outline + continuity are permanent', () => {
+  const { seriesOutlineEnabled } = require('@/lib/seriesOutline')
+  const { seriesContinuityEnabled } = require('@/lib/seriesContinuity')
+  test('on by default, off only when explicitly disabled', () => {
+    expect(seriesOutlineEnabled({})).toBe(true)
+    expect(seriesContinuityEnabled({})).toBe(true)
+    expect(seriesOutlineEnabled({ SERIES_OUTLINE: 'off' })).toBe(false)
+    expect(seriesContinuityEnabled({ SERIES_CONTINUITY: 'OFF' })).toBe(false)
+  })
+})
