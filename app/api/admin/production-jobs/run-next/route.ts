@@ -29,6 +29,9 @@ import { maybeDirectPublishStandalone, maybeDirectPublishSeries, type DirectAuto
 import { transientResumeDecision, errorTextOf, MAX_TRANSIENT_RESUMES } from '@/lib/transientResume'
 import { buildCastReview, needsCastReview, CAST_REVIEW_STATE_KEY } from '@/lib/castReview'
 import { extractValidatorFixList, planSeriesEpisodeRewrite, buildRewriteFeedbackBlock, MAX_SERIES_EPISODE_REWRITES } from '@/lib/seriesRewrite'
+import { styleProfileFrom, styleProfileOfBrief, buildStylePromptBlock, maxMainCharacters } from '@/lib/seriesStyle'
+import { seriesOutlineEnabled, buildSeriesOutlinePrompt, validateSeriesOutline, buildOutlinePromptBlock, type SeriesOutline } from '@/lib/seriesOutline'
+import { seriesContinuityEnabled, buildContinuityPrompt, parseContinuityVerdict, continuityRewriteTarget, scriptsFingerprint, storyBodyText, MAX_SERIES_CONTINUITY_RUNS } from '@/lib/seriesContinuity'
 import { sendCastReview } from '@/lib/castReviewTelegram'
 import { verifyArtifactHttp } from '@/lib/artifactGate'
 import { runHookGateForStory, detectBelleQualityRepairEmpty } from '@/lib/hookGate'
@@ -6252,6 +6255,8 @@ async function createSeriesPackage(job: ProductionJob) {
       description: null,
       continuity_notes: null,
       cliffhanger_or_resolution: null,
+      // SERIES-STYLE-ACTION-001: opt-in style (queueItem.style = "action").
+      style_profile: styleProfileFrom(queueValue(queueItem, 'style')),
     }
 
     const { data: story, error } = await supabase
@@ -6367,6 +6372,64 @@ async function assertSeriesCastContinuity(seriesId: string, episodes: any[]) {
   throw new Error(msg)
 }
 
+/**
+ * SERIES-OUTLINE-001: one plan for the whole series, saved on every episode's
+ * brief_json.series_outline. Two attempts; if both are unusable the series is
+ * written without a plan (as before) and SERIES-CONTINUITY-001 still guards it.
+ */
+async function createSeriesOutline(job: ProductionJob, model: string, series: any, episodes: any[], brief: any, namePaletteBlock: string): Promise<SeriesOutline | null> {
+  const totalEpisodes = Number(brief.series_total_episodes || episodes.length)
+  const style = styleProfileOfBrief(brief)
+  const maxMain = maxMainCharacters(style)
+  const basePrompt = buildSeriesOutlinePrompt({
+    title: String(series.title || brief.series_name || ''),
+    premise: String(brief.premise || ''),
+    setting: String(brief.setting || ''),
+    genre: String(brief.genre || ''),
+    totalEpisodes,
+    requirements: String(brief.requirements || ''),
+    maxMainCharacters: maxMain,
+    namePaletteBlock,
+    styleBlock: buildStylePromptBlock(style, { episodeNumber: 1 }),
+  })
+  let problems: string[] = []
+  for (let attempt = 1; attempt <= 2; attempt += 1) {
+    const prompt = problems.length
+      ? `${basePrompt}\n\nYOUR PREVIOUS PLAN WAS REJECTED FOR: ${problems.join('; ')}. Fix every point.`
+      : basePrompt
+    const response = await anthropic.messages.create({ model, max_tokens: 4000, temperature: 0.4, messages: [{ role: 'user', content: prompt }] })
+    const raw = response.content.map((c: any) => ('text' in c ? c.text : '')).join('').trim()
+    logAnthropicCall({
+      route: '/api/admin/production-jobs/run-next',
+      purpose: 'series-outline',
+      model,
+      inputTokens: response.usage?.input_tokens ?? 0,
+      outputTokens: response.usage?.output_tokens ?? 0,
+      storyId: episodes[0]?.id || undefined,
+      storyTitle: String(series.title || 'Series outline'),
+      metadata: { is_v2: true, production_job_id: job.id, series_id: series.id, attempt },
+    }).catch(() => {})
+    let parsed: unknown = null
+    try { parsed = parseJsonObject(raw) } catch { parsed = null }
+    const result = validateSeriesOutline(parsed, totalEpisodes, maxMain)
+    if (result.outline) {
+      for (const ep of episodes) {
+        const { error } = await supabase
+          .from('stories')
+          .update({ brief_json: { ...(ep.brief_json || {}), series_outline: result.outline } })
+          .eq('id', ep.id)
+        if (error) throw new Error(`SERIES-OUTLINE-001: failed to save outline on episode ${episodeNumber(ep, 0)}: ${error.message}`)
+        ep.brief_json = { ...(ep.brief_json || {}), series_outline: result.outline }
+      }
+      console.log(`[SERIES-OUTLINE-001] series ${series.id}: plan saved (${result.outline.characters.length} characters, ${result.outline.threads.length} threads), attempt ${attempt}`)
+      return result.outline
+    }
+    problems = result.problems
+    console.warn(`[SERIES-OUTLINE-001] series ${series.id}: plan attempt ${attempt} rejected: ${problems.join('; ')}`)
+  }
+  return null
+}
+
 async function generateOneSeriesEpisodeScript(job: ProductionJob, model: string) {
   const state = job.state_json && typeof job.state_json === 'object' ? job.state_json : {}
   const seriesId = job.series_id || state.seriesId
@@ -6463,7 +6526,16 @@ async function generateOneSeriesEpisodeScript(job: ProductionJob, model: string)
   if (!assignedNarratorName) throw new Error(`Series episode ${targetEpisodeNumber} is missing assigned narrator`)
   const seriesCharacterRoster = await loadSeriesCharacterRoster(String(seriesId))
   const seriesCharacterRosterBlock = buildSeriesCharacterRosterPromptBlock(seriesCharacterRoster)
+  // SERIES-OUTLINE-001: plan the whole series once, before Episode 1 is written.
+  let seriesOutline: SeriesOutline | null = ((brief as any)?.series_outline as SeriesOutline) || null
+  if (!seriesOutline && seriesOutlineEnabled() && targetEpisodeNumber === 1) {
+    seriesOutline = await createSeriesOutline(job, model, series, episodes, brief, namePaletteBlock)
+  }
+  const styleProfile = styleProfileOfBrief(brief)
   const prompt = buildSeriesEpisodePrompt(series, targetEpisode, episodes, continuityBundle, namePaletteBlock, authorVoiceBlock, assignedNarratorName, seriesCharacterRosterBlock)
+    // SERIES-STYLE-ACTION-001 / SERIES-OUTLINE-001
+    + buildStylePromptBlock(styleProfile, { episodeNumber: targetEpisodeNumber })
+    + buildOutlinePromptBlock(seriesOutline, targetEpisodeNumber)
     // SERIES-REWRITE-001: a validator-ordered rewrite carries the reviewer's fix list.
     + buildRewriteFeedbackBlock((brief as any)?.validator_rewrite?.feedback, Number((brief as any)?.validator_rewrite?.attempt || 1))
 
@@ -6670,7 +6742,8 @@ async function generateOneSeriesEpisodeScript(job: ProductionJob, model: string)
   const existingJson = targetEpisode.script_json && typeof targetEpisode.script_json === 'object'
     ? targetEpisode.script_json
     : {}
-  const nextBrief = { ...brief, description }
+  // SERIES-OUTLINE-001: keep the plan made this call (brief predates it).
+  const nextBrief = { ...brief, ...(seriesOutline ? { series_outline: seriesOutline } : {}), description }
   const scriptJson = {
     ...existingJson,
     series_generation: {
@@ -7441,6 +7514,86 @@ async function scoreValidateSeriesPackage(job: ProductionJob, model: string) {
         },
       },
     }
+  }
+
+  // SERIES-CONTINUITY-001: read ALL episodes in full together; a clear
+  // contradiction (event resolved twice, character renamed, ...) feeds the
+  // SERIES-REWRITE-001 loop via episodeResult. Skipped for preview packages.
+  const continuityState = (state as any).seriesContinuity && typeof (state as any).seriesContinuity === 'object' ? (state as any).seriesContinuity : {}
+  const isLandingPackage = refreshedEpisodes.some((ep: any) => /LANDING-STORY-001|No Belle B/i.test(extractHeader(String(ep.script || ''), 'VARIANT')))
+  const continuityFingerprint = scriptsFingerprint(refreshedEpisodes.map((ep: any) => String(ep.script || '')))
+  if (seriesContinuityEnabled() && !isLandingPackage && continuityState.passedFingerprint !== continuityFingerprint) {
+    const sortedEps = [...refreshedEpisodes].sort((a: any, b: any) => episodeNumber(a, 0) - episodeNumber(b, 0))
+    const outline = (sortedEps[0]?.brief_json as any)?.series_outline as SeriesOutline | undefined
+    const outlineText = outline?.episodes?.length
+      ? [
+          ...outline.characters.map((c) => `${c.label}: ${c.name} — ${c.role}`),
+          ...outline.threads.map((t) => `Thread ${t.id}: ${t.question} (resolved in episode ${t.resolved_in})`),
+          ...outline.episodes.map((e) => `Episode ${e.episode}: ${e.goal}`),
+        ].join('\n')
+      : ''
+    const response = await anthropic.messages.create({
+      model,
+      max_tokens: 2000,
+      temperature: 0,
+      messages: [{
+        role: 'user',
+        content: buildContinuityPrompt({
+          seriesTitle: String(sortedEps[0]?.series_name || ''),
+          outlineText,
+          episodes: sortedEps.map((ep: any) => ({ episodeNumber: episodeNumber(ep, 0), title: String(ep.title || ''), body: storyBodyText(String(ep.script || '')) })),
+        }),
+      }],
+    })
+    const rawVerdict = response.content.map((c: any) => ('text' in c ? c.text : '')).join('').trim()
+    logAnthropicCall({
+      route: '/api/admin/production-jobs/run-next',
+      purpose: 'series-continuity-check',
+      model,
+      inputTokens: response.usage?.input_tokens ?? 0,
+      outputTokens: response.usage?.output_tokens ?? 0,
+      storyId: sortedEps[0]?.id || undefined,
+      storyTitle: String(sortedEps[0]?.series_name || 'Series continuity'),
+      metadata: { is_v2: true, production_job_id: job.id, series_id: seriesId },
+    }).catch(() => {})
+    let parsedVerdict: unknown = null
+    try { parsedVerdict = parseJsonObject(rawVerdict) } catch { parsedVerdict = null }
+    if (!parsedVerdict) throw new Error('SERIES-CONTINUITY-001: continuity check returned no JSON verdict')
+    const verdict = parseContinuityVerdict(parsedVerdict, sortedEps.length)
+    const runs = Number(continuityState.runs || 0) + 1
+    const nextContinuityState = { runs, lastAt: nowIso(), lastIssues: verdict.issues, passedFingerprint: verdict.pass ? continuityFingerprint : continuityState.passedFingerprint || null }
+    console.log(`[SERIES-CONTINUITY-001] series ${seriesId} run ${runs}: ${verdict.pass ? 'PASS' : `FAIL (${verdict.issues.length} issue(s))`}`)
+    const target = continuityRewriteTarget(verdict)
+    if (target) {
+      const targetEp = sortedEps.find((ep: any) => episodeNumber(ep, 0) === target.episodeNumber)
+      const continuityReport = { pass: false, issues: verdict.issues.map((i) => `Episode ${i.episode}: ${i.problem}${i.fix ? ` — Fix: ${i.fix}` : ''}`), confidence: 1, summary: `series-continuity-check failed (run ${runs})`, rawReport: rawVerdict }
+      const allowRewrite = runs <= MAX_SERIES_CONTINUITY_RUNS && targetEp
+      return {
+        passed: false,
+        failed: true,
+        complete: false,
+        episodeResult: allowRewrite
+          ? { storyId: String(targetEp.id), title: targetEp.title, episodeNumber: target.episodeNumber, validatorResult: 'FAIL', skipped: false, report: target.report, validatedAt: nowIso() }
+          : null,
+        seriesId: String(seriesId),
+        episodes: refreshedEpisodes,
+        nextStep: NEXT_STEP_AFTER_SERIES_SCRIPTS,
+        packageReport: continuityReport,
+        state: {
+          ...state,
+          seriesId: String(seriesId),
+          seriesContinuity: nextContinuityState,
+          seriesValidation: {
+            ...existingValidation,
+            episodeCount: refreshedEpisodes.length,
+            failedEpisodes,
+            metadataIssues,
+            packageReport: continuityReport,
+          },
+        },
+      }
+    }
+    ;(state as any).seriesContinuity = nextContinuityState
   }
 
   // LANDING-STORY-001: skip package-level finale-arc-closure check for preview packages.
