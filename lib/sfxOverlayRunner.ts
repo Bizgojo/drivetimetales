@@ -14,6 +14,7 @@ import {
   validateOverlayCues,
   type OverlayPlan,
 } from '@/lib/sfxOverlay'
+import { librarySfxForCue } from '@/lib/sfxLibrary'
 
 const PLAN_FILE = 'sfx-overlay.json'
 
@@ -80,8 +81,11 @@ export async function ensureOverlayPlan(params: {
   rejected.forEach((r) => log(`  SFX-OVERLAY-001 rejected (${r.reason}): ${JSON.stringify(r.cue)}`))
   if (params.dryRun) return plan
 
+  const libraryBase = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/audio`
   for (const cue of cues) {
-    const buf = await soundEffect(cue.cue, cue.durationSec, elevenKey!)
+    // SFX-LIBRARY-001: a real recorded effect from our library first; ElevenLabs only if none fits.
+    const lib = await librarySfxForCue(cue.cue, libraryBase, log)
+    const buf = lib ? lib.audio : await soundEffect(cue.cue, cue.durationSec, elevenKey!)
     if (!buf) { log(`  SFX-OVERLAY-001 generation failed, skipped: ${cue.cue}`); continue }
     const name = overlayFileName(cue.beforeIndex)
     const { error } = await db.storage.from('audio').upload(`asc3/${storyId}/${name}`, buf, { contentType: 'audio/mpeg', upsert: true })

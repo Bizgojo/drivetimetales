@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { librarySfxForCue } from '@/lib/sfxLibrary'
 import { parseCharacterGuide, characterVoiceKeys, type CharacterInfo } from '@/lib/characterGuide'
 export { parseCharacterGuide, characterVoiceKeys }
 import { dramaUseCaseBonus, isUnsuitableAutoCastVoice, ageBandFromDescription, ageFitScore, energyFitPenalty } from '@/lib/castingVoiceFilter'
@@ -2595,6 +2596,14 @@ async function generateSFX(description: string, storyId: string, lineIndex: numb
   // ATL-SFX-001: derive duration + clean description once, reuse across attempts.
   const durationSeconds = parseSFXDuration(description)
   const elDescription = cleanSFXDescription(description)
+
+  // SFX-LIBRARY-001: a real recorded effect from our library first; ElevenLabs only if none fits.
+  const lib = await librarySfxForCue(elDescription, BASE_STORAGE, (m) => console.log(m))
+  if (lib) {
+    const { error: libUpErr } = await supabase.storage.from('audio').upload(cachePath, lib.audio, { contentType: 'audio/mpeg', upsert: true })
+    if (!libUpErr) return cacheUrl
+    console.warn(`[SFX-LIBRARY-001] upload failed for ${fileName}: ${libUpErr.message} — falling back to ElevenLabs`)
+  }
 
   for (let attempt = 1; attempt <= SFX_MAX_ATTEMPTS; attempt++) {
     try {
