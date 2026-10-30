@@ -1718,6 +1718,16 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
 
   useEffect(() => {
     if (loading || !audioRef.current || seriesContinueAutoplayAttemptedRef.current) return
+    // HANDOFF-STALE-AUTOPLAY-001 (Marc, 2026-10-29): on an in-place advance the
+    // first render with the NEW storyId still carries loading=false and the
+    // OUTGOING episode's audioSrc (load() has only just been kicked off). This
+    // effect re-runs on storyId, so without this guard it called play() on the
+    // already-ended outgoing element, which restarts it from 0:00 — the old
+    // episode's sting + "Episode N…" played for a few seconds, then cut off
+    // when the init effect swapped in the next episode, which then played its
+    // own sting. The init effect stamps audioStoryIdRef only after it has
+    // loaded THIS story's source, so wait for it.
+    if (audioStoryIdRef.current !== storyId) return
     const params = new URLSearchParams(window.location.search)
     if (!playlistAutoplayPendingRef.current && !shouldAutoStartPlayer(window.location.search)) return
     if (isASC3 && !queue.length) return
