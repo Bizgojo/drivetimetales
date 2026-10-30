@@ -30,6 +30,7 @@ import { transientResumeDecision, errorTextOf, MAX_TRANSIENT_RESUMES } from '@/l
 import { buildCastReview, needsCastReview, CAST_REVIEW_STATE_KEY } from '@/lib/castReview'
 import { extractValidatorFixList, planSeriesEpisodeRewrite, buildRewriteFeedbackBlock, MAX_SERIES_EPISODE_REWRITES } from '@/lib/seriesRewrite'
 import { styleProfileFrom, styleProfileOfBrief, buildStylePromptBlock, maxMainCharacters } from '@/lib/seriesStyle'
+import { sequelHookOf, buildSequelHookPromptBlock, sequelHookValidatorNote } from '@/lib/seriesSequel'
 import { seriesOutlineEnabled, buildSeriesOutlinePrompt, validateSeriesOutline, buildOutlinePromptBlock, type SeriesOutline } from '@/lib/seriesOutline'
 import { seriesContinuityEnabled, buildContinuityPrompt, parseContinuityVerdict, continuityRewriteTarget, scriptsFingerprint, storyBodyText, MAX_SERIES_CONTINUITY_RUNS } from '@/lib/seriesContinuity'
 import { sendCastReview } from '@/lib/castReviewTelegram'
@@ -6257,6 +6258,8 @@ async function createSeriesPackage(job: ProductionJob) {
       cliffhanger_or_resolution: null,
       // SERIES-STYLE-ACTION-001: opt-in style (queueItem.style = "action").
       style_profile: styleProfileFrom(queueValue(queueItem, 'style')),
+      // SERIES-NEMESIS-001: one villain escapes for a future series (queueItem.sequelHook).
+      sequel_hook: String(queueValue(queueItem, 'sequelHook', 'sequel_hook') || '').trim() || null,
     }
 
     const { data: story, error } = await supabase
@@ -6391,6 +6394,7 @@ async function createSeriesOutline(job: ProductionJob, model: string, series: an
     maxMainCharacters: maxMain,
     namePaletteBlock,
     styleBlock: buildStylePromptBlock(style, { episodeNumber: 1 }),
+    sequelHook: sequelHookOf(brief),
   })
   let problems: string[] = []
   for (let attempt = 1; attempt <= 2; attempt += 1) {
@@ -6411,7 +6415,7 @@ async function createSeriesOutline(job: ProductionJob, model: string, series: an
     }).catch(() => {})
     let parsed: unknown = null
     try { parsed = parseJsonObject(raw) } catch { parsed = null }
-    const result = validateSeriesOutline(parsed, totalEpisodes, maxMain)
+    const result = validateSeriesOutline(parsed, totalEpisodes, maxMain, { openThreadRequired: Boolean(sequelHookOf(brief)) })
     if (result.outline) {
       for (const ep of episodes) {
         const { error } = await supabase
@@ -6536,6 +6540,11 @@ async function generateOneSeriesEpisodeScript(job: ProductionJob, model: string)
     // SERIES-STYLE-ACTION-001 / SERIES-OUTLINE-001
     + buildStylePromptBlock(styleProfile, { episodeNumber: targetEpisodeNumber })
     + buildOutlinePromptBlock(seriesOutline, targetEpisodeNumber)
+    // SERIES-NEMESIS-001
+    + buildSequelHookPromptBlock(sequelHookOf(brief), {
+      episodeNumber: targetEpisodeNumber,
+      isFinale: Boolean(targetEpisode.series_is_finale ?? (brief as any).series_is_finale ?? targetEpisodeNumber === Number((brief as any).series_total_episodes || episodes.length)),
+    })
     // SERIES-REWRITE-001: a validator-ordered rewrite carries the reviewer's fix list.
     + buildRewriteFeedbackBlock((brief as any)?.validator_rewrite?.feedback, Number((brief as any)?.validator_rewrite?.attempt || 1))
 
@@ -6976,7 +6985,7 @@ ${cardCopyIssues.map((issue) => `- ${issue}`).join('\n')}`
     : `Series-specific validation:
 - This is Episode ${number} of ${episode.series_total_episodes}.
 - Non-final series episodes must end on a specific continuation hook.
-- Final series episodes must close the series arc and must not tease a next episode.`
+- Final series episodes must close the series arc and must not tease a next episode.${episode.series_is_finale && sequelHookOf(episode.brief_json) ? `\n- ${sequelHookValidatorNote(sequelHookOf(episode.brief_json))}` : ''}`
 
   const response = await anthropic.messages.create({
     model,
@@ -7104,7 +7113,7 @@ Validation rules:
 - No episode should be treated as a standalone story.
 - Metadata must be consistent with episode order and finale status.
 - Fail if the finale leaves the main series question unresolved.
-
+${sequelHookOf(episodes[0]?.brief_json) ? `- ${sequelHookValidatorNote(sequelHookOf(episodes[0]?.brief_json))}\n` : ''}
 SERIES PACKAGE:
 ${JSON.stringify(packageBrief, null, 2)}`,
     }],
@@ -7541,6 +7550,7 @@ async function scoreValidateSeriesPackage(job: ProductionJob, model: string) {
         content: buildContinuityPrompt({
           seriesTitle: String(sortedEps[0]?.series_name || ''),
           outlineText,
+          exceptionNote: sequelHookValidatorNote(sequelHookOf(sortedEps[0]?.brief_json)),
           episodes: sortedEps.map((ep: any) => ({ episodeNumber: episodeNumber(ep, 0), title: String(ep.title || ''), body: storyBodyText(String(ep.script || '')) })),
         }),
       }],

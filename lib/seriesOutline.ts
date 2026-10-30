@@ -30,6 +30,8 @@ export function buildSeriesOutlinePrompt(input: {
   maxMainCharacters: number
   namePaletteBlock?: string
   styleBlock?: string
+  /** SERIES-NEMESIS-001: one villain escapes for a future series. */
+  sequelHook?: string
 }): string {
   return `You are planning a ${input.totalEpisodes}-episode ${input.genre} audio drama series for drive-time listeners. Plan it BEFORE any episode is written, so the episodes fit together.
 
@@ -43,7 +45,8 @@ ${input.namePaletteBlock || ''}
 Rules for the plan:
 - At most ${input.maxMainCharacters} main characters. Give each ONE full name and ONE upper-case speaker label used in every episode (e.g. "NICK"). Keep any names the producer notes fix exactly.
 - List the story threads (questions the listener wants answered). The main thread is resolved ONLY in the finale (episode ${input.totalEpisodes}). Every thread is resolved in exactly ONE episode. Once resolved, it stays resolved: nobody is rescued, caught, killed, found or unmasked twice.
-- Each episode has ONE clear goal, written as a single sentence a listener could repeat.
+${input.sequelHook ? `- THE NEMESIS (producer request): ${input.sequelHook} Include ONE nemesis among the main characters (role starts with "nemesis"). Add their thread (e.g. "Will Nick catch the nemesis?") with "resolved_in": 0 — it is the ONLY thread left open, carried into a future series. The nemesis escapes in the finale; every other thread is resolved.
+` : ''}- Each episode has ONE clear goal, written as a single sentence a listener could repeat.
 - Each non-finale episode ends on a specific cliffhanger; the finale closes the series.
 - Beats are 3 to 6 short, concrete events per episode, in order. No two episodes use the same kind of climax.
 
@@ -54,7 +57,7 @@ Return JSON only, no markdown:
 }
 
 /** Parse and check the plan. Returns problems (empty = usable). */
-export function validateSeriesOutline(raw: unknown, totalEpisodes: number, maxMain: number): { outline: SeriesOutline | null; problems: string[] } {
+export function validateSeriesOutline(raw: unknown, totalEpisodes: number, maxMain: number, opts: { openThreadRequired?: boolean } = {}): { outline: SeriesOutline | null; problems: string[] } {
   const problems: string[] = []
   const o = raw && typeof raw === 'object' ? (raw as any) : null
   if (!o) return { outline: null, problems: ['not a JSON object'] }
@@ -86,8 +89,15 @@ export function validateSeriesOutline(raw: unknown, totalEpisodes: number, maxMa
   }
   if (episodes.length !== totalEpisodes) problems.push(`${episodes.length} episodes planned (need ${totalEpisodes})`)
   if (!threads.length) problems.push('no story threads')
+  const openThreads = threads.filter((t) => t.resolved_in === 0)
+  if (opts.openThreadRequired && openThreads.length !== 1) problems.push(`the nemesis needs exactly one thread left open (resolved_in 0); found ${openThreads.length}`)
+  if (!opts.openThreadRequired && openThreads.length) problems.push('a thread is left unresolved (resolved_in 0)')
   for (const t of threads) {
     const resolvers = episodes.filter((e) => e.resolves.includes(t.id)).map((e) => e.episode)
+    if (t.resolved_in === 0) {
+      if (resolvers.length) problems.push(`open thread ${t.id} is resolved in episode ${resolvers.join(', ')}`)
+      continue
+    }
     if (resolvers.length > 1) problems.push(`thread ${t.id} ("${t.question}") is resolved in more than one episode (${resolvers.join(', ')})`)
     if (!(t.resolved_in >= 1 && t.resolved_in <= totalEpisodes)) problems.push(`thread ${t.id} has no valid resolving episode`)
     else if (resolvers.length === 1 && resolvers[0] !== t.resolved_in) problems.push(`thread ${t.id} says episode ${t.resolved_in} but episode ${resolvers[0]} resolves it`)
@@ -103,6 +113,7 @@ export function buildOutlinePromptBlock(outline: SeriesOutline | null | undefine
   const threadText = (id: string) => outline.threads.find((t) => t.id === id)?.question || id
   const resolvedEarlier = outline.threads.filter((t) => t.resolved_in < episodeNumber)
   const resolvedLater = outline.threads.filter((t) => t.resolved_in > episodeNumber)
+  const leftOpen = outline.threads.filter((t) => t.resolved_in === 0)
   const lines = [
     '',
     '🧭 SERIES OUTLINE — FIXED PLAN (follow it exactly)',
@@ -113,6 +124,7 @@ export function buildOutlinePromptBlock(outline: SeriesOutline | null | undefine
     ...(ep?.beats || []).map((b, i) => `  ${i + 1}. ${b}`),
     ep?.ends_on ? `  Ends on: ${ep.ends_on}` : '',
     ep?.resolves?.length ? `Resolve in THIS episode: ${ep.resolves.map(threadText).join('; ')}` : 'This episode resolves no main thread.',
+    leftOpen.length ? `NEVER RESOLVED in this series (the nemesis escapes; carried into a future series): ${leftOpen.map((t) => t.question).join('; ')}` : '',
     resolvedEarlier.length ? `ALREADY RESOLVED in earlier episodes — keep them resolved, never undo or repeat them: ${resolvedEarlier.map((t) => `${t.question} (episode ${t.resolved_in})`).join('; ')}` : '',
     resolvedLater.length ? `NOT YET — must stay open in this episode (resolved later): ${resolvedLater.map((t) => `${t.question} (episode ${t.resolved_in})`).join('; ')}` : '',
     'Whole-series plan, for reference:',

@@ -128,3 +128,42 @@ describe('Marc 2026-10-29: outline + continuity are permanent', () => {
     expect(seriesContinuityEnabled({ SERIES_CONTINUITY: 'OFF' })).toBe(false)
   })
 })
+
+describe('SERIES-NEMESIS-001', () => {
+  const { buildSequelHookPromptBlock, sequelHookValidatorNote, sequelHookOf } = require('@/lib/seriesSequel')
+  const { buildContinuityPrompt } = require('@/lib/seriesContinuity')
+  const { buildSeriesOutlinePrompt } = require('@/lib/seriesOutline')
+  const hook = 'One evil nemesis eludes Nick and escapes at the end, so Nick can go after them in the next series.'
+  const withNemesis = () => {
+    const o = JSON.parse(JSON.stringify(goodOutline))
+    o.characters.push({ name: 'Viktor Sloane', label: 'SLOANE', role: 'nemesis, drug kingpin' })
+    o.threads.push({ id: 'T3', question: 'Will Nick catch Sloane?', resolved_in: 0 })
+    return o
+  }
+
+  test('one open nemesis thread is required when asked for, and refused otherwise', () => {
+    expect(validateSeriesOutline(withNemesis(), 3, 5, { openThreadRequired: true }).problems).toEqual([])
+    expect(validateSeriesOutline(goodOutline, 3, 5, { openThreadRequired: true }).problems.join()).toMatch(/exactly one thread left open/)
+    expect(validateSeriesOutline(withNemesis(), 3, 5).problems.join()).toMatch(/left unresolved/)
+    const resolvedAnyway = withNemesis(); resolvedAnyway.episodes[2].resolves.push('T3')
+    expect(validateSeriesOutline(resolvedAnyway, 3, 5, { openThreadRequired: true }).problems.join()).toMatch(/open thread T3 is resolved/)
+  })
+
+  test('writer sees the nemesis stays open in every episode; finale gets the escape', () => {
+    const outline = validateSeriesOutline(withNemesis(), 3, 5, { openThreadRequired: true }).outline!
+    expect(buildOutlinePromptBlock(outline, 2)).toMatch(/NEVER RESOLVED.*Will Nick catch Sloane\?/)
+    expect(buildSequelHookPromptBlock(hook, { episodeNumber: 1, isFinale: false })).toMatch(/Introduce the nemesis/)
+    const finale = buildSequelHookPromptBlock(hook, { episodeNumber: 3, isFinale: true })
+    expect(finale).toMatch(/ESCAPES/)
+    expect(finale).toMatch(/Do NOT say "to be continued"/)
+    expect(buildSequelHookPromptBlock('', { episodeNumber: 3, isFinale: true })).toBe('')
+  })
+
+  test('validators and the plan are told the escape is approved', () => {
+    expect(sequelHookValidatorNote(hook)).toMatch(/NOT an unresolved series arc/)
+    expect(sequelHookValidatorNote('')).toBe('')
+    expect(buildContinuityPrompt({ seriesTitle: 'X', exceptionNote: sequelHookValidatorNote(hook), episodes: [] })).toMatch(/PRODUCER-APPROVED EXCEPTION/)
+    expect(buildSeriesOutlinePrompt({ title: 'X', premise: 'p', setting: 's', genre: 'Thriller', totalEpisodes: 7, requirements: '', maxMainCharacters: 5, sequelHook: hook })).toMatch(/"resolved_in": 0/)
+    expect(sequelHookOf({ sequel_hook: ` ${hook} ` })).toBe(hook)
+  })
+})
