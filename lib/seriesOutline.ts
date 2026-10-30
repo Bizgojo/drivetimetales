@@ -4,7 +4,7 @@
  * memory, so the kidnapped girl was rescued in a middle episode and then
  * rescued AGAIN in the finale, and characters drifted between names.
  *
- * Now (SERIES_OUTLINE=on): before Episode 1 is written, one plan for the
+ * Now (always on; SERIES_OUTLINE=off disables): before Episode 1 is written, one plan for the
  * whole series is made — fixed character names, the story threads, and the
  * ONE episode where each thread is resolved. Every episode writer gets the
  * plan plus its own slice of it. Pure rules here; the call lives in run-next.
@@ -16,7 +16,8 @@ export type OutlineEpisode = { episode: number; goal: string; beats: string[]; r
 export type SeriesOutline = { characters: OutlineCharacter[]; threads: OutlineThread[]; episodes: OutlineEpisode[] }
 
 export function seriesOutlineEnabled(env: Record<string, string | undefined> = process.env): boolean {
-  return String(env.SERIES_OUTLINE || '').trim().toLowerCase() === 'on'
+  // Marc 2026-10-29 23:44 EDT: permanent for all future stories. Default ON; only an explicit SERIES_OUTLINE=off disables it.
+  return String(env.SERIES_OUTLINE || '').trim().toLowerCase() !== 'off'
 }
 
 export function buildSeriesOutlinePrompt(input: {

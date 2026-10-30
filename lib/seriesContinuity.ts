@@ -3,7 +3,7 @@
  * package check only reads each episode's last ~1,800 characters, so it never
  * saw that the girl was rescued in a middle episode and again in the finale.
  *
- * Now (SERIES_CONTINUITY=on): after every episode passes its own review, one
+ * Now (always on; SERIES_CONTINUITY=off disables): after every episode passes its own review, one
  * check reads the FULL story text of all episodes together and fails on
  * clear contradictions — an event resolved twice, a character under two
  * names, a dead or captured character back without explanation, facts that
@@ -14,7 +14,8 @@
 export const MAX_SERIES_CONTINUITY_RUNS = 3
 
 export function seriesContinuityEnabled(env: Record<string, string | undefined> = process.env): boolean {
-  return String(env.SERIES_CONTINUITY || '').trim().toLowerCase() === 'on'
+  // Marc 2026-10-29 23:44 EDT: permanent for all future stories. Default ON; only an explicit SERIES_CONTINUITY=off disables it.
+  return String(env.SERIES_CONTINUITY || '').trim().toLowerCase() !== 'off'
 }
 
 /** Spoken story body only: after [START AUDIO DRAMA SCRIPT], before the Belle B outro. */
