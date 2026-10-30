@@ -31,6 +31,8 @@ export function storyBodyText(script: string): string {
 export function buildContinuityPrompt(input: {
   seriesTitle: string
   outlineText?: string
+  /** SERIES-NEMESIS-001 exception text, if any. */
+  exceptionNote?: string
   episodes: Array<{ episodeNumber: number; title: string; body: string }>
 }): string {
   return `You are the continuity editor for the audio drama series "${input.seriesTitle}" (${input.episodes.length} episodes). Read every episode in full, in order, and find CLEAR continuity errors a listener would notice.
@@ -42,7 +44,7 @@ Fail the series only for these:
 4. Facts that contradict each other across episodes (who did what, where someone is, what an object is).
 5. A later episode ignoring something major that happened earlier.
 
-Do NOT report style, pacing, or small details. If there is nothing clear, pass.
+Do NOT report style, pacing, or small details. If there is nothing clear, pass.${input.exceptionNote ? `\n${input.exceptionNote}` : ''}
 For each problem, name the ONE episode that should be rewritten to fix it (usually the earlier episode that resolves something too soon, or the later one that contradicts it) and say exactly what to change.
 ${input.outlineText ? `\nTHE SERIES PLAN THE EPISODES WERE WRITTEN FROM:\n${input.outlineText}\n` : ''}
 Return JSON only, no markdown:
