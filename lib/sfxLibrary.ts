@@ -23,6 +23,31 @@ export type SfxLibraryEntry = {
   durationSec?: number
   source?: string // sonniss | soundly | ...
   license?: string
+  /** SFX-REVIEW-001: Marc's ear decides. Only 'approved' sounds are used in stories. */
+  status?: 'approved' | 'rejected'
+  reviewedAt?: string
+}
+
+export const SFX_CATEGORIES = [
+  'Guns', 'Fights & hits', 'Vehicles', 'Doors', 'Footsteps', 'Phones', 'Glass & breaking', 'Sirens', 'Weather', 'City & crowds', 'Other',
+] as const
+export type SfxCategory = (typeof SFX_CATEGORIES)[number]
+
+/** Rough grouping for the review page, from the file's words. */
+export function sfxCategory(entry: Pick<SfxLibraryEntry, 'id' | 'name' | 'tags'>): SfxCategory {
+  const t = ` ${[entry.id, entry.name, ...(entry.tags || [])].join(' ').toLowerCase().replace(/[^a-z0-9]+/g, ' ')} `
+  const has = (re: RegExp) => re.test(t)
+  if (has(/ (gun|glock|pistol|rifle|weap|weapon|cartridge|gunmech|shot|firing) /)) return 'Guns'
+  if (has(/ (siren|sirens|vehsirn) /)) return 'Sirens'
+  if (has(/ (door|doors|gate|doorknck|doorwood|doormetl|doorhdwr|vehdoor|trunk|elevator|lift|machelev|knock) /)) return 'Doors'
+  if (has(/ (glass|shatter|break|collapse|debris|explosion) /)) return 'Glass & breaking'
+  if (has(/ (punch|grunt|hit|hits|impact|slash|scream|slasher|swsh|swing|woodimpt) /)) return 'Fights & hits'
+  if (has(/ (footstep|footsteps|step|steps|walk|feet|feethors) /)) return 'Footsteps'
+  if (has(/ (phone|dial|keypad|smartphone|swipe) /)) return 'Phones'
+  if (has(/ (rain|thunder|thun|wind|hail|storm|rainconc|rainvege) /)) return 'Weather'
+  if (has(/ (car|engine|truck|suv|ford|harley|moto|vehmoto|bus|tram|train|ambulance|volvo|isuzu|kia|scania|vw|golf|sprint|aston|ferrari|tractor|bike|vehicle|ignition|steering|wiper|zil|bumper|infanterikanonvagn|brdm2|polaris|textron) /)) return 'Vehicles'
+  if (has(/ (amb|city|crowd|traffic|market|street|pub|park|urban|amburbn|ambrest|ambmrkt|ambpubl|ambsubn|plaza|town|walla) /)) return 'City & crowds'
+  return 'Other'
 }
 
 export type SfxLibraryManifest = { version: 1; updatedAt: string; entries: SfxLibraryEntry[] }
@@ -143,7 +168,10 @@ export async function librarySfxForCue(cue: string, publicBaseUrl: string, log: 
   if (!sfxLibraryEnabled()) return null
   const manifest = await loadSfxLibrary(publicBaseUrl)
   if (!manifest?.entries?.length) return null
-  const match = matchSfxCue(cue, manifest.entries)
+  // SFX-REVIEW-001: only sounds Marc approved by ear are ever used.
+  const approved = manifest.entries.filter((e) => e.status === 'approved')
+  if (!approved.length) return null
+  const match = matchSfxCue(cue, approved)
   if (!match) {
     log(`[SFX-LIBRARY-001] no library match for "${cue}" — using ElevenLabs`)
     return null

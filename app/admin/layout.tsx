@@ -36,6 +36,7 @@ const NAV_GROUPS = [
     { href: '/admin/story-ideas', label: 'Story Ideas' },
     { href: '/admin/genres', label: 'Genres' },
     { href: '/admin/el-usage', label: 'ElevenLabs Usage' },
+    { href: '/admin/sfx-library', label: 'Sound Effects Library' },
   ]},
   { id: 'library', label: 'Library', icon: '📚', items: [
     { href: '/admin/stories', label: 'Published Stories' },

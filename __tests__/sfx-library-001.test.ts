@@ -48,3 +48,19 @@ describe('SFX-LIBRARY-001 matcher', () => {
     expect(sfxLibraryEnabled({ SFX_LIBRARY: 'on' })).toBe(true)
   })
 })
+
+describe('SFX-REVIEW-001', () => {
+  const { sfxCategory } = require('@/lib/sfxLibrary')
+  test.each([
+    ['sonniss/glock-17-firing-take-1', 'Glock 17 firing take 1', 'Guns'],
+    ['sonniss/vehsirn-ambulancesiren', 'ambulancesiren', 'Sirens'],
+    ['sonniss/heavy-hit', 'heavy hit', 'Fights & hits'],
+    ['sonniss/bluezone-bc0274-glass-impact-break-002', 'glass impact break 002', 'Glass & breaking'],
+    ['sonniss/doorknck-int-glass-frontdoor-knock', 'glass frontdoor knock', 'Doors'],
+    ['sonniss/ford-f150-2004-suv-4x4-drive-away', 'Ford F150 drive away', 'Vehicles'],
+    ['sonniss/thun-insj-thunder-distant-01-eq', 'thunder distant', 'Weather'],
+    ['sonniss/ambrest-crowd-chattering-exterior', 'crowd chattering exterior', 'City & crowds'],
+  ])('%s → %s', (id, name, cat) => {
+    expect(sfxCategory({ id, name, tags: [] })).toBe(cat)
+  })
+})
