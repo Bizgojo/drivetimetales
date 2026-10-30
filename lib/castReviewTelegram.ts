@@ -7,6 +7,7 @@
  * (default: Voices Ready group). Falls back to Marc's DM chat when the group
  * send is refused. Never throws: returns what was sent so the caller can log it.
  */
+import { possibleDuplicateCast } from '@/lib/characterNames'
 import {
   CastReviewItem,
   castReviewCaption,
@@ -70,7 +71,8 @@ export async function sendCastReview(args: {
   const result: CastReviewDelivery = { chatId, headerSent: false, clipsSent: 0, clipsFailed: [], fellBackToDm: false }
   if (!token) return { ...result, error: 'TELEGRAM_BOT_TOKEN not set' }
 
-  const header = castReviewHeader(args.seriesTitle, args.items.length, args.narratorName)
+  // CHARACTER-NAMES-001: warn when two cast entries look like one person.
+  const header = castReviewHeader(args.seriesTitle, args.items.length, args.narratorName, possibleDuplicateCast(args.items.map((i) => i.name)))
   let sent = await tg('sendMessage', token, { chat_id: chatId, text: header })
   if (!sent.ok && chatId !== MARC_DM_CHAT_ID) {
     chatId = MARC_DM_CHAT_ID

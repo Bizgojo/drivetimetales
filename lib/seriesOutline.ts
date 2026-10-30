@@ -10,7 +10,7 @@
  * plan plus its own slice of it. Pure rules here; the call lives in run-next.
  */
 
-export type OutlineCharacter = { name: string; label: string; role: string }
+export type OutlineCharacter = { name: string; label: string; role: string; gender?: string; aliases?: string[] }
 export type OutlineThread = { id: string; question: string; resolved_in: number }
 export type OutlineEpisode = { episode: number; goal: string; beats: string[]; resolves: string[]; ends_on: string }
 export type SeriesOutline = { characters: OutlineCharacter[]; threads: OutlineThread[]; episodes: OutlineEpisode[] }
@@ -44,6 +44,7 @@ ${input.namePaletteBlock || ''}
 
 Rules for the plan:
 - At most ${input.maxMainCharacters} main characters. Give each ONE full name and ONE upper-case speaker label used in every episode (e.g. "NICK"). Keep any names the producer notes fix exactly.
+- For each character also list "aliases": every other way people in the story will call them (first name, last name, title + last name, nickname), e.g. ["Nick", "Brennan", "Detective Brennan"]. No two characters may share a full name, and no alias may belong to two characters. Give "gender" (male/female).
 - List the story threads (questions the listener wants answered). The main thread is resolved ONLY in the finale (episode ${input.totalEpisodes}). Every thread is resolved in exactly ONE episode. Once resolved, it stays resolved: nobody is rescued, caught, killed, found or unmasked twice.
 ${input.sequelHook ? `- THE NEMESIS (producer request): ${input.sequelHook} Include ONE nemesis among the main characters (role starts with "nemesis"). Add their thread (e.g. "Will Nick catch the nemesis?") with "resolved_in": 0 — it is the ONLY thread left open, carried into a future series. The nemesis escapes in the finale; every other thread is resolved.
 ` : ''}- Each episode has ONE clear goal, written as a single sentence a listener could repeat.
@@ -51,7 +52,7 @@ ${input.sequelHook ? `- THE NEMESIS (producer request): ${input.sequelHook} Incl
 - Beats are 3 to 6 short, concrete events per episode, in order. No two episodes use the same kind of climax.
 
 Return JSON only, no markdown:
-{"characters":[{"name":"...","label":"...","role":"..."}],
+{"characters":[{"name":"...","label":"...","role":"...","gender":"male|female","aliases":["..."]}],
  "threads":[{"id":"T1","question":"...","resolved_in":<episode number>}],
  "episodes":[{"episode":1,"goal":"...","beats":["..."],"resolves":["T2"],"ends_on":"..."}]}`
 }
@@ -62,7 +63,13 @@ export function validateSeriesOutline(raw: unknown, totalEpisodes: number, maxMa
   const o = raw && typeof raw === 'object' ? (raw as any) : null
   if (!o) return { outline: null, problems: ['not a JSON object'] }
   const characters: OutlineCharacter[] = (Array.isArray(o.characters) ? o.characters : [])
-    .map((c: any) => ({ name: String(c?.name || '').trim(), label: String(c?.label || '').trim().toUpperCase(), role: String(c?.role || '').trim() }))
+    .map((c: any) => ({
+      name: String(c?.name || '').trim(),
+      label: String(c?.label || '').trim().toUpperCase(),
+      role: String(c?.role || '').trim(),
+      gender: /^(male|female)$/i.test(String(c?.gender || '')) ? String(c.gender).toLowerCase() : undefined,
+      aliases: (Array.isArray(c?.aliases) ? c.aliases : []).map((a: any) => String(a || '').trim()).filter(Boolean).slice(0, 8),
+    }))
     .filter((c: OutlineCharacter) => c.name && c.label)
   const threads: OutlineThread[] = (Array.isArray(o.threads) ? o.threads : [])
     .map((t: any) => ({ id: String(t?.id || '').trim(), question: String(t?.question || '').trim(), resolved_in: Number(t?.resolved_in) }))
@@ -81,6 +88,8 @@ export function validateSeriesOutline(raw: unknown, totalEpisodes: number, maxMa
   if (characters.length > maxMain) problems.push(`${characters.length} main characters (max ${maxMain})`)
   const labels = characters.map((c) => c.label)
   if (new Set(labels).size !== labels.length) problems.push('two characters share a speaker label')
+  const fullNames = characters.map((c) => c.name.toUpperCase())
+  if (new Set(fullNames).size !== fullNames.length) problems.push('two characters share a full name')
   for (let n = 1; n <= totalEpisodes; n += 1) {
     const ep = episodes.find((e) => e.episode === n)
     if (!ep) { problems.push(`episode ${n} missing`); continue }
@@ -118,7 +127,8 @@ export function buildOutlinePromptBlock(outline: SeriesOutline | null | undefine
     '',
     '🧭 SERIES OUTLINE — FIXED PLAN (follow it exactly)',
     'Characters (use these exact names and speaker labels in every episode; never rename anyone):',
-    ...outline.characters.map((c) => `- ${c.label}: ${c.name} — ${c.role}`),
+    ...outline.characters.map((c) => `- ${c.label}: ${c.name} — ${c.role}${c.aliases?.length ? ` (also called: ${c.aliases.join(', ')})` : ''}`),
+    'CHARACTER-NAMES-001: however a character is addressed in dialogue, their speaker label is ALWAYS the label above (never "MR. SMITH:" for SMITH), and their CHARACTER GUIDE entry starts with that label ("LOOMIS — Commander Bruce Loomis, …"). A new small part must not share any name with a main character.',
     '',
     `THIS EPISODE (${episodeNumber}) — goal: ${ep?.goal || '(see series plan)'}`,
     ...(ep?.beats || []).map((b, i) => `  ${i + 1}. ${b}`),

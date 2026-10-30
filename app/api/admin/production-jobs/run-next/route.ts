@@ -32,6 +32,7 @@ import { extractValidatorFixList, planSeriesEpisodeRewrite, buildRewriteFeedback
 import { styleProfileFrom, styleProfileOfBrief, buildStylePromptBlock, maxMainCharacters } from '@/lib/seriesStyle'
 import { sequelHookOf, buildSequelHookPromptBlock, sequelHookValidatorNote } from '@/lib/seriesSequel'
 import { guideDescriptionNameCandidate, isDescriptorNotName } from '@/lib/rosterFullName'
+import { canonicalizeCharacterNames, characterNameConflictDetails, buildNameIndex, aliasesForLabel } from '@/lib/characterNames'
 import { seriesOutlineEnabled, buildSeriesOutlinePrompt, validateSeriesOutline, buildOutlinePromptBlock, type SeriesOutline } from '@/lib/seriesOutline'
 import { seriesContinuityEnabled, buildContinuityPrompt, parseContinuityVerdict, continuityRewriteTarget, scriptsFingerprint, storyBodyText, MAX_SERIES_CONTINUITY_RUNS } from '@/lib/seriesContinuity'
 import { sendCastReview } from '@/lib/castReviewTelegram'
@@ -6451,12 +6452,49 @@ async function createSeriesOutline(job: ProductionJob, model: string, series: an
         ep.brief_json = { ...(ep.brief_json || {}), series_outline: result.outline }
       }
       console.log(`[SERIES-OUTLINE-001] series ${series.id}: plan saved (${result.outline.characters.length} characters, ${result.outline.threads.length} threads), attempt ${attempt}`)
+      await seedRosterFromOutline(String(series.id), result.outline, episodes, totalEpisodes)
       return result.outline
     }
     problems = result.problems
     console.warn(`[SERIES-OUTLINE-001] series ${series.id}: plan attempt ${attempt} rejected: ${problems.join('; ')}`)
   }
   return null
+}
+
+/**
+ * CHARACTER-NAMES-001: the plan's characters go into the series roster before
+ * Episode 1 is written, each with every unambiguous alias (first name, last
+ * name, title + name, plan aliases). Every later name in any episode then
+ * resolves to the same roster row — one character, one voice. Existing rows
+ * are left alone (ignoreDuplicates).
+ */
+async function seedRosterFromOutline(seriesId: string, outline: SeriesOutline, episodes: any[], totalEpisodes: number) {
+  try {
+    const index = buildNameIndex(outline.characters)
+    const firstEp = [...episodes].sort((a: any, b: any) => episodeNumber(a, 0) - episodeNumber(b, 0))[0]
+    const rows = outline.characters.map((c) => ({
+      series_id: seriesId,
+      canonical_name: c.label,
+      canonical_name_normalized: normalizeSeriesCharacterName(c.label),
+      aliases: aliasesForLabel(index, c.label),
+      description: `${c.label} — ${c.name}, ${c.gender ? `${c.gender}, ` : ''}${c.role}`,
+      gender: c.gender || null,
+      age: null,
+      accent: null,
+      regional_tags: [],
+      first_appeared_episode: totalEpisodes,
+      established_from_story_id: firstEp?.id || null,
+      is_locked: true,
+      updated_at: nowIso(),
+    }))
+    const { error } = await supabase
+      .from('series_character_roster')
+      .upsert(rows, { onConflict: 'series_id,canonical_name_normalized', ignoreDuplicates: true })
+    if (error) console.warn(`[CHARACTER-NAMES-001] roster seed failed (non-blocking): ${error.message}`)
+    else console.log(`[CHARACTER-NAMES-001] series ${seriesId}: roster seeded with ${rows.length} plan characters`)
+  } catch (err) {
+    console.warn('[CHARACTER-NAMES-001] roster seed error (non-blocking):', err instanceof Error ? err.message : String(err))
+  }
 }
 
 async function generateOneSeriesEpisodeScript(job: ProductionJob, model: string) {
@@ -6658,6 +6696,8 @@ async function generateOneSeriesEpisodeScript(job: ProductionJob, model: string)
       // SCRIPT-LABELS-001: format-only repair (label case, SFX cue form) before the self-check.
       // NUMERAL-AUTOFIX-001: spell simple spoken numerals before the self-check.
       const formatted = spellOutSpokenNumerals(normalizeScriptFormat(normalized.script).script)
+      // CHARACTER-NAMES-001: every speaker label / guide entry → the plan's label.
+      if (seriesOutline?.characters?.length) formatted.script = canonicalizeCharacterNames(formatted.script, seriesOutline.characters).script
       return {
         script: formatted.script,
         description: normalized.description,
@@ -6730,8 +6770,13 @@ async function generateOneSeriesEpisodeScript(job: ProductionJob, model: string)
       // saw which text was judged): quote the current Belle line back.
       const belleIntroText = extractBelleSection(draftScript, 'intro')
       const belleOutroText = extractBelleSection(draftScript, 'outro')
+      // CHARACTER-NAMES-001: a new name that shares a name with a main character would get a second voice.
+      const nameConflicts = seriesOutline?.characters?.length
+        ? canonicalizeCharacterNames(draftScript, seriesOutline.characters).conflicts
+        : []
       const blockers = [
         ...report.blockers,
+        ...characterNameConflictDetails(nameConflicts).map((detail) => ({ gate: 'CHARACTER-NAMES', detail })),
         ...belleIssues.map((detail) => {
           const isOutro = /\boutro\b/i.test(detail)
           const current = isOutro ? belleOutroText : /\bintro\b/i.test(detail) ? belleIntroText : ''
