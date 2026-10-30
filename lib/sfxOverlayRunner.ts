@@ -15,6 +15,7 @@ import {
   type OverlayPlan,
 } from '@/lib/sfxOverlay'
 import { librarySfxForCue } from '@/lib/sfxLibrary'
+import { overlaySettingsForStyle, styleProfileFrom } from '@/lib/seriesStyle'
 
 const PLAN_FILE = 'sfx-overlay.json'
 
@@ -44,6 +45,8 @@ export async function ensureOverlayPlan(params: {
   storyId: string
   script: string
   genre: string
+  /** SERIES-STYLE-ACTION-001: brief_json.style_profile */
+  style?: string | null
   force?: boolean
   dryRun?: boolean
   model?: string
@@ -51,7 +54,8 @@ export async function ensureOverlayPlan(params: {
 }): Promise<OverlayPlan | null> {
   const { db, storyId, script, genre } = params
   const log = params.log || (() => {})
-  const budget = overlayBudgetForGenre(genre)
+  const style = styleProfileFrom(params.style)
+  const { budget, minGap } = overlaySettingsForStyle(style, overlayBudgetForGenre(genre))
   if (budget <= 0) return null
   if (!params.force) {
     const existing = await loadOverlayPlan(db, storyId)
@@ -69,13 +73,13 @@ export async function ensureOverlayPlan(params: {
   const msg = await anthropic.messages.create({
     model,
     max_tokens: 2000,
-    messages: [{ role: 'user', content: buildOverlayPrompt(lines, budget, genre, existingSfx.map((p) => String(p.text || ''))) }],
+    messages: [{ role: 'user', content: buildOverlayPrompt(lines, budget, genre, existingSfx.map((p) => String(p.text || '')), { everyAudibleMoment: style === 'action', minGap }) }],
   })
   const raw = msg.content.map((b: any) => (b?.type === 'text' ? b.text : '')).join('')
   const json = raw.slice(raw.indexOf('{'), raw.lastIndexOf('}') + 1)
   let parsed: unknown = null
   try { parsed = JSON.parse(json) } catch { parsed = null }
-  const { cues, rejected } = validateOverlayCues(parsed, lines, budget, existingSfx.map((p) => p.index))
+  const { cues, rejected } = validateOverlayCues(parsed, lines, budget, existingSfx.map((p) => p.index), minGap)
   const plan: OverlayPlan = { storyId, genre, createdAt: new Date().toISOString(), model, cues, rejected }
   cues.forEach((c) => log(`  SFX-OVERLAY-001 before line ${c.beforeIndex} (${c.durationSec}s): ${c.cue}`))
   rejected.forEach((r) => log(`  SFX-OVERLAY-001 rejected (${r.reason}): ${JSON.stringify(r.cue)}`))

@@ -847,7 +847,7 @@ export async function runRenderFinalMix(storyId: string): Promise<{
         if (overlayEnabled() && !sfxIsDisabled) {
           try {
             const genre = String((storyRow as any)?.primary_genre || (storyRow as any)?.genre || (storyRow as any)?.brief_json?.genre || '')
-            const plan = await ensureOverlayPlan({ db: supabase, storyId, script: storyRow?.script || '', genre, log: (line) => console.log(line) })
+            const plan = await ensureOverlayPlan({ db: supabase, storyId, script: storyRow?.script || '', genre, style: (storyRow as any)?.brief_json?.style_profile || null, log: (line) => console.log(line) })
             for (const cue of plan?.cues || []) {
               if (!cue.file) continue
               const rawPath = path.join(tmpDir, 'raw_' + cue.file)

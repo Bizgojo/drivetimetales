@@ -60,14 +60,18 @@ export function overlayLinesForPrompt(positions: ScriptPosition[]): Array<{ inde
     .map((p) => ({ index: p.index, speaker: String(p.speaker || ''), text: String(p.text || '') }))
 }
 
-export function buildOverlayPrompt(lines: Array<{ index: number; speaker: string; text: string }>, budget: number, genre: string, existingCues: string[]): string {
+export function buildOverlayPrompt(lines: Array<{ index: number; speaker: string; text: string }>, budget: number, genre: string, existingCues: string[], opts: { everyAudibleMoment?: boolean; minGap?: number } = {}): string {
+  const gap = opts.minGap ?? 3
   return [
     `You are the sound designer for a ${genre || 'drama'} audio drama for drive-time listeners.`,
     `Choose up to ${budget} sound effects to add to this episode at its action moments: gunshots, engines, tire screeches, crashes, running footsteps, fights and blows, breaking glass or wood, doors kicked in, sirens, phones, weather, crowds.`,
+    ...(opts.everyAudibleMoment
+      ? ['This is a fast action story: add an effect at EVERY moment the listener could actually hear something (doors, engines, tires, footsteps, gunfire, punches, glass, phones, sirens, crowds, weather, keys, radios). Use as many of the allowed effects as the story supports.']
+      : []),
     'Each effect plays just BEFORE the numbered line you choose, so pick the line that describes or reacts to that action.',
     'Rules:',
     '- Only add a sound where the story clearly implies it. Never invent events.',
-    '- Spread them out: never two effects within 3 lines of each other.',
+    `- Spread them out: never two effects within ${gap} lines of each other.`,
     '- Do not duplicate the effects the script already has (listed below).',
     '- Each cue is a short, concrete description for a sound-effect generator, e.g. "three rapid pistol shots in a concrete parking garage, echoing". No dialogue, no music, no speech.',
     '- durationSec: 1 to 6 seconds (impacts 1-2, gunfire 2-3, car chase 4-6).',
@@ -81,7 +85,7 @@ export function buildOverlayPrompt(lines: Array<{ index: number; speaker: string
 }
 
 /** Keeps only valid, spaced, in-budget cues. */
-export function validateOverlayCues(raw: unknown, lines: Array<{ index: number }>, budget: number, sfxIndices: number[] = []): { cues: OverlayCue[]; rejected: Array<{ cue: unknown; reason: string }> } {
+export function validateOverlayCues(raw: unknown, lines: Array<{ index: number }>, budget: number, sfxIndices: number[] = [], minGap = 3): { cues: OverlayCue[]; rejected: Array<{ cue: unknown; reason: string }> } {
   const valid = new Set(lines.map((l) => l.index))
   const rejected: Array<{ cue: unknown; reason: string }> = []
   const list = Array.isArray((raw as any)?.cues) ? (raw as any).cues : Array.isArray(raw) ? raw : []
@@ -94,7 +98,7 @@ export function validateOverlayCues(raw: unknown, lines: Array<{ index: number }
     if (!Number.isInteger(idx) || !valid.has(idx)) { rejected.push({ cue: item, reason: 'not a voice line index' }); continue }
     if (cue.length < 6 || cue.length > 160) { rejected.push({ cue: item, reason: 'cue length' }); continue }
     if (/\b(says?|speaks?|voice|dialogue|music|song|singing)\b/i.test(cue)) { rejected.push({ cue: item, reason: 'speech or music' }); continue }
-    if (accepted.some((a) => Math.abs(a.beforeIndex - idx) < 3)) { rejected.push({ cue: item, reason: 'too close to another overlay' }); continue }
+    if (accepted.some((a) => Math.abs(a.beforeIndex - idx) < minGap)) { rejected.push({ cue: item, reason: 'too close to another overlay' }); continue }
     if (sfxIndices.some((s) => Math.abs(s - idx) <= 1)) { rejected.push({ cue: item, reason: 'next to an existing script effect' }); continue }
     if (accepted.length >= budget) { rejected.push({ cue: item, reason: 'over budget' }); continue }
     accepted.push({ beforeIndex: idx, cue, durationSec: Math.min(6, Math.max(1, Number.isFinite(dur) ? dur : 2.5)) })
