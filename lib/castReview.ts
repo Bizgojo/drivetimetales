@@ -149,10 +149,13 @@ export function castReviewCaption(item: CastReviewItem, index: number): string {
   return text.length > 1024 ? `${text.slice(0, 1021)}…` : text
 }
 
-export function castReviewHeader(seriesTitle: string, itemCount: number, narratorName?: string | null): string {
+export function castReviewHeader(seriesTitle: string, itemCount: number, narratorName?: string | null, duplicates: Array<[string, string]> = []): string {
   return (
     `🎙 VOICES READY — ${seriesTitle}\n` +
     `${itemCount} character voice${itemCount === 1 ? '' : 's'} below${narratorName ? ` (narrator: ${narratorName})` : ''}.\n` +
+    (duplicates.length
+      ? `⚠️ Possibly the SAME person cast twice (two voices): ${duplicates.map(([a, b]) => `${a} / ${b}`).join('; ')}. Tell Claude if they are one person.\n`
+      : '') +
     `Nothing is recorded yet. Reply to Claude with "approve", or a change like "2 = deeper".`
   )
 }
