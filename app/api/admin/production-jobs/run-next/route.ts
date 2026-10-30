@@ -31,6 +31,7 @@ import { buildCastReview, needsCastReview, CAST_REVIEW_STATE_KEY } from '@/lib/c
 import { extractValidatorFixList, planSeriesEpisodeRewrite, buildRewriteFeedbackBlock, MAX_SERIES_EPISODE_REWRITES } from '@/lib/seriesRewrite'
 import { styleProfileFrom, styleProfileOfBrief, buildStylePromptBlock, maxMainCharacters } from '@/lib/seriesStyle'
 import { sequelHookOf, buildSequelHookPromptBlock, sequelHookValidatorNote } from '@/lib/seriesSequel'
+import { guideDescriptionNameCandidate, isDescriptorNotName } from '@/lib/rosterFullName'
 import { seriesOutlineEnabled, buildSeriesOutlinePrompt, validateSeriesOutline, buildOutlinePromptBlock, type SeriesOutline } from '@/lib/seriesOutline'
 import { seriesContinuityEnabled, buildContinuityPrompt, parseContinuityVerdict, continuityRewriteTarget, scriptsFingerprint, storyBodyText, MAX_SERIES_CONTINUITY_RUNS } from '@/lib/seriesContinuity'
 import { sendCastReview } from '@/lib/castReviewTelegram'
@@ -3068,7 +3069,22 @@ function isSeriesCharacterSubsetName(a: string, b: string) {
   return shorter.every(token => longer.includes(token))
 }
 
-function findSeriesRosterNameMatch(roster: any[], incomingName: string) {
+/**
+ * ROSTER-FULLNAME-001 (Chicago rewrite EP5, 2026-10-30): the guide says
+ * "LOOMIS — Commander Bruce Loomis, …" in one episode and "Commander Bruce
+ * Loomis — …" in another. The two did not match (different first token), so
+ * one person got two voices — the "voices change mid-series" bug. The full
+ * name written right after the label in a guide description is that
+ * character's real name, so it matches both ways.
+ */
+function guideDescriptionFullName(description: unknown): string {
+  const raw = guideDescriptionNameCandidate(description)
+  if (!raw) return ''
+  const name = normalizeSeriesCharacterName(raw)
+  return isDescriptorNotName(name) ? '' : name
+}
+
+function findSeriesRosterNameMatch(roster: any[], incomingName: string, incomingDescription?: string | null) {
   const normalized = normalizeSeriesCharacterName(incomingName)
   const exact = roster.find((row: any) => {
     const canonical = normalizeSeriesCharacterName(row.canonical_name_normalized || row.canonical_name)
@@ -3076,6 +3092,15 @@ function findSeriesRosterNameMatch(roster: any[], incomingName: string) {
     return canonical === normalized || aliases.includes(normalized)
   })
   if (exact) return { match: exact, kind: 'exact' as const, ambiguous: false }
+
+  // ROSTER-FULLNAME-001: the full name written in a guide description.
+  const incomingFull = guideDescriptionFullName(incomingDescription)
+  const byFullName = roster.filter((row: any) => {
+    const rowCanonical = normalizeSeriesCharacterName(row.canonical_name_normalized || row.canonical_name)
+    const rowFull = guideDescriptionFullName(row.description)
+    return (rowFull && rowFull === normalized) || (incomingFull && (incomingFull === rowCanonical || incomingFull === rowFull))
+  })
+  if (byFullName.length === 1) return { match: byFullName[0], kind: 'exact' as const, ambiguous: false }
 
   const fuzzyMatches = roster.filter((row: any) => isSeriesCharacterSubsetName(incomingName, row.canonical_name || row.canonical_name_normalized || ''))
   if (fuzzyMatches.length === 1) return { match: fuzzyMatches[0], kind: 'fuzzy' as const, ambiguous: false }
@@ -3237,7 +3262,7 @@ async function upsertSeriesCharacterRosterFromEpisode(episode: any) {
   const rows: any[] = []
 
   for (const character of characters) {
-    const rosterMatch = findSeriesRosterNameMatch(roster, character.name)
+    const rosterMatch = findSeriesRosterNameMatch(roster, character.name, character.description)
     if (rosterMatch.match) {
       await appendSeriesRosterAlias(
         String(seriesId),
