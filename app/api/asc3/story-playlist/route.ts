@@ -262,19 +262,41 @@ async function buildPersonalizedQueue({
  * Generation starts now so the clip is ready by the time the announcement
  * (or the whole finale) has played; the clip route waits for it if needed.
  */
+/**
+ * GREETING-REPLAY-001: false when the listener is resuming partway through
+ * this episode (saved progress past the first few seconds, not finished).
+ * Lookup failure → true (greeting plays; worst case a greeting on a resume).
+ */
+async function startsFromBeginningFor(userId: string, storyId: string): Promise<boolean> {
+  try {
+    const { data } = await supabase
+      .from('user_library')
+      .select('progress,completed')
+      .eq('user_id', userId)
+      .eq('story_id', storyId)
+      .maybeSingle()
+    if (!data) return true
+    if ((data as any).completed) return true
+    return Number((data as any).progress || 0) <= 5
+  } catch {
+    return true
+  }
+}
+
 async function buildLiveGreetingQueue({
   story,
   storyId,
   firstName,
-  firstPlayedInSeries,
+  introKind,
 }: {
   story: any
   storyId: string
   firstName: string
-  firstPlayedInSeries: boolean
+  /** GREETING-REPLAY-001: which name greeting follows the announcement, if any. */
+  introKind: 'series_intro' | 'series_return' | null
 }): Promise<PersonalizedQueuePayload | null> {
   const isFinale = Boolean(story?.series_is_finale)
-  if (!firstPlayedInSeries && !isFinale) return null
+  if (!introKind && !isFinale) return null
 
   const announcementUrl = String(story?.announcement_url || '').trim()
   const storyAudioUrl = String(story?.story_audio_url || '').trim()
@@ -288,25 +310,37 @@ async function buildLiveGreetingQueue({
   const queue: PlaybackQueueItem[] = [
     { url: announcementUrl, type: 'intro', label: 'Story intro' },
   ]
-  if (firstPlayedInSeries) {
-    startGreetingClip(greetingStory, 'series_intro', firstName)
-    queue.push({ url: liveGreetingClipRoute(storyId, 'series_intro'), type: 'intro', label: 'Welcome' })
+  if (introKind) {
+    startGreetingClip(greetingStory, introKind, firstName)
+    queue.push({ url: liveGreetingClipRoute(storyId, introKind), type: 'intro', label: introKind === 'series_return' ? 'Welcome back' : 'Welcome' })
   }
-  if (storyBodyWithOutroUrl) {
-    queue.push({ url: storyBodyWithOutroUrl, type: 'story', label: story.title || 'Story' })
-  } else {
-    queue.push({ url: storyAudioUrl, type: 'story', label: story.title || 'Story' })
-    if (outroUrl) queue.push({ url: outroUrl, type: 'outro', label: 'Outro' })
-  }
-  if (isFinale) {
+  // FINALE-SIGNOFF-ORDER-001 (Marc 2026-10-29): on the finale the name
+  // sign-off plays right after the last scene, BEFORE Belle's credits —
+  // which needs the story and outro as separate files. Without them, the
+  // old order (story with baked outro, then sign-off) is kept.
+  const splitFinale = isFinale && Boolean(storyAudioUrl && outroUrl)
+  if (splitFinale) {
     startGreetingClip(greetingStory, 'finale_signoff', firstName)
-    queue.push({ url: liveGreetingClipRoute(storyId, 'finale_signoff'), type: 'outro', label: 'Goodbye' })
+    queue.push({ url: storyAudioUrl, type: 'story', label: story.title || 'Story' })
+    queue.push({ url: liveGreetingClipRoute(storyId, 'finale_signoff'), type: 'outro', label: 'Thank you' })
+    queue.push({ url: outroUrl, type: 'outro', label: 'Outro' })
+  } else {
+    if (storyBodyWithOutroUrl) {
+      queue.push({ url: storyBodyWithOutroUrl, type: 'story', label: story.title || 'Story' })
+    } else {
+      queue.push({ url: storyAudioUrl, type: 'story', label: story.title || 'Story' })
+      if (outroUrl) queue.push({ url: outroUrl, type: 'outro', label: 'Outro' })
+    }
+    if (isFinale) {
+      startGreetingClip(greetingStory, 'finale_signoff', firstName)
+      queue.push({ url: liveGreetingClipRoute(storyId, 'finale_signoff'), type: 'outro', label: 'Goodbye' })
+    }
   }
 
   return {
     queue,
     toneCluster: 'live',
-    openerId: firstPlayedInSeries ? 'live:series_intro' : 'live:finale_signoff',
+    openerId: introKind ? `live:${introKind}` : 'live:finale_signoff',
   }
 }
 
@@ -387,6 +421,17 @@ export async function GET(req: NextRequest) {
   if (authUser?.id && seriesId) {
     seriesReplay = await hasPriorSeriesPlay(supabase, authUser.id, seriesId)
   }
+  // GREETING-REPLAY-001 (Marc 2026-10-29): the name greeting plays when the
+  // listener starts Episode 1 from the beginning — every time. If they have
+  // heard the series before, it is a warm "welcome back" (series_return).
+  // A first-ever play that starts at a later episode still gets the greeting.
+  // Resuming partway through an episode never gets one.
+  const episodeNo = Number((story as any)?.series_episode_number || 0)
+  const startsFromBeginning = authUser?.id && seriesId
+    ? await startsFromBeginningFor(authUser.id, story.id)
+    : true
+  const greetIntro = Boolean(seriesId) && startsFromBeginning && (episodeNo === 1 || !seriesReplay)
+  const introKind: 'series_intro' | 'series_return' | null = greetIntro ? (seriesReplay ? 'series_return' : 'series_intro') : null
 
   let personalizedPayload: PersonalizedQueuePayload | null = null
   let fallbackReason: string | null = null
@@ -402,7 +447,7 @@ export async function GET(req: NextRequest) {
         story,
         storyId: story.id,
         firstName: liveFirstName,
-        firstPlayedInSeries: !seriesReplay,
+        introKind,
       })
       if (live) personalizedPayload = live
     } catch (err) {
@@ -417,8 +462,8 @@ export async function GET(req: NextRequest) {
   if (personalizedPayload) {
     // live greeting queue chosen above
   } else if (authUser?.id) {
-    if (seriesReplay) {
-      fallbackReason = 'series_replay_normal_intro'
+    if (seriesId && !greetIntro) {
+      fallbackReason = seriesReplay ? 'series_replay_normal_intro' : 'series_resume_normal_intro'
     } else if (!pronunciationKey) {
       fallbackReason = 'missing_pronunciation_key'
     } else {
@@ -465,6 +510,7 @@ export async function GET(req: NextRequest) {
     opener_id: personalizedPayload?.openerId || null,
     series_id: seriesId || null,
     series_replay: seriesReplay,
+    intro_greeting: introKind,
   })
 
   if (personalizedPayload) {

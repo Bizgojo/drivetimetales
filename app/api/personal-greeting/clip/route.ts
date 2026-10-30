@@ -1,5 +1,5 @@
 /**
- * PERS-LIVE-001 — GET /api/personal-greeting/clip?storyId=…&kind=series_intro|finale_signoff
+ * PERS-LIVE-001 — GET /api/personal-greeting/clip?storyId=…&kind=series_intro|series_return|finale_signoff
  *
  * Same-origin audio URL placed in the player queue by story-playlist. The
  * listener's own first name comes from their account (never from the
@@ -91,7 +91,7 @@ export async function GET(req: NextRequest) {
   const url = firstName ? await waitForGreetingClip(story, kind, firstName, WAIT_MS) : null
   if (url) return redirectTo(url)
 
-  if (kind === 'series_intro') {
+  if (kind === 'series_intro' || kind === 'series_return') {
     const fallback = await stockOpenerUrl(pronunciationKey).catch(() => null)
     if (fallback) {
       console.warn('[personal-greeting] live clip not ready; playing stock opener', { storyId, userId: user.id })

@@ -60,6 +60,7 @@ const userId = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc'
 let signedIn = true
 let story: any
 let playCount: number | null
+let libraryRow: any
 let firstName: string | null
 let calls: Array<{ table: string; ops: Array<[string, any[]]> }>
 
@@ -100,6 +101,7 @@ const serviceClient: any = {
       if (table === 'users') return finish({ data: profile(), error: null })
       if (table === 'genre_tone_cluster') return finish({ data: { tone_cluster: 'warm' }, error: null })
       if (table === 'name_pools') return finish({ data: { status: 'ready' }, error: null })
+      if (table === 'user_library') return finish({ data: libraryRow, error: null })
       return finish({ data: null, error: null })
     }
     builder.insert = (row: any) => { ops.push(['insert', [row]]); return finish({ error: null }) }
@@ -130,6 +132,7 @@ beforeEach(() => {
   signedIn = true
   story = { ...BASE_STORY }
   playCount = 0
+  libraryRow = null
   firstName = 'Marc'
   calls = []
   process.env.LIVE_GREETINGS = 'on'
@@ -197,6 +200,13 @@ describe('template validation', () => {
     expect(validateGreetingTemplate('finale_signoff', `${goodSignoff.replace('.', ', and stay tuned for the next episode.')}`).join()).toMatch(/more episodes/)
     expect(validateGreetingTemplate('finale_signoff', 'Thanks so much [NAME], it meant a lot having you along for every single twist and turn of this one, see you soon')).toContain('does not end with punctuation')
   })
+  test('welcome-back line must put the name early and acknowledge the return', () => {
+    expect(validateGreetingTemplate('series_return', '[NAME], welcome back! You came back for another ride through this one, and I love that. Settle in.')).toEqual([])
+    expect(validateGreetingTemplate('series_return', '[NAME], you picked a good one. Chicago, a stubborn detective, and a city that wants its secrets kept. Settle in.').join()).toMatch(/acknowledge the return/)
+    const ctx = { seriesTitle: 'Wrong Side of the River', totalEpisodes: 7 }
+    expect(validateGreetingTemplate('series_return', fallbackGreetingTemplate('series_return', ctx))).toEqual([])
+    expect(buildGreetingPrompt('series_return', ctx)).toMatch(/heard this series before/)
+  })
   test('clean strips a speaker label and quotes', () => {
     expect(cleanGreetingCandidate('BELLE B: "[NAME], settle in."')).toBe('[NAME], settle in.')
   })
@@ -237,20 +247,25 @@ describe('story-playlist with live greetings', () => {
     story = { ...BASE_STORY, series_episode_number: 7, series_is_finale: true }
     const body = await (await playlistGET(playlistRequest())).json()
     const urls = body.queue.map((q: any) => q.url)
-    expect(urls[1]).toBe(liveGreetingClipRoute(storyId, 'series_intro'))
-    expect(urls[urls.length - 1]).toBe(liveGreetingClipRoute(storyId, 'finale_signoff'))
-    expect(body.queue[body.queue.length - 1].type).toBe('outro')
+    expect(urls).toEqual([
+      'https://cdn.example/announcement.mp3',
+      liveGreetingClipRoute(storyId, 'series_intro'),
+      'https://cdn.example/body.mp3',
+      liveGreetingClipRoute(storyId, 'finale_signoff'),
+      'https://cdn.example/outro.mp3',
+    ])
     expect(startGreetingClip).toHaveBeenCalledWith(expect.anything(), 'finale_signoff', 'Marc')
   })
 
-  test('finale after earlier episodes: no greeting at the start, sign-off at the end', async () => {
+  test('FINALE-SIGNOFF-ORDER-001: finale after earlier episodes — story, then the name sign-off, then Belle\'s credits', async () => {
     story = { ...BASE_STORY, series_episode_number: 7, series_is_finale: true }
     playCount = 6
     const body = await (await playlistGET(playlistRequest())).json()
     expect(body.queue.map((q: any) => q.url)).toEqual([
       'https://cdn.example/announcement.mp3',
-      'https://cdn.example/body_with_outro.mp3',
+      'https://cdn.example/body.mp3',
       liveGreetingClipRoute(storyId, 'finale_signoff'),
+      'https://cdn.example/outro.mp3',
     ])
     expect(startGreetingClip).toHaveBeenCalledTimes(1)
   })
@@ -263,16 +278,41 @@ describe('story-playlist with live greetings', () => {
     expect(startGreetingClip).not.toHaveBeenCalled()
   })
 
-  test('older episodes without story_body_with_outro keep body + outro before the sign-off', async () => {
-    story = { ...BASE_STORY, series_is_finale: true, story_body_with_outro_url: '' }
+  test('finale with only the combined story+outro file keeps the sign-off at the end', async () => {
+    story = { ...BASE_STORY, series_episode_number: 7, series_is_finale: true, story_audio_url: '' }
     playCount = 3
     const body = await (await playlistGET(playlistRequest())).json()
     expect(body.queue.map((q: any) => q.url)).toEqual([
       'https://cdn.example/announcement.mp3',
-      'https://cdn.example/body.mp3',
-      'https://cdn.example/outro.mp3',
+      'https://cdn.example/body_with_outro.mp3',
       liveGreetingClipRoute(storyId, 'finale_signoff'),
     ])
+  })
+
+  test('GREETING-REPLAY-001: Episode 1 again after hearing the series → welcome-back greeting', async () => {
+    playCount = 7
+    const body = await (await playlistGET(playlistRequest())).json()
+    expect(body.queue.map((q: any) => q.url)).toEqual([
+      'https://cdn.example/announcement.mp3',
+      liveGreetingClipRoute(storyId, 'series_return'),
+      'https://cdn.example/body_with_outro.mp3',
+    ])
+    expect(startGreetingClip).toHaveBeenCalledWith(expect.anything(), 'series_return', 'Marc')
+  })
+
+  test('GREETING-REPLAY-001: Episode 1 finished before and started again → welcome back', async () => {
+    playCount = 1
+    libraryRow = { progress: 900, completed: true }
+    const body = await (await playlistGET(playlistRequest())).json()
+    expect(body.queue[1].url).toBe(liveGreetingClipRoute(storyId, 'series_return'))
+  })
+
+  test('GREETING-REPLAY-001: resuming partway through Episode 1 → no greeting', async () => {
+    playCount = 1
+    libraryRow = { progress: 240, completed: false }
+    const body = await (await playlistGET(playlistRequest())).json()
+    expect(body.useFinalMix).toBe(true)
+    expect(startGreetingClip).not.toHaveBeenCalled()
   })
 
   test('standalone story is untouched (stock opener path)', async () => {
