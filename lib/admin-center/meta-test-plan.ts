@@ -19,6 +19,6 @@ export const META_TEST_PLAN = {
 export function metaTestBudget(label:string,column:number):number|null {
  if(label==='Meta advertising')return column<8?META_TEST_PLAN.weeks[column].spend:META_TEST_PLAN.weeks.slice(0,column===8?6:8).reduce((s,w)=>s+w.spend,0)
  // No weekly conversion timing was supplied. Only the week-eight period forecast is known.
- if(column===9){if(label==='Trial starts')return META_TEST_PLAN.forecast.trials;if(label==='New paid subscribers')return META_TEST_PLAN.forecast.paid;if(label==='Paid subscriber CAC')return META_TEST_PLAN.forecast.cac}
+ if(column===9){if(label==='Cost per trial')return Number((4000/META_TEST_PLAN.forecast.trials).toFixed(2));if(label==='Trial-to-paid conversion')return 100*META_TEST_PLAN.forecast.paid/META_TEST_PLAN.forecast.trials;if(label==='Trial starts')return META_TEST_PLAN.forecast.trials;if(label==='New paid subscribers')return META_TEST_PLAN.forecast.paid;if(label==='Paid subscriber CAC')return META_TEST_PLAN.forecast.cac}
  return null
 }

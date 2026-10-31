@@ -128,3 +128,7 @@ The owner identifies `Endless-Tales-Meta-Test-Plan(2).xlsx`, saved October 29 at
 | Total | | | $4,000 |
 
 Expected eight-week result: 270 trials, 135 paid subscribers, $29.63 ad-spend CAC. These are forecasts, never actuals; weekly conversion timing is not provided. The reported $400 reserve must not be added to the $4,000 total; exact handling awaits the file. Actuals and all variances remain pending verification. Recording this plan does not launch/schedule ads or change spending controls. The separate twelve-month budget still follows completion of the test.
+
+### Budgeted acquisition outcomes must be prominent
+
+The owner reported that expenditures were visible while subscription/CAC/result targets were missing from view. Put budgeted trials, paid subscriptions and CAC before spending details, and expose the eight-week targets beside metric names rather than requiring a horizontal search. Show 270 trial subscriptions, 135 new paid subscriptions and $29.63 paid CAC as forecasts. Cost per trial $14.81 and trial-to-paid conversion 50% may be explicitly calculated from those supplied period totals, not attributed to an unread workbook. Monthly/annual mix, revenue, weekly conversion timing and remaining funnel targets must say they await the original workbook. Do not distribute period forecasts across weeks or invent other original-plan metrics.
