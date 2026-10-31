@@ -95,14 +95,6 @@ function CacLineChart({
         if (!pts) return null
         return <polyline key={s} points={pts} fill="none" stroke={SCENARIO_COLORS[s]} strokeWidth={3} />
       })}
-      {SCENARIOS.map((s, si) => (
-        <g key={`legend-${s}`}>
-          <rect x={PAD_L + si * 130} y={4} width={14} height={14} rx={3} fill={SCENARIO_COLORS[s]} />
-          <text x={PAD_L + si * 130 + 20} y={16} fontSize={14} fill={TEXT}>
-            {SCENARIO_LABELS[s]}
-          </text>
-        </g>
-      ))}
     </svg>
   )
 }
@@ -333,6 +325,22 @@ export default function CacForecastPage() {
         CAC over time (running, W1–W{TOTAL_WEEKS})
       </h2>
       <CacLineChart series={cacSeries} selectedWeek={week} />
+      <div style={{ display: 'flex', gap: '1.5rem', marginTop: '0.5rem', fontSize: BODY }}>
+        {SCENARIOS.map((s) => (
+          <span key={`legend-${s}`} style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}>
+            <span
+              style={{
+                display: 'inline-block',
+                width: '14px',
+                height: '14px',
+                borderRadius: '3px',
+                background: SCENARIO_COLORS[s],
+              }}
+            />
+            {SCENARIO_LABELS[s]}
+          </span>
+        ))}
+      </div>
 
       <h2 style={{ fontSize: '24px', fontWeight: 800, margin: '1.5rem 0 0.75rem' }}>
         Weekly new paid subscribers
