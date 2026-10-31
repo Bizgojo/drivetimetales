@@ -8,3 +8,9 @@ export function periodMetrics(events:any[],reviews:any[],since:string){
  for(const r of reviews){if(r.story_id&&r.rating!=null&&Number.isFinite(Number(r.rating))&&Number(r.rating)>=1&&Number(r.rating)<=5&&Date.parse(r.created_at)>=cutoff){const m=get(r.story_id);m.reviews++;m.ratingSum+=Number(r.rating);m.rating=m.ratingSum/m.reviews}}
  return metrics
 }
+// TEST-ACCOUNTS-AUDIT-20261031: drop playback rows belonging to test accounts
+// (users.is_test_account=true) before aggregation. Events without a user_id
+// (anonymous/legacy rows) are KEPT — exclusion only removes attributed test rows.
+// story_reviews are NOT filtered here: the table carries no user_id in the
+// reporting select (and is currently empty); revisit when reviews ship.
+export function excludeTestUserEvents(events:any[],testUserIds:Set<string>){if(!testUserIds||testUserIds.size===0)return events;return events.filter(e=>!e.user_id||!testUserIds.has(String(e.user_id)))}
