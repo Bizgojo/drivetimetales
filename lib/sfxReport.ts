@@ -7,6 +7,7 @@
 import type { ScriptPosition } from '@/lib/scriptLineIndex'
 import type { OverlayPlan } from '@/lib/sfxOverlay'
 import type { SfxSource } from '@/lib/sfxGenerate'
+import { isSceneBackground } from '@/lib/sfxLayeredMix'
 
 export type ReportEpisode = {
   episodeNumber: number
@@ -44,7 +45,13 @@ export function buildSfxReport(seriesTitle: string, episodes: ReportEpisode[]): 
       if (!c.file) continue
       if (c.source?.kind === 'library') lib += 1
       else ai += 1
-      rows.push({ index: c.beforeIndex, text: `• line ${c.beforeIndex} (action): asked for "${c.cue}" → ${sourceLabel(c.source)}\n    plays before ${nextLine(ep.positions, c.beforeIndex)}` })
+      const bed = isSceneBackground(c.cue)
+      const where = bed
+        ? `background from ${nextLine(ep.positions, c.beforeIndex)}`
+        : c.afterWords
+          ? `plays inside ${nextLine(ep.positions, c.beforeIndex)} — right after "${c.afterWords}"`
+          : `plays before ${nextLine(ep.positions, c.beforeIndex)}`
+      rows.push({ index: c.beforeIndex, text: `• line ${c.beforeIndex} (${bed ? 'background' : 'action'}): asked for "${c.cue}" → ${sourceLabel(c.source)}\n    ${where}` })
     }
     rows.sort((a, b) => a.index - b.index)
     out.push('', `EPISODE ${ep.episodeNumber}: ${ep.title} — ${rows.length} effects`, ...rows.map((r) => r.text))
