@@ -33,12 +33,12 @@ describe('SFX-REPORT-001', () => {
         { index: 6, kind: 'voice', speaker: 'NICK', text: 'Get down!' } as any,
       ],
       scriptSources: { 5: { cue: 'three pistol shots echo', kind: 'library', libraryName: 'pistol shots rapid three 1', at: '' } },
-      overlay: { storyId: 's', genre: 'Thriller', createdAt: '', model: null, cues: [{ beforeIndex: 4, cue: 'rain on concrete', durationSec: 3, file: 'f.mp3', source: { kind: 'ai' } }] },
+      overlay: { storyId: 's', genre: 'Thriller', createdAt: '', model: null, cues: [{ beforeIndex: 4, cue: 'gunfire echoing off concrete', durationSec: 3, file: 'f.mp3', source: { kind: 'ai' } }] },
     }])
     expect(report).toMatch(/1 effects used your kept sounds; 1 were AI-made/)
     expect(report).toMatch(/line 5 \(script\): asked for "three pistol shots echo" → YOUR SOUND: pistol shots rapid three 1/)
     expect(report).toMatch(/plays before NICK: Get down!/)
-    expect(report).toMatch(/line 4 \(action\): asked for "rain on concrete" → AI-made/)
+    expect(report).toMatch(/line 4 \(action\): asked for "gunfire echoing off concrete" → AI-made/)
     expect(report.indexOf('line 4')).toBeLessThan(report.indexOf('line 5'))
   })
 })
