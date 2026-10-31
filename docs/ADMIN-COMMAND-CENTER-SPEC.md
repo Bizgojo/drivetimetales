@@ -110,3 +110,21 @@ The owner approved the eight-section design and directed implementation. These a
 ### Six-plus-two-week marketing workbook follow-up
 
 The owner requested separate Budget and Variance Analysis worksheets alongside Actual Results in the marketing test plan. Show four matching eight-week formats: Budget, Actual Results, Actual vs. Budget, and Variance Analysis. Include separate weeks 1–6 and eight-week totals, spending categories, funnel outcomes and cost/conversion measures. Variance analysis reserves space for percentage variance, causes, corrective actions, ownership and review. Unknown cells remain explicitly unfilled placeholders; known approval limits are separate from weekly allocations and actual results.
+
+### Final October 29 marketing budget recovered by owner
+
+The owner identifies `Endless-Tales-Meta-Test-Plan(2).xlsx`, saved October 29 at 12:24 PM, as the final version with Strategos's Decision Rules. The following owner-provided transcription supersedes the October 27 daily allocations and earlier downloads. Original workbook bytes and exact Decision Rules have not yet been received; provenance must say transcription, not imported/verified workbook.
+
+| Week | Starts (2026) | Phase | Ad budget |
+| --- | --- | --- | ---: |
+| 1 | November 6 | Test 4 hooks | $500 |
+| 2 | November 13 | Test 4 hooks | $500 |
+| 3 | November 20 | Top 2 ads | $700 |
+| 4 | November 27 | Top 2 ads | $700 |
+| 5 | December 4 | Winner + reserve | $800 |
+| 6 | December 11 | Winner + reserve | $800 |
+| 7 | December 18 | Trials convert | $0 |
+| 8 | December 25 | Trials convert | $0 |
+| Total | | | $4,000 |
+
+Expected eight-week result: 270 trials, 135 paid subscribers, $29.63 ad-spend CAC. These are forecasts, never actuals; weekly conversion timing is not provided. The reported $400 reserve must not be added to the $4,000 total; exact handling awaits the file. Actuals and all variances remain pending verification. Recording this plan does not launch/schedule ads or change spending controls. The separate twelve-month budget still follows completion of the test.
