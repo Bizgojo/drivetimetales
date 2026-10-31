@@ -330,7 +330,7 @@ function PublishedRowView({ row, expanded, onToggle, actions }: { row: Published
   return (
     <>
       <tr style={{ borderBottom: `1px solid ${border}` }}>
-        <td style={{ padding: '12px', minWidth: '260px' }}>
+        <td style={{ padding: '12px', minWidth: '260px', position: 'sticky', left: 0, zIndex: 2, backgroundColor: cardBg, boxShadow: '2px 0 0 #e0e0e0' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
             {isSeries ? (
               <button onClick={onToggle} style={{ border: `1px solid ${border}`, background: '#fff', borderRadius: '5px', width: '26px', height: '26px', cursor: 'pointer', color: textPrimary }}>
@@ -375,7 +375,7 @@ function PublishedRowView({ row, expanded, onToggle, actions }: { row: Published
       </tr>
       {isSeries && expanded && row.stories.map((episode) => (
         <tr key={episode.id} style={{ backgroundColor: '#f8fafc', borderBottom: `1px solid ${border}` }}>
-          <td style={{ padding: '10px 12px 10px 58px', color: textPrimary, fontSize: '12px', fontWeight: 700 }}>
+          <td style={{ padding: '10px 12px 10px 58px', color: textPrimary, fontSize: '12px', fontWeight: 700, position: 'sticky', left: 0, zIndex: 2, backgroundColor: '#f8fafc', boxShadow: '2px 0 0 #e0e0e0' }}>
             Episode {episode.series_number || episode.episode_number || '—'}: {displayTitle(episode)}
             {actions.rowError[episode.id] && <div style={{ color: '#b91c1c', fontSize: '11px', marginTop: '2px', fontWeight: 700 }}>{actions.rowError[episode.id]}</div>}
           </td>
@@ -679,7 +679,7 @@ export default function PublishedStoriesPage() {
           <thead>
             <tr style={{ backgroundColor: '#f8fafc', borderBottom: `1px solid ${border}` }}>
               {columns.map(column => (
-                <th key={column.key} style={{ padding: '11px 12px', textAlign: column.align || 'left', whiteSpace: 'nowrap' }}>
+                <th key={column.key} style={{ padding: '11px 12px', textAlign: column.align || 'left', whiteSpace: 'nowrap', ...(column.key==='title'?{position:'sticky' as const,left:0,zIndex:3,backgroundColor:'#f8fafc',boxShadow:'2px 0 0 #e0e0e0'}:{}) }}>
                   <SortButton column={column} sortKey={sortKey} sortDirection={sortDirection} onSort={handleSort} />
                 </th>
               ))}
