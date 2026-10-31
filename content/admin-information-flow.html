@@ -41,9 +41,9 @@ html,body{height:100%;overflow:hidden}.workspace{margin:0;height:100vh;min-heigh
 @media(max-width:1050px) and (min-width:761px){.content{grid-template-columns:minmax(0,54%) minmax(0,46%);padding:10px;gap:10px}.node-model{font-size:7px}.credit-caption{font-size:6px}.process-node strong{font-size:9px}.process-node small{font-size:7px}.process-node .model-credit{padding:3px 5px}.credit-track{height:3px}.credit-content{margin-top:3px}.stage-select{height:calc(100% - 38px);padding:5px 6px;gap:3px}.process-node.source-node .stage-select{height:calc(100% - 35px);padding:3px 6px}.process-node .node-number{font-size:6px}.oversight-compact{grid-template-columns:1fr 1fr}.oversight-model{display:none}.segments button{font-size:9px;padding:5px 7px}.demo-toggle{font-size:8px}.detail-head{padding:12px 12px 0}.detail-title h2{font-size:17px}.detail-badge{display:none}.tab-row{padding:0 12px;gap:14px}.tab{font-size:10px}.detail-scroll{padding:14px 12px}.decision-list>div{grid-template-columns:1fr}.model-table table,.handoff-table table{min-width:520px}.model-credit{min-height:0}.record-node .stage-select{height:calc(100% - 38px)}}
 @media(max-width:760px){html,body{height:auto;overflow:auto}.workspace{height:auto;min-height:100vh}.content{height:auto;display:flex;flex-direction:column;gap:12px;padding:10px}.compact-header{height:49px;padding:0 15px}.compact-header h1{font-size:23px}.map-region{height:auto;max-height:68vh!important;min-height:360px!important;padding:0;overflow:auto}.diagram-canvas{min-width:600px!important}.diagram-scroll{overflow-x:auto}.process-node .node-model{font-size:9px}.credit-caption{font-size:8px}.process-node strong{font-size:12px}.process-node small{font-size:9px}.detail-panel{height:65vh;min-height:380px!important;margin-top:0}.detail-title h2{font-size:18px}.detail-scroll{height:auto}.detail-badge{display:none}.tab-row{gap:18px}.decision-list>div{grid-template-columns:1fr}.funding-account{align-items:flex-start;flex-direction:column}.funding-account a{align-self:stretch;text-align:center}.prototype-note{font-size:9px}.reading-mode .map-region{display:block}}
 
-.segments button,.tab,.stage-links button,.map-utilities button{min-height:44px}</style>
+.segments button,.tab,.stage-links button,.map-utilities button{min-height:44px}.content.fit-diagram .diagram-canvas{min-width:0!important;max-height:none!important;height:auto!important;aspect-ratio:780/950;width:min(100%,var(--fit-width,53vh))!important;margin:auto}.content.fit-diagram .map-region{overflow:auto!important}.content.fit-diagram .process-node{font-size:8px!important}.content.fit-diagram .model-credit{display:none}.content.fit-diagram .stage-select{height:100%;min-height:0;padding:3px}.content.fit-diagram .stage-select strong{font-size:9px}.content.fit-diagram .stage-select small,.content.fit-diagram .stage-select .node-number{display:none!important}</style>
 </head>
-<body>
+<body><button class="plain-btn" style="position:absolute;top:5px;right:12px;z-index:100;margin:0;min-height:44px" onclick="toggleDiagramFit()">Fit diagram / natural size</button>
 <div class="workspace">
  <header class="compact-header"><h1>Information Flow</h1></header>
  <main class="content">
@@ -226,5 +226,10 @@ renderPublish=function(){return '<p>Publication requires the existing production
 renderSubscriptions=function(){return '<p>Stripe supplies customer billing and subscription records. Mercury supplies bank cash and settlement information. They require reconciliation.</p>'+operationalLink('/admin?section=finance','Finance sources and reconciliation');};
 buildDiagrams();setChannel('story');selectItem('p1');
 </script>
-</body>
+<script>
+function fitDiagramSize(){const panel=document.querySelector('.content');if(!panel.classList.contains('fit-diagram'))return;const region=panel.querySelector('.map-region');const diagram=Array.from(panel.querySelectorAll('.diagram-canvas')).find(el=>el.getBoundingClientRect().height>0);if(!diagram||!region)return;const available=Math.max(120,region.getBoundingClientRect().bottom-diagram.getBoundingClientRect().top-12);panel.style.setProperty('--fit-width',Math.floor(available*780/950)+'px');}
+function toggleDiagramFit(){document.querySelector('.content').classList.toggle('fit-diagram');requestAnimationFrame(fitDiagramSize);}
+window.addEventListener('resize',()=>requestAnimationFrame(fitDiagramSize));
+document.querySelectorAll('[data-view]').forEach(button=>button.addEventListener('click',()=>requestAnimationFrame(fitDiagramSize)));
+</script></body>
 </html>

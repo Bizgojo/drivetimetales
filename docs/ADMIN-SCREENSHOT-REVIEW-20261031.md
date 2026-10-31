@@ -1,0 +1,35 @@
+# Admin screenshot review — October 31, 2026
+
+This development change responds to the owner's 11 screenshots. It does not change production pipeline execution, subscriber playback, ad spend or bank transfers.
+
+## Changes available for review
+
+- Navigation: Agents now precedes Documentation. Specialist pages retain their originating section for shared tool links and otherwise infer the owning section from their route, retain the active Production menu, and offer an accessible X back to that section. Narrow headers keep the X visible. Footer identity comes from the server-authenticated Admin; “Signed in · Administrator” replaces the generic access requirement (SS11).
+- Information Flow: height slider plus native resize handle; “Fit diagram / natural size” calculates available panel height, shows every stage and preserves selectable detail. Fit mode emphasizes stage names; natural size retains model/credit detail. Actual source document is tested inside the iframe. This remains a process reference, not live telemetry.
+- SFX: type dropdown combines the canonical category order with any extra source categories. Keep/remove/play behavior is preserved.
+- Stories: original Published Stories format and governed actions retained. Visible range control scrolls all columns. Rankings offer session starts, finishes, highest ratings and most reviews; 7/30/90/365-day or lifetime periods. Genre filter and shortest/longest/genre sorting support analysis. Series ratings weight episode averages by review count. Series session counts sum episode sessions, not unique series listeners. Lifetime Plays/Month/start-finish percentages retain their labeled source scopes rather than being relabeled as period metrics.
+- Customers: aggregate recap precedes the tabs. Subscriber results appear only after at least two search characters, with a 350 ms debounce, stale-response suppression, server-side search and 25-result cap. Selecting a record reuses the exact legacy profile sections and guarded account controls. Targeted profile reads scope user/library/play-event/subscription/auth lookups to the selected account; no preloaded subscriber list is returned by the center landing feed.
+- Marketing: live/running/paused vs past vs all performance dropdown; completed campaigns sort by Actual End Date, with missing dates labeled. Campaign register and funnel/budget comparison CSV exports. All four plan worksheets export separately; comparison columns explicitly separate Budget, Actual and Difference.
+- Finance: all four future 12-month worksheet formats export as CSV with unfilled numeric cells blank. Exported files have no writeback mechanism. Current grouped six-tab marketing XLSX remains unchanged.
+- Variance analysis: campaign review reads the canonical Airtable record server-side, sends only numeric funnel evidence to Anthropic on request and labels generated output as an AI draft. Observations, possible explanations and recommendations distinguish measured variance from unproven causes. Missing matched actuals returns a readiness explanation without a model call. No automatic actions result.
+- Production: average recorded cost by package episode count and total-runtime band; AI writing, AI production excluding ElevenLabs, ElevenLabs and total, each with package coverage. Stories shows the same four cost components. Values are attributed usage records, not reconciled invoices.
+- Documentation: Legal Documents / Policies category opens current `/privacy`, `/terms` and `/license`. Trademark/copyright registry clearly identifies missing verified filing/ownership documents.
+
+## Source and calculation limits
+
+Period rankings read `play_events` and `story_reviews` with complete bounded pagination. Playback events deduplicate by story/session. A finish requires an end timestamp and completed/ended event or at least 95% progress. Events without session IDs are excluded. Reviews use creation date; instrumentation gaps remain possible. Empty recorded activity is not a claim of complete historical tracking.
+
+Customer inventory excludes internal/test users; Standard/founding eligibility is explicit. Active paid uses live Stripe invoice verification across paid plans and is unavailable when that read fails. Canceled/expired includes requests, ended access and recorded past-due states; it is not churn. New means account creation over the last seven days. These definitions intentionally distinguish paid evidence from legacy profile status labels.
+
+Cost reads use canonical story IDs in `anthropic_usage_log`, `openai_usage_log` and `el_usage_log`. Read-only production schema/aggregate inspection found no story-linked ElevenLabs entries and no story IDs on cover generation entries; some writing/shared costs are also unlinked. They cannot be assigned by guess. Shared series costs and credit purchases are not spread across episodes. Missing components remain unavailable; complete component coverage still does not certify full invoices. Average denominators show covered packages explicitly. No production usage instrumentation or data was changed.
+
+The 6+2 plan retains the source's weekly forecasts, $4,000 ceiling, $400 included reserve, 135 paid headline vs 136 summed rounded weekly cells and approximately 286,000 views. Actuals remain unconnected. CSV unknowns are blank, planned zero spend is numeric zero; string cells are escaped against spreadsheet formula injection. Independent downloaded calculations never change the Admin source.
+
+## Verification
+
+- 72 focused tests across 12 suites: source access denial, no enumeration on empty search, invalid period rejection, no fabricated variance causes, session deduplication/period boundaries, absent cost components, CSV quoting/formula safety and existing Admin contracts.
+- Admin type check: zero diagnostics across 73 entry files (includes changed specialist pages through imports).
+- Isolated Chromium browser checks at iPhone 390×844, iPad portrait 820×1180, iPad landscape 1194×834 and Mac 1440×1000: all eight sections; original story expansion/actions remain; period/rank/genre selectors; functional horizontal slider; search-first subscribers; downloads with original XLSX byte equality and CSV forecasts; four worksheet tabs; Legal category; real SFX type filter; detailed route active section/X visibility; entire fitted diagram bounds.
+- Full Next production build with explicit placeholder credentials passed. Vercel preview build must match the final commit before sharing. Historical repository-wide TypeScript failures and Sentry/Browserslist warnings remain outside this change.
+
+These tests use isolated fixtures, not live account changes or provider generation. Authenticated live-data acceptance, actual Safari/iPhone/iPad interactions, native Excel, Anthropic/Airtable permissions/model acceptance, complete story cost attribution, legal registration files and pre-existing deployment gates remain outstanding. No merge, production deployment, customer message, ad launch, bank transfer or job advancement was performed.

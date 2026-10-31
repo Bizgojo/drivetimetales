@@ -1,4 +1,7 @@
 'use client'
+import HorizontalTable from '../../HorizontalTable'
+import {downloadCsv} from '@/lib/admin-center/csv'
+import {VarianceCommentary} from '../../VarianceCommentary'
 import {useId,useState} from 'react'
 import {META_TEST_PLAN,metaTestBudget,META_WEEKLY_FORECAST,META_DECISION_RULES,META_STANDING_RULES} from '@/lib/admin-center/meta-test-plan'
 
@@ -54,9 +57,9 @@ export default function TestPlan(){
     {SHEETS.map((name,i)=><button key={name} id={`${id}-tab-${i}`} role="tab" aria-selected={selected===i} aria-controls={`${id}-panel`} tabIndex={selected===i?0:-1} onClick={()=>setSelected(i)} onKeyDown={e=>{const next=e.key==='ArrowRight'?(i+1)%SHEETS.length:e.key==='ArrowLeft'?(i+SHEETS.length-1)%SHEETS.length:e.key==='Home'?0:e.key==='End'?SHEETS.length-1:null;if(next!==null){e.preventDefault();setSelected(next);document.getElementById(`${id}-tab-${next}`)?.focus()}}} style={{minHeight:48,padding:'10px 16px',border:'1px solid #cbd5dc',borderRadius:10,fontWeight:700,background:selected===i?'#153d43':'white',color:selected===i?'white':'#172b36'}}>{name}</button>)}
    </div>
    <section id={`${id}-panel`} role="tabpanel" aria-labelledby={`${id}-tab-${selected}`}>
-    <h3>{sheet}</h3>
+    <h3>{sheet}</h3><div style={{display:'flex',gap:8,flexWrap:'wrap'}}>{SHEETS.map((name,index)=><button key={name} onClick={()=>exportMetaSheet(index)}>Export {name} CSV</button>)}</div><p>CSV files open in Excel. Edits and calculations in the downloaded copy do not change Admin budget or results.</p>{selected===3&&<VarianceCommentary plan/>}
     <p>{selected===0?'Budgeted acquisition results come first. The highlighted 8-week target column keeps the final targets visible beside their labels; swipe sideways for all weeks. Weekly cells use the published source, including its em dashes and rounded counts. Missing fields are explicitly identified.':selected===1?'Verified source results will be recorded for the same line items and weeks. Zero cells are placeholders and do not establish that no spending occurred.':selected===2?'Each cell shows Budget / Actual / Difference (Actual − Budget). Known budget values are populated; actuals and differences remain pending until source results are verified.': 'Weekly differences use Actual − Budget. Explanations, causes, owners and corrective actions remain pending until actuals and their matched budget targets are verified. Positive expense variance means over budget; positive result variance means above target. No automatic favorable/unfavorable judgment is made.'}</p>
-    <div role="region" aria-label={`${sheet} marketing spreadsheet preview`} tabIndex={0} style={{overflowX:'auto',maxHeight:'65vh',border:'1px solid #ccd7dd'}}>
+    <HorizontalTable label={`${sheet} columns`}><div role="region" aria-label={`${sheet} marketing spreadsheet preview`} tabIndex={0} style={{border:'1px solid #ccd7dd'}}>
      <table style={{borderCollapse:'separate',borderSpacing:0,minWidth:selected>=2?1800:1300,width:'100%',fontSize:14}}>
       <caption style={{textAlign:'left',padding:12}}>USD unless a count or ratio is specified · source counts are rounded · 0* = unfilled placeholder · Budget $0 is planned zero</caption>
       <thead><tr>{['Metric / category',...(selected===0?['8-week target']:[]),...WEEKS.map(w=>`Week ${w} · ${META_TEST_PLAN.weeks[w-1].start.slice(5)}${w>6?' · wait':''}`),'Weeks 1–6 total','8-week total',...(selected===3?['Variance %','Explanation / corrective action','Owner / next review']:[])].map((h,i)=><th key={h} scope="col" style={{padding:12,position:'sticky',top:0,left:i===0?0:undefined,zIndex:i===0?3:2,background:'#153d43',color:'white',textAlign:i===0?'left':'right',minWidth:i===0?190:100}}>{h}</th>)}</tr></thead>
@@ -67,7 +70,7 @@ export default function TestPlan(){
        {selected===3&&<><td style={{padding:12}}>{row.kind==='heading'?'':'Pending'}</td><td style={{padding:12,minWidth:230}}>{row.kind==='heading'?'':'Pending verified actuals and matched budget'}</td><td style={{padding:12,minWidth:160}}>{row.kind==='heading'?'':'Unassigned / pending'}</td></>}
       </tr>)}</tbody>
      </table>
-    </div>
+    </div></HorizontalTable>
    </section>
    <p>Meta ad budget totals are calculated from the supplied weekly allocations. The week-8 outcome forecasts and weekly result cells come from the published artifact. Total marketing expenses remain pending because other costs were not supplied. Period ratios use period totals, not sums of weekly ratios. Actuals must be reconciled before any variance is calculated.</p>
    <p><strong>Source rounding:</strong> the published weekly paid-subscriber cells add to 136, while its week-8 headline is 135. Weekly views add to 285,714; its headline rounds to approximately 286,000. Both displayed weekly values and headline forecasts are preserved. Signup totals and unprovided period totals are not inferred from rounded cells. Exact unrounded cells require the XLSX.</p>
@@ -84,3 +87,10 @@ export default function TestPlan(){
 }
 
 function budgetValue(label:string,kind:string,column:number){const n=metaTestBudget(label,column);if(n!==null)return kind==='money'||kind==='total'||label==='Paid subscriber CAC'||label==='Cost per trial'?'$'+n.toLocaleString('en-US',{maximumFractionDigits:2}):label==='Trial-to-paid conversion'?n+'%':n.toLocaleString('en-US');if(column<8&&META_WEEKLY_FORECAST[label])return '—';return 'Not provided in source'}
+
+function exportMetaSheet(index:number){
+ const periods=[...WEEKS.map(w=>'Week '+w),'Weeks 1–6 total','8-week total'];
+ const headers=index<2?['Metric / category',...periods]:['Metric / category',...periods.flatMap(p=>index===2?[p+' Budget',p+' Actual',p+' Variance (Actual - Budget)']:[p+' Variance (Actual - Budget)']),...(index===3?['Explanation','Recommendation']:[])];
+ const rows=ROWS.filter(r=>r.kind!=='heading').map(r=>[r.label,...periods.flatMap((_,i)=>index===0?[metaTestBudget(r.label,i)]:index===1?[null]:index===2?[metaTestBudget(r.label,i),null,null]:[null]),...(index===3?['Actual results not connected','Reconcile source actuals and matched budget before analysis']:[])]);
+ downloadCsv('Meta-6-plus-2-'+SHEETS[index],[['Worksheet',SHEETS[index]],['Scope','Published plan; actuals unconnected. Blank is unknown, not zero. Independent editable copy; edits do not update Admin.'],['Source rounding','Weekly paid cells sum to 136; source headline is 135. Views sum to 285714; source headline is approximately 286000.'],headers,...rows]);
+}

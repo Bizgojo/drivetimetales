@@ -135,5 +135,19 @@
     "title": "Owner decisions & design change record",
     "summary": "The amendments incorporated during the eight-section review.",
     "body": "<p>Review record: October 30, 2026. This summarizes the owner\u2019s instructions in the current design-review conversation, without claiming live activation.</p><ul><li>Initial recap includes new paid subscriptions, cancellations, CAC and subscriber churn for the period.</li><li>Agents includes data flow and external tools: ChatGPT, Claude, Mac Terminal and Telegram for Orion. Exact recipient / session links remain unverified.</li><li>Production has independent review choices for finished stories, voices and SFX; automatic handling remains the default.</li><li>Customers unifies inbox, subscriber history, suggestions, referrals and insights with substantive reply approval.</li><li>Marketing includes planned, existing and past campaigns; Facebook / Instagram / TikTok layout views; each campaign\u2019s funnel, stage costs, budget comparisons and benchmark scope.</li><li>The 6+2-week plan and spreadsheet format are visible. Missing original plan details, dates and audio-app benchmarks are explicitly pending.</li><li>Finance includes a visible four-tab Budget format with zero placeholders; the populated 12-month period starts after the complete test.</li><li>Full-width view hides the navigation for more room on the iPad.</li></ul><p>Earlier design sections are available, and Finance was explicitly approved to proceed to Documentation. Live wiring, end-to-end provider tests, deployment and final operational acceptance remain separate work.</p>"
+  },
+  {
+    "id": "legal-app",
+    "category": "legal",
+    "title": "App legal documents and policies",
+    "summary": "Privacy policy, Terms and Conditions, and Audio Content License currently on the app.",
+    "body": "<p>Open the current published app documents:</p><ul><li><a href=\"/privacy\" target=\"_blank\" rel=\"noreferrer\">Privacy Policy</a></li><li><a href=\"/terms\" target=\"_blank\" rel=\"noreferrer\">Terms and Conditions</a></li><li><a href=\"/license\" target=\"_blank\" rel=\"noreferrer\">Audio Content License</a></li></ul>"
+  },
+  {
+    "id": "legal-ip",
+    "category": "legal",
+    "title": "Trademark and copyright records",
+    "summary": "Registry for ownership, registrations, assignments, and supporting legal records.",
+    "body": "<p>No verified trademark registration certificates, copyright registrations, assignments or filing records are connected to this Admin release. These records await an authorized document source. App license terms are available separately; they are not evidence of a registration.</p>"
   }
 ]

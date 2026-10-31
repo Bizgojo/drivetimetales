@@ -8,7 +8,7 @@ Development implementation integrates the approved eight-section design with exi
 
 - `/admin` has the approved responsive shell and eight sections. Unknown source figures remain unavailable.
 - Production visibly links Authors & Narrators, Genres, Content Review & Approval and Sound Effects Library. All existing pages remain. Publication, voices and SFX have independent controls. New voice/SFX holds are off unless `ADMIN_REVIEW_CONTROLS_ENABLED=true` and apply to new jobs according to policy history; they do not waive quality, series, or spending gates.
-- Stories embeds the unchanged existing `/admin/stories` Published Stories page, including its table, sorting, expandable series and governed actions. The original URL remains available.
+- Stories preserves the existing `/admin/stories` Published Stories format, expandable series and governed actions, with added period/session rankings, genre/length sorting, attributed cost columns and horizontal slider. The original URL remains available.
 - Stripe recap adapter uses paid-invoice history for new paid customers and opening-cohort churn, cancellation events for requests, and ledger net collections. Source reads must complete; no partial totals presented as verified actuals. Live acceptance remains outstanding.
 - Customers links original support records, supplied profiles, saved listening progress/preferences and referrals; AI drafts require explicit substantive send. Provider acceptance is not delivery. Durable unsent drafts and provider delivery webhook reconciliation remain unfinished.
 - Marketing reuses Airtable data, frozen campaign forecasts, real supported Meta previews, internal audited proposals and approvals. Campaign lifecycle mapping/sync and direct provider launch/pause/budget writes remain unfinished; TikTok is not connected. No spend is enabled.
@@ -43,3 +43,18 @@ Development implementation integrates the approved eight-section design with exi
 - Install PGlite in an isolated test directory; `ADMIN_QA_PGLITE=/absolute/path/to/@electric-sql/pglite node tests/admin-center/local-db-contract.cjs`. This creates disposable in-memory PostgreSQL roles/fixtures, executes migrations/contracts inside a rollback, and checks zero tables remain. It never connects remotely.
 - `npm run test:admin:mobile` with Playwright Chromium installed. `ADMIN_QA_SPARTICUZ=/absolute/path/to/@sparticuz/chromium` optionally selects an alternate test browser. All network data/actions are isolated fixtures, not live acceptance.
 - `npm run build` with explicit placeholder credentials compiles/packages only; it does not verify live credentials or providers.
+
+
+## October 31 screenshot review amendments
+
+See `docs/ADMIN-SCREENSHOT-REVIEW-20261031.md` for the implemented controls, source definitions and remaining acceptance gaps. No additional migration is required for these amendments. Existing migration/caller-authentication gates above still apply.
+
+Before declaring these additions operational, Orion must verify the six authenticated reads/mutations against staging credentials: `/api/admin/center/customer-search`, `/customer-summary`, `/story-costs`, `/story-performance`, `/variance-commentary`, plus `/api/admin/subscribers?userId=<uuid>`. Confirm no subscriber enumeration before a search, 25-result search cap, exact profile match, same-origin PATCH authorization and legacy account actions. Test missing provider/table cases as unavailable. No live customer account action is authorized by this QA handoff.
+
+For variance commentary, keep `ANTHROPIC_API_KEY` server-only; optional `ADMIN_VARIANCE_MODEL` overrides the app's existing Sonnet model default. Verify a supported/authorized model, a selected Airtable campaign with frozen targets and recorded actuals, and provider usage logging before acceptance. No paid generation was run in QA. Budget-plan actuals remain unconnected, so its readiness review deliberately makes no AI request. Generated campaign commentary is an on-demand draft, not a verified causal finding or automatic budget change.
+
+Read-only schema audit found ElevenLabs usage rows with no story ID and unlinked cover/shared writing costs. Do not allocate costs by title similarity or treat absent charges as zero. Complete story totals/averages require reconciled, canonical story attribution for every component. Existing usage data may be provider-rate estimates, not invoices. No production instrumentation or jobs were changed to fill those gaps.
+
+CSV controls operate entirely on downloaded copies. Blank values represent missing/unconnected data; known planned zeros are numeric zero. Budget, Actual, Actual vs. Budget and Variance exports must be tested in the owner's Excel app. They do not import edits or change Admin records. Existing grouped six-tab XLSX remains available.
+
+Orion deployment procedure remains: complete staging/auth/worker/device gates above, obtain the reviewed `main` merge, build in a new release directory, verify health/authorized readback, atomically switch the serving release and retain the prior release and database backup. Do not alter ad spend, transfer authorization, review defaults or in-flight jobs to pass acceptance. No merge or production deploy has been performed by Codex.

@@ -1,7 +1,4 @@
-export default function InformationFlow() {
-  return <div>
-    <p className="cc-muted">Interactive process reference: select a stage, then inspect what happens, its handoff package, AI models and tools, or usage definitions. Model assignments and balances in this guide are not live telemetry.</p>
-    <iframe title="Information Flow and detailed process documentation" src="/api/admin/center/information-flow" sandbox="allow-scripts allow-popups allow-popups-to-escape-sandbox" style={{width:'100%',height:'min(900px,85vh)',minHeight:600,border:'1px solid #dce3e7',borderRadius:12}}/>
-    <p><a href="/api/admin/center/information-flow" target="_blank" rel="noreferrer">Open the full-size process guide ↗</a></p>
-  </div>
-}
+
+'use client'
+import {useState} from 'react'
+export default function InformationFlow(){const[height,setHeight]=useState(850);return <div><p className="cc-muted">Select a stage to inspect its handoff, tools and costs. This is a process reference; model assignments and balances are not live telemetry.</p><label>Guide height <input aria-label="Stretch information flow guide" type="range" min="500" max="1800" step="50" value={height} onChange={e=>setHeight(Number(e.target.value))}/>{height}px</label><div style={{resize:'vertical',overflow:'auto',height,minHeight:400,maxHeight:2200,border:'1px solid #dce3e7',borderRadius:12,paddingBottom:16}}><iframe title="Information Flow and detailed process documentation" src="/api/admin/center/information-flow" sandbox="allow-scripts allow-popups allow-popups-to-escape-sandbox" style={{width:'100%',height:'100%',border:0}}/></div><p>Drag the lower-right handle to stretch the guide. Inside the guide, choose “Fit diagram” to see every stage.</p><p><a href="/admin/information-flow">Open full-size process guide →</a></p></div>}
