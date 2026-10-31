@@ -33,163 +33,67 @@ async function currentUser() {
   return data.user
 }
 
-/**
- * POST /api/user/save-progress
- *
- * Keepalive-safe progress flush endpoint. Called from CanonicalPlayer's
- * pagehide handler so progress is saved even when the user closes the tab
- * before the 5-second timeupdate debounce fires.
- *
- * Payload (JSON, must stay < 64 KB for keepalive):
- *   storyId     string   — UUID of the story being played
- *   progress    number   — playback position in seconds (floor integer)
- *   durationSecs? number — total audio duration in seconds (optional)
- *
- * Preservation rules:
- *   - Updates an existing user_library row, or creates one when close-time
- *     progress exists but autoplay did not pre-create the row yet
- *   - progress is saved only if incoming > existing (never downgrade)
- *   - completed=true is never changed back to false
- *   - hide_from_home is never touched
- *   - not_for_me is never touched
- *   - Guest / unauthenticated requests are rejected with 401
+/** Save the latest listening observation, including rewinds and zero.
+ * The caller is authenticated; all reads/writes are scoped to that user.
+ * Completion is earned only by the player's natural-end path, never by
+ * closing the app near the end. Existing completion/dismissal flags persist.
  */
 export async function POST(req: NextRequest) {
   try {
     const user = await currentUser()
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
+    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     let body: Record<string, unknown>
-    try {
-      body = await req.json()
-    } catch {
+    try { body = await req.json() } catch {
       return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 })
     }
-
-    // ── Validate storyId ────────────────────────────────────────────────────
     const storyId = typeof body.storyId === 'string' ? body.storyId.trim() : ''
-    if (!storyId || !UUID_RE.test(storyId)) {
-      return NextResponse.json({ error: 'Invalid or missing storyId' }, { status: 400 })
-    }
-
-    // ── Validate progress ───────────────────────────────────────────────────
+    if (!UUID_RE.test(storyId)) return NextResponse.json({ error: 'Invalid or missing storyId' }, { status: 400 })
     const rawProgress = Number(body.progress)
-    if (!Number.isFinite(rawProgress) || rawProgress < 0) {
+    if (body.progress == null || !Number.isFinite(rawProgress) || rawProgress < 0) {
       return NextResponse.json({ error: 'Invalid progress value' }, { status: 400 })
     }
-    // Clamp: never save more than 24 hours of playback
-    const incomingProgress = Math.floor(Math.min(rawProgress, 86_400))
-
-    // ── Optional durationSecs (informational only, not persisted here) ───────
-    const rawDuration = Number(body.durationSecs ?? 0)
-    const durationSecs = Number.isFinite(rawDuration) && rawDuration > 0
-      ? Math.floor(rawDuration)
-      : null
-
-    // If progress is effectively zero, nothing useful to save
-    if (incomingProgress <= 0) {
-      return NextResponse.json({ success: true, skipped: 'zero_progress' })
+    const progress = Math.floor(Math.min(rawProgress, 86_400))
+    const hasObservation = typeof body.observedAt === 'string'
+    const observedMs = hasObservation ? Date.parse(body.observedAt as string) : Date.now()
+    if (!Number.isFinite(observedMs) || observedMs > Date.now() + 60_000) {
+      return NextResponse.json({ error: 'Invalid observation time' }, { status: 400 })
     }
-
+    const observedAt = new Date(observedMs).toISOString()
     const supabase = adminClient()
+    const { data: existing, error } = await supabase.from('user_library')
+      .select('story_id,progress,completed,last_played').eq('user_id', user.id).eq('story_id', storyId).maybeSingle()
+    if (error) return NextResponse.json({ error: 'Failed to load existing progress' }, { status: 500 })
 
-    // Incoming progress is higher — determine if the episode is now complete.
-    // Only mark complete when playback reached >= 95% of known duration
-    // (matches the pattern the player uses for saveProgress(t, done=true)).
-    const isNowComplete = durationSecs !== null && durationSecs > 0
-      ? incomingProgress >= durationSecs * 0.95
-      : false
-
-    // ── Load existing row ───────────────────────────────────────────────────
-    const { data: existing, error: fetchError } = await supabase
-      .from('user_library')
-      .select('story_id, progress, completed, hide_from_home, not_for_me')
-      .eq('user_id', user.id)
-      .eq('story_id', storyId)
-      .maybeSingle()
-
-    if (fetchError) {
-      console.error('[save-progress] fetch existing row failed:', fetchError.message)
-      return NextResponse.json({ error: 'Failed to load existing progress' }, { status: 500 })
+    // Legacy close-time requests have no observation timestamp. They may
+    // advance progress, but cannot overwrite a deliberate newer rewind/reset.
+    if (existing && !hasObservation && progress <= Number(existing.progress || 0)) {
+      return NextResponse.json({ success: true, skipped: 'legacy_not_newer' })
     }
-
+    if (existing && hasObservation && Date.parse(existing.last_played || '') > observedMs) {
+      return NextResponse.json({ success: true, skipped: 'stale_observation' })
+    }
+    const patch: Record<string, unknown> = { progress, last_played: observedAt }
+    if (body.completed === true) patch.completed = true
     if (!existing) {
-      const { error: insertError } = await supabase
-        .from('user_library')
-        .insert({
-          user_id: user.id,
-          story_id: storyId,
-          progress: incomingProgress,
-          completed: isNowComplete,
-          hide_from_home: false,
-          not_for_me: false,
-          last_played: new Date().toISOString(),
-        })
-
-      if (insertError) {
-        console.error('[save-progress] insert missing row failed:', insertError.message)
-        return NextResponse.json({ error: 'Failed to create progress' }, { status: 500 })
-      }
-
-      return NextResponse.json({
-        success: true,
-        saved: incomingProgress,
-        completed: isNowComplete,
-        created: true,
+      const { error: insertError } = await supabase.from('user_library').insert({
+        user_id: user.id, story_id: storyId, completed: body.completed === true,
+        hide_from_home: false, not_for_me: false, ...patch,
       })
+      if (!insertError) return NextResponse.json({ success: true, saved: progress, created: true })
+      // Another save may have created the row while this request was in flight.
+      if (insertError.code !== '23505') return NextResponse.json({ error: 'Failed to create progress' }, { status: 500 })
     }
-
-    // ── Preservation rules ──────────────────────────────────────────────────
-
-    // Rule 1: never revert completed
-    if (existing.completed) {
-      // Episode is already completed — nothing to downgrade; update last_played only
-      const { error: touchErr } = await supabase
-        .from('user_library')
-        .update({ last_played: new Date().toISOString() })
-        .eq('user_id', user.id)
-        .eq('story_id', storyId)
-      if (touchErr) console.warn('[save-progress] last_played touch failed:', touchErr.message)
-      return NextResponse.json({ success: true, skipped: 'already_completed' })
-    }
-
-    // Rule 2: never downgrade progress
-    const existingProgress = typeof existing.progress === 'number' ? existing.progress : 0
-    if (incomingProgress <= existingProgress) {
-      // Incoming is stale or same — still update last_played so we know a session occurred
-      const { error: touchErr } = await supabase
-        .from('user_library')
-        .update({ last_played: new Date().toISOString() })
-        .eq('user_id', user.id)
-        .eq('story_id', storyId)
-      if (touchErr) console.warn('[save-progress] last_played touch failed:', touchErr.message)
-      return NextResponse.json({ success: true, skipped: 'not_higher_progress' })
-    }
-
-    // Rule 3: hide_from_home and not_for_me — do NOT touch
-    const { error: updateError } = await supabase
-      .from('user_library')
-      .update({
-        progress:    incomingProgress,
-        completed:   isNowComplete,
-        last_played: new Date().toISOString(),
-      })
-      .eq('user_id', user.id)
-      .eq('story_id', storyId)
-
-    if (updateError) {
-      console.error('[save-progress] update failed:', updateError.message)
-      return NextResponse.json({ error: 'Failed to save progress' }, { status: 500 })
-    }
-
-    return NextResponse.json({
-      success:   true,
-      saved:     incomingProgress,
-      completed: isNowComplete,
-    })
-  } catch (err: any) {
+    // The timestamp guard is part of the UPDATE itself: an older in-flight
+    // save must not win if a newer pause/seek arrived after our SELECT.
+    const { data: saved, error: updateError } = await supabase.from('user_library')
+      .update(patch).eq('user_id', user.id).eq('story_id', storyId)
+      .or(`last_played.is.null,last_played.lte.${observedAt}`)
+      .select('progress,completed').maybeSingle()
+    if (updateError) return NextResponse.json({ error: 'Failed to save progress' }, { status: 500 })
+    return NextResponse.json(saved
+      ? { success: true, saved: saved.progress, completed: saved.completed }
+      : { success: true, skipped: 'stale_observation' })
+  } catch (err) {
     console.error('[save-progress] unexpected error:', err)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }

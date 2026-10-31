@@ -199,7 +199,7 @@
       var existing = map[ep.storyId] || {}
       map[ep.storyId] = {
         storyId: ep.storyId,
-        progress: Math.max(Math.floor(seconds), Math.floor(Number(existing.progress) || 0)),
+        progress: Math.max(0, Math.floor(seconds)),
         completed: Boolean(completed || existing.completed),
         durationSecs: state.current && state.current.total ? Math.floor(state.current.total) : (existing.durationSecs || null),
         updatedAt: new Date().toISOString()
@@ -214,15 +214,21 @@
     if (!c) return 0
     var t = 0
     for (var i = 0; i < c.index; i++) t += c.durs[i] || 0
-    return t + (audio.currentTime || 0)
+    var offset = c.pendingOffset != null ? c.pendingOffset : (audio.currentTime || 0)
+    if (offset === 0 && !audio.ended && c.checkpoint && c.checkpoint.index === c.index) offset = c.checkpoint.seconds
+    return t + offset
   }
   function loadSegment(i, offset, play) {
     var c = state.current
     c.index = i
+    c.pendingOffset = offset || 0
+    c.checkpoint = null
     audio.src = c.urls[i]
     audio.onloadedmetadata = function () {
       audio.onloadedmetadata = null
-      if (offset) audio.currentTime = Math.min(offset, Math.max(0, audio.duration - 0.5))
+      audio.currentTime = Math.min(offset || 0, Math.max(0, audio.duration - 0.5))
+      c.pendingOffset = null
+      c.checkpoint = offset > 0 ? { index: i, seconds: audio.currentTime } : null
       if (play) audio.play().catch(function () { render() })
     }
     audio.load()
@@ -231,6 +237,7 @@
     var c = state.current
     if (!c) return
     t = Math.max(0, Math.min(t, c.total - 0.5))
+    c.checkpoint = null
     var acc = 0
     for (var i = 0; i < c.urls.length; i++) {
       var d = c.durs[i] || 0
@@ -240,6 +247,7 @@
       }
       acc += d
     }
+    saveProgress(c.ep, t, false)
     syncMedia()
   }
   function measure(url) {
@@ -310,18 +318,28 @@
     else { audio.removeAttribute('src'); audio.load(); releaseUrls(); render(); if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'none' }
   })
   audio.addEventListener('timeupdate', function () {
+    var c = state.current
+    if (c && c.pendingOffset == null && audio.currentTime > 0) c.checkpoint = { index: c.index, seconds: audio.currentTime }
     var now = Date.now()
     if (state.current && now - state.lastSave > 5000) { state.lastSave = now; saveProgress(state.current.ep, globalTime(), false) }
     renderProgress()
   })
   ;['play', 'pause', 'seeked', 'durationchange'].forEach(function (e) {
     audio.addEventListener(e, function () {
-      if (e === 'pause' && state.current) saveProgress(state.current.ep, globalTime(), false)
+      var c = state.current
+      if (e === 'play' && c && c.pendingOffset == null && audio.currentTime === 0 && !audio.ended && c.checkpoint && c.checkpoint.index === c.index) {
+        audio.currentTime = c.checkpoint.seconds
+      }
+      if (e === 'pause' && c && !audio.ended) saveProgress(c.ep, globalTime(), false)
       render(); syncMedia()
     })
   })
   document.addEventListener('visibilitychange', function () {
     if (document.visibilityState === 'hidden' && state.current) saveProgress(state.current.ep, globalTime(), false)
+  })
+
+  window.addEventListener('pagehide', function () {
+    if (state.current) saveProgress(state.current.ep, globalTime(), false)
   })
 
   // ── MediaSession (same actions as lib/mediaSession.ts, CAR-MEDIA-001) ──────
@@ -338,6 +356,7 @@
     })
     setHandler('play', function () { audio.play().catch(function () {}) })
     setHandler('pause', function () { audio.pause() })
+    setHandler('stop', function () { audio.pause() })
     setHandler('seekbackward', function (d) { seekGlobal(globalTime() - ((d && d.seekOffset) || SEEK_BACK)) })
     setHandler('seekforward', function (d) { seekGlobal(globalTime() + ((d && d.seekOffset) || SEEK_FWD)) })
     setHandler('seekto', function (d) { if (d && typeof d.seekTime === 'number') seekGlobal(d.seekTime) })
