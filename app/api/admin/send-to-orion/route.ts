@@ -1,3 +1,4 @@
+import { adminAccess } from '@/lib/admin-center/auth'
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
@@ -28,6 +29,8 @@ async function requireAdmin() {
 }
 
 export async function POST(req: NextRequest) {
+  const accessDenied = await adminAccess(req); if (accessDenied) return accessDenied
+
   const authError = await requireAdmin()
   if (authError) return authError
 

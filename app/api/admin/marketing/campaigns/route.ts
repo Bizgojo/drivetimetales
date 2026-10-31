@@ -17,6 +17,7 @@ const ADMIN_EMAILS = new Set([
 ])
 
 const VIEW_OPTIONS = [
+  'All campaigns',
   'Recommendation Queue',
   'Approval Pipeline',
   'Active Campaigns',
@@ -224,10 +225,7 @@ export async function GET(request: NextRequest) {
       ? requestedView
       : VIEW_OPTIONS[0]
 
-    const params = new URLSearchParams({
-      view,
-      pageSize: '100',
-    })
+    const params = new URLSearchParams({pageSize:'100'});if(view!=='All campaigns')params.set('view',view)
     CAMPAIGN_FIELDS.forEach((field) => params.append('fields[]', field))
 
     const campaigns = await airtableList(CAMPAIGNS_TABLE_ID, params)

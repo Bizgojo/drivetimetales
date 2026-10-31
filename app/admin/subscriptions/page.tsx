@@ -1,5 +1,6 @@
 'use client'
 
+import SubscriberDetails from '../SubscriberDetails'
 import { useEffect, useMemo, useState } from 'react'
 
 type Subscriber = {
@@ -101,6 +102,7 @@ export default function SubscriptionsPage() {
   const [error, setError] = useState('')
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [actionMessage, setActionMessage] = useState('')
+  const [sharedSummary,setSharedSummary]=useState<any>(null)
 
   async function adminFetch(path: string, init?: RequestInit) {
     const res = await fetch(path, {
@@ -120,7 +122,8 @@ export default function SubscriptionsPage() {
     setLoading(true)
     setError('')
     try {
-      const payload = await adminFetch('/api/admin/subscribers')
+      const [payload,summary]=await Promise.all([adminFetch('/api/admin/subscribers'),adminFetch('/api/admin/center/customer-summary').catch((e:Error)=>({error:e.message}))])
+      setSharedSummary(summary)
       setData(payload)
       setSelectedId((current) => current || payload.subscribers?.[0]?.id || null)
     } catch (err) {
@@ -156,7 +159,7 @@ export default function SubscriptionsPage() {
     muted: { color: '#64748b', fontSize: 12 } as React.CSSProperties,
   }
 
-  const summary = data?.summary || { totalStandard: 0, activePaid: 0, canceledExpired: 0, foundingMembers: 0, newThisWeek: 0 }
+  const summary=sharedSummary?.summary||{}
 
   return (
     <div style={S.page}>
@@ -170,16 +173,17 @@ export default function SubscriptionsPage() {
 
       {error && <div style={{ ...S.card, borderColor: '#fecaca', background: '#fef2f2', color: '#991b1b', padding: 14, marginBottom: 16 }}>{error}</div>}
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, minmax(140px, 1fr))', gap: 12, marginBottom: 18 }}>
+      <p style={S.muted}>{sharedSummary?.error||sharedSummary?.note||'Shared subscriber summary loading…'}</p>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 12, marginBottom: 18 }}>
         {[
           ['Total Standard subscribers', summary.totalStandard, '#f97316'],
-          ['Active paid subscribers', summary.activePaid, '#16a34a'],
-          ['Canceled / expired', summary.canceledExpired, '#64748b'],
+          ['Active paid · Stripe', summary.activePaid, '#16a34a'],
+          ['Canceled / expired / past due', summary.canceledExpired, '#64748b'],
           ['Founding Members', summary.foundingMembers, '#b45309'],
-          ['New this week', summary.newThisWeek, '#2563eb'],
+          ['New in last 7 days', summary.newThisWeek, '#2563eb'],
         ].map(([label, value, color]) => (
           <div key={label as string} style={{ ...S.card, padding: 16, borderTop: `3px solid ${color}` }}>
-            <div style={{ fontSize: 28, fontWeight: 950, color: color as string, lineHeight: 1 }}>{value as number}</div>
+            <div style={{ fontSize: 28, fontWeight: 950, color: color as string, lineHeight: 1 }}>{value==null?'Unavailable':value as number}</div>
             <div style={{ ...S.muted, marginTop: 8, fontWeight: 800 }}>{label as string}</div>
           </div>
         ))}
@@ -232,97 +236,7 @@ export default function SubscriptionsPage() {
           )}
         </div>
 
-        {selected && (
-          <div style={{ ...S.card, padding: 16, alignSelf: 'start', position: 'sticky', top: 16 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start', marginBottom: 14 }}>
-              <div>
-                <div style={{ fontSize: 18, fontWeight: 950 }}>{selected.name}</div>
-                <div style={S.muted}>{selected.email}</div>
-              </div>
-              {selected.isFoundingMember && <div style={{ background: '#ffedd5', color: '#9a3412', borderRadius: 999, padding: '4px 9px', fontSize: 11, fontWeight: 900 }}>Founding</div>}
-            </div>
-
-            <DetailSection title="Account info">
-              <Info label="User ID" value={selected.id} mono />
-              <Info label="Signup date" value={fmtDateTime(selected.signupDate)} />
-              <Info label="Last active" value={fmtDateTime(selected.lastActive)} />
-            </DetailSection>
-            <DetailSection title="Subscription / payment">
-              <Info label="Plan" value={planLabel(selected)} />
-              <Info label="Subscription status" value={selected.status} />
-              <Info label="Stripe status" value={selected.stripeStatus || '—'} />
-              <Info label="Current period / access ends" value={fmtDate(selected.subscriptionEndsAt)} />
-              {selected.stripeUrl && <a href={selected.stripeUrl} target="_blank" rel="noopener noreferrer" style={{ display: 'inline-block', color: '#2563eb', fontSize: 13, fontWeight: 850, marginTop: 4 }}>Open Stripe customer</a>}
-            </DetailSection>
-            <DetailSection title="Listening history">
-              <Info label="Stories started" value={String(selected.listening.storiesStarted)} />
-              <Info label="Stories completed" value={String(selected.listening.storiesCompleted)} />
-              <Info label="Total listened" value={`${selected.listening.totalListenedMinutes} min`} />
-              <Info label="Recent listening" value={fmtDateTime(selected.listening.recentListeningDate)} />
-              <Info
-                label="Data source"
-                value={selected.listening.hasReliableEvents
-                  ? `Playback events (${selected.listening.eventCount || 0})`
-                  : selected.listening.storiesStarted > 0
-                    ? `Progress fallback (${selected.listening.libraryActivityCount || 0})`
-                    : 'No listening data'}
-              />
-            </DetailSection>
-            <DetailSection title="Preferences">
-              {selected.preferences.hasEnoughData ? (
-                <>
-                  <Info label="Preferred genres" value={selected.preferences.preferredGenres.length ? selected.preferences.preferredGenres.join(', ') : 'Not enough listening data yet'} />
-                  <Info label="Most listened" value={selected.preferences.mostListenedGenre || 'Not enough listening data yet'} />
-                  <Info label="Avg story length" value={selected.preferences.avgListenedStoryDuration ? `${selected.preferences.avgListenedStoryDuration} min` : 'Not enough listening data yet'} />
-                  <Info label="Avg completed" value={selected.preferences.avgCompletedStoryDuration ? `${selected.preferences.avgCompletedStoryDuration} min` : 'Not enough listening data yet'} />
-                  <Info label="Duration bucket" value={selected.preferences.typicalDurationBucket || 'Not enough listening data yet'} />
-                </>
-              ) : (
-                <div style={{ color: '#64748b', fontSize: 13 }}>Not enough listening data yet</div>
-              )}
-            </DetailSection>
-            <DetailSection title="Listening patterns">
-              <Info label="Favorite time" value={selected.listeningPatterns.favoriteListeningTime || 'Not enough listening data yet'} />
-              <Info label="Favorite days" value={selected.listeningPatterns.favoriteListeningDays.length ? selected.listeningPatterns.favoriteListeningDays.join(', ') : 'Not enough listening data yet'} />
-              <Info label="Average session" value={selected.listeningPatterns.averageSessionLengthMinutes ? `${selected.listeningPatterns.averageSessionLengthMinutes} min` : 'Not enough listening data yet'} />
-              <Info label="Travel Insights setting" value={selected.listeningPatterns.travelInsightsSetting || 'Not set'} />
-              <div style={{ color: '#64748b', fontSize: 12 }}>{selected.listeningPatterns.travelInsightsSource || 'Not synced'}</div>
-              <Info label="Movement / travel context" value={selected.listeningPatterns.likelyListeningContext || 'Not collected'} />
-              <div style={{ color: '#64748b', fontSize: 12 }}>{selected.listeningPatterns.movementContextSource || 'Movement/travel context is not collected by default.'}</div>
-              {selected.listeningPatterns.recentSessions.length > 0 && (
-                <div style={{ display: 'grid', gap: 6, marginTop: 4 }}>
-                  <div style={{ color: '#64748b', fontSize: 12, fontWeight: 800 }}>Recent listening sessions</div>
-                  {selected.listeningPatterns.recentSessions.map((session, index) => (
-                    <div key={`${session.storyId || 'session'}-${index}`} style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 7, padding: 8, fontSize: 12 }}>
-                      <div style={{ color: '#111827', fontWeight: 800 }}>{session.storyTitle || 'Unknown story'}</div>
-                      <div style={{ color: '#64748b' }}>{fmtDateTime(session.startedAt)} · {Math.round((session.secondsPlayed || 0) / 60)} min{session.stopReason ? ` · ${session.stopReason}` : ''}</div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </DetailSection>
-            <DetailSection title="Playlist activity">
-              <Info label="Server activity" value={selected.playlist.activityKnown ? 'Known' : 'Client-side only'} />
-              <div style={S.muted}>{selected.playlist.note}</div>
-            </DetailSection>
-            <DetailSection title="Referral info">
-              <Info label="Referral records" value={String(selected.referrals.count)} />
-            </DetailSection>
-            <DetailSection title="Admin notes">
-              <div style={{ minHeight: 54, background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8, padding: 10, color: selected.adminNotes ? '#111827' : '#94a3b8', fontSize: 13 }}>
-                {selected.adminNotes || 'No admin notes recorded.'}
-              </div>
-            </DetailSection>
-
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 14 }}>
-              <ActionButton label={selected.isFoundingMember ? 'Remove Founding' : 'Grant Founding'} onClick={() => runAction(selected.isFoundingMember ? 'remove_founding' : 'grant_founding', selected)} />
-              <ActionButton label={selected.accessGranted ? 'Revoke access' : 'Grant access'} onClick={() => runAction(selected.accessGranted ? 'revoke_access' : 'grant_access', selected)} />
-              <ActionButton label="Mark internal/test" onClick={() => runAction('mark_internal', selected)} />
-              <ActionButton label="Disable account" danger onClick={() => runAction('disable_account', selected)} />
-            </div>
-            {actionMessage && <div style={{ marginTop: 10, color: actionMessage === 'Action saved' ? '#166534' : '#991b1b', fontSize: 12, fontWeight: 800 }}>{actionMessage}</div>}
-          </div>
-        )}
+        {selected&&<SubscriberDetails selected={selected} runAction={runAction} actionMessage={actionMessage}/>}
       </div>
 
       <div style={{ ...S.card, marginTop: 16, padding: 16 }}>

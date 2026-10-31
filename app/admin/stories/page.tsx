@@ -1,6 +1,8 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
+import HorizontalTable from '../HorizontalTable'
+import {combineCosts,costBucket,type CostBucket} from '@/lib/admin-center/story-costs'
 import { supabase } from '@/lib/supabase'
 
 type SortKey =
@@ -18,10 +20,17 @@ type SortKey =
   | 'avg_rating'
   | 'review_count'
   | 'quality_score'
+  | 'starts' | 'finishes' | 'writing' | 'production' | 'elevenlabs' | 'total'
 
 type SortDirection = 'asc' | 'desc'
 
 type PublishedStory = {
+  starts?:number|null
+  finishes?:number|null
+  writing?:number|null
+  production?:number|null
+  elevenlabs?:number|null
+  total?:number|null
   id: string
   title: string
   genre: string | null
@@ -71,6 +80,12 @@ const columns: Array<{ key: SortKey; label: string; align?: 'left' | 'right' }> 
   { key: 'pct_skipped', label: 'Skipped', align: 'right' },
   { key: 'avg_rating', label: 'Rating', align: 'right' },
   { key: 'review_count', label: 'Reviews', align: 'right' },
+  {key:'starts',label:'Session starts',align:'right'},
+  {key:'finishes',label:'Session finishes',align:'right'},
+  {key:'writing',label:'AI writing · USD',align:'right'},
+  {key:'production',label:'AI production · USD',align:'right'},
+  {key:'elevenlabs',label:'ElevenLabs · USD',align:'right'},
+  {key:'total',label:'Recorded total · USD',align:'right'},
   { key: 'quality_score', label: 'Score', align: 'right' },
 ]
 
@@ -131,7 +146,7 @@ function displaySeriesTitle(stories: PublishedStory[]) {
 }
 
 function average(values: Array<number | null | undefined>) {
-  const nums = values.map(Number).filter(Number.isFinite)
+  const nums = values.filter(v=>v!=null).map(Number).filter(Number.isFinite)
   if (!nums.length) return null
   return nums.reduce((sum, value) => sum + value, 0) / nums.length
 }
@@ -144,15 +159,18 @@ function aggregateSeries(stories: PublishedStory[], title: string): PublishedSto
   const first = stories[0]
   return {
     ...first,
+    ...combineCosts(stories.map(s=>({...costBucket(),writing:s.writing??null,production:s.production??null,elevenlabs:s.elevenlabs??null}))),
+    starts:stories.every(s=>s.starts!=null)?sum(stories.map(s=>s.starts)):null,
+    finishes:stories.every(s=>s.finishes!=null)?sum(stories.map(s=>s.finishes)):null,
     title,
     episode_title: null,
-    duration_mins: sum(stories.map(story => story.duration_mins)),
+    duration_mins: stories.every(s=>s.duration_mins!=null)?sum(stories.map(story => story.duration_mins)):null,
     downloads_total: sum(stories.map(story => story.downloads_total)),
     downloads_month: sum(stories.map(story => story.downloads_month)),
     pct_started: average(stories.map(story => story.pct_started)),
     pct_finished: average(stories.map(story => story.pct_finished)),
     pct_skipped: average(stories.map(story => story.pct_skipped)),
-    avg_rating: average(stories.map(story => story.avg_rating)),
+    avg_rating: stories.some(s=>s.avg_rating!=null&&Number(s.review_count)>0)?stories.reduce((n,s)=>n+(s.avg_rating!=null&&Number(s.review_count)>0?Number(s.avg_rating)*Number(s.review_count):0),0)/stories.reduce((n,s)=>n+(s.avg_rating!=null&&Number(s.review_count)>0?Number(s.review_count):0),0):null,
     review_count: sum(stories.map(story => story.review_count)),
     quality_score: average(stories.map(story => story.quality_score)),
     published_on: stories
@@ -207,6 +225,8 @@ function rowValue(row: PublishedRow, key: SortKey): string | number {
 function compareRows(a: PublishedRow, b: PublishedRow, key: SortKey, direction: SortDirection) {
   const av = rowValue(a, key)
   const bv = rowValue(b, key)
+  if(av===''&&bv!=='')return 1
+  if(bv===''&&av!=='')return -1
   let result = 0
   if (typeof av === 'number' && typeof bv === 'number') result = av - bv
   else result = String(av).localeCompare(String(bv))
@@ -223,6 +243,8 @@ function metricCell(story: PublishedStory, key: SortKey) {
   if (key === 'pct_skipped') return formatPercent(story.pct_skipped)
   if (key === 'avg_rating') return formatRating(story.avg_rating)
   if (key === 'review_count') return formatNumber(story.review_count)
+  if(['writing','production','elevenlabs','total'].includes(key)){const n=story[key as keyof PublishedStory];return n==null?'Unavailable':'$'+Number(n).toFixed(2)}
+  if(key==='starts'||key==='finishes')return formatNumber(story[key])
   if (key === 'quality_score') return formatScore(story.quality_score)
   return '—'
 }
@@ -308,7 +330,7 @@ function PublishedRowView({ row, expanded, onToggle, actions }: { row: Published
   return (
     <>
       <tr style={{ borderBottom: `1px solid ${border}` }}>
-        <td style={{ padding: '12px', minWidth: '260px' }}>
+        <td style={{ padding: '12px', minWidth: '260px', position: 'sticky', left: 0, zIndex: 2, backgroundColor: cardBg, boxShadow: '2px 0 0 #e0e0e0' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
             {isSeries ? (
               <button onClick={onToggle} style={{ border: `1px solid ${border}`, background: '#fff', borderRadius: '5px', width: '26px', height: '26px', cursor: 'pointer', color: textPrimary }}>
@@ -353,7 +375,7 @@ function PublishedRowView({ row, expanded, onToggle, actions }: { row: Published
       </tr>
       {isSeries && expanded && row.stories.map((episode) => (
         <tr key={episode.id} style={{ backgroundColor: '#f8fafc', borderBottom: `1px solid ${border}` }}>
-          <td style={{ padding: '10px 12px 10px 58px', color: textPrimary, fontSize: '12px', fontWeight: 700 }}>
+          <td style={{ padding: '10px 12px 10px 58px', color: textPrimary, fontSize: '12px', fontWeight: 700, position: 'sticky', left: 0, zIndex: 2, backgroundColor: '#f8fafc', boxShadow: '2px 0 0 #e0e0e0' }}>
             Episode {episode.series_number || episode.episode_number || '—'}: {displayTitle(episode)}
             {actions.rowError[episode.id] && <div style={{ color: '#b91c1c', fontSize: '11px', marginTop: '2px', fontWeight: 700 }}>{actions.rowError[episode.id]}</div>}
           </td>
@@ -386,6 +408,12 @@ export default function PublishedStoriesPage() {
   const [stories, setStories] = useState<PublishedStory[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [period,setPeriod]=useState('lifetime')
+  const [performance,setPerformance]=useState<any>(null)
+  const [costs,setCosts]=useState<any>(null)
+  const [genreFilter,setGenreFilter]=useState('all')
+  useEffect(()=>{let current=true;setPerformance(null);fetch('/api/admin/center/story-performance?days='+(period==='lifetime'?'0':period),{cache:'no-store'}).then(async r=>{const p=await r.json();if(!r.ok)throw Error(p.error);return p}).then(p=>{if(current)setPerformance(p)}).catch(e=>{if(current)setPerformance({error:e.message})});return()=>{current=false}},[period])
+  useEffect(()=>{fetch('/api/admin/center/story-costs',{cache:'no-store'}).then(r=>r.json()).then(setCosts).catch(()=>setCosts({error:'Cost source unavailable'}))},[])
   const [search, setSearch] = useState('')
   const [sortKey, setSortKey] = useState<SortKey>('published_on')
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc')
@@ -570,7 +598,7 @@ export default function PublishedStoriesPage() {
     setSortDirection(key === 'title' || key === 'type' || key === 'genre' || key === 'author' ? 'asc' : 'desc')
   }
 
-  const rows = useMemo(() => buildRows(stories), [stories])
+  const rows = useMemo(() => buildRows(stories.map(s=>{const m=performance?.metrics?.[s.id];return {...s,...(costs?.costs?.[s.id]||costBucket()),starts:performance?.metrics?m?.starts??0:null,finishes:performance?.metrics?m?.finishes??0:null,...(period==='lifetime'?{}:{avg_rating:performance?.metrics?m?.rating??null:null,review_count:performance?.metrics?m?.reviews??0:null})}}).filter(s=>genreFilter==='all'||s.genre===genreFilter)), [stories,costs,performance,period,genreFilter])
   const filteredRows = useMemo(() => {
     const q = search.trim().toLowerCase()
     const filtered = q
@@ -644,12 +672,14 @@ export default function PublishedStoriesPage() {
         </div>
       )}
 
-      <div style={{ backgroundColor: cardBg, borderRadius: '12px', border: `1px solid ${border}`, overflow: 'auto' }}>
+      <div style={{display:'flex',gap:12,flexWrap:'wrap',marginBottom:16}}><label>Performance period<select aria-label="Story performance period" value={period} onChange={e=>setPeriod(e.target.value)}><option value="lifetime">Lifetime</option>{[7,30,90,365].map(d=><option key={d} value={d}>Last {d} days</option>)}</select></label><label>Rank / sort<select aria-label="Rank stories" value={sortKey+':'+sortDirection} onChange={e=>{const[k,d]=e.target.value.split(':');setSortKey(k as SortKey);setSortDirection(d as SortDirection)}}><option value="published_on:desc">Newest published</option><option value="starts:desc">Most started · sessions</option><option value="finishes:desc">Most finished · sessions</option><option value="pct_started:desc">Highest lifetime start %</option><option value="pct_finished:desc">Highest lifetime finish %</option><option value="avg_rating:desc">Highest ratings</option><option value="review_count:desc">Most reviews</option><option value="duration_mins:asc">Shortest first</option><option value="duration_mins:desc">Longest first</option><option value="genre:asc">Genre</option></select></label><label>Genre<select aria-label="Filter stories by genre" value={genreFilter} onChange={e=>setGenreFilter(e.target.value)}><option value="all">All genres</option>{Array.from(new Set(stories.map(s=>s.genre).filter(Boolean))).map(g=><option key={g!} value={g!}>{g}</option>)}</select></label></div>
+      <p>{period==='lifetime'?'Plays and percentage columns are lifetime snapshots; Month is the source monthly snapshot. Session rankings use the available lifetime playback events. Choose a shorter period for dated session and review comparisons.':performance?.error||performance?.note||'Loading period metrics…'} All Plays, Month and percentage columns retain their stated source scope. Series session counts sum episode sessions.</p><p>{costs?.error||costs?.note}</p>{costs?.sources?.map((s:any)=><p key={s.table}>{s.provider} · {s.status} · {s.attributedCalls} story-linked priced calls</p>)}
+      <HorizontalTable label="Published story columns"><div style={{ backgroundColor: cardBg, borderRadius: '12px', border: `1px solid ${border}` }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '1320px' }}>
           <thead>
             <tr style={{ backgroundColor: '#f8fafc', borderBottom: `1px solid ${border}` }}>
               {columns.map(column => (
-                <th key={column.key} style={{ padding: '11px 12px', textAlign: column.align || 'left', whiteSpace: 'nowrap' }}>
+                <th key={column.key} style={{ padding: '11px 12px', textAlign: column.align || 'left', whiteSpace: 'nowrap', ...(column.key==='title'?{position:'sticky' as const,left:0,zIndex:3,backgroundColor:'#f8fafc',boxShadow:'2px 0 0 #e0e0e0'}:{}) }}>
                   <SortButton column={column} sortKey={sortKey} sortDirection={sortDirection} onSort={handleSort} />
                 </th>
               ))}
@@ -685,6 +715,7 @@ export default function PublishedStoriesPage() {
         </table>
       </div>
 
+      </HorizontalTable>
       <div style={{ marginTop: '0.75rem', color: textSecondary, fontSize: '12px', lineHeight: 1.5 }}>
         Eligibility matches the public library: published stories, not hidden, present in story_analytics, analytics row not hidden, and cover present.
       </div>

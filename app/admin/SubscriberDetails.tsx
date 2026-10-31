@@ -1,0 +1,190 @@
+'use client'
+export type Subscriber = {
+  id: string
+  email: string
+  name: string
+  plan: string
+  status: string
+  isFoundingMember: boolean
+  signupDate: string | null
+  lastActive: string | null
+  stripeCustomerId: string | null
+  stripeSubscriptionId: string | null
+  stripeStatus: string | null
+  stripeUrl: string | null
+  subscriptionEndsAt: string | null
+  adminNotes: string
+  accessGranted: boolean
+  listening: {
+    storiesStarted: number
+    storiesCompleted: number
+    totalListenedMinutes: number
+    recentListeningDate: string | null
+    hasReliableEvents: boolean
+    eventCount?: number
+    libraryActivityCount?: number
+  }
+  preferences: {
+    hasEnoughData: boolean
+    preferredGenres: string[]
+    mostListenedGenre: string | null
+    avgListenedStoryDuration: number | null
+    avgCompletedStoryDuration: number | null
+    typicalDurationBucket: string | null
+  }
+  listeningPatterns: {
+    hasEnoughData: boolean
+    favoriteListeningTime: string | null
+    listeningTimeBuckets: Array<{ name: string; weight: number }>
+    favoriteListeningDays: string[]
+    mostActiveListeningDay: string | null
+    averageSessionLengthMinutes: number | null
+    recentSessions: Array<{
+      storyId: string | null
+      storyTitle: string | null
+      startedAt: string | null
+      endedAt: string | null
+      secondsPlayed: number
+      stopReason: string | null
+    }>
+    likelyListeningContext: string
+    movementContextSource: string
+    travelInsightsSetting: string
+    travelInsightsSource: string
+    travelInsightsUpdatedAt: string | null
+  }
+  playlist: { activityKnown: boolean; note: string }
+  referrals: { count: number; rows: any[] }
+}
+
+function fmtDate(value: string | null) {
+  if (!value) return '—'
+  return new Date(value).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
+}
+
+function fmtDateTime(value: string | null) {
+  if (!value) return '—'
+  return new Date(value).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
+}
+
+function planLabel(subscriber: Subscriber) {
+  return subscriber.isFoundingMember ? 'Standard · Founding' : subscriber.plan==='standard'?'Standard':subscriber.plan||'Unknown'
+}
+
+
+export default function SubscriberDetails({selected,runAction,actionMessage}:{selected:Subscriber;runAction:(action:string,subscriber:Subscriber)=>void;actionMessage:string}){const S={card:{background:"white",border:"1px solid #e2e8f0",borderRadius:12},muted:{color:"#64748b",fontSize:13}};return <>        {selected && (
+          <div style={{ ...S.card, padding: 16, alignSelf: 'start', position: 'sticky', top: 16 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start', marginBottom: 14 }}>
+              <div>
+                <div style={{ fontSize: 18, fontWeight: 950 }}>{selected.name}</div>
+                <div style={S.muted}>{selected.email}</div>
+              </div>
+              {selected.isFoundingMember && <div style={{ background: '#ffedd5', color: '#9a3412', borderRadius: 999, padding: '4px 9px', fontSize: 11, fontWeight: 900 }}>Founding</div>}
+            </div>
+
+            <DetailSection title="Account info">
+              <Info label="User ID" value={selected.id} mono />
+              <Info label="Signup date" value={fmtDateTime(selected.signupDate)} />
+              <Info label="Last active" value={fmtDateTime(selected.lastActive)} />
+            </DetailSection>
+            <DetailSection title="Subscription / payment">
+              <Info label="Plan" value={planLabel(selected)} />
+              <Info label="Subscription status" value={selected.status} />
+              <Info label="Stripe status" value={selected.stripeStatus || '—'} />
+              <Info label="Current period / access ends" value={fmtDate(selected.subscriptionEndsAt)} />
+              {selected.stripeUrl && <a href={selected.stripeUrl} target="_blank" rel="noopener noreferrer" style={{ display: 'inline-block', color: '#2563eb', fontSize: 13, fontWeight: 850, marginTop: 4 }}>Open Stripe customer</a>}
+            </DetailSection>
+            <DetailSection title="Listening history">
+              <Info label="Stories started" value={String(selected.listening.storiesStarted)} />
+              <Info label="Stories completed" value={String(selected.listening.storiesCompleted)} />
+              <Info label="Total listened" value={`${selected.listening.totalListenedMinutes} min`} />
+              <Info label="Recent listening" value={fmtDateTime(selected.listening.recentListeningDate)} />
+              <Info
+                label="Data source"
+                value={selected.listening.hasReliableEvents
+                  ? `Playback events (${selected.listening.eventCount || 0})`
+                  : selected.listening.storiesStarted > 0
+                    ? `Progress fallback (${selected.listening.libraryActivityCount || 0})`
+                    : 'No listening data'}
+              />
+            </DetailSection>
+            <DetailSection title="Preferences">
+              {selected.preferences.hasEnoughData ? (
+                <>
+                  <Info label="Preferred genres" value={selected.preferences.preferredGenres.length ? selected.preferences.preferredGenres.join(', ') : 'Not enough listening data yet'} />
+                  <Info label="Most listened" value={selected.preferences.mostListenedGenre || 'Not enough listening data yet'} />
+                  <Info label="Avg story length" value={selected.preferences.avgListenedStoryDuration ? `${selected.preferences.avgListenedStoryDuration} min` : 'Not enough listening data yet'} />
+                  <Info label="Avg completed" value={selected.preferences.avgCompletedStoryDuration ? `${selected.preferences.avgCompletedStoryDuration} min` : 'Not enough listening data yet'} />
+                  <Info label="Duration bucket" value={selected.preferences.typicalDurationBucket || 'Not enough listening data yet'} />
+                </>
+              ) : (
+                <div style={{ color: '#64748b', fontSize: 13 }}>Not enough listening data yet</div>
+              )}
+            </DetailSection>
+            <DetailSection title="Listening patterns">
+              <Info label="Favorite time" value={selected.listeningPatterns.favoriteListeningTime || 'Not enough listening data yet'} />
+              <Info label="Favorite days" value={selected.listeningPatterns.favoriteListeningDays.length ? selected.listeningPatterns.favoriteListeningDays.join(', ') : 'Not enough listening data yet'} />
+              <Info label="Average session" value={selected.listeningPatterns.averageSessionLengthMinutes ? `${selected.listeningPatterns.averageSessionLengthMinutes} min` : 'Not enough listening data yet'} />
+              <Info label="Travel Insights setting" value={selected.listeningPatterns.travelInsightsSetting || 'Not set'} />
+              <div style={{ color: '#64748b', fontSize: 12 }}>{selected.listeningPatterns.travelInsightsSource || 'Not synced'}</div>
+              <Info label="Movement / travel context" value={selected.listeningPatterns.likelyListeningContext || 'Not collected'} />
+              <div style={{ color: '#64748b', fontSize: 12 }}>{selected.listeningPatterns.movementContextSource || 'Movement/travel context is not collected by default.'}</div>
+              {selected.listeningPatterns.recentSessions.length > 0 && (
+                <div style={{ display: 'grid', gap: 6, marginTop: 4 }}>
+                  <div style={{ color: '#64748b', fontSize: 12, fontWeight: 800 }}>Recent listening sessions</div>
+                  {selected.listeningPatterns.recentSessions.map((session, index) => (
+                    <div key={`${session.storyId || 'session'}-${index}`} style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 7, padding: 8, fontSize: 12 }}>
+                      <div style={{ color: '#111827', fontWeight: 800 }}>{session.storyTitle || 'Unknown story'}</div>
+                      <div style={{ color: '#64748b' }}>{fmtDateTime(session.startedAt)} · {Math.round((session.secondsPlayed || 0) / 60)} min{session.stopReason ? ` · ${session.stopReason}` : ''}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </DetailSection>
+            <DetailSection title="Playlist activity">
+              <Info label="Server activity" value={selected.playlist.activityKnown ? 'Known' : 'Client-side only'} />
+              <div style={S.muted}>{selected.playlist.note}</div>
+            </DetailSection>
+            <DetailSection title="Referral info">
+              <Info label="Referral records" value={String(selected.referrals.count)} />
+            </DetailSection>
+            <DetailSection title="Admin notes">
+              <div style={{ minHeight: 54, background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8, padding: 10, color: selected.adminNotes ? '#111827' : '#94a3b8', fontSize: 13 }}>
+                {selected.adminNotes || 'No admin notes recorded.'}
+              </div>
+            </DetailSection>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 14 }}>
+              <ActionButton label={selected.isFoundingMember ? 'Remove Founding' : 'Grant Founding'} onClick={() => runAction(selected.isFoundingMember ? 'remove_founding' : 'grant_founding', selected)} />
+              <ActionButton label={selected.accessGranted ? 'Revoke access' : 'Grant access'} onClick={() => runAction(selected.accessGranted ? 'revoke_access' : 'grant_access', selected)} />
+              <ActionButton label="Mark internal/test" onClick={() => runAction('mark_internal', selected)} />
+              <ActionButton label="Disable account" danger onClick={() => runAction('disable_account', selected)} />
+            </div>
+            {actionMessage && <div style={{ marginTop: 10, color: actionMessage === 'Action saved' ? '#166534' : '#991b1b', fontSize: 12, fontWeight: 800 }}>{actionMessage}</div>}
+          </div>
+        )}</>}
+function DetailSection({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <section style={{ borderTop: '1px solid #e5e7eb', paddingTop: 12, marginTop: 12 }}>
+      <div style={{ fontSize: 12, fontWeight: 950, color: '#334155', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>{title}</div>
+      <div style={{ display: 'grid', gap: 7 }}>{children}</div>
+    </section>
+  )
+}
+
+function Info({ label, value, mono = false }: { label: string; value: string; mono?: boolean }) {
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: '130px minmax(0, 1fr)', gap: 10, fontSize: 13 }}>
+      <div style={{ color: '#64748b', fontWeight: 700 }}>{label}</div>
+      <div style={{ color: '#111827', fontFamily: mono ? 'ui-monospace, SFMono-Regular, Menlo, monospace' : undefined, overflowWrap: 'anywhere' }}>{value}</div>
+    </div>
+  )
+}
+
+function ActionButton({ label, onClick, danger = false }: { label: string; onClick: () => void; danger?: boolean }) {
+  return (
+    <button onClick={onClick} style={{ border: `1px solid ${danger ? '#fecaca' : '#cbd5e1'}`, background: danger ? '#fef2f2' : '#fff', color: danger ? '#991b1b' : '#0f172a', borderRadius: 8, padding: '9px 10px', fontSize: 12, fontWeight: 850, cursor: 'pointer' }}>
+      {label}
+    </button>
+  )
+}

@@ -1,3 +1,4 @@
+import { adminAccess } from '@/lib/admin-center/auth'
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 
@@ -7,10 +8,12 @@ const supabaseAdmin = createClient(
 );
 
 export async function POST(request: NextRequest) {
+  const accessDenied = await adminAccess(request); if (accessDenied) return accessDenied
+
   try {
     const { id, status } = await request.json();
 
-    if (!id || !status) {
+    if (!id || !['new','read'].includes(status)) {
       return NextResponse.json({ error: 'Missing fields' }, { status: 400 });
     }
 

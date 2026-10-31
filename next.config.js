@@ -6,6 +6,8 @@ const nextConfig = {
   experimental: {
     serverComponentsExternalPackages: ['ws', 'bufferutil', 'utf-8-validate', 'fluent-ffmpeg', 'sharp'],
     outputFileTracingIncludes: {
+      '/api/admin/center/marketing-workbook': ['./content/admin/Endless-Tales-6-plus-2-Marketing-Workbook.xlsx'],
+      '/api/admin/center/information-flow': ['./content/admin-information-flow.html'],
       '/api/asc3/render-final-mix': ['./node_modules/@ffmpeg-installer/**/*'],
       '/api/landing/render-mix': ['./node_modules/@ffmpeg-installer/**/*'],
       '/api/v2/generate-script': [
@@ -37,6 +39,8 @@ const nextConfig = {
 }
 
 module.exports = withSentryConfig(nextConfig, {
+  // Disable build-plugin telemetry; runtime error reporting remains separately configured.
+  telemetry: false,
   // Sentry build-time options
   org: process.env.SENTRY_ORG,
   project: process.env.SENTRY_PROJECT,

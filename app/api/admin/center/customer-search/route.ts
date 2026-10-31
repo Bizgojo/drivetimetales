@@ -1,0 +1,5 @@
+import {NextRequest,NextResponse} from 'next/server'
+import {adminAccess} from '@/lib/admin-center/auth'
+import {db} from '@/lib/admin-center/store'
+export const dynamic='force-dynamic'
+export async function GET(req:NextRequest){const denied=await adminAccess(req);if(denied)return denied;const q=(req.nextUrl.searchParams.get('q')||'').trim().slice(0,120).replace(new RegExp('[^\\p{L}\\p{N}@ ._+-]','gu'),'');if(q.length<2)return NextResponse.json({subscribers:[]});try{const{data,error}=await db().from('users').select('id,email,first_name,display_name,plan,subscription_type').or(`email.ilike.*${q}*,first_name.ilike.*${q}*,display_name.ilike.*${q}*`).order('created_at',{ascending:false}).limit(25);if(error)throw error;return NextResponse.json({subscribers:(data||[]).map(u=>({...u,name:u.display_name||u.first_name||u.email,status:u.subscription_type})),searchLimit:25},{headers:{'Cache-Control':'private, no-store'}})}catch{return NextResponse.json({error:'Customer search unavailable'},{status:503})}}

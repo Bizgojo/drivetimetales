@@ -1,0 +1,13 @@
+#!/usr/bin/env node
+// Read-only prerequisite check. Never prints credential values or changes the database/jobs.
+const args=process.argv.slice(2),envIndex=args.indexOf('--env-path')
+if(envIndex>=0){if(!args[envIndex+1]){console.error('Provide the existing app environment file path');process.exit(1)}require('dotenv').config({path:args[envIndex+1],override:false,quiet:true})}
+const tables=['admin_center_audit','admin_center_policy','admin_center_events','admin_center_reads','admin_center_alert_settings','admin_center_replies','admin_center_campaigns','admin_center_push_subscriptions','admin_center_push_deliveries','admin_center_finance_entries','admin_center_acknowledgments','admin_center_production_policies','admin_center_profit_plan']
+async function main(){const missing=['NEXT_PUBLIC_SUPABASE_URL','NEXT_PUBLIC_SUPABASE_ANON_KEY','SUPABASE_SERVICE_ROLE_KEY'].filter(k=>!process.env[k]);if(!process.env.ADMIN_INTERNAL_TOKEN||process.env.ADMIN_INTERNAL_TOKEN.length<32)missing.push('ADMIN_INTERNAL_TOKEN (at least 32 characters)');for(const key of ['ADMIN_REVIEW_CONTROLS_ENABLED','ADMIN_PUSH_ENABLED','ADMIN_SUPPORT_ACK_ENABLED'])if(process.env[key]==='true')missing.push(key+' must remain off until its separate acceptance checks pass');if(missing.length){console.error('BLOCKED: missing or unaccepted configuration:\n'+missing.map(k=>' - '+k).join('\n'));process.exitCode=1;return}
+ const{createClient}=require('@supabase/supabase-js'),db=createClient(process.env.NEXT_PUBLIC_SUPABASE_URL,process.env.SUPABASE_SERVICE_ROLE_KEY,{auth:{persistSession:false,autoRefreshToken:false}})
+ const results=await Promise.all(tables.map(async table=>{try{const{error}=await db.from(table).select('*',{head:true,count:'exact'}).limit(0);return{table,ok:!error}}catch{return{table,ok:false}}}));for(const r of results)console.log((r.ok?'PASS: ':'BLOCKED: ')+r.table+' service read '+(r.ok?'available':'unavailable'))
+ if(results.some(r=>!r.ok)){console.error('Verify the recorded Admin preparation migrations and service access. Do not reapply migrations already installed; see the Orion handoff.');process.exitCode=1;return}
+ console.log('PASS: automated table/config prerequisites. This does not certify live provider integration or authorize paid actions.')
+ console.log('ORION CHECK: same scoped token in every runner/agent, actual self-fetch origins in ADMIN_INTERNAL_ORIGINS (loopback is built in), staging policies/functions, owner sign-in, shared-data comparison and rollback. Do not advance production jobs for testing.')
+}
+main().catch(()=>{console.error('BLOCKED: prerequisite check unavailable; credential values suppressed');process.exitCode=1})

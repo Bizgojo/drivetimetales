@@ -76,8 +76,9 @@ function stripeUrl(customerId: string | null) {
   return customerId ? `https://dashboard.stripe.com/customers/${customerId}` : null
 }
 
-async function safeSelect(admin: any, table: string, select: string, options: { orderBy?: string; ascending?: boolean; limit?: number } = {}) {
+async function safeSelect(admin: any, table: string, select: string, options: { orderBy?: string; ascending?: boolean; limit?: number; userId?:string|null } = {}) {
   let query = admin.from(table).select(select)
+  if(options.userId)query=query.eq('user_id',options.userId)
   if (options.orderBy) query = query.order(options.orderBy, { ascending: options.ascending ?? false })
   query = query.limit(options.limit || 10000)
   const { data, error } = await query
@@ -88,14 +89,15 @@ async function safeSelect(admin: any, table: string, select: string, options: { 
   return data || []
 }
 
-async function safeSelectWithOrderFallback(admin: any, table: string, select: string, orderCandidates: string[], limit = 10000) {
+async function safeSelectWithOrderFallback(admin: any, table: string, select: string, orderCandidates: string[], limit = 10000,userId?:string|null) {
   for (const orderBy of orderCandidates) {
     let query = admin.from(table).select(select).order(orderBy, { ascending: false }).limit(limit)
+    if(userId)query=query.eq('user_id',userId)
     const { data, error } = await query
     if (!error) return data || []
     console.warn(`[admin/subscribers] ${table} order by ${orderBy} unavailable:`, error.message)
   }
-  return safeSelect(admin, table, select, { limit })
+  return safeSelect(admin, table, select, { limit,userId })
 }
 
 async function loadTravelInsightPreferences(admin: any) {
@@ -110,7 +112,8 @@ async function loadTravelInsightPreferences(admin: any) {
   return { rows: data || [], available: true }
 }
 
-async function listAuthUsers(admin: any) {
+async function listAuthUsers(admin: any,userId?:string|null) {
+  if(userId){const{data,error}=await admin.auth.admin.getUserById(userId);return error?[]:[data.user]}
   const authUsers: any[] = []
   try {
     for (let page = 1; page < 50; page += 1) {
@@ -407,14 +410,22 @@ export async function GET(req: NextRequest) {
     if (!(await requireAdmin(req))) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     const { admin } = clients()
 
+    const q=(req.nextUrl.searchParams.get('q')||'').trim().slice(0,120)
+    const userId=req.nextUrl.searchParams.get('userId')
+    const searching=req.nextUrl.searchParams.get('mode')==='search'||!!userId
+    if(searching&&!userId&&q.length<2)return NextResponse.json({subscribers:[],summary:null})
+    if(userId&&!/^[0-9a-f-]{36}$/i.test(userId))return NextResponse.json({error:'Invalid user ID'},{status:400})
+    let userQuery=admin.from('users').select('*').order('created_at',{ascending:false})
+    if(userId)userQuery=userQuery.eq('id',userId)
+    else if(searching){const literal=q.replace(/[^a-zA-Z0-9@ ._+-]/g,'').replace(/[%_]/g,'');if(literal.length<2)return NextResponse.json({subscribers:[],summary:null});userQuery=userQuery.or(`email.ilike.*${literal}*,first_name.ilike.*${literal}*,display_name.ilike.*${literal}*`).limit(25)}
     const [usersRes, subsRes, libraryRows, playEvents, stories, referrals, authUsers, travelPreferencesResult] = await Promise.all([
-      admin.from('users').select('*').order('created_at', { ascending: false }),
-      admin.from('subscriptions').select('*').order('created_at', { ascending: false }),
-      safeSelect(admin, 'user_library', 'user_id,story_id,progress,completed,updated_at,created_at,last_played', { orderBy: 'updated_at', limit: 50000 }),
-      safeSelectWithOrderFallback(admin, 'play_events', '*', ['started_at', 'created_at', 'timestamp', 'occurred_at', 'updated_at'], 50000),
+      userQuery,
+      userId?admin.from('subscriptions').select('*').eq('user_id',userId).order('created_at',{ascending:false}):admin.from('subscriptions').select('*').order('created_at',{ascending:false}),
+      safeSelect(admin, 'user_library', 'user_id,story_id,progress,completed,updated_at,created_at,last_played', { orderBy: 'updated_at', limit: 50000,userId }),
+      safeSelectWithOrderFallback(admin, 'play_events', '*', ['started_at', 'created_at', 'timestamp', 'occurred_at', 'updated_at'], 50000,userId),
       safeSelect(admin, 'stories', 'id,title,genre,duration_mins'),
       safeSelect(admin, 'referrals', '*'),
-      listAuthUsers(admin),
+      listAuthUsers(admin,userId),
       loadTravelInsightPreferences(admin),
     ])
 
@@ -535,7 +546,7 @@ export async function GET(req: NextRequest) {
       newThisWeek: standardSubscribers.filter((row) => dateMs(row.signupDate) >= weekAgo).length,
     }
 
-    return NextResponse.json({ summary, subscribers: standardSubscribers, audit: { nonStandardUsers } })
+    return NextResponse.json({ summary:searching?null:summary, subscribers:searching?rows:standardSubscribers, audit: { nonStandardUsers },searchLimit:searching?25:null },{headers:{'Cache-Control':'private, no-store'}})
   } catch (error) {
     console.error('[admin/subscribers] failed:', error)
     return NextResponse.json({ error: error instanceof Error ? error.message : 'Subscriber load failed' }, { status: 500 })

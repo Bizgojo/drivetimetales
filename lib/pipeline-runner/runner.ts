@@ -1,3 +1,4 @@
+import { internalAdminFetch } from '@/lib/admin-center/internal-fetch'
 /**
  * Pipeline Runner — Core runner loop
  *
@@ -618,7 +619,7 @@ async function callRunNext(
           .catch(() => {/* non-fatal */})
       }, RUN_NEXT_FETCH_HEARTBEAT_MS)
     : undefined
-  const doPost = (host: string): Promise<Response> => fetch(`${host}/api/admin/production-jobs/run-next`, {
+  const doPost = (host: string): Promise<Response> => internalAdminFetch(`${host}/api/admin/production-jobs/run-next`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ jobId, holderId }),
