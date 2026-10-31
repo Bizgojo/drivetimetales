@@ -55,6 +55,20 @@ export function buildSfxReport(seriesTitle: string, episodes: ReportEpisode[]): 
     }
     rows.sort((a, b) => a.index - b.index)
     out.push('', `EPISODE ${ep.episodeNumber}: ${ep.title} — ${rows.length} effects`, ...rows.map((r) => r.text))
+    // SFX-SOUNDMAP-001: every line that names a sound, and what happened there.
+    const decisions = ep.overlay?.decisions || []
+    if (decisions.length) {
+      const scriptAt = new Set(ep.positions.filter((x) => x.kind === 'sfx').map((x) => x.index))
+      const plays = decisions.filter((d) => d.verdict === 'play').length
+      out.push('', `LINES THAT NAME A SOUND — ${decisions.length} lines: ${plays} play a sound, ${decisions.length - plays} skipped`)
+      for (const d of decisions) {
+        const line = ep.positions.find((x) => x.index === d.line)
+        const said = line ? `${line.speaker || ''}: ${String(line.text || '').replace(/\s+/g, ' ').slice(0, 90)}` : `line ${d.line}`
+        const near = scriptAt.has(d.line - 1) || scriptAt.has(d.line + 1) ? ' (script effect next to it)' : ''
+        const what = d.verdict === 'play' ? `PLAYS: ${d.cue}` : d.missing ? `NOT DECIDED — ${d.reason}` : `SKIPPED — ${d.reason}${near}`
+        out.push(`• line ${d.line} ${said}`, `    ${what}`)
+      }
+    }
   }
   out.splice(1, 0, `${lib} effects used your kept sounds; ${ai} were AI-made.`)
   return out.join('\n')
