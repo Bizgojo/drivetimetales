@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
+import { AIRTABLE_CAMPAIGN_BASE_URL, MARKETING_TOOL_COST_TABLE_ID, findAirtableToolRecord, normalizeMarketingToolCost } from '@/lib/admin-center/marketing-tool-cost'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -231,10 +232,24 @@ export async function GET(request: NextRequest) {
     const campaigns = await airtableList(CAMPAIGNS_TABLE_ID, params)
     const tasksById = await loadTasks(campaigns)
 
+    // Marketing tool cost is display-only context served with the same single
+    // response (no extra client fetch). It is never ad spend and is excluded
+    // from the $4,000 cap, CAC and cost-per-trial. A missing record degrades
+    // to found:false; missing cost is null (rendered Unavailable, never $0).
+    let toolCost = normalizeMarketingToolCost(null)
+    try {
+      const toolRecords = await airtableList(MARKETING_TOOL_COST_TABLE_ID, new URLSearchParams({ pageSize: '100' }))
+      toolCost = normalizeMarketingToolCost(findAirtableToolRecord(toolRecords))
+    } catch (error) {
+      console.error('[admin-marketing-campaigns] Tool cost unavailable:', error instanceof Error ? error.message : String(error))
+    }
+
     return json({
       success: true,
       view,
       views: VIEW_OPTIONS,
+      airtableBaseUrl: AIRTABLE_CAMPAIGN_BASE_URL,
+      toolCost,
       fields: {
         campaign: CAMPAIGN_FIELDS,
         task: TASK_FIELDS,
