@@ -143,6 +143,35 @@ export function matchSfxCue(cue: string, entries: SfxLibraryEntry[], minScore = 
   return best
 }
 
+/**
+ * SFX-ROTATE-001 (Marc 2026-10-30): when several kept takes fit a cue equally
+ * well, use a different one at different places in a story instead of the
+ * same recording every time. Deterministic per seed (story + line), so a
+ * re-render picks the same take again.
+ */
+export function rankSfxCandidates(cue: string, entries: SfxLibraryEntry[], minScore = 3): SfxMatch[] {
+  const out: SfxMatch[] = []
+  for (const entry of entries) {
+    const m = matchSfxCue(cue, [entry], minScore)
+    if (m) out.push(m)
+  }
+  return out.sort((a, b) => b.score - a.score || a.entry.id.localeCompare(b.entry.id))
+}
+
+function seedHash(seed: string): number {
+  let h = 2166136261
+  for (let i = 0; i < seed.length; i += 1) { h ^= seed.charCodeAt(i); h = Math.imul(h, 16777619) >>> 0 }
+  return h
+}
+
+/** Best match, rotating among takes that score within 0.5 of the best. */
+export function pickSfxVariant(cue: string, entries: SfxLibraryEntry[], seed: string): SfxMatch | null {
+  const ranked = rankSfxCandidates(cue, entries)
+  if (!ranked.length) return null
+  const top = ranked.filter((m) => m.score >= ranked[0].score - 0.5)
+  return top[seedHash(seed) % top.length]
+}
+
 export function sfxLibraryEnabled(env: Record<string, string | undefined> = process.env): boolean {
   return String(env.SFX_LIBRARY || '').trim().toLowerCase() === 'on'
 }
@@ -167,14 +196,14 @@ export async function loadSfxLibrary(publicBaseUrl: string): Promise<SfxLibraryM
  * Library audio for a cue, or null (caller then uses ElevenLabs).
  * publicBaseUrl = `${SUPABASE_URL}/storage/v1/object/public/audio`.
  */
-export async function librarySfxForCue(cue: string, publicBaseUrl: string, log: (m: string) => void = () => {}): Promise<{ audio: Buffer; match: SfxMatch } | null> {
+export async function librarySfxForCue(cue: string, publicBaseUrl: string, log: (m: string) => void = () => {}, seed = ''): Promise<{ audio: Buffer; match: SfxMatch } | null> {
   if (!sfxLibraryEnabled()) return null
   const manifest = await loadSfxLibrary(publicBaseUrl)
   if (!manifest?.entries?.length) return null
   // SFX-REVIEW-001: only sounds Marc approved by ear are ever used.
   const approved = manifest.entries.filter((e) => e.status === 'approved')
   if (!approved.length) return null
-  const match = matchSfxCue(cue, approved)
+  const match = seed ? pickSfxVariant(cue, approved, seed) : matchSfxCue(cue, approved)
   if (!match) {
     log(`[SFX-LIBRARY-001] no library match for "${cue}" — using ElevenLabs`)
     return null

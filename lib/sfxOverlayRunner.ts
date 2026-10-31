@@ -88,8 +88,9 @@ export async function ensureOverlayPlan(params: {
   const libraryBase = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/audio`
   for (const cue of cues) {
     // SFX-LIBRARY-001: a real recorded effect from our library first; ElevenLabs only if none fits.
-    const lib = await librarySfxForCue(cue.cue, libraryBase, log)
+    const lib = await librarySfxForCue(cue.cue, libraryBase, log, `${storyId}:overlay:${cue.beforeIndex}`)
     const buf = lib ? lib.audio : await soundEffect(cue.cue, cue.durationSec, elevenKey!)
+    cue.source = lib ? { kind: 'library', libraryId: lib.match.entry.id, libraryName: lib.match.entry.name } : { kind: 'ai' }
     if (!buf) { log(`  SFX-OVERLAY-001 generation failed, skipped: ${cue.cue}`); continue }
     const name = overlayFileName(cue.beforeIndex)
     const { error } = await db.storage.from('audio').upload(`asc3/${storyId}/${name}`, buf, { contentType: 'audio/mpeg', upsert: true })
