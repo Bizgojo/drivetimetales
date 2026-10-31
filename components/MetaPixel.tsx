@@ -8,6 +8,30 @@ export default function MetaPixel() {
     <>
       <Script id="meta-pixel" strategy="afterInteractive">
         {`
+          // AMENDMENT-1 Gap 8.4: test sessions (et_test=<run_id> in the URL,
+          // or carried in sessionStorage for later pages in the same tab)
+          // must NEVER fire production pixel events. No waiver.
+          // Gap 8.4b: logged-in test accounts (is_test_account=true) are
+          // suppressed too, via the et_test_account cookie (set server-side
+          // at login in /auth/callback) or localStorage flag (set on
+          // /auth/confirm + AuthContext). Keep this predicate identical in
+          // TikTokPixel and lib/tracking/client.ts isTestSessionClient.
+          window.__etTestSession = (function() {
+            try {
+              var s = window.location.search || '';
+              if (/(^|[?&])et_test=/.test(s)) { try { sessionStorage.setItem('et_test', '1'); } catch (e) {} return true; }
+              try { if (sessionStorage.getItem('et_test')) return true; } catch (e) {}
+              try { if (localStorage.getItem('et_test_account') === '1') return true; } catch (e) {}
+              try {
+                var parts = (';' + (document.cookie || '')).split(';');
+                for (var i = 0; i < parts.length; i++) {
+                  if (parts[i].trim() === 'et_test_account=1') return true;
+                }
+              } catch (e) {}
+            } catch (e) { return true; }
+            return false;
+          })();
+          if (!window.__etTestSession) {
           !function(f,b,e,v,n,t,s)
           {if(f.fbq)return;n=f.fbq=function(){n.callMethod?
           n.callMethod.apply(n,arguments):n.queue.push(arguments)};
@@ -18,8 +42,12 @@ export default function MetaPixel() {
           'https://connect.facebook.net/en_US/fbevents.js');
           fbq('init', '${pixelId}');
           fbq('track', 'PageView');
+          }
         `}
       </Script>
+      {/* noscript fallback: test sessions always run with JS enabled, so the
+          __etTestSession guard above covers them; this img only fires for
+          real visitors with JS disabled. */}
       <noscript>
         <img
           height="1"
