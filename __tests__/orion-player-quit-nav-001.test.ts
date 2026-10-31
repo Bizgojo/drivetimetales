@@ -44,10 +44,11 @@ describe('ORION-PLAYER-QUIT-001: mid-play quit-to-library class', () => {
     expect(block).toMatch(/Never navigate on the player's[\s\S]{0,40}own initiative/)
   })
 
-  it('saveProgress upsert carries onConflict and surfaces write errors', () => {
+  it('saveProgress uses ordered authenticated saves and surfaces write errors', () => {
     const saveIdx = PLAYER.indexOf('const saveProgress = async')
     const saveBlock = PLAYER.slice(saveIdx, saveIdx + 1800)
-    expect(saveBlock).toMatch(/\{ onConflict: 'user_id,story_id' \}/)
-    expect(saveBlock).toMatch(/user_library progress write failed/)
+    expect(saveBlock).toContain("fetch('/api/user/save-progress'")
+    expect(saveBlock).toContain('observedAt: new Date().toISOString()')
+    expect(saveBlock).toMatch(/progress save failed/)
   })
 })

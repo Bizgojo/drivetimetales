@@ -435,7 +435,7 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
     stallRecoveringRef.current = true
     stallRecoveryCountRef.current += 1
     const src = audio.currentSrc || audio.src || ''
-    const pos = Number.isFinite(audio.currentTime) ? audio.currentTime : 0
+    const pos = checkpointRef.current.position(playbackSource(), audio.currentTime, audio.ended)
     console.warn('[player] stall watchdog: recovering', {
       storyId,
       attempt: stallRecoveryCountRef.current,
@@ -1085,11 +1085,13 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
       isAdvancingRef.current = false
       if (autoAdvanceTimerRef.current) clearTimeout(autoAdvanceTimerRef.current)
       if (stillListeningTimerRef.current) clearTimeout(stillListeningTimerRef.current)
+      if (saveTimer.current) { clearTimeout(saveTimer.current); saveTimer.current = null }
     }
   }, [])
 
   useEffect(() => {
     checkpointRef.current.clear()
+    if (saveTimer.current) { clearTimeout(saveTimer.current); saveTimer.current = null }
     setSeriesEpisodes([])
     setEpisodeListError('')
     removedFromContinueRef.current = false
@@ -1151,7 +1153,7 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
     // latest position is persisted even when the tab/app is killed mid-listen.
     const flushProgressEvent = () => {
       const currentProgress = getProgressSeconds()
-      if (!Number.isFinite(currentProgress) || currentProgress <= 0) return
+      if (loading || audioStoryIdRef.current !== storyId || inWelcomeRef.current || !Number.isFinite(currentProgress) || currentProgress < 0) return
       const currentDuration = isASC3
         ? (totalDur > 0 ? totalDur : duration)
         : duration
@@ -1164,6 +1166,7 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
       const payload: Record<string, unknown> = {
         storyId,
         progress: Math.floor(currentProgress),
+        observedAt: new Date().toISOString(),
       }
       if (Number.isFinite(currentDuration) && currentDuration > 0) {
         payload.durationSecs = Math.floor(currentDuration)
@@ -1557,15 +1560,11 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
             setHasProgress(!mergedProgress.completed && mergedProgress.progress > 0)
           }
           if (!lib?.not_for_me && !mergedProgress.completed && localProgress && mergedProgress.progress === localProgress.progress && localProgress.progress !== Number(lib?.progress || 0)) {
-            void supabase.from('user_library').upsert({
-              user_id: user.id,
-              story_id: storyId,
-              progress: Math.floor(localProgress.progress),
-              completed: false,
-              hide_from_home: false,
-              not_for_me: false,
-              last_played: localProgress.updatedAt || new Date().toISOString(),
-            }, { onConflict: 'user_id,story_id' })
+            void fetch('/api/user/save-progress', {
+              method: 'POST', credentials: 'same-origin', keepalive: true,
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ storyId, progress: Math.floor(localProgress.progress), observedAt: localProgress.updatedAt || new Date().toISOString() }),
+            }).catch(() => {})
           }
 
           // ── Welcome experience — first play only ───────────────────────────────────────
@@ -1967,6 +1966,7 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
   // ruling: Start Over must not kill auto-advance for the session).
   const restartFromBeginning = () => {
     checkpointRef.current.clear()
+    if (saveTimer.current) { clearTimeout(saveTimer.current); saveTimer.current = null }
     if (autoAdvanceDisabledReason === 'manual_pause') {
       autoAdvanceEnabledRef.current = true
       setAutoAdvanceDisabledReason(null)
@@ -2071,26 +2071,18 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
       endAnalyticsSession('completed')
     }
     if (user?.id) {
-      // ORION-PLAYER-QUIT-001 (2026-07-15): this upsert was missing onConflict,
-      // so once a row existed (created by the play-button upsert) every progress/
-      // completion write failed 23505 duplicate-key — and was silently swallowed.
-      // Confirmed live: walk fixture rows sat at progress 0 through completed plays.
-      // ORION-COMPLETION-STICKY-001 (2026-07-15): completion is MONOTONIC. The old
-      // payload wrote `completed: done` on every save, so any later progress write
-      // (periodic 5s save, pause, unmount, re-listen) clobbered an earned
-      // completed=true back to false — silently corroding the completion% metric.
-      // Include `completed` only when earning it; updates without the column leave
-      // the stored value untouched (inserts fall back to the column default false).
-      const progressRow: Record<string, unknown> = {
-        user_id: user.id, story_id: storyId, progress: Math.floor(t),
-        hide_from_home: removedFromContinueRef.current, // Keep a removed card hidden through pause/periodic saves
-        not_for_me: false,      // Clear not_for_me if user plays again
-        last_played: new Date().toISOString()
-      }
-      if (done) progressRow.completed = true
-      const { error: progressError } = await supabase.from('user_library').upsert(progressRow, { onConflict: 'user_id,story_id' })
-      if (progressError) {
-        console.error('[player] user_library progress write failed', { storyId, t: Math.floor(t), done, error: progressError.message })
+      // Serialize progress through the authenticated timestamp-guarded endpoint.
+      // It preserves earned completion and rejects delayed older observations.
+      try {
+        const response = await fetch('/api/user/save-progress', {
+          method: 'POST', credentials: 'same-origin', keepalive: true,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ storyId, progress: Math.floor(t), completed: done, observedAt: new Date().toISOString() }),
+        })
+        if (!response.ok) console.error('[player] progress save failed', { storyId, status: response.status })
+      } catch (error) {
+        // Local progress was saved first and remains available offline.
+        console.warn('[player] progress save unavailable; kept locally', { storyId })
       }
     }
     if (done) {
@@ -2125,6 +2117,7 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
       setEndStateCandidate(null)
     }
     checkpointRef.current.clear()
+    if (saveTimer.current) { clearTimeout(saveTimer.current); saveTimer.current = null }
     // Persist explicit seeks immediately, including paused seeks and a seek to zero.
     void saveProgress(nextTime)
     if (isASC3) {
@@ -2549,7 +2542,16 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
 
   mediaHandlersRef.current = {
     play: () => { if (audioRef.current?.paused) handlePlayPause() },
-    pause: () => { if (audioRef.current && !audioRef.current.paused) handlePlayPause() },
+    pause: () => {
+      if (!audioRef.current) return
+      if (!audioRef.current.paused) handlePlayPause()
+      else void saveProgress(getProgressSeconds())
+    },
+    stop: () => {
+      if (!audioRef.current) return
+      if (!audioRef.current.paused) handlePlayPause()
+      else void saveProgress(getProgressSeconds())
+    },
     seekbackward: (d) => seekToSeconds(getProgressSeconds() - (d.seekOffset || SEEK_BACKWARD_SECONDS)),
     seekforward: (d) => seekToSeconds(getProgressSeconds() + (d.seekOffset || SEEK_FORWARD_SECONDS)),
     seekto: (d) => { if (typeof d.seekTime === 'number') seekToSeconds(d.seekTime) },
@@ -2681,8 +2683,12 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
             lastLocalProgressWriteRef.current = progressFloor
             persistLocalProgress(progressSeconds)
           }
-          if (saveTimer.current) clearTimeout(saveTimer.current)
-          saveTimer.current = setTimeout(() => saveProgress(progressSeconds), 5000)
+          // Throttle, do not debounce: continuous timeupdate events must not
+          // postpone all server writes until the listener pauses.
+          if (!saveTimer.current) saveTimer.current = setTimeout(() => {
+            saveTimer.current = null
+            void saveProgress(getProgressSeconds())
+          }, 5000)
           const rem = e.currentTarget.duration - t
           if (rem < 6 && rem > 0 && isASC3) {
             const ni = queueIndex + 1
@@ -2725,7 +2731,7 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
           musicRef.current?.pause()
           if (loading || audioStoryIdRef.current !== storyId || inWelcomeRef.current || e.currentTarget.ended) return
           checkpointRef.current.capture(playbackSource(), e.currentTarget.currentTime)
-          if (saveTimer.current) clearTimeout(saveTimer.current)
+          if (saveTimer.current) { clearTimeout(saveTimer.current); saveTimer.current = null }
           void saveProgress(getProgressSeconds())
         }}
         onEnded={() => {
@@ -2903,7 +2909,7 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
           if (loading || audioStoryIdRef.current !== storyId) return
           if (!isASC3 && audioSrc && audioRef.current) {
             const audio = audioRef.current
-            const retryAt = Math.max(0, Number.isFinite(audio.currentTime) ? audio.currentTime : currentTime)
+            const retryAt = getProgressSeconds()
             const shouldAutoplay = isPlaying || !audio.paused
             if (finalMixRetryCountRef.current < 2) {
               finalMixRetryCountRef.current += 1
