@@ -45,7 +45,7 @@ export function buildSfxReport(seriesTitle: string, episodes: ReportEpisode[]): 
       if (!c.file) continue
       if (c.source?.kind === 'library') lib += 1
       else ai += 1
-      const bed = isSceneBackground(c.cue)
+      const bed = c.kind ? c.kind === 'background' : isSceneBackground(c.cue)
       const where = bed
         ? `background from ${nextLine(ep.positions, c.beforeIndex)}`
         : c.afterWords
@@ -65,9 +65,17 @@ export function buildSfxReport(seriesTitle: string, episodes: ReportEpisode[]): 
         const line = ep.positions.find((x) => x.index === d.line)
         const said = line ? `${line.speaker || ''}: ${String(line.text || '').replace(/\s+/g, ' ').slice(0, 90)}` : `line ${d.line}`
         const near = scriptAt.has(d.line - 1) || scriptAt.has(d.line + 1) ? ' (script effect next to it)' : ''
-        const what = d.verdict === 'play' ? `PLAYS: ${d.cue}` : d.missing ? `NOT DECIDED — ${d.reason}` : `SKIPPED — ${d.reason}${near}`
+        const what = d.verdict === 'play'
+          ? `PLAYS: ${d.catalogId ? `${d.catalogId} ` : ''}${d.cue}`
+          : d.missing ? `NOT DECIDED — ${d.reason}` : `SKIPPED — ${d.reason}${d.wanted ? ` (wanted: ${d.wanted})` : ''}${near}`
         out.push(`• line ${d.line} ${said}`, `    ${what}`)
       }
+    }
+    // SFX-CATALOG-001: what Claude wanted but the catalog does not have (no backup was used).
+    const wanted = ep.overlay?.wanted || []
+    if (wanted.length) {
+      out.push('', `SOUNDS WANTED BUT NOT IN THE CATALOG — ${wanted.length} (these moments got no sound)`)
+      for (const w of wanted) out.push(`• line ${w.line}: ${w.wanted}`)
     }
   }
   out.splice(1, 0, `${lib} effects used your kept sounds; ${ai} were AI-made.`)

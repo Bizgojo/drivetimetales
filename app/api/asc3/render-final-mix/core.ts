@@ -883,7 +883,7 @@ export async function runRenderFinalMix(storyId: string, opts: {
                     }
                   }
                 }
-                items.push({ kind: 'sfx', idx: overlayBodyIndex(cue.beforeIndex), path: fxPath, dur: fxDur, cue: cue.cue, ...(anchor ? { anchor } : {}) })
+                items.push({ kind: 'sfx', idx: overlayBodyIndex(cue.beforeIndex), path: fxPath, dur: fxDur, cue: cue.cue, ...(anchor ? { anchor } : {}), ...(cue.kind ? { role: cue.kind === 'background' ? 'bed' as const : 'spot' as const } : {}) })
               } catch (fxErr) {
                 console.warn(`  SFX-OVERLAY-001 ${cue.file} skipped:`, fxErr instanceof Error ? fxErr.message : String(fxErr))
               }

@@ -18,6 +18,7 @@ import type { ScriptPosition } from '@/lib/scriptLineIndex'
 import type { OverlayCue } from '@/lib/sfxOverlay'
 import { isSceneBackground } from '@/lib/sfxLayeredMix'
 import { phraseTokens } from '@/lib/sfxAlign'
+import { SFX_CATALOG_NAMES, type CatalogName } from '@/lib/sfxCatalogNames'
 
 export type SoundLine = { index: number; speaker: string; text: string; scene: number }
 
@@ -28,6 +29,9 @@ export type SoundDecision = {
   cue?: string
   /** where the AI's decision for a flagged line was missing */
   missing?: boolean
+  /** SFX-CATALOG-001 */
+  catalogId?: string
+  wanted?: string
 }
 
 /** Words that usually mean something audible is happening. Deliberately broad: the AI decides. */
@@ -61,8 +65,11 @@ export function buildSoundMapPrompt(params: {
   genre: string
   scriptCues: Array<{ index: number; text: string }>
   ceiling: number
+  /** SFX-CATALOG-001: when given, Claude may only answer with these IDs */
+  catalog?: CatalogName[]
 }): string {
-  const { lines, flagged, genre, scriptCues, ceiling } = params
+  const { lines, flagged, genre, scriptCues, ceiling, catalog } = params
+  if (catalog) return buildCatalogPrompt({ lines, flagged, genre, scriptCues, ceiling, catalog })
   return [
     `You are the sound designer for a ${genre || 'drama'} audio drama for drive-time listeners. Professional rule: a sound plays only when it truly happens in the scene, right now. Restraint beats clutter.`,
     '',
@@ -95,6 +102,50 @@ export function buildSoundMapPrompt(params: {
   ].join('\n')
 }
 
+function buildCatalogPrompt(params: {
+  lines: SoundLine[]
+  flagged: Array<{ index: number; words: string[] }>
+  genre: string
+  scriptCues: Array<{ index: number; text: string }>
+  ceiling: number
+  catalog: CatalogName[]
+}): string {
+  const { lines, flagged, genre, scriptCues, ceiling, catalog } = params
+  return [
+    `You are the sound designer for a ${genre || 'drama'} audio drama for drive-time listeners. A sound plays only when it truly happens in the scene, right now.`,
+    '',
+    'You may ONLY use sounds from the SOUND CATALOG below, by their ID. There is no other source of sound.',
+    'If the right sound is not in the catalog, the moment gets NO sound: answer "skip" and put what you would have wanted in "wanted". Never pick a near match that is not really the same sound (a car door is not a trunk; an indoor shot is not an outdoor shot).',
+    '',
+    'TASK 1 — For EVERY flagged line below, decide "play" or "skip", with a short reason.',
+    'Skip when the sound word is a metaphor or comparison, negated, a memory or flashback, a plan or hypothetical, inside a character\'s head, already covered by an effect the script has at that moment, not actually audible, or not in the catalog.',
+    '',
+    'TASK 2 — Scene backgrounds: for each scene whose place has a steady sound, add ONE catalog sound of kind "background" at the scene\'s first line. Skip it if no background in the catalog fits the place.',
+    '',
+    'TASK 3 — You may add a catalog sound on an unflagged line only if the action clearly makes that sound (rare).',
+    '',
+    'Rules:',
+    '- "sound" must be a catalog ID exactly as listed, e.g. "CR-01".',
+    '- If the sound happens in the middle of the line, give "afterWords": the exact words from that line right before the sound.',
+    `- Hard ceiling, never a goal: ${ceiling} sounds in total.`,
+    '',
+    'Return JSON only:',
+    '{"decisions":[{"line":<n>,"verdict":"play"|"skip","reason":"...","sound":"<catalog ID if play>","afterWords":"<optional>","wanted":"<if skipped because the catalog lacks it>"}],',
+    ' "backgrounds":[{"line":<n>,"sound":"<catalog ID>"}],',
+    ' "extra":[{"line":<n>,"sound":"<catalog ID>","afterWords":"<optional>","reason":"..."}]}',
+    '',
+    'SOUND CATALOG (ID: name (kind)):',
+    ...catalog.map((n) => `${n.id}: ${n.name} (${n.kind})`),
+    '',
+    `Effects the script already has (line: sound): ${scriptCues.length ? scriptCues.map((c) => `${c.index}: ${c.text}`).join(' | ') : 'none'}`,
+    '',
+    `Flagged lines (sound words found): ${flagged.map((f) => `${f.index} [${f.words.join(', ')}]`).join('; ') || 'none'}`,
+    '',
+    'All lines (number. [scene] SPEAKER: text):',
+    ...lines.map((l) => `${l.index}. [${l.scene}] ${l.speaker}: ${l.text}`),
+  ].join('\n')
+}
+
 const MULTI_SOUND = /\b(then|followed by|and then|before|after which)\b/i
 const SPEECH_OR_MUSIC = /\b(says?|speaks?|voice|dialogue|music|song|singing|sings)\b/i
 
@@ -113,8 +164,12 @@ export function validateSoundMap(raw: unknown, params: {
   flagged: Array<{ index: number; words: string[] }>
   scriptCueIndices: number[]
   ceiling: number
-}): { cues: OverlayCue[]; decisions: SoundDecision[]; rejected: Array<{ cue: unknown; reason: string }> } {
-  const { lines, flagged, scriptCueIndices, ceiling } = params
+  /** SFX-CATALOG-001: only these IDs may play; anything else is skipped (no backup) */
+  catalog?: CatalogName[]
+}): { cues: OverlayCue[]; decisions: SoundDecision[]; rejected: Array<{ cue: unknown; reason: string }>; wanted: Array<{ line: number; wanted: string }> } {
+  const { lines, flagged, scriptCueIndices, ceiling, catalog } = params
+  const catalogById = catalog ? new Map(catalog.map((n) => [n.id.toUpperCase(), n])) : null
+  const wanted: Array<{ line: number; wanted: string }> = []
   const byIndex = new Map(lines.map((l) => [l.index, l]))
   const rejected: Array<{ cue: unknown; reason: string }> = []
   const cues: OverlayCue[] = []
@@ -126,12 +181,27 @@ export function validateSoundMap(raw: unknown, params: {
   const accept = (item: any, kind: 'decision' | 'background' | 'extra'): boolean => {
     const idx = Number(item?.line)
     const line = byIndex.get(idx)
-    const cue = String(item?.cue || '').replace(/\s+/g, ' ').trim()
     if (!line) { rejected.push({ cue: item, reason: 'not a spoken line' }); return false }
-    if (cue.length < 6 || cue.length > 160) { rejected.push({ cue: item, reason: 'cue length' }); return false }
-    if (SPEECH_OR_MUSIC.test(cue)) { rejected.push({ cue: item, reason: 'speech or music' }); return false }
-    const bg = kind === 'background' || isSceneBackground(cue)
-    if (!bg && MULTI_SOUND.test(cue)) { rejected.push({ cue: item, reason: 'more than one sound in a cue' }); return false }
+    let cue: string
+    let bg: boolean
+    let entry: CatalogName | undefined
+    if (catalogById) {
+      entry = catalogById.get(String(item?.sound || '').trim().toUpperCase())
+      if (!entry) {
+        rejected.push({ cue: item, reason: 'not in the catalog' })
+        wanted.push({ line: idx, wanted: String(item?.wanted || item?.sound || item?.cue || 'unnamed sound').slice(0, 120) })
+        return false
+      }
+      if (kind === 'background' && entry.kind !== 'background') { rejected.push({ cue: item, reason: 'not a background sound' }); return false }
+      cue = entry.name
+      bg = entry.kind === 'background'
+    } else {
+      cue = String(item?.cue || '').replace(/\s+/g, ' ').trim()
+      if (cue.length < 6 || cue.length > 160) { rejected.push({ cue: item, reason: 'cue length' }); return false }
+      if (SPEECH_OR_MUSIC.test(cue)) { rejected.push({ cue: item, reason: 'speech or music' }); return false }
+      bg = kind === 'background' || isSceneBackground(cue)
+      if (!bg && MULTI_SOUND.test(cue)) { rejected.push({ cue: item, reason: 'more than one sound in a cue' }); return false }
+    }
     if (bg) {
       if (backgroundScenes.has(line.scene)) { rejected.push({ cue: item, reason: 'scene already has a background' }); return false }
     } else {
@@ -139,7 +209,9 @@ export function validateSoundMap(raw: unknown, params: {
       if (scriptCueIndices.some((s) => s === idx - 1 || s === idx + 1) && kind === 'extra') { rejected.push({ cue: item, reason: 'script already has an effect here' }); return false }
     }
     if (cues.length >= ceiling) { rejected.push({ cue: item, reason: 'over the safety ceiling' }); return false }
-    const out: OverlayCue = { beforeIndex: idx, cue, durationSec: clampDuration(cue, item?.durationSec) }
+    const out: OverlayCue = entry
+      ? { beforeIndex: idx, cue, durationSec: bg ? 15 : 3, catalogId: entry.id, kind: entry.kind }
+      : { beforeIndex: idx, cue, durationSec: clampDuration(cue, item?.durationSec) }
     const afterWords = String(item?.afterWords || '').replace(/\s+/g, ' ').trim()
     if (afterWords && !bg) {
       const lineTokens = ` ${phraseTokens(line.text).join(' ')} `
@@ -163,9 +235,12 @@ export function validateSoundMap(raw: unknown, params: {
     const reason = String(d?.reason || '').replace(/\s+/g, ' ').trim().slice(0, 200)
     if (verdict === 'play') {
       const ok = accept(d, 'decision')
-      decisions.push({ line: idx, verdict: ok ? 'play' : 'skip', reason: ok ? reason : `${reason} (cue rejected: ${rejected[rejected.length - 1]?.reason})`, ...(ok ? { cue: String(d.cue).trim() } : {}) })
+      const played = ok ? cues[cues.length - 1] : null
+      decisions.push({ line: idx, verdict: ok ? 'play' : 'skip', reason: ok ? reason : `${reason} (cue rejected: ${rejected[rejected.length - 1]?.reason})`, ...(played ? { cue: played.cue, ...(played.catalogId ? { catalogId: played.catalogId } : {}) } : {}) })
     } else {
-      decisions.push({ line: idx, verdict: 'skip', reason })
+      const w = String(d?.wanted || '').replace(/\s+/g, ' ').trim().slice(0, 120)
+      if (w && catalogById) wanted.push({ line: idx, wanted: w })
+      decisions.push({ line: idx, verdict: 'skip', reason, ...(w ? { wanted: w } : {}) })
     }
   }
   for (const f of flagged) {
@@ -175,7 +250,8 @@ export function validateSoundMap(raw: unknown, params: {
 
   cues.sort((a, b) => a.beforeIndex - b.beforeIndex)
   decisions.sort((a, b) => a.line - b.line)
-  return { cues, decisions, rejected }
+  wanted.sort((a, b) => a.line - b.line)
+  return { cues, decisions, rejected, wanted }
 }
 
 /** Which planner a render uses: the sound map for v3 tests or when SFX_PLANNER=soundmap. */
@@ -185,11 +261,22 @@ export function soundMapPlannerEnabled(tag?: string | null, env: Record<string, 
 }
 
 /**
- * SFX-AGREE-001 (research: "never narrate what the listener can hear"): the
- * writer marks a sound instead of narrating it, and never narrates a sound
- * with no cue. Off until Marc approves the test (SFX_V2=on).
+ * SFX-AGREE-001 / SFX-NAMED-001 (Marc 2026-10-31): every sound is named or
+ * reacted to by a character or the narrator, before or right after it plays,
+ * but never just described ("The door slams." + a slam). Sounds come only
+ * from the catalog. Off until Marc approves the test (SFX_V2=on).
  */
-export function sfxSoundAgreementRule(env: Record<string, string | undefined> = process.env): string {
+export const SFX_NAMED_RULE_TEXT = [
+  'SOUND RULE (SFX-NAMED-001): every sound effect is NAMED or REACTED TO by a character or the narrator, right before or right after it plays, so a listener who only half-hears it still knows what it was.',
+  'Never just describe a sound the listener can hear. Wrong: "NARRATOR: A shot rings out." followed by the shot. Right: [SFX: Pistol, single shot, outdoor] then "NICK: Get down!"',
+  'Right: [SFX: Cell phone, ringing] then "NARRATOR: Briggs. At two in the morning."',
+  'A scene background may be named once as the scene opens: [SFX: Rain, heavy, on a roof] then "NARRATOR: Rain on the windshield. Lower Wacker, four a.m."',
+  'Use ONLY sounds from the SOUND CATALOG, written exactly as [SFX: <catalog name>]. If the catalog has no sound for a moment, write the moment without a sound and do not mention a sound in the narration.',
+].join(' ')
+
+export function sfxSoundAgreementRule(env: Record<string, string | undefined> = process.env, catalogNames?: string[]): string {
   if (String(env.SFX_V2 || '').trim().toLowerCase() !== 'on') return ''
-  return '\n- SOUND, NOT NARRATION (SFX-AGREE-001): when the listener should hear something, put an [SFX: …] cue at that exact moment and do NOT also have the narrator describe it. Write "[SFX: car door slams]", not "NARRATOR: The car door slams." Never narrate a sound that has no cue. Describe a sound in words only when it would be unclear on its own (a dull thud), and then let a character name it.'
+  const names = catalogNames ?? SFX_CATALOG_NAMES.map((n) => n.name)
+  const list = names.length ? ` SOUND CATALOG: ${names.join('; ')}.` : ''
+  return `\n- ${SFX_NAMED_RULE_TEXT}${list}`
 }
