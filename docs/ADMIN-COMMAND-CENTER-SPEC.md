@@ -106,3 +106,7 @@ The owner approved the eight-section design and directed implementation. These a
 - Finance Budget is an undated, twelve-month format beginning only after the complete 6+2-week test. Budget, Actual, Actual vs. Budget and Variance Analysis remain zero placeholders except separately identified known inputs. It includes income, Operating, Story Production, Marketing and R&D subcategories, category totals, total expenses, profit and cash flow.
 - External tools include ChatGPT, Claude, Telegram for Orion and Mac Terminal instructions. Do not fabricate an unverified Orion session/chat deep link.
 - Deployment remains Orion-only from reviewed `main`, with rollback and no production-job interruption. The owner's deployment request does not waive acceptance checks or authorize advertising spend or bank transfers.
+
+### Six-plus-two-week marketing workbook follow-up
+
+The owner requested separate Budget and Variance Analysis worksheets alongside Actual Results in the marketing test plan. Show four matching eight-week formats: Budget, Actual Results, Actual vs. Budget, and Variance Analysis. Include separate weeks 1–6 and eight-week totals, spending categories, funnel outcomes and cost/conversion measures. Variance analysis reserves space for percentage variance, causes, corrective actions, ownership and review. Unknown cells remain explicitly unfilled placeholders; known approval limits are separate from weekly allocations and actual results.
