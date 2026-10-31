@@ -61,7 +61,9 @@ describe('SCRIPT-READINESS-001', () => {
     })
     const r = checkScriptReadiness({ script, ...series })
     const gates = r.blockers.map((b) => b.gate)
-    expect(gates).toEqual(expect.arrayContaining(['CARD-COPY', 'NUMERAL-PRETTS', 'SFX-001', 'RUNTIME']))
+    expect(gates).toEqual(expect.arrayContaining(['CARD-COPY', 'NUMERAL-PRETTS', 'RUNTIME']))
+    // SFX-001 (Marc 2026-10-31): no fixed count — 12 effects is not a blocker.
+    expect(gates).not.toContain('SFX-001')
     expect(r.ready).toBe(false)
   })
 
@@ -116,7 +118,9 @@ describe('SCRIPT-READINESS-001', () => {
     expect(src).toContain(`const TITLE_MAX_CHARS = ${RUNNEXT_TITLE_MAX_CHARS}`)
     expect(src).toContain(`const DESCRIPTION_MAX_WORDS = ${RUNNEXT_DESCRIPTION_MAX_WORDS}`)
     expect(src).toContain(`const DESCRIPTION_PAST_TENSE_RE = ${RUNNEXT_DESCRIPTION_PAST_TENSE_RE.toString()}`)
-    expect(src).toContain(`at most ${VALIDATOR_SFX_MAX} per episode (SFX-001)`)
+    expect(VALIDATOR_SFX_MAX).toBe(Number.POSITIVE_INFINITY)
+    expect(src).toContain('SFX (SFX-001, Marc 2026-10-31): no fixed number.')
+    expect(src).not.toMatch(/at most 3 per episode/)
   })
 })
 

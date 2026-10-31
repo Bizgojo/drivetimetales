@@ -109,7 +109,7 @@ describe('SERIES-STYLE-ACTION-001', () => {
   })
 
   test('action overlay: bigger budget, tighter spacing', () => {
-    expect(overlaySettingsForStyle('action', 10)).toEqual({ budget: 18, minGap: 2 })
+    expect(overlaySettingsForStyle('action', 10)).toEqual({ budget: 40, minGap: 2 })
     expect(overlaySettingsForStyle(null, 10)).toEqual({ budget: 10, minGap: 3 })
     const lines = Array.from({ length: 20 }, (_, i) => ({ index: i }))
     const raw = { cues: [0, 2, 4, 6].map((i) => ({ beforeIndex: i, cue: 'car door slams shut', durationSec: 1 })) }

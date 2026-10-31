@@ -6,6 +6,7 @@
  * Opt-in per series: queueItem.style = "action" → brief_json.style_profile.
  * Marc wants to hear it on Chicago before it becomes the default.
  */
+import { SFX_SAFETY_CEILING } from '@/lib/sfxOverlay'
 
 export type StyleProfile = 'action'
 
@@ -33,12 +34,13 @@ export function buildStylePromptBlock(style: StyleProfile | null, opts: { episod
 - Characters say each other's names often, so the listener always knows who is talking.
 - One clear goal for this episode. At most one side plot across the whole series.
 - One scene, one place. Do not cut between places in the middle of a scene.
-${opts.episodeNumber > 1 ? '- Open with a two-or-three-sentence NARRATOR recap of where things stand ("Last time, …"), then go straight into action.\n' : ''}- Put sounds into the action. Write the moments the listener can HEAR — doors, engines, tires, footsteps, gunfire, punches, glass, phones, sirens, crowds, rain — as concrete events in the narration and dialogue. Let sound carry the setting instead of description. (Extra sound effects are layered in later at those moments; you still write at most three [SFX: …] cues yourself.)
+${opts.episodeNumber > 1 ? '- Open with a two-or-three-sentence NARRATOR recap of where things stand ("Last time, …"), then go straight into action.\n' : ''}- Put sounds into the action. Write the moments the listener can HEAR — doors, engines, tires, footsteps, gunfire, punches, glass, phones, sirens, crowds, rain — as concrete events in the narration and dialogue. Let sound carry the setting instead of description. (Write an [SFX: …] cue at each of those moments; there is no fixed number.)
 `
 }
 
 /** Overlay effect budget and minimum spacing (in lines) for a style. */
 export function overlaySettingsForStyle(style: StyleProfile | null, genreBudget: number): { budget: number; minGap: number } {
-  if (style === 'action') return { budget: Math.max(genreBudget, 18), minGap: 2 }
+  // SFX-NO-CAP-001 (Marc 2026-10-31): the story decides the count; the budget is only a safety ceiling.
+  if (style === 'action') return { budget: Math.max(genreBudget, SFX_SAFETY_CEILING), minGap: 2 }
   return { budget: genreBudget, minGap: 3 }
 }
