@@ -24,6 +24,8 @@ export type OverlayCue = {
   cue: string
   durationSec: number
   file?: string
+  /** SFX-REPORT-001: where the effect came from. */
+  source?: { kind: 'library' | 'ai'; libraryId?: string; libraryName?: string }
 }
 
 export type OverlayPlan = {

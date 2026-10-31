@@ -28,7 +28,7 @@ async function main() {
   for (const story of stories) {
     const genre = String(story.primary_genre || story.genre || (story.brief_json as any)?.genre || '')
     console.log(`\nEP${story.series_episode_number ?? '-'} ${story.title} (${genre})`)
-    const plan = await ensureOverlayPlan({ db: db as any, storyId: story.id, script: String(story.script || ''), genre, force, dryRun, log: (l) => console.log(l) })
+    const plan = await ensureOverlayPlan({ db: db as any, storyId: story.id, script: String(story.script || ''), genre, style: (story.brief_json as any)?.style_profile || null, force, dryRun, log: (l) => console.log(l) })
     if (!plan) console.log('  no overlay for this genre')
   }
 }

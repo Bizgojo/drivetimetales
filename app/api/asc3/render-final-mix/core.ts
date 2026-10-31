@@ -805,7 +805,8 @@ export async function runRenderFinalMix(storyId: string): Promise<{
       try {
         const rawSfxPath = path.join(tmpDir, 'raw_' + item.file.name)
         const sfxPath = path.join(tmpDir, item.file.name)
-        await download(`${BASE_STORAGE}/asc3/${storyId}/${item.file.name}`, rawSfxPath)
+        // SFX-REMIX-001: effects can be re-made under the same name — never take a cached old copy.
+        await download(`${BASE_STORAGE}/asc3/${storyId}/${item.file.name}?v=${Date.now()}`, rawSfxPath)
         const stat = await fs.stat(rawSfxPath)
         if (stat.size <= 100) throw new Error(`SFX file too small (${stat.size} bytes)`)
         await execFileAsync(FFMPEG_PATH, ['-i', rawSfxPath, '-ar', '44100', '-ac', '2', '-b:a', '192k', '-y', sfxPath])
@@ -853,7 +854,7 @@ export async function runRenderFinalMix(storyId: string): Promise<{
               const rawPath = path.join(tmpDir, 'raw_' + cue.file)
               const fxPath = path.join(tmpDir, cue.file)
               try {
-                await download(`${BASE_STORAGE}/asc3/${storyId}/${cue.file}`, rawPath)
+                await download(`${BASE_STORAGE}/asc3/${storyId}/${cue.file}?v=${Date.now()}`, rawPath)
                 await execFileAsync(FFMPEG_PATH, ['-i', rawPath, '-ar', '44100', '-ac', '2', '-b:a', '192k', '-y', fxPath])
                 items.push({ kind: 'sfx', idx: overlayBodyIndex(cue.beforeIndex), path: fxPath, dur: await getAudioDuration(fxPath), cue: cue.cue })
               } catch (fxErr) {
