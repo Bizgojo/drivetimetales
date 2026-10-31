@@ -189,6 +189,7 @@ export default function CampaignPlanPage() {
             ← Marketing
           </button>
           <div>
+            <a href="/admin/marketing/test-plan" style={{display:"inline-block",padding:12}}>6+2-week plan and spreadsheet →</a>
             <h1 style={{ color: textPrimary, fontSize: '24px', fontWeight: 900, margin: 0 }}>Campaign Plan</h1>
             <p style={{ color: textSecondary, fontSize: '13px', margin: '0.25rem 0 0' }}>
               Live Airtable campaigns, funnel forecasts, PERT timing, task owners, approval status, and variance watch.

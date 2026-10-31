@@ -30,8 +30,8 @@ log() { echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] $*"; }
 log "run-next loop starting — URL=$URL interval=${INTERVAL_SECONDS}s"
 
 while true; do
-  if [ -n "${RUN_NEXT_ADMIN_TOKEN:-}" ]; then
-    AUTH_HEADER=(-H "Authorization: Bearer ${RUN_NEXT_ADMIN_TOKEN}")
+  if [ -n "${ADMIN_INTERNAL_TOKEN:-${RUN_NEXT_ADMIN_TOKEN:-}}" ]; then
+    AUTH_HEADER=(-H "Authorization: Bearer ${ADMIN_INTERNAL_TOKEN:-${RUN_NEXT_ADMIN_TOKEN:-}}")
   else
     AUTH_HEADER=()
   fi

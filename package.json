@@ -6,7 +6,10 @@
     "build": "next build",
     "start": "next start",
     "cfo:dry": "tsx --env-file=.env.local scripts/cfo-report/compile.ts --dry-run",
-    "cfo:run": "tsx --env-file=.env.local scripts/cfo-report/compile.ts"
+    "cfo:run": "tsx --env-file=.env.local scripts/cfo-report/compile.ts",
+    "test:admin": "jest __tests__/admin-center --runInBand",
+    "typecheck:admin": "node scripts/admin-center/check-types.cjs",
+    "test:admin:mobile": "node tests/admin-center/wired-mobile-qa.cjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.71.2",
@@ -37,7 +40,8 @@
     "rss-parser": "^3.13.0",
     "sharp": "^0.34.5",
     "stripe": "^14.25.0",
-    "twilio": "^6.0.2"
+    "twilio": "^6.0.2",
+    "web-push": "3.6.7"
   },
   "devDependencies": {
     "@types/jest": "^30.0.0",

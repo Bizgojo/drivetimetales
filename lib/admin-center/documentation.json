@@ -1,0 +1,153 @@
+[
+  {
+    "id": "start",
+    "category": "system",
+    "title": "Start here \u00b7 the eight sections",
+    "summary": "What each section is for, and what this preview can do.",
+    "go": "Overview",
+    "body": "<p>The Admin is designed as one command center at <strong>/admin</strong>, usable on Mac, iPhone and iPad. This development implementation uses guarded server adapters. A service is operational only when its displayed source status and acceptance evidence verify it.</p><table><thead><tr><th>Section</th><th>Primary job</th></tr></thead><tbody><tr><td>Overview</td><td>Recap, period KPIs and one Action Center.</td></tr><tr><td>Agents</td><td>Responsibilities, provider costs, credit balances and data flow.</td></tr><tr><td>Production</td><td>Ideas, progress, exceptions and independent review settings.</td></tr><tr><td>Stories</td><td>Published library, episodes, metadata, covers and performance.</td></tr><tr><td>Customers</td><td>Inbox, subscribers, suggestions, referrals and insights.</td></tr><tr><td>Marketing</td><td>Planned, existing and past campaigns; platform ad layouts; funnel and comparisons.</td></tr><tr><td>Finance</td><td>Cash, budget, actuals, allocation, forecasts, reserves and profit.</td></tr><tr><td>Documentation</td><td>Overview, user manual, policies, integrations and recovery.</td></tr></tbody></table><h3>Using this design review</h3><p>Use the sidebar to switch sections. <strong>Full width</strong> hides navigation; <strong>Show navigation</strong> restores it. On a narrow screen, use the navigation menu. Scroll tables sideways for all columns. Expand details or open a card for the next action.</p><p>No sample financial records are loaded by this Admin. Missing data remains Unavailable. Server changes use authenticated endpoints and audit records; source configuration and device acceptance remain release gates.</p>"
+  },
+  {
+    "id": "team",
+    "category": "system",
+    "title": "Team responsibilities & data flow",
+    "summary": "How Orion, Hal, Vega, Susan, Strategos and Bart exchange work and evidence.",
+    "go": "Agents",
+    "body": "<p>Orion coordinates operations and is the sole authorized EC2 deployer. Hal manages story delivery, Vega reports quality findings, Susan manages marketing work, Strategos supplies strategic analysis, and Bart handles financial reconciliation. Atlas, Maya and Lex cover technology, experience and legal responsibilities.</p><h3>Story flow</h3><p>Idea \u2192 V2 planning / scripts \u2192 ASC3 voices, music and SFX \u2192 mix / quality / series gates \u2192 selected review route or automatic publication \u2192 subscriber visibility and playback verification.</p><h3>Business flow</h3><p>Campaign research and creative \u2192 owner review \u2192 authorized launch \u2192 measured acquisition and Stripe payments \u2192 Bart reconciles collections, costs and bank funding \u2192 protected allocations and verified surplus.</p><p>Customer messages and listening evidence feed support and planning only within permission and privacy rules. Provider model assignments, execution receipts and service status are not live-verified in this preview.</p><a class=\"finance-link\" href=\"/admin/information-flow\">Open interactive process guide \u2192</a>"
+  },
+  {
+    "id": "agents-manual",
+    "category": "manual",
+    "title": "Agents \u00b7 activity, AI costs & credit balances",
+    "summary": "Find responsibilities, inspect provider charges and use verified external tools.",
+    "go": "Agents",
+    "body": "<ol><li>Filter or search the roster, then expand an agent to inspect responsibilities, inputs, outputs and handoffs.</li><li>Use the reporting period for usage and charges; balances remain current provider snapshots.</li><li>Separate estimated API usage, billed charges, subscriptions, prepaid credit purchases and remaining balances. Provider credit units are not automatically dollars.</li><li>Open the data-flow guide to trace the handoff and required evidence.</li><li>Use only verified provider account links for authorized replenishment; a low-credit display is not permission to increase spending.</li></ol><p>External tools include ChatGPT, Claude, Mac Terminal instructions and Telegram for Orion. Exact Orion recipient and authenticated terminal-session links remain unverified. This preview neither sends agent messages nor replenishes credits.</p>"
+  },
+  {
+    "id": "connections",
+    "category": "system",
+    "title": "Integration status & evidence",
+    "summary": "What still needs connecting, reconciliation and live acceptance.",
+    "body": "<p>Read each section\u2019s source status and timestamp in the current deployment. The table below records required acceptance evidence; it does not certify operational readiness.</p><table><thead><tr><th>System</th><th>Required evidence before acceptance</th></tr></thead><tbody><tr><td>Supabase</td><td>Admin authorization, customer records, publication state, RLS and audit data.<br><strong>Live configuration and acceptance must be verified.</strong></td></tr><tr><td>Stripe</td><td>Verified customer linkage, first paid subscriptions, ledger, refunds, fees and settlement.<br><strong>Live configuration and acceptance must be verified.</strong></td></tr><tr><td>Meta</td><td>Ad-management permissions, actual creative / placement preview, campaign writes, events and reconciliation.<br><strong>Live configuration and acceptance must be verified.</strong></td></tr><tr><td>TikTok</td><td>Separate permissions, real media / preview and campaign authorization; outside the initial Meta envelope.<br><strong>Live configuration and acceptance must be verified.</strong></td></tr><tr><td>Mercury</td><td>Account ownership, balances, freshness, funding and actual supported capabilities.<br><strong>Live configuration and acceptance must be verified.</strong></td></tr><tr><td>AI providers</td><td>Actual usage, billed charges, prepaid balances and authorized replenishment links.<br><strong>Live configuration and acceptance must be verified.</strong></td></tr><tr><td>Email / support</td><td>Inbound linkage, duplicate-safe sending, provider acceptance, delivery receipts and follow-up.<br><strong>Live configuration and acceptance must be verified.</strong></td></tr><tr><td>Production services</td><td>Canonical jobs, stages, quality evidence, asset versions and published-player visibility.<br><strong>Live configuration and acceptance must be verified.</strong></td></tr><tr><td>Belle alerts</td><td>Real event triggers, synchronized history, licensed audio, push delivery and device testing.<br><strong>Live configuration and acceptance must be verified.</strong></td></tr></tbody></table><p>Credentials and account secrets must not be stored in documentation or client-side code. Missing permissions are explicit blockers, not a reason to bypass controls.</p>"
+  },
+  {
+    "id": "overview",
+    "category": "manual",
+    "title": "Read the initial recap & Action Center",
+    "summary": "New subscribers, cancellations, CAC, churn and exact next actions.",
+    "go": "Overview",
+    "body": "<ol><li>Choose the reporting period for period metrics. Current balances remain a current snapshot.</li><li>Read new paid subscribers, cancellation requests, paid CAC and subscriber churn alongside the main recap.</li><li>Filter the Action Center by decisions, funding or messages, then open the exact item.</li></ol><h3>Keep these measures separate</h3><p>A cancellation request may leave paid access active until the billing term ends. Churn measures starting paid subscribers whose paid access ended during the period, divided by the opening paid cohort. New paid subscriptions exclude free registrations and trial starts.</p><p>Business-wide CAC uses eligible acquisition spend and all new paid subscribers in a matched period. Campaign-attributed CAC has its own attribution coverage and may differ. Unknown source data must show Unavailable, not zero.</p>"
+  },
+  {
+    "id": "production",
+    "category": "manual",
+    "title": "Production \u00b7 review settings & approvals",
+    "summary": "Choose automatic handling or review voices, SFX and finished stories independently.",
+    "go": "Production",
+    "body": "<p>The owner approved three independent controls in this design. Saved settings are version checked and audited. New voice / SFX review controls require the explicit release flag and apply only to jobs created after that policy version. Publication uses the existing global completion-time gate.</p><ol><li><strong>After production:</strong> choose Ready for Review or Publish directly to app.</li><li><strong>Voice selection:</strong> choose AI chooses voices or Review voices first. In review mode, open Production reviews \u2192 Listen & approve voices. Inspect the exact character / voice IDs and provider voice demos before approval. Provider demos are labeled and are not presented as generated story-line auditions. Earlier requested reviews retain their original audition delivery.</li><li><strong>Sound effects:</strong> choose AI handles SFX or Review SFX first. Review the real effects in scene context, including placement and level, before approving that SFX version for the final mix.</li></ol><p>The default design preserves automatic casting, SFX handling and publication. Choosing a review route must never bypass production quality or complete-series checks.</p><h3>Finished story review</h3><p>Ready for Review holds the complete eligible package for owner release. Review every episode, cover, metadata and quality receipt; release only through the guarded path. Automatic publication still requires all required gates.</p><h3>Ideas, exceptions and repairs</h3><p>Ideas are not running jobs. A visibility mismatch needs evidence and reconciliation, not force publishing. Intro/Outro Repair Mode remains deferred: preserve story-body audio, original masters, immutable checksums and rollback before any separate repair implementation.</p>"
+  },
+  {
+    "id": "stories",
+    "category": "manual",
+    "title": "Stories \u00b7 library, episodes & playback",
+    "summary": "Find a title, inspect every episode and review metadata or cover options.",
+    "go": "Stories",
+    "body": "<ol><li>Search by title or description; filter by genre and series / standalone.</li><li>Open View episodes to inspect episode order, runtime, credits, publication status and listening performance.</li><li>Use Edit details or Cover options for a reviewable change; preserve the published audio and original assets.</li></ol><p>Published episodes use their real stored audio URLs in the Admin audio controls. Existing subscriber-player behavior is separate and must not be modified unnecessarily by this Admin work.</p><p>A Published label must agree with required gate evidence, complete-series rules, subscriber visibility and playback. Finished audio alone is insufficient.</p>"
+  },
+  {
+    "id": "customers",
+    "category": "manual",
+    "title": "Customers \u00b7 inbox & AI responses",
+    "summary": "Review a draft, inspect customer history and track delivery separately.",
+    "go": "Customers",
+    "body": "<ol><li>Open Inbox and search or filter by conversation state.</li><li>Open a conversation, then View customer history to inspect subscription status, preferences, consent and listening context.</li><li>Edit the AI-suggested reply and check every substantive claim against the customer record.</li><li>Use the explicit approval / sending action only when ready. Production sending must record a duplicate-safe request and provider response.</li><li>Track confirmed delivery or failure separately from provider acceptance, then resolve the conversation when appropriate.</li></ol><p>Approve & send uses the configured provider and the original message recipient. Missing credentials block the send. Provider acceptance is recorded separately from delivery. Routine receipt acknowledgments may be automatic after the service and policy are verified.</p><p>Suggestions and referrals stay linked to the original customer. Story selection, contributor notification and agreed author credit are separate recorded actions. Referral rewards must be verified and applied once.</p>"
+  },
+  {
+    "id": "marketing",
+    "category": "manual",
+    "title": "Marketing \u00b7 view and approve campaigns",
+    "summary": "Planned, existing and past campaigns, with Facebook, Instagram and TikTok views.",
+    "go": "Marketing",
+    "body": "<ol><li>Open Campaigns & approvals.</li><li>Choose <strong>Planned \u00b7 approve</strong> for drafts / reviews, <strong>Existing</strong> for running or paused campaigns, or <strong>Past</strong> for completed campaigns.</li><li>Choose View as Facebook user, Instagram user or TikTok user for the campaign\u2019s selected platforms. Inspect the correct Feed, Stories, Reels or In-Feed placement.</li><li>In the connected version, play actual video / audio and test the exact landing-page destination, anonymous first listen and signup path.</li><li>Review the creative version, audience, dates, budget, funding and pre-launch evidence before authorizing launch.</li></ol><p>Stored proposal artwork is distinct from the Meta-generated placement preview. Load the exact provider ad ID and supported placement, then test its real destination. Missing provider permissions remain explicit. TikTok, additional placements and live spend controls remain blocked pending verified capabilities and authorization.</p><h3>Past campaigns</h3><p>Retain original served ad versions, placements, destination, approval and decision logs, final lifetime results and lessons learned. Do not replace an archive with the latest draft.</p><h3>The 6+2-week plan</h3><p>Use View plan or View spreadsheet at the top. The owner supplied the final October 29 workbook schedule: start November 6, 2026; six weekly budgets of $500, $500, $700, $700, $800 and $800, then two $0-spend weeks for trials to convert. The eight-week forecast is 270 trials, 135 paid subscribers and $29.63 ad-spend CAC. Budget, Actual Results, Actual vs. Budget and Variance Analysis are separate worksheets. The published Meta Test Plan artifact now supplies the weekly ad views, signups, trials, paid subscriptions, cost per trial, cumulative CAC and all six Strategos Decision Rules. Final CAC review is January 1, 2027. Thresholds remain awaiting owner approval as labeled in the source; they are not activated by the page. Rounded weekly paid counts total 136 while its headline forecast is 135; both are preserved with a rounding note. Native workbook formulas and unprovided metrics remain unavailable. No campaign is launched by this page.</p>"
+  },
+  {
+    "id": "funnel",
+    "category": "manual",
+    "title": "Campaign funnel \u00b7 costs & comparisons",
+    "summary": "Each funnel step versus campaign budget, U.S. references and audio-app benchmarks.",
+    "go": "Marketing",
+    "body": "<p>Open a campaign\u2019s <strong>Funnel, costs & comparisons</strong>. Steps are impressions \u2192 outbound clicks \u2192 landing visits \u2192 play starts \u2192 30-second listens \u2192 account signup \u2192 trial \u2192 first paid subscriber.</p><p>Each row shows count, step conversion, gap from the previous step and cost per result. Cost uses the same campaign ad spend divided by that stage\u2019s count; impressions use CPM per 1,000. Do not add these unit costs together.</p><h3>Budget</h3><p>Use the same period / cohort and frozen approved baseline. Show target counts, conversion and unit cost, then volume and cost variances. Only frozen campaign forecast fields are used as the budget baseline. Missing frozen targets remain unavailable; no forecast is silently treated as approved.</p><h3>Benchmarks</h3><p>Match country, platform, objective, placement, statistic, dates and metric definition. The loaded U.S. Facebook traffic references are context only until a match is verified. No directly comparable audio-app benchmark is loaded. Broader app-store or entertainment figures must not be relabeled as audio-app averages.</p><p>Trial-to-paid rates require mature trials from the same acquisition cohort. Delivery-event ratios are not individual-user churn. Unknown values and zero denominators remain Unavailable.</p>"
+  },
+  {
+    "id": "finance",
+    "category": "manual",
+    "title": "Finance \u00b7 Budget, actuals & protected funds",
+    "summary": "The four worksheets, allocation calculator, reserves and profit preparation.",
+    "go": "Finance",
+    "body": "<ol><li>Open Budget to view twelve undated months and the annual total.</li><li>Switch between Budget, Actual, Actual vs. Budget and Variance Analysis. Filter categories or swipe horizontally.</li><li>Review Sources of Income; Operating, Story Production, Marketing and R&D expense subcategories; category totals; Total Expenses; Profit and Cash Flow.</li><li>Use Transactions & expenses to inspect source records and reconciliation requirements.</li><li>Open Allocation, reserves & profit for the policy preview and protected-cash calculator.</li></ol><p>The approved populated Budget begins after the complete 6+2-week test. All $0 cells in its format are unfilled placeholders, including Actual and variance.</p><p>The owner-adjustable marketing target is initially 75% of eligible net collected revenue, after essential expenses, taxes and reserve protection. Financing is not customer revenue. The $4,000 Meta test cap remains separate.</p><p>Unknown financial actuals show Unavailable. The simplified monthly forecast requires explicit entered assumptions and excludes annual prepayments, taxes and reserves; it is not a full accounting forecast. Transfer-policy preparation is durable and audited, while a schema constraint prevents activation.</p>"
+  },
+  {
+    "id": "production-policy",
+    "category": "policy",
+    "title": "Production rules & owner review choices",
+    "summary": "Quality gates, series atomicity, automation and unchanged spending authority.",
+    "go": "Production",
+    "body": "<ul><li>Preserve the existing V2 and ASC3 production process, quality safeguards and complete-series publication rules.</li><li>Automatic publication is the default after all required gates pass; the owner may select a Ready for Review route in the new Admin design.</li><li>Voice and SFX review choices are independent. Approval must identify the exact asset / cast version, and subsequent changes must invalidate affected approval as appropriate.</li><li>A held series cannot expose a partial set of episodes by bypassing series checks.</li><li>Admin work must not interrupt workers, alter active jobs or change production spending authorization.</li><li>Existing working functionality remains until its replacement is verified; keep rollback.</li></ul><p>These optional controls require migration and worker acceptance before activation. Coding or saving a release does not mean production policy was changed.</p>"
+  },
+  {
+    "id": "business-policy",
+    "category": "policy",
+    "title": "Marketing, money & customer policies",
+    "summary": "Launch authority, spending caps, financial protections and privacy.",
+    "body": "<h3>Marketing</h3><p>Susan may optimize or pause within existing authorized limits. New launches and higher spending need owner approval. Known initial Meta envelope: $4,000 over six weeks, about $95/day; the total ceiling controls. Four personas, eight initial variants, Monday reviews and 3\u20134 fresh ads weekly. Weeks 7\u20138 and TikTok spend are not authorized by that envelope.</p><h3>Finance</h3><p>Protect essentials, taxes, reserves and commitments. Marketing allocation is not actual ad spend. Calculate verified distributable profit only after reconciliation. No live profit transfers until bank capabilities, recipient ownership, controls and explicit authorization are verified.</p><h3>Customers</h3><p>Routine acknowledgments may be automatic; substantive replies require owner review. Delivery is separate from acceptance. No duplicate messages or referral rewards.</p><h3>Privacy</h3><p>Separate self-reported preferences / demographics from observed behavior. Never infer individual gender from names. Travel analysis is opt-in. Use broad location only where permitted and aggregate reporting with appropriate privacy protection.</p>"
+  },
+  {
+    "id": "belle",
+    "category": "policy",
+    "title": "Belle alerts \u00b7 settings & exact actions",
+    "summary": "Voice reviews, publication, urgent funding and campaign approvals.",
+    "body": "<p>Four approved alert categories: a voice approval is actually needed; a story is successfully published; urgent funding is required; Susan\u2019s campaign awaits approval. Notifications open the exact authorized Admin action.</p><p>With Admin open and audio enabled by the user, play the approved Endless Tales sting followed by Belle\u2019s short explanation. Quiet hours and user preferences apply to nonurgent alerts.</p><p>Closed-app notifications use supported device push and require installation / permissions where applicable. Custom spoken background audio cannot be assumed. Keep one synchronized, duplicate-safe notification history across Mac, iPhone and iPad.</p><p>The event inbox, preferences and delivery code require configured triggers, approved audio assets, scheduler / VAPID settings and real-device acceptance. Missing configuration stays visible.</p>"
+  },
+  {
+    "id": "release",
+    "category": "technical",
+    "title": "Release, authorization & device acceptance",
+    "summary": "What must pass before a mockup becomes the replacement Admin.",
+    "body": "<ol><li>Build on a development branch, preserving the authoritative specification and old working functions.</li><li>Audit every Admin page and API. Enforce server-side role authorization, tenant / record ownership and RLS where applicable. Do not rely on hidden buttons, client email checks or permissive timeout fallbacks.</li><li>Connect existing services with scoped credentials. Validate source freshness, KPI definitions, invoice / cash reconciliation and failure states.</li><li>Verify full flows: review \u2192 authorized API \u2192 durable audit \u2192 provider response \u2192 visible result. Test duplicate protection, stale approval versions and permission failures.</li><li>Test Mac, iPhone and iPad: navigation, touch targets, tables, dialogs, keyboard access, authentication, deep links, real media, notifications and device synchronization.</li><li>Preserve the player, active production jobs and current spending authority. Do not launch ads or transfers as an incidental deployment test.</li><li>Prepare a reviewed PR, passing checks, exact release commit, migration / rollback instructions and documented credential blockers.</li></ol><p>Successful mockup publication, a local build or a preview URL is not integration acceptance or an EC2 production deployment.</p>"
+  },
+  {
+    "id": "deploy",
+    "category": "technical",
+    "title": "Orion deployment & rollback procedure",
+    "summary": "Main-only deployment, isolated build, serving verification and rollback.",
+    "body": "<p><strong>Main is the only deployment code line. Orion is the only authorized EC2 deployer.</strong> This is a reference procedure, not a command to deploy.</p><ol><li>Confirm owner approval, reviewed / merged main commit, passing checks and explicit release scope.</li><li>Record the current serving commit / build, runtime settings and a runnable rollback. Preserve existing environment secrets and allowlists.</li><li>Use the established isolated-build process. Apply only separately reviewed migrations with their documented rollback path.</li><li>Activate the web-app release through Orion\u2019s established process. Do not restart production workers or alter jobs for this Admin release.</li><li>Record serving SHA and build ID; verify health, authentication, admin-only routes, agreed integrations and essential subscriber flows.</li><li>On failure, stop rollout and restore the verified prior web-app build. Confirm health and record cause / follow-up before another attempt.</li></ol><p>Do not publish credentials, server secrets or private account details in logs, issue comments or documentation.</p>"
+  },
+  {
+    "id": "incident",
+    "category": "technical",
+    "title": "Investigate failures without bypasses",
+    "summary": "Unavailable data, publication mismatches, failed replies and funding alerts.",
+    "body": "<h3>Provider data unavailable</h3><p>Show the affected source, last verified timestamp and limitation. Preserve evidence and inspect the authorized connection. Do not replace missing actuals with estimates or zeros.</p><h3>Published but hidden / unplayable</h3><p>Inspect canonical episode and job state, audio assets, quality receipts and complete-series status. Reconcile only through the guarded path; verify subscriber visibility and playback afterward. Do not force publish or interrupt unrelated jobs.</p><h3>Email or campaign action fails</h3><p>Keep the request ID and audit trail. Distinguish draft, approval, provider acceptance and confirmed result. Avoid blind retries that duplicate messages or spending.</p><h3>Urgent funding</h3><p>Verify available funds, liabilities and exact shortfall. Link to the authorized funding path and protect required reserves. A funding alert does not itself grant spending or transfer authority.</p>"
+  },
+  {
+    "id": "changes",
+    "category": "system",
+    "title": "Owner decisions & design change record",
+    "summary": "The amendments incorporated during the eight-section review.",
+    "body": "<p>Review record: October 30, 2026. This summarizes the owner\u2019s instructions in the current design-review conversation, without claiming live activation.</p><ul><li>Initial recap includes new paid subscriptions, cancellations, CAC and subscriber churn for the period.</li><li>Agents includes data flow and external tools: ChatGPT, Claude, Mac Terminal and Telegram for Orion. Exact recipient / session links remain unverified.</li><li>Production has independent review choices for finished stories, voices and SFX; automatic handling remains the default.</li><li>Customers unifies inbox, subscriber history, suggestions, referrals and insights with substantive reply approval.</li><li>Marketing includes planned, existing and past campaigns; Facebook / Instagram / TikTok layout views; each campaign\u2019s funnel, stage costs, budget comparisons and benchmark scope.</li><li>The 6+2-week plan and spreadsheet format are visible. Missing original plan details, dates and audio-app benchmarks are explicitly pending.</li><li>Finance includes a visible four-tab Budget format with zero placeholders; the populated 12-month period starts after the complete test.</li><li>Full-width view hides the navigation for more room on the iPad.</li></ul><p>Earlier design sections are available, and Finance was explicitly approved to proceed to Documentation. Live wiring, end-to-end provider tests, deployment and final operational acceptance remain separate work.</p>"
+  },
+  {
+    "id": "legal-app",
+    "category": "legal",
+    "title": "App legal documents and policies",
+    "summary": "Privacy policy, Terms and Conditions, and Audio Content License currently on the app.",
+    "body": "<p>Open the current published app documents:</p><ul><li><a href=\"/privacy\" target=\"_blank\" rel=\"noreferrer\">Privacy Policy</a></li><li><a href=\"/terms\" target=\"_blank\" rel=\"noreferrer\">Terms and Conditions</a></li><li><a href=\"/license\" target=\"_blank\" rel=\"noreferrer\">Audio Content License</a></li></ul>"
+  },
+  {
+    "id": "legal-ip",
+    "category": "legal",
+    "title": "Trademark and copyright records",
+    "summary": "Registry for ownership, registrations, assignments, and supporting legal records.",
+    "body": "<p>No verified trademark registration certificates, copyright registrations, assignments or filing records are connected to this Admin release. These records await an authorized document source. App license terms are available separately; they are not evidence of a registration.</p>"
+  }
+]

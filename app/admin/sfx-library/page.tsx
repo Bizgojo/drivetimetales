@@ -23,6 +23,7 @@ export default function SfxLibraryReviewPage() {
   const [entries, setEntries] = useState<Entry[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [category, setCategory] = useState('all')
   const [filter, setFilter] = useState<Filter>('todo')
   const [playingId, setPlayingId] = useState<string | null>(null)
   const [saving, setSaving] = useState(0)
@@ -88,14 +89,14 @@ export default function SfxLibraryReviewPage() {
     todo: entries.filter((e) => !e.status).length,
   }), [entries])
 
-  const visible = entries.filter((e) =>
+  const visible = entries.filter(e=>category==='all'||e.category===category).filter((e) =>
     filter === 'all' ? true : filter === 'kept' ? e.status === 'approved' : filter === 'removed' ? e.status === 'rejected' : !e.status)
-  const groups = CATEGORY_ORDER
+  const groups = Array.from(new Set([...CATEGORY_ORDER,...entries.map(e=>e.category)]))
     .map((cat) => ({ cat, items: visible.filter((e) => e.category === cat).sort((a, b) => a.name.localeCompare(b.name)) }))
     .filter((g) => g.items.length)
 
   return (
-    <div className="sfx">
+    <div className="sfx"><label>Sound type <select aria-label="Filter sound effects by type" value={category} onChange={e=>setCategory(e.target.value)} style={{minHeight:48,padding:10,marginBottom:16}}><option value="all">All sound types</option>{Array.from(new Set([...CATEGORY_ORDER,...entries.map(e=>e.category)])).map(c=><option key={c} value={c}>{c}</option>)}</select></label>
       <style>{`
         .sfx { --ink:#14181f; --muted:#5a6472; --line:#d9dee5; --card:#ffffff; --bg:#f3f5f8; --keep:#1d7a46; --keep-bg:#e3f4ea; --drop:#b4232c; --drop-bg:#fbe6e7; --accent:#1f4fd1;
           font-size:20px; line-height:1.45; color:var(--ink); background:var(--bg); padding:16px; max-width:900px; margin:0 auto; }

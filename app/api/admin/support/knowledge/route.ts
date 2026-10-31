@@ -1,3 +1,4 @@
+import { adminAccess } from '@/lib/admin-center/auth'
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 
@@ -7,6 +8,8 @@ const supabaseAdmin = createClient(
 );
 
 export async function POST(request: NextRequest) {
+  const accessDenied = await adminAccess(request); if (accessDenied) return accessDenied
+
   try {
     const { knowledge } = await request.json();
 
@@ -32,7 +35,9 @@ export async function POST(request: NextRequest) {
   }
 }
 
-export async function GET() {
+export async function GET(adminRequest: Request) {
+  const accessDenied = await adminAccess(adminRequest); if (accessDenied) return accessDenied
+
   try {
     const { data, error } = await supabaseAdmin
       .from('dtt_settings')
