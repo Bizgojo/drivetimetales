@@ -88,6 +88,34 @@ export interface GoListenPayload {
   utm_campaign: string | null
   event: GoListenEventName
   position_seconds: number
+  /** ET-TEST-ANON-TAG-20261031: Amendment-1 ad-test run id. Null = genuine
+   *  anonymous visit. Carried from the ?et_test= query param; excluded from
+   *  listen-report when set. PRE-DDL SAFE: /api/go-listen drops it when the
+   *  column does not exist yet, so emission can never break playback. */
+  et_test: string | null
+}
+
+/** ET-TEST-ANON-TAG-20261031: strict run-id shape, mirrored from
+ *  lib/marketing/adTests.ts sanitizeEtTestId (client code cannot import
+ *  server modules; keep the regex identical: 1–64 alnum/dash/underscore). */
+const ET_TEST_ID_RE = new RegExp("^[A-Za-z0-9_-]{1,64}$")
+export function sanitizeEtTest(raw: string | null | undefined): string | null {
+  try {
+    if (typeof raw !== 'string') return null
+    const v = raw.trim()
+    return ET_TEST_ID_RE.test(v) ? v : null
+  } catch {
+    return null
+  }
+}
+
+/** Read ?et_test= from a query string. Never throws; junk → null. */
+export function readEtTestParam(search: string | null | undefined): string | null {
+  try {
+    return sanitizeEtTest(new URLSearchParams(search ?? '').get('et_test'))
+  } catch {
+    return null
+  }
 }
 
 /**
@@ -238,6 +266,9 @@ export interface GoListenTrackerInit {
   variant: GoListenVariant
   utmSource: string | null | undefined
   utmCampaign: string | null | undefined
+  /** ET-TEST-ANON-TAG-20261031: Amendment-1 ad-test run id (already
+   *  sanitized, or raw — sanitized again inside). Null/undefined = genuine visit. */
+  etTest?: string | null | undefined
   /** Injectable transport for tests; defaults to sendGoListenPayload. */
   send?: (payload: GoListenPayload) => void
 }
@@ -252,6 +283,9 @@ export function createGoListenTracker(init: GoListenTrackerInit): GoListenTracke
   const fired = new Set<GoListenEventName>()
   const utmSource = normalizeUtm(init.utmSource)
   const utmCampaign = normalizeUtm(init.utmCampaign)
+  // ET-TEST-ANON-TAG-20261031: sanitize once at init; every event in this
+  // session carries the same marker (or null for genuine visits).
+  const etTest = sanitizeEtTest(init.etTest)
 
   const fireOnce = (event: GoListenEventName, positionSeconds: number) => {
     try {
@@ -264,6 +298,7 @@ export function createGoListenTracker(init: GoListenTrackerInit): GoListenTracke
         utm_campaign: utmCampaign,
         event,
         position_seconds: clampPositionSeconds(positionSeconds),
+        et_test: etTest,
       })
     } catch { /* silent — analytics never degrade playback */ }
   }

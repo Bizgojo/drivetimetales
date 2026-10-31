@@ -13,7 +13,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { attachMediaSession, MEDIA_ALBUM } from '@/lib/mediaSession'
-import { createGoListenTracker, GoListenTracker, newSessionId } from '@/lib/goListen'
+import { createGoListenTracker, GoListenTracker, newSessionId, readEtTestParam } from '@/lib/goListen'
 import type { EpisodeData } from './page'
 import { TRIAL_LABEL } from '@/lib/pricing'
 
@@ -86,6 +86,8 @@ export default function EavesdropClient({ episodes, arm, utmSource, utmCampaign 
       variant: variant as Parameters<typeof createGoListenTracker>[0]['variant'],
       utmSource,
       utmCampaign,
+      // ET-TEST-ANON-TAG-20261031: Amendment-1 ad-test marker (?et_test=<run_id>).
+      etTest: typeof window === 'undefined' ? null : readEtTestParam(window.location.search),
       // Override session id so wall_submit also uses the same session
       // (createGoListenTracker generates its own UUID internally, but we
       // expose it via tracker.sessionId and pass it to the signup API)

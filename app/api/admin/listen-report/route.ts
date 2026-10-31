@@ -43,7 +43,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
-import { buildSessions, groupWindows, inLast24h, ListenEventRow } from '@/lib/listenReport'
+import { buildSessions, excludeTestEvents, groupWindows, inLast24h, ListenEventRow } from '@/lib/listenReport'
 
 export type { ListenGroupStats, ListenGroupWindows } from '@/lib/listenReport'
 
@@ -107,13 +107,26 @@ export async function GET(req: NextRequest) {
     // Page through events (bounded). The campaign is days old and a session
     // emits ≤6 rows, so 100k rows ≫ expected volume; if we ever hit the cap
     // the payload flags it instead of silently truncating.
+    // ET-TEST-ANON-TAG-20261031: PRE-DDL SAFE et_test select — the column
+    // exists only after Marc applies the migration. Probe once; without it
+    // the report runs unfiltered exactly as before (never a crash).
+    let etTestColumn = true
+    {
+      const { error: probeError } = await admin.from('go_listen_events').select('et_test').limit(1)
+      if (probeError && /could not find the column|column .* does not exist|schema cache/i.test(probeError.message || '')) {
+        etTestColumn = false
+      }
+    }
+    const columns = etTestColumn
+      ? 'session_id, variant, utm_source, event, position_seconds, created_at, et_test'
+      : 'session_id, variant, utm_source, event, position_seconds, created_at'
     const rows: ListenEventRow[] = []
     let tableAvailable = true
     let truncated = false
     for (let from = 0; from < MAX_ROWS; from += PAGE_SIZE) {
       const { data, error } = await admin
         .from('go_listen_events')
-        .select('session_id, variant, utm_source, event, position_seconds, created_at')
+        .select(columns)
         .order('created_at', { ascending: true })
         .range(from, from + PAGE_SIZE - 1)
       if (error) {
@@ -129,7 +142,12 @@ export async function GET(req: NextRequest) {
     }
 
     const cutoffMs = Date.now() - WINDOW_24H_MS
-    const sessions = tableAvailable ? Array.from(buildSessions(rows).values()) : []
+    // ET-TEST-ANON-TAG-20261031: exclude Amendment-1 ad-test rows
+    // (et_test non-null) before aggregation. Genuine anonymous rows
+    // (et_test null) are KEPT — only tagged test traffic is removed.
+    const cleanRows = tableAvailable && etTestColumn ? excludeTestEvents(rows) : rows
+    const testEventsExcluded = tableAvailable && etTestColumn ? rows.length - cleanRows.length : 0
+    const sessions = tableAvailable ? Array.from(buildSessions(cleanRows).values()) : []
     const byVariant = groupWindows(sessions, cutoffMs, s => s.variant)
     const bySource = groupWindows(sessions, cutoffMs, s => s.utmSource ?? '(none)')
 
@@ -138,6 +156,8 @@ export async function GET(req: NextRequest) {
       window24hStart: new Date(cutoffMs).toISOString(),
       tableAvailable,
       truncated,
+      etTestColumn,
+      testEventsExcluded,
       totalEvents: rows.length,
       totalSessions: sessions.length,
       totalSessions24h: sessions.filter(s => inLast24h(s, cutoffMs)).length,

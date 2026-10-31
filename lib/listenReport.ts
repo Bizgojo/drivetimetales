@@ -21,6 +21,10 @@ export type ListenEventRow = {
   event: string
   position_seconds: number
   created_at: string
+  /** ET-TEST-ANON-TAG-20261031: Amendment-1 ad-test run id. Null/undefined =
+   *  genuine anonymous visit (kept in reports). Optional so pre-DDL selects
+   *  without the column still type-check. */
+  et_test?: string | null
 }
 
 export type SessionAgg = {
@@ -53,6 +57,13 @@ export type ListenGroupWindows = {
   h24: ListenGroupStats
   /** All sessions ever recorded. */
   total: ListenGroupStats
+}
+
+/** ET-TEST-ANON-TAG-20261031: drop ad-test rows (et_test non-null) before
+ *  aggregation. Genuine anonymous rows (et_test null/undefined) are KEPT —
+ *  exclusion removes only tagged Amendment-1 test traffic, never real visits. */
+export function excludeTestEvents(rows: ListenEventRow[]): ListenEventRow[] {
+  return rows.filter(r => r.et_test == null)
 }
 
 export function median(values: number[]): number | null {
