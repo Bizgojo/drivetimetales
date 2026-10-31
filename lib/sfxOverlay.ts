@@ -37,14 +37,17 @@ export type OverlayPlan = {
   rejected?: Array<{ cue: unknown; reason: string }>
 }
 
-/** How many extra effects an episode gets, by genre. 0 = no overlay. */
-export function overlayBudgetForGenre(genre: string | null | undefined): number {
-  const g = String(genre || '').toLowerCase()
-  if (/thriller|action|crime|adventure|western|\bwar\b|heist|\bspy\b/.test(g)) return 10
-  if (/horror/.test(g)) return 8
-  if (/sci-?fi|science fiction/.test(g)) return 6
-  if (/mystery|suspense/.test(g)) return 4
-  return 0
+/**
+ * SFX-NO-CAP-001 (Marc 2026-10-31): "not be restricted … let the story and AI
+ * determine the proper SFX per episode." No per-genre quota: every genre gets
+ * effects wherever its story makes a sound. This is only a safety ceiling
+ * against a runaway plan, not a target.
+ */
+export const SFX_SAFETY_CEILING = 40
+
+/** Ceiling on extra effects for an episode (same for every genre). */
+export function overlayBudgetForGenre(_genre?: string | null): number {
+  return SFX_SAFETY_CEILING
 }
 
 export function overlayEnabled(env: Record<string, string | undefined> = process.env): boolean {
@@ -66,10 +69,12 @@ export function buildOverlayPrompt(lines: Array<{ index: number; speaker: string
   const gap = opts.minGap ?? 3
   return [
     `You are the sound designer for a ${genre || 'drama'} audio drama for drive-time listeners.`,
-    `Choose up to ${budget} sound effects to add to this episode at its action moments: gunshots, engines, tire screeches, crashes, running footsteps, fights and blows, breaking glass or wood, doors kicked in, sirens, phones, weather, crowds.`,
+    'Add a sound effect at every moment in this episode where the listener should hear something: doors, footsteps, engines, tires, phones, keys, glass, gunfire, blows, sirens, crowds, weather, water, a change of place.',
+    'There is no target number. Use as many or as few as THIS story needs: a quiet conversation may need none, a chase may need many.',
     ...(opts.everyAudibleMoment
-      ? ['This is a fast action story: add an effect at EVERY moment the listener could actually hear something (doors, engines, tires, footsteps, gunfire, punches, glass, phones, sirens, crowds, weather, keys, radios). Use as many of the allowed effects as the story supports.']
+      ? ['This is a fast action story: expect many effects. Miss no moment the listener could actually hear.']
       : []),
+    `(Hard ceiling, never a goal: ${budget} effects.)`,
     'Each effect plays just BEFORE the numbered line you choose, so pick the line that describes or reacts to that action.',
     'Rules:',
     '- Only add a sound where the story clearly implies it. Never invent events.',

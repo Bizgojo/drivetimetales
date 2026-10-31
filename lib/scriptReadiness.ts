@@ -37,8 +37,8 @@ export { DESCRIPTION_PAST_TENSE_RE as RUNNEXT_DESCRIPTION_PAST_TENSE_RE } from '
 import { DESCRIPTION_PAST_TENSE_RE as RUNNEXT_DESCRIPTION_PAST_TENSE_RE } from '@/lib/validateCardCopy'
 /** RUNTIME-GATE-001's ±10% plus the estimator's ≈±5% calibration spread. */
 export const RUNTIME_BRIEF_PRESPEND_TOLERANCE = 0.15
-/** Validator prompt rule SFX-001 ("at most 3 per episode"). Canon (Spec v1.5) allows 3–6. */
-export const VALIDATOR_SFX_MAX = 3
+/** SFX-001 (Marc 2026-10-31): no fixed count — the story decides. No cap by default. */
+export const VALIDATOR_SFX_MAX = Number.POSITIVE_INFINITY
 
 export type ReadinessBlocker = {
   gate: string
