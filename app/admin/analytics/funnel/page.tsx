@@ -114,6 +114,8 @@ const S = {
 // per Marc verified ground truth (585 unique page_view sessions since 2026-08-21 in Supabase).
 const CLEAN_CUTOFF = '2026-08-21T00:00:00.000Z'
 const FULL_CAMPAIGN = '2026-08-18T04:00:00.000Z'
+// SINCE-LAUNCH-FILTER-20261031: app launch cutoff — default view; prior campaign cutoffs preserved.
+const SINCE_LAUNCH = '2026-11-06T00:00:00.000Z'
 
 export default function FunnelByArmPage() {
   const [data, setData] = useState<FunnelData | null>(null)
@@ -122,7 +124,7 @@ export default function FunnelByArmPage() {
   const [reach, setReach] = useState<ReachData | null>(null)
   const [costData, setCostData] = useState<FunnelCostData | null>(null)
   const [costLoading, setCostLoading] = useState(true)
-  const [since, setSince] = useState(CLEAN_CUTOFF)
+  const [since, setSince] = useState(SINCE_LAUNCH)
   const [showCustom, setShowCustom] = useState(false)
   const [customValue, setCustomValue] = useState('')
 
@@ -169,6 +171,12 @@ export default function FunnelByArmPage() {
       {/* Date filter control bar */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' as const, margin: '0.75rem 0 0.5rem', padding: '0.75rem 1rem', background: '#f8fafc', borderRadius: 8, border: '1px solid #e2e8f0' }}>
         <span style={{ fontSize: 12, fontWeight: 700, color: '#475569', marginRight: 4 }}>Filter since:</span>
+        <button
+          onClick={() => { setSince(SINCE_LAUNCH); setShowCustom(false) }}
+          style={{ fontSize: 12, padding: '4px 10px', borderRadius: 6, border: '1px solid', cursor: 'pointer', background: since === SINCE_LAUNCH && !showCustom ? '#0f172a' : '#fff', color: since === SINCE_LAUNCH && !showCustom ? '#fff' : '#1e293b', borderColor: since === SINCE_LAUNCH && !showCustom ? '#0f172a' : '#cbd5e1', fontWeight: 600 }}
+        >
+          Since launch (Nov 6)
+        </button>
         <button
           onClick={() => { setSince(CLEAN_CUTOFF); setShowCustom(false) }}
           style={{ fontSize: 12, padding: '4px 10px', borderRadius: 6, border: '1px solid', cursor: 'pointer', background: since === CLEAN_CUTOFF && !showCustom ? '#0f172a' : '#fff', color: since === CLEAN_CUTOFF && !showCustom ? '#fff' : '#1e293b', borderColor: since === CLEAN_CUTOFF && !showCustom ? '#0f172a' : '#cbd5e1', fontWeight: 600 }}
