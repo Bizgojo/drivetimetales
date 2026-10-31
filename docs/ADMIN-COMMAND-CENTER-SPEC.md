@@ -132,3 +132,24 @@ Expected eight-week result: 270 trials, 135 paid subscribers, $29.63 ad-spend CA
 ### Budgeted acquisition outcomes must be prominent
 
 The owner reported that expenditures were visible while subscription/CAC/result targets were missing from view. Put budgeted trials, paid subscriptions and CAC before spending details, and expose the eight-week targets beside metric names rather than requiring a horizontal search. Show 270 trial subscriptions, 135 new paid subscriptions and $29.63 paid CAC as forecasts. Cost per trial $14.81 and trial-to-paid conversion 50% may be explicitly calculated from those supplied period totals, not attributed to an unread workbook. Monthly/annual mix, revenue, weekly conversion timing and remaining funnel targets must say they await the original workbook. Do not distribute period forecasts across weeks or invent other original-plan metrics.
+
+### Published original plan recovered from Claude artifact
+
+Owner supplied https://claude.ai/artifact/GgPuEUCcaDWSeun2uivPeJ. Its visible published content was read directly. This supersedes previous statements that the weekly result forecast and Decision Rules were missing. The shared view disables native XLSX download; do not claim that native workbook formulas were imported.
+
+| Week | Ad views | Signups | Trials | Paid subs | Cost/trial | CAC to date |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| 1 | 35,714 | 54 | 34 | — | $14.81 | — |
+| 2 | 35,714 | 54 | 34 | — | $14.81 | — |
+| 3 | 50,000 | 75 | 47 | 17 | $14.81 | $100.74 |
+| 4 | 50,000 | 75 | 47 | 17 | $14.81 | $71.11 |
+| 5 | 57,143 | 86 | 54 | 24 | $14.81 | $55.77 |
+| 6 | 57,143 | 86 | 54 | 24 | $14.81 | $49.38 |
+| 7 | — | — | — | 27 | — | $37.04 |
+| 8 | — | — | — | 27 | — | $29.63 |
+
+The source headline is approximately 286,000 ad views, 270 trials, 135 paid subscribers and $29.63 CAC. Paid conversions lag trial starts by two weeks; judge weeks 1–4 on cost per trial. Final CAC review is January 1, 2027, with $0 January ad spend until that review.
+
+Preserve source rounding: weekly displayed paid cells total 136, not the 135 headline; views total 285,714 versus the approximately 286,000 headline. Do not force rounded weekly values to reconcile or invent unrounded workbook cells. Unprovided period signup totals, monthly/annual split and subscription revenue remain unprovided.
+
+Decision Rules are reference-only, labeled by the source “Set by Strategos Oct 29. Awaiting your approval.” Scale/stop thresholds: page load per ad $1.17/$1.75 after $75 on that ad; signup per ad $9.33/$15 after $75–150; trial pause $15/$22.50 after $600 total; trial hard kill $15/$25 after $600 total; trial-to-paid 50%/35% after 30 trials aged 14 days; blended CAC $30/$45 whenever measurable. Source standing rules and reserve conditions are displayed without activating controls or emails. The $400 reserve release requires $600 spent, 10+ trials per ad set aged 14 days, cost/trial at most $15 AND early paid rate at least 40%; otherwise hold. Preserve the $4,000 total and weekly caps.
