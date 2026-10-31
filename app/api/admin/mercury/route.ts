@@ -1,8 +1,11 @@
+import { adminAccess } from '@/lib/admin-center/auth'
 import { NextResponse } from 'next/server'
 
 const MERCURY_BASE = 'https://api.mercury.com/api/v1'
 
-export async function GET() {
+export async function GET(adminRequest: Request) {
+  const accessDenied = await adminAccess(adminRequest); if (accessDenied) return accessDenied
+
   const token = process.env.MERCURY_API_TOKEN
   if (!token) return NextResponse.json({ error: 'No Mercury token' }, { status: 500 })
 

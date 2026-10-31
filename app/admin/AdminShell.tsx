@@ -1,0 +1,16 @@
+'use client'
+import Link from 'next/link'
+import {usePathname,useRouter,useSearchParams} from 'next/navigation'
+import {useState} from 'react'
+import {useAuth} from '@/contexts/AuthContext'
+import {isMagicInviteOwner,isIphone} from '@/lib/magicInvite'
+import {BarChart3,Bot,Clapperboard,BookOpen,Users,Megaphone,Wallet,FileText,Bell,Menu,X,RefreshCw} from 'lucide-react'
+import './approved-command-center.css'
+export const ADMIN_SECTIONS=[['overview','Overview',BarChart3],['agents','Agents',Bot],['production','Production',Clapperboard],['stories','Stories',BookOpen],['customers','Customers',Users],['marketing','Marketing',Megaphone],['finance','Finance',Wallet],['documentation','Documentation',FileText]] as const
+export default function AdminShell({children}:{children:React.ReactNode}){
+ const pathname=usePathname(),params=useSearchParams(),router=useRouter(),{user}=useAuth();const[menu,setMenu]=useState(false)
+ const focus=params.get('focus')==='1',key=params.get('section')||'overview',section=ADMIN_SECTIONS.find(s=>s[0]===key)?.[1]||'Overview'
+ if(pathname?.startsWith('/admin/promo')){if(!isMagicInviteOwner(user?.email||''))return <p>Private owner invitation tool.</p>;if(pathname==='/admin/promo/new'&&typeof navigator!=='undefined'&&!isIphone(navigator.userAgent))return <p>Open this invitation form on your iPhone.</p>;return <>{children}</>}
+ function fullWidth(){const p=new URLSearchParams(params.toString());focus?p.delete('focus'):p.set('focus','1');router.replace(pathname+'?'+p.toString())}
+ return <div className={'acc-root '+(focus?'focus-view':'')}><button className={'scrim '+(menu?'open':'')} aria-label="Close navigation" onClick={()=>setMenu(false)}/><aside className={'sidebar '+(menu?'open':'')}><button className="icon-button menu" aria-label="Close navigation" onClick={()=>setMenu(false)}><X/></button><div className="brand"><span style={{color:'#e4b484',fontSize:36}}>∞</span><div>Endless Tales<small>COMMAND CENTER</small></div></div><div className="nav-label">YOUR BUSINESS</div><nav className="nav" aria-label="Admin sections">{ADMIN_SECTIONS.map(([id,label,Icon])=><Link key={id} href={'/admin?section='+id+(focus?'&focus=1':'')} aria-current={pathname==='/admin'&&id===key?'page':undefined} onClick={()=>setMenu(false)} className={id===key?'active':''}><Icon/>{label}</Link>)}</nav><div className="side-bottom"><div className="owner"><div className="avatar">ET</div><div><strong>{user?.user_metadata?.first_name||'Administrator'}</strong><small>Verified server access required</small></div></div><p><Link href="/home">Back to subscriber app →</Link></p></div></aside><div className="main"><header className="topbar"><div className="breadcrumb"><button className="icon-button menu" aria-label="Open navigation" onClick={()=>setMenu(true)}><Menu/></button><span>Command Center /</span><b>{pathname==='/admin'?section:'Detailed controls'}</b></div><div className="top-tools"><button className="icon-button label" onClick={fullWidth}>{focus?'Show navigation':'Full width'}</button><button className="icon-button" aria-label="Refresh current section" onClick={()=>{window.dispatchEvent(new Event('admin:refresh'));router.refresh()}}><RefreshCw/></button><Link className="icon-button" aria-label="Belle notifications" href="/admin?section=overview#alerts"><Bell/></Link></div></header>{children}</div></div>
+}

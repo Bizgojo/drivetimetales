@@ -1,3 +1,4 @@
+import { adminAccess } from '@/lib/admin-center/auth'
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import Stripe from 'stripe';
@@ -12,6 +13,8 @@ const supabaseAdmin = createClient(
 );
 
 export async function POST(request: NextRequest) {
+  const accessDenied = await adminAccess(request); if (accessDenied) return accessDenied
+
   try {
     const { userId } = await request.json();
 

@@ -1,3 +1,4 @@
+import { adminAccess } from '@/lib/admin-center/auth'
 /**
  * POST /api/admin/social-draft
  * 1. Searches Reddit for live threads matching the topic
@@ -168,6 +169,8 @@ Reply with ONLY the post text, nothing else.`
 }
 
 export async function POST(req: NextRequest) {
+  const accessDenied = await adminAccess(req); if (accessDenied) return accessDenied
+
   try {
     const { topic, count = 3, system = '', platform = 'Reddit', _raw_prompt, posts: prefetchedPosts } = await req.json()
 
