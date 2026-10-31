@@ -26,6 +26,8 @@ export type BodyItem =
       kind: 'sfx'; idx: number; path: string; dur: number; cue: string
       /** SFX-WORD-001: play inside voice line voiceIdx, atSec into it (no gap, the voice keeps going). */
       anchor?: { voiceIdx: number; atSec: number }
+      /** SFX-CATALOG-001: the catalog says spot or background; overrides the guess from the cue words */
+      role?: SfxRole
     }
 
 export type SfxRole = 'spot' | 'bed'
@@ -133,7 +135,7 @@ export function planLayeredBody(items: BodyItem[], opts: Partial<typeof LAYERED_
     if (item.kind === 'sfx') {
       // An effect starts where the timeline is now (after any earlier pending gap).
       const start = cursor + pendingGap
-      const role = classifySfxCue(item.cue)
+      const role = item.role ?? classifySfxCue(item.cue)
       if (role === 'spot') {
         const overlap = Math.min(o.OVERLAP_SEC, item.dur * 0.3)
         sfx.push({ idx: item.idx, path: item.path, cue: item.cue, role, start, length: item.dur, lead: 0, bedGain: 1, loop: false, fadeOut: 0, clipDur: item.dur })
@@ -251,7 +253,7 @@ export async function buildLayeredStoryBody(params: {
   const leveledItems: BodyItem[] = []
   for (const item of items) {
     if (item.kind !== 'sfx') { leveledItems.push(item); continue }
-    const role = classifySfxCue(item.cue)
+    const role = item.role ?? classifySfxCue(item.cue)
     const leveledPath = path.join(tmpDir, `leveled_${path.basename(item.path)}`)
     try {
       const gain = await levelGainDb(item.path, role === 'bed' ? o.BED_MEAN_DB : o.SPOT_MEAN_DB, o.PEAK_CEILING_DB, ffmpeg, exec)

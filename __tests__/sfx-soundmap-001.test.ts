@@ -71,7 +71,7 @@ describe('SFX-SOUNDMAP-001', () => {
     expect(soundMapPlannerEnabled(null, {})).toBe(false)
     expect(soundMapPlannerEnabled(null, { SFX_PLANNER: 'soundmap' })).toBe(true)
     expect(sfxSoundAgreementRule({})).toBe('')
-    expect(sfxSoundAgreementRule({ SFX_V2: 'on' })).toMatch(/do NOT also have the narrator describe it/)
+    expect(sfxSoundAgreementRule({ SFX_V2: 'on' })).toMatch(/NAMED or REACTED TO/)
   })
 
   test('two effects on one line get separate files', () => {

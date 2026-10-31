@@ -158,7 +158,7 @@ export function rankSfxCandidates(cue: string, entries: SfxLibraryEntry[], minSc
   return out.sort((a, b) => b.score - a.score || a.entry.id.localeCompare(b.entry.id))
 }
 
-function seedHash(seed: string): number {
+export function seedHash(seed: string): number {
   let h = 2166136261
   for (let i = 0; i < seed.length; i += 1) { h ^= seed.charCodeAt(i); h = Math.imul(h, 16777619) >>> 0 }
   return h

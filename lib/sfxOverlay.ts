@@ -29,6 +29,10 @@ export type OverlayCue = {
    * word timing; if that fails the effect plays before the line instead.
    */
   afterWords?: string
+  /** SFX-CATALOG-001: the catalog name this cue plays (no free-text search, no AI fallback) */
+  catalogId?: string
+  /** SFX-CATALOG-001: spot or background, from the catalog */
+  kind?: 'spot' | 'background'
   cue: string
   durationSec: number
   file?: string
@@ -44,9 +48,11 @@ export type OverlayPlan = {
   cues: OverlayCue[]
   rejected?: Array<{ cue: unknown; reason: string }>
   /** SFX-SOUNDMAP-001: which planner made this plan */
-  planner?: 'overlay' | 'soundmap'
+  planner?: 'overlay' | 'soundmap' | 'catalog'
   /** SFX-SOUNDMAP-001: a play/skip verdict for every line that names a sound */
-  decisions?: Array<{ line: number; verdict: 'play' | 'skip'; reason: string; cue?: string; missing?: boolean }>
+  decisions?: Array<{ line: number; verdict: 'play' | 'skip'; reason: string; cue?: string; missing?: boolean; catalogId?: string; wanted?: string }>
+  /** SFX-CATALOG-001: sounds Claude wanted that the catalog does not have (no backup is used) */
+  wanted?: Array<{ line: number; wanted: string }>
 }
 
 /**
