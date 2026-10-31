@@ -102,6 +102,7 @@ export default function SubscriptionsPage() {
   const [error, setError] = useState('')
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [actionMessage, setActionMessage] = useState('')
+  const [sharedSummary,setSharedSummary]=useState<any>(null)
 
   async function adminFetch(path: string, init?: RequestInit) {
     const res = await fetch(path, {
@@ -121,7 +122,8 @@ export default function SubscriptionsPage() {
     setLoading(true)
     setError('')
     try {
-      const payload = await adminFetch('/api/admin/subscribers')
+      const [payload,summary]=await Promise.all([adminFetch('/api/admin/subscribers'),adminFetch('/api/admin/center/customer-summary').catch((e:Error)=>({error:e.message}))])
+      setSharedSummary(summary)
       setData(payload)
       setSelectedId((current) => current || payload.subscribers?.[0]?.id || null)
     } catch (err) {
@@ -157,7 +159,7 @@ export default function SubscriptionsPage() {
     muted: { color: '#64748b', fontSize: 12 } as React.CSSProperties,
   }
 
-  const summary = data?.summary || { totalStandard: 0, activePaid: 0, canceledExpired: 0, foundingMembers: 0, newThisWeek: 0 }
+  const summary=sharedSummary?.summary||{}
 
   return (
     <div style={S.page}>
@@ -171,16 +173,17 @@ export default function SubscriptionsPage() {
 
       {error && <div style={{ ...S.card, borderColor: '#fecaca', background: '#fef2f2', color: '#991b1b', padding: 14, marginBottom: 16 }}>{error}</div>}
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, minmax(140px, 1fr))', gap: 12, marginBottom: 18 }}>
+      <p style={S.muted}>{sharedSummary?.error||sharedSummary?.note||'Shared subscriber summary loading…'}</p>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 12, marginBottom: 18 }}>
         {[
           ['Total Standard subscribers', summary.totalStandard, '#f97316'],
-          ['Active paid subscribers', summary.activePaid, '#16a34a'],
-          ['Canceled / expired', summary.canceledExpired, '#64748b'],
+          ['Active paid · Stripe', summary.activePaid, '#16a34a'],
+          ['Canceled / expired / past due', summary.canceledExpired, '#64748b'],
           ['Founding Members', summary.foundingMembers, '#b45309'],
-          ['New this week', summary.newThisWeek, '#2563eb'],
+          ['New in last 7 days', summary.newThisWeek, '#2563eb'],
         ].map(([label, value, color]) => (
           <div key={label as string} style={{ ...S.card, padding: 16, borderTop: `3px solid ${color}` }}>
-            <div style={{ fontSize: 28, fontWeight: 950, color: color as string, lineHeight: 1 }}>{value as number}</div>
+            <div style={{ fontSize: 28, fontWeight: 950, color: color as string, lineHeight: 1 }}>{value==null?'Unavailable':value as number}</div>
             <div style={{ ...S.muted, marginTop: 8, fontWeight: 800 }}>{label as string}</div>
           </div>
         ))}

@@ -58,3 +58,26 @@ Read-only schema audit found ElevenLabs usage rows with no story ID and unlinked
 CSV controls operate entirely on downloaded copies. Blank values represent missing/unconnected data; known planned zeros are numeric zero. Budget, Actual, Actual vs. Budget and Variance exports must be tested in the owner's Excel app. They do not import edits or change Admin records. Existing grouped six-tab XLSX remains available.
 
 Orion deployment procedure remains: complete staging/auth/worker/device gates above, obtain the reviewed `main` merge, build in a new release directory, verify health/authorized readback, atomically switch the serving release and retain the prior release and database backup. Do not alter ad spend, transfer authorization, review defaults or in-flight jobs to pass acceptance. No merge or production deploy has been performed by Codex.
+
+
+## Owner-authorized live release with version toggle — October 31
+
+The owner has requested making New Admin live with a switch back to Classic. This authorizes preparing the live release; no repeated design approval is needed. **The serving release has not been changed by Codex. Orion remains the sole EC2 deployer.**
+
+The version switch is at the top of each sidebar. New is the default; the cosmetic `et_admin_version` browser cookie and explicit `adminView=new|classic` query choose presentation only. Both run under the same server-validated Admin layout and API authorization. Classic retains its grouped navigation, session re-auth, specialist pages, and historical finance tools. The old home-page debug auth bypass and failed-read-zero statistics are not restored.
+
+Shared Overview/Finance cards use canonical reporting selectors. Overview preserves the selected period and reuses one 60-second in-memory snapshot across versions; Refresh bypasses it. Classic subscriber cards now read the same server summary as New Customers. Published Stories is the same implementation. Existing manual/historical Classic Finance worksheet figures are expressly distinguished from verified current actuals and the future 12-month Budget; saved browser entries are retained.
+
+**Current technical release blockers:** a read-only production inspection found zero `public.admin_center_%` tables. Both reviewed migrations are still required. The worker/agent environment is not accessible from this Codex session, so matching `ADMIN_INTERNAL_TOKEN` and self-fetch origins/caller scope must be verified by Orion before cutover. Do not serve this branch without those steps: it could break authenticated production transport. No worker is to be stopped, reset, or advanced for acceptance testing.
+
+Run the read-only prerequisite command in the isolated release checkout with the app's existing environment (it prints no key values):
+
+```sh
+node scripts/admin-center/check-release-readiness.cjs --env-path /absolute/path/to/existing-app-env-file
+```
+
+An exit code of 1 blocks serving; missing tables require the two migration files listed above, through the reviewed backup/staging/migration process. An exit code of 0 confirms automated prerequisites only; still verify caller tokens/origins, policy/functions and RLS with the disposable contract and staging tests, owner sign-in and both versions' source/period/as-of parity. Preserve off flags, current `publish_mode`, all spending authority, and rollback. Optional providers can remain visibly unavailable; do not fabricate totals or activate operations to pass acceptance.
+
+After those gates pass, Orion arranges the reviewed merge to current `main`, builds that exact merge SHA in isolation, follows the app-only serving swap above, and verifies `/admin`, `/admin?adminView=classic`, sign-in/access denial, shared recaps, both menus and subscriber player smoke tests. Record serving SHA and rollback path. The feature branch incorporates `main` through `eac0ef89` (PRs #437/#438); preserve newer main work if it advances again.
+
+Verification for this follow-up: 77 Admin tests / 13 suites, zero focused type diagnostics / 76 entry files, 44 sound-effect tests / 4 suites for the integrated main changes, local PGlite migration contracts with zero public tables after rollback, all-eight-section Chromium checks at iPhone/iPad portrait/iPad landscape/Mac, version round trips, period preservation, exact shared Overview and Finance display parity, cosmetic cookie retention and replacement of the obsolete subscriber-summary source. Full local Next build passed with placeholders. These are fixtures/build checks, not a live-provider or serving-release acceptance claim.

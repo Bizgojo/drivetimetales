@@ -1,2 +1,2 @@
-import CommandCenter from './CommandCenter'
-export default function AdminPage(){return <CommandCenter/>}
+import AdminLanding from './AdminLanding'
+export default function AdminPage(){return <AdminLanding/>}

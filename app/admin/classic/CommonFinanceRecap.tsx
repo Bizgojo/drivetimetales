@@ -1,0 +1,5 @@
+'use client'
+import {useEffect,useState} from 'react'
+import {financeMetrics} from '@/lib/admin-center/reporting'
+import {request} from '../command-ui'
+export function CommonFinanceRecap(){const[data,setData]=useState<any>(null),[error,setError]=useState('');useEffect(()=>{let current=true;request('/api/admin/center?section=finance&days=30').then(p=>{if(current)setData(p)}).catch(e=>{if(current)setError(e.message)});return()=>{current=false}},[]);return <section aria-label="Shared verified finance recap" style={{background:'white',border:'1px solid #ddd',borderRadius:10,padding:20,marginBottom:16}}><h2 style={{fontSize:20,fontWeight:700}}>Shared verified finance recap</h2><p>Same live reporting sources as New Admin · rolling 30 days · {data?.fetchedAt?new Date(data.fetchedAt).toLocaleString():'Loading…'}</p>{error&&<p role="alert">{error}</p>}<div style={{display:'flex',gap:24,flexWrap:'wrap'}}>{financeMetrics(data).map(m=><p key={m.id} data-metric={'finance-'+m.id}>{m.label}<br/><strong>{m.value}</strong></p>)}</div><a href="/admin/finance/budget">12-month Budget and CSV worksheets →</a></section>}

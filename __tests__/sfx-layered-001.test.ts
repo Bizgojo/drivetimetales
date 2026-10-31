@@ -3,7 +3,7 @@
  */
 import { readFileSync } from 'fs'
 import { join } from 'path'
-import { bedCueLoopable, classifySfxCue, layeredMixEnabled, planLayeredBody, sfxFilterChain, type BodyItem } from '@/lib/sfxLayeredMix'
+import { bedCueLoopable, classifySfxCue, layeredMixEnabled, planLayeredBody, sfxFilterChain, type BodyItem, sfxV2Options, sfxV2Enabled } from '@/lib/sfxLayeredMix'
 
 const v = (idx: number, dur = 3, sceneBreak = false): BodyItem => ({ kind: 'voice', idx, path: `/v${idx}.mp3`, dur, sceneBreak })
 const fx = (idx: number, cue: string, dur: number): BodyItem => ({ kind: 'sfx', idx, path: `/sfx${idx}.mp3`, dur, cue })
@@ -63,6 +63,20 @@ describe('planLayeredBody', () => {
     expect(long.sfx[0].length).toBeCloseTo(32)
     const next = planLayeredBody([fx(1, 'rain, steady', 7), v(2), v(3), fx(4, 'a gunshot', 2), v(5)])
     expect(next.sfx[0].start + next.sfx[0].length).toBeCloseTo(next.sfx[1].start)
+  })
+
+  test('SFX-BED-SCENE-001 (v2 only): a bed lasts its scene — a spot does not stop it, the next bed does, 240 s cap', () => {
+    const o = sfxV2Options()
+    const long = planLayeredBody([v(0), fx(1, 'rain, steady', 7), ...Array.from({ length: 20 }, (_, i) => v(i + 2))], o)
+    expect(long.sfx[0].start + long.sfx[0].length).toBeCloseTo(long.totalDuration)
+    const spot = planLayeredBody([fx(1, 'rain, steady', 7), v(2), v(3), fx(4, 'a gunshot', 2), v(5)], o)
+    expect(spot.sfx[0].start + spot.sfx[0].length).toBeCloseTo(spot.totalDuration)
+    const nextBed = planLayeredBody([fx(1, 'rain, steady', 7), v(2), v(3), fx(4, 'crowd murmur, steady', 7), v(5)], o)
+    expect(nextBed.sfx[0].start + nextBed.sfx[0].length).toBeCloseTo(nextBed.sfx[1].start)
+    const capped = planLayeredBody([fx(1, 'rain, steady', 7), ...Array.from({ length: 120 }, (_, i) => v(i + 2))], o)
+    expect(capped.sfx[0].length).toBeCloseTo(capped.sfx[0].lead + 240)
+    expect(sfxV2Enabled({})).toBe(false)
+    expect(sfxV2Enabled({ SFX_V2: 'on' })).toBe(true)
   })
 
   test('a bed with a sequence in it plays once (no repeating burst)', () => {

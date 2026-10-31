@@ -1,2 +1,5 @@
+'use client'
 import CommandCenter from '../CommandCenter'
-export default function Finance(){return <CommandCenter initialSection="finance"/>}
+import {useAdminVersion} from '../AdminVersion'
+import ClassicFinance from '../classic/ClassicFinance'
+export default function Finance(){return useAdminVersion().version==='classic'?<ClassicFinance/>:<CommandCenter initialSection="finance"/>}

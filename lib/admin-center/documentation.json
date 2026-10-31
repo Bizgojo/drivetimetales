@@ -149,5 +149,12 @@
     "title": "Trademark and copyright records",
     "summary": "Registry for ownership, registrations, assignments, and supporting legal records.",
     "body": "<p>No verified trademark registration certificates, copyright registrations, assignments or filing records are connected to this Admin release. These records await an authorized document source. App license terms are available separately; they are not evidence of a registration.</p>"
+  },
+  {
+    "id": "admin-version-switch",
+    "category": "manual",
+    "title": "Switch New Admin and Classic Admin",
+    "summary": "Use the two buttons at the top of either menu. Shared recaps use the same reporting data and definitions.",
+    "body": "<p>Choose New Admin or Classic Admin at the top of the menu. Your selection is remembered in this browser. If the menu is hidden, use Show navigation or the menu button first.</p><p>Switching changes presentation; it does not change publication rules, approvals, spending or permissions. Both versions require the same verified administrator access.</p><p>The Overview period is retained while switching. Both recaps reuse the same in-memory reporting snapshot for up to 60 seconds; Refresh requests a new one. Compare the same period and as-of timestamp. Missing values stay unavailable.</p><p>Subscribers use the same server summary, published stories use the same component, and Finance shares the same verified recap. Classic historical/manual worksheets are labeled separately; their old assumptions and saved browser figures are not reconciled current actuals or the future 12-month Budget.</p>"
   }
 ]

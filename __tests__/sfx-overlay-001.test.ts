@@ -6,15 +6,8 @@ import { planLayeredBody } from '@/lib/sfxLayeredMix'
 const lines = Array.from({ length: 30 }, (_, i) => ({ index: i + 10, speaker: 'NARRATOR', text: `line ${i}` }))
 
 describe('SFX-OVERLAY-001', () => {
-  test('budget by genre: action-heavy genres get the most, quiet genres none', () => {
-    expect(overlayBudgetForGenre('Thriller')).toBe(10)
-    expect(overlayBudgetForGenre('Crime Drama')).toBe(10)
-    expect(overlayBudgetForGenre('Western')).toBe(10)
-    expect(overlayBudgetForGenre('Horror')).toBe(8)
-    expect(overlayBudgetForGenre('Sci-Fi')).toBe(6)
-    expect(overlayBudgetForGenre('Mystery')).toBe(4)
-    expect(overlayBudgetForGenre('Heartwarming')).toBe(0)
-    expect(overlayBudgetForGenre('Romance')).toBe(0)
+  test('SFX-NO-CAP-001: no genre quota — every genre gets the same safety ceiling, the story decides', () => {
+    for (const g of ['Thriller', 'Crime Drama', 'Western', 'Horror', 'Sci-Fi', 'Mystery', 'Heartwarming', 'Romance']) expect(overlayBudgetForGenre(g)).toBe(40)
     expect(overlayEnabled({})).toBe(false)
     expect(overlayEnabled({ SFX_OVERLAY: 'on' })).toBe(true)
   })
@@ -39,7 +32,8 @@ describe('SFX-OVERLAY-001', () => {
     const prompt = buildOverlayPrompt(lines.slice(0, 2), 10, 'Thriller', ['rain on glass'])
     expect(prompt).toContain('10. NARRATOR: line 0')
     expect(prompt).toContain('rain on glass')
-    expect(prompt).toContain('up to 10 sound effects')
+    expect(prompt).toContain('There is no target number')
+    expect(prompt).toContain('Hard ceiling, never a goal: 10 effects')
     expect(overlayFileName(42)).toBe('sfx_overlay_0042.mp3')
   })
 

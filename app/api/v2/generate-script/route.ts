@@ -281,7 +281,7 @@ export async function POST(req: NextRequest) {
     // KNOWN DISCREPANCIES between documents — flagged for Marc's ruling, not silently resolved:
     //   DISC-001: RESOLVED (Marc, 2026-08-29). Use 24 words (DESCRIPTION-001). Prior 70-char limit
     //             was wrong. isInvalidDescription() and inline instructions updated to match.
-    //   DISC-002: RESOLVED by CANON-001. SFX-001 (max 3 per episode) governs over ET Rules r11
+    //   DISC-002: RESOLVED by CANON-001. SFX-001 (no fixed count, Marc 2026-10-31) governs over ET Rules r11
     //             (every 60–90s) and STAGE2 (3–6 anchors). SFX-001 is already in the canon block above.
     //   DISC-003: STAGE2 footer/header version mismatch — footer says v2.3, header says v2.4.
     //             Header is correct (r42 Early Investment Rule added as v2.4, Jun 26 2026).
@@ -382,7 +382,7 @@ ENDLESS TALES STORY BIBLE v3.2 — CANONICAL
 Loaded from: Bible/ET_Story_Rules_v3_2_CANONICAL.md
 Note: Where this document conflicts with the Canon Registry above, Canon Registry wins (CANON-001).
 Known conflict: r11 SFX frequency ("every 60–90 seconds") is superseded by Canon Registry SFX-001
-(max 3 SFX per episode). Follow SFX-001.
+(no fixed SFX count; the story decides, Marc 2026-10-31). Follow SFX-001.
 ${'='.repeat(80)}
 
 ${etStoryRules}
@@ -396,7 +396,7 @@ Note: Internal footer version mismatch (footer says v2.3, header says v2.4) — 
 DISC-001 RESOLVED: DESCRIPTION constraint is 24 words max (DESCRIPTION-001) per Marc ruling
       2026-08-29. Prior 70-char limit in the inline block below has been updated to match.
 Known conflict: SFX frequency — this document (3–6 anchors) supersedes ET Story Rules r11
-      (every 60–90s). Canon Registry SFX-001 (max 3) supersedes both. Follow SFX-001.
+      (every 60–90s). SFX-001 (no fixed count, Marc 2026-10-31) supersedes both. Follow SFX-001.
 ${'='.repeat(80)}
 
 ${stage2Prompt}
@@ -488,7 +488,7 @@ Use the CURRENT published rules:
 - Series non-finale episodes: Belle B outro must NOT credit the author or narrator — save those credits for the finale only. Non-finale outros must tease what comes next AND include emotional residue or reflection (not plot summary only) — end on the cliffhanger emotion with a reflective beat, not a bare tease (see the reflection rule in the BELLE B OUTRO template below).
 - Series finale episodes: Belle B outro is 1–2 sentences, ≤42 words total. No "That was" opener. Open with an emotional beat that references the story's resolution or the character left in the listener's mind. Then: title + author + narrator name + "an Endless Tales original." No spoken rating CTA — rating is handled by the review screen.
 - Standalone episodes: Belle B outro is 1–2 sentences, ≤42 words total. No "That was" opener. Open with an emotional beat that references the story's resolution or the character left in the listener's mind. Then: title + author + narrator name + "an Endless Tales original." No spoken rating CTA — rating is handled by the review screen.
-- SFX: at most 3 per episode (SFX-001). Use sparingly; never exceed 3.
+- SFX (SFX-001, Marc 2026-10-31): no fixed number. Write a [SFX: short description] cue wherever the story makes a sound the listener should hear: action, arrivals, doors, phones, weather, a change of place. Every cue must come from something that happens in the story; never decorate quiet dialogue.
 - The title may be blank in the brief; if blank, choose the best title from the story.
 - Final title must be 1 to 5 words and 28 characters or fewer so it fits one line on story cards.
 - Output the complete script (including the STORY RESOLUTION MAP as a comment block at the top). No additional commentary outside the script.

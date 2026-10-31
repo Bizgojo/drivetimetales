@@ -22,7 +22,11 @@
 
 export type BodyItem =
   | { kind: 'voice'; idx: number; path: string; dur: number; sceneBreak?: boolean }
-  | { kind: 'sfx'; idx: number; path: string; dur: number; cue: string }
+  | {
+      kind: 'sfx'; idx: number; path: string; dur: number; cue: string
+      /** SFX-WORD-001: play inside voice line voiceIdx, atSec into it (no gap, the voice keeps going). */
+      anchor?: { voiceIdx: number; atSec: number }
+    }
 
 export type SfxRole = 'spot' | 'bed'
 
@@ -56,6 +60,11 @@ export const LAYERED_DEFAULTS = {
   OVERLAP_SEC: 0.5,
   LEAD_SEC: 2.0,
   MAX_BED_SEC: 30,
+  /**
+   * SFX-BED-SCENE-001 (Marc 2026-10-31, test first): a background lasts its
+   * scene — a spot effect no longer stops it. On only with sfxV2Options().
+   */
+  BED_LASTS_SCENE: false,
   BED_GAIN: 0.35,
   /** SFX-LEVEL-001: target mean volume (dB) for each effect before mixing; voices sit near -20 */
   SPOT_MEAN_DB: -19,
@@ -68,6 +77,18 @@ export const LAYERED_DEFAULTS = {
 const BED_CUE = /\b(rain|drizzle|downpour|wind|storm|thunder|river|creek|stream|ocean|sea|surf|waves?|crowd|chatter|murmur|ambien(?:t|ce)|traffic|street noise|city|highway|expressway|freeway|engine|motor|tires|road|train|rails|hum|drone|crickets|birdsong|birds|fire crackling|crackling fire|fireplace|static|machinery|generator|air conditioning|fan whirring|ticks?|ticking|melody|rush hour)\b/i
 const SPOT_OVERRIDE = /\b(slam|bang|shot|gunshot|blast|explosion|crash|smash|shatter|knock|click|snap|pop|ring(?:ing|s)? once|single|thud|scream|gasp|door|phone buzz|buzzing phone|unfolding)\b/i
 
+/**
+ * SFX-V2 (Marc 2026-10-31): sounds on the exact word, a background under each
+ * scene. Used by the test copy (previewTag) and, once Marc approves the test,
+ * by every mix when SFX_V2=on.
+ */
+export function sfxV2Enabled(env: Record<string, string | undefined> = process.env): boolean {
+  return String(env.SFX_V2 || '').trim().toLowerCase() === 'on'
+}
+export function sfxV2Options(): Partial<typeof LAYERED_DEFAULTS> {
+  return { MAX_BED_SEC: 240, BED_LASTS_SCENE: true }
+}
+
 /** Bed = a continuing background sound; everything else is a spot effect. */
 export function classifySfxCue(cue: string): SfxRole {
   const text = String(cue || '')
@@ -76,6 +97,17 @@ export function classifySfxCue(cue: string): SfxRole {
   // "car door slams over traffic" is a spot — a strong one-shot word wins.
   if (SPOT_OVERRIDE.test(text)) return 'spot'
   return 'bed'
+}
+
+const SCENE_BACKGROUND_WORD = /\b(steady|constant|continuous|ambien(?:t|ce)|room tone|background|low hum|murmur|chatter)\b/i
+
+/**
+ * SFX-BED-SCENE-001: a scene background is a bed described as a steady
+ * texture ("steady rain on a car roof", "bar crowd murmur"). Event beds
+ * ("tires screeching", "engine roaring away") are not backgrounds.
+ */
+export function isSceneBackground(cue: string): boolean {
+  return classifySfxCue(cue) === 'bed' && SCENE_BACKGROUND_WORD.test(String(cue || '')) && bedCueLoopable(cue)
 }
 
 const NOT_LOOPABLE = /\b(then|burst|followed by|before|after|begins?|beginning|starts?|stops?|fading|fades?|approach(?:es|ing)?|pull(?:s|ing)? (?:up|away)|accelerat\w*|screech\w*|once)\b/i
@@ -87,7 +119,10 @@ export function bedCueLoopable(cue: string): boolean {
 
 export function planLayeredBody(items: BodyItem[], opts: Partial<typeof LAYERED_DEFAULTS> = {}): LayeredPlan {
   const o = { ...LAYERED_DEFAULTS, ...opts }
-  const ordered = [...items].sort((a, b) => a.idx - b.idx)
+  // SFX-WORD-001: word-anchored effects sit on top of their voice line and take
+  // no time of their own; everything else is laid out in script order as before.
+  const anchored = items.filter((i): i is Extract<BodyItem, { kind: 'sfx' }> => i.kind === 'sfx' && !!i.anchor)
+  const ordered = items.filter((i) => !(i.kind === 'sfx' && i.anchor)).sort((a, b) => a.idx - b.idx)
   const voices: LayeredPlan['voices'] = []
   const sfx: SfxPlacement[] = []
   const sceneBreakStarts: number[] = []
@@ -118,12 +153,22 @@ export function planLayeredBody(items: BodyItem[], opts: Partial<typeof LAYERED_
   }
   const totalDuration = cursor + pendingGap
 
-  // Second pass: each bed runs until the next scene break or the next effect,
+  for (const item of anchored) {
+    const voice = voices.find((v) => v.idx === item.anchor!.voiceIdx)
+    if (!voice) continue
+    const start = voice.start + Math.max(0, Math.min(item.anchor!.atSec, voice.dur))
+    const length = Math.min(item.dur, Math.max(0.05, totalDuration - start))
+    sfx.push({ idx: item.idx, path: item.path, cue: item.cue, role: 'spot', start, length, lead: 0, bedGain: 1, loop: false, fadeOut: 0, clipDur: item.dur })
+  }
+  sfx.sort((a, b) => a.start - b.start)
+
+  // Second pass: each bed runs until the next scene break or the next
+  // BACKGROUND (SFX-BED-SCENE-001: a gunshot no longer stops the rain),
   // capped at lead + MAX_BED_SEC, never past the end of the body.
   for (const placement of sfx) {
     if (placement.role !== 'bed') continue
     const after = placement.start + placement.lead
-    const nextSfx = sfx.find((other) => other.start > placement.start)?.start ?? Infinity
+    const nextSfx = sfx.find((other) => (!o.BED_LASTS_SCENE || other.role === 'bed') && other.start > placement.start)?.start ?? Infinity
     const nextBreak = sceneBreakStarts.find((t) => t > after) ?? Infinity
     const end = Math.min(nextSfx, nextBreak, after + o.MAX_BED_SEC, totalDuration)
     let length = Math.max(placement.lead, end - placement.start)

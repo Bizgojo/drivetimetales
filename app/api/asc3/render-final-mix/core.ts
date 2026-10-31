@@ -6,8 +6,9 @@ import { applyMixRebuildClearance, currentBelleFingerprint, BELLE_FRESHNESS_MARK
 import { loadManifest, validateManifestGate, saveManifest, emptyManifest } from '@/lib/sfxAssetLock'
 // ATL-PARSER-001: shared line-index parser — single source of truth for segment numbering
 import { parseScriptPositions } from '@/lib/scriptLineIndex'
-import { buildLayeredStoryBody, layeredMixEnabled, type BodyItem } from '@/lib/sfxLayeredMix'
+import { buildLayeredStoryBody, layeredMixEnabled, sfxV2Enabled, sfxV2Options, type BodyItem } from '@/lib/sfxLayeredMix'
 import { overlayBodyIndex, overlayEnabled } from '@/lib/sfxOverlay'
+import { alignedWordsForSegment, wordEndTime } from '@/lib/sfxAlign'
 import { ensureOverlayPlan } from '@/lib/sfxOverlayRunner'
 // BELL-FREEZE-GUARD-001 v1.1: frozen promo guard (ATL-GUARD-HOLE-FIX-001)
 import { checkFrozenGuard, type Decision } from '@/lib/guards/frozenGuard'
@@ -308,7 +309,15 @@ function getExpectedStorySegmentNumbers(script: string): Set<number> {
   return new Set(positions.filter(p => p.isExpected).map(p => p.index))
 }
 
-export async function runRenderFinalMix(storyId: string): Promise<{
+export async function runRenderFinalMix(storyId: string, opts: {
+  /**
+   * SFX-PREVIEW-001: build a TEST mix with a separate effects plan
+   * (sfx-overlay-<tag>.json) and upload it only to
+   * asc3/<id>/preview/<tag>/final_mix.mp3. The published files, the story
+   * row and the manifest are never touched.
+   */
+  previewTag?: string
+} = {}): Promise<{
   success: boolean
   finalAudioUrl?: string
   storyBodyUrl?: string
@@ -848,7 +857,8 @@ export async function runRenderFinalMix(storyId: string): Promise<{
         if (overlayEnabled() && !sfxIsDisabled) {
           try {
             const genre = String((storyRow as any)?.primary_genre || (storyRow as any)?.genre || (storyRow as any)?.brief_json?.genre || '')
-            const plan = await ensureOverlayPlan({ db: supabase, storyId, script: storyRow?.script || '', genre, style: (storyRow as any)?.brief_json?.style_profile || null, log: (line) => console.log(line) })
+            const plan = await ensureOverlayPlan({ db: supabase, storyId, script: storyRow?.script || '', genre, style: (storyRow as any)?.brief_json?.style_profile || null, tag: opts.previewTag || null, log: (line) => console.log(line) })
+            const textByIndex = new Map(positions.map(p => [p.index, String(p.text || '')]))
             for (const cue of plan?.cues || []) {
               if (!cue.file) continue
               const rawPath = path.join(tmpDir, 'raw_' + cue.file)
@@ -856,7 +866,24 @@ export async function runRenderFinalMix(storyId: string): Promise<{
               try {
                 await download(`${BASE_STORAGE}/asc3/${storyId}/${cue.file}?v=${Date.now()}`, rawPath)
                 await execFileAsync(FFMPEG_PATH, ['-i', rawPath, '-ar', '44100', '-ac', '2', '-b:a', '192k', '-y', fxPath])
-                items.push({ kind: 'sfx', idx: overlayBodyIndex(cue.beforeIndex), path: fxPath, dur: await getAudioDuration(fxPath), cue: cue.cue })
+                const fxDur = await getAudioDuration(fxPath)
+                // SFX-WORD-001: inside the line, right after the named words.
+                let anchor: { voiceIdx: number; atSec: number } | undefined
+                if (cue.afterWords) {
+                  const seg = preparedSegments.find(sg => sg.segmentNumber === cue.beforeIndex)
+                  const key = process.env.ELEVENLABS_API_KEY
+                  if (seg && key) {
+                    try {
+                      const words = await alignedWordsForSegment({ db: supabase as any, storyId, segmentNumber: seg.segmentNumber, audio: await fs.readFile(seg.path), text: textByIndex.get(seg.segmentNumber) || '', elevenLabsKey: key })
+                      const at = wordEndTime(words, cue.afterWords)
+                      if (at !== null) anchor = { voiceIdx: seg.segmentNumber, atSec: at }
+                      console.log(`  SFX-WORD-001 line ${cue.beforeIndex} after "${cue.afterWords}": ${at === null ? 'words not found, playing before the line' : `${at.toFixed(2)}s into the line`}`)
+                    } catch (alignErr) {
+                      console.warn(`  SFX-WORD-001 alignment failed for line ${cue.beforeIndex}; playing before the line:`, alignErr instanceof Error ? alignErr.message : String(alignErr))
+                    }
+                  }
+                }
+                items.push({ kind: 'sfx', idx: overlayBodyIndex(cue.beforeIndex), path: fxPath, dur: fxDur, cue: cue.cue, ...(anchor ? { anchor } : {}) })
               } catch (fxErr) {
                 console.warn(`  SFX-OVERLAY-001 ${cue.file} skipped:`, fxErr instanceof Error ? fxErr.message : String(fxErr))
               }
@@ -871,6 +898,7 @@ export async function runRenderFinalMix(storyId: string): Promise<{
           outPath: normalizedConcatPath,
           ffmpeg: FFMPEG_PATH,
           exec: (cmd, args) => execFileAsync(cmd, args),
+          ...(opts.previewTag || sfxV2Enabled() ? { opts: sfxV2Options() } : {}),
           log: (line) => console.log(line),
         })
         layeredBuilt = true
@@ -1217,6 +1245,18 @@ export async function runRenderFinalMix(storyId: string): Promise<{
     }
     console.log('  ✅ Post-render validation passed')
     // ── END VALIDATION ─────────────────────────────────────────────────────
+
+    // SFX-PREVIEW-001: a test mix goes to its own folder and nothing else changes.
+    if (opts.previewTag) {
+      const tag = String(opts.previewTag).replace(/[^a-z0-9]/gi, '')
+      const previewPath = `asc3/${storyId}/preview/${tag}/final_mix.mp3`
+      const previewBuffer = await fs.readFile(outputPath)
+      const { error: previewErr } = await supabase.storage.from('audio').upload(previewPath, previewBuffer, { contentType: 'audio/mpeg', cacheControl: '60', upsert: true })
+      if (previewErr) throw new Error(`Preview upload error: ${previewErr.message}`)
+      await verifyUploadedBytes(previewPath, previewBuffer, 'preview final_mix.mp3')
+      console.log(`  SFX-PREVIEW-001 test mix uploaded → ${previewPath} (published files untouched)`)
+      return { success: true, preview: true, finalAudioUrl: `${BASE_STORAGE}/${previewPath}?v=${Date.now()}`, durationSecs }
+    }
 
     // Upload story_body.mp3 (segments only — for queue mode personalization)
     const bodyBuffer = await fs.readFile(storyBodyPath)

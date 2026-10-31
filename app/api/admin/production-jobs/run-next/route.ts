@@ -1722,7 +1722,7 @@ const VALIDATOR_PROMPT = `You are validating an Endless Tales production script.
 Use the CURRENT rules:
 - Belle B is the announcer.
 - Belle B is never narrator or character.
-- SFX: at most 3 per episode (SFX-001). Use sparingly; never exceed 3.
+- SFX (SFX-001, Marc 2026-10-31): no fixed number. Write a [SFX: short description] cue wherever the story makes a sound the listener should hear: action, arrivals, doors, phones, weather, a change of place. Every cue must come from something that happens in the story; never decorate quiet dialogue.
 - The title must be 1 to 5 words and 28 characters or fewer.
 - Description: ≤24 words, present tense (DISC-001). No spoilers. No past tense.
 - DESCRIPTION fails if it uses past-tense constructions or past-tense story-card phrasing such as "vanished", "was", "were", "had", "found", "discovered", "left", "moved", "sealed", "signed", "forged", "buried", "hidden", or "lost".
@@ -3421,7 +3421,7 @@ Use the CURRENT published rules:
 - Belle B announcement must not include [LISTENER_NAME] or any listener name; the shared name opener handles greeting/personalization.
 - Belle B intro/outro must never use "Tonight" or any time-of-day reference.
 - Belle B announcement must never include a greeting/opener, the author, narrator, or "an Endless Tales original"; those credits belong only in the Belle B outro.
-- SFX: at most 3 per episode (SFX-001). Use sparingly; never exceed 3.
+- SFX (SFX-001, Marc 2026-10-31): no fixed number. Write a [SFX: short description] cue wherever the story makes a sound the listener should hear: action, arrivals, doors, phones, weather, a change of place. Every cue must come from something that happens in the story; never decorate quiet dialogue.
 - The title may be blank in the brief; if blank, choose the best title from the story.
 - Final title must be 1 to 5 words and 28 characters or fewer so it fits one line on story cards.
 - Output ONLY the script, including the Story Resolution Map comment block. No commentary outside the script.
@@ -6069,7 +6069,7 @@ CURRENT published rules:
 - Belle B intro/outro must never use "Tonight" or any time-of-day reference.
 - Belle B announcement must never include a greeting/opener, the author, narrator, or "an Endless Tales original"; author and narrator credits belong only in the FINALE episode's Belle B outro.
 - ${belleOutroRule}
-- SFX: at most 3 per episode (SFX-001). Use sparingly; never exceed 3. Write each one on its own line in exactly this form: [SFX: short description]. Never write "SFX:" as a speaker label and never number or name the cues.
+- SFX (SFX-001, Marc 2026-10-31): no fixed number. Write a [SFX: short description] cue wherever the story makes a sound the listener should hear: action, arrivals, doors, phones, weather, a change of place. Every cue must come from something that happens in the story; never decorate quiet dialogue. Write each one on its own line in exactly this form: [SFX: short description]. Never write "SFX:" as a speaker label and never number or name the cues.
 - Final title must be 1 to 5 words and 28 characters or fewer so it fits one line on story cards.
 
 ${namePaletteBlock}
