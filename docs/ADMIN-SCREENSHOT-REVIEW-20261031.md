@@ -1,3 +1,5 @@
+> Live preparation update: the private database foundation is now installed and verified. Orion still owns the application cutover and the separate support-read-policy migration. See `ADMIN-WIRING-ORION-HANDOFF.md` for current state; the fixture-only limitations below describe the initial screenshot review.
+
 # Admin screenshot review — October 31, 2026
 
 This development change responds to the owner's 11 screenshots. It does not change production pipeline execution, subscriber playback, ad spend or bank transfers.

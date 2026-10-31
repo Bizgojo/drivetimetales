@@ -1,3 +1,6 @@
+-- Safe pre-cutover preparation: does not alter existing support policies or job rows.
+set local lock_timeout = '2s';
+set local statement_timeout = '30s';
 -- Additive Admin state. No pipeline mutation, spending, or bank transfer functions.
 create table public.admin_center_audit (
  id uuid primary key default gen_random_uuid(), actor_id uuid references auth.users(id),
@@ -33,7 +36,7 @@ create table public.admin_center_replies (
 do $$ declare t text; begin
  foreach t in array array['admin_center_audit','admin_center_policy','admin_center_events','admin_center_reads','admin_center_alert_settings','admin_center_replies'] loop
  execute format('alter table public.%I enable row level security',t);
- execute format('revoke all on public.%I from anon, authenticated',t);
+ execute format('revoke all on public.%I from public, anon, authenticated',t);
  execute format('grant all on public.%I to service_role',t);
  end loop;
 end $$;
@@ -73,9 +76,7 @@ begin
 end $$;
 revoke all on function public.admin_center_update_policy(uuid,integer,jsonb), public.admin_center_claim_reply(uuid,uuid,text), public.admin_center_finish_reply(uuid,uuid,text) from public,anon,authenticated;
 grant execute on function public.admin_center_update_policy(uuid,integer,jsonb), public.admin_center_claim_reply(uuid,uuid,text), public.admin_center_finish_reply(uuid,uuid,text) to service_role;
--- Fix previously public support inbox read policy. Server Admin reads use service_role.
-drop policy if exists "Users can view own messages" on public.support_messages;
-create policy "Users can view own messages" on public.support_messages for select to authenticated using ((select auth.uid())=user_id);
+-- Existing support inbox access changes only in the separately deployed cutover migration.
 create table public.admin_center_campaigns (
  id uuid primary key default gen_random_uuid(),name text not null,audience text not null,body text not null,
  media_url text not null,landing_url text not null,budget_usd numeric not null check(budget_usd>0 and budget_usd<=4000),
@@ -85,7 +86,7 @@ create table public.admin_center_campaigns (
  created_at timestamptz not null default now(),updated_at timestamptz not null default now()
 );
 alter table public.admin_center_campaigns enable row level security;
-revoke all on public.admin_center_campaigns from anon,authenticated;
+revoke all on public.admin_center_campaigns from public,anon,authenticated;
 grant all on public.admin_center_campaigns to service_role;
 create function public.admin_center_campaign_decision(p_id uuid,p_actor uuid,p_action text) returns void
 language plpgsql security invoker set search_path='' as $$
@@ -121,7 +122,7 @@ create table public.admin_center_push_deliveries (
 );
 alter table public.admin_center_push_subscriptions enable row level security;
 alter table public.admin_center_push_deliveries enable row level security;
-revoke all on public.admin_center_push_subscriptions,public.admin_center_push_deliveries from anon,authenticated;
+revoke all on public.admin_center_push_subscriptions,public.admin_center_push_deliveries from public,anon,authenticated;
 grant all on public.admin_center_push_subscriptions,public.admin_center_push_deliveries to service_role;
 create table public.admin_center_finance_entries (
  id uuid primary key default gen_random_uuid(),period date not null,category text not null check(category in ('Story Production','Marketing','R&D','Operations')),
@@ -130,7 +131,7 @@ create table public.admin_center_finance_entries (
  source_key text unique not null,actor_id uuid not null references auth.users(id),created_at timestamptz not null default now()
 );
 alter table public.admin_center_finance_entries enable row level security;
-revoke all on public.admin_center_finance_entries from anon,authenticated;
+revoke all on public.admin_center_finance_entries from public,anon,authenticated;
 grant all on public.admin_center_finance_entries to service_role;
 create function public.admin_center_finance_insert_audit() returns trigger language plpgsql security invoker set search_path='' as $$ begin
  insert into public.admin_center_audit(actor_id,action,target,after_json) values(new.actor_id,'finance.record',new.id::text,to_jsonb(new));return new;
@@ -142,7 +143,7 @@ create table public.admin_center_acknowledgments (
  provider_id text,created_at timestamptz not null default now(),updated_at timestamptz not null default now()
 );
 alter table public.admin_center_acknowledgments enable row level security;
-revoke all on public.admin_center_acknowledgments from anon,authenticated;
+revoke all on public.admin_center_acknowledgments from public,anon,authenticated;
 grant all on public.admin_center_acknowledgments to service_role;
 alter table public.admin_center_policy add column verification_reference text,add column verified_at timestamptz,add column verified_by uuid references auth.users(id);
 create function public.admin_center_verify_policy(p_actor uuid,p_expected_version integer,p_reference text) returns void

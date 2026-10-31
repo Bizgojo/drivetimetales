@@ -4,8 +4,10 @@
 begin;
 create table public.support_messages(id uuid primary key,user_id uuid,status text,admin_response text,responded_at timestamptz);
 alter table public.support_messages enable row level security;
+create policy "Users can view own messages" on public.support_messages for select using(true);
 create table if not exists public.production_jobs(id uuid primary key,status text,error_json jsonb,state_json jsonb,locked_at timestamptz,locked_by text,updated_at timestamptz);
-\ir ../../supabase/migrations/20261029182953_admin_command_center.sql
+\ir ../../supabase/migrations/20261031173103_admin_command_center.sql
+\ir ../../supabase/migrations/20261031173407_admin_support_read_cutover.sql
 insert into auth.users(id,email) values('00000000-0000-4000-8000-000000004200','admin-center-test@example.invalid');
 insert into public.support_messages(id,user_id,status) values('00000000-0000-4000-8000-000000004201','00000000-0000-4000-8000-000000004200','new');
 select public.admin_center_update_policy('00000000-0000-4000-8000-000000004200',1,'{"marketingPercent":75,"essential":100,"taxes":10,"reserve":1000,"committedMarketing":4000}');
@@ -43,4 +45,21 @@ do $$begin
  exception when raise_exception then if sqlerrm<>'No current unlocked cast review' then raise;end if;end;
 end $$;
 select 'PASS: full schema, requested voice approval, policy version/attestation, reply idempotency/acceptance, campaign envelope, audit records, client isolation' as test_result;
+
+-- Test actual inbox filtering after cutover, not merely private table grants.
+insert into public.support_messages(id,user_id,status) values('00000000-0000-4000-8000-000000004298','00000000-0000-4000-8000-000000004299','new');
+grant select on public.support_messages to anon,authenticated;
+set local role authenticated;
+set local "request.jwt.claim.sub"='00000000-0000-4000-8000-000000004200';
+do $$begin
+ if (select count(*) from public.support_messages)<>1 or not exists(select 1 from public.support_messages where id='00000000-0000-4000-8000-000000004201')then raise exception 'Subscriber inbox isolation failed';end if;
+end $$;
+reset role;
+set local role anon;
+do $$begin
+ if (select count(*) from public.support_messages)<>0 then raise exception 'Anonymous inbox exposed';end if;
+end $$;
+reset role;
+select 'PASS: deployed inbox policy hides anonymous and other subscribers messages' as test_result;
+
 rollback;

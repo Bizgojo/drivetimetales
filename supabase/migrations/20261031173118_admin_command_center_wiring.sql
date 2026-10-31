@@ -1,4 +1,7 @@
--- Reviewed release only. Do not run against production before Orion's cutover gate.
+-- Additive preparation: installs private tables and guarded functions only.
+-- This migration does not call those functions, alter publication policy, or advance jobs.
+set local lock_timeout = '2s';
+set local statement_timeout = '30s';
 create table public.admin_center_production_policies (
  version integer primary key,voices text not null check(voices in ('ai','review')),
  sfx text not null check(sfx in ('ai','review')),actor_id uuid not null references auth.users(id),
