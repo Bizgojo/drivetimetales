@@ -43,6 +43,10 @@ export type OverlayPlan = {
   model: string | null
   cues: OverlayCue[]
   rejected?: Array<{ cue: unknown; reason: string }>
+  /** SFX-SOUNDMAP-001: which planner made this plan */
+  planner?: 'overlay' | 'soundmap'
+  /** SFX-SOUNDMAP-001: a play/skip verdict for every line that names a sound */
+  decisions?: Array<{ line: number; verdict: 'play' | 'skip'; reason: string; cue?: string; missing?: boolean }>
 }
 
 /**
@@ -62,9 +66,10 @@ export function overlayEnabled(env: Record<string, string | undefined> = process
   return String(env.SFX_OVERLAY || '').trim().toLowerCase() === 'on'
 }
 
-export function overlayFileName(beforeIndex: number, opts: { tag?: string; bed?: boolean } = {}): string {
+export function overlayFileName(beforeIndex: number, opts: { tag?: string; bed?: boolean; n?: number } = {}): string {
   const tag = opts.tag ? `${String(opts.tag).replace(/[^a-z0-9]/gi, '')}_` : ''
-  return `sfx_overlay_${tag}${String(Math.max(0, Math.floor(beforeIndex))).padStart(4, '0')}${opts.bed ? '_bed' : ''}.mp3`
+  const nth = opts.n && opts.n > 1 ? `_${opts.n}` : ''
+  return `sfx_overlay_${tag}${String(Math.max(0, Math.floor(beforeIndex))).padStart(4, '0')}${opts.bed ? '_bed' : ''}${nth}.mp3`
 }
 
 /** The lines the planner sees: voice lines only, numbered by their real index. */

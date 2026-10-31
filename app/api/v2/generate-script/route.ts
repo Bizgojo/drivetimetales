@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { sfxSoundAgreementRule } from '@/lib/sfxSoundMap'
 import { createClient } from '@supabase/supabase-js'
 import Anthropic from '@anthropic-ai/sdk'
 import fs from 'fs'
@@ -488,7 +489,7 @@ Use the CURRENT published rules:
 - Series non-finale episodes: Belle B outro must NOT credit the author or narrator — save those credits for the finale only. Non-finale outros must tease what comes next AND include emotional residue or reflection (not plot summary only) — end on the cliffhanger emotion with a reflective beat, not a bare tease (see the reflection rule in the BELLE B OUTRO template below).
 - Series finale episodes: Belle B outro is 1–2 sentences, ≤42 words total. No "That was" opener. Open with an emotional beat that references the story's resolution or the character left in the listener's mind. Then: title + author + narrator name + "an Endless Tales original." No spoken rating CTA — rating is handled by the review screen.
 - Standalone episodes: Belle B outro is 1–2 sentences, ≤42 words total. No "That was" opener. Open with an emotional beat that references the story's resolution or the character left in the listener's mind. Then: title + author + narrator name + "an Endless Tales original." No spoken rating CTA — rating is handled by the review screen.
-- SFX (SFX-001, Marc 2026-10-31): no fixed number. Write a [SFX: short description] cue wherever the story makes a sound the listener should hear: action, arrivals, doors, phones, weather, a change of place. Every cue must come from something that happens in the story; never decorate quiet dialogue.
+- SFX (SFX-001, Marc 2026-10-31): no fixed number. Write a [SFX: short description] cue wherever the story makes a sound the listener should hear: action, arrivals, doors, phones, weather, a change of place. Every cue must come from something that happens in the story; never decorate quiet dialogue.${sfxSoundAgreementRule()}
 - The title may be blank in the brief; if blank, choose the best title from the story.
 - Final title must be 1 to 5 words and 28 characters or fewer so it fits one line on story cards.
 - Output the complete script (including the STORY RESOLUTION MAP as a comment block at the top). No additional commentary outside the script.
