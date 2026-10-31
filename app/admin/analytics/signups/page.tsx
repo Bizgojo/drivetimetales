@@ -23,7 +23,11 @@ interface SignupsData {
 
 // ─── Config ───────────────────────────────────────────────────────────────────
 
-const DEFAULT_SINCE = '2026-08-21T00:00:00.000Z'
+// SINCE-LAUNCH-FILTER-20261031: app launch cutoff. Default view is since-launch;
+// earlier campaign cutoffs remain available so existing periods are preserved.
+const SINCE_LAUNCH = '2026-11-06T00:00:00.000Z'
+const CAMPAIGN_CUTOFF = '2026-08-21T00:00:00.000Z'
+const FULL_CAMPAIGN = '2026-08-18T04:00:00.000Z'
 const ARMS: ArmInt[] = [1, 2, 3]
 const ARM_LABELS: Record<ArmInt, string> = { 1: 'Arm 1', 2: 'Arm 2', 3: 'Arm 3' }
 const ARM_KEYS: Record<ArmInt, string> = { 1: 'bell-arm1', 2: 'bell-arm2', 3: 'bell-arm3' }
@@ -116,7 +120,7 @@ export default function SignupsByArmPage() {
   const [data, setData] = useState<SignupsData | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [since] = useState(DEFAULT_SINCE)
+  const [since, setSince] = useState(SINCE_LAUNCH)
 
   useEffect(() => {
     setLoading(true)
@@ -141,6 +145,26 @@ export default function SignupsByArmPage() {
       <p style={{ fontSize: 13, color: '#0f172a', fontWeight: 600, margin: '0 0 0.25rem', background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 6, padding: '6px 12px', display: 'inline-block' } as React.CSSProperties}>
         Signups since: {since.slice(0, 10)}
       </p>
+      {/* SINCE-LAUNCH-FILTER-20261031: period control — since-launch default, prior cutoffs preserved */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' as const, margin: '0.5rem 0 0.5rem' }}>
+        <span style={{ fontSize: 12, fontWeight: 700, color: '#475569', marginRight: 4 }}>Filter since:</span>
+        {[
+          { label: 'Since launch (Nov 6)', value: SINCE_LAUNCH },
+          { label: 'Campaign start (Aug 21)', value: CAMPAIGN_CUTOFF },
+          { label: 'Full campaign (Aug 18)', value: FULL_CAMPAIGN },
+        ].map(opt => {
+          const active = since === opt.value
+          return (
+            <button
+              key={opt.value}
+              onClick={() => setSince(opt.value)}
+              style={{ fontSize: 12, padding: '4px 10px', borderRadius: 6, border: '1px solid', cursor: 'pointer', background: active ? '#0f172a' : '#fff', color: active ? '#fff' : '#1e293b', borderColor: active ? '#0f172a' : '#cbd5e1', fontWeight: 600 }}
+            >
+              {opt.label}
+            </button>
+          )
+        })}
+      </div>
       {data && (
         <p style={S.meta}>
           Generated {new Date(data.generatedAt).toLocaleString()} ·
