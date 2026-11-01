@@ -1,6 +1,6 @@
 /**
  * PORTRAITS-001 — make a photo for every active author and narrator that has
- * none (gpt-image-1, the model the cover code already uses), save it to the
+ * none (gpt-image-1.5, the model the cover router uses; gpt-image-1 is retired), save it to the
  * Covers bucket and set photo_url. Invented people only (lib/portraitPrompt.ts).
  *
  *   npx tsx scripts/generate-portraits.ts --dry-run          # list who, print prompts
@@ -24,7 +24,7 @@ async function main() {
   const sharp = (await import('sharp')).default
   const { buildPortraitPrompt, genderFromBio, ageFromBirthYear, slugForPortrait } = await import('../lib/portraitPrompt')
   const db = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false } })
-  const model = process.env.OPENAI_IMAGE_MODEL || 'gpt-image-1'
+  const model = process.env.OPENAI_IMAGE_MODEL || 'gpt-image-1.5'
 
   type Job = { table: 'authors' | 'narrator_voices'; folder: string; id: string; name: string; prompt: string }
   const jobs: Job[] = []
