@@ -5,7 +5,7 @@
 -- stops at "Merrick has the deed"; episode 3 resolves it for the first time).
 -- This gives episode 2 one more automatic rewrite round (it and the later
 -- episodes are rewritten with that fix list). No audio spend — writing only.
--- Marc approved re-running (Nov 1, 2026).
+-- Run only when Marc says to.
 begin;
 update production_jobs
 set status = 'queued',
