@@ -95,7 +95,7 @@ function dateField(value: unknown) {
 }
 
 function airtableHeaders() {
-  const apiKey = process.env.AIRTABLE_API_KEY
+  const apiKey = (process.env.AIRTABLE_API_KEY || '').trim()
   if (!apiKey) throw new Error('Missing AIRTABLE_API_KEY')
 
   return {
@@ -105,7 +105,7 @@ function airtableHeaders() {
 }
 
 function airtableTableUrl(tableId: string) {
-  const baseId = process.env.AIRTABLE_BASE_ID
+  const baseId = (process.env.AIRTABLE_BASE_ID || '').trim()
   if (!baseId) throw new Error('Missing AIRTABLE_BASE_ID')
   return `${AIRTABLE_BASE_URL}/${baseId}/${tableId}`
 }
