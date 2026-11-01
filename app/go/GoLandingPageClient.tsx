@@ -21,7 +21,7 @@ import GoSamplePlayer from '@/components/GoSamplePlayer'
 import GoPreviewOverlay from '@/components/GoPreviewOverlay'
 import { trackClientEvent } from '@/lib/tracking/client'
 import { randomEventId } from '@/lib/tracking/events'
-import { createGoListenTracker, resolveGoVariant, GoListenTracker } from '@/lib/goListen'
+import { createGoListenTracker, resolveGoVariant, readEtTestParam, GoListenTracker } from '@/lib/goListen'
 
 function LoadingFallback() {
   return (
@@ -76,6 +76,9 @@ function GoLandingContent() {
       variant: resolveGoVariant(rawSearch),
       utmSource: new URLSearchParams(rawSearch).get('utm_source'),
       utmCampaign: new URLSearchParams(rawSearch).get('utm_campaign'),
+      // ET-TEST-ANON-TAG-20261031: Amendment-1 ad-test marker (?et_test=<run_id>)
+      // rides every event in this session; null for genuine visits.
+      etTest: readEtTestParam(rawSearch),
     })
     listenTrackerRef.current = tracker
     tracker.onPageView()

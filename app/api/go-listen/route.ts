@@ -34,6 +34,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { GO_LISTEN_EVENTS } from '@/lib/goListenEventList'
+import { sanitizeEtTestId } from '@/lib/marketing/adTests'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -93,6 +94,10 @@ type ValidatedEvent = {
   utm_campaign: string | null
   event: string
   position_seconds: number
+  // ET-TEST-ANON-TAG-20261031: Amendment-1 ad-test run id. Null = genuine
+  // anonymous visit. Inserted best-effort (dropped when the column is missing
+  // pre-DDL) so emission can never break playback or existing events.
+  et_test: string | null
 }
 
 function validate(body: unknown): ValidatedEvent | null {
@@ -115,6 +120,9 @@ function validate(body: unknown): ValidatedEvent | null {
     utm_campaign: normalizeUtm(b.utm_campaign),
     event,
     position_seconds: position,
+    // ET-TEST-ANON-TAG-20261031: strict run ids only — anything else is
+    // dropped to null (never echoed, never stored raw).
+    et_test: sanitizeEtTestId(b.et_test),
   }
 }
 
@@ -150,7 +158,16 @@ export async function POST(req: NextRequest) {
     // ANON key on purpose: the RLS insert policy on go_listen_events is the
     // whole write surface. Service role is NOT used for ingest.
     const supabase = createClient(url, anon, { auth: { persistSession: false } })
-    const { error } = await supabase.from('go_listen_events').insert(event)
+    // ET-TEST-ANON-TAG-20261031: PRE-DDL SAFE — the et_test column exists only
+    // after Marc applies the migration. Try with it first; on undefined-column
+    // retry without it so the event is still recorded (untagged) rather than lost.
+    let { error } = await supabase.from('go_listen_events').insert(event)
+    if (error && event.et_test && /column .*et_test.*does not exist|schema cache/i.test(error.message || '')) {
+      const withoutEtTest: Record<string, unknown> = { ...event }
+      delete withoutEtTest.et_test
+      const retry = await supabase.from('go_listen_events').insert(withoutEtTest)
+      error = retry.error
+    }
     if (error) {
       const msg = error.message || ''
       // Pre-migration (table not applied yet): accept quietly, no log spam.
