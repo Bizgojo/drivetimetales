@@ -73,7 +73,7 @@ async function overlayText(imageBuffer: Buffer, title: string, author: string): 
   return sharp(imageBuffer).resize(size, size).composite([{ input: Buffer.from(svg), blend: 'over' }]).jpeg({ quality: 90 }).toBuffer()
 }
 
-const IMAGE_MODEL = process.env.OPENAI_IMAGE_MODEL || 'gpt-image-1'
+const IMAGE_MODEL = process.env.OPENAI_IMAGE_MODEL || 'gpt-image-1.5'
 
 async function generateCover(script: string, title: string, author: string, genre: string): Promise<string> {
   const dallePrompt = buildCoverPrompt({ title, author, genre, script })
