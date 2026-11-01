@@ -275,7 +275,10 @@ export const SFX_NAMED_RULE_TEXT = [
 ].join(' ')
 
 export function sfxSoundAgreementRule(env: Record<string, string | undefined> = process.env, catalogNames?: string[]): string {
-  if (String(env.SFX_V2 || '').trim().toLowerCase() !== 'on') return ''
+  // SFX-WRITER-RULE-001 (Marc 2026-11-01): the writing rule can be on by itself
+  // (SFX_WRITER_RULE=on) while the new mix settings stay test-only.
+  const on = (k: string) => String(env[k] || '').trim().toLowerCase() === 'on'
+  if (!on('SFX_WRITER_RULE') && !on('SFX_V2')) return ''
   const names = catalogNames ?? SFX_CATALOG_NAMES.map((n) => n.name)
   const list = names.length ? ` SOUND CATALOG: ${names.join('; ')}.` : ''
   return `\n- ${SFX_NAMED_RULE_TEXT}${list}`
