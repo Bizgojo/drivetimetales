@@ -22,7 +22,10 @@ export function parseCharacterGuide(script: string): CharacterInfo[] {
   if (!guideMatch) return chars
   const guideLines = guideMatch[1].split('\n').filter(l => l.trim())
   for (const line of guideLines) {
+    // CAST-GUIDE-COMMA-001 (job ecf6c35f, The Last Well EP4): "Amos Weaver, telegraph clerk — 50s, male"
+    // put a comma before the dash, so WEAVER was never found in the guide. Accept a name ended by a comma too.
     const nameMatch = line.match(/^([A-Za-z\u00C0-\u00D6\u00D8-\u00F6\u00F8-\u00FF][A-Za-z\u00C0-\u00D6\u00D8-\u00F6\u00F8-\u00FF\s'.()/]+?)\s*(?:[\u2014\u2013\-|:])/)
+      || line.match(/^([A-Z][A-Za-z\u00C0-\u00D6\u00D8-\u00F6\u00F8-\u00FF'.]+(?:\s+[A-Z][A-Za-z\u00C0-\u00D6\u00D8-\u00F6\u00F8-\u00FF'.]+){0,3}),\s*[^\n]*?[\u2014\u2013|:]/)
     if (!nameMatch) continue
     const name = nameMatch[1].trim()
     const lower = line.toLowerCase()
