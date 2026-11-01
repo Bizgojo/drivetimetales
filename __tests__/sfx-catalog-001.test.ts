@@ -111,6 +111,7 @@ describe('SFX-CATALOG-001 mix + report', () => {
 describe('SFX-NAMED-001 writer rule', () => {
   test('off by default; when on it requires named-or-reacted sounds from the catalog only', () => {
     expect(sfxSoundAgreementRule({})).toBe('')
+    expect(sfxSoundAgreementRule({ SFX_WRITER_RULE: 'on' })).toMatch(/NAMED or REACTED TO/)
     const rule = sfxSoundAgreementRule({ SFX_V2: 'on' })
     expect(rule).toMatch(/NAMED or REACTED TO/)
     expect(rule).toMatch(/Never just describe a sound/)
