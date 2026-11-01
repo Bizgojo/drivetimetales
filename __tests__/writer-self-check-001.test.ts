@@ -263,8 +263,8 @@ describe('review L2–L7', () => {
     expect(helper).toMatch(/markStoriesNeedAttention\(/)
   })
   test('L3: every writer refusal flags the episode before throwing', () => {
-    // impossible brief, narrator, spend cap, thrown writer call, failed drafts
-    expect((fn.match(/await markStoryNeedsAttention\(String\(targetEpisode\.id\), msg\)\s*\n\s*throw new Error\(msg\)/g) || []).length).toBe(5)
+    // impossible brief, narrator, spend cap, thrown writer call, failed drafts, missing author style (AUTHOR-STYLE-001)
+    expect((fn.match(/await markStoryNeedsAttention\(String\(targetEpisode\.id\), msg\)\s*\n\s*throw new Error\(msg\)/g) || []).length).toBe(6) // + AUTHOR-STYLE-001 missing author model
   })
   test('L4: spend is metered per draft inside generate, not once at the end', () => {
     const gen = fn.slice(fn.indexOf('generate: async (feedback, previousDraft) => {'), fn.indexOf('check: (draftScript) =>'))

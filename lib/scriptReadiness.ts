@@ -22,6 +22,7 @@
  */
 
 import { speakersMissingFromCharacterGuide } from './characterGuide'
+import { findStockPhrases } from './authorStyle'
 import { findUnlabeledStoryBodyLines, findSfxLabelLines } from './scriptLabels'
 import { numeralPreTtsScan } from './numeralPreTtsScan'
 import { checkScriptRuntimeMeetsMinimum, SCRIPT_RUNTIME_PREFLIGHT } from './scriptRuntimeEstimate'
@@ -64,6 +65,8 @@ export type ReadinessInput = {
   briefMinutes?: number | null
   /** CAST-GUIDE-001: series writer only — block speakers missing from the CHARACTER GUIDE. */
   requireCastGuide?: boolean
+  /** AUTHOR-STYLE-001: writer only — Claude's stock phrases send the line back for a rewrite. */
+  stockPhraseCheck?: boolean
 }
 
 export type ReadinessReport = {
@@ -177,6 +180,12 @@ export function checkScriptReadiness(input: ReadinessInput): ReadinessReport {
       detail: `${unlabeled.length} story line(s) without an UPPER-CASE speaker label (voice preflight refuses these)`,
       evidence: unlabeled.slice(0, 10).map((l) => quote(l.text)),
     })
+
+  // 3b. AUTHOR-STYLE-001: stock AI phrasing in spoken lines (writer self-check only).
+  if (input.stockPhraseCheck) {
+    const hits = findStockPhrases(script)
+    if (hits.length) blockers.push({ gate: 'STOCK-PHRASE', detail: `${hits.length} line(s) use stock AI phrasing instead of the author's own voice`, evidence: hits.slice(0, 15).map((h) => `[${h.label}] ${h.line}`) })
+  }
 
   // 4. SFX count (validator SFX-001)
   const sfxCount = (script.match(/\[SFX:/gi) || []).length
@@ -382,6 +391,11 @@ export function buildWriterRewriteFeedback(report: ReadinessReport, briefMinutes
       if (/sounds final/i.test(b.detail)) lines.push('    (A non-finale outro must not use the words end, ended, final, concludes, conclusion, complete.)')
       if (/spoiler/i.test(b.detail)) lines.push('    (Do not use the words reveal, reveals, revealed, spoiler, or "turns out" in Belle B lines.)')
       for (const e of b.evidence ?? []) lines.push(`    ${e}`)
+    } else if (b.gate === 'STOCK-PHRASE' && b.evidence?.length) {
+      lines.push(
+        `- STOCK-PHRASE (author voice): these lines use stock AI phrasing. Rewrite each one in the assigned author's own voice, saying the same thing in plain, specific words. Keep the speaker label; change nothing else:`,
+        ...b.evidence.map((e) => `    ${e}`),
+      )
     } else if (b.gate === 'LABELS' && b.evidence?.length) {
       lines.push(
         `- LABELS: every story line must start with a speaker label in CAPITAL LETTERS (NARRATOR: or the character's name, e.g. "NELL FARADAY:"). Fix these lines:`,
@@ -440,6 +454,12 @@ export type WriterSelfCheckResult = {
  * (WRITER-REVISE-001: fresh rewrites did not converge — job fd2521c4).
  * Makes at most 1 + maxRewrites calls.
  */
+/** AUTHOR-STYLE-001: gates that trigger a rewrite but never block a story on their own. */
+export const SOFT_WRITER_GATES = new Set(['STOCK-PHRASE'])
+export function onlySoftBlockers(report: ReadinessReport): boolean {
+  return report.blockers.length > 0 && report.blockers.every((b) => SOFT_WRITER_GATES.has(b.gate))
+}
+
 export async function writeWithSelfCheck(opts: {
   generate: (feedback: string, previousDraft: string | null) => Promise<WriterDraft>
   check: (script: string) => ReadinessReport | Promise<ReadinessReport>
@@ -457,6 +477,9 @@ export async function writeWithSelfCheck(opts: {
   let feedback = ''
   let draft: WriterDraft | null = null
   let report: ReadinessReport | null = null
+  // AUTHOR-STYLE-001: soft gates (stock phrasing) earn rewrites but never block a
+  // story alone; the last draft that passed every hard gate is kept as a fallback.
+  let hardOk: { draft: WriterDraft; report: ReadinessReport } | null = null
   for (let attempt = 0; attempt <= maxRewrites; attempt++) {
     if (attempt > 0 && opts.budgetMs !== undefined && now() - startedAt > opts.budgetMs) break
     const previousDraft: string | null = draft ? (draft.raw ?? draft.script) : null
@@ -470,10 +493,15 @@ export async function writeWithSelfCheck(opts: {
       spokenWords: report.metrics.spokenWords,
     })
     if (report.ready) break
+    if (onlySoftBlockers(report)) hardOk = { draft, report }
     feedback = buildWriterRewriteFeedback(report, opts.briefMinutes)
   }
+  if (report && !report.ready && !onlySoftBlockers(report) && hardOk) {
+    draft = hardOk.draft
+    report = hardOk.report
+  }
   return {
-    ok: Boolean(report?.ready),
+    ok: Boolean(report && (report.ready || onlySoftBlockers(report))),
     script: draft?.script ?? '',
     description: draft?.description ?? '',
     report: report ?? checkScriptReadiness({ script: '' }),

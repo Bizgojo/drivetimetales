@@ -129,10 +129,10 @@ Conflict: None. NOTE: the banned list above is illustrative, based directly on M
 ---
 
 ## STYLE-001
-Status: ACTIVE (author registry incomplete — see note) | Scope: Universal | Last Revised: Aug 28, 2026
+Status: ACTIVE — ENFORCED IN CODE for series (AUTHOR-STYLE-001, Marc Nov 1, 2026) | Scope: Universal | Last Revised: Nov 1, 2026
 Purpose: Prevent story prose from sounding generic or repetitive across different stories, by giving each in-house pen-name author a distinct, consistent, human-modeled voice.
 Rule: Each Endless Tales pen-name author is assigned one real author as a stylistic model. When writing under that pen name, Hal must research and follow that real author's style — sentence rhythm, tone, vocabulary, and word/phrase choices — rather than defaulting to generic phrasing.
-Conflict: None. NOTE: COPYRIGHT BOUNDARY — this rule governs STYLE and VOICE only: sentence rhythm, tone, vocabulary, word/phrase choice. It never permits copying the real author's actual text, specific plots, characters, or other copyrighted material. REGISTRY GAP — only one pen-name/real-author pairing is confirmed (Iris Fontaine, for the Bell story) — every other current and future pen name needs this assignment made before the rule has anything to point to.
+Conflict: None. NOTE: COPYRIGHT BOUNDARY — this rule governs STYLE and VOICE only: sentence rhythm, tone, vocabulary, word/phrase choice. It never permits copying the real author's actual text, specific plots, characters, or other copyrighted material. ENFORCEMENT (Marc, Nov 1, 2026 — "it should be canonized so that it is always done and stories do not sound the same"): (1) no series episode is written unless its author row has BOTH a real-author model (style_reference) and a style description — otherwise the job stops and asks Marc; (2) the writer is told to imitate the model's vocabulary, sentence length and structure, rhythm, dialogue and tone, and never to copy its text, plots, characters, settings or titles; (3) Claude's stock phrases ("a testament to", "something shifted", "the silence stretched", "a breath she didn't know she was holding", etc. — lib/authorStyle.ts STOCK_PHRASES) are found in every draft and each offending line is sent back to the writer for a rewrite in the author's voice. Every active pen-name author now has a model (registry completed Nov 1, 2026).
 
 ---
 
