@@ -1,4 +1,5 @@
 import {enforceAdminReview} from '@/lib/admin-center/production-review'
+import { authorImitationLines, authorStyleGaps, type AuthorStyleRow } from '@/lib/authorStyle'
 import { internalAdminFetch } from '@/lib/admin-center/internal-fetch'
 import { NextRequest, NextResponse } from 'next/server'
 import { sfxSoundAgreementRule } from '@/lib/sfxSoundMap'
@@ -2014,6 +2015,8 @@ function buildAuthorVoicePromptBlock(profile: any): string {
   const styleReference = cleanAuthorStyleValue(profile.style_reference)
   if (authorName && styleReference) {
     lines.push(`Author: ${authorName}, in the tradition of ${styleReference}`)
+    // AUTHOR-STYLE-001: say exactly what to imitate, and what never to copy.
+    lines.push(...authorImitationLines(styleReference))
   } else if (authorName) {
     lines.push(`Author: ${authorName}`)
   } else if (styleReference) {
@@ -2059,6 +2062,21 @@ function authorStyleProfileFromContext(story: any, brief: any) {
     style_description: stored.style_description || brief?.style_description || '',
     example_line: stored.example_line || brief?.example_line || '',
   })
+}
+
+/** AUTHOR-STYLE-001: the author row for a story (by id, then exact name), or null. */
+async function loadAuthorRowForStory(story: any, brief: any): Promise<AuthorStyleRow | null> {
+  const authorId = cleanAuthorStyleValue(story?.author_id)
+  if (authorId) {
+    const { data } = await supabase.from('authors').select('name,style_reference,style_description').eq('id', authorId).maybeSingle()
+    if (data) return data as AuthorStyleRow
+  }
+  const authorName = cleanAuthorStyleValue(story?.author || brief?.author)
+  if (authorName) {
+    const { data } = await supabase.from('authors').select('name,style_reference,style_description').ilike('name', authorName).maybeSingle()
+    if (data) return data as AuthorStyleRow
+  }
+  return null
 }
 
 async function resolveAuthorStyleProfileForStory(story: any, brief: any) {
@@ -6582,6 +6600,17 @@ async function generateOneSeriesEpisodeScript(job: ProductionJob, model: string)
     label: 'generate_episode_script',
   })
 
+  // AUTHOR-STYLE-001: no episode is written without a real-author model and a style description.
+  {
+    const authorRow = await loadAuthorRowForStory(targetEpisode, brief)
+    const gaps = authorStyleGaps(authorRow)
+    if (gaps.length) {
+      const who = String(authorRow?.name || targetEpisode.author || brief?.author || 'unknown author')
+      const msg = `AUTHOR-STYLE-001: ${who} is missing ${gaps.join(' and ')} — add it on the authors row before this series is written (no writing call made)`
+      await markStoryNeedsAttention(String(targetEpisode.id), msg)
+      throw new Error(msg)
+    }
+  }
   const authorVoiceProfile = await resolveAuthorStyleProfileForStory(targetEpisode, brief)
   const authorVoiceBlock = buildAuthorVoicePromptBlock(authorVoiceProfile)
   const recentStoryTexts = await loadRecentStoryTexts(String(seriesId))
@@ -6720,6 +6749,8 @@ async function generateOneSeriesEpisodeScript(job: ProductionJob, model: string)
         narratorVoiceNames: selfCheckVoices,
         briefMinutes: selfCheckBriefMinutes,
         requireCastGuide: true,
+        // AUTHOR-STYLE-001: stock AI phrasing goes back to the writer line by line.
+        stockPhraseCheck: true,
       })
       // The same Belle rules series_voice_preflight enforces (shared function).
       const belleIssues = await seriesEpisodeBelleContentIssues({
