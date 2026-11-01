@@ -47,6 +47,8 @@ export type SfxPlacement = {
   bedGain: number
   loop: boolean
   fadeOut: number
+  /** bed only, MIX-V3-001: seconds to fade in from silence to bedGain (0 = old loud start) */
+  fadeIn?: number
   /** duration of the generated clip itself */
   clipDur: number
 }
@@ -74,6 +76,18 @@ export const LAYERED_DEFAULTS = {
   PEAK_CEILING_DB: -1,
   BED_FADE_SEC: 3,
   MIN_LOOP_CLIP_SEC: 4,
+  /**
+   * MIX-V3-001 (Marc 2026-11-01, stage 1): a background is a soft undertone.
+   * > 0 = it fades in from silence to BED_GAIN over this many seconds under
+   * the voice instead of playing LEAD_SEC at full volume. On only with
+   * mixV3BedOptions().
+   */
+  BED_FADE_IN_SEC: 0,
+}
+
+/** MIX-V3-001: backgrounds fade in softly under the voice; the story no longer pauses for them. */
+export function mixV3BedOptions(): Partial<typeof LAYERED_DEFAULTS> {
+  return { LEAD_SEC: 0, BED_FADE_IN_SEC: 2.5 }
 }
 
 const BED_CUE = /\b(rain|drizzle|downpour|wind|storm|thunder|river|creek|stream|ocean|sea|surf|waves?|crowd|chatter|murmur|ambien(?:t|ce)|traffic|street noise|city|highway|expressway|freeway|engine|motor|tires|road|train|rails|hum|drone|crickets|birdsong|birds|fire crackling|crackling fire|fireplace|static|machinery|generator|air conditioning|fan whirring|ticks?|ticking|melody|rush hour)\b/i
@@ -142,7 +156,7 @@ export function planLayeredBody(items: BodyItem[], opts: Partial<typeof LAYERED_
         pendingGap += Math.max(0, item.dur - overlap)
       } else {
         const lead = Math.min(o.LEAD_SEC, item.dur)
-        sfx.push({ idx: item.idx, path: item.path, cue: item.cue, role, start, length: item.dur, lead, bedGain: o.BED_GAIN, loop: true, fadeOut: o.BED_FADE_SEC, clipDur: item.dur })
+        sfx.push({ idx: item.idx, path: item.path, cue: item.cue, role, start, length: item.dur, lead, bedGain: o.BED_GAIN, loop: true, fadeOut: o.BED_FADE_SEC, clipDur: item.dur, ...(o.BED_FADE_IN_SEC > 0 ? { fadeIn: o.BED_FADE_IN_SEC } : {}) })
         pendingGap += lead
       }
       continue
@@ -182,6 +196,8 @@ export function planLayeredBody(items: BodyItem[], opts: Partial<typeof LAYERED_
     placement.length = length
     placement.loop = length > placement.clipDur + 0.05
     placement.fadeOut = Math.min(o.BED_FADE_SEC, Math.max(0, placement.length - placement.lead))
+    // MIX-V3-001: a soft-start background shares its length between the fade in and the fade out.
+    if (placement.fadeIn) placement.fadeOut = Math.min(o.BED_FADE_SEC, placement.length / 2)
   }
 
   return { voices, sfx, totalDuration }
@@ -196,7 +212,13 @@ export function sfxFilterChain(placement: SfxPlacement, inputIndex: number, outL
     const lead = placement.lead.toFixed(3)
     const g = placement.bedGain.toFixed(3)
     const ramp = '0.8'
-    parts.push(`volume='if(lt(t,${lead}),1,if(lt(t,${lead}+${ramp}),1-(1-${g})*(t-${lead})/${ramp},${g}))':eval=frame`)
+    if (placement.fadeIn && placement.fadeIn > 0) {
+      // MIX-V3-001: soft start — silence up to the under-voice level, never louder.
+      const fi = Math.min(placement.fadeIn, Math.max(0.05, placement.length / 2)).toFixed(3)
+      parts.push(`volume='${g}*min(1,t/${fi})':eval=frame`)
+    } else {
+      parts.push(`volume='if(lt(t,${lead}),1,if(lt(t,${lead}+${ramp}),1-(1-${g})*(t-${lead})/${ramp},${g}))':eval=frame`)
+    }
     if (placement.fadeOut > 0) {
       parts.push(`afade=t=out:st=${Math.max(0, placement.length - placement.fadeOut).toFixed(3)}:d=${placement.fadeOut.toFixed(3)}`)
     }
