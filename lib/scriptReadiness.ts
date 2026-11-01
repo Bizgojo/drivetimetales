@@ -365,7 +365,7 @@ export function buildWriterRewriteFeedback(report: ReadinessReport, briefMinutes
     } else if (b.gate === 'CHARACTER-GUIDE' && b.evidence?.length) {
       lines.push(
         `- CHARACTER-GUIDE: these speaking characters have no line in the CHARACTER GUIDE, so they cannot be cast a voice: ${b.evidence.join(', ')}. ` +
-        `Add one guide line for each, in the same form as the others (NAME — age, male or female, accent, manner), or give their lines to a character already in the guide.`,
+        `Add one guide line for each INSIDE the CHARACTER GUIDE block (between its --- lines), starting with the speaker label exactly as used in the dialogue, e.g. "${b.evidence[0]} — 50s, male, Texas drawl, nervous telegraph clerk". Or give their lines to a character already in the guide.`,
       )
     } else if (b.gate === 'RUNTIME-SERIES-MAX') {
       lines.push(
