@@ -6,10 +6,11 @@ import { applyMixRebuildClearance, currentBelleFingerprint, BELLE_FRESHNESS_MARK
 import { loadManifest, validateManifestGate, saveManifest, emptyManifest } from '@/lib/sfxAssetLock'
 // ATL-PARSER-001: shared line-index parser — single source of truth for segment numbering
 import { parseScriptPositions } from '@/lib/scriptLineIndex'
-import { buildLayeredStoryBody, layeredMixEnabled, sfxV2Enabled, sfxV2Options, type BodyItem } from '@/lib/sfxLayeredMix'
+import { buildLayeredStoryBody, layeredMixEnabled, mixV3BedOptions, sfxV2Enabled, sfxV2Options, type BodyItem } from '@/lib/sfxLayeredMix'
+import { envelopeExpr, mixV3Enabled, outroMusicEnvelope, storyMusicEnvelope } from '@/lib/mixV3'
 import { overlayBodyIndex, overlayEnabled } from '@/lib/sfxOverlay'
 import { alignedWordsForSegment, wordEndTime } from '@/lib/sfxAlign'
-import { ensureOverlayPlan } from '@/lib/sfxOverlayRunner'
+import { ensureOverlayPlan, loadOverlayPlan } from '@/lib/sfxOverlayRunner'
 // BELL-FREEZE-GUARD-001 v1.1: frozen promo guard (ATL-GUARD-HOLE-FIX-001)
 import { checkFrozenGuard, type Decision } from '@/lib/guards/frozenGuard'
 import { logTmpPrefetchProbe, sweepStaleEtMixDirs, ET_MIX_SWEEP_STALE_MS, type TmpPrefetchProbe } from '@/lib/tmpSpace'
@@ -317,6 +318,16 @@ export async function runRenderFinalMix(storyId: string, opts: {
    * row and the manifest are never touched.
    */
   previewTag?: string
+  /**
+   * MIX-V3-001: Marc's drawing (smooth fade into the story, crescendo, soft
+   * music under Belle's outro, soft backgrounds). Default: MIX_V3=on in env.
+   */
+  mixV3?: boolean
+  /**
+   * MIX-V3-001: a preview that changes ONLY the mix — it reuses the published
+   * sound-effects plan and today's effect timing, so the two can be compared.
+   */
+  mixOnly?: boolean
 } = {}): Promise<{
   success: boolean
   finalAudioUrl?: string
@@ -857,7 +868,10 @@ export async function runRenderFinalMix(storyId: string, opts: {
         if (overlayEnabled() && !sfxIsDisabled) {
           try {
             const genre = String((storyRow as any)?.primary_genre || (storyRow as any)?.genre || (storyRow as any)?.brief_json?.genre || '')
-            const plan = await ensureOverlayPlan({ db: supabase, storyId, script: storyRow?.script || '', genre, style: (storyRow as any)?.brief_json?.style_profile || null, tag: opts.previewTag || null, log: (line) => console.log(line) })
+            // MIX-V3-001: a mix-only preview reads the published plan and never creates one.
+            const plan = opts.mixOnly
+              ? await loadOverlayPlan(supabase, storyId, null)
+              : await ensureOverlayPlan({ db: supabase, storyId, script: storyRow?.script || '', genre, style: (storyRow as any)?.brief_json?.style_profile || null, tag: opts.previewTag || null, log: (line) => console.log(line) })
             const textByIndex = new Map(positions.map(p => [p.index, String(p.text || '')]))
             for (const cue of plan?.cues || []) {
               if (!cue.file) continue
@@ -898,7 +912,10 @@ export async function runRenderFinalMix(storyId: string, opts: {
           outPath: normalizedConcatPath,
           ffmpeg: FFMPEG_PATH,
           exec: (cmd, args) => execFileAsync(cmd, args),
-          ...(opts.previewTag || sfxV2Enabled() ? { opts: sfxV2Options() } : {}),
+          opts: {
+            ...((opts.previewTag && !opts.mixOnly) || sfxV2Enabled() ? sfxV2Options() : {}),
+            ...(mixV3Enabled(opts.mixV3) ? mixV3BedOptions() : {}),
+          },
           log: (line) => console.log(line),
         })
         layeredBuilt = true
@@ -963,7 +980,17 @@ export async function runRenderFinalMix(storyId: string, opts: {
     const SWELL_RAMP_SEC = 1.0         // MUSIC-002: ~1s ramp on both swells (see afade curve=log below)
 
     let musicShapeFilter: string
-    if (V2_MUSIC_SWELL) {
+    const MIX_V3_ON = V2_MUSIC_SWELL && mixV3Enabled(opts.mixV3)
+    // MIX-V3-001: one continuous piece of music; where it ends, the outro music picks up.
+    let mixV3MusicSec = 0
+    if (MIX_V3_ON) {
+      const env = storyMusicEnvelope(segsDur)
+      mixV3MusicSec = env.totalSec
+      console.log(`  ⚑  MIX-V3-001: music fades into the story, crescendo, soft under outro (${env.totalSec.toFixed(1)}s story music)`)
+      musicShapeFilter =
+        `[0:a]atrim=start=${musicOffset}:duration=${env.totalSec.toFixed(3)},asetpts=PTS-STARTPTS,` +
+        `volume='${envelopeExpr(env.segs)}':eval=frame[music_out]`
+    } else if (V2_MUSIC_SWELL) {
       // v2 shape: pre-roll (0.65) → bed (0.075, under story) → swell (2s, +3dB over narrative bed)
       // Swell peaks at postStoryVolume; outro music ducks to ~25% narrative level when Belle speaks.
       // Final fade after Belle: 3s clean fade to silence (spec: fade out 3 seconds after Belle ends).
@@ -1066,7 +1093,7 @@ export async function runRenderFinalMix(storyId: string, opts: {
       const outroDurSecs = outroDurForShape
       const belleEnd = V2_DUCK_RAMP + outroDurSecs
       const fadeEnd = belleEnd + V2_TAIL_FADE
-      const outroBed = fadeEnd + 0.5     // music clip duration + small buffer for fade completion
+      let outroBed = fadeEnd + 0.5     // music clip duration + small buffer for fade completion
 
       // Three-phase volume expression (eval=frame for sample-accurate ramps)
       // Phase 1 (t=0..DUCK_RAMP): swell peak (postStoryVolume) -> DUCK_VOL
@@ -1074,12 +1101,23 @@ export async function runRenderFinalMix(storyId: string, opts: {
       // full spoken duration. MUSIC-002 says "rises gradually" with no curve specified —
       // this is a literal linear reading. Flag to Marc if a log/exp curve was intended here too.
       // Phase 3 (t=belleEnd..fadeEnd): RISE_TARGET -> 0 over exactly V2_TAIL_FADE seconds
-      const outroVolExpr =
+      let outroVolExpr =
         `if(lt(t,${V2_DUCK_RAMP.toFixed(3)}),` +
         `${postStoryVolume}+(${V2_DUCK_VOL}-${postStoryVolume})*t/${V2_DUCK_RAMP},` +
         `if(lt(t,${belleEnd.toFixed(3)}),` +
         `${V2_DUCK_VOL}+(${V2_RISE_TARGET}-${V2_DUCK_VOL})*(t-${V2_DUCK_RAMP})/(${belleEnd.toFixed(3)}-${V2_DUCK_RAMP}),` +
         `max(0,${V2_RISE_TARGET}*(1-(t-${belleEnd.toFixed(3)})/${V2_TAIL_FADE}))))`
+      let belleDelaySec = V2_DUCK_RAMP
+      let outroMusicOffset = musicOffset
+      if (MIX_V3_ON) {
+        // MIX-V3-001: soft music under Belle, 3s fade after her, continuing the story music.
+        const outroEnv = outroMusicEnvelope(outroDurSecs)
+        outroVolExpr = envelopeExpr(outroEnv.segs)
+        outroBed = outroEnv.totalSec + 0.5
+        belleDelaySec = outroEnv.belleDelaySec
+        outroMusicOffset = musicOffset + mixV3MusicSec
+        console.log(`  MIX-V3-001: outro music soft under Belle (${outroDurSecs.toFixed(1)}s), fades to 0 over 3s after her`)
+      }
 
       const outroMusicClipPath = path.join(tmpDir, 'outro_music_clip.mp3')
       const outroBelleDelPath  = path.join(tmpDir, 'outro_belle_del.mp3')
@@ -1089,14 +1127,14 @@ export async function runRenderFinalMix(storyId: string, opts: {
       // OUTRO-MUSIC-WRAP-001: cut inside the filter graph so a loop wrap past the
       // end of a short music file cannot stretch the clip (EP06 dead-air bug).
       await execFileAsync(FFMPEG_PATH, outroMusicClipArgs({
-        musicPath, offsetSec: musicOffset, durationSec: outroBed,
+        musicPath, offsetSec: outroMusicOffset, durationSec: outroBed,
         volumeExpr: outroVolExpr, outPath: outroMusicClipPath,
       }))
 
       // Delay Belle by DUCK_RAMP so music ducks to bed level before Belle speaks
       await execFileAsync(FFMPEG_PATH, [
         '-i', normalizedOutroPath,
-        '-af', `adelay=${Math.round(V2_DUCK_RAMP * 1000)}|${Math.round(V2_DUCK_RAMP * 1000)}`,
+        '-af', `adelay=${Math.round(belleDelaySec * 1000)}|${Math.round(belleDelaySec * 1000)}`,
         '-ar', '44100', '-ac', '2', '-b:a', '192k', '-y', outroBelleDelPath
       ])
 
