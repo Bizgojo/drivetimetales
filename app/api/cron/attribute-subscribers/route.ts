@@ -24,8 +24,8 @@ function isAuthorized(request: NextRequest) {
 type AirtableRecord = { id: string; fields: Record<string, unknown> }
 
 async function findCampaignByName(name: string): Promise<AirtableRecord[]> {
-  const baseId = process.env.AIRTABLE_BASE_ID!
-  const apiKey = process.env.AIRTABLE_API_KEY!
+  const baseId = (process.env.AIRTABLE_BASE_ID || '').trim()
+  const apiKey = (process.env.AIRTABLE_API_KEY || '').trim()
   const escaped = name.replace(/"/g, '\\"')
   const formula = encodeURIComponent(`{Campaign Name}="${escaped}"`)
   const url = `${AIRTABLE_BASE_URL}/${baseId}/${CAMPAIGNS_TABLE_ID}?filterByFormula=${formula}&maxRecords=10`
@@ -36,8 +36,8 @@ async function findCampaignByName(name: string): Promise<AirtableRecord[]> {
 }
 
 async function updateCampaign(recordId: string, fields: Record<string, unknown>): Promise<void> {
-  const baseId = process.env.AIRTABLE_BASE_ID!
-  const apiKey = process.env.AIRTABLE_API_KEY!
+  const baseId = (process.env.AIRTABLE_BASE_ID || '').trim()
+  const apiKey = (process.env.AIRTABLE_API_KEY || '').trim()
   const url = `${AIRTABLE_BASE_URL}/${baseId}/${CAMPAIGNS_TABLE_ID}/${recordId}`
   const res = await fetch(url, {
     method: 'PATCH',
