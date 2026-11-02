@@ -1,7 +1,18 @@
 const { withSentryConfig } = require('@sentry/nextjs')
 
+// APP-UPDATE-001: one version string per build, baked into both the client
+// bundle and the server, so an open app can tell it is out of date.
+function appVersion() {
+  let sha = process.env.VERCEL_GIT_COMMIT_SHA || ''
+  if (!sha) {
+    try { sha = require('child_process').execSync('git rev-parse --short HEAD').toString().trim() } catch { sha = 'local' }
+  }
+  return `${sha.slice(0, 12)}-${Date.now().toString(36)}`
+}
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  env: { NEXT_PUBLIC_APP_VERSION: appVersion() },
   typescript: { ignoreBuildErrors: true },
   experimental: {
     serverComponentsExternalPackages: ['ws', 'bufferutil', 'utf-8-validate', 'fluent-ffmpeg', 'sharp'],
