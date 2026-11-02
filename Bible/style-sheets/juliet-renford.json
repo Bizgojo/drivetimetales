@@ -1,0 +1,37 @@
+{
+  "author": "Juliet Renford",
+  "model": "Emily Henry",
+  "summary": "Emily Henry-style contemporary romance with the emphasis on small-town and found-family warmth: a big-city heroine lands in a quirky small town, gets adopted by its eccentric residents, and falls for someone who belongs there. Of the three Endless Tales Emily Henry voices, Juliet Renford is the coziest; the wit is still sharp, but community, rituals, and belonging carry the story.",
+  "sentences": "Mostly 8-18 words with a lively, observational rhythm; comic lists of town details; an occasional long, warm sentence when the heroine falls for the place.",
+  "pacing": "Medium; scenes alternate between romance beats and community set pieces (a festival, a book club, a town meeting gone wrong). Time moves over a summer or a season.",
+  "vocabulary": "Contemporary, witty, affectionate; specific local color (bait shop, diner pie case, the one stoplight). No snobbish put-downs, no crude language.",
+  "dialogue": "About 55%. Banter between the leads plus a chorus of colorful townspeople with distinct speech habits; dialogue reveals kindness behind gruffness. Clear tags for audio, with each townsperson named on their first line.",
+  "narration": "First person past from a heroine who arrives a little lonely and judgmental and narrates her own thawing with humor. Notices people's rituals and small kindnesses; mentions her old city life only for contrast.",
+  "openings": "Opens with a sharp, funny line about arriving somewhere she didn't plan to be, then a first encounter with a local who already knows her business.",
+  "scene_endings": "Ends on a warm community beat or a quiet romantic moment, with a gentle laugh.",
+  "ending": {
+    "type": "Happily ever after with found family",
+    "finale": "The heroine chooses to stay, or to make a place for herself, and the whole town shows up for the declaration. The last image is a town ritual she is now part of.",
+    "episode": "Ends on a jolt: news that a beloved town spot will close, the hero's surprising past emerging, or her old life calling with an offer she can't easily refuse."
+  },
+  "signature_moves": [
+    "An ensemble of eccentric locals with running gags",
+    "Town rituals (festival, trivia night, Sunday supper) as story anchors",
+    "Outsider heroine slowly learning everyone's names and stories",
+    "Banter with a love interest everyone adores except her, at first",
+    "Found family stepping in where blood family failed",
+    "Closed-door romance; the big kiss happens in public or at the door"
+  ],
+  "avoid": [
+    "Mocking small-town people",
+    "Making city life purely villainous",
+    "Explicit intimacy",
+    "Too many named characters in one scene for audio",
+    "AI cliches like 'a tapestry of community'",
+    "Sugary sentiment without wit"
+  ],
+  "samples": [
+    "Within an hour of arriving in Bramble Hollow, three facts became clear: the town had one stoplight, nobody obeyed it, and every person in the diner already knew my name. \"You're the new librarian,\" said the waitress, Dot, setting down a pie I hadn't ordered. \"Interim,\" I said. \"Six weeks.\" \"Sure, honey.\" At the counter, a man in a flannel shirt snorted into his coffee. \"They all say six weeks,\" he said, without looking up.",
+    "\"Is it always like this?\" I asked. The whole town was crammed onto the lawn behind the firehouse, someone's uncle was tuning a fiddle badly, and four children were attempting to steal a pie off the judging table. Sam handed me a paper cup of lemonade. \"No,\" he said. \"Usually it's louder.\" Dot waved at us from across the lawn, then mimed something that looked suspiciously like a kiss, and I became very interested in my lemonade."
+  ]
+}

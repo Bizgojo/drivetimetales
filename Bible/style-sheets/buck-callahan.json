@@ -1,0 +1,35 @@
+{
+  "author": "Buck Callahan",
+  "model": "Larry McMurtry",
+  "summary": "Sprawling, elegiac Western with comic, tragic, deeply human characters: aging cowboys, tough women, fools, and wanderers crossing a hard country. Humor and death share the same page. The voice is wry, generous, and unsentimental about loss.",
+  "sentences": "Mixed: long, conversational, digressive sentences with dry punchlines, alternating with plain short statements of hard facts (deaths, losses).",
+  "pacing": "Leisurely and episodic, with sudden shocks; long stretches of talk and travel broken by abrupt violence or death. Time moves with the journey, weeks and seasons.",
+  "vocabulary": "Plain Western vernacular in dialogue; wry, literate narration. Ranching, horses, rivers, weather. Never modern slang or polished heroism.",
+  "dialogue": "About 50 percent dialogue. Old partners bicker and philosophize; humor is dry and cranky; women speak frankly. Light dialect (don't, ain't, reckon) without heavy phonetic spelling.",
+  "narration": "Omniscient third, past tense, moving among many characters with ironic affection. Narrator notices vanity, loneliness, small comedies, and the indifference of the land. Leaves out romanticized heroics.",
+  "openings": "Open on a character in a comic or odd situation in a dusty place, with a wry observation about them.",
+  "scene_endings": "Close on a wry line or a sudden hard fact stated plainly.",
+  "ending": {
+    "type": "Bittersweet and elegiac",
+    "finale": "Resolve with the journey completed at great cost; some beloved characters dead, others alone with memories. The ending is quiet, a little absurd, and deeply sad. Last image is a survivor carrying on in a vast, empty landscape.",
+    "episode": "Cliffhanger is sudden danger or loss: a river crossing gone wrong, a raider appearing on the ridge, or a beloved character struck down mid-sentence."
+  },
+  "signature_moves": [
+    "Pair two old partners whose banter reveals deep, unspoken loyalty",
+    "Let death arrive suddenly and be stated plainly",
+    "Use comic digressions about character quirks",
+    "Give women characters frank, unsentimental strength",
+    "Show the land as indifferent and enormous"
+  ],
+  "avoid": [
+    "Glamorized gunfighter heroics",
+    "Heavy phonetic dialect spelling",
+    "Modern idioms or psychological jargon",
+    "Using McMurtry's characters, places or the Lonesome Dove setup",
+    "Generic AI phrasing like 'a symphony of'"
+  ],
+  "samples": [
+    "Amos Truitt had been a Ranger for twenty-two years and a drunk for nineteen of them, and in his opinion the two professions complemented one another. \"Nobody ever shot a sober man for being boring,\" he said, which Wade did not understand and did not ask about. They were sitting on the porch of a store that had no customers, in a town that had no reason to exist, watching the heat come up off the flats like something cooked too long. Neither of them mentioned the river, or the boy who'd drowned in it.",
+    "\"I expect we'll lose a few crossing the Brazos,\" Wade said. \"Cattle or men?\" \"Both, likely.\" Amos nodded, as if this were a reasonable price for anything. \"Well, the cattle won't complain about it. And the men won't either, once it's done.\" \"That's a hard thing to say.\" \"It's a hard country,\" Amos said. \"I didn't make it. I'd have put more shade in it, and a good deal fewer snakes. Nobody asked me, though. Nobody ever does.\""
+  ]
+}

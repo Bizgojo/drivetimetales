@@ -1,0 +1,37 @@
+{
+  "author": "Lydia Cross",
+  "model": "Kami Garcia",
+  "summary": "Kami Garcia-style Southern Gothic paranormal romance: a small Southern town thick with secrets, old family curses, supernatural gifts, and a forbidden love between two young people on opposite sides of a mystery. Moody, atmospheric, and suspenseful, with a sweet, aching romance kept clean.",
+  "sentences": "Mostly 8-18 words; moody descriptive lines layered with short, tense fragments in moments of fear. A conversational, slightly wry young voice.",
+  "pacing": "Steady build of mystery and dread; each scene peels back a layer of the town's secrets or the curse. Romance and supernatural plot interlock, and time often counts down to a deadline (a birthday, a full moon).",
+  "vocabulary": "Southern texture without parody: magnolias, Spanish moss, humidity, church casseroles, old houses, cemeteries. Gothic words (shadow, hollow, whisper) used precisely. No graphic gore; profanity mild at most.",
+  "dialogue": "About 50%. Southern politeness masking menace, teasing between the leads, and elders who speak in warnings and riddles. Light dialect through word choice and rhythm ('y'all', 'fixing to'), never phonetic spelling. Clear tags.",
+  "narration": "First person past from a perceptive young narrator who is half insider, half outsider and notices what the town hides: rumors, glances, strange weather. Wry about small-town gossip, open about longing.",
+  "openings": "Opens on an unsettling detail in an ordinary setting (a recurring dream, a song no one else hears, a storm out of nowhere) and the narrator's sense that this town never changes.",
+  "scene_endings": "Ends on an eerie omen, an unanswered question, or a moment of connection interrupted by something supernatural.",
+  "ending": {
+    "type": "Bittersweet victory",
+    "finale": "The curse is broken or held at bay at a real cost, often a sacrifice by a family member or the hero. Love survives but is changed, and the final image is the town looking the same while the narrator knows it isn't.",
+    "episode": "Ends on a supernatural revelation or danger: a vision of someone's death, the curse's true terms uncovered, or the love interest's power turning against her."
+  },
+  "signature_moves": [
+    "A recurring song, dream, or object that carries prophecy",
+    "Old family histories revealed through letters or a locket",
+    "A gossiping town chorus contrasted with secretive supernatural households",
+    "Weather and nature reacting to emotion",
+    "Forbidden love tied to a deadline",
+    "Romance kept to longing and a kiss"
+  ],
+  "avoid": [
+    "Explicit content or graphic horror",
+    "Caricatured Southern dialect",
+    "Info-dumps of magic rules",
+    "Modern tech solving the mystery",
+    "AI tropes like 'an eerie silence fell' on repeat",
+    "Losing the narrator's wry humor"
+  ],
+  "samples": [
+    "Nothing ever changed in Cypress Fork. Same church bells. Same casseroles. Same old women on the same porches, watching the same road. So when the girl in the black coat walked into homeroom on the first day of school, it was like somebody had dropped a stone in still water. The ripples went everywhere. Then I heard the song. Faint, like a radio in another room. The same song I'd been dreaming about all summer.",
+    "\"You shouldn't be here,\" she said. The cemetery gate creaked behind me. Moss hung off the oaks like gray lace, and the air tasted like rain that hadn't decided to fall yet. \"Neither should you,\" I said. She almost smiled. Almost. Then the wind picked up, sudden and wrong, and every candle on the old graves flickered out at once. She grabbed my hand. Her fingers were ice. \"Don't move,\" she whispered. \"It knows your name now.\""
+  ]
+}

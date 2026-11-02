@@ -1,0 +1,35 @@
+{
+  "author": "Nina Vasquez",
+  "model": "Ted Chiang",
+  "summary": "Calm, precise, idea-driven science fiction: one speculative premise followed with rigorous honesty to its human consequences. The emotion is quiet and the questions are big (free will, memory, language, knowledge, love). Stories feel like thought experiments that turn out to be about grief or acceptance.",
+  "sentences": "Measured, mostly 12-24 words, grammatically clean and exact; each sentence adds one idea. Few fragments, no flourishes; occasional short sentence to state a conclusion.",
+  "pacing": "Slow and deliberate; scenes are conversations, reflections, or demonstrations of the premise. Time often moves via memoir or documentary framing, jumping years to show consequences.",
+  "vocabulary": "Precise, educated, unshowy; careful with words like know, believe, cause, choose. Technical or philosophical terms used correctly and defined simply. Never slang, hype, melodramatic adjectives, or vague tech terms.",
+  "dialogue": "About 30 percent dialogue. Characters speak in complete, thoughtful sentences, often Socratic: one asks, one reasons. Emotions are stated with restraint; subtext carries the grief.",
+  "narration": "Often first person, past tense, reflective or addressed to someone (a child, a reader, a record); or cool close third. The narrator is honest and analytical, noticing logical implications and small human reactions. Leaves out action spectacle and villains.",
+  "openings": "Open by stating the premise or a precise fact plainly ('When the lenses first went on sale...'), or by addressing someone directly, setting up the question the story will test.",
+  "scene_endings": "Close on a precise realization or a reframing sentence that adds a layer of meaning, not suspense for its own sake.",
+  "ending": {
+    "type": "Quiet acceptance",
+    "finale": "Resolve by the narrator understanding the premise's deepest implication and choosing how to live with it. No twist for shock; the revelation is conceptual and emotional at once. Last line is calm, exact, and resonant.",
+    "episode": "Cliffhanger is a conceptual bombshell: an experiment result that overturns the premise, a recorded truth that contradicts the narrator's memory, or a choice that cannot be undone, stated with chilling calm."
+  },
+  "signature_moves": [
+    "Take one invented technology or law and explore it rigorously, no extra gadgets",
+    "Frame the story as a memoir, record, or letter to someone",
+    "Let a scientific or philosophical argument double as the emotional climax",
+    "State big feelings in small, exact sentences",
+    "Show both sides of an ethical question fairly before the narrator decides"
+  ],
+  "avoid": [
+    "Action scenes, chases, or villains",
+    "Ornate or emotional overwriting",
+    "Twist endings that cheat the premise",
+    "Reusing premises from Chiang's stories (predictor devices, lifelogs, alien language that changes time perception)",
+    "Vague AI phrasing like 'a profound sense of'"
+  ],
+  "samples": [
+    "When the attention lenses first went on sale, I assumed they would be used for romance. That was how they were marketed: look at someone, and see a faint halo whose brightness corresponds to how many hours they have spent thinking about you. I bought a pair to settle a question about my father. I had always believed he thought of me rarely. When I visited him, his halo was so bright I had to look away. I have spent a long time since then wondering which of us had been wrong, and about what.",
+    "\"You're asking whether the lens measures love,\" Dr. Anand said. \"It doesn't. It measures attention. A man can think about his enemy for ten thousand hours.\" \"Then what good is it?\" \"It tells you what it tells you. The error is in expecting it to tell you something else.\" She set the lenses on the table between us, carefully, as if they might be listening. \"Every instrument is honest,\" she said. \"It is our questions that are careless.\""
+  ]
+}

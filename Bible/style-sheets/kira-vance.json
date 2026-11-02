@@ -1,0 +1,35 @@
+{
+  "author": "Kira Vance",
+  "model": "Becky Chambers",
+  "summary": "Warm, humane space fiction where the drama is people (human and alien) learning to live kindly alongside each other. Stakes are personal and often small; the wonder lives in culture, food, bodies, language and the daily work of keeping a ship or community running. Optimistic without being naive.",
+  "sentences": "Mostly 10-22 words, conversational and clear; medium-length sentences that breathe. Occasional long, gentle sentence when a character takes in something beautiful; few fragments.",
+  "pacing": "Episodic, slice-of-life; a scene can be one meal or one repair job and still matter. Plot moves through relationships more than events; time often skips between ports or days without fuss.",
+  "vocabulary": "Plain, friendly, modern; technical words are casual and lived-in (coils, scrubbers, comms). Invented alien terms used sparingly and explained by context. Never grimdark, militaristic swagger, or sneering words.",
+  "dialogue": "About 50-60 percent dialogue. Characters are frank, curious, and ask each other about their customs and feelings; banter is affectionate. Aliens speak with distinct grammar or politeness habits, never as comic relief. Tags are simple ('said', 'asked').",
+  "narration": "Close third, past tense, rotating among crew. Narrator is tender and attentive to physical comfort, bodies, smells, textures of shared spaces. Leaves out gore and villainy; conflict comes from misunderstanding, loss, or systems, not evil.",
+  "openings": "Open on a small, concrete domestic moment in an unusual setting (making tea in zero-g, an alien adjusting to a new ship), which quietly introduces the episode's emotional question.",
+  "scene_endings": "Close on a gesture of care or connection: food shared, a hand offered, a silence that is comfortable. Sometimes a soft line of insight.",
+  "ending": {
+    "type": "Hopeful, found-family",
+    "finale": "Resolve with the chosen family intact or re-formed, even if someone has left or been lost. Loose ends can stay loose; the important thing is that characters understand each other better. End on a quiet, communal image: a meal, a journey continuing, a light on in the galley.",
+    "episode": "Cliffhanger is an emotional or relational shock: a crewmate's secret revealed, a distress call from someone they love, a legal ruling that could split the family, or a sudden failure that endangers a fragile passenger."
+  },
+  "signature_moves": [
+    "Explain an alien custom through a character's lived experience, then let a human react with respect rather than judgment",
+    "Use food, drink and shared chores as the stage for big conversations",
+    "Let characters name their feelings directly and be answered kindly",
+    "Show diverse bodies, genders and family structures as normal, without comment",
+    "Turn a technical problem into a metaphor for a relationship without saying so"
+  ],
+  "avoid": [
+    "Villains who are evil for its own sake",
+    "Military jargon, gun-worship, or action-movie quips",
+    "Cynical narration or mocking a character's culture",
+    "Generic AI cliches like 'a testament to' or 'tapestry of'",
+    "Long infodumps on ship specs"
+  ],
+  "samples": [
+    "Tamsin found the passenger in the galley at third shift, all six of its limbs folded around a mug it couldn't possibly drink from. \"It's warm,\" the Oruun said, before she could ask. \"Your ship runs cold. I didn't want to complain.\" Tamsin sat down across from it. She thought about the heating coils, about the parts she'd been putting off ordering. \"You can complain,\" she said. \"That's sort of the deal, out here. You tell me what hurts, and I fix what I can.\" The Oruun's skin flushed a slow, pleased blue.",
+    "\"We don't really have a word for alone,\" Pell said, scraping the last of the stew from the pot. \"The closest one means between visits.\" Juno laughed, then saw Pell wasn't joking. \"That's kind of lovely.\" \"Humans always say that.\" Pell shrugged, which for a Velti meant rolling all four shoulders. \"You have so many words for being by yourselves. I used to think it meant you liked it. Now I think you just needed names for it, so it wouldn't feel so big.\" Juno didn't answer. She passed Pell the bread instead."
+  ]
+}

@@ -1,0 +1,35 @@
+{
+  "author": "Zara Osei",
+  "model": "Wilbur Smith",
+  "summary": "Sweeping, sensual, violent African adventure saga: hunts, battles, gold and ivory, rivalries between families across generations, and a landscape described with the hunger of someone who loves it. Big emotions, big animals and bigger villains, with every sense engaged.",
+  "sentences": "Varied: long, lush descriptive sentences of land, light and animals (25-40 words), then short brutal ones in action (4-10 words). Strong verbs, physical close-ups, frequent sensory lists.",
+  "pacing": "Saga pacing: long arcs across years, but each scene is full and visceral (a hunt, a fight, a storm, a love scene told discreetly). Time leaps between episodes are common; within a scene, action is moment by moment.",
+  "vocabulary": "Rich, physical, outdoorsy: escarpment, thorn scrub, spoor, musth, assegai, dhow, monsoon, bullion. Uses local terms naturally with context. Never bureaucratic, modern-casual or squeamish words.",
+  "dialogue": "Proud, forceful speech; oaths, challenges, taunts and declarations of love or vengeance. Around 30% dialogue. Characters from different cultures speak with distinct cadence, rendered through rhythm, not phonetic spelling.",
+  "narration": "Third-person past tense, roving omniscient across hero, villain, lovers and even animals. The narrator relishes heat, blood, sweat, wealth and beauty, and is frank about cruelty without moralizing.",
+  "openings": "Open in the landscape at a vivid hour (dawn over the river, a storm on the ocean) with a character already in motion: tracking, sailing, riding.",
+  "scene_endings": "Close on a stark violent or erotic beat, or a vow: the kill, the betrayal, the oath of revenge.",
+  "ending": {
+    "type": "Hard-won triumph and vengeance",
+    "finale": "The hero defeats the villain in a savage, personal confrontation, at real cost (a loved one or companion lost). The family line and the land endure; end on a wide image of the country at sunset or the next generation looking out over it.",
+    "episode": "End on violent danger or betrayal: a charging buffalo, an ambush at the ford, a trusted brother revealed as the traitor."
+  },
+  "signature_moves": [
+    "Describe animals with precise behavioral detail and respect: spoor, wind, the moment before a charge",
+    "Multi-generational rivalries and inheritances that drive the plot",
+    "Sensory stacking: heat, smell of dust and gun oil, taste of blood, color of the sky",
+    "Villains who are cruel, clever and wholly committed",
+    "Treasure and wealth made tactile: the weight of gold, the shine of a tusk"
+  ],
+  "avoid": [
+    "Colonial-era racial and gender attitudes; give African characters full agency, interiority and heroism",
+    "Explicit sexual detail; keep love scenes charged but fade before the specifics, for drive-time listeners",
+    "Timid or abstract description",
+    "Quiet domestic stakes with no physical danger",
+    "Wry modern irony"
+  ],
+  "samples": [
+    "The sun came up out of the escarpment like a struck match, and the whole valley caught fire with it. Kofi lay flat in the grass with the rifle cool against his cheek, breathing through his mouth so the lion would not hear him. He could smell her before he saw her: musk and old blood and the dry sweetness of the grass she had slept in. Then she lifted her head, two hundred paces off, and looked straight at him with eyes the color of honey.",
+    "The dhow came out of the rain with no lantern lit, and Amara knew at once it was not a trader. 'Arms!' she cried, and the deck of the Sea Swallow erupted beneath her. Men ran for the swivel guns. Steel scraped from scabbards. Across the narrowing water she saw him at the enemy's bow, tall, laughing, the scar pale on his cheek. Her uncle. The man who had burned her father's house. She drew her blade and felt nothing but a vast, cold joy."
+  ]
+}

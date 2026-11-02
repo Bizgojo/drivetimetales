@@ -1,0 +1,35 @@
+{
+  "author": "Silas Cutter",
+  "model": "Shirley Jackson",
+  "summary": "Quiet, psychological horror in which an ordinary town, house or family becomes menacing through social pressure, ritual and a fragile mind. Cool, precise, deceptively polite prose; the true horror is often people, and the supernatural is never confirmed.",
+  "sentences": "Neat and controlled, 8-20 words, with a calm, almost cheerful rhythm that makes dark content more chilling; occasional obsessive repetition in a disturbed character's thoughts.",
+  "pacing": "Slow, measured build through everyday routines (tea, chores, neighbors calling) until one sudden, quiet act of cruelty or madness. Very little happens on the surface; tension is in the pressure.",
+  "vocabulary": "Plain, domestic, mid-century tone: kitchen, sugar, lawn, gloves, the village store. No gore, no profanity, no modern slang; menace hides in mild words like 'nice', 'proper', 'everyone'.",
+  "dialogue": "Clipped, polite, passive-aggressive; neighbors' small talk carries threat and exclusion. Tags simple; dialogue about 40%, often with characters ignoring what was just said.",
+  "narration": "Close third or first person, often a lonely, imaginative woman whose perceptions blur into fantasy. Notices manners, possessions and small social slights; leaves out the explanation of whether the house or the mind is haunted.",
+  "openings": "Open with a calm, oddly confident statement or a pleasant ordinary day that is subtly off ('Everyone in town agreed that the Pembertons' house should never have been repainted.').",
+  "scene_endings": "End on a small, unsettling line delivered pleasantly, or a character's private, too-cheerful thought.",
+  "ending": {
+    "type": "Quietly devastating",
+    "finale": "The community or the house closes over the protagonist, through madness, exclusion or a calm act of violence, and it is presented as normal, even happy. No explanation; the last line is serene and terrible.",
+    "episode": "End on a quietly shocking act or remark in a mundane setting, such as a neighbor revealing they know a secret, or the narrator calmly doing something wrong."
+  },
+  "signature_moves": [
+    "Horrifying events reported in a mild, matter-of-fact tone",
+    "Community rituals or customs that everyone accepts without question",
+    "A protagonist's fantasy life leaking into reality",
+    "Repetition of a phrase or rhyme as the mind frays",
+    "A house treated almost as a living character"
+  ],
+  "avoid": [
+    "Explicit gore, monsters or jump scares",
+    "Explaining the haunting or the madness",
+    "Loud melodrama or screaming",
+    "Modern references and slang",
+    "Heroic resistance that triumphs"
+  ],
+  "samples": [
+    "On the morning of the harvest supper, Mrs. Ainsley baked three pies and gave none of them to her sister. The town had already decided about her sister, and it would not do to be seen disagreeing. 'Lovely weather,' said the grocer, wrapping the butter. 'Lovely,' said Mrs. Ainsley. Outside, the children were already hanging paper lanterns on the Hollis porch, which stood empty, the way it would stand empty all winter now. Nobody had told them to. Nobody ever had to.",
+    "Constance decided that the house liked her. It was a silly thought, and she was a sensible woman, but the stairs did not creak under her feet the way they creaked under the others. The door to the blue room opened when she touched it. 'You're making it up,' said her cousin Harold at dinner, and everyone laughed. Constance laughed too. Later, alone, she whispered, 'I'm home,' and the hallway grew very still, as if it were listening."
+  ]
+}

@@ -1,0 +1,37 @@
+{
+  "author": "Elena Hartwell",
+  "model": "K.A. Tucker",
+  "summary": "K.A. Tucker-style emotional contemporary romance: a heroine pulled out of her polished life into a rugged, unfamiliar place, a gruff man who unsettles her, and a family wound (often a parent) that has to be faced before love can work. Grounded, sensory, and quietly funny, with real grief and an ending that feels earned rather than sugared.",
+  "sentences": "Mostly 8-18 words, clean and direct; occasional longer sentences for landscape or emotional spillover. Fragments for sharp reactions.",
+  "pacing": "Slow build over many scenes; daily routines and setting do real work. Time moves in days and weeks; the romance and the family-reconciliation threads advance together, with one major setback two-thirds in.",
+  "vocabulary": "Plain, modern, practical; specific outdoor and working-life nouns (bush planes, wood stoves, mud season, diesel). The heroine's snarky city asides contrast with terse local speech. No purple prose.",
+  "dialogue": "About 55% dialogue. Prickly, teasing exchanges between a guarded hero of few words and a talkative heroine; locals speak plainly with light regional flavor, never phonetic dialect. Clear tags for audio.",
+  "narration": "First person past, sometimes alternating with the hero. The narrator is self-aware about her own snobbery and fear, notices weather, terrain, and what people don't say, and skips glamour.",
+  "openings": "Starts in motion during an upheaval: arriving somewhere, receiving bad news, a phone call that upends things, often with a wry line about how badly prepared she is.",
+  "scene_endings": "Closes on an unresolved look, a gruff kindness, or a small realization about the parent or the place.",
+  "ending": {
+    "type": "Bittersweet happily ever after",
+    "finale": "Love wins, but something is lost along the way, often a parent's time running out. The heroine chooses a new life on her own terms, and the last image ties the landscape to the person she has become.",
+    "episode": "Ends on danger or an emotional jolt: a storm closing in, a diagnosis revealed, or the hero's hidden reason for his coldness surfacing."
+  },
+  "signature_moves": [
+    "Fish-out-of-water humor that slowly turns into belonging",
+    "Gruff hero showing care through practical acts (fixing, fetching, waiting up)",
+    "A parent-child reconciliation running parallel to the romance",
+    "Place as a character, with weather that forces proximity",
+    "Calls or texts to someone back home that contrast the two lives",
+    "Romantic moments that fade out at the bedroom door"
+  ],
+  "avoid": [
+    "Instant love or instant forgiveness",
+    "Glossy, magazine-style descriptions",
+    "Explicit intimacy",
+    "Heavy phonetic dialect for locals",
+    "Over-explaining feelings the action already shows",
+    "AI tics like 'a dance of' or 'the weight of unspoken words'"
+  ],
+  "samples": [
+    "The plane was smaller than my walk-in closet back home, and it smelled like coffee and gasoline. \"You'll want to take off the heels,\" the pilot said, not looking up from his clipboard. \"I'll be fine.\" \"There's a gravel strip and a creek crossing. You won't.\" I took off the heels. He handed me a pair of rubber boots, two sizes too big and still warm from the cab of his truck, and I decided right then that I would hate him for at least a week.",
+    "My father didn't say hello. He said, \"You cut your hair.\" \"Four years ago.\" \"Huh.\" He went back to splitting wood, and I stood in the yard with my suitcase sinking into the mud, waiting for the rest of the conversation. It didn't come. Across the yard, Cole leaned on the porch rail, watching like this was the most interesting thing he'd seen all winter. \"He's glad you're here,\" he said quietly. \"How can you tell?\" \"He hasn't asked you to leave.\""
+  ]
+}

@@ -1,0 +1,35 @@
+{
+  "author": "Cal Merritt",
+  "model": "Jack London",
+  "summary": "Muscular naturalism: men and animals tested by an indifferent wilderness, where cold, hunger and the sea decide who lives. The prose is vigorous and declarative, but it pauses for blunt philosophical statements about life, instinct and survival.",
+  "sentences": "Mostly 8-20 words, strong subject-verb openings; short hammer-blow sentences for danger; one long rolling sentence with repeated 'and' clauses when nature overwhelms. Occasional aphoristic one-liners about life and death.",
+  "pacing": "Steady physical progression: a journey, a task, a fight, measured in miles, hours, degrees below zero. Each scene escalates one hardship; time moves in hard units (days on the trail, watches on deck) with little skipped except rest.",
+  "vocabulary": "Plain, physical, early-20th-century register: frost, traces, gunwale, flank, sinew, sun, ice, fang. Big abstract nouns used sparingly for weight: Life, the Wild, Instinct. Never modern slang, therapy language or cute understatement.",
+  "dialogue": "Sparse, terse, practical; men speak in short commands and grunts, with light period dialect ('I reckon', 'mebbe'). About 20% dialogue; the rest is action and environment. Silence is common and meaningful.",
+  "narration": "Third-person, past tense, often omniscient, comfortable entering an animal's mind in instinctual terms. The narrator is stern and unsentimental, noticing temperature, terrain, muscle, fatigue and appetite, and leaving out romance and interior chatter.",
+  "openings": "Open on the conditions: the cold, the river, the gale, the land, stated flatly, then place a small figure inside them.",
+  "scene_endings": "Close on a hard physical fact or a stark verdict: a dog that does not rise, a fire that goes out, a man who goes on.",
+  "ending": {
+    "type": "Survival or death, unsentimental",
+    "finale": "Resolve by the law of the environment: the strong, adapted or lucky survive and are changed; the weak or proud are taken without malice. Loose ends are cut, not tied. End on a large, cold image of the land or sea continuing, indifferent.",
+    "episode": "End on sudden physical peril: ice cracking under the sled, the last match failing, a predator stepping out of the trees."
+  },
+  "signature_moves": [
+    "Personify nature as vast and indifferent, never as angry or kind",
+    "Enter an animal's point of view and render its thinking as instinct and memory, not human reasoning",
+    "Count things: miles left, matches left, fish left, degrees below zero",
+    "Drop a blunt one-sentence philosophical verdict after a death or a victory",
+    "Detail the physical craft of survival: lashing a sled, making a fire, reefing a sail"
+  ],
+  "avoid": [
+    "Cozy rescues or last-minute miracles",
+    "Modern idiom, irony or quippy banter",
+    "Long emotional introspection or therapy-speak",
+    "Lush adjective piles; keep description hard and functional",
+    "Making nature a villain with intentions"
+  ],
+  "samples": [
+    "The cold came down out of the north at noon, and it came without anger. That was the thing Halvorsen understood too late. The cold did not hate him. It did not know he was there. It moved over the land as the tide moves over a stone, and what was soft it made hard, and what was warm it made still. He felt it reach his fingers first. He beat his hands against his thighs and counted the miles to the cabin. Eleven. The cold counted them too, and it was patient.",
+    "The pup did not know the word for hunger, but he knew the thing itself. It lived in his belly like a second animal, and it had teeth. When the old dog went down in the traces and did not rise, the pup watched the men cut her loose. Nobody spoke. One man looked at the sky. The other looked at the pup. And the pup understood, in the deep place beneath thought, that the world had grown smaller by one, and that he must grow larger to fill it."
+  ]
+}

@@ -1,0 +1,35 @@
+{
+  "author": "Diana Reeve",
+  "model": "Elizabeth Strout",
+  "summary": "Plainspoken, piercing small-town drama about the inner lives of ordinary people, often prickly older women, in a coastal New England town. Simple sentences open onto sudden, devastating insight; loneliness and love are found in tiny moments. Interior and psychologically sharp, in contrast to the more external Frances Adler voice.",
+  "sentences": "Short to medium (6-18 words), plain and direct, often beginning with a name and an action. Occasional run-on with 'and' when emotion rises; simple statements like 'She did not like him. She had never liked him.'",
+  "pacing": "Quiet and episodic: each scene is a single encounter (a grocery store, a funeral, a hospital visit) that turns on one realization. Time jumps between linked episodes; the present is soaked in memory.",
+  "vocabulary": "Plain, everyday, regional New England touches (harbor, cove, the supermarket, church supper). Precise emotional words used sparingly. Never ornate, academic or therapy jargon.",
+  "dialogue": "Blunt, awkward, sometimes cruel, often funny; people say the wrong thing, or say a small thing that means everything. About 35% dialogue, simple tags.",
+  "narration": "Close third, past tense, sliding into a character's thoughts ('she thought'). The narrator notices small gestures, clothes, light on water and unspoken resentments; it skips plot mechanics and sentimentality.",
+  "openings": "Open with a character's name and a plain fact about their day or temperament.",
+  "scene_endings": "Close on a sudden, quiet insight or an unexpected flash of tenderness.",
+  "ending": {
+    "type": "Quiet epiphany",
+    "finale": "Resolve with a small, transformative moment of connection or self-recognition: an apology, a hand held, a realization that one was loved. End on a plain sentence about the light, the water or a simple act, carrying great weight.",
+    "episode": "End on a quietly devastating revelation: a single sentence of confession, a diagnosis, a discovered letter that changes how a marriage is understood."
+  },
+  "signature_moves": [
+    "Name-led sentences: 'Ruth Haskell had never cared for Easter.'",
+    "Sudden lightning insight after mundane detail",
+    "Prickly, unlikable protagonists rendered with deep compassion",
+    "Repetition of a simple phrase for emotional emphasis",
+    "Linked episodes where side characters from earlier reappear changed"
+  ],
+  "avoid": [
+    "Lush description or metaphor clusters",
+    "Melodramatic incidents told at length",
+    "Neat moral lessons",
+    "Sarcastic modern humor",
+    "Explaining feelings at length; one clear sentence is enough"
+  ],
+  "samples": [
+    "Ruth Haskell had never cared for Easter. She did not like the hats, and she did not like the lilies, which made her sneeze, and she did not like the way the minister said 'risen' as though he had personally arranged it. But she went, because Harold had gone, and Harold was dead now, and it seemed to her that someone ought to sit in his pew. She sat. The light came through the window, yellow and plain. She thought: I am so tired.",
+    "'You were always hard on her,' Ellen said. They were standing in the parking lot of the funeral home. The wind came off the harbor and pulled at Ellen's scarf. Ruth did not answer right away. She watched a gull drop onto the roof of a car and walk across it as though it owned the car. 'I know,' she said finally. And then, because it was true, and because there was no one left to hide it from: 'I thought it would make her strong.'"
+  ]
+}

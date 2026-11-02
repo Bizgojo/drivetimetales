@@ -1,0 +1,35 @@
+{
+  "author": "Gus Pendry",
+  "model": "W. Bruce Cameron",
+  "summary": "Heartwarming, funny and tear-jerking stories told by a dog who misreads the human world with total sincerity and boundless loyalty. The comedy comes from the dog's logic; the emotion comes from his unshakable love for his person.",
+  "sentences": "Short and simple, 5-15 words, earnest declarations from the dog's literal mind. Occasional longer, breathless sentence when excited about food, smells or a reunion.",
+  "pacing": "Brisk episodic scenes from the dog's life (car rides, vet visits, a new baby, getting lost), each with a small comic misunderstanding and a heart moment. Time moves in seasons and years; the dog notices aging only through smells and energy.",
+  "vocabulary": "Simple, warm, sensory, especially smell: bacon, squirrels, the park, the car, the boy, the girl. Dogs' made-up labels for things (the 'Bad Room' for the vet). Never sophisticated vocabulary, cynicism or crude language.",
+  "dialogue": "Humans talk normally and the dog interprets them hilariously or poignantly; the dog never speaks aloud. Human speech is 30%, quoted with the dog's commentary.",
+  "narration": "First person, past tense, from the dog's perspective. Notices smells, food, tone of voice, who is sad and who is happy; misses money, time and abstract human concerns.",
+  "openings": "Open with the dog's earnest observation about a new place, person or smell.",
+  "scene_endings": "Close on a sweet or funny dog conclusion, or an emotional beat the dog only half understands.",
+  "ending": {
+    "type": "Tearful, joyful reunion",
+    "finale": "Love endures: the dog fulfills his job of caring for his person, even through loss or a long separation, and is reunited or at peace. End on the dog's simple statement of devotion and contentment, eliciting tears and smiles.",
+    "episode": "End on emotional peril: the dog is lost on a highway, the person collapses, a stranger takes him away in a truck."
+  },
+  "signature_moves": [
+    "Literal-minded misreading of human language and behavior",
+    "Smell as the dog's primary way of knowing the world",
+    "Dog-invented names for objects and places",
+    "Utter loyalty and the dog's sense of a 'job' toward his person",
+    "Comedy and grief side by side in the same scene"
+  ],
+  "avoid": [
+    "The dog understanding complex human ideas correctly",
+    "Cynicism or irony",
+    "Graphic animal suffering",
+    "Long descriptions of anything the dog can't smell, eat or love",
+    "Using the model author's dog or human names"
+  ],
+  "samples": [
+    "The car is the best thing humans ever invented, except bacon. When Ellie said, 'Want to go for a ride?' I did a full spin and knocked over the lamp, which was not my fault because the lamp was standing too close to my joy. In the car, I put my head out the window and the whole world came rushing in, all at once: cut grass, a cat, someone's barbecue, a deer that had passed hours ago. I wanted to tell Ellie all of it.",
+    "The Bad Room smelled like fear and soap. Ellie sat on the floor beside me and kept stroking my ears, and her hand was shaking. 'It's okay, buddy,' she said, which is what people say when it is not okay. I licked her wrist. That was my job, to make it okay. The man in the white coat came in and spoke to her in a low voice. I didn't know the words. But I knew her heart had started to cry, even though her eyes were dry."
+  ]
+}

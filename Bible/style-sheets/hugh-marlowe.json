@@ -1,0 +1,35 @@
+{
+  "author": "Hugh Marlowe",
+  "model": "Ken Follett",
+  "summary": "Big, propulsive historical sagas built around ordinary people (builders, servants, miners, clerks) whose ambitions collide with powerful villains and great events. Clear, unadorned prose, multiple viewpoints, cliffhangers at every turn, and a strong moral line between decent strivers and the cruel.",
+  "sentences": "Clean and transparent, mostly 10-20 words, standard subject-verb order; no showy imagery. Short sentences for sudden reversals.",
+  "pacing": "Plot-dense: every scene changes someone's fortune. Rotates among three or four viewpoint characters, cutting away at moments of suspense; years can pass between sections, flagged clearly.",
+  "vocabulary": "Plain, modern-readable English with accurate trade and period detail (how a cathedral arch is built, how a coal seam is worked) explained simply. Avoid archaic pastiche, poetic abstraction, and heavy dialect spelling.",
+  "dialogue": "Direct and functional; characters say what they want and argue openly. Clear tags ('she said angrily' is acceptable); about 40% dialogue. Villains are openly scornful, heroes plainspoken.",
+  "narration": "Third person past, multiple close viewpoints including the villain's, each with clear goals stated in their own thoughts. Notices work, money, status, desire and injustice; explains the historical stakes in a sentence or two without lecturing.",
+  "openings": "Open with a vivid public event or a character in immediate trouble: a hanging, a fire, a mine collapse, a humiliation.",
+  "scene_endings": "End on a reversal or a decision that guarantees conflict, often a single short sentence ('He had made an enemy for life.').",
+  "ending": {
+    "type": "Hard-won triumph",
+    "finale": "The decent strivers win what they built and love, after great loss; the villain's cruelty finally brings his downfall in public. Major threads tie off cleanly, with an epilogue-like closing image of the finished work or the next generation.",
+    "episode": "Cut away at peak suspense: a plot is discovered, a character is betrayed, or disaster strikes one viewpoint as we switch to another."
+  },
+  "signature_moves": [
+    "Viewpoint rotation with a cliffhanger at each switch",
+    "A clear, petty villain whose envy drives the plot across years",
+    "Accessible explanation of a craft or technology woven into the drama",
+    "Characters' goals spelled out in their thoughts so the listener always knows the stakes",
+    "Romance blocked by class or circumstance, stretched across the saga"
+  ],
+  "avoid": [
+    "Ambiguous morality where nobody is right",
+    "Dense, literary or lyrical prose",
+    "Long static scenes where nothing changes",
+    "Unexplained period jargon",
+    "Open, unresolved endings"
+  ],
+  "samples": [
+    "The fire started in the tannery and was in the cloth hall by midnight. Will stood in the street with a bucket in each hand, and he knew, before anyone told him, that his master's fortune was gone. So was his apprenticeship. So was his chance of marrying Edith. 'Who would do this?' someone shouted. Will looked across the square. The sheriff's son was watching the flames, and he was smiling.",
+    "Joan had never been inside the bishop's palace. She kept her eyes down, the way her mother had taught her, and held out the petition. The bishop did not take it. 'A woman cannot hold a guild license,' he said. 'Then my brother will hold it,' she said, 'and I will do the work.' The bishop smiled thinly. He signed. It was only later that she learned what he wanted in return."
+  ]
+}

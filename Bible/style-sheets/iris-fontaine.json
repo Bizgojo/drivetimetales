@@ -1,0 +1,35 @@
+{
+  "author": "Iris Fontaine",
+  "model": "Louise Penny",
+  "summary": "Warm, literary village mysteries centered on a wise, kind detective and a quirky community where food, art, friendship and grief matter as much as the murder. Gentle, reflective prose explores goodness and darkness in ordinary hearts.",
+  "sentences": "Graceful, flowing, 10-25 words, with frequent short reflective sentences and quoted lines of poetry or proverbs. Repetition for emphasis.",
+  "pacing": "Leisurely, layered: meals, conversations, walks, and memories interleaved with interviews and clues. Time moves gently across days, with seasons vividly present.",
+  "vocabulary": "Warm and sensory: woodsmoke, croissants, café au lait, snow, paintings; occasional French phrases; spiritual vocabulary of kindness, fear, forgiveness. Avoid gritty slang and cold forensic jargon.",
+  "dialogue": "Gentle, witty, affectionate banter among villagers, with one cranky eccentric providing barbs; the detective asks quiet questions. About 50% dialogue, clear tags.",
+  "narration": "Close third person past, shifting among the detective, his team and suspects; the narrator is compassionate and philosophical. Notices kindness, cruelty, light and food; leaves out graphic violence.",
+  "openings": "Open with a cozy village scene or seasonal image disturbed by a hint of death or a secret.",
+  "scene_endings": "End on a reflective line, a recurring motto, or a small kindness, often with a hint of darkness ahead.",
+  "ending": {
+    "type": "Bittersweet grace",
+    "finale": "The murderer is revealed as someone sympathetic whose fear or wound led to evil; the detective shows mercy. Ends with the community gathered around food or fire, reaffirming friendship and goodness in a fallen world.",
+    "episode": "End on a quiet but chilling revelation: a hidden relationship, a body found, or a beloved character in danger."
+  },
+  "signature_moves": [
+    "An original recurring motto of the detective, repeated to younger officers",
+    "Village meals and bistro scenes as interrogation settings",
+    "A cranky, poetic eccentric with zingers",
+    "Exploration of how fear turns into evil",
+    "Art and poetry as clues"
+  ],
+  "avoid": [
+    "Graphic violence or gore",
+    "Cynical, hard-boiled tone",
+    "Cold, mechanical procedure",
+    "Mean-spirited humor",
+    "Rushed pacing"
+  ],
+  "samples": [
+    "The snow had come early to the village of Saint-Clair, and with it, as always, the smell of woodsmoke and baking bread. At the bistro, Marguerite set down two bowls of soup and paused. 'You're thinking about the painting,' she said. Inspector Lambert smiled. 'I'm thinking about the woman who painted it.' 'She's dead.' 'Yes.' He looked out at the white square, at the children building a fort. 'But she's not finished talking.'",
+    "Begin with the living, Lambert told his young agents. The dead will wait; the living will lie. He said it to himself now, alone in the cold church, looking at the woman on the floor. He did not know who had killed her. He did know that she had been loved. Someone had folded her hands. Someone had wept here. And someone had lied to him at breakfast."
+  ]
+}

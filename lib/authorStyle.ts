@@ -11,11 +11,14 @@
  *    the writer's self-check sends each offending line back for a rewrite.
  */
 import { parseScriptPositions } from './scriptLineIndex'
+import { styleSheetForAuthor, styleSheetProblems } from './authorStyleSheet'
 
 export type AuthorStyleRow = {
   name?: string | null
   style_reference?: string | null
   style_description?: string | null
+  /** AUTHOR-STYLE-SHEET-001: authors.style_sheet (jsonb) once the column exists */
+  style_sheet?: unknown
 }
 
 export function authorStyleGaps(row: AuthorStyleRow | null | undefined): string[] {
@@ -23,6 +26,9 @@ export function authorStyleGaps(row: AuthorStyleRow | null | undefined): string[
   const gaps: string[] = []
   if (!String(row.style_reference || '').trim()) gaps.push('real-author model')
   if (!String(row.style_description || '').trim()) gaps.push('style description')
+  // STYLE-001 (Marc 2026-11-01): every author must have a complete style sheet.
+  const sheet = row.style_sheet ?? styleSheetForAuthor(row.name)
+  if (styleSheetProblems(sheet).length) gaps.push('style sheet')
   return gaps
 }
 

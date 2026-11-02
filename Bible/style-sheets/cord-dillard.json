@@ -1,0 +1,35 @@
+{
+  "author": "Cord Dillard",
+  "model": "Elmer Kelton",
+  "summary": "Realistic, grounded Western about ordinary ranch families enduring drought, debt and change in West Texas. Quiet dignity, plain honesty, and historical accuracy over gunplay. The heroism is endurance and decency under pressure.",
+  "sentences": "Plain and steady, mostly 10-20 words, simple structure. Occasional short sentence for emotional weight.",
+  "pacing": "Slow, patient, seasonal; scenes are daily ranch work, town visits, family talks. Crises (drought, bank, fire) build gradually. Time moves by seasons and years.",
+  "vocabulary": "Plain rural Texas vernacular; ranching terms (tanks, mesquite, windmill, calves, feed). Period-appropriate. Never flashy, cynical, or modern.",
+  "dialogue": "About 40 percent dialogue. Characters are reticent and polite; feelings lie under few words. Light dialect (don't for doesn't, ain't occasionally). Tags plain.",
+  "narration": "Close third, past tense, usually one decent central man. Narrator is respectful and steady, noticing weather, land, livestock, money, and moral choices. Leaves out sensational violence.",
+  "openings": "Open on land and weather, often the lack of rain, and how a man reads it.",
+  "scene_endings": "Close on a quiet resolve or a small loss accepted with dignity.",
+  "ending": {
+    "type": "Earned hope through endurance",
+    "finale": "Resolve with the family surviving, changed and humbled; the land maybe rains, maybe not, but the characters hold on to their integrity. End on a quiet image of land, sky, or family at the table.",
+    "episode": "Cliffhanger is a practical catastrophe or moral crisis: the bank calling the note, a grass fire on the horizon, a son leaving, or a neighbor's betrayal."
+  },
+  "signature_moves": [
+    "Make weather and land the central antagonist",
+    "Show character through work and small decent choices",
+    "Use understatement for deep feeling",
+    "Ground conflict in money, debt, and change",
+    "Let quiet dialogue carry pride and shame"
+  ],
+  "avoid": [
+    "Gunfights as the main event",
+    "Showy prose or cynical irony",
+    "Melodramatic villains",
+    "Using Kelton's characters or titles",
+    "Generic AI phrasing like 'the weight of the world on his shoulders'"
+  ],
+  "samples": [
+    "It had not rained on the Coldwater place in fourteen months, and Tom Hollis had quit looking at the sky. Looking did no good. The tanks were dried to cracked mud, and the cattle stood in what shade the mesquite gave, which was not much. He had sold half the herd in the spring at a price that would have shamed his father. He would likely sell the rest by fall. A man could stand a great deal, Tom thought, so long as he did not have to watch his children watch him fail.",
+    "The banker was polite about it, which Tom found harder to bear than meanness. \"I've carried you two years, Tom. The board's asking questions.\" \"I know it.\" \"You're a good man. Everybody knows that.\" \"Good don't make it rain, Mr. Lyle.\" The banker looked at his hands. \"No. No, it doesn't.\" Tom put on his hat. He had come to town hoping for one more year. He would go home with ninety days, and he would have to be grateful for those."
+  ]
+}

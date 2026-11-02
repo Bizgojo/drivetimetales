@@ -1,0 +1,37 @@
+{
+  "author": "Sophie Calder",
+  "model": "Ali Hazelwood",
+  "summary": "Ali Hazelwood-style STEM romantic comedy: a brilliant, awkward woman scientist, a tall, grumpy, secretly devoted academic rival or colleague, fake-dating or forced-proximity setups, and nerdy humor rooted in lab life. Funny, sincere, and quietly pointed about women in science; for Endless Tales the heat is fade-to-black and the spark comes from banter and the hero's devoted gestures.",
+  "sentences": "Short to medium (6-16 words) with comic overthinking; parenthetical asides and science metaphors; anxious run-on spirals when the heroine panics.",
+  "pacing": "Brisk; scenes are lab meetings, conferences, grant deadlines, and awkward social events. Each scene adds a misunderstanding or a moment of the hero's quiet support.",
+  "vocabulary": "Contemporary, with accurate but accessible science jargon (p-values, grant proposals, centrifuges, peer review) used for jokes and metaphors. Self-deprecating humor, no crude language.",
+  "dialogue": "About 55%. A deadpan hero who speaks in short, literal sentences versus a rambling heroine; academic power dynamics surface in conversation. Clear tags and distinct voices for audio.",
+  "narration": "Close third or first person past from the heroine, who narrates her social anxiety and scientific brilliance with humor. Notices the hero's height, forearms, and kindness; skips heavy technical detail.",
+  "openings": "Opens with an awkward incident (kissing a stranger to prove a point, spilling coffee on a famous professor) and the heroine's internal panic.",
+  "scene_endings": "Ends on a deadpan line from the hero or a sudden realization about his feelings, framed as a hypothesis.",
+  "ending": {
+    "type": "Happily ever after",
+    "finale": "The heroine succeeds professionally on her own merits, and the hero's devotion is fully revealed in a sincere confession phrased with nerdy precision. The last image is the two of them together in a lab or at a conference.",
+    "episode": "Ends on a twist: overhearing the hero apparently dismiss her work, a rival stealing her research, or the fake relationship going public at the worst moment."
+  },
+  "signature_moves": [
+    "Science metaphors for attraction ('statistically significant')",
+    "A grumpy, literal hero who is secretly the most supportive person in the room",
+    "The heroine's anxious internal monologue",
+    "Academic stakes (funding, tenure, a conference talk) as plot",
+    "Supportive female friendships in the lab",
+    "Intimacy that fades to black"
+  ],
+  "avoid": [
+    "Explicit intimacy",
+    "Inaccurate or condescending science",
+    "A hero who belittles her work",
+    "Jargon overload that confuses listeners",
+    "AI cliches like 'electricity coursed through her veins'",
+    "A heroine who succeeds only because of the hero"
+  ],
+  "samples": [
+    "In Mira's defense, the hypothesis had been sound. Step one: kiss a random man in the hallway so her ex would believe she'd moved on. Step two: never see the random man again. Unfortunately, step two had failed spectacularly, because the random man was now standing at the front of the lecture hall, introducing himself as her new grant reviewer. He was tall. He was unsmiling. And he was looking directly at her.",
+    "\"Your data is good,\" he said. Mira blinked. \"Good?\" \"Good.\" \"Just good?\" He considered. \"Exceptionally good.\" She waited for the but. In academia, there was always a but. Instead, he slid her proposal back across the desk, and she saw that he'd written notes in the margins, careful, generous notes, three pages of them. \"You didn't have to do this,\" she said. He looked faintly puzzled. \"Yes,\" he said. \"I did.\""
+  ]
+}

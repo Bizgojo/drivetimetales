@@ -1,0 +1,35 @@
+{
+  "author": "Edmund Farr",
+  "model": "Bernard Cornwell",
+  "summary": "Muscular, fast historical adventure told by a hard, capable soldier-hero, with battles rendered in visceral, tactical close-up. Plain, punchy prose, a soldier's gallows humor, and an honest sense of how filthy and frightening war really is.",
+  "sentences": "Short and declarative, mostly 6-15 words, strings of action verbs; fragments in combat ('Then the shields met.'). Longer sentences only to lay out terrain or tactics clearly.",
+  "pacing": "Every episode builds toward a fight or a march; scenes are lean and something physical always happens. Time moves forward briskly, skipping boring stretches with a one-line bridge ('We marched for three days.').",
+  "vocabulary": "Plain Anglo-Saxon words, earthy and concrete; accurate weapon and gear terms (shield wall, musket, bayonet, wad, ramrod) explained by context. Soldiers swear, but sparingly; never modern idioms or abstract jargon.",
+  "dialogue": "Blunt, profane, laconic; sergeants bark, officers bluster, the hero mocks them. Short exchanges, tags simple ('he said', 'I said'); about one-third dialogue, the rest action and narration.",
+  "narration": "First person past tense, often an old warrior looking back ('I was young then and stupid'). Notices weather, mud, fear, smells and the enemy's mistakes; skips romance detail and politics he doesn't care about.",
+  "openings": "Open with a blunt hook line or an immediate danger: rain, a ditch, an enemy on the ridge, someone about to die.",
+  "scene_endings": "End with a grim one-liner, a fatalistic proverb, or the first sound of the next fight.",
+  "ending": {
+    "type": "Victory with a cost",
+    "finale": "Win the decisive battle through the hero's cunning and brute courage, then pay for it with a loved comrade's death or a lost home. Villains die violently and satisfyingly; the last line is the older narrator's rueful reflection on fate.",
+    "episode": "Cut off on immediate peril: the enemy appears where they should not be, the hero is captured, or a blade is at his throat."
+  },
+  "signature_moves": [
+    "An original fatalistic refrain the hero repeats (a saying about luck or doom)",
+    "Battle told beat by beat: noise, crush, stink, blade, the single small detail that decides it",
+    "Older narrator foreshadowing ('I did not know then that he would die by spring')",
+    "Clear tactical explanation before a fight so the listener can follow it",
+    "A pompous, incompetent officer the hero must outwit"
+  ],
+  "avoid": [
+    "Flowery or lyrical description",
+    "Sanitized, bloodless combat",
+    "Long political or court scenes without a physical stake",
+    "Heroes who agonize at length over killing",
+    "Modern phrasing or anachronistic attitudes voiced approvingly"
+  ],
+  "samples": [
+    "Luck is a coin that only spends once. My father told me that, and then a spear proved it to him. The rain had been falling for two days when we saw their banners on the ridge. Six hundred men, maybe more. We had ninety. 'We should run,' said Brand. 'Where?' I asked. Behind us was the river, swollen and brown. So we locked shields, and I tasted iron in my mouth, the way you always do before the slaughter begins.",
+    "The sergeant's musket misfired. I heard the click, saw the flash in the pan and nothing more, and then the Frenchman was on him. I hit the man with my rifle butt. Twice. He went down in the mud and did not get up. 'Thank you, sir,' the sergeant said, as if I had passed him the salt. Smoke rolled over us. Somewhere a drum was beating the advance, and it was not ours."
+  ]
+}

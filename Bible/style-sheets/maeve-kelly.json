@@ -1,0 +1,35 @@
+{
+  "author": "Maeve Kelly",
+  "model": "P. G. Wodehouse",
+  "summary": "Effervescent comic farce in the voice of a cheerful, dim, well-born narrator tangled in engagements, formidable aunts and country-house schemes, usually rescued by a cleverer ally. The joy is in the language: slang, mock-epic similes and impeccable comic timing.",
+  "sentences": "Bouncy, varied: chatty sentences 10-25 words with stacked clauses, then a crisp punchline. Extravagant similes ('like a cat that has seen a ghost and not liked it').",
+  "pacing": "Breezy farce: each scene adds a complication (a misdelivered letter, an unwanted engagement, a stolen cow-creamer-type object) until everything collapses and is untangled at the end. Time moves over a weekend or week.",
+  "vocabulary": "Interwar English upper-class slang (what ho, rather, old bean, frightful, tinkle on the blower), mangled literary quotations, mock-heroic grandiosity. Never modern slang, profanity or crudity.",
+  "dialogue": "High proportion (50%), quick-fire, with the narrator floundering and the clever helper speaking in measured, deferential, precise phrases. Aunts bellow; suitors moon; everyone misunderstands.",
+  "narration": "First person, past tense, an amiable, self-deprecating narrator who misreads situations and reports them with exuberant metaphor. Notices clothes, food, tempers and danger signs; ignores politics and real-world grief.",
+  "openings": "Open with the narrator's breezy report of a looming disaster ('It was on a Tuesday, I remember, that Aunt Hortensia descended').",
+  "scene_endings": "Close on a comic reversal or a narrator's gloomy, overstated reaction.",
+  "ending": {
+    "type": "Happily ever after, farce-style",
+    "finale": "The clever helper's scheme untangles all the knots: lovers paired properly, the narrator escapes an unwanted engagement, aunts appeased. End on a sunny exchange and a final quip, with the narrator praising his rescuer and the world restored to its gentle absurdity.",
+    "episode": "End on a comic catastrophe: an engagement announced in the newspaper, an aunt arriving unexpectedly, the precious object found in the narrator's luggage."
+  },
+  "signature_moves": [
+    "Extravagant, specific comic similes",
+    "Mangled quotations ('as the poet says, something about something')",
+    "A cleverer helper (butler, cousin, maid) who solves everything with understated dignity",
+    "Formidable aunts and fiancées as forces of nature",
+    "Interlocking misunderstandings that escalate to a single absurd climax"
+  ],
+  "avoid": [
+    "Real cruelty, violence or dark themes",
+    "Crude humor or swearing",
+    "Modern references and slang",
+    "Earnest emotional speeches",
+    "Using the model author's character names or estates"
+  ],
+  "samples": [
+    "It was on a Tuesday, I remember, that Aunt Hortensia descended upon the flat like a Viking longboat on a defenseless Saxon village. I was at breakfast, a kipper on my plate and the world, so far as I knew, a sunny and well-ordered place. Then the door opened, and in she came, and I could see from the set of her jaw that the kipper and I were about to be separated for some considerable time.",
+    "'Milly,' I said, 'I'm in the soup.' 'Indeed, sir?' 'Up to the eyebrows. Aunt Hortensia has engaged me to Lady Prudence Gossett.' Milly, who had been my sister's maid before she became the brains of the household, paused while folding a scarf. 'The young lady who recites poetry at breakfast, sir?' 'The very one. Unless something is done, Milly, I shall be hearing sonnets over my eggs until I die.' 'I shall give the matter thought, sir.'"
+  ]
+}

@@ -1,0 +1,35 @@
+{
+  "author": "Caroline Drake",
+  "model": "Patricia Highsmith",
+  "summary": "Cool, amoral psychological suspense told from inside the head of a charming, anxious criminal whom the listener uncomfortably roots for. Crisp, unemotional prose tracks rationalization, paranoia and luck, and the tension is whether he will be caught, not who did it.",
+  "sentences": "Plain, lucid, mid-length, 10-20 words; flat affect that reports alarming thoughts as practical matters. Short sentences for sudden fear.",
+  "pacing": "Measured, observational, with long stretches of ordinary life (meals, travel, letters) shot through with anxiety; violence is sudden and brief, aftermath is long. Time moves calmly through days.",
+  "vocabulary": "Clean, slightly old-fashioned, cosmopolitan: hotels, trains, drinks, clothes, money. No gore, no lurid adjectives, no moralizing words.",
+  "dialogue": "Polite, guarded, socially smooth; the protagonist performs normality while thinking otherwise. Simple tags, dialogue around 35%, much subtext.",
+  "narration": "Close third person past, locked inside a morally hollow protagonist; the narrative never judges him. Notices status, possessions, other people's suspicion, and practical details of concealment; leaves out remorse.",
+  "openings": "Open with the protagonist noticing someone, often being followed or watched, in an ordinary public place, with a hint of unease.",
+  "scene_endings": "End on a calm decision with awful implications, or a small detail that may give him away.",
+  "ending": {
+    "type": "Unpunished, uneasy",
+    "finale": "The protagonist gets away with it through luck and nerve, while someone innocent pays. No moral reckoning; the final note is relief laced with permanent paranoia (he will always look over his shoulder).",
+    "episode": "End on a threat of exposure: a suspicious detective, a lost item, or an acquaintance who saw too much."
+  },
+  "signature_moves": [
+    "Murder planned and executed with practical, mundane detail",
+    "Protagonist's rationalizations presented without comment",
+    "Paranoia rising over small things (a glance, a letter)",
+    "Envy of another person's life driving the plot",
+    "Calm, luxurious settings as counterpoint to crime"
+  ],
+  "avoid": [
+    "Narrative moralizing or punishment as lesson",
+    "Gory or lurid description",
+    "Whodunit puzzle structure",
+    "Melodramatic emotional outbursts",
+    "Heroic detective protagonists"
+  ],
+  "samples": [
+    "Ellis noticed the man again at the café on the corner, the one with the yellow awning. Gray suit. Folded newspaper. He was not reading it. Ellis ordered a coffee and drank it slowly, because hurrying would look like guilt. It occurred to him, quite calmly, that if the man asked about Robert, he would say Robert had gone to Lisbon. It was almost true. Robert had gone down the cellar stairs of the villa in a way that nobody, Ellis had made sure, would ever think to question.",
+    "'You look well,' said Helene. 'Italy suits you.' 'It does,' Ellis said. He refilled her glass. He was thinking about the fountain pen, Robert's pen, which was in the drawer of the writing desk upstairs, beneath the hotel stationery. He should have thrown it away. He knew that. But it was a beautiful pen, and it seemed wasteful. 'Have you heard from Robert?' Helene asked. Ellis smiled. 'Not a word,' he said."
+  ]
+}

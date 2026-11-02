@@ -1,5 +1,6 @@
 import {enforceAdminReview} from '@/lib/admin-center/production-review'
 import { authorImitationLines, authorStyleGaps, type AuthorStyleRow } from '@/lib/authorStyle'
+import { openEndingAllowed, styleSheetForAuthor, styleSheetPromptLines } from '@/lib/authorStyleSheet'
 import { internalAdminFetch } from '@/lib/admin-center/internal-fetch'
 import { NextRequest, NextResponse } from 'next/server'
 import { sfxSoundAgreementRule } from '@/lib/sfxSoundMap'
@@ -1993,6 +1994,10 @@ function buildAuthorStyleProfile(author: Partial<AuthorRow> | Record<string, any
     cleanAuthorStyleValue((author as any).style_signature_trait),
   ].filter(Boolean)
 
+  // AUTHOR-STYLE-SHEET-001: the author's style sheet (repo: Bible/style-sheets). When it
+  // exists its summary replaces the old one-line description (several described
+  // a different author than the model, e.g. a Lee Child note on a Daniel Silva author).
+  const sheet = (author as any).style_sheet ?? styleSheetForAuthor(cleanAuthorStyleValue((author as any).name || (author as any).author))
   return {
     name: cleanAuthorStyleValue((author as any).name || (author as any).author),
     style_reference: cleanAuthorStyleValue((author as any).style_reference),
@@ -2000,12 +2005,13 @@ function buildAuthorStyleProfile(author: Partial<AuthorRow> | Record<string, any
     tone: cleanAuthorStyleValue((author as any).tone),
     pacing: cleanAuthorStyleValue((author as any).pacing),
     signature: Array.from(new Set(signatureValues)).join(' '),
-    style_description: cleanAuthorStyleValue((author as any).style_description),
+    style_description: cleanAuthorStyleValue(sheet?.summary || (author as any).style_description),
     example_line: cleanAuthorStyleValue((author as any).example_line),
+    style_sheet: sheet || null,
   }
 }
 
-function buildAuthorVoicePromptBlock(profile: any): string {
+function buildAuthorVoicePromptBlock(profile: any, opts: { endingSeed?: string | null } = {}): string {
   if (!profile) return ''
 
   const lines = [
@@ -2034,6 +2040,10 @@ function buildAuthorVoicePromptBlock(profile: any): string {
   for (const [label, value] of fieldLines) {
     if (value) lines.push(`${label}: ${value}`)
   }
+
+  // AUTHOR-STYLE-SHEET-001: the full style sheet (incl. the author's ending type).
+  const sheetLines = styleSheetPromptLines(profile.style_sheet, { allowOpenEnding: openEndingAllowed(opts.endingSeed) })
+  if (sheetLines.length) lines.push(...sheetLines)
 
   const exampleLine = cleanAuthorStyleValue(profile.example_line)
   if (exampleLine) {
@@ -2069,12 +2079,12 @@ function authorStyleProfileFromContext(story: any, brief: any) {
 async function loadAuthorRowForStory(story: any, brief: any): Promise<AuthorStyleRow | null> {
   const authorId = cleanAuthorStyleValue(story?.author_id)
   if (authorId) {
-    const { data } = await supabase.from('authors').select('name,style_reference,style_description').eq('id', authorId).maybeSingle()
+    const { data } = await supabase.from('authors').select('*').eq('id', authorId).maybeSingle()
     if (data) return data as AuthorStyleRow
   }
   const authorName = cleanAuthorStyleValue(story?.author || brief?.author)
   if (authorName) {
-    const { data } = await supabase.from('authors').select('name,style_reference,style_description').ilike('name', authorName).maybeSingle()
+    const { data } = await supabase.from('authors').select('*').ilike('name', authorName).maybeSingle()
     if (data) return data as AuthorStyleRow
   }
   return null
@@ -3723,7 +3733,7 @@ async function generateStandaloneScript(job: ProductionJob, model: string) {
     if (narratorStampError) throw new Error(`Failed to stamp standalone narrator on story: ${narratorStampError.message}`)
   }
   const authorVoiceProfile = await resolveAuthorStyleProfileForStory(story, brief)
-  const authorVoiceBlock = buildAuthorVoicePromptBlock(authorVoiceProfile)
+  const authorVoiceBlock = buildAuthorVoicePromptBlock(authorVoiceProfile, { endingSeed: String(job.id || '') })
   const promptBrief = narratorContext.mode === 'assigned'
     ? { ...brief, narrator: narratorContext.narratorName }
     : brief
@@ -6613,7 +6623,7 @@ async function generateOneSeriesEpisodeScript(job: ProductionJob, model: string)
     }
   }
   const authorVoiceProfile = await resolveAuthorStyleProfileForStory(targetEpisode, brief)
-  const authorVoiceBlock = buildAuthorVoicePromptBlock(authorVoiceProfile)
+  const authorVoiceBlock = buildAuthorVoicePromptBlock(authorVoiceProfile, { endingSeed: String(job.series_id || job.id || '') })
   const recentStoryTexts = await loadRecentStoryTexts(String(seriesId))
   const namePaletteBlock = buildNamePalettePromptBlock({
     genre: targetEpisode.genre || brief.genre || '',

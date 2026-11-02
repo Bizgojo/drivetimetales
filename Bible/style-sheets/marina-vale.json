@@ -1,0 +1,37 @@
+{
+  "author": "Marina Vale",
+  "model": "Sophie Lark",
+  "summary": "Sophie Lark-style crime-family romance: a strong-willed heroine entangled with a powerful, dangerous man from a rival dynasty through an arranged marriage, a debt, or a forced alliance. Taut with danger, family loyalty, power struggles, and enemies-to-lovers friction; for Endless Tales the heat is closed-door and the violence offstage, so the intensity comes from menace, wit, and shifting allegiances.",
+  "sentences": "Mix of clipped, confident sentences (5-12 words) and longer ones for lavish settings and inner turmoil. Fragments for menace.",
+  "pacing": "Fast; each scene shifts the balance of power between the leads or between families. Alternating POVs reveal each side's plans, with an action beat (ambush, deal gone wrong) every few scenes.",
+  "vocabulary": "Modern and polished, with a luxury-and-danger palette: tailored suits, marble, cigar smoke, bodyguards, old-world family terms. Mild profanity at most; no graphic violence vocabulary.",
+  "dialogue": "About 55%. Verbal sparring as a power play: threats delivered politely, a heroine who refuses to be cowed, and family members speaking in coded loyalty. Clear tags and named POV switches for audio.",
+  "narration": "Alternating first person (past or present) between heroine and hero. The hero's chapters reveal ruthless calculation softened by protectiveness; the heroine's notice danger, status, and her own defiance.",
+  "openings": "Opens with a high-stakes setup already in motion: a contract signed, a wedding announced, a hostage exchange, with a bold line of attitude.",
+  "scene_endings": "Ends on a power reversal, a threat, or a protective act that betrays real feeling.",
+  "ending": {
+    "type": "Dangerous happily ever after",
+    "finale": "The couple unites against a common enemy, loyalties are settled, and the hero chooses her over the family code. Ends with them ruling together, the danger contained but not gone.",
+    "episode": "Ends on danger or betrayal: an assassination attempt, a family member revealed as the traitor, or the heroine discovering what her new husband really did."
+  },
+  "signature_moves": [
+    "Arranged marriage or a debt as the forced-proximity engine",
+    "Alternating his/her POV with opposing agendas",
+    "Polite menace in dialogue",
+    "A heroine who wins power through cleverness, not rescue",
+    "A protective act revealing hidden tenderness",
+    "Smoldering tension that cuts to the next morning"
+  ],
+  "avoid": [
+    "Explicit sex or on-page graphic violence",
+    "Glamorizing abuse or coercion; the heroine keeps her agency",
+    "Cartoonish mobster accents",
+    "Long procedural crime detail",
+    "AI cliches like 'a dangerous glint in his eyes' on repeat",
+    "Making the hero kind too quickly"
+  ],
+  "samples": [
+    "The contract was four pages long, and my name appeared on every one of them. Not as a signatory. As the payment. \"You understand the terms,\" my father said. It wasn't a question. Across the polished table, Dante Morello didn't look at the paper. He looked at me, steady and unhurried, the way a man looks at a house he already owns. \"She doesn't seem pleased,\" he said. \"I'm not,\" I said. A flicker of a smile. \"Good. I'd hate to marry a liar.\"",
+    "DANTE. Three men in the lobby. One by the elevator. One pretending to read a newspaper no one has printed in a decade. I keep my hand at the small of her back and my voice low. \"Don't look around.\" \"Why?\" she asks, and of course she looks around. \"Because,\" I say, steering her toward the stairwell, \"my uncle just broke our truce.\" She stops walking. \"How do you know?\" \"Because the man by the elevator,\" I say, \"is my cousin.\""
+  ]
+}

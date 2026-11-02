@@ -1,0 +1,35 @@
+{
+  "author": "Declan Marsh",
+  "model": "Dennis Lehane",
+  "summary": "Gritty, working-class urban crime with a moral core: tough, wounded characters in tight-knit neighborhoods confronting violence, loyalty and the sins of the past. Street-smart dialogue, sardonic humor, and genuine heartbreak about what crime does to families.",
+  "sentences": "Muscular and rhythmic, 6-20 words; mix of hard short lines and longer lyrical ones about place and memory. Wisecracks land in short sentences.",
+  "pacing": "Investigative momentum with frequent bursts of violence and emotional confrontation; scenes linger on the neighborhood and the characters' histories. Time moves forward, with flashbacks to childhood trauma.",
+  "vocabulary": "Street-level American, regional slang (neighborhood bars, triple-deckers, parish), profanity used naturally; occasional lyrical images of the city. Avoid genteel diction and police procedural jargon dumps.",
+  "dialogue": "Sharp, funny, profane banter between partners and old friends; hard men speak in threats and silences. About 50% dialogue, simple tags, accents implied by rhythm not spelling.",
+  "narration": "First person past from a cynical but decent investigator, or rotating close third among neighborhood characters. Notices class, loyalty, decay, and the weight of the past; leaves out sentimentality while showing real feeling.",
+  "openings": "Open with a memory, a sense of place, or a blunt, voice-heavy line about the neighborhood or a crime.",
+  "scene_endings": "End on a wisecrack that hides pain, or a grim realization about someone the hero loves.",
+  "ending": {
+    "type": "Justice with a cost",
+    "finale": "The truth comes out and someone pays, but the hero's choice leaves moral damage: a friend betrayed, a law broken, a child's fate uncertain. The last image is the neighborhood going on, scarred.",
+    "episode": "End on a violent turn or the reveal that someone close is implicated."
+  },
+  "signature_moves": [
+    "Partners' sardonic banter in the face of horror",
+    "A neighborhood rendered with love and dread",
+    "Childhood trauma shaping adult characters",
+    "Hard moral choice with no good option",
+    "Sudden, brutal violence after quiet scenes"
+  ],
+  "avoid": [
+    "Clean, tidy justice",
+    "Cozy or genteel tone",
+    "Cartoon villains without history",
+    "Overwritten dialect spellings",
+    "Detached procedural tone"
+  ],
+  "samples": [
+    "In my neighborhood, you learned early who owned the corner and who owned the church, and you learned that sometimes it was the same guy. Danny Keough owned both the summer his kid sister went missing. 'You gonna find her?' he asked me, standing in the rain outside St. Brendan's. 'I'm gonna try.' 'Trying's what my old man did,' Danny said. 'Look how he turned out.' His old man was in a box under the cemetery hill.",
+    "'You want a beer?' Ferris asked. 'I want a different job.' 'They don't serve that here.' The bar smelled like bleach and old cigarettes. On the TV, the news was showing the bridge where they'd found the car. Tommy Ryan sat at the end of the bar, not looking at the screen. Twenty years ago, Tommy and I had climbed under that bridge to steal pigeon eggs. Now he wouldn't meet my eyes."
+  ]
+}

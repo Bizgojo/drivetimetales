@@ -1,0 +1,37 @@
+{
+  "author": "Tessa Marlowe",
+  "model": "Penelope Douglas",
+  "summary": "Penelope Douglas-style angsty enemies-to-lovers: two young adults locked in a bitter, years-long rivalry in a small town, dual first-person present POV, secrets that explain the cruelty, and emotional intensity that borders on obsession. For Endless Tales the heat is closed-door and the darkness softened: the voice lives in rivalry, pranks, pride, wounded loyalty, and the slow, painful reveal of why they hate each other.",
+  "sentences": "Short, intense, present tense; mostly 5-14 words; fragments and repetition for emotional punch ('I won't. I won't.').",
+  "pacing": "Fast and escalating; each scene ups the rivalry with a prank, a confrontation, or a revealed secret. Flashbacks to a childhood friendship explain the break; time moves over a senior year or a homecoming season.",
+  "vocabulary": "Contemporary, raw, defiant; small-town details (bonfires, football games, abandoned buildings, the local hangout). Mild profanity only; no graphic sexual or violent terms.",
+  "dialogue": "About 50%. Clipped, cutting exchanges, taunts, and dares; silences and glares carry as much as words. Clear tags and named POV switches for audio.",
+  "narration": "Alternating first person present from heroine and antihero, both proud and wounded. The narration tracks the other's every move and hides hurt behind defiance; adults are absent or unhelpful.",
+  "openings": "Opens with a defiant statement of hatred or an act of rivalry ('He took everything from me three years ago. Tonight, I take it back.').",
+  "scene_endings": "Ends on a dare, a threat, a stolen glance, or a flash of vulnerability quickly hidden.",
+  "ending": {
+    "type": "Redemptive happily ever after",
+    "finale": "The truth behind the feud comes out, the antihero apologizes and changes, and the two choose each other publicly. The last image is them at the place where the rivalry began, now theirs together.",
+    "episode": "Ends on a betrayal or explosive reveal: a secret exposed to the whole town, a prank that goes too far, or the hidden reason for the cruelty partly uncovered."
+  },
+  "signature_moves": [
+    "Childhood friends turned enemies, with flashbacks to before",
+    "Dares and pranks that escalate the rivalry",
+    "Dual POV showing opposite readings of the same moment",
+    "An antihero with a protective secret behind his cruelty",
+    "A small-town ritual (bonfire, homecoming) as the battleground",
+    "Intensity carried by tension and a kiss, then a closed door"
+  ],
+  "avoid": [
+    "Explicit sex or glamorized stalking and assault",
+    "Bullying that is never reckoned with",
+    "Soft, cozy narration",
+    "Adults solving the conflict",
+    "AI cliches like 'his eyes darkened with something unreadable' on repeat",
+    "Long internal summaries in place of confrontation"
+  ],
+  "samples": [
+    "RILEY. Three years. Three years since he stood on my porch and told me I didn't matter. Tonight, the whole town is at the bonfire, and Cade Hollister is standing in the middle of it like he owns the fire. He sees me. Everyone sees him see me. The music keeps going, but the laughter dips, just for a second. \"Look who came back,\" he says. I smile. \"Miss me?\" \"Like a broken arm.\"",
+    "CADE. She thinks I don't know she's the one who painted the water tower. Thinks I didn't see the paint on her sleeve in chemistry. I let her think it. I let everyone think I hate her, because the truth is worse. \"You've got nothing on me,\" she says, chin up, standing too close in the empty hallway. I lean in, just enough. \"I've got everything on you, Riley,\" I say. \"I'm just not using it. Yet.\""
+  ]
+}

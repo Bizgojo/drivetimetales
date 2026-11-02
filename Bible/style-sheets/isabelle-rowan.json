@@ -1,0 +1,37 @@
+{
+  "author": "Isabelle Rowan",
+  "model": "Sarah J. Maas",
+  "summary": "Sarah J. Maas-style romantasy: a fierce, wounded heroine in a dangerous immortal court, a powerful brooding ally-turned-love-interest, sweeping magic, court politics, and a found family forged in battle. Lush sensory prose and high emotional stakes; for Endless Tales the romance stays at smoldering tension and fade-to-black, with the intensity carried by danger, loyalty, and awakening power.",
+  "sentences": "Varied: mostly 10-20 words, punctuated by one-word fragments ('Run.') and sweeping cumulative sentences in battle or revelation. Frequent italic-style inner thoughts.",
+  "pacing": "Alternates slow-burn court intrigue and banter with explosive set pieces (trials, ambushes, unleashed magic). Long arcs; each scene escalates danger or reveals power, and big reveals cluster at episode ends.",
+  "vocabulary": "Rich and sensory, a touch archaic for the world ('wards', 'glamour', 'the lesser folk'): starlight, shadow, embers, iron, wings. Invented terms used sparingly and explained by context; never modern slang.",
+  "dialogue": "About 45%. Sharp, teasing verbal duels between heroine and love interest; menacing, layered court speech; growled or murmured lines kept on the right side of general-audience. Clear tags with action beats for audio.",
+  "narration": "First person past (or close third) from a heroine whose rage, fear, and wonder are vivid. Notices scent, power humming in the air, and the love interest's restraint; skips mundane logistics.",
+  "openings": "Opens in danger or deprivation: hunting in the cold, a cell, a trial about to begin, with a stark line about survival.",
+  "scene_endings": "Ends on a power reveal, a whispered threat, or a charged line from the love interest that recasts everything.",
+  "ending": {
+    "type": "Triumphant, hard-won happily ever after",
+    "finale": "The heroine claims her full power in a climactic battle, sacrifices are honored, and the found family gathers in the aftermath. Ends on a quiet, starlit moment of the couple together, with a hint that the world is bigger still.",
+    "episode": "Ends on a revelation or betrayal bombshell: a hidden bargain exposed, an ally unmasked, or the heroine's power erupting in front of her enemies."
+  },
+  "signature_moves": [
+    "A bargain or bond with hidden terms that tighten later",
+    "The heroine's buried power awakening in stages",
+    "Banter that masks deep loyalty within a found-family circle",
+    "A love interest whose cruelty is revealed as a mask",
+    "Lush sensory description of magic (scent, sound, temperature)",
+    "Smoldering tension that fades to black at the threshold"
+  ],
+  "avoid": [
+    "Explicit sex scenes; keep to tension and fade-outs",
+    "Lingering gore; violence is fast and consequential",
+    "Modern slang or snark that breaks the world",
+    "Lore info-dumps",
+    "AI cliches like 'an otherworldly glow' on every page",
+    "A passive heroine who is rescued at the climax"
+  ],
+  "samples": [
+    "The cell was cold enough that my breath hung in the dark like a ghost. Three days, I counted. Three days since they dragged me through the iron gates and took my name along with my knives. Footsteps on the stair. Unhurried. I knew that walk. \"Still alive, little thief?\" His voice slid through the bars like smoke. I didn't lift my head. \"Disappointed?\" A pause. Then, softer, so the guards couldn't hear: \"Terribly relieved.\"",
+    "Power broke open in my chest like a dam giving way. Light poured from my hands, white and blinding, and the creature shrieked as it burned. The courtyard shook. Stone cracked beneath my boots. Somewhere behind me, someone was shouting my name, but the sound was very far away, as if from the bottom of a well. When the light finally guttered out, the creature was ash. And every lord in the courtyard was staring at me. Not with awe. With fear."
+  ]
+}

@@ -1,0 +1,37 @@
+{
+  "author": "Elena Marsh",
+  "model": "Emily Henry",
+  "summary": "Emily Henry-style romantic comedy with the emphasis on banter-forward slow burn: two smart, mismatched people trade razor-quick dialogue for most of the story while the tension builds unbearably. Of the three Endless Tales Emily Henry voices, Elena Marsh is the funniest and fastest; the heart is there, but the engine is wit and the agony of almost.",
+  "sentences": "Short and punchy, mostly 5-14 words; rhythmic comic triplets; an occasional breathless long sentence when attraction overwhelms the narrator.",
+  "pacing": "Fast scenes built on verbal sparring, a rivalry or forced-proximity setup, and escalating near-misses. Every scene raises the tension one notch without releasing it until late.",
+  "vocabulary": "Modern, clever, pop-literate but not brand-name heavy; precise comic word choice ('aggressively beige'). No crude slang, no florid romance language.",
+  "dialogue": "Dialogue-heavy, about 65%. Rapid-fire exchanges with callbacks, mock-formal insults, and each character trying to win the conversation; long silences only at the turning point. Minimal tags, but voices distinct enough that speakers stay clear on audio.",
+  "narration": "First person past from a heroine who is confident, competitive, and wrong about the hero. She catalogs his annoying habits in loving detail and narrates her own denial comically.",
+  "openings": "A crisp, funny thesis line about the narrator's rules or a rivalry ('I have exactly one rule about men in bookstores'), then straight into the clash.",
+  "scene_endings": "Ends on a zinger, a callback, or an interrupted almost-kiss, leaving the listener grinning and frustrated.",
+  "ending": {
+    "type": "Happily ever after",
+    "finale": "The rivals admit the banter was always love, in a declaration that reuses their running jokes sincerely. Light and joyful, with a last-line callback to the opening rule.",
+    "episode": "Ends on a rug-pull: an interrupted kiss, the rival revealed as the anonymous pen pal, or a public bet that suddenly makes the stakes personal."
+  },
+  "signature_moves": [
+    "Bets, rules, or lists the couple make and then break",
+    "Callbacks: an early line returns transformed",
+    "Mock-formal insults ('Your honor, I object to his face')",
+    "Narrator's comic denial contradicted by her own observations",
+    "Forced proximity (shared car, one desk, a joint project)",
+    "Tension released with a kiss and a closed door, never explicit"
+  ],
+  "avoid": [
+    "Slowing the banter with heavy description",
+    "Mean-spirited insults that make the hero unlikable",
+    "Admitting attraction too early",
+    "Explicit intimacy",
+    "Generic AI rom-com phrases ('butterflies erupted')",
+    "Over-explaining the joke"
+  ],
+  "samples": [
+    "I have one rule for book festivals: never share a booth with a man who alphabetizes by vibe. \"It's not by vibe,\" Theo says. \"It's by emotional temperature.\" \"That's worse.\" \"Warm on the left, devastating on the right.\" \"Where does that put me?\" He looks at me for one second too long. \"Middle shelf,\" he says. \"Difficult to categorize.\" I hate that I like that. I hate even more that he can tell.",
+    "\"For the record,\" I say, \"this is not a date.\" \"Noted.\" \"I'm only here because the hotel overbooked.\" \"Also noted.\" \"And this is one dessert because the menu was confusing.\" \"Extremely confusing,\" he agrees, and hands me the second spoon. Our knees touch under the table. Neither of us moves. Across the restaurant, a man proposes and the whole room claps, and Theo leans in and says, very seriously, \"Should we tell them we're not on a date?\""
+  ]
+}

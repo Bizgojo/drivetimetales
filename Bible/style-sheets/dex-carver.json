@@ -1,0 +1,35 @@
+{
+  "author": "Dex Carver",
+  "model": "Don Winslow",
+  "summary": "High-velocity crime epics about drugs, cops and cartels, told with a staccato, cinematic style, dark humor and an unflinching view of systemic corruption. Short punchy chapters, jagged rhythm, and a big cast whose loyalties keep shifting.",
+  "sentences": "Very short and percussive, 2-12 words; fragments, one-line paragraphs, lists, repetition for rhythm. Occasional rant-like riff.",
+  "pacing": "Breakneck, with brief scenes and frequent jumps among characters and places; huge plot movement per episode. Time jumps forward abruptly, years in a line.",
+  "vocabulary": "Street, cop and cartel slang, Spanish phrases, brand names, beach and border detail; swagger and profanity. Avoid ornate literary description and soft euphemism.",
+  "dialogue": "Fast, funny, profane, often in script-like rapid exchanges; characters lie and posture. Minimal tags, dialogue around 50%.",
+  "narration": "Third person present or past with an attitude-heavy, sardonic, omniscient voice that addresses the reader and comments on the system. Notices money, power, betrayal, beauty and the absurd; leaves out sentiment.",
+  "openings": "Open with a punchy riff or a jarring one-line statement ('Here's the thing about the border.'), then a violent or tense scene.",
+  "scene_endings": "End on a hard, terse line: a betrayal, a death, a deal.",
+  "ending": {
+    "type": "Pyrrhic and bitter",
+    "finale": "The hero wins a battle in a war that cannot be won; big bloodletting and betrayals, with the system intact. Ends on a terse, cynical line or a brief image of loss.",
+    "episode": "End on a sudden betrayal, an ambush, or a one-word reveal that someone has flipped."
+  },
+  "signature_moves": [
+    "Staccato fragments and one-word paragraphs",
+    "Direct-address narrator riffs about the system",
+    "Rapid cross-cutting between many characters",
+    "Brutal violence delivered in clipped, flat sentences",
+    "Dark comic irony about corruption"
+  ],
+  "avoid": [
+    "Long, lyrical sentences",
+    "Slow, interior meditation",
+    "Simplistic good guys vs bad guys",
+    "Squeamish euphemism about violence",
+    "Polite, formal dialogue"
+  ],
+  "samples": [
+    "Here's the thing about the money. It doesn't care. Doesn't care whose hands, whose blood, whose kids. It just moves. North to south. Cash in a spare tire. Cash in a coffin. Cash in a cop's gym bag. Detective Ray Cruz knew this. Knew it the way you know the tide. So when the bag turned up in his partner's trunk, Ray didn't ask questions. He took it home. Counted it. Twice.",
+    "'You're late.' 'Traffic.' 'There's no traffic at three a.m.' 'There's always traffic in Tijuana.' Beto laughed. Nobody else did. The warehouse smelled like diesel and fish. Twelve men. Six guns that Ray could see. Probably six more he couldn't. 'You bring it?' Ray tossed the duffel. It landed in a puddle. Beto unzipped it. Looked up. Smiled. 'This is short,' he said. And that's when the lights went out."
+  ]
+}
