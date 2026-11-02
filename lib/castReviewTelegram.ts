@@ -33,7 +33,7 @@ async function tg(method: string, token: string, body: FormData | Record<string,
   }
 }
 
-async function auditionClip(voiceId: string, line: string, apiKey: string): Promise<Buffer | null> {
+export async function auditionClip(voiceId: string, line: string, apiKey: string): Promise<Buffer | null> {
   try {
     const res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
       method: 'POST',
@@ -64,6 +64,8 @@ export async function sendCastReview(args: {
   seriesTitle: string
   narratorName?: string | null
   items: CastReviewItem[]
+  /** CAST-REVIEW-LINKS-001: clips already made (by character name), so they are not made twice */
+  clips?: Record<string, Buffer>
 }): Promise<CastReviewDelivery> {
   const token = process.env.TELEGRAM_BOT_TOKEN
   const apiKey = process.env.ELEVENLABS_API_KEY
@@ -85,7 +87,7 @@ export async function sendCastReview(args: {
 
   for (const [i, item] of args.items.entries()) {
     const caption = castReviewCaption(item, i + 1)
-    const audio = apiKey && item.sampleLine ? await auditionClip(item.voiceId, item.sampleLine, apiKey) : null
+    const audio = args.clips?.[item.name] || (apiKey && item.sampleLine ? await auditionClip(item.voiceId, item.sampleLine, apiKey) : null)
     if (!audio) {
       const r = await tg('sendMessage', token, { chat_id: chatId, text: `${caption}\n(clip unavailable)` })
       if (!r.ok) result.clipsFailed.push(item.name)
