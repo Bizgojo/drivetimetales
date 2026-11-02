@@ -8,6 +8,7 @@ import { loadManifest, validateManifestGate, saveManifest, emptyManifest } from 
 import { parseScriptPositions } from '@/lib/scriptLineIndex'
 import { buildLayeredStoryBody, layeredMixEnabled, mixV3BedOptions, mixV4SpotOptions, sfxV2Enabled, sfxV2Options, type BodyItem } from '@/lib/sfxLayeredMix'
 import { effectId, ensureMixPlan, mixV4Enabled, sceneLevelsFromTension } from '@/lib/mixPlan'
+import { sfxGloballyOff } from '@/lib/sfxSwitch'
 import { envelopeExpr, mixV3Enabled, outroMusicEnvelope, storyMusicEnvelope } from '@/lib/mixV3'
 import { overlayBodyIndex, overlayEnabled } from '@/lib/sfxOverlay'
 import { alignedWordsForSegment, wordEndTime } from '@/lib/sfxAlign'
@@ -818,7 +819,8 @@ export async function runRenderFinalMix(storyId: string, opts: {
     // intentionally stripped from the script before voice generation (e.g. Sunset of
     // Competition — all 26 episodes). The flag short-circuits discovery so no SFX files
     // are downloaded or injected into the body timeline.
-    const sfxIsDisabled = storyRow?.sfx_disabled === true
+    // SFX-ALL-OFF-001: SFX_OFF=on — no effects in any mix until the professional library is in.
+    const sfxIsDisabled = storyRow?.sfx_disabled === true || sfxGloballyOff()
     if (sfxIsDisabled) {
       console.log(' [SFX-DISABLED-001] sfx_disabled=true — skipping sfx_*.mp3 assembly')
     }
