@@ -58,14 +58,17 @@ describe('SFX-CATALOG-001 takes', () => {
 
 describe('SFX-CATALOG-001 planner: catalog IDs or nothing', () => {
   const P = (index: number, kind: 'voice' | 'sfx' | 'silence', speaker: string, text: string) => ({ index, kind, speaker, text, isExpected: true, rawLineNumber: index } as any)
-  const positions = [P(1, 'voice', 'NARRATOR', 'Rain on Lower Wacker.'), P(2, 'voice', 'NICK', "Drop it or I'll — Nick!"), P(3, 'voice', 'NARRATOR', 'He opens the trunk.')]
+  const positions = [P(1, 'voice', 'NARRATOR', 'Rain on Lower Wacker.'), P(2, 'voice', 'NICK', "Drop it or I'll — Nick!"), P(3, 'voice', 'NARRATOR', 'He opens the trunk.'),
+    P(4, 'silence', '', ''), P(5, 'voice', 'NARRATOR', 'Rain hammers the car roof.'), P(6, 'voice', 'NICK', 'Go.'),
+    P(7, 'silence', '', ''), P(8, 'voice', 'NARRATOR', 'Still in the car, rain on the roof.'),
+    P(9, 'silence', '', ''), P(10, 'voice', 'NARRATOR', 'Back on the street.')]
   const lines = soundLines(positions)
   const flagged = flagSoundLines(lines)
   const catalog = SFX_CATALOG_NAMES.filter((n) => ['CR-02', 'ALL-37', 'ALL-21'].includes(n.id))
 
   test('only catalog IDs play; an unknown ID is skipped and recorded as wanted — no backup', () => {
     const raw = {
-      backgrounds: [{ line: 1, sound: 'ALL-37' }],
+      backgrounds: [{ line: 5, sound: 'ALL-37' }],
       decisions: [
         { line: 1, verdict: 'skip', reason: 'covered by background' },
         { line: 2, verdict: 'play', reason: 'shot', sound: 'CR-02', afterWords: "or I'll" },
@@ -73,15 +76,27 @@ describe('SFX-CATALOG-001 planner: catalog IDs or nothing', () => {
       ],
     }
     const { cues, decisions, wanted } = validateSoundMap(raw, { lines, flagged, scriptCueIndices: [], ceiling: 40, catalog })
-    expect(cues.map((c) => c.catalogId)).toEqual(['ALL-37', 'CR-02'])
+    expect(cues.map((c) => c.catalogId).sort()).toEqual(['ALL-37', 'CR-02'])
     expect(cues.find((c) => c.catalogId === 'CR-02')).toMatchObject({ cue: 'Pistol, single shot, outdoor', kind: 'spot', afterWords: "or I'll" })
     expect(cues.find((c) => c.catalogId === 'ALL-37')?.kind).toBe('background')
     expect(decisions.find((d) => d.line === 3)?.verdict).toBe('skip')
     expect(wanted).toEqual([{ line: 3, wanted: 'car trunk opening' }])
   })
   test('a spot cannot be used as a scene background', () => {
-    const { cues } = validateSoundMap({ backgrounds: [{ line: 1, sound: 'ALL-21' }] }, { lines, flagged, scriptCueIndices: [], ceiling: 40, catalog })
+    const { cues } = validateSoundMap({ backgrounds: [{ line: 5, sound: 'ALL-21' }] }, { lines, flagged, scriptCueIndices: [], ceiling: 40, catalog })
     expect(cues).toHaveLength(0)
+  })
+  test('BG-SCENE-SETTER-001: no background at the story start; none when the place is the same as the scene before', () => {
+    const cat = SFX_CATALOG_NAMES.filter((n) => ['ALL-37', 'CR-27'].includes(n.id))
+    const raw = { backgrounds: [{ line: 8, sound: 'ALL-37' }, { line: 1, sound: 'CR-27' }, { line: 5, sound: 'ALL-37' }, { line: 10, sound: 'CR-27' }] }
+    const { cues, rejected } = validateSoundMap(raw, { lines, flagged, scriptCueIndices: [], ceiling: 40, catalog: cat })
+    expect(cues.map((c) => `${c.beforeIndex}:${c.catalogId}`)).toEqual(['5:ALL-37', '10:CR-27'])
+    expect(rejected.map((r) => r.reason)).toEqual(expect.arrayContaining(['no background at the start of the story', 'same place as the scene before']))
+  })
+  test('BG-SCENE-SETTER-001: prompt says short scene-setter, never in the first scene', () => {
+    const p = buildSoundMapPrompt({ lines, flagged, genre: 'Crime', scriptCues: [], ceiling: 40, catalog })
+    expect(p).toMatch(/short scene-setter/)
+    expect(p).toMatch(/Never in the first scene of the story/)
   })
   test('prompt lists the catalog and forbids near matches and backups', () => {
     const p = buildSoundMapPrompt({ lines, flagged, genre: 'Crime', scriptCues: [], ceiling: 40, catalog })
@@ -93,6 +108,16 @@ describe('SFX-CATALOG-001 planner: catalog IDs or nothing', () => {
 })
 
 describe('SFX-CATALOG-001 mix + report', () => {
+  test('BG-SCENE-SETTER-001: with scene-setter options a background lasts ~10 s, not the whole scene', () => {
+    const { sceneSetterBedOptions, sfxV2Options, mixV3BedOptions, SCENE_SETTER_SEC } = require('@/lib/sfxLayeredMix')
+    const items: any[] = [{ kind: 'sfx', idx: 0.5, path: '/rain', dur: 60, cue: 'Rain, heavy, on a roof', role: 'bed' }]
+    for (let i = 1; i <= 12; i++) items.push({ kind: 'voice', idx: i, path: `/${i}`, dur: 8 })
+    const long = planLayeredBody(items, { ...sfxV2Options(), ...mixV3BedOptions() })
+    const short = planLayeredBody(items, { ...sfxV2Options(), ...mixV3BedOptions(), ...sceneSetterBedOptions() })
+    expect(long.sfx[0].length).toBeGreaterThan(60)
+    expect(short.sfx[0].length).toBeCloseTo(SCENE_SETTER_SEC, 5)
+    expect(short.sfx[0].fadeOut).toBe(3)
+  })
   test('catalog kind decides spot or background, not the words', () => {
     const plan = planLayeredBody([
       { kind: 'sfx', idx: 0.5, path: '/car', dur: 10, cue: 'Car interior, driving', role: 'bed' },

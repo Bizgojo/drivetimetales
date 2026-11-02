@@ -7,7 +7,7 @@ import { loadManifest, validateManifestGate, saveManifest, emptyManifest } from 
 // ATL-PARSER-001: shared line-index parser — single source of truth for segment numbering
 import { parseScriptPositions } from '@/lib/scriptLineIndex'
 import { planSpeakerGains, speakerGainFilter, voiceLevelEnabled, type MeasuredLine } from '@/lib/voiceLevel'
-import { buildLayeredStoryBody, layeredMixEnabled, mixV3BedOptions, mixV4SpotOptions, sfxV2Enabled, sfxV2Options, type BodyItem } from '@/lib/sfxLayeredMix'
+import { buildLayeredStoryBody, layeredMixEnabled, mixV3BedOptions, mixV4SpotOptions, sceneSetterBedOptions, sfxV2Enabled, sfxV2Options, type BodyItem } from '@/lib/sfxLayeredMix'
 import { effectId, ensureMixPlan, mixV4Enabled, sceneLevelsFromTension } from '@/lib/mixPlan'
 import { sfxGloballyOff } from '@/lib/sfxSwitch'
 import { catalogPlannerEnabled } from '@/lib/sfxCatalog'
@@ -964,6 +964,8 @@ export async function runRenderFinalMix(storyId: string, opts: {
             ...((opts.previewTag && !opts.mixOnly) || sfxV2Enabled() ? sfxV2Options() : {}),
             ...(mixV3Enabled(opts.mixV3) ? mixV3BedOptions() : {}),
             ...(MIX_V4_ON ? mixV4SpotOptions() : {}),
+            // BG-SCENE-SETTER-001: catalog backgrounds are ~10 s scene-setters, not whole-scene beds
+            ...(catalogSfxMode ? sceneSetterBedOptions() : {}),
           },
           log: (line) => console.log(line),
         })
