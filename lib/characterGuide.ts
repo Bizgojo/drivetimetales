@@ -3,6 +3,8 @@
  * so the series writer's self-check can run the exact casting rule the voice
  * step enforces. generate-voices re-exports both functions.
  */
+import { inferGender } from '@/lib/characterGender'
+
 export interface CharacterInfo {
   name: string
   gender: 'male' | 'female' | 'unknown'
@@ -29,9 +31,8 @@ export function parseCharacterGuide(script: string): CharacterInfo[] {
     if (!nameMatch) continue
     const name = nameMatch[1].trim()
     const lower = line.toLowerCase()
-    let gender: CharacterInfo['gender'] = 'unknown'
-    if (lower.includes(', male') || lower.includes(' male,') || lower.includes('male ')) gender = 'male'
-    if (lower.includes(', female') || lower.includes(' female,') || lower.includes('female ')) gender = 'female'
+    // CAST-GENDER-002: whole words, kinship and pronouns.
+    const gender: CharacterInfo['gender'] = inferGender(line) || 'unknown'
     const isProtagonist = lower.includes('protagonist') || lower.includes('narrator') || chars.length === 0
     chars.push({ name, gender, description: line, isProtagonist })
   }
