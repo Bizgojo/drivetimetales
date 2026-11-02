@@ -7,6 +7,7 @@
  *
  *   npx tsx scripts/sfx-catalog-build.ts            # fill and save
  *   npx tsx scripts/sfx-catalog-build.ts --dry-run  # print only
+ *   npx tsx scripts/sfx-catalog-build.ts --discard cz75-tail   # SFX-REPLACE-001: drop matching takes first
  */
 import * as dotenv from 'dotenv'
 import * as path from 'path'
@@ -17,7 +18,7 @@ async function main() {
   const dryRun = process.argv.includes('--dry-run')
   const { createClient } = await import('@supabase/supabase-js')
   const { SFX_LIBRARY_MANIFEST } = await import('../lib/sfxLibrary')
-  const { SFX_CATALOG_FILE, loadCatalog, proposeTakesFromKeptLibrary, addLicensedTakes } = await import('../lib/sfxCatalog')
+  const { SFX_CATALOG_FILE, loadCatalog, proposeTakesFromKeptLibrary, addLicensedTakes, discardTakes } = await import('../lib/sfxCatalog')
   const { SFX_CATALOG_NAMES } = await import('../lib/sfxCatalogNames')
   const db = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false } })
 
@@ -27,7 +28,12 @@ async function main() {
   console.log(`kept library sounds: ${kept.length}`)
 
   const before = await loadCatalog(db as any)
-  const proposed = proposeTakesFromKeptLibrary(before, kept)
+  // SFX-REPLACE-001: --discard word[,word] drops matching takes first (e.g. --discard cz75-tail)
+  const discardArg = process.argv.indexOf('--discard')
+  const discardWords = discardArg > 0 ? String(process.argv[discardArg + 1] || '').split(',') : []
+  const cleared = discardTakes(before, discardWords)
+  if (discardWords.length) console.log(`discarded ${cleared.discarded.length} takes: ${cleared.discarded.join(' | ') || '(none matched)'}`)
+  const proposed = proposeTakesFromKeptLibrary(cleared.catalog, kept)
   // SFX-SOUNDSNAP-001: licensed sounds (one folder per catalog name) go in first.
   const licensed = (manifest.entries || []).filter((e: any) => e.source === 'soundsnap')
   const lic = addLicensedTakes(proposed.catalog, licensed)

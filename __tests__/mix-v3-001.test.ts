@@ -128,3 +128,39 @@ describe('wiring', () => {
     expect(core).toContain('? await loadOverlayPlan(supabase, storyId, null)')
   })
 })
+
+describe('MUSIC-UNDER-BG-001 music fades down under background sounds', () => {
+  const { bedDuckEnvelope, musicLevelAt, MIX_V3, MUSIC_UNDER_BG, musicBedDuckEnabled } = require('@/lib/mixV3')
+  const P = MIX_V3.PRE_ROLL_SEC
+  const R = MUSIC_UNDER_BG.RAMP_SEC
+  const L = MUSIC_UNDER_BG.BG_LEVEL
+  test('no backgrounds = no change', () => {
+    expect(bedDuckEnvelope([], 300)).toEqual([])
+  })
+  test('fades down over the ramp, holds low, fades back up after the background', () => {
+    const env = bedDuckEnvelope([{ start: 20, end: 80 }], 300)
+    expect(musicLevelAt(env, P + 10)).toBeCloseTo(1, 5)
+    expect(musicLevelAt(env, P + 20)).toBeCloseTo(1, 5)
+    const mid = musicLevelAt(env, P + 20 + R / 2)
+    expect(mid).toBeLessThan(1); expect(mid).toBeGreaterThan(L)          // gradual, not abrupt
+    expect(musicLevelAt(env, P + 50)).toBeCloseTo(L, 5)
+    expect(musicLevelAt(env, P + 80 + R / 2)).toBeGreaterThan(L)
+    expect(musicLevelAt(env, P + 80 + R + 1)).toBeCloseTo(1, 5)
+  })
+  test('close backgrounds merge (no pumping between them)', () => {
+    const env = bedDuckEnvelope([{ start: 20, end: 40 }, { start: 43, end: 60 }], 300)
+    expect(musicLevelAt(env, P + 41.5)).toBeCloseTo(L, 5)
+  })
+  test('a background running to the last line is back up by the last line', () => {
+    const env = bedDuckEnvelope([{ start: 200, end: 400 }], 300)
+    expect(musicLevelAt(env, P + 250)).toBeCloseTo(L, 5)
+    expect(musicLevelAt(env, P + 300)).toBeCloseTo(1, 5)
+  })
+  test('a background starting in the last seconds is ignored', () => {
+    expect(bedDuckEnvelope([{ start: 297, end: 300 }], 300)).toEqual([])
+  })
+  test('on by default; MUSIC_BED_DUCK=off turns it off', () => {
+    expect(musicBedDuckEnabled({})).toBe(true)
+    expect(musicBedDuckEnabled({ MUSIC_BED_DUCK: 'off' })).toBe(false)
+  })
+})

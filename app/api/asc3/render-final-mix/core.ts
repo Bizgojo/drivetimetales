@@ -11,7 +11,7 @@ import { buildLayeredStoryBody, layeredMixEnabled, mixV3BedOptions, mixV4SpotOpt
 import { effectId, ensureMixPlan, mixV4Enabled, sceneLevelsFromTension } from '@/lib/mixPlan'
 import { sfxGloballyOff } from '@/lib/sfxSwitch'
 import { catalogPlannerEnabled } from '@/lib/sfxCatalog'
-import { envelopeExpr, mixV3Enabled, outroMusicEnvelope, storyMusicEnvelope } from '@/lib/mixV3'
+import { bedDuckEnvelope, envelopeExpr, mixV3Enabled, musicBedDuckEnabled, outroMusicEnvelope, storyMusicEnvelope } from '@/lib/mixV3'
 import { overlayBodyIndex, overlayEnabled } from '@/lib/sfxOverlay'
 import { alignedWordsForSegment, wordEndTime } from '@/lib/sfxAlign'
 import { ensureOverlayPlan, loadOverlayPlan } from '@/lib/sfxOverlayRunner'
@@ -890,6 +890,8 @@ export async function runRenderFinalMix(storyId: string, opts: {
     let layeredBuilt = false
     // MIX-V4-001: tension levels for the music bed (seconds from the first line → level).
     let mixV4SceneLevels: Array<{ atSec: number; level: number }> = []
+    // MUSIC-UNDER-BG-001: background sounds (seconds from the first line); the music fades down under them
+    let bedWindows: Array<{ start: number; end: number }> = []
     const MIX_V4_ON = mixV4Enabled(opts.mixV4) && mixV3Enabled(opts.mixV3)
     if (layeredMixEnabled() && (preparedSfx.length > 0 || (overlayEnabled() && !sfxIsDisabled))) {
       try {
@@ -966,6 +968,7 @@ export async function runRenderFinalMix(storyId: string, opts: {
           log: (line) => console.log(line),
         })
         layeredBuilt = true
+        bedWindows = layeredPlan.sfx.filter(p => p.role === 'bed').map(p => ({ start: p.start, end: p.start + p.length }))
         if (MIX_V4_ON && mixPlan?.tension.length) {
           mixV4SceneLevels = sceneLevelsFromTension(mixPlan.tension, layeredPlan.voices.map(v => ({ idx: v.idx, start: v.start })))
           console.log(`  MIX-V4-001 music follows tension: ${mixV4SceneLevels.map(m => `${m.atSec.toFixed(0)}s→${m.level}`).join(', ')}`)
@@ -1058,9 +1061,14 @@ export async function runRenderFinalMix(storyId: string, opts: {
       const env = storyMusicEnvelope(segsDur, undefined, mixV4SceneLevels)
       mixV3MusicSec = env.totalSec
       console.log(`  ⚑  MIX-V3-001: music fades into the story, crescendo, soft under outro (${env.totalSec.toFixed(1)}s story music)`)
+      // MUSIC-UNDER-BG-001: second volume stage — fades the music down under each background sound
+      const bgDuck = musicBedDuckEnabled() ? bedDuckEnvelope(bedWindows, segsDur) : []
+      if (bgDuck.length) console.log(`  MUSIC-UNDER-BG-001: music fades down under ${bedWindows.length} background sound(s)`)
       musicShapeFilter =
         `[0:a]atrim=start=${musicOffset}:duration=${env.totalSec.toFixed(3)},asetpts=PTS-STARTPTS,` +
-        `volume='${envelopeExpr(env.segs)}':eval=frame[music_out]`
+        `volume='${envelopeExpr(env.segs)}':eval=frame` +
+        (bgDuck.length ? `,volume='${envelopeExpr(bgDuck)}':eval=frame` : '') +
+        `[music_out]`
     } else if (V2_MUSIC_SWELL) {
       // v2 shape: pre-roll (0.65) → bed (0.075, under story) → swell (2s, +3dB over narrative bed)
       // Swell peaks at postStoryVolume; outro music ducks to ~25% narrative level when Belle speaks.

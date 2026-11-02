@@ -33,15 +33,16 @@ describe('SFX-CATALOG-001 takes', () => {
     const { catalog } = proposeTakesFromKeptLibrary(reviewed, library, names)
     expect(catalog.entries['CR-01'].takes).toEqual(reviewed.entries['CR-01'].takes)
   })
-  test('test mode uses kept-library candidates; production needs 3 approved takes', () => {
+  test('test mode never uses kept-library sounds (SFX-TEST-LICENSED-ONLY-001); production needs 3 approved takes', () => {
     const { catalog } = proposeTakesFromKeptLibrary(emptyCatalog(), library, names)
-    expect(liveNames(catalog, 'test', names).map((n) => n.id)).toEqual(['CR-01', 'CR-29'])
+    expect(liveNames(catalog, 'test', names)).toEqual([])
     expect(liveNames(catalog, 'production', names)).toEqual([])
     catalog.entries['CR-01'].takes.forEach((t) => { t.status = 'approved' })
     expect(liveNames(catalog, 'production', names).map((n) => n.id)).toEqual(['CR-01'])
   })
   test('takes rotate by place, stable for the same place', () => {
     const { catalog } = proposeTakesFromKeptLibrary(emptyCatalog(), library, names)
+    catalog.entries['CR-01'].takes.forEach((t) => { t.source = 'licensed' })
     const live = liveNames(catalog, 'test', names)[0]
     const picks = new Set(Array.from({ length: 12 }, (_, i) => pickCatalogTake(live, `s:${i}`).libraryId))
     expect(picks.size).toBeGreaterThan(1)
@@ -137,7 +138,8 @@ describe('SFX-SOUNDSNAP-001 licensed takes', () => {
     const takes = catalog.entries['CR-01'].takes
     expect(takes).toHaveLength(3)
     expect(takes.filter((t: any) => t.source === 'licensed').map((t: any) => t.libraryId)).toEqual(['soundsnap/cr-01-shot-a', 'soundsnap/cr-01-shot-b'])
-    expect(liveNames(catalog, 'test', names)[0].takes).toHaveLength(3)
+    // test mixes hear only the 2 licensed takes, not the kept-library one left over
+    expect(liveNames(catalog, 'test', names)[0].takes.map((t: any) => t.libraryId)).toEqual(['soundsnap/cr-01-shot-a', 'soundsnap/cr-01-shot-b'])
     expect(liveNames(catalog, 'production', names)).toEqual([])
   })
   test('approved and discarded takes are kept; a discarded sound never returns', () => {
@@ -174,5 +176,30 @@ describe('SFX-SOUNDSNAP-001 script cues use the catalog', () => {
     expect(prompt).toContain('SCRIPT SOUND CUES (cue number: what the script asks for): 2: knock at the door')
     const core = require('fs').readFileSync(require('path').join(__dirname, '../app/api/asc3/render-final-mix/core.ts'), 'utf8')
     expect(core).toContain('const parsedSfx = sfxIsDisabled || catalogSfxMode ? [] : files')
+  })
+})
+
+describe('SFX-REPLACE-001 discard then add new licensed takes', () => {
+  const { addLicensedTakes, discardTakes } = require('@/lib/sfxCatalog')
+  const lic = (id: string): SfxLibraryEntry => ({ id, path: `sfx-library/${id}.mp3`, name: id, tags: [], source: 'soundsnap' })
+  const names = SFX_CATALOG_NAMES.filter((n) => n.id === 'CR-02')
+  const tails = ['soundsnap/cr-02/300723-cz75-tail-100m-ste-01', 'soundsnap/cr-02/300729-cz75-tail-20m-03', 'soundsnap/cr-02/300740-cz75-tail-25m-d-03']
+  const close = ['soundsnap/cr-02/339015-pistol-ruger-44-magnum-single-shot-close-perspective-processed', 'soundsnap/cr-02/339035-pistol-springfield-xd45-single-shot-close-perspective-processed']
+  test('full name: new sounds are turned away until the old ones are discarded', () => {
+    const full = addLicensedTakes(emptyCatalog(), tails.map(lic), names).catalog
+    expect(addLicensedTakes(full, [...tails, ...close].map(lic), names).added).toBe(0)
+    const { catalog: cleared, discarded } = discardTakes(full, ['cz75-tail'])
+    expect(discarded).toHaveLength(3)
+    const { catalog } = addLicensedTakes(cleared, [...tails, ...close].map(lic), names)
+    expect(liveNames(catalog, 'test', names)[0].takes.map((t: any) => t.libraryId)).toEqual(close)
+    // running the discard again changes nothing and never drops the new ones
+    const again = discardTakes(catalog, ['cz75-tail'])
+    expect(again.discarded).toEqual([])
+    expect(liveNames(again.catalog, 'test', names)[0].takes).toHaveLength(2)
+  })
+  test('no words = no change', () => {
+    const full = addLicensedTakes(emptyCatalog(), tails.map(lic), names).catalog
+    expect(discardTakes(full, []).discarded).toEqual([])
+    expect(discardTakes(full, ['', ' ']).catalog).toBe(full)
   })
 })
