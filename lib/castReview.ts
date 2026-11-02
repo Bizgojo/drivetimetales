@@ -178,3 +178,8 @@ export function needsCastReview(stateJson: unknown, env: Record<string, string |
   if (svg && (Number(svg.presentCount || 0) > 0 || (svg.progressByEpisode && Object.keys(svg.progressByEpisode as object).length > 0))) return false
   return true
 }
+
+/** CAST-REVIEW-LINKS-001: where a series' audition clip is stored (audio bucket). */
+export function castReviewClipPath(seriesId: string, n: number, name: string): string {
+  return `asc3/series/${seriesId}/cast-review/${String(n).padStart(2, '0')}-${String(name).replace(/[^A-Za-z0-9]+/g, '-')}.mp3`
+}

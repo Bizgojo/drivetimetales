@@ -39,7 +39,8 @@ import { guideDescriptionNameCandidate, isDescriptorNotName } from '@/lib/roster
 import { canonicalizeCharacterNames, characterNameConflictDetails, buildNameIndex, aliasesForLabel } from '@/lib/characterNames'
 import { seriesOutlineEnabled, buildSeriesOutlinePrompt, validateSeriesOutline, buildOutlinePromptBlock, type SeriesOutline } from '@/lib/seriesOutline'
 import { seriesContinuityEnabled, buildContinuityPrompt, parseContinuityVerdict, continuityRewriteTarget, scriptsFingerprint, storyBodyText, MAX_SERIES_CONTINUITY_RUNS, CONTINUITY_MAX_TOKENS, CONTINUITY_JSON_ONLY_RETRY, hasJsonObject } from '@/lib/seriesContinuity'
-import { sendCastReview } from '@/lib/castReviewTelegram'
+import { auditionClip, sendCastReview } from '@/lib/castReviewTelegram'
+import { castReviewClipPath } from '@/lib/castReview'
 import { verifyArtifactHttp } from '@/lib/artifactGate'
 import { runHookGateForStory, detectBelleQualityRepairEmpty } from '@/lib/hookGate'
 import { runStoryQualityGate } from '@/lib/storyQualityGate'
@@ -8280,8 +8281,29 @@ async function runSeriesCastReview(job: ProductionJob, origin: string) {
   })))
   const first = (episodes as any[])[0] || {}
   const seriesTitle = String(first.series_name || first.title || 'New series')
-  const delivery = await sendCastReview({ seriesTitle, narratorName: first.narrator_voice_name || null, items })
-  return { seriesId, seriesTitle, items, delivery }
+  // CAST-REVIEW-LINKS-001 (Marc 2026-11-01): every audition clip is also saved
+  // in storage with a link, so the cast can be heard even when Telegram
+  // delivery fails, and each review says which story it belongs to.
+  const clips: Record<string, Buffer> = {}
+  const clipUrls: Record<string, string> = {}
+  const elevenKey = process.env.ELEVENLABS_API_KEY
+  if (elevenKey) {
+    for (const [i, item] of items.entries()) {
+      if (!item.sampleLine) continue
+      try {
+        const audio = await auditionClip(item.voiceId, item.sampleLine, elevenKey)
+        if (!audio) continue
+        clips[item.name] = audio
+        const clipPath = castReviewClipPath(seriesId, i + 1, item.name)
+        const { error: upErr } = await supabase.storage.from('audio').upload(clipPath, audio, { contentType: 'audio/mpeg', upsert: true })
+        if (!upErr) clipUrls[item.name] = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/audio/${clipPath}`
+      } catch (clipErr) {
+        console.warn(`[CAST-REVIEW-LINKS-001] clip for ${item.name} failed:`, clipErr instanceof Error ? clipErr.message : String(clipErr))
+      }
+    }
+  }
+  const delivery = await sendCastReview({ seriesTitle, narratorName: first.narrator_voice_name || null, items, clips })
+  return { seriesId, seriesTitle, items, delivery, clipUrls }
 }
 
 async function parkJobForCastReview(
@@ -8295,7 +8317,7 @@ async function parkJobForCastReview(
     requestedAt: nowIso(),
     approvedAt: null,
     seriesTitle: review.seriesTitle,
-    items: review.items.map((i) => ({ name: i.name, voiceId: i.voiceId, voiceName: i.voiceName, episodes: i.episodes, lines: i.lines })),
+    items: review.items.map((i, n) => ({ n: n + 1, name: i.name, voiceId: i.voiceId, voiceName: i.voiceName, episodes: i.episodes, lines: i.lines, ...(review.clipUrls?.[i.name] ? { clipUrl: review.clipUrls[i.name] } : {}) })),
     delivery: review.delivery,
   }
   const reviewLogs = appendLog(lockedJob, `Cast review sent to Marc (${review.items.length} voices) — waiting for approval before recording`, {
