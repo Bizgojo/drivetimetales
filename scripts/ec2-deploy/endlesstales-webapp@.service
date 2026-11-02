@@ -1,0 +1,26 @@
+# ZERO-DOWNTIME-001 (2026-11-02): one web app instance per port (3001, 3002).
+# The deploy script builds the new release in the idle slot, starts it here,
+# health-checks it, switches Caddy to it, then stops the old one.
+# Slot directory: /home/ubuntu/et-slot-<port> (a git worktree of ~/drivetimetales).
+[Unit]
+Description=Endless Tales web app slot %i (Caddy -> localhost:%i)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/home/ubuntu/et-slot-%i
+ExecStart=/usr/bin/env node_modules/.bin/next start -p %i
+Restart=always
+RestartSec=5
+KillMode=control-group
+TimeoutStopSec=30
+Environment=NODE_ENV=production
+Environment=PORT=%i
+StandardOutput=append:/home/ubuntu/drivetimetales/scripts/ec2-deploy/webapp-%i.log
+StandardError=append:/home/ubuntu/drivetimetales/scripts/ec2-deploy/webapp-%i.log
+
+[Install]
+WantedBy=multi-user.target

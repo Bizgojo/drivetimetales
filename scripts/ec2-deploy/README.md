@@ -67,3 +67,29 @@ route actually performs. `run-next-loop.sh` sends `RUN_NEXT_ADMIN_TOKEN` as
 a header if set (harmless no-op today, ready if auth is added later), but
 this is worth a separate security pass — anyone with the URL can currently
 trigger it.
+
+## Zero-downtime deploys (ZERO-DOWNTIME-001, Marc 2026-11-02)
+
+Every deploy used to rebuild `.next` under the running app and restart it:
+~5 minutes of 502s (uptime alerts) and jobs cut off mid-step. Now each
+release is built in an idle slot and Caddy switches to it only when it is healthy.
+
+### One-time setup (Orion)
+
+1. `sudo cp scripts/ec2-deploy/endlesstales-webapp@.service /etc/systemd/system/ && sudo systemctl daemon-reload`
+2. In the Caddyfile, replace the site's `reverse_proxy localhost:3000` line with
+   `import /etc/caddy/et-upstream.caddy`, then
+   `echo "reverse_proxy localhost:3000" | sudo tee /etc/caddy/et-upstream.caddy`
+   and `sudo caddy validate --config /etc/caddy/Caddyfile && sudo systemctl reload caddy`.
+   (Nothing changes for listeners: it still points at the current app.)
+3. `chmod +x scripts/ec2-deploy/zero-downtime-deploy.sh`
+
+### Every deploy after that
+
+`scripts/ec2-deploy/zero-downtime-deploy.sh <commit>` — builds in the idle slot
+(3001 or 3002), waits for `/api/version` to report that commit, switches Caddy,
+lets the old slot finish open requests (up to 20 min), then stops it. The first
+run moves the app off the old `endlesstales-webapp.service` (port 3000).
+A failed build or health check leaves the live app untouched.
+Logs: `scripts/ec2-deploy/build-<port>.log`, `webapp-<port>.log`.
+The run-next loop, render and pool workers are unchanged (they call the public URL).
