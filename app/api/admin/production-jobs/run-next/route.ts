@@ -1,5 +1,6 @@
 import {enforceAdminReview} from '@/lib/admin-center/production-review'
 import { authorImitationLines, authorStyleGaps, type AuthorStyleRow } from '@/lib/authorStyle'
+import { styleSheetForAuthor, styleSheetPromptLines } from '@/lib/authorStyleSheet'
 import { internalAdminFetch } from '@/lib/admin-center/internal-fetch'
 import { NextRequest, NextResponse } from 'next/server'
 import { sfxSoundAgreementRule } from '@/lib/sfxSoundMap'
@@ -1993,6 +1994,10 @@ function buildAuthorStyleProfile(author: Partial<AuthorRow> | Record<string, any
     cleanAuthorStyleValue((author as any).style_signature_trait),
   ].filter(Boolean)
 
+  // AUTHOR-STYLE-SHEET-001: the author's style sheet (repo: Bible/style-sheets). When it
+  // exists its summary replaces the old one-line description (several described
+  // a different author than the model, e.g. a Lee Child note on a Daniel Silva author).
+  const sheet = (author as any).style_sheet ?? styleSheetForAuthor(cleanAuthorStyleValue((author as any).name || (author as any).author))
   return {
     name: cleanAuthorStyleValue((author as any).name || (author as any).author),
     style_reference: cleanAuthorStyleValue((author as any).style_reference),
@@ -2000,8 +2005,9 @@ function buildAuthorStyleProfile(author: Partial<AuthorRow> | Record<string, any
     tone: cleanAuthorStyleValue((author as any).tone),
     pacing: cleanAuthorStyleValue((author as any).pacing),
     signature: Array.from(new Set(signatureValues)).join(' '),
-    style_description: cleanAuthorStyleValue((author as any).style_description),
+    style_description: cleanAuthorStyleValue(sheet?.summary || (author as any).style_description),
     example_line: cleanAuthorStyleValue((author as any).example_line),
+    style_sheet: sheet || null,
   }
 }
 
@@ -2034,6 +2040,10 @@ function buildAuthorVoicePromptBlock(profile: any): string {
   for (const [label, value] of fieldLines) {
     if (value) lines.push(`${label}: ${value}`)
   }
+
+  // AUTHOR-STYLE-SHEET-001: the full style sheet (incl. the author's ending type).
+  const sheetLines = styleSheetPromptLines(profile.style_sheet)
+  if (sheetLines.length) lines.push(...sheetLines)
 
   const exampleLine = cleanAuthorStyleValue(profile.example_line)
   if (exampleLine) {
