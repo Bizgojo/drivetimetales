@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { sfxGloballyOff } from '@/lib/sfxSwitch'
+import { inferGender, seriesGenderHints } from '@/lib/characterGender'
 import { generateScriptSfx } from '@/lib/sfxGenerate'
 import { parseCharacterGuide, characterVoiceKeys, type CharacterInfo } from '@/lib/characterGuide'
 export { parseCharacterGuide, characterVoiceKeys }
@@ -882,8 +883,8 @@ function detectRegionalTags(text: string) {
 function parseCharacterMeta(description: string): { gender: string; age: string; accent: string; tones: string[]; regionalTags: string[] } {
   const d = description.toLowerCase()
   // Gender
-  const gender = d.includes('female') || d.includes('woman') || d.includes('girl') ? 'female'
-    : d.includes('male') || d.includes('man') || d.includes('boy') ? 'male' : ''
+  // CAST-GENDER-002: whole words, kinship and pronouns ("grandmother", "his").
+  const gender = inferGender(description)
   // Age
   // CAST-BLOCK-001: age words ("older", "grizzled", "in his 60s") count, not just digits.
   const age = ageBandFromDescription(d)
@@ -3069,6 +3070,17 @@ export async function POST(req: NextRequest) {
     const voiceMap: Record<string, string> = {}
     const warnings: string[] = []
     const reusedVoices: ReusedVoiceInventory[] = []
+    // CAST-GENDER-002: a series character's gender comes from every episode's
+    // guide, not only this one (EP1 may never say it; EP3 says "male").
+    let genderHints: Record<string, 'male' | 'female'> = {}
+    if (characterVoiceContext.seriesId) {
+      try {
+        const { data: siblings } = await supabase.from('stories').select('script').eq('series_id', characterVoiceContext.seriesId)
+        genderHints = seriesGenderHints((siblings || []).map((s: any) => parseCharacterGuide(String(s?.script || '')).map((c) => ({ name: c.name, description: c.description || '' }))))
+      } catch (hintErr) {
+        console.warn('  CAST-GENDER-002 series gender hints unavailable:', hintErr instanceof Error ? hintErr.message : String(hintErr))
+      }
+    }
     for (const char of characterGuide) {
       const key = char.name.toUpperCase()
       // Check if manually overridden
@@ -3099,6 +3111,12 @@ export async function POST(req: NextRequest) {
       const ageNum = char.description?.match(/(\d+)/)?.[1] ? parseInt(char.description.match(/(\d+)/)![1]) : 30
       if (ageNum < 12) meta.gender = 'female'
       else if (!meta.gender) meta.gender = char.gender === 'male' ? 'male' : char.gender === 'female' ? 'female' : ''
+      // CAST-GENDER-002: the series as a whole decides when this episode is silent or disagrees.
+      const seriesGender = genderHints[key]
+      if (ageNum >= 12 && seriesGender && meta.gender !== seriesGender) {
+        console.log(`  ${char.name}: gender from the series guides → ${seriesGender}${meta.gender ? ` (this episode suggested ${meta.gender})` : ''}`)
+        meta.gender = seriesGender
+      }
       // First person: protagonist IS the narrator - use narrator voice
       const isProtagonist = isFirstPerson && (char.isProtagonist || characterGuide.indexOf(char) === 0)
       if (isProtagonist) {
