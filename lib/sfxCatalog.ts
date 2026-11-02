@@ -49,9 +49,34 @@ export async function loadCatalog(db: SupabaseClient): Promise<CatalogFile> {
 }
 
 function usable(t: CatalogTake, mode: 'test' | 'production'): boolean {
-  if (t.status === 'approved') return true
-  // TEST mode: any candidate (kept library or licensed) so Marc can hear it before approving.
-  return mode === 'test' && t.status === 'candidate'
+  // SFX-TEST-LICENSED-ONLY-001 (Marc 2026-11-02): test mixes use only the
+  // Soundsnap sounds Marc picked — never the old kept-library sounds.
+  if (mode === 'test') return t.source === 'licensed' && t.status !== 'discarded'
+  return t.status === 'approved'
+}
+
+/**
+ * SFX-REPLACE-001 (Marc 2026-11-02): mark takes as discarded when their
+ * library ID contains any of the given words (e.g. "cz75-tail" drops the weak
+ * "TAIL" pistol shots so the new close shots can take their place). A
+ * discarded sound never comes back. Safe to run again.
+ */
+export function discardTakes(catalog: CatalogFile, matchers: string[]): { catalog: CatalogFile; discarded: string[] } {
+  const words = matchers.map((m) => m.trim().toLowerCase()).filter(Boolean)
+  const discarded: string[] = []
+  if (!words.length) return { catalog, discarded }
+  const now = new Date().toISOString()
+  const entries: CatalogFile['entries'] = {}
+  for (const [id, entry] of Object.entries(catalog.entries)) {
+    entries[id] = {
+      takes: entry.takes.map((t) => {
+        if (t.status === 'discarded' || !words.some((w) => t.libraryId.toLowerCase().includes(w))) return t
+        discarded.push(`${id} ${t.libraryId}`)
+        return { ...t, status: 'discarded' as const, reviewedAt: now }
+      }),
+    }
+  }
+  return { catalog: { ...catalog, updatedAt: now, entries }, discarded }
 }
 
 /** Names Claude may use right now, each with its usable takes. */

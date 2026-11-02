@@ -130,6 +130,58 @@ export function storyMusicEnvelope(storySec: number, o = MIX_V3, sceneLevels: Ar
 }
 
 /**
+ * MUSIC-UNDER-BG-001 (Marc 2026-11-02): "when there is background noise the
+ * music should go very quiet or silent but not abruptly." While a background
+ * sound (rain, city…) plays, the story music fades down to BG_LEVEL over
+ * RAMP_SEC and fades back up over RAMP_SEC after the background ends.
+ *
+ * Returns a MULTIPLIER envelope (1 = no change) on the story-body music
+ * timeline (t=0 = start of story_body.mp3; the first line is at PRE_ROLL_SEC).
+ * `beds` are seconds from the first line. Ducks never reach past the last line,
+ * so the end swell is untouched. Off with MUSIC_BED_DUCK=off.
+ */
+export const MUSIC_UNDER_BG = { BG_LEVEL: 0.1, RAMP_SEC: 3 }
+
+export function musicBedDuckEnabled(env: Record<string, string | undefined> = process.env): boolean {
+  return String(env.MUSIC_BED_DUCK || '').trim().toLowerCase() !== 'off'
+}
+
+export function bedDuckEnvelope(beds: Array<{ start: number; end: number }>, storySec: number, o = MIX_V3, d = MUSIC_UNDER_BG): EnvSegment[] {
+  const first = o.PRE_ROLL_SEC
+  const last = first + Math.max(0, storySec)
+  const windows = beds
+    .map((b) => ({ s: first + Math.max(0, b.start), e: Math.min(first + b.end, last) }))
+    // a background that starts in the last few seconds is too late to fade under and back
+    .filter((w) => Number.isFinite(w.s) && Number.isFinite(w.e) && w.e > w.s && w.s < last - 2 * d.RAMP_SEC)
+    .sort((a, b) => a.s - b.s)
+  // merge windows that overlap or sit closer than two ramps (no pumping between them)
+  const merged: Array<{ s: number; e: number }> = []
+  for (const w of windows) {
+    const prev = merged[merged.length - 1]
+    if (prev && w.s <= prev.e + 2 * d.RAMP_SEC) prev.e = Math.max(prev.e, w.e)
+    else merged.push({ ...w })
+  }
+  const segs: EnvSegment[] = []
+  let cursor = 0
+  for (const w of merged) {
+    const downEnd = Math.min(w.s + d.RAMP_SEC, w.e)
+    // a background that runs to the last line starts coming back up early, so the music is
+    // fully back by the last line and the end swell is never a jump
+    const e = Math.max(downEnd, Math.min(w.e, last - d.RAMP_SEC))
+    const upEnd = Math.min(e + d.RAMP_SEC, last)
+    if (w.s > cursor) segs.push({ t0: cursor, t1: w.s, from: 1, to: 1, curve: 'lin' })
+    segs.push({ t0: w.s, t1: downEnd, from: 1, to: d.BG_LEVEL, curve: 'db' })
+    if (e > downEnd) segs.push({ t0: downEnd, t1: e, from: d.BG_LEVEL, to: d.BG_LEVEL, curve: 'lin' })
+    if (upEnd > e) segs.push({ t0: e, t1: upEnd, from: d.BG_LEVEL, to: 1, curve: 'db' })
+    cursor = Math.max(upEnd, e)
+  }
+  if (!segs.length) return []
+  // anything after the last window is back at 1 (also if the bed ran to the last line)
+  segs.push({ t0: cursor, t1: cursor + 0.001, from: segs[segs.length - 1].to, to: 1, curve: 'lin' })
+  return segs.filter((s) => s.t1 > s.t0)
+}
+
+/**
  * Outro music: t=0 is the start of the outro clip (Belle starts at
  * OUTRO_DUCK_SEC). Ends OUTRO_TAIL_FADE_SEC after Belle finishes, at 0.
  */
