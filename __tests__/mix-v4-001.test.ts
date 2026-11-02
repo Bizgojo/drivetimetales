@@ -128,3 +128,16 @@ describe('wiring', () => {
     expect(core).toContain('storyMusicEnvelope(segsDur, undefined, mixV4SceneLevels)')
   })
 })
+
+describe('no effects (SFX_OFF=on)', () => {
+  const core = readFileSync(join(__dirname, '../app/api/asc3/render-final-mix/core.ts'), 'utf8')
+  test('music still follows tension when there is no layered body', () => {
+    expect(core).toContain('if (!layeredBuilt && MIX_V4_ON) {')
+    expect(core).toContain("sfxItems: [], tag: opts.previewTag || null")
+  })
+  test('quiet re-mix tool forces SFX_OFF for its own process', () => {
+    const tool = readFileSync(join(__dirname, '../scripts/quiet-remix.ts'), 'utf8')
+    expect(tool).toContain("process.env.SFX_OFF = 'on'")
+    expect(tool).toContain("if (list) return")
+  })
+})
