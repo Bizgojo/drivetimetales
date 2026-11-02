@@ -6,6 +6,7 @@ import { applyMixRebuildClearance, currentBelleFingerprint, BELLE_FRESHNESS_MARK
 import { loadManifest, validateManifestGate, saveManifest, emptyManifest } from '@/lib/sfxAssetLock'
 // ATL-PARSER-001: shared line-index parser — single source of truth for segment numbering
 import { parseScriptPositions } from '@/lib/scriptLineIndex'
+import { planSpeakerGains, speakerGainFilter, voiceLevelEnabled, type MeasuredLine } from '@/lib/voiceLevel'
 import { buildLayeredStoryBody, layeredMixEnabled, mixV3BedOptions, mixV4SpotOptions, sfxV2Enabled, sfxV2Options, type BodyItem } from '@/lib/sfxLayeredMix'
 import { effectId, ensureMixPlan, mixV4Enabled, sceneLevelsFromTension } from '@/lib/mixPlan'
 import { sfxGloballyOff } from '@/lib/sfxSwitch'
@@ -726,6 +727,7 @@ export async function runRenderFinalMix(storyId: string, opts: {
     }
     const spokenSegmentNumbers = getSpokenSegmentNumbers(storyRow?.script || '')
     const buriedSegments: Array<{ segment: string; lufs: number; truePeak: number }> = []
+    const measuredLines: MeasuredLine[] = []
     if (spokenSegmentNumbers.size === 0) {
       console.warn('  LOUDNESS-001: no spoken segments identified — skipping loudness audit (HAL-PIPE-002)')
     } else {
@@ -752,6 +754,7 @@ export async function runRenderFinalMix(storyId: string, opts: {
         const lufsStr = metrics.input_i.toFixed(2)
         const tpStr = Number.isFinite(metrics.input_tp) ? metrics.input_tp.toFixed(2) : String(metrics.input_tp)
         console.log(`  Segment loudness ${segment.name}: ${lufsStr} LUFS, ${tpStr} dBTP`)
+        measuredLines.push({ idx: segment.segmentNumber, speaker: '', lufs: metrics.input_i, truePeak: metrics.input_tp, dur: await getAudioDuration(segment.path).catch(() => 0) })
         if (metrics.input_i < -28) {
           buriedSegments.push({
             segment: segment.name,
@@ -766,6 +769,26 @@ export async function runRenderFinalMix(storyId: string, opts: {
           error: 'LOUDNESS-001: near-silent or unmeasurable segment(s) detected — re-render required before mix',
           thresholdLufs: -28,
           buriedSegments,
+        }
+      }
+    }
+    // VOICE-LEVEL-001: match the characters' loudness to each other (one gain per speaker).
+    if (voiceLevelEnabled() && measuredLines.length > 0) {
+      const speakerByIdx = new Map(parseScriptPositions(storyRow?.script || '').filter(p => p.kind === 'voice').map(p => [p.index, String(p.speaker || '')]))
+      for (const l of measuredLines) l.speaker = speakerByIdx.get(l.idx) || ''
+      const { targetLufs, gains } = planSpeakerGains(measuredLines)
+      if (gains.length === 0) console.log(`  VOICE-LEVEL-001: all speakers within range of ${targetLufs} LUFS — no change`)
+      for (const g of gains) {
+        console.log(`  VOICE-LEVEL-001: ${g.speaker} ${g.levelLufs} LUFS → ${g.gainDb > 0 ? '+' : ''}${g.gainDb} dB on ${g.lines} line(s)${g.limiter ? ' (with limiter)' : ''}`)
+        const idxs = new Set(measuredLines.filter(l => l.speaker.trim().toUpperCase() === g.speaker).map(l => l.idx))
+        for (const seg of preparedSegments.filter(sg => idxs.has(sg.segmentNumber))) {
+          const leveled = seg.path.replace(/\.mp3$/, '.lvl.mp3')
+          try {
+            await execFileAsync(FFMPEG_PATH, ['-i', seg.path, '-af', speakerGainFilter(g), '-ar', '44100', '-ac', '2', '-b:a', '192k', '-y', leveled])
+            await fs.rename(leveled, seg.path)
+          } catch (e) {
+            console.warn(`  VOICE-LEVEL-001: could not level ${seg.name} — left as recorded (${e instanceof Error ? e.message.slice(0, 120) : String(e)})`)
+          }
         }
       }
     }
