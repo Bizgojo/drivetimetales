@@ -83,8 +83,14 @@ export function envelopeExpr(segs: EnvSegment[]): string {
 /**
  * Story-body music: t=0 is the start of story_body.mp3; the first line starts
  * at PRE_ROLL_SEC; the last line ends at PRE_ROLL_SEC + storySec.
+ *
+ * MIX-V4-001: sceneLevels (seconds from the first line → bed level) make the
+ * bed follow the story's tension, with a TENSION_RAMP_SEC ramp at each change.
+ * Without them the bed is flat at BED (stage 1).
  */
-export function storyMusicEnvelope(storySec: number, o = MIX_V3): { segs: EnvSegment[]; totalSec: number } {
+export const TENSION_RAMP_SEC = 5
+
+export function storyMusicEnvelope(storySec: number, o = MIX_V3, sceneLevels: Array<{ atSec: number; level: number }> = []): { segs: EnvSegment[]; totalSec: number } {
   const start = o.PRE_ROLL_SEC
   const end = start + Math.max(0, storySec)
   const fadeDownEnd = Math.min(start + o.FADE_DOWN_INTO_STORY_SEC, end)
@@ -92,16 +98,35 @@ export function storyMusicEnvelope(storySec: number, o = MIX_V3): { segs: EnvSeg
   const crescStart = Math.max(fadeDownEnd, end - crescSec)
   const swellEnd = end + o.END_SWELL_RAMP_SEC
   const totalSec = swellEnd + o.END_SWELL_HOLD_SEC
+  const marks = [...sceneLevels].filter((m) => Number.isFinite(m.atSec) && m.level > 0).sort((a, b) => a.atSec - b.atSec)
+  const firstLevel = marks.length ? marks[0].level : o.BED
   const segs: EnvSegment[] = [
     { t0: 0, t1: o.FADE_IN_SEC, from: 0, to: o.SWELL, curve: 'lin' },
     { t0: o.FADE_IN_SEC, t1: o.FADE_DOWN_START_SEC, from: o.SWELL, to: o.SWELL, curve: 'lin' },
-    { t0: o.FADE_DOWN_START_SEC, t1: fadeDownEnd, from: o.SWELL, to: o.BED, curve: 'db' },
-    { t0: fadeDownEnd, t1: crescStart, from: o.BED, to: o.BED, curve: 'lin' },
-    { t0: crescStart, t1: end, from: o.BED, to: o.CRESCENDO_PEAK, curve: 'db' },
-    { t0: end, t1: swellEnd, from: o.CRESCENDO_PEAK, to: o.SWELL, curve: 'db' },
+    { t0: o.FADE_DOWN_START_SEC, t1: fadeDownEnd, from: o.SWELL, to: firstLevel, curve: 'db' },
+  ]
+  let cursor = fadeDownEnd
+  let level = firstLevel
+  const changes = marks.slice(1).map((m) => ({ at: start + m.atSec, level: m.level }))
+  changes.forEach((c, i) => {
+    const at = Math.max(c.at, cursor)
+    if (at >= crescStart || c.level === level) return
+    const nextAt = i + 1 < changes.length ? Math.max(changes[i + 1].at, at) : Infinity
+    const rampEnd = Math.min(at + TENSION_RAMP_SEC, nextAt, crescStart)
+    if (rampEnd <= at) return
+    segs.push({ t0: cursor, t1: at, from: level, to: level, curve: 'lin' })
+    segs.push({ t0: at, t1: rampEnd, from: level, to: c.level, curve: 'db' })
+    cursor = rampEnd
+    level = c.level
+  })
+  const peak = Math.max(o.CRESCENDO_PEAK, level)
+  segs.push(
+    { t0: cursor, t1: crescStart, from: level, to: level, curve: 'lin' },
+    { t0: crescStart, t1: end, from: level, to: peak, curve: 'db' },
+    { t0: end, t1: swellEnd, from: peak, to: o.SWELL, curve: 'db' },
     { t0: swellEnd, t1: totalSec, from: o.SWELL, to: o.SWELL, curve: 'lin' },
-  ].filter((s) => s.t1 > s.t0)
-  return { segs, totalSec }
+  )
+  return { segs: segs.filter((s) => s.t1 > s.t0), totalSec }
 }
 
 /**

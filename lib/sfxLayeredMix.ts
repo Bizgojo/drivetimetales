@@ -28,6 +28,8 @@ export type BodyItem =
       anchor?: { voiceIdx: number; atSec: number }
       /** SFX-CATALOG-001: the catalog says spot or background; overrides the guess from the cue words */
       role?: SfxRole
+      /** MIX-V4-001: the next line reacts to this sound → a short beat before it */
+      react?: boolean
     }
 
 export type SfxRole = 'spot' | 'bed'
@@ -49,6 +51,9 @@ export type SfxPlacement = {
   fadeOut: number
   /** bed only, MIX-V3-001: seconds to fade in from silence to bedGain (0 = old loud start) */
   fadeIn?: number
+  /** spot only, MIX-V4-001: seconds into the effect when the next voice starts; it drops to duckGain under the voice */
+  duckAt?: number
+  duckGain?: number
   /** duration of the generated clip itself */
   clipDur: number
 }
@@ -83,6 +88,29 @@ export const LAYERED_DEFAULTS = {
    * mixV3BedOptions().
    */
   BED_FADE_IN_SEC: 0,
+  /**
+   * MIX-V4-001 (Marc 2026-11-01, stage 2): spot effects no longer stop the
+   * story. Off = the next line waits for the whole effect (minus OVERLAP_SEC).
+   * On = the next line starts SPOT_LEAD_SEC after an ordinary effect, or after
+   * a short beat (up to SPOT_BEAT_MAX_SEC) when that line reacts to the sound;
+   * the rest of the effect plays under the voice at SPOT_UNDER_VOICE_GAIN.
+   */
+  SPOT_NO_PAUSE: false,
+  SPOT_LEAD_SEC: 0.3,
+  SPOT_BEAT_MIN_SEC: 0.6,
+  SPOT_BEAT_MAX_SEC: 1.0,
+  SPOT_UNDER_VOICE_GAIN: 0.45,
+}
+
+/** MIX-V4-001: spot effects play under the start of the line; reaction sounds get a short beat. */
+export function mixV4SpotOptions(): Partial<typeof LAYERED_DEFAULTS> {
+  return { SPOT_NO_PAUSE: true }
+}
+
+/** MIX-V4-001: how long the next line waits after a spot effect starts. */
+export function spotGapSec(dur: number, react: boolean, o: Pick<typeof LAYERED_DEFAULTS, 'SPOT_LEAD_SEC' | 'SPOT_BEAT_MIN_SEC' | 'SPOT_BEAT_MAX_SEC'> = LAYERED_DEFAULTS): number {
+  if (react) return Math.min(o.SPOT_BEAT_MAX_SEC, Math.max(o.SPOT_BEAT_MIN_SEC, dur + 0.25))
+  return Math.min(dur, o.SPOT_LEAD_SEC)
 }
 
 /** MIX-V3-001: backgrounds fade in softly under the voice; the story no longer pauses for them. */
@@ -150,7 +178,11 @@ export function planLayeredBody(items: BodyItem[], opts: Partial<typeof LAYERED_
       // An effect starts where the timeline is now (after any earlier pending gap).
       const start = cursor + pendingGap
       const role = item.role ?? classifySfxCue(item.cue)
-      if (role === 'spot') {
+      if (role === 'spot' && o.SPOT_NO_PAUSE) {
+        const gap = spotGapSec(item.dur, !!item.react, o)
+        sfx.push({ idx: item.idx, path: item.path, cue: item.cue, role, start, length: item.dur, lead: 0, bedGain: 1, loop: false, fadeOut: 0, clipDur: item.dur, ...(gap < item.dur ? { duckAt: gap, duckGain: o.SPOT_UNDER_VOICE_GAIN } : {}) })
+        pendingGap += gap
+      } else if (role === 'spot') {
         const overlap = Math.min(o.OVERLAP_SEC, item.dur * 0.3)
         sfx.push({ idx: item.idx, path: item.path, cue: item.cue, role, start, length: item.dur, lead: 0, bedGain: 1, loop: false, fadeOut: 0, clipDur: item.dur })
         pendingGap += Math.max(0, item.dur - overlap)
@@ -208,6 +240,12 @@ export function sfxFilterChain(placement: SfxPlacement, inputIndex: number, outL
   const ms = Math.max(0, Math.round(placement.start * 1000))
   const len = Math.max(0.05, placement.length).toFixed(3)
   const parts = [`[${inputIndex}:a]aresample=44100,aformat=sample_rates=44100:channel_layouts=stereo`, `atrim=duration=${len}`, 'asetpts=PTS-STARTPTS']
+  if (placement.role === 'spot' && placement.duckAt !== undefined && placement.duckGain !== undefined) {
+    // MIX-V4-001: full level until the voice comes in, then under it.
+    const at = placement.duckAt.toFixed(3)
+    const g = placement.duckGain.toFixed(3)
+    parts.push(`volume='if(lt(t,${at}),1,if(lt(t,${at}+0.25),1-(1-${g})*(t-${at})/0.25,${g}))':eval=frame`)
+  }
   if (placement.role === 'bed') {
     const lead = placement.lead.toFixed(3)
     const g = placement.bedGain.toFixed(3)
