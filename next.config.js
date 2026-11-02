@@ -5,7 +5,7 @@ const { withSentryConfig } = require('@sentry/nextjs')
 function appVersion() {
   let sha = process.env.VERCEL_GIT_COMMIT_SHA || ''
   if (!sha) {
-    try { sha = require('child_process').execSync('git rev-parse --short HEAD').toString().trim() } catch { sha = 'local' }
+    try { sha = require('child_process').execSync('git rev-parse --short=12 HEAD').toString().trim() } catch { sha = 'local' }
   }
   return `${sha.slice(0, 12)}-${Date.now().toString(36)}`
 }
