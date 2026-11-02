@@ -6,7 +6,8 @@ import { applyMixRebuildClearance, currentBelleFingerprint, BELLE_FRESHNESS_MARK
 import { loadManifest, validateManifestGate, saveManifest, emptyManifest } from '@/lib/sfxAssetLock'
 // ATL-PARSER-001: shared line-index parser — single source of truth for segment numbering
 import { parseScriptPositions } from '@/lib/scriptLineIndex'
-import { buildLayeredStoryBody, layeredMixEnabled, mixV3BedOptions, sfxV2Enabled, sfxV2Options, type BodyItem } from '@/lib/sfxLayeredMix'
+import { buildLayeredStoryBody, layeredMixEnabled, mixV3BedOptions, mixV4SpotOptions, sfxV2Enabled, sfxV2Options, type BodyItem } from '@/lib/sfxLayeredMix'
+import { effectId, ensureMixPlan, mixV4Enabled, sceneLevelsFromTension } from '@/lib/mixPlan'
 import { envelopeExpr, mixV3Enabled, outroMusicEnvelope, storyMusicEnvelope } from '@/lib/mixV3'
 import { overlayBodyIndex, overlayEnabled } from '@/lib/sfxOverlay'
 import { alignedWordsForSegment, wordEndTime } from '@/lib/sfxAlign'
@@ -328,6 +329,12 @@ export async function runRenderFinalMix(storyId: string, opts: {
    * sound-effects plan and today's effect timing, so the two can be compared.
    */
   mixOnly?: boolean
+  /**
+   * MIX-V4-001 (stage 2, needs stage 1): music follows the story's tension;
+   * spot effects no longer pause the story (reaction sounds get a ~1s beat).
+   * Default: MIX_V4=on in env.
+   */
+  mixV4?: boolean
 } = {}): Promise<{
   success: boolean
   finalAudioUrl?: string
@@ -851,6 +858,9 @@ export async function runRenderFinalMix(storyId: string, opts: {
     // overlap the next line slightly; background effects keep running quietly
     // under the narration. Falls back to the default concat on any error.
     let layeredBuilt = false
+    // MIX-V4-001: tension levels for the music bed (seconds from the first line → level).
+    let mixV4SceneLevels: Array<{ atSec: number; level: number }> = []
+    const MIX_V4_ON = mixV4Enabled(opts.mixV4) && mixV3Enabled(opts.mixV3)
     if (layeredMixEnabled() && (preparedSfx.length > 0 || (overlayEnabled() && !sfxIsDisabled))) {
       try {
         const positions = parseScriptPositions(storyRow?.script || '')
@@ -906,7 +916,13 @@ export async function runRenderFinalMix(storyId: string, opts: {
             console.warn('  SFX-OVERLAY-001 overlay unavailable; mixing without it:', overlayErr instanceof Error ? overlayErr.message : String(overlayErr))
           }
         }
-        await buildLayeredStoryBody({
+        let mixPlan: Awaited<ReturnType<typeof ensureMixPlan>> | null = null
+        if (MIX_V4_ON) {
+          const sfxItems = items.filter((i): i is Extract<BodyItem, { kind: 'sfx' }> => i.kind === 'sfx')
+          mixPlan = await ensureMixPlan({ db: supabase as any, storyId, positions, sfxItems: sfxItems.map(i => ({ idx: i.idx, cue: i.cue, anchored: !!i.anchor })), tag: opts.previewTag || null, log: (line) => console.log(line) })
+          for (const i of sfxItems) i.react = !!mixPlan.reactions[effectId(i.idx)]
+        }
+        const layeredPlan = await buildLayeredStoryBody({
           items,
           tmpDir,
           outPath: normalizedConcatPath,
@@ -915,10 +931,15 @@ export async function runRenderFinalMix(storyId: string, opts: {
           opts: {
             ...((opts.previewTag && !opts.mixOnly) || sfxV2Enabled() ? sfxV2Options() : {}),
             ...(mixV3Enabled(opts.mixV3) ? mixV3BedOptions() : {}),
+            ...(MIX_V4_ON ? mixV4SpotOptions() : {}),
           },
           log: (line) => console.log(line),
         })
         layeredBuilt = true
+        if (MIX_V4_ON && mixPlan?.tension.length) {
+          mixV4SceneLevels = sceneLevelsFromTension(mixPlan.tension, layeredPlan.voices.map(v => ({ idx: v.idx, start: v.start })))
+          console.log(`  MIX-V4-001 music follows tension: ${mixV4SceneLevels.map(m => `${m.atSec.toFixed(0)}s→${m.level}`).join(', ')}`)
+        }
         console.log('  SFX-LAYERED-001: layered story body built')
       } catch (layerErr) {
         console.warn('  SFX-LAYERED-001: layered build failed; using default concat:', layerErr instanceof Error ? layerErr.message : String(layerErr))
@@ -984,7 +1005,7 @@ export async function runRenderFinalMix(storyId: string, opts: {
     // MIX-V3-001: one continuous piece of music; where it ends, the outro music picks up.
     let mixV3MusicSec = 0
     if (MIX_V3_ON) {
-      const env = storyMusicEnvelope(segsDur)
+      const env = storyMusicEnvelope(segsDur, undefined, mixV4SceneLevels)
       mixV3MusicSec = env.totalSec
       console.log(`  ⚑  MIX-V3-001: music fades into the story, crescendo, soft under outro (${env.totalSec.toFixed(1)}s story music)`)
       musicShapeFilter =
