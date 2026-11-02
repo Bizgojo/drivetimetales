@@ -122,7 +122,7 @@ function buildCatalogPrompt(params: {
     '',
     'TASK 0 — The script marks some sounds itself (SCRIPT SOUND CUES below). Their old recordings are NOT used. For EACH script cue give the catalog ID that is really that sound, or null if the catalog has no such sound (put it in "wanted"). It plays right before the next spoken line.',
     '',
-    'TASK 2 — Scene backgrounds: for each scene whose place has a steady sound, add ONE catalog sound of kind "background" at the scene\'s first line. Skip it if no background in the catalog fits the place.',
+    'TASK 2 — Scene backgrounds (BG-SCENE-SETTER-001): a background is a short scene-setter (about 10 seconds) that tells the listener WHERE they now are. Add ONE catalog sound of kind "background" at the first line of a scene ONLY when the story moves to a new place with a steady sound. Never in the first scene of the story. Never when the scene is in the same place as the scene before. Skip it if no background in the catalog fits the place.',
     '',
     'TASK 3 — You may add a catalog sound on an unflagged line only if the action clearly makes that sound (rare).',
     '',
@@ -180,6 +180,8 @@ export function validateSoundMap(raw: unknown, params: {
   const r: any = raw || {}
   const perLine = new Map<number, number>()
   const backgroundScenes = new Set<number>()
+  const firstScene = lines.length ? Math.min(...lines.map((l) => l.scene)) : 1
+  let lastBackground: { scene: number; id: string } | null = null
 
   const accept = (item: any, kind: 'decision' | 'background' | 'extra'): boolean => {
     const idx = Number(item?.line)
@@ -207,6 +209,10 @@ export function validateSoundMap(raw: unknown, params: {
     }
     if (bg) {
       if (backgroundScenes.has(line.scene)) { rejected.push({ cue: item, reason: 'scene already has a background' }); return false }
+      // BG-SCENE-SETTER-001 (Marc 2026-11-02): catalog backgrounds only mark a change of place —
+      // none at the start of the story, none when the place is the same as the scene before.
+      if (catalogById && line.scene <= firstScene) { rejected.push({ cue: item, reason: 'no background at the start of the story' }); return false }
+      if (catalogById && entry && lastBackground && lastBackground.scene === line.scene - 1 && lastBackground.id === entry.id) { rejected.push({ cue: item, reason: 'same place as the scene before' }); return false }
     } else {
       if ((perLine.get(idx) || 0) >= 2) { rejected.push({ cue: item, reason: 'line already has two effects' }); return false }
       // SFX-SOUNDSNAP-001: in catalog mode the script's old effect files don't play, so no clash.
@@ -222,13 +228,14 @@ export function validateSoundMap(raw: unknown, params: {
       const want = phraseTokens(afterWords).join(' ')
       if (want && lineTokens.includes(` ${want} `)) out.afterWords = afterWords
     }
-    if (bg) backgroundScenes.add(line.scene)
+    if (bg) { backgroundScenes.add(line.scene); if (entry) lastBackground = { scene: line.scene, id: entry.id } }
     else perLine.set(idx, (perLine.get(idx) || 0) + 1)
     cues.push(out)
     return true
   }
 
-  for (const bgItem of Array.isArray(r.backgrounds) ? r.backgrounds : []) accept(bgItem, 'background')
+  // BG-SCENE-SETTER-001: in story order, so "same place as the scene before" compares neighbours
+  for (const bgItem of (Array.isArray(r.backgrounds) ? [...r.backgrounds] : []).sort((a: any, b: any) => Number(a?.line) - Number(b?.line))) accept(bgItem, 'background')
 
   // SFX-SOUNDSNAP-001: catalog mode fills the script's own sound cues from the catalog
   // (the old recordings are not used); the sound plays before the next spoken line.

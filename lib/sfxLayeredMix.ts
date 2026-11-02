@@ -133,6 +133,18 @@ export function sfxV2Options(): Partial<typeof LAYERED_DEFAULTS> {
   return { MAX_BED_SEC: 240, BED_LASTS_SCENE: true }
 }
 
+/**
+ * BG-SCENE-SETTER-001 (Marc 2026-11-02, after test 2): "the background sfx
+ * lasted too long. It should only be there to let the listener know where he
+ * is." A background is a short scene-setter: SCENE_SETTER_SEC in all (soft
+ * fade in, then a 3 s fade out), not the whole scene. Used with the catalog
+ * planner; apply after sfxV2Options() so it wins.
+ */
+export const SCENE_SETTER_SEC = 10
+export function sceneSetterBedOptions(): Partial<typeof LAYERED_DEFAULTS> {
+  return { MAX_BED_SEC: SCENE_SETTER_SEC }
+}
+
 /** Bed = a continuing background sound; everything else is a spot effect. */
 export function classifySfxCue(cue: string): SfxRole {
   const text = String(cue || '')
