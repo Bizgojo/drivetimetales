@@ -23,6 +23,9 @@ async function main() {
   const tagArg = process.argv.indexOf('--tag')
   const tag = (tagArg > 0 ? process.argv[tagArg + 1] : 'v2').replace(/[^a-z0-9]/gi, '') || 'v2'
   process.env.SFX_LIBRARY = 'on'
+  // SFX-SOUNDSNAP-001: a TEST mix exists to hear the sounds — effects on for this process only,
+  // whatever the service's SFX_OFF (published episodes stay quiet).
+  process.env.SFX_OFF = 'off'
   for (const flag of ['SFX_OVERLAY', 'SFX_LAYERED_MIX']) {
     if (String(process.env[flag] || '').toLowerCase() !== 'on') throw new Error(`${flag} must be on`)
   }

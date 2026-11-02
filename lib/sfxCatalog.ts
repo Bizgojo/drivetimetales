@@ -50,7 +50,8 @@ export async function loadCatalog(db: SupabaseClient): Promise<CatalogFile> {
 
 function usable(t: CatalogTake, mode: 'test' | 'production'): boolean {
   if (t.status === 'approved') return true
-  return mode === 'test' && t.status === 'candidate' && t.source === 'kept-library'
+  // TEST mode: any candidate (kept library or licensed) so Marc can hear it before approving.
+  return mode === 'test' && t.status === 'candidate'
 }
 
 /** Names Claude may use right now, each with its usable takes. */
@@ -90,6 +91,57 @@ export function proposeTakesFromKeptLibrary(catalog: CatalogFile, kept: SfxLibra
     else empty.push(n.id)
   }
   return { catalog: next, filled, empty }
+}
+
+/**
+ * SFX-SOUNDSNAP-001 (Marc 2026-11-02, Soundsnap approved): licensed sounds are
+ * downloaded into one folder per catalog name (…/soundsnap/ALL-01/<file>), so
+ * ingest gives them ids like "soundsnap/all-01/<slug>". The folder decides the
+ * name — no word guessing.
+ */
+export function catalogIdFromLibraryId(libraryId: string, names: CatalogName[] = SFX_CATALOG_NAMES): string | null {
+  const m = String(libraryId || '').toLowerCase().match(/^[a-z0-9-]+\/([a-z]{2,3})-(\d{1,3})(?:\/|-)/)
+  if (!m) return null
+  const id = `${m[1].toUpperCase()}-${m[2].padStart(2, '0')}`
+  return names.some((n) => n.id === id) ? id : null
+}
+
+/**
+ * Licensed sounds go to their catalog name as candidates (up to 3 kept per
+ * name). They come first: a kept-library candidate gives up its slot to a
+ * licensed one. Approved and discarded takes are never touched, and a
+ * discarded sound never comes back.
+ */
+export function addLicensedTakes(catalog: CatalogFile, licensed: SfxLibraryEntry[], names: CatalogName[] = SFX_CATALOG_NAMES): { catalog: CatalogFile; added: number; byName: Record<string, number> } {
+  const next: CatalogFile = { ...catalog, updatedAt: new Date().toISOString(), entries: { ...catalog.entries } }
+  const groups = new Map<string, SfxLibraryEntry[]>()
+  for (const e of licensed) {
+    if (e.status === 'rejected') continue
+    const id = catalogIdFromLibraryId(e.id, names)
+    if (!id) continue
+    if (!groups.has(id)) groups.set(id, [])
+    groups.get(id)!.push(e)
+  }
+  let added = 0
+  const byName: Record<string, number> = {}
+  for (const [id, entries] of groups) {
+    const existing = [...(next.entries[id]?.takes || [])]
+    const known = new Set(existing.map((t) => t.libraryId))
+    const fresh = entries.filter((e) => !known.has(e.id)).sort((a, b) => a.id.localeCompare(b.id))
+    let takes = existing
+    for (const e of fresh) {
+      const active = takes.filter((t) => t.status !== 'discarded')
+      const take: CatalogTake = { libraryId: e.id, path: e.path, name: e.name, source: 'licensed', status: 'candidate' }
+      if (active.length < TAKES_PER_NAME) { takes = [...takes, take]; added += 1; byName[id] = (byName[id] || 0) + 1; continue }
+      const bump = takes.findIndex((t) => t.status === 'candidate' && t.source === 'kept-library')
+      if (bump < 0) break
+      takes = [...takes.slice(0, bump), ...takes.slice(bump + 1), take]
+      added += 1
+      byName[id] = (byName[id] || 0) + 1
+    }
+    next.entries[id] = { takes }
+  }
+  return { catalog: next, added, byName }
 }
 
 export function catalogKind(id: string, names: CatalogName[] = SFX_CATALOG_NAMES): CatalogKind | null {

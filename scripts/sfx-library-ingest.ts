@@ -1,7 +1,7 @@
 /**
  * SFX-LIBRARY-001 — add real recorded sound effects to our library.
  *
- *   npx tsx scripts/sfx-library-ingest.ts <folder> [--source sonniss|soundly] [--license "..."] [--dry-run] [--max-sec 10]
+ *   npx tsx scripts/sfx-library-ingest.ts <folder> [--source sonniss|soundly|soundsnap] [--license "..."] [--dry-run] [--max-sec 10]
  *
  * Walks <folder> for .wav/.aif/.aiff/.flac/.mp3/.ogg files. For each one:
  *   - words come from the folder path + file name (UCS names like
@@ -10,6 +10,9 @@
  *   - converted to mp3, mono 44.1 kHz, loudness-normalised (-18 LUFS),
  *     leading silence trimmed, capped at --max-sec seconds with a short fade
  *   - uploaded to audio/sfx-library/<source>/<slug>.mp3
+ * SFX-SOUNDSNAP-001: Soundsnap downloads go in one folder per catalog name
+ * (<folder>/ALL-01/…, <folder>/CR-29/…) and are ingested with --source soundsnap;
+ * the folder name decides the catalog name, and background names keep 60s.
  * Then sfx-library/manifest.json is rewritten (existing entries kept;
  * same id = replaced). Re-running on the same folder is safe.
  *
@@ -20,7 +23,10 @@ import { execFileSync } from 'node:child_process'
 import { mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { basename, extname, join, relative } from 'node:path'
+import { catalogIdFromLibraryId, catalogKind } from '../lib/sfxCatalog'
 import { SFX_LIBRARY_MANIFEST, SFX_LIBRARY_PREFIX, sfxWords, type SfxLibraryEntry, type SfxLibraryManifest } from '../lib/sfxLibrary'
+
+const BACKGROUND_MAX_SEC = 60
 
 const AUDIO_EXT = new Set(['.wav', '.aif', '.aiff', '.flac', '.mp3', '.ogg'])
 
@@ -78,7 +84,7 @@ async function main() {
   const folder = process.argv[2]
   if (!folder || folder.startsWith('--')) throw new Error('usage: sfx-library-ingest.ts <folder> [--source sonniss] [--license "..."] [--dry-run] [--max-sec 10]')
   const source = slugify(arg('source', 'sonniss')!)
-  const license = arg('license', source === 'sonniss' ? 'Sonniss GDC bundle — royalty-free, commercial use, no attribution' : '')
+  const license = arg('license', source === 'sonniss' ? 'Sonniss GDC bundle — royalty-free, commercial use, no attribution' : source === 'soundsnap' ? 'Soundsnap subscription license — use in the Endless Tales subscription app approved by Soundsnap support (per Marc, 2026-11-02)' : '')
   const maxSec = Number(arg('max-sec', '10'))
   const dryRun = process.argv.includes('--dry-run')
   const files = walk(folder)
@@ -105,7 +111,9 @@ async function main() {
       if (dryRun) { console.log(`[dry-run] ${id}  ←  "${name}"  tags: ${words.join(' ')}`); continue }
       try {
         const out = join(tmp, 'out.mp3')
-        const durationSec = convert(file, out, maxSec)
+        // SFX-SOUNDSNAP-001: a background (rain, crowd, engine idle) keeps up to 60s so its loop isn't obvious.
+        const catId = catalogIdFromLibraryId(id)
+        const durationSec = convert(file, out, catId && catalogKind(catId) === 'background' ? Math.max(maxSec, BACKGROUND_MAX_SEC) : maxSec)
         const buf = readFileSync(out)
         if (buf.length < 1024) throw new Error('converted file too small (silent?)')
         const { error } = await db!.storage.from('audio').upload(path, buf, { contentType: 'audio/mpeg', upsert: true })
