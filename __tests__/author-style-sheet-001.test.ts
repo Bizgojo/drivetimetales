@@ -61,3 +61,10 @@ describe('ENDING-OPEN-001: open endings only occasionally', () => {
     expect(src).toContain("{ endingSeed: String(job.id || '') }")
   })
 })
+
+test('STYLE-001: an author without a complete style sheet is stopped', () => {
+  const { authorStyleGaps } = require('@/lib/authorStyle')
+  expect(authorStyleGaps({ name: 'Elena Marsh', style_reference: 'Emily Henry', style_description: 'x' })).toEqual([])
+  expect(authorStyleGaps({ name: 'Brand New Author', style_reference: 'Someone', style_description: 'x' })).toEqual(['style sheet'])
+  expect(authorStyleGaps({ name: 'Brand New Author', style_reference: 'Someone', style_description: 'x', style_sheet: styleSheetForAuthor('Elena Marsh') })).toEqual([])
+})

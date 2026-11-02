@@ -2079,12 +2079,12 @@ function authorStyleProfileFromContext(story: any, brief: any) {
 async function loadAuthorRowForStory(story: any, brief: any): Promise<AuthorStyleRow | null> {
   const authorId = cleanAuthorStyleValue(story?.author_id)
   if (authorId) {
-    const { data } = await supabase.from('authors').select('name,style_reference,style_description').eq('id', authorId).maybeSingle()
+    const { data } = await supabase.from('authors').select('*').eq('id', authorId).maybeSingle()
     if (data) return data as AuthorStyleRow
   }
   const authorName = cleanAuthorStyleValue(story?.author || brief?.author)
   if (authorName) {
-    const { data } = await supabase.from('authors').select('name,style_reference,style_description').ilike('name', authorName).maybeSingle()
+    const { data } = await supabase.from('authors').select('*').ilike('name', authorName).maybeSingle()
     if (data) return data as AuthorStyleRow
   }
   return null
