@@ -88,3 +88,20 @@ export function scriptsFingerprint(scripts: string[]): string {
   }
   return `${scripts.length}:${h.toString(16)}`
 }
+
+/**
+ * CONTINUITY-JSON-001 (2026-11-01): the checker may write tracking notes before
+ * its JSON; 2000 tokens was not enough for 7 episodes. One retry asks for the
+ * JSON alone.
+ */
+export const CONTINUITY_MAX_TOKENS = 8000
+export const CONTINUITY_JSON_ONLY_RETRY = 'IMPORTANT: reply with the JSON object only. No notes, no tracking, no text before or after it.'
+
+/** True when the reply contains a parseable JSON object. */
+export function hasJsonObject(text: string): boolean {
+  const raw = String(text || '').trim()
+  try { JSON.parse(raw); return true } catch { /* look inside */ }
+  const match = raw.match(/\{[\s\S]*\}/)
+  if (!match) return false
+  try { JSON.parse(match[0]); return true } catch { return false }
+}

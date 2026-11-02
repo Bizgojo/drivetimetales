@@ -38,7 +38,7 @@ import { sequelHookOf, buildSequelHookPromptBlock, sequelHookValidatorNote } fro
 import { guideDescriptionNameCandidate, isDescriptorNotName } from '@/lib/rosterFullName'
 import { canonicalizeCharacterNames, characterNameConflictDetails, buildNameIndex, aliasesForLabel } from '@/lib/characterNames'
 import { seriesOutlineEnabled, buildSeriesOutlinePrompt, validateSeriesOutline, buildOutlinePromptBlock, type SeriesOutline } from '@/lib/seriesOutline'
-import { seriesContinuityEnabled, buildContinuityPrompt, parseContinuityVerdict, continuityRewriteTarget, scriptsFingerprint, storyBodyText, MAX_SERIES_CONTINUITY_RUNS } from '@/lib/seriesContinuity'
+import { seriesContinuityEnabled, buildContinuityPrompt, parseContinuityVerdict, continuityRewriteTarget, scriptsFingerprint, storyBodyText, MAX_SERIES_CONTINUITY_RUNS, CONTINUITY_MAX_TOKENS, CONTINUITY_JSON_ONLY_RETRY, hasJsonObject } from '@/lib/seriesContinuity'
 import { sendCastReview } from '@/lib/castReviewTelegram'
 import { verifyArtifactHttp } from '@/lib/artifactGate'
 import { runHookGateForStory, detectBelleQualityRepairEmpty } from '@/lib/hookGate'
@@ -7645,21 +7645,33 @@ async function scoreValidateSeriesPackage(job: ProductionJob, model: string) {
           ...outline.episodes.map((e) => `Episode ${e.episode}: ${e.goal}`),
         ].join('\n')
       : ''
-    const response = await anthropic.messages.create({
-      model,
-      max_tokens: 2000,
-      temperature: 0,
-      messages: [{
-        role: 'user',
-        content: buildContinuityPrompt({
-          seriesTitle: String(sortedEps[0]?.series_name || ''),
-          outlineText,
-          exceptionNote: sequelHookValidatorNote(sequelHookOf(sortedEps[0]?.brief_json)),
-          episodes: sortedEps.map((ep: any) => ({ episodeNumber: episodeNumber(ep, 0), title: String(ep.title || ''), body: storyBodyText(String(ep.script || '')) })),
-        }),
-      }],
+    const continuityPrompt = buildContinuityPrompt({
+      seriesTitle: String(sortedEps[0]?.series_name || ''),
+      outlineText,
+      exceptionNote: sequelHookValidatorNote(sequelHookOf(sortedEps[0]?.brief_json)),
+      episodes: sortedEps.map((ep: any) => ({ episodeNumber: episodeNumber(ep, 0), title: String(ep.title || ''), body: storyBodyText(String(ep.script || '')) })),
     })
-    const rawVerdict = response.content.map((c: any) => ('text' in c ? c.text : '')).join('').trim()
+    // CONTINUITY-JSON-001 (2026-11-01, The Last Well): on 7 episodes the
+    // checker writes its tracking notes before the JSON and ran out of room at
+    // 2000 tokens ("returned no JSON verdict"). More room, and one retry that
+    // asks for the JSON alone.
+    let response = await anthropic.messages.create({
+      model,
+      max_tokens: CONTINUITY_MAX_TOKENS,
+      temperature: 0,
+      messages: [{ role: 'user', content: continuityPrompt }],
+    })
+    let rawVerdict = response.content.map((c: any) => ('text' in c ? c.text : '')).join('').trim()
+    if (!hasJsonObject(rawVerdict)) {
+      console.warn(`[SERIES-CONTINUITY-001] no JSON verdict (stop_reason=${(response as any).stop_reason}); retrying once for JSON only`)
+      response = await anthropic.messages.create({
+        model,
+        max_tokens: CONTINUITY_MAX_TOKENS,
+        temperature: 0,
+        messages: [{ role: 'user', content: `${continuityPrompt}\n\n${CONTINUITY_JSON_ONLY_RETRY}` }],
+      })
+      rawVerdict = response.content.map((c: any) => ('text' in c ? c.text : '')).join('').trim()
+    }
     logAnthropicCall({
       route: '/api/admin/production-jobs/run-next',
       purpose: 'series-continuity-check',
