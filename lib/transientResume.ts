@@ -30,6 +30,10 @@ const SELF_FETCH_PATTERNS: RegExp[] = [
   /\b(Non-JSON|Empty) response from \/api\//,
   /\bSeries voice segment fetch failed for Ep\d+ seg\d+: no response after \d+ retries\b/,
   /\b(502 Bad Gateway|503 Service Unavailable|504 Gateway Timeout)\b/,
+  // RETRY-NET-002 (2026-11-02, The Last Well): an upstream (storage, Cloudflare)
+  // answered with an HTML error page where JSON was expected.
+  /Unexpected token '<', "<(?:!DOCTYPE|html)/i,
+  /\bCloudflare\b.*\b52[0-9]\b|\b52[0-4]\b.*\bCloudflare\b/i,
 ]
 
 /** Causes that need a human (keys / balances) — never auto-resumed here. */
@@ -50,6 +54,11 @@ export function errorTextOf(errorJson: unknown): string {
   if (typeof errorJson !== 'object') return String(errorJson)
   const e = errorJson as Record<string, unknown>
   const parts = [e.message, e.error, e.reason, e.detail && typeof e.detail === 'object' ? (e.detail as Record<string, unknown>).error : e.detail]
+  // RETRY-NET-002: series steps keep the failing call's text one level down.
+  for (const key of ['voiceGenerationReport', 'preflightReport', 'report']) {
+    const nested = e[key]
+    if (nested && typeof nested === 'object') parts.push((nested as Record<string, unknown>).error)
+  }
   return parts.filter((p) => typeof p === 'string' && p.trim()).join('\n')
 }
 
