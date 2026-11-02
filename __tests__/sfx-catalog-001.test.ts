@@ -119,3 +119,60 @@ describe('SFX-NAMED-001 writer rule', () => {
     expect(rule).toContain('Pistol, single shot, indoor')
   })
 })
+
+describe('SFX-SOUNDSNAP-001 licensed takes', () => {
+  const { addLicensedTakes, catalogIdFromLibraryId } = require('@/lib/sfxCatalog')
+  const lic = (id: string, status?: 'approved' | 'rejected'): SfxLibraryEntry => ({ id, path: `sfx-library/${id}.mp3`, name: id, tags: [], source: 'soundsnap', ...(status ? { status } : {}) })
+  test('folder name decides the catalog name', () => {
+    expect(catalogIdFromLibraryId('soundsnap/all-01-door-wood-open-01')).toBe('ALL-01')
+    expect(catalogIdFromLibraryId('soundsnap/cr-1/pistol')).toBe('CR-01')
+    expect(catalogIdFromLibraryId('soundsnap/xx-99-nothing')).toBeNull()
+    expect(catalogIdFromLibraryId('sonniss/door-open')).toBeNull()
+  })
+  test('licensed sounds become candidates, usable in TEST, and push out kept-library candidates', () => {
+    const names = SFX_CATALOG_NAMES.filter((n) => n.id === 'CR-01')
+    const start = proposeTakesFromKeptLibrary(emptyCatalog(), [kept('a', 'pistol shot close indoor 1'), kept('b', 'pistol shot close indoor 2'), kept('c', 'pistol shot close indoor 3')], names).catalog
+    const { catalog, added } = addLicensedTakes(start, [lic('soundsnap/cr-01-shot-a'), lic('soundsnap/cr-01-shot-b'), lic('soundsnap/cr-01-bad', 'rejected')], names)
+    expect(added).toBe(2)
+    const takes = catalog.entries['CR-01'].takes
+    expect(takes).toHaveLength(3)
+    expect(takes.filter((t: any) => t.source === 'licensed').map((t: any) => t.libraryId)).toEqual(['soundsnap/cr-01-shot-a', 'soundsnap/cr-01-shot-b'])
+    expect(liveNames(catalog, 'test', names)[0].takes).toHaveLength(3)
+    expect(liveNames(catalog, 'production', names)).toEqual([])
+  })
+  test('approved and discarded takes are kept; a discarded sound never returns', () => {
+    const names = SFX_CATALOG_NAMES.filter((n) => n.id === 'CR-01')
+    const start: CatalogFile = { ...emptyCatalog(), entries: { 'CR-01': { takes: [
+      { libraryId: 'soundsnap/cr-01-x', path: 'x', name: 'x', source: 'licensed', status: 'discarded' },
+      { libraryId: 'soundsnap/cr-01-y', path: 'y', name: 'y', source: 'licensed', status: 'approved' },
+    ] } } }
+    const { catalog } = addLicensedTakes(start, [lic('soundsnap/cr-01-x'), lic('soundsnap/cr-01-z')], names)
+    expect(catalog.entries['CR-01'].takes.map((t: any) => `${t.libraryId}:${t.status}`)).toEqual(['soundsnap/cr-01-x:discarded', 'soundsnap/cr-01-y:approved', 'soundsnap/cr-01-z:candidate'])
+  })
+  test('a TEST mix turns effects on for itself only', () => {
+    const src = require('fs').readFileSync(require('path').join(__dirname, '../scripts/sfx-preview.ts'), 'utf8')
+    expect(src).toContain("process.env.SFX_OFF = 'off'")
+  })
+})
+
+describe('SFX-SOUNDSNAP-001 script cues use the catalog', () => {
+  const catalog = SFX_CATALOG_NAMES.filter((n) => ['ALL-05', 'CR-01'].includes(n.id))
+  const lines = [
+    { index: 1, scene: 0, speaker: 'NARRATOR', text: 'She waited by the window.' },
+    { index: 3, scene: 0, speaker: 'TESS', text: 'Who is it?' },
+    { index: 5, scene: 0, speaker: 'NARRATOR', text: 'Nobody answered.' },
+  ] as any
+  test('each script cue gets a catalog sound before the next line, or nothing', () => {
+    const raw = { scriptCues: [{ cue: 2, sound: 'ALL-05' }, { cue: 4, sound: null, wanted: 'owl hoot' }, { cue: 9, sound: 'CR-01' }], decisions: [], backgrounds: [], extra: [] }
+    const { cues, wanted } = validateSoundMap(raw, { lines, flagged: [], scriptCueIndices: [2, 4], ceiling: 10, catalog })
+    expect(cues.map((c) => `${c.beforeIndex}:${c.catalogId}`)).toEqual(['3:ALL-05'])
+    expect(wanted).toEqual([{ line: 4, wanted: 'owl hoot' }])
+  })
+  test('the catalog prompt asks for every script cue; old recordings are not used in catalog mode', () => {
+    const prompt = buildSoundMapPrompt({ lines, flagged: [], genre: 'crime', scriptCues: [{ index: 2, text: 'knock at the door' }], ceiling: 10, catalog })
+    expect(prompt).toContain('TASK 0')
+    expect(prompt).toContain('SCRIPT SOUND CUES (cue number: what the script asks for): 2: knock at the door')
+    const core = require('fs').readFileSync(require('path').join(__dirname, '../app/api/asc3/render-final-mix/core.ts'), 'utf8')
+    expect(core).toContain('const parsedSfx = sfxIsDisabled || catalogSfxMode ? [] : files')
+  })
+})

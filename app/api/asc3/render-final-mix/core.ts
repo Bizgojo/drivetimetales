@@ -10,6 +10,7 @@ import { planSpeakerGains, speakerGainFilter, voiceLevelEnabled, type MeasuredLi
 import { buildLayeredStoryBody, layeredMixEnabled, mixV3BedOptions, mixV4SpotOptions, sfxV2Enabled, sfxV2Options, type BodyItem } from '@/lib/sfxLayeredMix'
 import { effectId, ensureMixPlan, mixV4Enabled, sceneLevelsFromTension } from '@/lib/mixPlan'
 import { sfxGloballyOff } from '@/lib/sfxSwitch'
+import { catalogPlannerEnabled } from '@/lib/sfxCatalog'
 import { envelopeExpr, mixV3Enabled, outroMusicEnvelope, storyMusicEnvelope } from '@/lib/mixV3'
 import { overlayBodyIndex, overlayEnabled } from '@/lib/sfxOverlay'
 import { alignedWordsForSegment, wordEndTime } from '@/lib/sfxAlign'
@@ -847,8 +848,12 @@ export async function runRenderFinalMix(storyId: string, opts: {
     if (sfxIsDisabled) {
       console.log(' [SFX-DISABLED-001] sfx_disabled=true — skipping sfx_*.mp3 assembly')
     }
+    // SFX-SOUNDSNAP-001: the catalog planner replaces the script's old effect recordings
+    // with catalog sounds, so those files are not used at all in catalog mode.
+    const catalogSfxMode = !sfxIsDisabled && overlayEnabled() && catalogPlannerEnabled(opts.previewTag || null)
+    if (catalogSfxMode) console.log('  SFX-SOUNDSNAP-001: catalog mode — script effect files (sfx_*.mp3) not used; catalog sounds only')
     const sfxPattern = /^sfx_(\d{4})\.mp3$/
-    const parsedSfx = sfxIsDisabled ? [] : files
+    const parsedSfx = sfxIsDisabled || catalogSfxMode ? [] : files
       .map(f => { const m = f.name.match(sfxPattern); return m ? { file: f, sfxNumber: Number(m[1]) } : null })
       .filter((item): item is { file: typeof files[number], sfxNumber: number } => item !== null)
       .sort((a, b) => a.sfxNumber - b.sfxNumber)

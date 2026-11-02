@@ -1,6 +1,7 @@
 /**
  * SFX-CATALOG-001 — fill the sound catalog with candidate takes (up to 3 per
- * name) from the sounds Marc already KEPT in the library review. Names Marc
+ * name): licensed Soundsnap sounds first (SFX-SOUNDSNAP-001, by folder =
+ * catalog ID), then sounds Marc already KEPT in the library review. Names Marc
  * has reviewed are never touched. Writes audio/sfx-library/catalog.json and
  * prints which names have takes and which are still empty.
  *
@@ -16,7 +17,7 @@ async function main() {
   const dryRun = process.argv.includes('--dry-run')
   const { createClient } = await import('@supabase/supabase-js')
   const { SFX_LIBRARY_MANIFEST } = await import('../lib/sfxLibrary')
-  const { SFX_CATALOG_FILE, loadCatalog, proposeTakesFromKeptLibrary } = await import('../lib/sfxCatalog')
+  const { SFX_CATALOG_FILE, loadCatalog, proposeTakesFromKeptLibrary, addLicensedTakes } = await import('../lib/sfxCatalog')
   const { SFX_CATALOG_NAMES } = await import('../lib/sfxCatalogNames')
   const db = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false } })
 
@@ -26,7 +27,14 @@ async function main() {
   console.log(`kept library sounds: ${kept.length}`)
 
   const before = await loadCatalog(db as any)
-  const { catalog, filled, empty } = proposeTakesFromKeptLibrary(before, kept)
+  const proposed = proposeTakesFromKeptLibrary(before, kept)
+  // SFX-SOUNDSNAP-001: licensed sounds (one folder per catalog name) go in first.
+  const licensed = (manifest.entries || []).filter((e: any) => e.source === 'soundsnap')
+  const lic = addLicensedTakes(proposed.catalog, licensed)
+  console.log(`licensed (Soundsnap) sounds: ${licensed.length}; ${lic.added} added as takes to ${Object.keys(lic.byName).length} names`)
+  const catalog = lic.catalog
+  const filled = SFX_CATALOG_NAMES.filter((n) => (catalog.entries[n.id]?.takes || []).some((t: any) => t.status !== 'discarded')).length
+  const empty = SFX_CATALOG_NAMES.filter((n) => !(catalog.entries[n.id]?.takes || []).some((t: any) => t.status !== 'discarded')).map((n) => n.id)
   for (const n of SFX_CATALOG_NAMES) {
     const takes = catalog.entries[n.id]?.takes || []
     console.log(`${n.id} ${n.name}: ${takes.length ? takes.map((t) => t.name).join(' | ') : '(no takes yet)'}`)

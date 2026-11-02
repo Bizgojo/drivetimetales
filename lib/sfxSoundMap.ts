@@ -118,7 +118,9 @@ function buildCatalogPrompt(params: {
     'If the right sound is not in the catalog, the moment gets NO sound: answer "skip" and put what you would have wanted in "wanted". Never pick a near match that is not really the same sound (a car door is not a trunk; an indoor shot is not an outdoor shot).',
     '',
     'TASK 1 — For EVERY flagged line below, decide "play" or "skip", with a short reason.',
-    'Skip when the sound word is a metaphor or comparison, negated, a memory or flashback, a plan or hypothetical, inside a character\'s head, already covered by an effect the script has at that moment, not actually audible, or not in the catalog.',
+    'Skip when the sound word is a metaphor or comparison, negated, a memory or flashback, a plan or hypothetical, inside a character\'s head, already covered by a script sound cue you are filling (TASK 0), not actually audible, or not in the catalog.',
+    '',
+    'TASK 0 — The script marks some sounds itself (SCRIPT SOUND CUES below). Their old recordings are NOT used. For EACH script cue give the catalog ID that is really that sound, or null if the catalog has no such sound (put it in "wanted"). It plays right before the next spoken line.',
     '',
     'TASK 2 — Scene backgrounds: for each scene whose place has a steady sound, add ONE catalog sound of kind "background" at the scene\'s first line. Skip it if no background in the catalog fits the place.',
     '',
@@ -130,14 +132,15 @@ function buildCatalogPrompt(params: {
     `- Hard ceiling, never a goal: ${ceiling} sounds in total.`,
     '',
     'Return JSON only:',
-    '{"decisions":[{"line":<n>,"verdict":"play"|"skip","reason":"...","sound":"<catalog ID if play>","afterWords":"<optional>","wanted":"<if skipped because the catalog lacks it>"}],',
+    '{"scriptCues":[{"cue":<script cue number>,"sound":"<catalog ID>"|null,"wanted":"<if null>"}],',
+    ' "decisions":[{"line":<n>,"verdict":"play"|"skip","reason":"...","sound":"<catalog ID if play>","afterWords":"<optional>","wanted":"<if skipped because the catalog lacks it>"}],',
     ' "backgrounds":[{"line":<n>,"sound":"<catalog ID>"}],',
     ' "extra":[{"line":<n>,"sound":"<catalog ID>","afterWords":"<optional>","reason":"..."}]}',
     '',
     'SOUND CATALOG (ID: name (kind)):',
     ...catalog.map((n) => `${n.id}: ${n.name} (${n.kind})`),
     '',
-    `Effects the script already has (line: sound): ${scriptCues.length ? scriptCues.map((c) => `${c.index}: ${c.text}`).join(' | ') : 'none'}`,
+    `SCRIPT SOUND CUES (cue number: what the script asks for): ${scriptCues.length ? scriptCues.map((c) => `${c.index}: ${c.text}`).join(' | ') : 'none'}`,
     '',
     `Flagged lines (sound words found): ${flagged.map((f) => `${f.index} [${f.words.join(', ')}]`).join('; ') || 'none'}`,
     '',
@@ -206,7 +209,8 @@ export function validateSoundMap(raw: unknown, params: {
       if (backgroundScenes.has(line.scene)) { rejected.push({ cue: item, reason: 'scene already has a background' }); return false }
     } else {
       if ((perLine.get(idx) || 0) >= 2) { rejected.push({ cue: item, reason: 'line already has two effects' }); return false }
-      if (scriptCueIndices.some((s) => s === idx - 1 || s === idx + 1) && kind === 'extra') { rejected.push({ cue: item, reason: 'script already has an effect here' }); return false }
+      // SFX-SOUNDSNAP-001: in catalog mode the script's old effect files don't play, so no clash.
+      if (!catalogById && scriptCueIndices.some((s) => s === idx - 1 || s === idx + 1) && kind === 'extra') { rejected.push({ cue: item, reason: 'script already has an effect here' }); return false }
     }
     if (cues.length >= ceiling) { rejected.push({ cue: item, reason: 'over the safety ceiling' }); return false }
     const out: OverlayCue = entry
@@ -225,6 +229,26 @@ export function validateSoundMap(raw: unknown, params: {
   }
 
   for (const bgItem of Array.isArray(r.backgrounds) ? r.backgrounds : []) accept(bgItem, 'background')
+
+  // SFX-SOUNDSNAP-001: catalog mode fills the script's own sound cues from the catalog
+  // (the old recordings are not used); the sound plays before the next spoken line.
+  if (catalogById) {
+    const spoken = [...lines].sort((a, b) => a.index - b.index)
+    const done = new Set<number>()
+    for (const sc of Array.isArray(r.scriptCues) ? r.scriptCues : []) {
+      const at = Number(sc?.cue)
+      if (!scriptCueIndices.includes(at) || done.has(at)) continue
+      done.add(at)
+      const next = spoken.find((l) => l.index > at)
+      const id = sc?.sound == null ? '' : String(sc.sound).trim()
+      if (!id || !next) {
+        const w = String(sc?.wanted || '').replace(/\s+/g, ' ').trim().slice(0, 120)
+        if (w) wanted.push({ line: at, wanted: w })
+        continue
+      }
+      accept({ line: next.index, sound: id, wanted: sc?.wanted }, 'decision')
+    }
+  }
 
   const decided = new Set<number>()
   for (const d of Array.isArray(r.decisions) ? r.decisions : []) {
