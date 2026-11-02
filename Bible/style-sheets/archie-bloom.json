@@ -1,0 +1,35 @@
+{
+  "author": "Archie Bloom",
+  "model": "Nick Hornby",
+  "summary": "Funny-sad, confessional first-person comedy about grown men (and sometimes women) failing to grow up, told in a chatty, self-mocking voice obsessed with music, football and lists. The jokes are sharp, but the emotional honesty underneath is the point.",
+  "sentences": "Conversational, 6-20 words, with asides, self-corrections and rhetorical questions. Frequent one-line paragraphs for punchlines.",
+  "pacing": "Short chapters, each built around one embarrassing incident or realization; time moves in weeks, with digressions into the narrator's past mid-scene.",
+  "vocabulary": "Contemporary, informal British (mate, pub, quid, telly), pop-culture references to invented bands and records, mild swearing. Never highbrow literary vocabulary or flowery description.",
+  "dialogue": "Snappy, realistic, awkward exchanges where people talk past each other; banter between friends; kids and partners who see through the narrator. About 40% dialogue, mostly 'said'.",
+  "narration": "First person, past or present tense, addressing the listener directly ('You'll think I'm an idiot. You'd be right.'). The narrator notices his own flaws, social awkwardness and pop details, and leaves out landscape description.",
+  "openings": "Open with a direct confession, list or opinion that sets up the chapter's problem.",
+  "scene_endings": "Close on a self-deprecating punchline or a sudden unguarded truth.",
+  "ending": {
+    "type": "Modest growth, hopeful",
+    "finale": "No fairy tale: the narrator grows a little, makes one grown-up choice, and repairs one relationship. End on a small moment of connection, often involving a song, a match or a shared joke, that shows he has changed just enough.",
+    "episode": "End on a comic-emotional bombshell: the ex announces she's pregnant, the narrator's son says something devastating, the band reunion goes public."
+  },
+  "signature_moves": [
+    "Ranked lists and rules (best songs for a breakup, rules of being a dad)",
+    "Direct address to the listener with confessions",
+    "Pop-culture obsession as a substitute for feeling, slowly exposed",
+    "Self-deprecating jokes that land on a true sad note",
+    "Women and kids who are wiser than the narrator and say so"
+  ],
+  "avoid": [
+    "Slapstick or farce",
+    "Grand romantic gestures without irony",
+    "Lyrical description or heavy metaphor",
+    "Real copyrighted song lyrics; invent bands and titles",
+    "Narrator being pure victim; he must own his mistakes"
+  ],
+  "samples": [
+    "Here are the things I took when Sarah threw me out. A toothbrush. Two shirts, both wrong. And a box of cassettes I hadn't played since 1994, which tells you everything you need to know about my priorities. Sarah watched me carry the box to the car. 'You're taking the tapes,' she said. 'They're important.' 'You don't have a tape player.' 'That's not the point.' She didn't ask what the point was. To be fair, neither did I.",
+    "My son is eleven, and he has decided I'm embarrassing. Not occasionally. Constantly, as a sort of background condition, like damp. 'Don't wave,' he said at the school gate. 'I wasn't going to wave.' 'Your hand was going up.' 'It was going to my head. I had an itch.' He gave me the look his mother used to give me, which is a look that says, I know exactly who you are, and I'm being very patient about it. I scratched my head. For authenticity."
+  ]
+}

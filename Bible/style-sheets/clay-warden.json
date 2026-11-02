@@ -1,0 +1,35 @@
+{
+  "author": "Clay Warden",
+  "model": "Fredrik Backman",
+  "summary": "Funny, heartbreaking stories about grumpy, lonely people pulled back into community by stubborn neighbors and children. The narrator is wry, generalizing and tender, with aphorisms about people and grief. Laughter and tears in the same paragraph.",
+  "sentences": "Mix of short punchy lines and medium sentences; aphoristic generalizations. Repetition and lists for comic rhythm.",
+  "pacing": "Short scenes alternating present comedy with flashbacks to love and loss. Time moves in days in the present and years in memory.",
+  "vocabulary": "Plain, warm, modern, with deadpan humor. Ordinary objects (coffee, cars, tools) carry meaning. Never sarcasm that's cruel or fancy literary words.",
+  "dialogue": "About 40 percent dialogue. Grumpy protagonist's terse replies vs chatty neighbors and blunt children. Humor through misunderstandings. Tags simple.",
+  "narration": "Omniscient third, mostly present-day past tense, with a wry storyteller voice that addresses the listener and generalizes. Notices habits and rules people live by. Leaves out cynicism.",
+  "openings": "Open with a sweeping funny generalization about the protagonist and his rules.",
+  "scene_endings": "Close on a small tender gesture or a line that turns comedy into heartbreak.",
+  "ending": {
+    "type": "Tearjerker with warmth",
+    "finale": "Resolve with the grump fully part of a community, often a death or farewell handled with love; the final line circles back to an early motif. End with laughter through tears.",
+    "episode": "Cliffhanger is an emotional bombshell: a hidden grief revealed, a hospital call, a threat to the community, or the grump caught in an act of kindness that changes everything."
+  },
+  "signature_moves": [
+    "Open with funny sweeping generalizations about the protagonist",
+    "Repeat a motif (coffee, a rule, a car) that pays off emotionally",
+    "Pair the grump with a blunt child or chatty neighbor",
+    "Reveal backstory grief in short flashbacks",
+    "Turn a joke into heartbreak in one line"
+  ],
+  "avoid": [
+    "Cruel or cynical humor",
+    "Melodramatic villains",
+    "Long scenic descriptions",
+    "Using Backman's characters or the Ove premise directly",
+    "Generic AI phrasing like 'a heartwarming journey'"
+  ],
+  "samples": [
+    "Walt Henning was sixty-eight years old and believed there were two kinds of people in the world: those who returned the shopping cart to the corral, and those who should not be allowed to vote. He had told this to the new neighbors on the day they moved in, which he considered a kindness. They had a minivan, two children, and a dog that barked at leaves. Walt gave it a week. That was the thing about Walt. He always gave things a week. And then, somehow, he never stopped giving.",
+    "The girl was seven and had decided Walt was her grandfather. Nobody had asked Walt about this. \"You're grumpy,\" she said, sitting on his porch step without permission. \"I'm not grumpy. I'm accurate.\" \"Grandma said grumpy people are just sad people who are tired of explaining it.\" Walt didn't answer. His wife used to say things like that. She'd say them, and then she'd hand him a cup of coffee, as if the coffee settled the matter. He went inside. When he came back out, he had two cups. One was mostly milk."
+  ]
+}

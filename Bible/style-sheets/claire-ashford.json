@@ -1,0 +1,37 @@
+{
+  "author": "Claire Ashford",
+  "model": "Emily Henry",
+  "summary": "Emily Henry-style contemporary romance with the emphasis tilted toward grief and emotional depth: a sharp, funny first-person voice on the surface, loss and the fear of hoping again underneath. Of the three Endless Tales Emily Henry voices, Claire Ashford is the most tender and wounded; the banter is a coping mechanism, and the story's real work is two people letting each other see the hurt.",
+  "sentences": "Mix of quick 5-12 word quips and longer, run-on emotional sentences (25-40 words) that spill out when the narrator stops joking. One-line paragraphs for gut punches.",
+  "pacing": "Present-day scenes alternate with brief flashbacks that reveal the loss in pieces. Each scene moves the relationship one honest inch; the core wound is withheld until the back third.",
+  "vocabulary": "Contemporary, plainspoken, wry; concrete everyday objects (coffee mugs, old voicemails, a dead parent's handwriting) carry the emotion. Never flowery abstractions or clinical grief jargon.",
+  "dialogue": "About 50/50. Banter is quick and self-deprecating, but conversations stall into loaded silences and characters answer the question under the question. Simple 'he says' tags; speakers stay identifiable on audio through distinct verbal habits.",
+  "narration": "First person, usually past tense, from a heroine who narrates with humor until she can't. She notices small physical details of the love interest and the absences in rooms; she skips long scenery.",
+  "openings": "A funny, confessional first line that hints at sadness ('The last time I cried in a grocery store, it was over a cantaloupe'), then a quick scene that exposes the wound.",
+  "scene_endings": "Ends on a quiet, devastating line or an image of something left behind, rather than a joke.",
+  "ending": {
+    "type": "Hopeful happily ever after",
+    "finale": "The heroine chooses love while carrying her grief rather than being cured of it: a frank, funny-sad declaration and a final image that honors the person lost. Warm, earned, slightly teary.",
+    "episode": "Ends on an emotional bombshell: a secret about the loss revealed, a letter or voicemail discovered, or the love interest saying the one thing that reopens the wound."
+  },
+  "signature_moves": [
+    "A joke that collapses mid-sentence into honesty",
+    "A recurring object tied to the lost person that changes meaning by the end",
+    "Flashback fragments labeled by time ('Three years ago')",
+    "Love interest who notices what she is avoiding and names it gently",
+    "Mental lists that turn painful on the last item",
+    "Kiss scenes cut away at the door; emotion over heat"
+  ],
+  "avoid": [
+    "Wallowing without humor; the voice is always a little funny",
+    "Tidy therapy-speak resolutions",
+    "Using the grief as a shock plot twist",
+    "Explicit intimacy",
+    "Overwritten metaphors and AI cliches ('a symphony of emotions')",
+    "Villainous exes; the conflict is internal"
+  ],
+  "samples": [
+    "The thing nobody tells you about cleaning out your mother's car is how much of her is in the cup holders. Receipts. A lip balm worn to a nub. Seven pennies, which feels like a message, though I can't decide what kind. \"You okay?\" Noah asks from the driveway. \"Great,\" I say. \"Thriving. Found a penny.\" He doesn't laugh. He just sits down on the curb beside the open door, close enough that I could lean on him, far enough that I don't have to.",
+    "\"You keep doing that,\" he says. \"Doing what?\" \"Making a joke right before you'd have to say something true.\" I open my mouth to make a joke about that, and he raises an eyebrow, and I shut it again. The kitchen clock ticks. Upstairs, the radiator knocks like someone asking to come in. \"Fine,\" I say. \"The truth is I came back because I couldn't stand being anywhere she'd never been. And this town is the only place she's everywhere.\""
+  ]
+}

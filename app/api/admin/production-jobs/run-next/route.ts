@@ -1,6 +1,6 @@
 import {enforceAdminReview} from '@/lib/admin-center/production-review'
 import { authorImitationLines, authorStyleGaps, type AuthorStyleRow } from '@/lib/authorStyle'
-import { styleSheetForAuthor, styleSheetPromptLines } from '@/lib/authorStyleSheet'
+import { openEndingAllowed, styleSheetForAuthor, styleSheetPromptLines } from '@/lib/authorStyleSheet'
 import { internalAdminFetch } from '@/lib/admin-center/internal-fetch'
 import { NextRequest, NextResponse } from 'next/server'
 import { sfxSoundAgreementRule } from '@/lib/sfxSoundMap'
@@ -2011,7 +2011,7 @@ function buildAuthorStyleProfile(author: Partial<AuthorRow> | Record<string, any
   }
 }
 
-function buildAuthorVoicePromptBlock(profile: any): string {
+function buildAuthorVoicePromptBlock(profile: any, opts: { endingSeed?: string | null } = {}): string {
   if (!profile) return ''
 
   const lines = [
@@ -2042,7 +2042,7 @@ function buildAuthorVoicePromptBlock(profile: any): string {
   }
 
   // AUTHOR-STYLE-SHEET-001: the full style sheet (incl. the author's ending type).
-  const sheetLines = styleSheetPromptLines(profile.style_sheet)
+  const sheetLines = styleSheetPromptLines(profile.style_sheet, { allowOpenEnding: openEndingAllowed(opts.endingSeed) })
   if (sheetLines.length) lines.push(...sheetLines)
 
   const exampleLine = cleanAuthorStyleValue(profile.example_line)
@@ -3733,7 +3733,7 @@ async function generateStandaloneScript(job: ProductionJob, model: string) {
     if (narratorStampError) throw new Error(`Failed to stamp standalone narrator on story: ${narratorStampError.message}`)
   }
   const authorVoiceProfile = await resolveAuthorStyleProfileForStory(story, brief)
-  const authorVoiceBlock = buildAuthorVoicePromptBlock(authorVoiceProfile)
+  const authorVoiceBlock = buildAuthorVoicePromptBlock(authorVoiceProfile, { endingSeed: String(job.id || '') })
   const promptBrief = narratorContext.mode === 'assigned'
     ? { ...brief, narrator: narratorContext.narratorName }
     : brief
@@ -6623,7 +6623,7 @@ async function generateOneSeriesEpisodeScript(job: ProductionJob, model: string)
     }
   }
   const authorVoiceProfile = await resolveAuthorStyleProfileForStory(targetEpisode, brief)
-  const authorVoiceBlock = buildAuthorVoicePromptBlock(authorVoiceProfile)
+  const authorVoiceBlock = buildAuthorVoicePromptBlock(authorVoiceProfile, { endingSeed: String(job.series_id || job.id || '') })
   const recentStoryTexts = await loadRecentStoryTexts(String(seriesId))
   const namePaletteBlock = buildNamePalettePromptBlock({
     genre: targetEpisode.genre || brief.genre || '',

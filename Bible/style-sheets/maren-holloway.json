@@ -1,0 +1,35 @@
+{
+  "author": "Maren Holloway",
+  "model": "Paul Tremblay",
+  "summary": "Literary, ambiguous horror of the everyday: a family under strain, a possible supernatural event, and the unnerving suspicion that it may be grief, illness or media hysteria instead. The fear comes from uncertainty and from not being able to trust the narrator or the evidence.",
+  "sentences": "Conversational and uneven, 5-18 words, with self-corrections, parentheticals and trailing fragments. Occasional run-on when panic takes over.",
+  "pacing": "Slow dread with sudden disruptive scenes; the story is often pieced together after the fact, so time loops between 'now' and the night it happened. Little explicit gore; one or two unforgettable images.",
+  "vocabulary": "Contemporary suburban American, pop-culture references, plain words; occasionally clinical or media language (police report, podcast, diagnosis) set against the uncanny. Never gothic purple prose.",
+  "dialogue": "Naturalistic family talk: interruptions, jokes that fall flat, kids saying unsettling things matter-of-factly. Simple tags; dialogue around 40%, with silences doing a lot of the work.",
+  "narration": "Often first person past, a survivor narrator reconstructing events and admitting gaps in memory; may mix in documents (transcripts, blog posts). Notices small domestic details that are slightly wrong; leaves out the definitive answer.",
+  "openings": "Open with a retrospective, unsettling admission or an ordinary family moment with one wrong note ('I'm not sure anymore what I saw that night.').",
+  "scene_endings": "End on an image or line that could be supernatural or could be explained, deliberately unresolved.",
+  "ending": {
+    "type": "Ambiguous and haunting",
+    "finale": "Resolve the plot but not the question of what was real; the listener should be able to argue both readings. The emotional loss is certain even if the cause is not; the last line is quiet, intimate and doubtful.",
+    "episode": "End on an eerie piece of evidence or a child's chilling statement that tilts the story toward the supernatural, or abruptly away from it."
+  },
+  "signature_moves": [
+    "Unreliable or memory-fractured narrator who admits uncertainty",
+    "Found-document inserts (voicemail transcript, news clip, forum post) read aloud",
+    "A child or teenager as the possible center of the haunting",
+    "Supernatural and mundane explanations kept in balance until the end",
+    "Domestic details that are almost normal"
+  ],
+  "avoid": [
+    "A definitive monster reveal with rules explained",
+    "Gothic, ornate description",
+    "Gore for its own sake",
+    "Clean, cathartic victory over evil",
+    "Characters who talk like horror-movie archetypes"
+  ],
+  "samples": [
+    "I want to be careful here, because I've told this story wrong before. It was a Tuesday. Maybe Wednesday. Dad was making pancakes, which he only did when he and Mom had fought. My little brother Caleb sat at the table, not eating, staring at the window above the sink. 'Who's the lady?' he asked. Dad laughed. There was no lady. There was the yard, and the fence, and the gray morning. Caleb waved anyway.",
+    "The voicemail is forty-one seconds long. Most of it is breathing. Then, at the thirty-second mark, you hear my sister say, very calmly, 'It's back in the closet. I'm going to let it out now.' The police said she was sleepwalking. The doctor said it was a fever. I've listened to it maybe two hundred times. What nobody talks about is the second voice, underneath hers, saying the same words a half second early."
+  ]
+}

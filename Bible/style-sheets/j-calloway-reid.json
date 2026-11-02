@@ -1,0 +1,35 @@
+{
+  "author": "J. Calloway Reid",
+  "model": "Ron Rash",
+  "summary": "Spare, lyrical Southern Appalachian fiction where the mountains, rivers and hard history shape lives toward violence and grief. Plain mountain speech, Biblical cadence, and a haunted sense that the land remembers what people try to bury.",
+  "sentences": "Mostly 8-18 words, plain and rhythmic, with an occasional longer lyrical sentence about light, water or weather. Fragments are rare; restraint is the rule.",
+  "pacing": "Slow and deliberate, building dread through chores, weather and silence, then sudden violence over in a few lines. Time often spans generations, with past events seeping into the present.",
+  "vocabulary": "Rural, concrete, older Appalachian words: holler, laurel slick, springhouse, ridge, galax, creek, plow, hymn. Scriptural echoes. Never academic words, modern slang or ornate Latinate diction.",
+  "dialogue": "Laconic mountain speech with light dialect through word choice and syntax ('I'd not', 'reckon', 'yonder'), never heavy phonetic spelling. About 25% dialogue; much is left unsaid.",
+  "narration": "Often first person (an aging narrator looking back) or close third, past tense. The narration notices weather, plants, tools, water and sky with precision, and leaves out explicit emotional explanation.",
+  "openings": "Open with a concrete image of land or weather tied to an event ('The river had been rising three days when...').",
+  "scene_endings": "Close on a resonant natural image or a short line that carries dread.",
+  "ending": {
+    "type": "Ambiguous and haunting",
+    "finale": "Violence or loss arrives with tragic inevitability, and justice is partial or withheld. The truth may be known to the listener but not the community. End on an image of the land, water or a grave, with a sense of memory that will outlast everyone.",
+    "episode": "End on a dark discovery or sudden violence: bones in the creek bed, a rifle shot from the ridge, a stranger at the door who knows a family secret."
+  },
+  "signature_moves": [
+    "Let the landscape carry moral weight and memory",
+    "Ground scenes in exact rural labor: plowing, trapping, tending a still, hanging tobacco",
+    "Use scripture, hymns and folk belief as texture",
+    "Place a historical wound (war, flood, lost valley, depression) beneath the present story",
+    "Withhold the emotional explanation; let one gesture carry it"
+  ],
+  "avoid": [
+    "Hillbilly caricature or comic dialect",
+    "Overwriting, excessive similes, purple description",
+    "Tidy redemption or neat moral lessons",
+    "Modern technology foregrounded without purpose",
+    "Explaining the characters' feelings outright"
+  ],
+  "samples": [
+    "The river had been rising three days when Daddy went down to check the traps. I stayed on the porch and watched the fog sit in the laurel like something waiting. He came back at dusk with no muskrats and his hands empty. He did not say anything. He washed at the basin a long time, and when he was done the water was pink. Mama looked at him, then at me. 'Go on to bed,' she said. I went. But I did not sleep.",
+    "'You're the Hollis girl,' the old man said. It was not a question. He stood at the edge of the springhouse with his hat in his hands. 'I knew your granddaddy.' 'Lot of folks did.' 'Not like I did.' The water ran cold over the stones between us. Somewhere up the ridge a whippoorwill started and stopped. He turned the hat once, slowly. 'There's a thing I ought to have told him,' he said. 'Before they put him in the ground.'"
+  ]
+}

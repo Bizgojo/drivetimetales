@@ -31,6 +31,33 @@ test('lookup is by name, case-insensitive; unknown → null', () => {
 
 test('writer prompt uses the sheet and its summary replaces the old description', () => {
   const src = readFileSync(join(__dirname, '../app/api/admin/production-jobs/run-next/route.ts'), 'utf8')
-  expect(src).toContain('const sheetLines = styleSheetPromptLines(profile.style_sheet)')
+  expect(src).toContain('const sheetLines = styleSheetPromptLines(profile.style_sheet, { allowOpenEnding: openEndingAllowed(opts.endingSeed) })')
   expect(src).toContain('style_description: cleanAuthorStyleValue(sheet?.summary || (author as any).style_description)')
+})
+
+describe('ENDING-OPEN-001: open endings only occasionally', () => {
+  const { isOpenEndingType, openEndingAllowed } = require('@/lib/authorStyleSheet')
+  test('open-ending authors are recognized', () => {
+    expect(isOpenEndingType(styleSheetForAuthor('J. Calloway Reid'))).toBe(true)
+    expect(isOpenEndingType(styleSheetForAuthor('Elena Marsh'))).toBe(false)
+  })
+  test('about 1 story in 5 may end open; stable per id', () => {
+    const ids = Array.from({ length: 2000 }, (_, i) => `story-${i}`)
+    const share = ids.filter((id) => openEndingAllowed(id)).length / ids.length
+    expect(share).toBeGreaterThan(0.15)
+    expect(share).toBeLessThan(0.25)
+    expect(openEndingAllowed('abc')).toBe(openEndingAllowed('abc'))
+    expect(openEndingAllowed('')).toBe(false)
+  })
+  test('prompt says resolve unless this is an allowed one', () => {
+    const sheet = styleSheetForAuthor('J. Calloway Reid')
+    expect(styleSheetPromptLines(sheet).join('\n')).toContain('do NOT leave the listener hanging')
+    expect(styleSheetPromptLines(sheet, { allowOpenEnding: true }).join('\n')).toContain('MAY end open')
+    expect(styleSheetPromptLines(styleSheetForAuthor('Elena Marsh')).join('\n')).toContain('never leaves the listener hanging')
+  })
+  test('series decide once per series, standalones per job', () => {
+    const src = readFileSync(join(__dirname, '../app/api/admin/production-jobs/run-next/route.ts'), 'utf8')
+    expect(src).toContain("{ endingSeed: String(job.series_id || job.id || '') }")
+    expect(src).toContain("{ endingSeed: String(job.id || '') }")
+  })
 })

@@ -1,0 +1,35 @@
+{
+  "author": "Marc Postlewaite",
+  "model": "Carl Sagan",
+  "summary": "Science fiction told with the lucid wonder of a great science communicator: the cosmos is vast, ancient and knowable, and the thrill is in reasoning our way toward it. Characters are scientists and skeptics whose drama is the method itself, set against human politics, faith and fear. Sagan wrote one novel (Contact), so this voice blends his fiction with his nonfiction cadence of awe plus rigor.",
+  "sentences": "Varied: long, rolling, carefully built sentences that widen in scale (from a room to a galaxy), then a short plain sentence that lands the point. Rhetorical questions used occasionally to lead the listener.",
+  "pacing": "Deliberate; scenes alternate between discovery, explanation and debate. Big events (a signal, a decoded message) get room to be understood. Time can leap years in a sentence, often framed against cosmic timescales.",
+  "vocabulary": "Precise and accessible; real scientific terms (light-year, spectrum, prime numbers, hydrogen line) explained in one clean clause. Words of wonder used sparingly and earned: ancient, vast, fragile, luminous. Never techno-babble, mysticism presented as fact, or sneering at religion.",
+  "dialogue": "About 35-45 percent dialogue. Characters argue ideas in full, reasoned sentences; scientist vs politician vs believer exchanges carry the themes. Dialogue is courteous even in disagreement; tags plain.",
+  "narration": "Close third, past tense, mostly one central scientist with occasional wide omniscient pulls. Narrator is a humane teacher: notices evidence, scale, and human frailty, and pauses to place events in cosmic context. Leaves out violence detail and gadget fetishism.",
+  "openings": "Open on a sense of scale or a quiet act of observation (an antenna listening, a child under stars), then narrow to the human who is about to notice something.",
+  "scene_endings": "Close on a reflective line that widens perspective, or a crisp fact that changes everything ('The source was twenty-six light-years away.').",
+  "ending": {
+    "type": "Awe and humility",
+    "finale": "Resolve with a discovery that is real but incompletely provable, leaving characters changed and humanity slightly wiser. Loose political threads may stay frayed; the emotional resolution is a reconciliation of reason and wonder. End on an image of the sky or of Earth seen small and precious.",
+    "episode": "Cliffhanger is a revelation: the signal contains more than expected, a measurement contradicts the theory, or the data points somewhere terrifying. Danger is usually human (a government, a zealot) reacting to the discovery."
+  },
+  "signature_moves": [
+    "Zoom out mid-scene to cosmic scale, then back to one human face",
+    "Have a character reason step by step from evidence to conclusion, aloud",
+    "Pit skepticism against hope and let both be respected",
+    "Explain one real scientific idea per scene in a single clear, vivid analogy",
+    "Treat human conflict as small against the universe, and therefore both absurd and precious"
+  ],
+  "avoid": [
+    "Unexplained jargon or invented physics that breaks known science",
+    "Cheap villains or action set pieces as the main payoff",
+    "Preachiness; let the wonder argue for itself",
+    "Quoting or closely echoing Sagan's famous lines",
+    "Purple overwriting; awe must be precise, not gushing"
+  ],
+  "samples": [
+    "At four in the morning the array was listening, as it always listened, to the faint hiss left over from the beginning of the universe. Lena had heard that hiss for eleven years. It was the oldest sound there was, and it meant nothing. Then, at 4:12, a pattern rose out of it: pulses, spaced by primes. Two. Three. Five. Seven. No star does arithmetic. No pulsar knows that eleven comes next. She did not call anyone yet. First she checked the equipment, then checked it again, because the universe owes us nothing, least of all the answer we want.",
+    "\"You think it's a message,\" the senator said. \"I think it's a question,\" Okafor replied. \"A message assumes we know what they meant. All we know is that something, somewhere, can count, and wanted to be noticed doing it.\" \"And if it's hostile?\" Okafor considered this honestly. \"Then they are forty light-years away, and a reply takes eighty years round trip. Senator, by the time anyone could hurt us, our grandchildren will have had a long while to think about what to say. That isn't a threat. It's a gift of time.\""
+  ]
+}

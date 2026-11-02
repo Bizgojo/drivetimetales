@@ -1,0 +1,35 @@
+{
+  "author": "Frances Adler",
+  "model": "Kent Haruf",
+  "summary": "Plain, spare, deeply humane drama of a small High Plains town, where lonely people find quiet kindness in one another. Told from the outside in, through action and short talk, with almost no stated emotion; compared with Diana Reeve, this voice stays external and slower, letting gestures and weather carry feeling.",
+  "sentences": "Simple, mostly 8-20 words, chains of plain actions joined by 'and' ('He went out and fed the horses and came back in'). Very few commas or subordinate clauses.",
+  "pacing": "Slow, seasonal and patient: scenes of chores, meals, drives and porch talk. Big events (a death, a pregnancy) happen quietly and are absorbed over time; time moves with the seasons.",
+  "vocabulary": "Plain rural Western: pickup, stock tank, heifer, wheat stubble, kitchen table, county road, cafe. No figurative flourishes, no slang, no abstract emotional words.",
+  "dialogue": "Laconic, polite, formal in a rural way ('I don't know what to say to that'); only 'he said' and 'she said'. People speak little and mean a great deal. About 40% dialogue, with long silences.",
+  "narration": "Third person, past tense, rotating among several townspeople, observing from outside. The narrator records actions, weather, light and food, and almost never explains feelings; it leaves out irony and commentary.",
+  "openings": "Open with a character doing something ordinary in a specific place and time of day, described plainly.",
+  "scene_endings": "Close on a small, plain action or a simple line of talk, followed by silence or weather.",
+  "ending": {
+    "type": "Understated grace with sorrow",
+    "finale": "Resolve through small acts of kindness and the continuation of daily life after loss; nothing is fully healed, but people are less alone. End on a plain image: two people at a table, a light left on, wind over the fields.",
+    "episode": "End on a quiet but shattering event delivered plainly: a phone call at night, a pickup in the ditch, a girl saying she has nowhere to go."
+  },
+  "signature_moves": [
+    "Long chains of plain actions joined by 'and'",
+    "Only 'said' as a dialogue tag, and minimal dialogue markers",
+    "Emotion conveyed through gesture: setting a plate, pouring coffee, touching a shoulder",
+    "Rotating viewpoints among unlikely, lonely townspeople who come together",
+    "Weather and landscape stated flatly, never metaphorically"
+  ],
+  "avoid": [
+    "Metaphor, simile and lyrical description",
+    "Interior monologue explaining feelings",
+    "Snappy banter or wit",
+    "Melodramatic confrontations",
+    "Tidy speeches of reconciliation"
+  ],
+  "samples": [
+    "In the morning Mary got up before light and put the coffee on and stood at the window and waited for it. Out past the windbreak the wheat stubble was white with frost. She could see the Neely place a mile off, and the one light in their kitchen. She watched it a while. Then the coffee was ready and she poured a cup and sat down at the table, and she sat there until the sun came up over the elevator in town.",
+    "He came over that evening and stood on the porch with his hat in his hand. I thought I'd see if you needed anything, he said. I don't need anything, she said. All right. He did not move to go. After a while she said, You could come in, I suppose. I've got some of that pie left. He came in and sat at the table, and she cut him a piece, and neither of them said anything for a long time. It was all right."
+  ]
+}

@@ -1,0 +1,35 @@
+{
+  "author": "Sloane Prescott",
+  "model": "Gillian Flynn",
+  "summary": "Sharp, dark psychological suspense about damaged women, toxic families and marriages, delivered in biting, confessional voices that are funny, cruel and unreliable. The pleasure is the twisty reveal and the unapologetic nastiness of the narrators.",
+  "sentences": "Punchy, sardonic, 5-15 words; fragments, lists, and sudden vicious one-liners. Longer, venomous riffs when the narrator rants.",
+  "pacing": "Alternating viewpoints or timelines that dole out secrets; steady escalation to a midpoint twist that flips everything. Scenes are compact, with strong momentum.",
+  "vocabulary": "Contemporary, profane, darkly witty, with blunt body and violence words; American small-town and suburban details. Avoid gentle euphemism and sentimental language.",
+  "dialogue": "Barbed, passive-aggressive, cruelly funny; couples and family members wound each other. Simple tags, dialogue around 40%.",
+  "narration": "First person, often alternating between two unreliable narrators, present or past; narrators confess ugly thoughts and lie to the listener. Notices hypocrisy, appearance, and power games; leaves out the key fact until the twist.",
+  "openings": "Open with a provocative, disturbing confession or a cutting observation in the narrator's voice.",
+  "scene_endings": "End on a vicious one-liner or a revelation that recasts what came before.",
+  "ending": {
+    "type": "Twisted and unsettling",
+    "finale": "The twist is fully revealed and the manipulator wins or traps everyone in a sick status quo. Final line is a chilling, darkly funny confession.",
+    "episode": "End on a twist reveal: the narrator has been lying, or the victim is actually the villain."
+  },
+  "signature_moves": [
+    "Unreliable, confessional first-person voice",
+    "Alternating perspectives or timelines that withhold the truth",
+    "Midpoint twist that reframes the story",
+    "Biting cultural commentary on gender roles",
+    "Grotesque family secrets"
+  ],
+  "avoid": [
+    "Sympathetic, wholesome heroines",
+    "Gentle, cozy tone",
+    "Straightforward linear reveal",
+    "Neat moral resolution",
+    "Euphemism and politeness"
+  ],
+  "samples": [
+    "I've always been good at funerals. You'd think it's a strange skill, but it's not. You wear black. You hold the right hands. You cry exactly enough. At my sister's funeral, I cried a perfect amount. My mother noticed. She notices everything. 'You look thin,' she said, which in our family means I love you, and also, I know what you did. I smiled. 'Thank you, Mama,' I said.",
+    "Day four. The police have been here twice. I made them coffee and wore the blue cardigan, the one that makes me look like a nice girl who reads to children. Detective Holt likes me. I can tell. He keeps calling Mark 'your husband' like it's a phrase that still means something. 'Was he unhappy?' Holt asked. I looked at my hands. 'Not as unhappy as he's going to be,' I almost said."
+  ]
+}

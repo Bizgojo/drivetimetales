@@ -1,0 +1,35 @@
+{
+  "author": "Coop Delray",
+  "model": "Carl Hiaasen",
+  "summary": "Savage, gleeful Florida satire: greedy developers, crooked politicians and grotesque hustlers trash the Everglades and the coast until eccentric defenders and nature itself fight back. Deadpan, cartoonishly violent, and genuinely angry underneath.",
+  "sentences": "Brisk, 8-20 words, deadpan statements that deliver absurd facts without comment. Punchline often in the final clause.",
+  "pacing": "Fast, multi-thread plot: short scenes cutting among many characters, each scene escalating a scheme or a disaster. Time moves over days; bodies, animals and lawsuits pile up.",
+  "vocabulary": "Contemporary, specific, Florida-flavored: condos, gators, pythons, mangroves, lobbyists, cable-news, airboat, timeshare. Sharp verbs; brand names and real-sounding absurd details. Never genteel or lyrical.",
+  "dialogue": "Comic, punchy and venal: idiots talking themselves into worse ideas, hard-boiled cops with dry wit, villains rationalizing greed. About 45% dialogue.",
+  "narration": "Third-person past tense, rotating close POV including the dimwitted villains. The omniscient narrator is wry and contemptuous of greed, noticing absurd specifics (hair plugs, bad tattoos, injuries), and never sentimental.",
+  "openings": "Open with an outrageous premise stated flatly ('On the morning he was eaten, Rory Felt was having a terrific hair day.').",
+  "scene_endings": "Close on a deadpan zinger or the next absurd escalation.",
+  "ending": {
+    "type": "Comic poetic justice",
+    "finale": "Villains suffer ironic, often animal-assisted fates that fit their crimes; the threatened land or creature is saved, at least for now. The decent heroes get a modest reward and a wry last exchange, and the final image is wild Florida reclaiming something.",
+    "episode": "End on an absurd escalation: a body surfaces in the wrong pond, the scheme goes viral, a henchman is mauled and now wants revenge."
+  },
+  "signature_moves": [
+    "State grotesque or absurd facts in a flat, deadpan voice",
+    "Give villains comic physical afflictions or injuries that worsen",
+    "Let nature (snakes, gators, storms) dish out justice",
+    "A principled eccentric outsider who sabotages development",
+    "Satirize real-world Florida types: developers, TV hosts, lobbyists, influencers"
+  ],
+  "avoid": [
+    "Real politicians or businesses by name",
+    "Sentimental nature writing; love the land through anger and humor instead",
+    "Slow introspection",
+    "Explaining the joke",
+    "Gore lingered on; keep violence quick and comic"
+  ],
+  "samples": [
+    "On the morning he was eaten, Rory Felt was having a terrific hair day. He had paid eleven thousand dollars for that hair, follicle by follicle, and he was proud of every one. He stood at the edge of the retention pond at Egret Shores, the gated community he had built on top of a former cypress swamp, and practiced his speech for the county commission. The alligator, who had lived in the swamp for thirty years, had no opinion about the speech.",
+    "'It's a python,' said Deputy Lyle Moon. 'A big python.' 'I can see that,' said the developer's lawyer. 'What I'm asking is why it's in my client's Bentley.' 'Well, sir, that's the second thing I was going to bring up.' Lyle glanced at the snake, which was coiled comfortably around the steering wheel and looked, if anything, more relaxed than the lawyer. 'Somebody put it there,' he said. 'And they left a note.'"
+  ]
+}

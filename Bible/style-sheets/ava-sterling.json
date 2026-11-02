@@ -1,0 +1,37 @@
+{
+  "author": "Ava Sterling",
+  "model": "Julia Quinn",
+  "summary": "Witty, warm Regency romance in the Julia Quinn mode: big affectionate families, drawing-room banter that crackles, and lovers who argue their way into devotion. The comedy is gentle and character-driven, the stakes are social (reputation, a proposal, a family secret), and every story lands on a joyful, earned happily-ever-after.",
+  "sentences": "Mostly 10-20 words with a conversational, slightly arch rhythm; frequent parenthetical asides and dashes for comic timing; short one-line paragraphs ('She did not.') to land a joke.",
+  "pacing": "Scenes are built around one social set piece (a ball, a picnic, a disastrous family game) and run long on talk, short on description. Time skips briskly between events; the emotional turn comes from a single private conversation rather than plot machinery.",
+  "vocabulary": "Light period flavor without heavy archaism: 'the ton', 'the Season', 'my lord', 'insufferable', 'ridiculous', 'quite'. Plain, sparkling, modern-readable English; never modern slang ('okay', 'hot', 'vibe') or anatomical detail.",
+  "dialogue": "Roughly 60/40 dialogue to narration. Rapid back-and-forth with characters deliberately misunderstanding each other, siblings interrupting, and repeated words volleyed for comedy; tags stay simple ('he said', 'she retorted') and every line names or clearly marks the speaker for audio.",
+  "narration": "Close third person past, alternating between heroine and hero by scene. The narrator is amused and fond, dips into each lover's exasperated inner commentary, and skips practical logistics in favor of feelings and faux pas.",
+  "openings": "Often opens on a wry general observation or a short excerpt from a society gossip sheet or letter, then drops into a mid-mishap moment: someone hiding behind a curtain, a mother scheming, a wager made.",
+  "scene_endings": "Closes on a comic button line or an unexpectedly tender beat that undercuts the comedy, frequently a single short sentence of inner realization.",
+  "ending": {
+    "type": "Happily ever after",
+    "finale": "A heartfelt declaration in which one lover finally says the plain thing they have been dodging, followed by family chaos that approves of the match. Loose ends are tied with warmth; a short epilogue years later shows the couple still bickering fondly.",
+    "episode": "Ends on a social bombshell: a compromising discovery, an engagement announced to the wrong person, or a secret letter read aloud to the wrong room."
+  },
+  "signature_moves": [
+    "Running gag that pays off emotionally in the finale (a hated food, a recurring wager, a mispronounced name)",
+    "Sibling ensemble scenes where four people talk over each other",
+    "Gossip-sheet or letter epigraph that comments ironically on the episode",
+    "Hero's inner monologue admitting he is doomed long before he says it aloud",
+    "Echo banter: one character volleys the other's word back as a question",
+    "Heat handled with a lingering almost-kiss and a closed door"
+  ],
+  "avoid": [
+    "Grim realism, violence, or dark trauma as the main engine",
+    "Modern idioms and therapy-speak ('boundaries', 'process this')",
+    "Long descriptive passages about gowns or architecture",
+    "Explicit intimacy; keep it to glances, hands, and a kiss",
+    "Generic AI flourishes like 'a testament to' or 'little did they know'",
+    "Truly evil villains; antagonists should be meddling or ridiculous"
+  ],
+  "samples": [
+    "Lady Harriet Penwick had been told, on no fewer than eleven occasions, that a lady does not climb trees. She had never been told what a lady ought to do when the tree in question held her younger brother's kite, her mother's best bonnet, and, as of thirty seconds ago, the Earl of Ashcombe's hat. \"Are you stuck?\" the Earl inquired from below. \"I am contemplating,\" Harriet said. \"Contemplating what?\" \"The view.\" \"Of my hat?\" \"It is a very fine hat.\"",
+    "\"You cannot marry him,\" said Thomas. \"You cannot marry anyone,\" said Edmund. \"She can marry whomever she likes,\" said their mother, \"provided he is rich, kind, and not Mr. Pilbury.\" \"I wasn't going to marry Mr. Pilbury,\" Clara said. Four heads swiveled toward her. \"Then who,\" Thomas asked slowly, \"were you dancing with on the terrace?\" Clara opened her mouth. Closed it. Considered the chandelier, which offered no help at all. It was, she reflected, a very bad time to discover she had been seen."
+  ]
+}

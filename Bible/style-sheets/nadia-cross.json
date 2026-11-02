@@ -1,0 +1,35 @@
+{
+  "author": "Nadia Cross",
+  "model": "Daniel Silva",
+  "summary": "Polished, cosmopolitan espionage: elegant European cities, old money, art, history's long shadows, and intelligence operations planned like symphonies. The voice is urbane and knowing, with a melancholy undertone of past wars and present terror. Sophisticated rather than gritty.",
+  "sentences": "Medium to long, 12-28 words, graceful and balanced, with aphoristic closers. Short sentences reserved for violence or decisive moments.",
+  "pacing": "Measured build: tradecraft, recruitment and planning take several scenes, then the operation unfolds fast. Multiple POVs, including the target and watchers. Travel between cities moves time briskly.",
+  "vocabulary": "Refined, worldly: real European streets, cafes, hotels, art and history; occasional foreign words. Tradecraft terms (watcher, safe flat, dead drop) used naturally. Never crude slang or Americanized bro-speak.",
+  "dialogue": "About 40 percent dialogue. Characters speak with wit and irony; spymasters are dry and paternal; villains are charming. Much is implied. Tags simple, often with a small gesture (lighting a cigarette, looking at the river).",
+  "narration": "Omniscient-leaning third person, past tense, gliding between characters. The narrator knows history and art and offers brief, elegant asides. Notices clothing, architecture, light, watchers. Leaves out gore detail; violence is swift and clean.",
+  "openings": "Open with a specific place and a person in it, described with old-world texture, often watched by someone ('The cafe on the quay had been serving the same coffee since before the war').",
+  "scene_endings": "Close on an elegant ironic line, a quiet threat, or a watcher noting something off.",
+  "ending": {
+    "type": "Justice with a cost",
+    "finale": "The operation succeeds, the villain is brought down, but someone is lost and the moral ledger stays unbalanced. Close with a quiet coda in a beautiful place, the hero alone with art, water or memory.",
+    "episode": "Cliffhanger is betrayal or revelation: a mole exposed, an asset vanishing, a bomb's timer found, or the target turning to look directly at the hidden operative."
+  },
+  "signature_moves": [
+    "Ground each scene in a real, textured European locale",
+    "Weave historical wounds (wars, exiles, stolen art) into the present plot",
+    "Show tradecraft precisely: countersurveillance, cover identities, routes",
+    "Give the spymaster dry, aphoristic wisdom",
+    "End chapters with a single elegant, ironic sentence"
+  ],
+  "avoid": [
+    "Crude language or macho swagger",
+    "Gadget-heavy, Bond-style spectacle",
+    "Using Silva's characters, agencies or the art-restorer hero premise",
+    "Rushing the planning stage",
+    "Generic AI phrasing like 'in a world where'"
+  ],
+  "samples": [
+    "The cafe on the Quai des Bergues had been serving the same bitter coffee since before the war, and the man at the corner table had been drinking it, on and off, for nearly as long. He wore a camel overcoat and read the morning paper without turning the pages. Elena Marek watched him from across the river for twenty minutes before she was satisfied he was alone. In her trade, twenty minutes was a courtesy. Geneva, after all, was a city that kept its secrets in vaults, and its sins in plain sight.",
+    "\"You understand what you're asking,\" the old man said. He lit a cigarette, though his doctors had forbidden it. \"The banker needs a translator. Become his translator, and you're inside his house. Inside his house, you're inside his life.\" \"And if he recognizes me?\" \"Then you will be a translator with a past, which is to say, a translator.\" He exhaled toward the gray window. \"Vienna is full of them. Every one of them is running from something. You'll fit in beautifully.\""
+  ]
+}

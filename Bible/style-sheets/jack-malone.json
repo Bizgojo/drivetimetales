@@ -1,0 +1,35 @@
+{
+  "author": "Jack Malone",
+  "model": "Lee Child",
+  "summary": "Lean, hard-edged thriller about a lone drifter with a code who walks into a town's trouble and finishes it. The voice is clipped, logical and physical: the hero counts, calculates and explains, and violence is quick and procedural. Pure momentum and competence.",
+  "sentences": "Very short: mostly 3-12 words. Fragments everywhere. One-word paragraphs for beats. Occasional longer sentence only to walk through logic.",
+  "pacing": "Fast but patient: the hero observes, deduces, then acts. Scenes are short; time is tracked precisely (minutes, hours, distances). Action bursts are over in a paragraph.",
+  "vocabulary": "Plain American, concrete nouns, numbers and measurements (calibers, feet, minutes). Brand names and military detail occasionally. Never fancy adjectives, emotional gush, or therapy-speak.",
+  "dialogue": "About 40 percent dialogue. Terse, flat, often deadpan. The hero answers minimally or not at all; silence is reported as an action. Villains talk too much. Tags almost always 'said'.",
+  "narration": "First person past tense (or very close third). Narrator is calm, observant, logical, a little amused. Notices exits, hands, weight distribution, numbers. Leaves out feelings except as dry understatement.",
+  "openings": "Open on a precise physical observation that's slightly wrong (a truck running too long, a cop too far from his car), with a number in it.",
+  "scene_endings": "Close on a flat declarative beat: an action taken, a body count, a decision. Often one short line.",
+  "ending": {
+    "type": "Justice served, hero moves on",
+    "finale": "The hero wins decisively and personally, the bad guys get exactly what they earned, and loose ends are tied by deduction. No lingering romance; he walks to the highway and leaves. Last line is short and practical.",
+    "episode": "Cliffhanger is immediate physical danger or a deduction that flips the case: a gun in his back, a body where a witness should be, or the realization that the client lied."
+  },
+  "signature_moves": [
+    "Walk through the hero's logic step by step, with numbers",
+    "Describe fights as calculated physics: angles, weight, one blow",
+    "Use repetition for rhythm ('Not watching the street. Watching the truck.')",
+    "Report silence and stillness as deliberate actions",
+    "Let the hero underreact to threats with dry understatement"
+  ],
+  "avoid": [
+    "Long sentences or lyrical description",
+    "Hero emotional monologues or self-doubt",
+    "Adverbs and fancy dialogue tags",
+    "Copying signature catchphrases from the Reacher books",
+    "Generic AI phrasing like 'his heart pounded in his chest'"
+  ],
+  "samples": [
+    "The diner had eleven stools and one customer. Me. The cook was watching the window. So was the waitress. Not watching the street. Watching the black pickup parked across it, engine running, two guys inside. Forty minutes, it had been there. Nobody runs an engine forty minutes in June for the air conditioning. They run it because they want to leave fast. I finished my coffee. Paid. Left a five on the counter. Then I walked out the front door and straight across the street, toward the truck.",
+    "Four of them. Two big, two small. The big ones were in front, which was a mistake. Big guys in front means the small guys can't see. I said, \"You don't want to do this.\" The one on the left said, \"Yeah, we do.\" He was right-handed. Weight on his back foot. He'd swing wide and slow, the way guys swing when they learned fighting from movies. I let him start. Then I stepped inside the arc and hit him once, with my elbow, under the jaw. Three of them."
+  ]
+}

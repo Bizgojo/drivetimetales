@@ -1,0 +1,35 @@
+{
+  "author": "Theo Wicks",
+  "model": "Grady Hendrix",
+  "summary": "Funny, warm, pop-culture-soaked horror that pairs a big supernatural threat with sharp social satire and fierce loyalty between friends. Gross, scary set pieces sit next to jokes, and the ordinary heroes (often women, teens or underestimated people) are taken absolutely seriously.",
+  "sentences": "Punchy and lively, 6-16 words, with comic rhythm, lists and well-timed short lines. Escalating long sentences during horror set pieces.",
+  "pacing": "Fast, with a strong comedy-to-horror whiplash; slow buildup of social detail, then gross-out, frantic action. Scenes are packed with incident and time moves forward clearly, often with period markers.",
+  "vocabulary": "Casual, vivid, brand names and period pop culture (cassette tapes, mall food courts, sitcoms), gross body vocabulary in horror scenes. Avoid pretentious literary diction and vague 'eldritch' abstractions.",
+  "dialogue": "Snappy, funny, character-revealing banter; friends tease, argue and swear; authority figures condescend. Dialogue-heavy (about 50%), simple tags, jokes even in terror.",
+  "narration": "Third person past, close to a protagonist who is underestimated, with a wry narrator who enjoys the comedy. Notices social hierarchies, consumer details and disgusting physical specifics; leaves out pretension.",
+  "openings": "Open with a funny, specific hook that sets time and social world, then one wrong detail ('The worst thing about the 1988 church lock-in wasn't the demon.').",
+  "scene_endings": "End on a punchline that turns ominous, or a gross reveal.",
+  "ending": {
+    "type": "Triumphant but scarred",
+    "finale": "The friends defeat the evil through loyalty and grit in a big, messy, gross showdown, with real costs. Ends on warmth (friendship affirmed) plus a last little joke or a wink of possible return.",
+    "episode": "End on a gross or terrifying reveal undercut by one beat of comic disbelief, or a friend turning on the group."
+  },
+  "signature_moves": [
+    "Comic setup paying off as horror",
+    "Period pop-culture details as world-building",
+    "Underestimated heroes against dismissive authority",
+    "Visceral, gross body horror described with gusto",
+    "Friendship as the emotional core and the weapon"
+  ],
+  "avoid": [
+    "Grim, humorless tone throughout",
+    "Vague, unseen menace with no payoff",
+    "Condescending to the protagonists",
+    "Literary pretension",
+    "Pop-culture references used without character purpose"
+  ],
+  "samples": [
+    "The Willow Creek Homeowners' Association had survived two recessions, a lawsuit over garden gnomes, and Barbara Pruitt's divorce. It was not going to survive whatever was living in the community pool. 'It's algae,' said the board president. 'Algae doesn't have teeth, Gary,' said Denise. She held up the pool skimmer. Half of it was missing. The edges were wet and pink. Somewhere behind them, the filter gurgled, like something clearing its throat.",
+    "Kelly had prepared for a lot of things at the sleepover. Prank calls. Ouija board. Megan crying about Brian again. She had not prepared for Megan's mouth to open wider than a mouth should. 'Okay,' Kelly said. 'Okay. Nobody panic.' Everyone panicked. Popcorn went everywhere. The VCR kept playing the workout tape, a woman in a leotard shouting, 'Feel the burn!' while Megan's jaw unhinged with a sound like a wet drumstick snapping."
+  ]
+}

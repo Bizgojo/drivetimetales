@@ -1,0 +1,35 @@
+{
+  "author": "Zara Storm",
+  "model": "James S. A. Corey",
+  "summary": "Gritty, near-future solar-system space opera with real physics, working-class crews, and politics that grind people down. Fast, punchy ensemble storytelling where banter and high-g action share space with a creeping cosmic mystery. Reads like a prestige TV drama: blue-collar, sardonic, propulsive.",
+  "sentences": "Mostly 8-18 words, muscular and direct; fragments in action. Slightly longer sentences for political or emotional reflection, never ornate.",
+  "pacing": "Brisk; every scene advances plot or tension, and scenes are short. Alternating POV chapters, each ending on a hook; time moves in hours and days of transit, with burns and travel time as real constraints.",
+  "vocabulary": "Blue-collar and technical: thrust, g's, couch, reactor, air scrubbers, rail gun. Casual profanity in dialogue. Invented slang for spacer cultures used lightly. Never flowery or fantasy-archaic.",
+  "dialogue": "About 50 percent dialogue. Crew banter is dry, profane, loyal; jokes under pressure. Politicians and corporates talk in polished half-truths. Tags minimal; short exchanges.",
+  "narration": "Tight third, past tense, rotating among 3-4 POV characters from different factions. Narration notices bodily effects of gravity and acceleration, power dynamics, and practical problems. Leaves out lengthy description and introspective lyricism.",
+  "openings": "Open in motion or in a tight situation: an alarm, an inspection, an argument, a body found, a burn starting. Establish POV character and stakes in two lines.",
+  "scene_endings": "Close on a hard turn: a new threat on the scope, a betrayal, a terse line of dialogue that reframes the scene.",
+  "ending": {
+    "type": "Costly victory, door opened",
+    "finale": "Resolve the immediate crisis with real losses and a changed balance of power; the crew survives but someone pays. The bigger mystery is partially answered and a wider universe opens. Last line is dry and human, often a crew joke or a quiet look at the stars.",
+    "episode": "Cliffhanger is danger or betrayal: incoming torpedoes, a hull breach, an ally revealed as a spy, or the alien mystery doing something new and terrifying."
+  },
+  "signature_moves": [
+    "Make physics a character: g-force, transit times and oxygen limit every decision",
+    "Undercut tension with one dry joke, then hit harder",
+    "Rotate POV across factions so the listener sees each side's logic",
+    "Show politics through rationed resources (water, air, medicine)",
+    "Ground the alien mystery in gross, physical, inexplicable detail"
+  ],
+  "avoid": [
+    "Faster-than-light hand-waving or magic tech",
+    "Noble speeches without irony",
+    "Long scenic descriptions of space",
+    "Using the real books' terms, factions, ships or slang",
+    "Generic AI filler like 'little did they know'"
+  ],
+  "samples": [
+    "The burn hit at six g's and the couch gel swallowed Okoye up to the ears. Every breath was a negotiation. \"Torpedoes, two of them,\" Dace said over the comm, his voice flattened by the weight on his chest. \"Forty seconds.\" \"Point defense?\" \"Point defense is warm. It's also eight years old and held together with tape and prayer.\" \"So we pray.\" \"I'm an engineer, boss. I tape.\" The first torpedo bloomed white on the scope. The second kept coming.",
+    "Station Ninety-Four ran on recycled air and recycled promises. Every quarter the corporation sent a new administrator, and every quarter the water ration dropped a little and the speeches got a little longer. Mara Itzel had stopped listening to the speeches around the time her brother's lungs gave out. Now she sat in the back of the meeting hall with her arms crossed and counted the security guards. There were nine. Last quarter there'd been four. Somebody upstairs was scared, she thought. Good."
+  ]
+}

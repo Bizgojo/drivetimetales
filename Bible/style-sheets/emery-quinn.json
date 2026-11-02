@@ -1,0 +1,37 @@
+{
+  "author": "Emery Quinn",
+  "model": "Jenny Hale",
+  "summary": "Jenny Hale-style sweet, clean romance: a woman at a crossroads returns to a seaside town or a snowy holiday setting, rediscovers family and simple joys, and falls for a kind man who helps her slow down. Cozy, nostalgic, and gently emotional, with heat kept to hand-holding and a kiss.",
+  "sentences": "Mostly 10-20 words, smooth and gentle; few fragments; descriptive sentences linger on comforting sensory details.",
+  "pacing": "Leisurely; scenes are built on small, lovely moments (baking, decorating, walking the beach) with mild conflicts such as a job offer elsewhere or a family property at risk. Time moves through a season or a holiday countdown.",
+  "vocabulary": "Warm, wholesome, plain; cozy sensory words (twinkle lights, salt air, cinnamon, quilts). No profanity, no slang, no sharp sarcasm.",
+  "dialogue": "About 45% dialogue. Kind, sincere conversations, gentle teasing, and grandparents dispensing wisdom; conflict is spoken softly. Simple tags, with speakers clearly named for audio.",
+  "narration": "Close third or first person past from the heroine, reflective and appreciative. Notices weather, food, decorations, and family memories; leaves out anything harsh.",
+  "openings": "Opens on a sensory picture of place or season, often as the heroine arrives home or receives news that pulls her back.",
+  "scene_endings": "Closes on a contented, hopeful image or a small flicker of worry about the choice ahead.",
+  "ending": {
+    "type": "Sweet happily ever after",
+    "finale": "The heroine chooses home, family, and love over the hurried life; the family tradition or property is saved, and a final cozy scene (a holiday gathering, a sunset on the porch) shows that she belongs.",
+    "episode": "Ends on a gentle but real jolt: a job offer that would take her away, a letter revealing a family secret, or seeing the hero with someone else."
+  },
+  "signature_moves": [
+    "A family tradition or heirloom that anchors the story",
+    "A wise older relative offering a quiet life lesson",
+    "Sensory holiday or seaside set pieces",
+    "City career pressure contrasted with small-town pace",
+    "Romance built on kindness and shared tasks",
+    "A single sweet kiss as the romantic peak"
+  ],
+  "avoid": [
+    "Cynicism, sharp sarcasm, or crude humor",
+    "Explicit intimacy or innuendo",
+    "Violence or high danger",
+    "Fast, clipped thriller pacing",
+    "Overwrought AI adjectives stacked three deep",
+    "Villains; antagonists are circumstances"
+  ],
+  "samples": [
+    "The little cottage looked exactly the way Abby remembered it: blue shutters, a white porch swing, and the hydrangeas her grandmother had planted the summer Abby turned seven. Salt air drifted in through the open car window, and for the first time in months, her shoulders came down from her ears. On the porch, a note was taped to the door in familiar looping handwriting. Key's under the shell. Pie's in the fridge. Welcome home, sweetheart.",
+    "\"You've got flour on your nose,\" Ben said, leaning against the bakery counter. \"I'm aware,\" Abby said, though she hadn't been. He reached over and brushed it away with his thumb, gently, the way you'd straighten an ornament on a tree. Outside, snow had started to fall over Main Street, soft and slow under the lamplight. \"Your grandmother used to say the first snow means a wish comes true,\" he said. Abby smiled and didn't tell him she'd already made one."
+  ]
+}

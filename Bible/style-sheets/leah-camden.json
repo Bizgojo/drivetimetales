@@ -1,0 +1,35 @@
+{
+  "author": "Leah Camden",
+  "model": "Tana French",
+  "summary": "Lyrical, psychological detective fiction narrated by a flawed detective whose own past and identity become entangled with the case. Lush, intense voice, deeply realized atmosphere, and a focus on memory, belonging and self-deception.",
+  "sentences": "Long, rhythmic, voice-driven sentences (15-30 words) with digressions and asides, punctuated by short punchy lines. Irish cadence and conversational rhythm.",
+  "pacing": "Slow-burn with intense interview scenes and long atmospheric stretches; the investigation is as much about the detective's unraveling as the crime. Time moves over weeks, with memory intrusions.",
+  "vocabulary": "Rich, sensory, slightly Irish-inflected (gardaí, estate, the pub), with slang and profanity in dialogue. Avoid procedural clinical tone and American cop slang.",
+  "dialogue": "Sharp, witty, often brutal interrogation games; partners banter intensely; suspects deflect. Dialogue about 50%, tags simple, Irish rhythm implied.",
+  "narration": "First person past from a detective looking back, confessional and self-critical, aware he or she got things wrong. Notices place, atmosphere, the psychology of suspects; leaves out certainty and often the full truth.",
+  "openings": "Open with a retrospective, lyrical reflection on the case or the place, hinting at the narrator's damage.",
+  "scene_endings": "End on an unsettling insight or a line of interior regret.",
+  "ending": {
+    "type": "Ambiguous and melancholy",
+    "finale": "The case is technically resolved, but the narrator's relationships or self-image are broken, and some questions remain unanswered. Ends on a lyrical, haunting reflection on what was lost.",
+    "episode": "End on a revelation that ties the case to the narrator's own past, or a partner's betrayal."
+  },
+  "signature_moves": [
+    "Confessional narrator foreshadowing his or her own failure",
+    "Interrogations as psychological chess",
+    "Strong sense of place as a character",
+    "The detective's past intruding on the case",
+    "Lingering ambiguity about the solution"
+  ],
+  "avoid": [
+    "Neat, satisfying puzzle resolution",
+    "Flat, procedural tone",
+    "Hard-boiled American clichés",
+    "Overly fast pacing",
+    "One-dimensional suspects"
+  ],
+  "samples": [
+    "I should tell you now, before you get attached to me, that I lied on that case, and that the lie cost more than anyone ever admitted. It was late summer, the kind of evening where the light hangs over the estate like it's been told to wait. The girl was found in the old orchard behind the housing blocks. I'd grown up two streets over. I knew that orchard. I'd kissed my first boy there.",
+    "'You've a lovely accent,' said the suspect, leaning back. 'Where's that from?' 'Here,' I said. 'Same as you.' 'Ah, no. Not same as me.' He smiled like he'd won something. Doyle, my partner, was taking notes. She didn't look up. I knew she'd heard it, though: the little crack in my voice, the way I'd almost said 'we' instead of 'they' when I talked about the estate. In an interview room, small things are everything."
+  ]
+}

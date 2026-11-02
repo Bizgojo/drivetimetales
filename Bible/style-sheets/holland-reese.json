@@ -1,0 +1,35 @@
+{
+  "author": "Holland Reese",
+  "model": "Mitch Albom",
+  "summary": "Gentle, spiritual fables about life, death and meaning, built around a mentor's lessons, an afterlife encounter or a second chance. Short chapters, aphoristic wisdom, and a hidden pattern revealed at the end that ties every life together.",
+  "sentences": "Short (5-15 words), clean, often standalone lines for emphasis. Aphorisms stated simply ('The end is not the end.'). Occasional second-person address.",
+  "pacing": "Very short chapters or scenes, alternating between the present (a journey, an afterlife meeting) and flashbacks to key birthdays or moments in the hero's life. Time is fluid and nonlinear.",
+  "vocabulary": "Simple, accessible, warm, with spiritual words used plainly (heaven, soul, forgiveness, time). Concrete everyday details (a carnival ride, a diner, a baseball glove). Never jargon, irony or dense description.",
+  "dialogue": "Wise mentor figures speak in calm, gentle parables; the protagonist asks the listener's questions. About 40% dialogue, with frequent pauses.",
+  "narration": "Third person or first person retrospective, past tense, with a warm, slightly omniscient storyteller who sometimes addresses the listener directly. Notices small kindnesses, regrets and connections; leaves out complexity of plot and violence.",
+  "openings": "Open with a direct statement that frames the whole story ('This is a story about a man who died on a Tuesday and did not know it yet').",
+  "scene_endings": "Close on a short lesson line or a revelation about how lives are connected.",
+  "ending": {
+    "type": "Uplifting revelation",
+    "finale": "Reveal the hidden pattern linking the protagonist's life to others, the forgiveness he needed, and the lesson that life mattered. End on a tender, tear-jerking image of reunion or peace, often with a simple aphorism as the final line.",
+    "episode": "End on a revelation of a hidden connection: the stranger was the father he never knew, the accident was caused by him, the mentor is already dead."
+  },
+  "signature_moves": [
+    "Aphoristic one-line lessons set alone for emphasis",
+    "Framing statement at the start that promises the story's meaning",
+    "Flashbacks to milestone birthdays or ordinary moments that turn out pivotal",
+    "A mentor or guide who teaches through small parables",
+    "A final reveal that recasts an earlier small kindness or mistake"
+  ],
+  "avoid": [
+    "Cynicism or dark ambiguity",
+    "Complex plotting or heavy description",
+    "Preachy religious doctrine; keep spirituality universal",
+    "Violence shown graphically",
+    "Using the model author's premises (five people, Tuesdays with a mentor) directly"
+  ],
+  "samples": [
+    "This is a story about a man who died on a Tuesday and did not know it yet. His name was Walter Pruitt, and he fixed clocks. He fixed them for forty-one years in a narrow shop on Elm Street, and in all that time he never once wondered what time was for. That is not unusual. Most of us don't. We wind our days and set them on the shelf. And then one morning, the ticking stops, and the questions begin.",
+    "'Why are you here?' Walter asked. The woman smiled. She was older than he remembered, or younger; it was hard to tell in this light. 'You gave me a quarter once,' she said. 'At a bus stop. In the rain.' 'I don't remember.' 'I know. That's why I'm here.' She touched his hand. 'That quarter got me home. I didn't get on the other bus, Walter. The one that crashed.' He stared at her. 'A quarter,' he said. 'Sometimes,' she said, 'that's all it takes.'"
+  ]
+}

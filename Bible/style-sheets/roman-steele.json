@@ -1,0 +1,35 @@
+{
+  "author": "Roman Steele",
+  "model": "Vince Flynn",
+  "summary": "Hard-charging counterterrorism thriller with a ruthless operative who does what Washington won't. The voice is blunt, aggressive and impatient with bureaucrats, mixing brutal field action with Beltway power games. Moral clarity through force.",
+  "sentences": "Mostly 8-18 words, blunt and forceful. Fragments for impact in action; longer sentences when explaining politics or the hero's contempt.",
+  "pacing": "Fast, cross-cut between field operations, terrorist planning, and Washington meetings. A ticking clock drives the story; time moves in hours toward an attack.",
+  "vocabulary": "Plain, tough, military and intelligence terms (op, asset, extraction, suppressed pistol). Political titles and agency names. Mild profanity. Never soft, poetic, or hedged.",
+  "dialogue": "About 45 percent dialogue. The hero is curt, sarcastic, and threatening; politicians are evasive and self-serving; villains are fanatical or arrogant. Interrogation scenes are confrontational. Tags simple.",
+  "narration": "Third person, past tense, multiple POVs including terrorists and officials. Narrator shares the hero's impatience with red tape and admiration for competence. Notices weapons, tactics, and political motives. Leaves out moral hand-wringing.",
+  "openings": "Open on an operation in progress or a terrorist preparing, with an immediate threat or a kill.",
+  "scene_endings": "Close on a hard action or a threat delivered, or a political figure realizing they're in over their heads.",
+  "ending": {
+    "type": "Brutal justice",
+    "finale": "The hero stops the attack and personally eliminates the villain, often outside the law; Washington spins it and the cowardly official is exposed or sidelined. End on the hero alone, weary but unrepentant.",
+    "episode": "Cliffhanger is danger or betrayal: a bomb about to go off, the hero captured, a mole in the agency, or a politician ordering the hero's arrest."
+  },
+  "signature_moves": [
+    "Cross-cut between the field and Washington conference rooms",
+    "Let the hero bluntly humiliate a bureaucrat",
+    "Show the villain's POV to build dread",
+    "Use a ticking clock with specific times and places",
+    "Make interrogations tense, physical and psychological"
+  ],
+  "avoid": [
+    "Hero self-doubt or lengthy moral debate",
+    "Flowery description",
+    "Gratuitous torture detail beyond tension",
+    "Using Flynn's characters or the Mitch Rapp name/backstory",
+    "Generic AI phrasing like 'a chill ran down his spine'"
+  ],
+  "samples": [
+    "The deputy director wanted it done by the book. Cole Brennan had read the book. It was written by people who'd never been shot at. He stood in the basement of the safe house in northern Virginia and looked at the man zip-tied to the chair. Yusuf Haddad had planned the bus bombing in Ankara. Nineteen dead. Six of them kids. \"I assume my lawyer is coming,\" Haddad said, in good English. Brennan pulled up a second chair and sat down, close. \"No,\" he said. \"You have me.\"",
+    "Senator Gail Prescott had never seen a body bag outside of a news broadcast, and she intended to keep it that way. That was why she'd spent three years on the Intelligence Committee asking questions she didn't want answered. \"I want to know,\" she said, tapping the folder, \"whether the Agency is running an assassination program.\" Across the table, the director didn't blink. \"Senator, if we were, would you really want to know?\" Prescott opened her mouth. Then, after a moment, she closed it."
+  ]
+}

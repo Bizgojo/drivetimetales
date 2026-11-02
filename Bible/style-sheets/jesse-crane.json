@@ -1,0 +1,35 @@
+{
+  "author": "Jesse Crane",
+  "model": "Elmore Leonard",
+  "summary": "Cool, sly, dialogue-driven Westerns with a crime-novel edge: laconic heroes, dumb dangerous outlaws, and scenes told through the characters' own voices. The narrator disappears; what's left is attitude, rhythm and wit.",
+  "sentences": "Short, loose, conversational; run-ons and fragments in the character's voice. No ornate sentences.",
+  "pacing": "Fast; skip anything readers would skip. Scenes are mostly talk; violence is quick and anticlimactic. Time jumps freely.",
+  "vocabulary": "Vernacular, character-specific, ungrammatical when the character is. No adverbs modifying 'said'. Never fancy words, exclamation points, or weather openings.",
+  "dialogue": "About 65-70 percent dialogue. Only 'said' as a tag. Characters talk around things, deadpan and sly; menace under casual talk. Little dialect spelling.",
+  "narration": "Close third in free indirect style, past tense, shifting POV including villains. Narration sounds like the POV character thinks. Leaves out description and authorial commentary.",
+  "openings": "Open with a character in mid-situation, often talking, in their voice, never with weather.",
+  "scene_endings": "Close on a dry line of dialogue or a sudden, flatly reported action.",
+  "ending": {
+    "type": "Cool, wry justice",
+    "finale": "The hero outwits the outlaws, often through their own stupidity; violence is brief and unglamorous. No big speeches; end with a dry exchange and someone walking away.",
+    "episode": "Cliffhanger is a sudden standoff or double-cross: a gun drawn mid-conversation, a partner switching sides, or the villain getting the drop."
+  },
+  "signature_moves": [
+    "Use free indirect voice so narration sounds like the character",
+    "Only 'said' as a dialogue tag",
+    "Let villains be dangerous but comically dim",
+    "Cut boring parts ruthlessly",
+    "End scenes on a dry, understated line"
+  ],
+  "avoid": [
+    "Weather or scenic openings",
+    "Adverbs on dialogue tags",
+    "Exclamation points",
+    "Authorial explanations of feelings",
+    "Using Leonard's characters or titles"
+  ],
+  "samples": [
+    "The one calling himself Dutch had a new hat he kept touching, like he wanted you to ask about it. Hollis didn't. He sat at the end of the bar with his beer, watching Dutch in the mirror. \"You the one rode in with the horse trader's string?\" Dutch said. \"They're my horses.\" \"Not what I heard.\" \"Then you heard wrong.\" Dutch thought about that. You could see him doing it. He said, \"Man could get hurt, talking that way.\" Hollis said, \"Man could. You want to find out which one?\"",
+    "Ray Bodine's idea was they'd take the stage at Sulphur Wells, where it stopped for water, and nobody'd be expecting it because who robs a stage while the horses are drinking. That was the beauty of it. Lonnie said what about the shotgun rider and Ray said the shotgun rider would be off taking a leak, they always were, and Lonnie said how do you know that and Ray said because I used to be one. Lonnie had to admit that was a good point. Ray was full of good points. That was the trouble with him."
+  ]
+}

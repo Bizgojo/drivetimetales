@@ -1,0 +1,35 @@
+{
+  "author": "Dale Harmon",
+  "model": "Clive Cussler",
+  "summary": "High-octane treasure-hunt adventure: a historical prologue sets up a lost ship or artifact, then a larger-than-life marine-engineer hero races a megalomaniac villain to it in the present day. Brisk, gadget-loving, unapologetically pulpy, with banter and big set pieces.",
+  "sentences": "Mostly 10-22 words, functional and fast; action in compound sentences joined by 'and'; occasional long sentence packed with technical specs. Adverbs on dialogue tags are acceptable here.",
+  "pacing": "Short scenes that cut between hero, villain and side players; each scene delivers a discovery, a fight, a chase or a dive. Time moves in a compressed race, often across several countries in days.",
+  "vocabulary": "Accessible, technical-enthusiast register: hull plating, displacement, rebreather, twin diesels, specific vintage car makes, exact calibers. Rich in nouns and numbers; never literary-abstract or slangy-modern.",
+  "dialogue": "Wisecracking hero-and-sidekick banter under fire, confident one-liners, villain monologues that explain the scheme. Roughly 40% dialogue, with expository conversations where experts brief the hero.",
+  "narration": "Third-person past tense, rotating omniscient POV including villains and henchmen. The narrator admires competence, machinery and history, describes ships, cars and lairs lovingly, and skips quiet introspection.",
+  "openings": "The series opens with a dated historical prologue (a ship lost in a storm, a cargo vanished); later episodes open mid-action or with a striking physical setting described in specs.",
+  "scene_endings": "Close on a hook: a sighting on the sonar screen, a gun muzzle, an engine dying, a one-liner from the hero.",
+  "ending": {
+    "type": "Triumphant victory with a wink",
+    "finale": "The hero solves the historical mystery, saves the day in a huge set piece, and the villain meets an ironic death fitting his greed. A short epilogue ties the past to the present, then ends on lighthearted banter or a romantic moment with a vintage-car or seaside image.",
+    "episode": "End on physical peril: trapped in a flooding hold with air running out, a bomb timer, a helicopter gunship cresting the ridge."
+  },
+  "signature_moves": [
+    "Open with a historical prologue that plants the treasure or mystery",
+    "Drop precise technical specs about ships, aircraft, weapons and classic cars",
+    "Give the hero a loyal, sardonic sidekick for running banter",
+    "Hand villains a grand lair and a monologue explaining the scheme",
+    "Kill the villain with ironic justice tied to his own weapon or greed"
+  ],
+  "avoid": [
+    "Moral ambiguity or a morose hero",
+    "Slow literary introspection",
+    "Vague technology; name the make, model and spec",
+    "Gore lingered over; keep violence fast and cinematic",
+    "Undercutting the adventure with modern cynicism"
+  ],
+  "samples": [
+    "October 1864. The blockade runner Marigold heeled hard to port as the gale shoved her toward the shoals. Captain Elias Thorne braced against the binnacle and shouted for more steam, but the boilers were already screaming at ninety pounds. Below decks, eleven iron-banded crates sat lashed to the keelson. Only Thorne knew what was inside them, and only Thorne knew why the Union gunboat had chased them three hundred miles. When the hull struck sand with a sound like a cannon shot, he thought of his daughter, and of the gold.",
+    "The sonar trace glowed green on the monitor, a clean rectangle ninety feet down. 'That's no rock,' said Reyes, tapping the screen. 'That's a ship. Two hundred feet, give or take.' Jack Callan was already pulling on his drysuit. 'Then I'd better go knock on the door.' 'Storm's coming in by four.' 'Then I'll knock fast.' He rolled backward off the gunwale, and the cold Atlantic closed over him. Twenty feet down, he realized he wasn't alone. A second diver was rising from the wreck, and he was carrying a speargun."
+  ]
+}

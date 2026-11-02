@@ -1,0 +1,35 @@
+{
+  "author": "Ada Rourke",
+  "model": "Hilary Mantel",
+  "summary": "Close, present-tense historical fiction that sits inside one shrewd mind at the center of power, so the past feels like it is happening now and nobody knows how it ends. Wit is dry and dangerous, politics is done in whispers and glances, and the body, weather and domestic objects carry as much weight as kings.",
+  "sentences": "Varied, mostly 8-20 words, with clipped fragments and abrupt one-line paragraphs for a turn of thought; occasional long, looping sentence that follows a memory or calculation. Questions the protagonist asks himself, answered tersely.",
+  "pacing": "Scenes are conversations and private reckonings rather than battles; big events happen offstage and are learned secondhand. Time jumps without warning between the present scene and a remembered childhood moment, then snaps back mid-paragraph.",
+  "vocabulary": "Precise, concrete, period-flavored but never mock-archaic: cloth, ledgers, fire, bread, blood, wax seals. No 'thee/thou' pastiche, no modern slang or therapy-speak ('process', 'trauma', 'closure').",
+  "dialogue": "Sharp, elliptical, funny; people say less than they mean and threats are wrapped in courtesy. Tags minimal, often just 'he says'; roughly half dialogue, half interior narration, with the hero's unspoken retort reported after the spoken one.",
+  "narration": "Tight third person present, glued to one protagonist, sometimes slipping into 'he, the protagonist' clarifications ('he, the clerk, says'). Notices hands, faces, money and who is lying; leaves out what the hero refuses to think about, which the listener feels as a gap.",
+  "openings": "Open in the middle of a physical moment or an overheard line, with no establishing history lesson: a cold room, a wound, a document being sealed.",
+  "scene_endings": "Close on a quiet, ironic line of thought or a small gesture that signals a shift in power, never a summary.",
+  "ending": {
+    "type": "Inevitable and ironic",
+    "finale": "Resolve with the cost of power arriving exactly as history demands, met by the protagonist with composure and a private, bitter wit. Loose ends are tied by consequence, not explanation; the last image is small and bodily (a hand, a breath, light on a wall).",
+    "episode": "End on a whispered revelation of betrayal or a summons that could mean death, delivered calmly in one short line."
+  },
+  "signature_moves": [
+    "Present tense with 'he' anchored to one viewpoint, clarified as 'he, the steward,' when ambiguous",
+    "Threat delivered as politeness, followed by the protagonist's silent, sharper answer",
+    "Abrupt flashback triggered by an object, returning without transition",
+    "Short one-line paragraphs that land a judgement",
+    "Dry, deadpan jokes in the middle of danger"
+  ],
+  "avoid": [
+    "Textbook exposition or date-and-name info dumps",
+    "Fake-archaic diction ('forsooth', 'mayhap')",
+    "Melodramatic villains who announce their plans",
+    "Narrator explaining the emotion after showing it",
+    "Battle-heavy action set pieces"
+  ],
+  "samples": [
+    "The chancellor's room smells of wet wool and candle fat. He waits, because waiting is what clever men are paid for. The duke enters without knocking. 'You look tired,' the duke says. 'I am always tired, my lord. It is how you know I am working.' The duke laughs, which is worse than if he had not. He thinks of his father's forge, the sparks that never quite reached him. Not yet, he thinks. Not today.",
+    "A letter comes at dusk, sealed in green wax, which means the queen's household and not the king's. He turns it over twice before he opens it. Inside, four lines. Courteous. Warm, even. He reads them again and feels the floor tilt very slightly, as a ship's deck does when the wind changes. 'Bad news, sir?' asks the boy. 'No,' he says. 'An invitation.' He puts the letter in the fire and watches until the wax is gone."
+  ]
+}

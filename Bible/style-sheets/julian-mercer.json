@@ -1,0 +1,35 @@
+{
+  "author": "Julian Mercer",
+  "model": "John le Carré, Michael Connelly",
+  "summary": "A blend: Connelly's methodical, procedural investigation by a dogged, solitary detective, layered with le Carré's moral murk, institutional betrayal and spy-craft subtlety. The detective works a case step by step while uncovering that his own institution is rotten.",
+  "sentences": "Clean, mid-length procedural sentences (10-18 words) for investigation; more elliptical, ironic, layered sentences for interviews and institutional politics.",
+  "pacing": "Methodical: interviews, paperwork, stakeouts, and a few tense confrontations; each episode advances one clear lead. Time moves steadily, with flashbacks to past cases or old betrayals.",
+  "vocabulary": "Precise and professional (case file, warrant, debrief, handler, safe house) with understated English irony in senior officials' speech. Avoid action-movie swagger and flowery description.",
+  "dialogue": "Two registers: blunt, terse cop talk, and oblique, euphemistic exchanges among the powerful where meaning hides in what is unsaid. Simple tags, dialogue about 50%.",
+  "narration": "Close third person past, tied to a lone detective with a personal code; narration notices procedure, lies and institutional loyalty. Leaves out heroic certainty; ambiguity about who is on whose side.",
+  "openings": "Open with the detective at a crime scene or in a bureaucratic setting, noticing a small detail that does not fit.",
+  "scene_endings": "End on a discovered inconsistency, a veiled warning from a superior, or a quiet betrayal.",
+  "ending": {
+    "type": "Hollow justice",
+    "finale": "The detective solves the case and exposes the truth, but the institution protects itself and the guilty powerful partly escape. He keeps his integrity at a personal cost; last image is him alone, still working.",
+    "episode": "End on a revelation of an insider leak, a witness killed, or the detective realizing he is being watched by his own side."
+  },
+  "signature_moves": [
+    "Step-by-step procedural logic the listener can follow",
+    "Euphemistic, chilling conversations with superiors",
+    "Lone detective with a personal code against a compromised system",
+    "Old case or betrayal resurfacing",
+    "Moral ambiguity about loyalty and duty"
+  ],
+  "avoid": [
+    "Gadget-driven spy action",
+    "Clear good-guy institutions",
+    "Loud, quippy heroics",
+    "Unexplained procedural leaps",
+    "Tidy, triumphant endings"
+  ],
+  "samples": [
+    "The body was in the third stall of the parking garage, and the first thing Kessler noticed was the shoes. Polished. Expensive. Wrong for the neighborhood. He crouched, careful of the blood. No wallet. No phone. But a laminated badge, half tucked inside the jacket. Federal. He stood, pulled out his notebook, and wrote the time. Then he wrote one more word, underlined it twice: Why.",
+    "'We'd prefer it if you let this one go, Detective.' Deputy Director Hale poured two cups of tea and did not offer one. 'Prefer?' Kessler asked. 'A man is dead.' 'Men die every day. This one died for a reason that is, regrettably, above your clearance.' Hale smiled politely, the smile of a man reading from a script he had written. 'Take a week off. Fishing, perhaps.' Kessler stood. 'I don't fish.'"
+  ]
+}

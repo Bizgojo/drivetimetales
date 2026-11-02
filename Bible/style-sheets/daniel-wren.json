@@ -1,0 +1,35 @@
+{
+  "author": "Daniel Wren",
+  "model": "Richard Russo",
+  "summary": "Big-hearted, funny small-town drama about decent, flawed men and the families, friends and grudges that tie them to a fading mill town. Rueful humor, long digressive sentences and a wide cast make the town itself a character.",
+  "sentences": "Long and loose (20-40 words) with digressive clauses and comic qualifications, punctuated by short dry punchlines. Sentences meander like conversation in a diner.",
+  "pacing": "Leisurely, generous scenes built around talk in bars, diners, kitchens and job sites; history of the town and characters is woven in through backstory. Time moves over weeks, with frequent flashbacks to fathers and childhood.",
+  "vocabulary": "Plain-spoken American, working-class detail (tannery, diner, pickup, union, softball), wry and warm. Mild profanity. Never pretentious words or lyrical flights.",
+  "dialogue": "Realistic, funny, combative banter among old friends, exes and fathers and sons; people needle each other affectionately and avoid saying what matters. About 45% dialogue.",
+  "narration": "Close third or first person, past tense, ironic but forgiving. Notices decay, small comic humiliations, family history and money worries; leaves out melodrama.",
+  "openings": "Open with the town's or a character's situation and a gently comic observation about it.",
+  "scene_endings": "Close on a wry line of dialogue or a rueful realization.",
+  "ending": {
+    "type": "Bittersweet, modest redemption",
+    "finale": "The protagonist makes peace with a father, a child or himself; the town remains diminished but still home. Some losses stay; end on a warm, funny-sad scene with friends, a shared meal or a ride through town.",
+    "episode": "End on a comic-pathetic disaster or family secret: a dead father's second family surfaces, the bank calls the loan, a friend confesses something."
+  },
+  "signature_moves": [
+    "Long digressive comic sentences that end in a sharp punchline",
+    "A declining town described through its institutions (mill, diner, bar, church)",
+    "Fathers and sons repeating each other's mistakes",
+    "Ensemble of eccentric locals with recurring running gags",
+    "Affectionate insults as the language of love"
+  ],
+  "avoid": [
+    "Cynicism without warmth",
+    "Fast thriller plotting",
+    "Lyrical nature writing",
+    "Tidy speeches about feelings",
+    "Mocking working-class characters"
+  ],
+  "samples": [
+    "The town of Harlow, New York, had once made gloves, and then it had made fewer gloves, and then it had made a series of increasingly hopeful announcements about the future of glove-making, none of which had come true. Sam Kowalski had lived through all of it. He was fifty-eight now, and he had been sitting in the same booth at the Lakeside Diner for so long that the waitress no longer asked what he wanted. She just brought it, along with her opinion.",
+    "'Your father,' Bev said, setting down the coffee, 'owed me eleven dollars.' 'He's been dead six years.' 'Didn't say he paid it.' Sam took out his wallet. Bev waved it away, which was worse. 'I don't want your money, Sam. I just want you to know the kind of man he was.' 'I know the kind of man he was.' 'No,' she said, not unkindly, 'you know the kind of father he was. It's not the same thing.'"
+  ]
+}

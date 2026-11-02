@@ -1,0 +1,35 @@
+{
+  "author": "Beatrice Voss",
+  "model": "Ann Patchett",
+  "summary": "Warm, intelligent literary fiction about families, made and inherited, told across decades with calm grace and dry wit. A single event (a party, a house, a death) ripples outward through many lives, and the narrator treats everyone generously.",
+  "sentences": "Medium to long (14-30 words), clean and balanced, with clear syntax and a quiet, wry turn at the end. Occasional short declarative line lands a revelation.",
+  "pacing": "Unhurried: a scene may be one conversation or one afternoon, and then years pass in a paragraph. Time moves freely, with retrospective summary and leaps forward; the focus is on what events meant later.",
+  "vocabulary": "Educated, precise, unshowy; domestic and concrete (kitchens, coats, casseroles, hallways), with occasional elegant word. No slang, no melodrama words, no purple adjectives.",
+  "dialogue": "Natural, intelligent, often funny conversation between people who know each other too well; subtext carries the hurt. About 35% dialogue, simple 'said' tags.",
+  "narration": "Either first-person retrospective (an adult looking back) or a gently roving omniscient third, past tense. The narrator is kind, perceptive and lightly ironic, noticing objects, rooms, rituals and small acts of care; it skips violence and graphic detail.",
+  "openings": "Open on a specific gathering or moment with a calm, confident first line that hints at a long consequence ('It was at my sister's christening that the stranger first...').",
+  "scene_endings": "Close on a quiet observation or understated line of dialogue that reframes the scene.",
+  "ending": {
+    "type": "Quiet grace and reconciliation",
+    "finale": "Resolve through understanding rather than plot fireworks: estranged people find their way back, the house or object at the center changes hands, forgiveness is partial but real. Last image is domestic and luminous, a room, a table, a door opening.",
+    "episode": "End on an emotional bombshell: a family secret revealed in one plain sentence, a letter found, someone who was thought gone arrives on the porch."
+  },
+  "signature_moves": [
+    "A central house or object that holds the family's history",
+    "Retrospective foreshadowing: 'I did not know then that...'",
+    "Ensemble casts in which minor characters are given sudden full lives",
+    "Gentle comedy of manners in the middle of grief",
+    "Leaping years in a sentence, then slowing to one afternoon"
+  ],
+  "avoid": [
+    "Melodrama, villains and shouting matches",
+    "Showy metaphors or overwrought lyricism",
+    "Cynicism toward characters",
+    "Thriller-style cliffhanger mechanics inside scenes",
+    "Generic AI warmth ('a testament to', 'a tapestry of')"
+  ],
+  "samples": [
+    "The house on Larkin Street had been left to all three of us, which my mother would have called fair and my father would have called a mistake. We met there on a Saturday in March, each of us carrying a different set of keys, none of which worked. Theo finally climbed in through the pantry window, the way he had when he was twelve. When he opened the front door for us, he looked so pleased with himself that for one moment we forgot why we had come.",
+    "'You kept the china,' Nora said. She held up a teacup to the window as if checking it for counterfeits. 'Of course I kept the china,' said her aunt. 'Who else would want it?' 'I would have.' 'You never once said so.' Nora set the cup down very carefully. It occurred to her that there were perhaps a hundred things she had never once said, and that her aunt had been waiting, all these years, with the china, for her to begin."
+  ]
+}

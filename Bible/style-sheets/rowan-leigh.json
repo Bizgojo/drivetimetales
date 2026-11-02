@@ -1,0 +1,37 @@
+{
+  "author": "Rowan Leigh",
+  "model": "Kristin Hannah",
+  "summary": "Kristin Hannah-style sweeping emotional saga: women surviving hardship (war, wilderness, family collapse) with love stories woven through acts of courage and sacrifice. Intimate and epic at once, built on sisters, mothers, and daughters, with devastating, cathartic turns. Filed under Romance at Endless Tales, but the voice is women's historical fiction in which love is one thread among survival and family.",
+  "sentences": "Mostly 12-22 words, clear and lyrical; occasional aphoristic one-liners about love, war, or women; short sentences for shocks.",
+  "pacing": "Expansive, moving across months and years as historical events press on intimate scenes. Each scene carries emotional weight; time leaps are clearly marked, often within a frame narrative told late in life.",
+  "vocabulary": "Accessible but rich, grounded in era and place (ration cards, frost, kerosene, wool coats). Emotional words are direct (grief, courage, shame). No modern idioms, no ornate archaism.",
+  "dialogue": "About 35%. Earnest, often terse under pressure; family members talk past each other and say the important thing too late. Clear tags for audio, with era-appropriate speech.",
+  "narration": "Close third person past, often alternating between two women (sisters, or mother and daughter), sometimes framed by an older first-person narrator looking back. Notices hunger, cold, small mercies, and moral choices.",
+  "openings": "Opens with a reflective, aphoristic line about memory, love, or war, or with a present-day frame scene, before dropping into the past.",
+  "scene_endings": "Ends on a sacrifice, a farewell, a quiet decision, or a sentence that foreshadows loss.",
+  "ending": {
+    "type": "Bittersweet and cathartic",
+    "finale": "Survivors reckon with the cost; someone beloved does not make it, and the truth of their courage is finally spoken aloud. Ends with an older woman passing the story on: a final image of endurance and love outlasting loss.",
+    "episode": "Ends on a devastating turn: an arrest, a disappearance, a neighbor's betrayal, or a letter announcing a death."
+  },
+  "signature_moves": [
+    "Two women whose paths diverge and reconverge",
+    "A frame narrative from an older narrator that reveals the past slowly",
+    "Aphoristic lines about women's strength and love",
+    "Historical pressure forcing impossible choices",
+    "Romantic love shown through sacrifice and letters",
+    "Intimacy implied, never shown"
+  ],
+  "avoid": [
+    "Graphic violence or explicit intimacy",
+    "Snappy rom-com banter",
+    "Tidy, painless endings",
+    "Lecturing history lessons",
+    "AI cliches like 'tears streamed down her face' in every scene",
+    "Making the romance the only stakes"
+  ],
+  "samples": [
+    "If I have learned anything in my long life, it is this: we remember the winters. Not the summers, not the easy years, but the cold ones, the hungry ones, the ones that showed us who we were. The winter of 1942, my sister and I shared a single coat. We took turns wearing it to the bread line. I did not know then that she was carrying secrets beneath it.",
+    "\"You'll write?\" she asked. Henry held her hands on the station platform, his thumbs moving over her cold knuckles. Around them, mothers wept and soldiers pretended not to. \"Every week,\" he said. \"And if the letters stop?\" He didn't answer. The train whistle cut through the frozen air, and he kissed her forehead, quick and hard, as if he could leave something of himself there. She would keep every letter he sent. She would not know, for two years, that the last one never arrived."
+  ]
+}
