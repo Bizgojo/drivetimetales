@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { sfxGloballyOff } from '@/lib/sfxSwitch'
 import { generateScriptSfx } from '@/lib/sfxGenerate'
 import { parseCharacterGuide, characterVoiceKeys, type CharacterInfo } from '@/lib/characterGuide'
 export { parseCharacterGuide, characterVoiceKeys }
@@ -2591,7 +2592,8 @@ export async function POST(req: NextRequest) {
       if (!script) return NextResponse.json({ success: false, error: 'Script not found in database' }, { status: 400 })
     }
     // CORRECTION-PERSIST-001: extract sfx_disabled flag and existing corrections from story row
-    const sfxDisabled = Boolean((storyRow as any)?.sfx_disabled)
+    // SFX-ALL-OFF-001: SFX_OFF=on disables effects for every story.
+    const sfxDisabled = Boolean((storyRow as any)?.sfx_disabled) || sfxGloballyOff()
     const storyStateJson = ((storyRow as any)?.state_json as Record<string, unknown>) ?? {}
     const existingCorrections: CorrectionEntry[] = (storyStateJson.corrections as CorrectionEntry[]) ?? []
     if (sfxDisabled) console.log(`[SFX-DISABLED] story ${storyId} has sfx_disabled=true — SFX generation will be skipped`)
