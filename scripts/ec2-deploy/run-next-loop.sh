@@ -24,6 +24,10 @@ fi
 
 URL="${RUN_NEXT_URL:-https://app.endless-tales.com/api/admin/production-jobs/run-next}"
 INTERVAL_SECONDS="${RUN_NEXT_POLL_INTERVAL_SECONDS:-30}"
+# RUNNER-TIMEOUT-001 (2026-11-02): a hung call used to block this loop forever
+# (Night Shift at Callisto sat locked for 6 hours). Give up after this long;
+# the job's lock goes stale and the next tick reclaims it.
+MAX_SECONDS="${RUN_NEXT_MAX_SECONDS:-1200}"
 
 log() { echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] $*"; }
 
@@ -36,7 +40,7 @@ while true; do
     AUTH_HEADER=()
   fi
 
-  HTTP_CODE=$(curl -sS -o /tmp/run-next-last-response.json -w "%{http_code}" \
+  HTTP_CODE=$(curl -sS --max-time "$MAX_SECONDS" -o /tmp/run-next-last-response.json -w "%{http_code}" \
     -X POST "${AUTH_HEADER[@]}" \
     -H "Content-Type: application/json" \
     -d '{}' \
