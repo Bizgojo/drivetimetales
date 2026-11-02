@@ -2479,6 +2479,12 @@ async function selectCandidate(jobId: string) {
   let query = supabase
     .from('production_jobs')
     .select('*')
+    // FAIR-ROTATION-001 (2026-11-02): least recently touched first, so every
+    // series advances in turn. Oldest-created-first let one long voice job
+    // (Storm Season Vows) take every tick for hours while Lake House, Hunting
+    // Dominic Graves and a stalled Night Shift at Callisto were never picked.
+    // A stale lock is also the least recently touched, so it is reclaimed first.
+    .order('updated_at', { ascending: true })
     .order('created_at', { ascending: true })
     .limit(1)
 
