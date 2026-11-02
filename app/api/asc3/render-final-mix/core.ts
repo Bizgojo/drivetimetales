@@ -954,6 +954,26 @@ export async function runRenderFinalMix(storyId: string, opts: {
         '-ar', '44100', '-ac', '2', '-b:a', '192k', '-y', normalizedConcatPath
       ])
     }
+    // MIX-V4-001: the music follows tension even when there is no layered body
+    // (e.g. SFX_OFF=on — no effects at all): voices are back to back here.
+    if (!layeredBuilt && MIX_V4_ON) {
+      try {
+        const positions = parseScriptPositions(storyRow?.script || '')
+        const mixPlan = await ensureMixPlan({ db: supabase as any, storyId, positions, sfxItems: [], tag: opts.previewTag || null, log: (line) => console.log(line) })
+        if (mixPlan.tension.length) {
+          let t = 0
+          const voiceStarts: Array<{ idx: number; start: number }> = []
+          for (const item of bodyTimeline) {
+            voiceStarts.push({ idx: item.idx, start: t })
+            t += await getAudioDuration(item.path)
+          }
+          mixV4SceneLevels = sceneLevelsFromTension(mixPlan.tension, voiceStarts)
+          console.log(`  MIX-V4-001 music follows tension (no effects): ${mixV4SceneLevels.map(m => `${m.atSec.toFixed(0)}s→${m.level}`).join(', ')}`)
+        }
+      } catch (tensionErr) {
+        console.warn('  MIX-V4-001 tension unavailable; flat music bed:', tensionErr instanceof Error ? tensionErr.message : String(tensionErr))
+      }
+    }
     const normalizedSegPaths = [normalizedConcatPath]
     const concatStat = await fs.stat(normalizedConcatPath)
     const concatDur = await getAudioDuration(normalizedConcatPath)
