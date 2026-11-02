@@ -1,4 +1,5 @@
 import { Analytics } from '@vercel/analytics/react'
+import AppUpdater from '@/components/AppUpdater'
 import type { Metadata } from 'next';
 import './globals.css';
 import { AuthProvider } from '@/contexts/AuthContext'
@@ -56,6 +57,7 @@ export default function RootLayout({
         <UtmCapture />
         <ReferralCapture />
         <OfflineBootstrap />
+        <AppUpdater />
           <PWABackGuard />
           <PersistentPlayer><AppShell>{children}</AppShell></PersistentPlayer>
         </AuthProvider>
