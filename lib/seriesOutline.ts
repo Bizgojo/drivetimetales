@@ -13,6 +13,8 @@
 export type OutlineCharacter = { name: string; label: string; role: string; gender?: string; aliases?: string[] }
 export type OutlineThread = { id: string; question: string; resolved_in: number }
 export type OutlineEpisode = { episode: number; goal: string; beats: string[]; resolves: string[]; ends_on: string }
+import { nemesisOpenThreadLimit } from './seriesSequel'
+
 export type SeriesOutline = { characters: OutlineCharacter[]; threads: OutlineThread[]; episodes: OutlineEpisode[] }
 
 export function seriesOutlineEnabled(env: Record<string, string | undefined> = process.env): boolean {
@@ -32,7 +34,14 @@ export function buildSeriesOutlinePrompt(input: {
   styleBlock?: string
   /** SERIES-NEMESIS-001: one villain escapes for a future series. */
   sequelHook?: string
+  /** ATLAS NEMESIS-001 3-THREAD EXCEPTION: series title selects the open-thread limit (default 1). */
+  seriesTitle?: string
 }): string {
+  const threeOpenThreads = Boolean(input.sequelHook) && nemesisOpenThreadLimit(input.seriesTitle) === 3
+  const nemesisBlock = !input.sequelHook ? ''
+    : threeOpenThreads
+      ? '- THE NEMESIS (producer request): ' + input.sequelHook + ' Include ONE nemesis among the main characters (role starts with "nemesis"). ATLAS NEMESIS-001 3-THREAD EXCEPTION for this series: leave exactly THREE threads with "resolved_in": 0 — the switched DNA result, Vivian, and Danny — carried into a future series. Every other thread is resolved.\n'
+      : '- THE NEMESIS (producer request): ' + input.sequelHook + ' Include ONE nemesis among the main characters (role starts with "nemesis"). Add their thread (e.g. "Will Nick catch the nemesis?") with "resolved_in": 0 — it is the ONLY thread left open, carried into a future series. The nemesis escapes in the finale; every other thread is resolved.\n'
   return `You are planning a ${input.totalEpisodes}-episode ${input.genre} audio drama series for drive-time listeners. Plan it BEFORE any episode is written, so the episodes fit together.
 
 SERIES TITLE: ${input.title}
@@ -46,8 +55,7 @@ Rules for the plan:
 - At most ${input.maxMainCharacters} main characters. Give each ONE full name and ONE upper-case speaker label used in every episode (e.g. "NICK"). Keep any names the producer notes fix exactly.
 - For each character also list "aliases": every other way people in the story will call them (first name, last name, title + last name, nickname), e.g. ["Nick", "Brennan", "Detective Brennan"]. No two characters may share a full name, and no alias may belong to two characters. Give "gender" (male/female).
 - List the story threads (questions the listener wants answered). The main thread is resolved ONLY in the finale (episode ${input.totalEpisodes}). Every thread is resolved in exactly ONE episode. Once resolved, it stays resolved: nobody is rescued, caught, killed, found or unmasked twice.
-${input.sequelHook ? `- THE NEMESIS (producer request): ${input.sequelHook} Include ONE nemesis among the main characters (role starts with "nemesis"). Add their thread (e.g. "Will Nick catch the nemesis?") with "resolved_in": 0 — it is the ONLY thread left open, carried into a future series. The nemesis escapes in the finale; every other thread is resolved.
-` : ''}- Each episode has ONE clear goal, written as a single sentence a listener could repeat.
+${nemesisBlock}- Each episode has ONE clear goal, written as a single sentence a listener could repeat.
 - Each non-finale episode ends on a specific cliffhanger; the finale closes the series.
 - Beats are 3 to 6 short, concrete events per episode, in order. No two episodes use the same kind of climax.
 
@@ -58,7 +66,7 @@ Return JSON only, no markdown:
 }
 
 /** Parse and check the plan. Returns problems (empty = usable). */
-export function validateSeriesOutline(raw: unknown, totalEpisodes: number, maxMain: number, opts: { openThreadRequired?: boolean } = {}): { outline: SeriesOutline | null; problems: string[] } {
+export function validateSeriesOutline(raw: unknown, totalEpisodes: number, maxMain: number, opts: { openThreadRequired?: boolean; maxOpenThreads?: number; seriesTitle?: unknown } = {}): { outline: SeriesOutline | null; problems: string[] } {
   const problems: string[] = []
   const o = raw && typeof raw === 'object' ? (raw as any) : null
   if (!o) return { outline: null, problems: ['not a JSON object'] }
@@ -99,7 +107,8 @@ export function validateSeriesOutline(raw: unknown, totalEpisodes: number, maxMa
   if (episodes.length !== totalEpisodes) problems.push(`${episodes.length} episodes planned (need ${totalEpisodes})`)
   if (!threads.length) problems.push('no story threads')
   const openThreads = threads.filter((t) => t.resolved_in === 0)
-  if (opts.openThreadRequired && openThreads.length !== 1) problems.push(`the nemesis needs exactly one thread left open (resolved_in 0); found ${openThreads.length}`)
+  const openThreadLimit = opts.maxOpenThreads ?? (opts.openThreadRequired ? nemesisOpenThreadLimit(opts.seriesTitle) : 0)
+  if (opts.openThreadRequired && openThreads.length !== openThreadLimit) problems.push(`the nemesis needs exactly ${openThreadLimit === 3 ? 'three threads' : 'one thread'} left open (resolved_in 0); found ${openThreads.length}`)
   if (!opts.openThreadRequired && openThreads.length) problems.push('a thread is left unresolved (resolved_in 0)')
   for (const t of threads) {
     const resolvers = episodes.filter((e) => e.resolves.includes(t.id)).map((e) => e.episode)

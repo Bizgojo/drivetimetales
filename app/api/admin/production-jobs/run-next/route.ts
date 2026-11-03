@@ -6596,6 +6596,7 @@ async function createSeriesOutline(job: ProductionJob, model: string, series: an
     namePaletteBlock,
     styleBlock: buildStylePromptBlock(style, { episodeNumber: 1 }),
     sequelHook: sequelHookOf(brief),
+    seriesTitle: String(series.title || brief.series_name || ''),
   })
   let problems: string[] = []
   for (let attempt = 1; attempt <= 2; attempt += 1) {
@@ -6616,7 +6617,7 @@ async function createSeriesOutline(job: ProductionJob, model: string, series: an
     }).catch(() => {})
     let parsed: unknown = null
     try { parsed = parseJsonObject(raw) } catch { parsed = null }
-    const result = validateSeriesOutline(parsed, totalEpisodes, maxMain, { openThreadRequired: Boolean(sequelHookOf(brief)) })
+    const result = validateSeriesOutline(parsed, totalEpisodes, maxMain, { openThreadRequired: Boolean(sequelHookOf(brief)), seriesTitle: String(series.title || brief.series_name || '') })
     if (result.outline) {
       for (const ep of episodes) {
         const { error } = await supabase
@@ -6793,6 +6794,7 @@ async function generateOneSeriesEpisodeScript(job: ProductionJob, model: string)
     + buildSequelHookPromptBlock(sequelHookOf(brief), {
       episodeNumber: targetEpisodeNumber,
       isFinale: Boolean(targetEpisode.series_is_finale ?? (brief as any).series_is_finale ?? targetEpisodeNumber === Number((brief as any).series_total_episodes || episodes.length)),
+      seriesTitle: String(series.title || brief.series_name || ''),
     })
     // SERIES-REWRITE-001: a validator-ordered rewrite carries the reviewer's fix list.
     + buildRewriteFeedbackBlock((brief as any)?.validator_rewrite?.feedback, Number((brief as any)?.validator_rewrite?.attempt || 1))
@@ -7243,7 +7245,7 @@ ${cardCopyIssues.map((issue) => `- ${issue}`).join('\n')}`
     : `Series-specific validation:
 - This is Episode ${number} of ${episode.series_total_episodes}.
 - Non-final series episodes must end on a specific continuation hook.
-- Final series episodes must close the series arc and must not tease a next episode.${episode.series_is_finale && sequelHookOf(episode.brief_json) ? `\n- ${sequelHookValidatorNote(sequelHookOf(episode.brief_json))}` : ''}`
+- Final series episodes must close the series arc and must not tease a next episode.${episode.series_is_finale && sequelHookOf(episode.brief_json) ? `\n- ${sequelHookValidatorNote(sequelHookOf(episode.brief_json), String((episode.brief_json as any)?.series_name || episode.series_name || ''))}` : ''}`
 
   const response = await anthropic.messages.create({
     model,
@@ -7371,7 +7373,7 @@ Validation rules:
 - No episode should be treated as a standalone story.
 - Metadata must be consistent with episode order and finale status.
 - Fail if the finale leaves the main series question unresolved.
-${sequelHookOf(episodes[0]?.brief_json) ? `- ${sequelHookValidatorNote(sequelHookOf(episodes[0]?.brief_json))}\n` : ''}
+${sequelHookOf(episodes[0]?.brief_json) ? `- ${sequelHookValidatorNote(sequelHookOf(episodes[0]?.brief_json), String((episodes[0]?.brief_json as any)?.series_name || episodes[0]?.series_name || ''))}\n` : ''}
 SERIES PACKAGE:
 ${JSON.stringify(packageBrief, null, 2)}`,
     }],
@@ -7802,7 +7804,7 @@ async function scoreValidateSeriesPackage(job: ProductionJob, model: string) {
     const continuityPrompt = buildContinuityPrompt({
       seriesTitle: String(sortedEps[0]?.series_name || ''),
       outlineText,
-      exceptionNote: sequelHookValidatorNote(sequelHookOf(sortedEps[0]?.brief_json)),
+      exceptionNote: sequelHookValidatorNote(sequelHookOf(sortedEps[0]?.brief_json), String((sortedEps[0]?.brief_json as any)?.series_name || sortedEps[0]?.series_name || '')),
       episodes: sortedEps.map((ep: any) => ({ episodeNumber: episodeNumber(ep, 0), title: String(ep.title || ''), body: storyBodyText(String(ep.script || '')) })),
     })
     // CONTINUITY-JSON-001 (2026-11-01, The Last Well): on 7 episodes the
