@@ -73,3 +73,24 @@ export function isAuthorWrittenSeries(
 ): boolean {
   return (series as { author_written?: unknown } | null | undefined)?.author_written === true
 }
+
+/**
+ * AUTHOR-WRITTEN-EXEMPT-001 autoretry (commission
+ * author-written-autoretry-20261103): resolve the exemption for a series id
+ * with fail-closed lookup semantics. A lookup failure (throw or rejected
+ * query) fails closed — treated as exempt — ONLY when the id is the pinned
+ * Sunset series; every other series keeps today's behavior (not exempt).
+ * Empty/missing ids are never exempt.
+ */
+export async function resolveAuthorWrittenExempt(
+  fetchSeriesRow: (seriesId: string) => Promise<AuthorWrittenSeriesRow>,
+  seriesId: string | null | undefined,
+): Promise<boolean> {
+  const sid = String(seriesId || '').trim()
+  if (!sid) return false
+  try {
+    return isAuthorWrittenSeries(await fetchSeriesRow(sid))
+  } catch {
+    return sid === AUTHOR_WRITTEN_SUNSET_SERIES_ID
+  }
+}

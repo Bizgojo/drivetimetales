@@ -48,7 +48,7 @@ import { runStoryQualityGate } from '@/lib/storyQualityGate'
 import { checkRuntimeVsBrief, parseBriefRuntimeToSecs, RUNTIME_GATE_ID } from '@/lib/runtimeGate'
 import { runGarbleGate } from '@/lib/garbleGate'
 import { checkScriptRuntimeMeetsMinimum, formatScriptRuntimeShortMessage, SCRIPT_RUNTIME_PREFLIGHT, SCRIPT_RUNTIME_PREFLIGHT_ID } from '@/lib/scriptRuntimeEstimate'
-import { isAuthorWrittenSeries, AUTHOR_WRITTEN_EXEMPT_ID } from '@/lib/authorWrittenExempt'
+import { AUTHOR_WRITTEN_EXEMPT_ID, resolveAuthorWrittenExempt } from '@/lib/authorWrittenExempt'
 import { parseScriptPositions } from '@/lib/scriptLineIndex'
 // GATE 4 (GATE-GAPS-SPEC-20261004 §4): wire the existing deterministic duplicate-segment
 // detector into R. Single import site (no per-call require), CJS module via esModuleInterop.
@@ -135,6 +135,37 @@ const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! })
 
 const WORKER_ID = `run-next:${process.pid}`
 const LOCK_STALE_MS = 10 * 60 * 1000
+
+// AUTHOR-WRITTEN-EXEMPT-001 (autoretry, commission
+// author-written-autoretry-20261103): single lookup entry for the
+// author-written flag. Lookup failures fail closed ONLY for the pinned
+// Sunset series (treated as exempt); every other series keeps today's
+// behavior. Empty ids are never exempt.
+async function isAuthorWrittenExemptSeriesId(seriesId: string | null | undefined): Promise<boolean> {
+  const sid = String(seriesId || '').trim()
+  if (!sid) return false
+  return resolveAuthorWrittenExempt(async (id) => {
+    const { data, error } = await supabase.from('series').select('author_written').eq('id', id).maybeSingle()
+    if (error) throw error
+    return data as { author_written?: unknown } | null
+  }, sid)
+}
+
+// Standalone Sunset jobs (job_type single) carry no job-level series_id even
+// though their stories do (story_type series_episode). Resolve the story's
+// series for the exemption check. A failed story lookup yields '' (unknown
+// series keeps today's behavior — only a KNOWN Sunset id fails closed).
+async function standaloneStorySeriesId(storyId: string | null | undefined): Promise<string> {
+  const sid = String(storyId || '').trim()
+  if (!sid) return ''
+  try {
+    const { data, error } = await supabase.from('stories').select('series_id').eq('id', sid).maybeSingle()
+    if (error || !data) return ''
+    return String((data as { series_id?: unknown } | null)?.series_id || '')
+  } catch {
+    return ''
+  }
+}
 
 // CORRECTION-PERSIST-001: correction audit types shared with generate-voices and core
 interface CorrectionEntry {
@@ -2365,6 +2396,15 @@ async function tryResumeBlockedBelleJob(explicitJobId?: string): Promise<{ resum
   }
   const state = candidate.state_json && typeof candidate.state_json === 'object' ? (candidate.state_json as Record<string, unknown>) : {}
   const storyId = candidate.story_id || (state.storyId as string | undefined) || null
+  // AUTHOR-WRITTEN-EXEMPT-001 (autoretry): never auto-resume author-written
+  // copy into a Belle repair loop. The repair step would fail closed anyway;
+  // skipping the resume keeps the job parked for Marc without churn.
+  const resumeSeriesId = String((candidate as unknown as { series_id?: unknown })?.series_id || (state as Record<string, unknown>)?.seriesId || '').trim()
+    || await standaloneStorySeriesId(storyId)
+  if (await isAuthorWrittenExemptSeriesId(resumeSeriesId)) {
+    console.log(`[${AUTHOR_WRITTEN_EXEMPT_ID}] blocked-Belle auto-resume skipped (author-written), job=${candidate.id} kind=${info.kind} — left failed for Marc`)
+    return { resumedId: null, exhaustedId: null }
+  }
   const maxAllowed = Math.min(info.maxRetries, MAX_BELLE_BLOCKED_RETRIES)
 
   // Retry budget spent — flag the story and stop. No standing human step beyond Marc's normal review.
@@ -4283,8 +4323,7 @@ async function runStandaloneVoicePreflight(job: ProductionJob, origin: string) {
   try {
     const standaloneSeriesId = String((storyForNarrator as any)?.series_id || '').trim()
     if (standaloneSeriesId) {
-      const { data: standaloneExemptSeries } = await supabase.from('series').select('author_written').eq('id', standaloneSeriesId).maybeSingle()
-      standaloneAuthorExempt = isAuthorWrittenSeries(standaloneExemptSeries as any)
+      standaloneAuthorExempt = await isAuthorWrittenExemptSeriesId(standaloneSeriesId)
     }
   } catch {
     standaloneAuthorExempt = false
@@ -4716,8 +4755,7 @@ async function validateStandaloneBelleQuality(job: ProductionJob, model: string)
   try {
     const qualitySeriesId = String((story as any)?.series_id || '').trim()
     if (qualitySeriesId) {
-      const { data: qualityExemptSeries } = await supabase.from('series').select('author_written').eq('id', qualitySeriesId).maybeSingle()
-      if (isAuthorWrittenSeries(qualityExemptSeries as any)) {
+      if (await isAuthorWrittenExemptSeriesId(qualitySeriesId)) {
         console.log(`[${AUTHOR_WRITTEN_EXEMPT_ID}] standalone story=${storyId} Belle quality check skipped (author-written)`)
         const skippedReport = {
           success: true,
@@ -4920,8 +4958,7 @@ async function repairStandaloneBelleQuality(job: ProductionJob, model: string) {
   try {
     const repairSeriesId = String((story as any)?.series_id || '').trim()
     if (repairSeriesId) {
-      const { data: repairExemptSeries } = await supabase.from('series').select('author_written').eq('id', repairSeriesId).maybeSingle()
-      if (isAuthorWrittenSeries(repairExemptSeries as any)) {
+      if (await isAuthorWrittenExemptSeriesId(repairSeriesId)) {
         const repairIssues = Array.isArray((failedReport as any)?.issues) ? (failedReport as any).issues.join('; ') : 'Belle repair requested'
         throw new Error(`[${AUTHOR_WRITTEN_EXEMPT_ID}] standalone Belle issue on story ${storyId} left for Marc (no auto-repair of author-written copy): ${repairIssues}`)
       }
@@ -5809,8 +5846,7 @@ async function runSeriesPackageCompletion(job: ProductionJob, origin: string) {
   let authorWrittenExempt = false
   try {
     if (seriesId) {
-      const { data: exemptSeries } = await supabase.from('series').select('author_written').eq('id', String(seriesId)).maybeSingle()
-      authorWrittenExempt = isAuthorWrittenSeries(exemptSeries as any)
+      authorWrittenExempt = await isAuthorWrittenExemptSeriesId(String(seriesId))
     }
   } catch {
     authorWrittenExempt = false
@@ -7951,8 +7987,7 @@ async function runSeriesVoicePreflight(job: ProductionJob, origin: string) {
   // roster voices, transcript QC, loudness, duration, publish) stay on.
   let authorWrittenExempt = false
   try {
-    const { data: exemptSeries } = await supabase.from('series').select('author_written').eq('id', String(seriesId)).maybeSingle()
-    authorWrittenExempt = isAuthorWrittenSeries(exemptSeries as any)
+    authorWrittenExempt = await isAuthorWrittenExemptSeriesId(String(seriesId))
   } catch {
     authorWrittenExempt = false
   }
@@ -9460,6 +9495,16 @@ export async function POST(req: NextRequest) {
       })
 
       if (result.failed) {
+        // AUTHOR-WRITTEN-EXEMPT-001 (autoretry): never rewrite author-written
+        // DESCRIPTION/script and never clear episode scripts for a validator
+        // rewrite. When exempt, skip both auto-repairs below and fall through
+        // to Marc review (fail closed — no repair write, no requeue).
+        const seriesAutoRepairExempt = await isAuthorWrittenExemptSeriesId(
+          String((result as any)?.seriesId || (lockedJob as any)?.series_id || ''),
+        )
+        if (seriesAutoRepairExempt) {
+          console.log(`[${AUTHOR_WRITTEN_EXEMPT_ID}] series DESCRIPTION/rewrite auto-repair skipped (author-written), series=${String((result as any)?.seriesId || (lockedJob as any)?.series_id || '')} — leaving for Marc`)
+        }
         const persistedSeriesValidation = lockedJob.state_json?.seriesValidation && typeof lockedJob.state_json.seriesValidation === 'object'
           ? lockedJob.state_json.seriesValidation
           : {}
@@ -9467,7 +9512,7 @@ export async function POST(req: NextRequest) {
         const descriptionRetryCount = Number(descriptionRetry.count || 0)
         const descriptionFailure = seriesDescriptionFailureFromEpisodeResult(result)
 
-        if (descriptionFailure?.classification?.retryable && descriptionRetryCount < MAX_SERIES_DESCRIPTION_RETRIES) {
+        if (descriptionFailure?.classification?.retryable && descriptionRetryCount < MAX_SERIES_DESCRIPTION_RETRIES && !seriesAutoRepairExempt) {
           const targetEpisode = result.episodes.find((episode: any) =>
             String(episode.id) === String(descriptionFailure.storyId)
               || episodeNumber(episode, 0) === Number(descriptionFailure.episodeNumber)
@@ -9615,7 +9660,7 @@ export async function POST(req: NextRequest) {
             episodes: (result.episodes || []).map((ep: any) => ({ id: String(ep.id), episodeNumber: episodeNumber(ep, 0), hasScript: Boolean(ep.script) })),
             rewriteCounts,
           })
-          if (plan.action === 'rewrite') {
+          if (plan.action === 'rewrite' && !seriesAutoRepairExempt) {
             const feedback = extractValidatorFixList(String(result.episodeResult.report))
             for (const ep of (result.episodes || []) as any[]) {
               if (!plan.clearStoryIds.includes(String(ep.id))) continue
@@ -9976,7 +10021,7 @@ export async function POST(req: NextRequest) {
       // Load the story to get voice_profile_id and the current script
       const { data: vcStory, error: vcStoryError } = await supabase
         .from('stories')
-        .select('id,script,voice_profile_id')
+        .select('id,script,voice_profile_id,series_id')
         .eq('id', storyId)
         .single()
 
@@ -10118,7 +10163,17 @@ export async function POST(req: NextRequest) {
         .map((v) => `"${v.bannedItem}" (×${v.count})`)
         .join(', ')
 
-      if (vcResult.shouldRegenerate) {
+      // AUTHOR-WRITTEN-EXEMPT-001 (autoretry): never clear author-written
+      // copy for a conformance regenerate. Exempt failures skip the reset
+      // below and take the exhausted path (advance with needs_attention).
+      const vcExempt = await isAuthorWrittenExemptSeriesId(
+        String((lockedJob as any)?.series_id || (vcStory as any)?.series_id || ''),
+      )
+      if (vcExempt) {
+        console.log(`[${AUTHOR_WRITTEN_EXEMPT_ID}] voice-conformance regenerate skipped (author-written), story=${storyId} — advancing with needs_attention`)
+      }
+
+      if (vcResult.shouldRegenerate && !vcExempt) {
         // Violations + attempts < 2: reset to generate_script
         const nextAttempts = attempts + 1
 
@@ -10170,20 +10225,28 @@ export async function POST(req: NextRequest) {
         })
       }
 
-      // Exhausted (attempts >= 2): advance to validate_script with needs_attention=true
+      // Exhausted (attempts >= 2) or author-written exempt: advance to validate_script with needs_attention=true
       console.warn(
-        `[voice-conformance] exhausted story=${storyId} profile=${vcProfile.style_slug} ` +
-        `violations=[${violationSummary}] — advancing with needs_attention=true`,
+        vcExempt
+          ? `[voice-conformance] author-written story=${storyId} profile=${vcProfile.style_slug} ` +
+            `violations=[${violationSummary}] — auto-regenerate skipped (author-written), advancing with needs_attention=true`
+          : `[voice-conformance] exhausted story=${storyId} profile=${vcProfile.style_slug} ` +
+            `violations=[${violationSummary}] — advancing with needs_attention=true`,
       )
 
       await markStoryNeedsAttention(
         storyId,
-        `Voice conformance exhausted after ${attempts} attempts. Violations: ${violationSummary}. ` +
-        `Style: ${vcProfile.style_slug} v${vcProfile.version}.`,
+        vcExempt
+          ? `Voice conformance found violations on author-written copy; auto-regenerate skipped, left for Marc. Violations: ${violationSummary}. ` +
+            `Style: ${vcProfile.style_slug} v${vcProfile.version}.`
+          : `Voice conformance exhausted after ${attempts} attempts. Violations: ${violationSummary}. ` +
+            `Style: ${vcProfile.style_slug} v${vcProfile.version}.`,
       )
 
       const exhaustedLogs = appendLog(lockedJob,
-        `validate_voice_conformance exhausted — advancing to validate_script with needs_attention`, {
+        vcExempt
+          ? `validate_voice_conformance author-written — auto-regenerate skipped, advancing to validate_script with needs_attention`
+          : `validate_voice_conformance exhausted — advancing to validate_script with needs_attention`, {
           storyId,
           styleSlug: vcProfile.style_slug,
           violations: violationSummary,
@@ -10259,7 +10322,17 @@ export async function POST(req: NextRequest) {
         const isDuplicateSegments = (result as any).isDuplicateSegmentFailure === true
         const classification = classifyValidateScriptFailure(reportText, isCardCopy, isDuplicateSegments)
         const retryCount = Number((lockedJob.state_json as any)?.validateScriptRetryCount ?? 0)
-        const canAutoRetry = classification.isAutonomousRetryable && retryCount < MAX_RETRIES
+        // AUTHOR-WRITTEN-EXEMPT-001 (autoretry): never clear author-written
+        // copy and never requeue to generate_script. When exempt, skip the
+        // autonomous retry below and fall through to the Marc-review failure
+        // path (fail closed — no clear, no requeue).
+        const validateScriptExemptSeriesId = String((lockedJob as any)?.series_id || '').trim()
+          || await standaloneStorySeriesId(result.storyId)
+        const validateScriptExempt = await isAuthorWrittenExemptSeriesId(validateScriptExemptSeriesId)
+        if (validateScriptExempt) {
+          console.log(`[${AUTHOR_WRITTEN_EXEMPT_ID}] validate_script auto-retry skipped (author-written), story=${result.storyId} — failing for Marc review`)
+        }
+        const canAutoRetry = classification.isAutonomousRetryable && retryCount < MAX_RETRIES && !validateScriptExempt
         const playbook = getPlaybookByKind(classification.kind)
 
         // Fix A: Always record a learning incident with job_id, story_id, and context
@@ -10274,9 +10347,11 @@ export async function POST(req: NextRequest) {
             stage: 'validate_script',
             failure_type: classification.kind,
             root_cause: reportText.slice(0, 500) || 'validate_script rejected generated script',
-            fix_applied: canAutoRetry
-              ? `Autonomous retry ${retryCount + 1}/${MAX_RETRIES}: cleared script, reset to generate_script`
-              : `Autonomous retries exhausted (${retryCount}/${MAX_RETRIES}); Marc review required`,
+            fix_applied: validateScriptExempt
+              ? `Author-written exempt: auto-retry skipped (no clear, no requeue); Marc review required`
+              : canAutoRetry
+                ? `Autonomous retry ${retryCount + 1}/${MAX_RETRIES}: cleared script, reset to generate_script`
+                : `Autonomous retries exhausted (${retryCount}/${MAX_RETRIES}); Marc review required`,
             fix_type: canAutoRetry ? 'autonomous_retry' : 'marc_review_required',
             prevention_rule: classification.kind === 'script_description_blocked_word'
               ? 'Script generation must not produce DESCRIPTION with blocked past-tense words'
@@ -10380,7 +10455,7 @@ export async function POST(req: NextRequest) {
           `Standalone validation needs attention: ${classification.kind}. ${classification.recommendedAction}`
         )
 
-        const failedLogs = appendLog({ ...lockedJob, logs }, `validate_script retries exhausted (${retryCount}/${MAX_RETRIES}) - failing, Marc required`, {
+        const failedLogs = appendLog({ ...lockedJob, logs }, validateScriptExempt ? `validate_script author-written exempt — auto-retry skipped (no clear, no requeue), failing for Marc review` : `validate_script retries exhausted (${retryCount}/${MAX_RETRIES}) - failing, Marc required`, {
           source: 'autonomous-runner',
           storyId: result.storyId,
           failureKind: classification.kind,
@@ -10399,13 +10474,13 @@ export async function POST(req: NextRequest) {
               validateScriptRetryCount: retryCount,
               validateScriptLastFailureKind: classification.kind,
             },
-            error_json: buildStructuredError(classification.kind, `Retries exhausted. ${classification.recommendedAction}`, 'validate_script', {
+            error_json: buildStructuredError(classification.kind, validateScriptExempt ? `Author-written exempt: auto-retry skipped (no clear, no requeue). ${classification.recommendedAction}` : `Retries exhausted. ${classification.recommendedAction}`, 'validate_script', {
               storyId: result.storyId,
               marc_required: true,
               autonomous_repair: false,
               retry_count: retryCount,
               max_retries: MAX_RETRIES,
-              safe_resume_point: 'generate_script',
+              safe_resume_point: validateScriptExempt ? undefined : 'generate_script',
               fixRecommendation: `${MAX_RETRIES} autonomous retries failed. Marc must review: ${classification.recommendedAction}`,
               rootCause: reportText.slice(0, 300),
               detail: {
@@ -10658,7 +10733,18 @@ export async function POST(req: NextRequest) {
         }
 
         const retryCount = Number((lockedJob.state_json as any)?.voicePreflightScriptRetryCount ?? 0)
-        const canAutoRetry = isAutonomousRetryable && retryCount < MAX_RETRIES
+        // AUTHOR-WRITTEN-EXEMPT-001 (autoretry): never clear author-written
+        // copy and never requeue to generate_script — including the
+        // numeral_pre_tts non-destructive requeue (generate_script would
+        // rewrite author copy). When exempt, skip the retry below and fall
+        // through to the Marc-review failure path (fail closed).
+        const voicePreflightExemptSeriesId = String((lockedJob as any)?.series_id || '').trim()
+          || await standaloneStorySeriesId(result.storyId)
+        const voicePreflightExempt = await isAuthorWrittenExemptSeriesId(voicePreflightExemptSeriesId)
+        if (voicePreflightExempt) {
+          console.log(`[${AUTHOR_WRITTEN_EXEMPT_ID}] voice_preflight auto-retry skipped (author-written), story=${result.storyId} kind=${failureKind} — failing for Marc review`)
+        }
+        const canAutoRetry = isAutonomousRetryable && retryCount < MAX_RETRIES && !voicePreflightExempt
         const firstBlocker = blockingReasons[0] || 'Voice preflight failed'
 
         // Always record learning incident
@@ -10673,7 +10759,9 @@ export async function POST(req: NextRequest) {
             stage: 'voice_preflight',
             failure_type: failureKind,
             root_cause: firstBlocker,
-            fix_applied: canAutoRetry
+            fix_applied: voicePreflightExempt
+              ? `Author-written exempt: auto-retry skipped (no clear, no requeue); Marc review required`
+              : canAutoRetry
               ? `Autonomous retry ${retryCount + 1}/${MAX_RETRIES}: cleared script, reset to generate_script`
               : `${failureKind === 'narrator_mismatch' ? 'Manual DB fix required' : `Autonomous retries exhausted (${retryCount}/${MAX_RETRIES}); Marc review required`}`,
             fix_type: canAutoRetry ? 'autonomous_retry' : failureKind === 'narrator_mismatch' ? 'manual_fix' : 'marc_review_required',
@@ -10817,14 +10905,16 @@ export async function POST(req: NextRequest) {
         // Kinds that resume to generate_script (Hal re-generates the script).
         // SIMPLIFY-PIPELINE: pre-voice Belle content failures resume there too.
         const resumesToGenerateScript =
-          failureKind === 'script_unlabeled_lines' || failureKind === 'numeral_pre_tts' || isPreVoiceContentGate
+          !voicePreflightExempt && (failureKind === 'script_unlabeled_lines' || failureKind === 'numeral_pre_tts' || isPreVoiceContentGate)
 
         // No auto-retry: fail with structured error_json
         const errorJsonPayload = buildStructuredError(
           failureKind,
           failureKind === 'narrator_mismatch'
             ? `${recommendedAction}`
-            : `${recommendedAction} (Retries exhausted: ${retryCount}/${MAX_RETRIES})`,
+            : voicePreflightExempt
+              ? `${recommendedAction} (Author-written exempt: auto-retry skipped, no clear, no requeue.)`
+              : `${recommendedAction} (Retries exhausted: ${retryCount}/${MAX_RETRIES})`,
           step,
           {
             storyId: result.storyId,
@@ -12802,8 +12892,7 @@ export async function POST(req: NextRequest) {
             try {
               const sid = String(result.seriesId || (lockedJob as any)?.series_id || '')
               if (sid) {
-                const { data: exSeries } = await supabase.from('series').select('author_written').eq('id', sid).maybeSingle()
-                belleExempt = isAuthorWrittenSeries(exSeries as any)
+                belleExempt = await isAuthorWrittenExemptSeriesId(sid)
               }
             } catch {
               belleExempt = false
