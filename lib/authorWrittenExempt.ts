@@ -6,7 +6,7 @@
  * treats episode scripts + Belle copy as author-written and skips every
  * gate that would rewrite, repair, or bounce that copy on quality grounds:
  *
- *   SKIPPED when ON
+ *   SKIPPED when ON (series path)
  *   - series pre-spend runtime floor (SCRIPT-RUNTIME-PREFLIGHT-001, 12.5-min)
  *   - pre-voice Belle content gate (hook, Belle text incl. outro
  *     residue/companion via seriesEpisodeBelleContentIssues)
@@ -14,13 +14,24 @@
  *   - any auto repair / regeneration of script or Belle copy
  *     (series Belle auto-retry loop fails closed for Marc instead)
  *
+ *   SKIPPED when ON (standalone path — commission
+ *   author-written-standalone-20261103; Sunset episodes run standalone jobs
+ *   with job_type single even though their stories carry series_id)
+ *   - standalone pre-spend runtime floor (runStandaloneVoicePreflight)
+ *   - standalone pre-voice Belle content gate (runStandaloneVoicePreflight)
+ *   - standalone Belle quality check (validateStandaloneBelleQuality,
+ *     deterministic + LLM judge)
+ *   - standalone Belle AI repair NEVER runs (repairStandaloneBelleQuality
+ *     fails closed for Marc instead — no rewrite, no save)
+ *
  *   KEPT when ON (unchanged)
  *   - numeral pre-TTS scan, narrator / locked-roster voice validation
  *   - transcript QC, loudness, measured duration gate (RUNTIME-GATE-001),
  *     publish guard, artifact gate
  *
  * Flag defaults false (today's behavior). Set true on Sunset only via the
- * accompanying migration. Standalone (non-series) path is untouched.
+ * accompanying migration. Flag lookup for standalone jobs reads the
+ * story's series_id (story_type series_episode).
  */
 
 export const AUTHOR_WRITTEN_EXEMPT_ID = 'AUTHOR-WRITTEN-EXEMPT-001'
@@ -35,6 +46,10 @@ export const AUTHOR_WRITTEN_SKIPPED_GATES = [
   'series_prevoice_belle_content',
   'series_belle_position_validation',
   'series_belle_auto_repair',
+  'standalone_runtime_floor',
+  'standalone_prevoice_belle_content',
+  'standalone_belle_quality',
+  'standalone_belle_auto_repair',
 ] as const
 
 /** Gates that stay enforced while the flag is on (observability + tests). */

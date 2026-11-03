@@ -4272,6 +4272,24 @@ async function runStandaloneVoicePreflight(job: ProductionJob, origin: string) {
     }
   }
 
+  // AUTHOR-WRITTEN-EXEMPT-001 (standalone gap, commission
+  // author-written-standalone-20261103): the Sunset jobs run the standalone
+  // path (job_type single) even though their stories carry series_id
+  // (story_type series_episode). Same guard as the series path: when the
+  // story's series has author_written=true, author copy skips the pre-spend
+  // runtime floor and the pre-voice Belle content gate below. Technical
+  // gates (narrator voices above, numeral scan below) stay enforced.
+  let standaloneAuthorExempt = false
+  try {
+    const standaloneSeriesId = String((storyForNarrator as any)?.series_id || '').trim()
+    if (standaloneSeriesId) {
+      const { data: standaloneExemptSeries } = await supabase.from('series').select('author_written').eq('id', standaloneSeriesId).maybeSingle()
+      standaloneAuthorExempt = isAuthorWrittenSeries(standaloneExemptSeries as any)
+    }
+  } catch {
+    standaloneAuthorExempt = false
+  }
+
   // ── GATE 5 (GATE-GAPS-SPEC-20261004 §5): numeral pre-TTS scan ───────────────
   // Runs on the story script BEFORE the ElevenLabs preflight/generate_voices call.
   // Digit-form numerals ("4.6", "13.8", "2,000") are a Class B story defect: TTS
@@ -4326,7 +4344,10 @@ async function runStandaloneVoicePreflight(job: ProductionJob, origin: string) {
     minEstimatedMinutes: SCRIPT_RUNTIME_PREFLIGHT.MIN_ESTIMATED_MINUTES,
     checkedAt: nowIso(),
   }
-  if (!runtimeCheck.pass && !runtimeCheck.skipped) {
+  if (standaloneAuthorExempt && !runtimeCheck.pass && !runtimeCheck.skipped) {
+    console.log(`[${AUTHOR_WRITTEN_EXEMPT_ID}] standalone story=${storyId} runtime floor skipped (author-written, est=${runtimeCheck.estimatedMins}m)`)
+  }
+  if (!runtimeCheck.pass && !runtimeCheck.skipped && !standaloneAuthorExempt) {
     const blocker = formatScriptRuntimeShortMessage(runtimeCheck)
     return {
       passed: false,
@@ -4376,7 +4397,12 @@ async function runStandaloneVoicePreflight(job: ProductionJob, origin: string) {
     const gateScript = String((storyForNarrator as any).script || '')
     const gateVariant = extractHeader(gateScript, 'VARIANT')
     const gateBelleExempt = /LANDING-STORY-001|No Belle B/i.test(gateVariant)
-    if (!gateBelleExempt) {
+    // AUTHOR-WRITTEN-EXEMPT-001 (standalone gap): author-written copy skips
+    // the pre-voice Belle content gate. Log the skip.
+    if (standaloneAuthorExempt) {
+      console.log(`[${AUTHOR_WRITTEN_EXEMPT_ID}] standalone story=${storyId} pre-voice Belle content skipped (author-written)`)
+    }
+    if (!gateBelleExempt && !standaloneAuthorExempt) {
       const gateStandalone = !(storyForNarrator as any).series_id
         && Number((storyForNarrator as any).series_total_episodes || 1) <= 1
         && String((storyForNarrator as any).story_type || '').toLowerCase() !== 'series'
@@ -4683,6 +4709,45 @@ async function validateStandaloneBelleQuality(job: ProductionJob, model: string)
   if (error || !story) throw new Error(error?.message || 'Story not found')
   if (!story.script) throw new Error('script missing')
 
+  // AUTHOR-WRITTEN-EXEMPT-001 (standalone gap, commission
+  // author-written-standalone-20261103): author-written copy skips the
+  // standalone Belle quality check (deterministic + LLM judge). Asset
+  // existence stays enforced upstream; the repair path below fails closed.
+  try {
+    const qualitySeriesId = String((story as any)?.series_id || '').trim()
+    if (qualitySeriesId) {
+      const { data: qualityExemptSeries } = await supabase.from('series').select('author_written').eq('id', qualitySeriesId).maybeSingle()
+      if (isAuthorWrittenSeries(qualityExemptSeries as any)) {
+        console.log(`[${AUTHOR_WRITTEN_EXEMPT_ID}] standalone story=${storyId} Belle quality check skipped (author-written)`)
+        const skippedReport = {
+          success: true,
+          pass: true,
+          skipped: true,
+          exemptId: AUTHOR_WRITTEN_EXEMPT_ID,
+          checkedAt: nowIso(),
+        }
+        return {
+          success: true,
+          skipped: true,
+          storyId: String(storyId),
+          report: skippedReport,
+          state: {
+            ...state,
+            storyId: String(storyId),
+            belleQualityValidation: {
+              status: 'skipped_author_written',
+              storyId: String(storyId),
+              ...skippedReport,
+            },
+          },
+        }
+      }
+    }
+  } catch {
+    // Series-lookup failure → treat as not exempt; fall through to the
+    // normal quality check.
+  }
+
   const introText = extractBelleSection(story.script, 'intro')
   const outroText = extractBelleSection(story.script, 'outro')
   if (!introText || !outroText) throw new Error('Belle intro/outro text missing')
@@ -4847,6 +4912,24 @@ async function repairStandaloneBelleQuality(job: ProductionJob, model: string) {
 
   if (error || !story) throw new Error(error?.message || 'Story not found')
   if (!story.script) throw new Error('script missing')
+
+  // AUTHOR-WRITTEN-EXEMPT-001 (standalone gap, commission
+  // author-written-standalone-20261103): NEVER AI-repair author-written copy
+  // — this function rewrites the script and saves. Fail closed for Marc
+  // (no rewrite, no audio invalidation) instead.
+  try {
+    const repairSeriesId = String((story as any)?.series_id || '').trim()
+    if (repairSeriesId) {
+      const { data: repairExemptSeries } = await supabase.from('series').select('author_written').eq('id', repairSeriesId).maybeSingle()
+      if (isAuthorWrittenSeries(repairExemptSeries as any)) {
+        const repairIssues = Array.isArray((failedReport as any)?.issues) ? (failedReport as any).issues.join('; ') : 'Belle repair requested'
+        throw new Error(`[${AUTHOR_WRITTEN_EXEMPT_ID}] standalone Belle issue on story ${storyId} left for Marc (no auto-repair of author-written copy): ${repairIssues}`)
+      }
+    }
+  } catch (repairExemptErr) {
+    if (repairExemptErr instanceof Error && repairExemptErr.message.includes(AUTHOR_WRITTEN_EXEMPT_ID)) throw repairExemptErr
+    // Series-lookup failure → treat as not exempt; continue to normal repair.
+  }
 
   const currentIntro = extractBelleSection(story.script, 'intro')
   const currentOutro = extractBelleSection(story.script, 'outro')
