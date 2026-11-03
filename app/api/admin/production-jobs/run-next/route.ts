@@ -48,6 +48,7 @@ import { runStoryQualityGate } from '@/lib/storyQualityGate'
 import { checkRuntimeVsBrief, parseBriefRuntimeToSecs, RUNTIME_GATE_ID } from '@/lib/runtimeGate'
 import { runGarbleGate } from '@/lib/garbleGate'
 import { checkScriptRuntimeMeetsMinimum, formatScriptRuntimeShortMessage, SCRIPT_RUNTIME_PREFLIGHT, SCRIPT_RUNTIME_PREFLIGHT_ID } from '@/lib/scriptRuntimeEstimate'
+import { isAuthorWrittenSeries, AUTHOR_WRITTEN_EXEMPT_ID } from '@/lib/authorWrittenExempt'
 import { parseScriptPositions } from '@/lib/scriptLineIndex'
 // GATE 4 (GATE-GAPS-SPEC-20261004 §4): wire the existing deterministic duplicate-segment
 // detector into R. Single import site (no per-call require), CJS module via esModuleInterop.
@@ -5719,6 +5720,18 @@ async function runSeriesPackageCompletion(job: ProductionJob, origin: string) {
   // Episodes with covers pending still assemble; flags ride along in state.
   const coverMissingByEp: Record<string, boolean> = prev.coverMissingByEp || {}
   const processedEpisodes: Array<{ episodeNumber: number | null; storyId: string; title: string }> = []
+  // AUTHOR-WRITTEN-EXEMPT-001: series-level flag (Sunset only). When on,
+  // intro/outro position validation is skipped per episode below and the
+  // series Belle auto-retry loop fails closed (no rewrite of author copy).
+  let authorWrittenExempt = false
+  try {
+    if (seriesId) {
+      const { data: exemptSeries } = await supabase.from('series').select('author_written').eq('id', String(seriesId)).maybeSingle()
+      authorWrittenExempt = isAuthorWrittenSeries(exemptSeries as any)
+    }
+  } catch {
+    authorWrittenExempt = false
+  }
 
   for (const episode of episodes) {
     const key = String(episode.episodeNumber || episode.storyId)
@@ -5814,7 +5827,12 @@ async function runSeriesPackageCompletion(job: ProductionJob, origin: string) {
       if (isBelleExemptEpisode) {
         console.log(`[complete_story_package] Skipping Belle position validation for Belle-exempt episode: ${episode.storyId} (variant=${epVariant})`)
       }
-      const positionResult = isBelleExemptEpisode
+      // AUTHOR-WRITTEN-EXEMPT-001: author-written series skip position
+      // validation (intro hook, outro residue/companion). Log the skip.
+      if (authorWrittenExempt) {
+        console.log(`[${AUTHOR_WRITTEN_EXEMPT_ID}] series=${seriesId} episode=${episode.storyId} Belle position validation skipped (author-written)`)
+      }
+      const positionResult = (isBelleExemptEpisode || authorWrittenExempt)
         ? { passed: true as const, issues: [] as string[], requireLlmJudgment: false }
         : await validateIntroOutroPositionRules(epStory, introText, outroText)
       if (!positionResult.passed) {
@@ -7844,6 +7862,18 @@ async function runSeriesVoicePreflight(job: ProductionJob, origin: string) {
 
   const episodes = preflightEpisodes
 
+  // AUTHOR-WRITTEN-EXEMPT-001: series-level flag (Sunset only). When on,
+  // author copy skips quality gates (runtime floor, pre-voice Belle
+  // content, position validation, auto-repair). Technical gates (numerals,
+  // roster voices, transcript QC, loudness, duration, publish) stay on.
+  let authorWrittenExempt = false
+  try {
+    const { data: exemptSeries } = await supabase.from('series').select('author_written').eq('id', String(seriesId)).maybeSingle()
+    authorWrittenExempt = isAuthorWrittenSeries(exemptSeries as any)
+  } catch {
+    authorWrittenExempt = false
+  }
+
   const finalEpisodeNumber = episodes.reduce((max: number, episode: any) => Math.max(max, episodeNumber(episode, 0)), 0)
   if (finalEpisodeNumber > 0) {
     await ensureSeriesCharacterRosterThroughEpisode(String(seriesId), episodes, finalEpisodeNumber)
@@ -8057,6 +8087,8 @@ async function runSeriesVoicePreflight(job: ProductionJob, origin: string) {
   // series preflight for this episode (recorded in failedEpisodes, same shape
   // as the numeral failure above); the episode is extended and re-submitted.
   // Unmeasurable scripts (zero parseable spoken lines) do NOT block.
+  // AUTHOR-WRITTEN-EXEMPT-001: author-written series skip this floor entirely
+  // (log marker, no fail). Numerals + narrator/roster checks above stay on.
   {
     const runtimeCheck = checkScriptRuntimeMeetsMinimum((nextEpisode as any).script || '')
     const scriptRuntimeMarker = {
@@ -8071,7 +8103,10 @@ async function runSeriesVoicePreflight(job: ProductionJob, origin: string) {
       minEstimatedMinutes: SCRIPT_RUNTIME_PREFLIGHT.MIN_ESTIMATED_MINUTES,
       checkedAt: nowIso(),
     }
-    if (!runtimeCheck.pass && !runtimeCheck.skipped) {
+    if (authorWrittenExempt && !runtimeCheck.pass && !runtimeCheck.skipped) {
+      console.log(`[${AUTHOR_WRITTEN_EXEMPT_ID}] series=${seriesId} EP${number} runtime floor skipped (author-written, est=${runtimeCheck.estimatedMins}m)`)
+    }
+    if (!runtimeCheck.pass && !runtimeCheck.skipped && !authorWrittenExempt) {
       const blocker = formatScriptRuntimeShortMessage(runtimeCheck)
       const failedEpisodeEntry = {
         storyId,
@@ -8131,7 +8166,12 @@ async function runSeriesVoicePreflight(job: ProductionJob, origin: string) {
   {
     const epScript = String((nextEpisode as any).script || '')
     const epBelleExempt = /LANDING-STORY-001|No Belle B/i.test(extractHeader(epScript, 'VARIANT'))
-    if (!epBelleExempt) {
+    // AUTHOR-WRITTEN-EXEMPT-001: author-written series skip the pre-voice
+    // Belle content gate (hook, outro residue/companion). Log the skip.
+    if (authorWrittenExempt) {
+      console.log(`[${AUTHOR_WRITTEN_EXEMPT_ID}] series=${seriesId} EP${number} pre-voice Belle content skipped (author-written)`)
+    }
+    if (!epBelleExempt && !authorWrittenExempt) {
       const epIssues = await seriesEpisodeBelleContentIssues({
         title: (nextEpisode as any).title,
         author: (nextEpisode as any).author,
@@ -12671,7 +12711,23 @@ export async function POST(req: NextRequest) {
           }
 
           const belleRetryTarget = seriesBelleRetryTarget(result)
+          // AUTHOR-WRITTEN-EXEMPT-001: never auto-repair author-written copy.
+          // Fail closed for Marc (no rewrite, no audio invalidation) instead
+          // of entering the regen loop below.
           if (belleRetryTarget) {
+            let belleExempt = false
+            try {
+              const sid = String(result.seriesId || (lockedJob as any)?.series_id || '')
+              if (sid) {
+                const { data: exSeries } = await supabase.from('series').select('author_written').eq('id', sid).maybeSingle()
+                belleExempt = isAuthorWrittenSeries(exSeries as any)
+              }
+            } catch {
+              belleExempt = false
+            }
+            if (belleExempt) {
+              throw new Error(`[${AUTHOR_WRITTEN_EXEMPT_ID}] series Belle issue on EP${belleRetryTarget.episodeNumber ?? belleRetryTarget.storyId} left for Marc (no auto-repair of author-written copy): ${belleRetryTarget.issues.join('; ')}`)
+            }
             const currentRetry = Number(byEpisode[belleRetryTarget.storyId]?.count || 0)
 
             if (currentRetry < MAX_SERIES_BELLE_RETRIES) {
