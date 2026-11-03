@@ -240,6 +240,12 @@ describe('autoretry guard wiring (source check, no DB)', () => {
     expect(src).toContain('if (await isAuthorWrittenExemptSeriesId(repairSeriesId))')
   })
 
+  test('site G: ATL-PIPE-010 catch never autonomous-retries an exempt error', () => {
+    expect(src).toContain('const isAuthorWrittenExempt = errMessage.includes(AUTHOR_WRITTEN_EXEMPT_ID)')
+    expect(src).toContain('!isAttemptLimit && !isAuthorWrittenExempt && repairAttempts < MAX_BELLE_REPAIR_RETRIES')
+    expect(src).toContain('standalone Belle repair retry skipped (author-written)')
+  })
+
   test('site H: blocked-Belle auto-resume skips author copy', () => {
     expect(src).toContain('blocked-Belle auto-resume skipped (author-written)')
   })

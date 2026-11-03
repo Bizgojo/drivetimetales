@@ -12204,10 +12204,16 @@ export async function POST(req: NextRequest) {
         const isAssetRepair = (state as any).belleAssetValidationFailed === true
         const errMessage = err instanceof Error ? err.message : String(err)
         const isAttemptLimit = /attempt limit reached/i.test(errMessage)
+        // AUTHOR-WRITTEN-EXEMPT-001 site G: an exempt repair error must never
+        // autonomous-retry — it falls through to the Marc-review terminal path.
+        const isAuthorWrittenExempt = errMessage.includes(AUTHOR_WRITTEN_EXEMPT_ID)
+        if (isAuthorWrittenExempt) {
+          console.log(`[${AUTHOR_WRITTEN_EXEMPT_ID}] standalone Belle repair retry skipped (author-written), story=${storyId} — failing for Marc review`)
+        }
 
         const failureKind = classifyBelleRepairError(errMessage)
         const playbook = getPlaybookByKind(failureKind)
-        const canRetry = !isAttemptLimit && repairAttempts < MAX_BELLE_REPAIR_RETRIES
+        const canRetry = !isAttemptLimit && !isAuthorWrittenExempt && repairAttempts < MAX_BELLE_REPAIR_RETRIES
 
         // Always record learning incident
         const { data: learningIncident } = await supabase
