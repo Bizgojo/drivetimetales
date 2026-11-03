@@ -35,8 +35,15 @@ export function buildSfxReport(seriesTitle: string, episodes: ReportEpisode[]): 
   let ai = 0
   for (const ep of [...episodes].sort((a, b) => a.episodeNumber - b.episodeNumber)) {
     const rows: Array<{ index: number; text: string }> = []
+    // SFX-REPORT-CATALOG-001: in catalog mode the script's own effect files never play, so they
+    // are listed as "not played" and not counted (they were wrongly shown as AI-made).
+    const catalogMode = ep.overlay?.planner === 'catalog'
     for (const p of ep.positions.filter((x) => x.kind === 'sfx')) {
       const src = ep.scriptSources[p.index]
+      if (catalogMode) {
+        rows.push({ index: p.index, text: `• line ${p.index} (script cue): "${String(p.text || '').trim()}" → not played (Soundsnap catalog sounds only; filled by the planner if the catalog has it)` })
+        continue
+      }
       if (src?.kind === 'library') lib += 1
       else ai += 1
       rows.push({ index: p.index, text: `• line ${p.index} (script): asked for "${String(p.text || '').trim()}" → ${sourceLabel(src)}\n    plays before ${nextLine(ep.positions, p.index + 1)}` })

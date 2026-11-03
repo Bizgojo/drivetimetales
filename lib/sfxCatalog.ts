@@ -52,7 +52,8 @@ function usable(t: CatalogTake, mode: 'test' | 'production'): boolean {
   // SFX-TEST-LICENSED-ONLY-001 (Marc 2026-11-02): test mixes use only the
   // Soundsnap sounds Marc picked — never the old kept-library sounds.
   if (mode === 'test') return t.source === 'licensed' && t.status !== 'discarded'
-  return t.status === 'approved'
+  // SOUNDSNAP-ONLY-001: production too — an approved take must also be a licensed (Soundsnap) sound.
+  return t.status === 'approved' && t.source === 'licensed'
 }
 
 /**

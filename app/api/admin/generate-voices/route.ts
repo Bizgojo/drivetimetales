@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { sfxGloballyOff } from '@/lib/sfxSwitch'
+import { sfxGloballyOff, soundsnapOnly } from '@/lib/sfxSwitch'
 import { inferGender, seriesGenderHints } from '@/lib/characterGender'
 import { generateScriptSfx } from '@/lib/sfxGenerate'
 import { parseCharacterGuide, characterVoiceKeys, type CharacterInfo } from '@/lib/characterGuide'
@@ -2594,7 +2594,8 @@ export async function POST(req: NextRequest) {
     }
     // CORRECTION-PERSIST-001: extract sfx_disabled flag and existing corrections from story row
     // SFX-ALL-OFF-001: SFX_OFF=on disables effects for every story.
-    const sfxDisabled = Boolean((storyRow as any)?.sfx_disabled) || sfxGloballyOff()
+    // SOUNDSNAP-ONLY-001: no ElevenLabs effect clips — effects come only from the Soundsnap catalog at mix time.
+    const sfxDisabled = Boolean((storyRow as any)?.sfx_disabled) || sfxGloballyOff() || soundsnapOnly()
     const storyStateJson = ((storyRow as any)?.state_json as Record<string, unknown>) ?? {}
     const existingCorrections: CorrectionEntry[] = (storyStateJson.corrections as CorrectionEntry[]) ?? []
     if (sfxDisabled) console.log(`[SFX-DISABLED] story ${storyId} has sfx_disabled=true — SFX generation will be skipped`)

@@ -122,7 +122,7 @@ function buildCatalogPrompt(params: {
     '',
     'TASK 0 — The script marks some sounds itself (SCRIPT SOUND CUES below). Their old recordings are NOT used. For EACH script cue give the catalog ID that is really that sound, or null if the catalog has no such sound (put it in "wanted"). It plays right before the next spoken line.',
     '',
-    'TASK 2 — Scene backgrounds (BG-SCENE-SETTER-001): a background is a short scene-setter (about 10 seconds) that tells the listener WHERE they now are. Add ONE catalog sound of kind "background" at the first line of a scene ONLY when the story moves to a new place with a steady sound. Never in the first scene of the story. Never when the scene is in the same place as the scene before. Skip it if no background in the catalog fits the place.',
+    'TASK 2 — Scene backgrounds (BG-SCENE-SETTER-001): a background is a short scene-setter (about 10 seconds) that tells the listener WHERE they now are. Add ONE catalog sound of kind "background" ONLY at the line where the story moves to a new place with a steady sound (the first line of a scene, or the line that tells the listener where we now are, e.g. "I go to my car", "the rain starts"). Never in the first scene of the story. Never when the place is the same as the one before. Skip it if no background in the catalog fits the place.',
     '',
     'TASK 3 — You may add a catalog sound on an unflagged line only if the action clearly makes that sound (rare).',
     '',
@@ -162,6 +162,10 @@ function clampDuration(cue: string, dur: unknown): number {
  * Turns the AI's sound map into overlay cues, enforcing the rules in code.
  * Every flagged line ends up with a decision (missing ones are recorded).
  */
+/** BG-SPACING-001: catalog backgrounds — none in the first lines, and spaced out (spoken lines). */
+export const BG_START_LINES = 6
+export const BG_GAP_LINES = 20
+
 export function validateSoundMap(raw: unknown, params: {
   lines: SoundLine[]
   flagged: Array<{ index: number; words: string[] }>
@@ -181,7 +185,8 @@ export function validateSoundMap(raw: unknown, params: {
   const perLine = new Map<number, number>()
   const backgroundScenes = new Set<number>()
   const firstScene = lines.length ? Math.min(...lines.map((l) => l.scene)) : 1
-  let lastBackground: { scene: number; id: string } | null = null
+  let lastBackground: { scene: number; id: string; pos: number } | null = null
+  const ordinal = new Map([...lines].sort((a, b) => a.index - b.index).map((l, i) => [l.index, i]))
 
   const accept = (item: any, kind: 'decision' | 'background' | 'extra'): boolean => {
     const idx = Number(item?.line)
@@ -208,11 +213,17 @@ export function validateSoundMap(raw: unknown, params: {
       if (!bg && MULTI_SOUND.test(cue)) { rejected.push({ cue: item, reason: 'more than one sound in a cue' }); return false }
     }
     if (bg) {
-      if (backgroundScenes.has(line.scene)) { rejected.push({ cue: item, reason: 'scene already has a background' }); return false }
+      if (!catalogById && backgroundScenes.has(line.scene)) { rejected.push({ cue: item, reason: 'scene already has a background' }); return false }
       // BG-SCENE-SETTER-001 (Marc 2026-11-02): catalog backgrounds only mark a change of place —
-      // none at the start of the story, none when the place is the same as the scene before.
-      if (catalogById && line.scene <= firstScene) { rejected.push({ cue: item, reason: 'no background at the start of the story' }); return false }
-      if (catalogById && entry && lastBackground && lastBackground.scene === line.scene - 1 && lastBackground.id === entry.id) { rejected.push({ cue: item, reason: 'same place as the scene before' }); return false }
+      // none at the start of the story, none when the place is the same as the one before.
+      // BG-SPACING-001: many scripts have no scene breaks, so the catalog rules count spoken lines,
+      // not scenes: none in the first BG_START_LINES lines, at least BG_GAP_LINES lines apart.
+      if (catalogById) {
+        const pos = ordinal.get(idx) ?? 0
+        if (line.scene <= firstScene && pos < BG_START_LINES) { rejected.push({ cue: item, reason: 'no background at the start of the story' }); return false }
+        if (lastBackground && pos - lastBackground.pos < BG_GAP_LINES) { rejected.push({ cue: item, reason: 'too close to the last background' }); return false }
+        if (entry && lastBackground && lastBackground.id === entry.id) { rejected.push({ cue: item, reason: 'same place as the scene before' }); return false }
+      }
     } else {
       if ((perLine.get(idx) || 0) >= 2) { rejected.push({ cue: item, reason: 'line already has two effects' }); return false }
       // SFX-SOUNDSNAP-001: in catalog mode the script's old effect files don't play, so no clash.
@@ -228,7 +239,7 @@ export function validateSoundMap(raw: unknown, params: {
       const want = phraseTokens(afterWords).join(' ')
       if (want && lineTokens.includes(` ${want} `)) out.afterWords = afterWords
     }
-    if (bg) { backgroundScenes.add(line.scene); if (entry) lastBackground = { scene: line.scene, id: entry.id } }
+    if (bg) { backgroundScenes.add(line.scene); if (entry) lastBackground = { scene: line.scene, id: entry.id, pos: ordinal.get(idx) ?? 0 } }
     else perLine.set(idx, (perLine.get(idx) || 0) + 1)
     cues.push(out)
     return true

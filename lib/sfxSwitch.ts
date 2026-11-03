@@ -11,3 +11,16 @@
 export function sfxGloballyOff(env: Record<string, string | undefined> = process.env): boolean {
   return String(env.SFX_OFF || '').trim().toLowerCase() === 'on'
 }
+
+/**
+ * SOUNDSNAP-ONLY-001 (Marc 2026-11-03): "I do not want to use any old sounds
+ * or ElevenLabs sounds, only Soundsnap." On by default. While on:
+ *   - the only effect path is the catalog planner (licensed Soundsnap takes);
+ *     any mix that isn't in catalog mode gets NO effects at all
+ *     (no script sfx_*.mp3 clips, no library search, no ElevenLabs fallback);
+ *   - no [SFX:] clips are generated with ElevenLabs during voicing.
+ * SFX_SOUNDSNAP_ONLY=off restores the old behaviour (not recommended).
+ */
+export function soundsnapOnly(env: Record<string, string | undefined> = process.env): boolean {
+  return String(env.SFX_SOUNDSNAP_ONLY || '').trim().toLowerCase() !== 'off'
+}

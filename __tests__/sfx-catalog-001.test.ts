@@ -38,6 +38,9 @@ describe('SFX-CATALOG-001 takes', () => {
     expect(liveNames(catalog, 'test', names)).toEqual([])
     expect(liveNames(catalog, 'production', names)).toEqual([])
     catalog.entries['CR-01'].takes.forEach((t) => { t.status = 'approved' })
+    // SOUNDSNAP-ONLY-001: approved old library sounds still never play
+    expect(liveNames(catalog, 'production', names)).toEqual([])
+    catalog.entries['CR-01'].takes.forEach((t) => { t.source = 'licensed' })
     expect(liveNames(catalog, 'production', names).map((n) => n.id)).toEqual(['CR-01'])
   })
   test('takes rotate by place, stable for the same place', () => {
@@ -88,10 +91,25 @@ describe('SFX-CATALOG-001 planner: catalog IDs or nothing', () => {
   })
   test('BG-SCENE-SETTER-001: no background at the story start; none when the place is the same as the scene before', () => {
     const cat = SFX_CATALOG_NAMES.filter((n) => ['ALL-37', 'CR-27'].includes(n.id))
-    const raw = { backgrounds: [{ line: 8, sound: 'ALL-37' }, { line: 1, sound: 'CR-27' }, { line: 5, sound: 'ALL-37' }, { line: 10, sound: 'CR-27' }] }
+    const raw = { backgrounds: [{ line: 8, sound: 'ALL-37' }, { line: 1, sound: 'CR-27' }, { line: 5, sound: 'ALL-37' }] }
     const { cues, rejected } = validateSoundMap(raw, { lines, flagged, scriptCueIndices: [], ceiling: 40, catalog: cat })
-    expect(cues.map((c) => `${c.beforeIndex}:${c.catalogId}`)).toEqual(['5:ALL-37', '10:CR-27'])
-    expect(rejected.map((r) => r.reason)).toEqual(expect.arrayContaining(['no background at the start of the story', 'same place as the scene before']))
+    expect(cues.map((c) => `${c.beforeIndex}:${c.catalogId}`)).toEqual(['5:ALL-37'])
+    expect(rejected.map((r) => r.reason)).toEqual(expect.arrayContaining(['no background at the start of the story']))
+  })
+  test('BG-SPACING-001: a story with no scene breaks still gets spaced backgrounds, never at the start or back-to-back', () => {
+    const { BG_START_LINES, BG_GAP_LINES } = require('@/lib/sfxSoundMap')
+    const long = soundLines(Array.from({ length: 80 }, (_, i) => P(i + 1, 'voice', 'NARRATOR', `Line ${i + 1}.`)))
+    const cat = SFX_CATALOG_NAMES.filter((n) => ['ALL-37', 'CR-28', 'CR-27'].includes(n.id))
+    const raw = { backgrounds: [
+      { line: 2, sound: 'CR-28' },                                  // start of story → no
+      { line: BG_START_LINES + 4, sound: 'CR-28' },                 // ok
+      { line: BG_START_LINES + 10, sound: 'CR-27' },                // too close → no
+      { line: BG_START_LINES + 4 + BG_GAP_LINES, sound: 'ALL-37' }, // ok
+      { line: BG_START_LINES + 4 + 2 * BG_GAP_LINES, sound: 'ALL-37' }, // same place again → no
+    ] }
+    const { cues, rejected } = validateSoundMap(raw, { lines: long, flagged: [], scriptCueIndices: [], ceiling: 40, catalog: cat })
+    expect(cues.map((c) => `${c.beforeIndex}:${c.catalogId}`)).toEqual([`${BG_START_LINES + 4}:CR-28`, `${BG_START_LINES + 4 + BG_GAP_LINES}:ALL-37`])
+    expect(rejected.map((r) => r.reason).sort()).toEqual(['no background at the start of the story', 'same place as the scene before', 'too close to the last background'])
   })
   test('BG-SCENE-SETTER-001: prompt says short scene-setter, never in the first scene', () => {
     const p = buildSoundMapPrompt({ lines, flagged, genre: 'Crime', scriptCues: [], ceiling: 40, catalog })
@@ -226,5 +244,30 @@ describe('SFX-REPLACE-001 discard then add new licensed takes', () => {
     const full = addLicensedTakes(emptyCatalog(), tails.map(lic), names).catalog
     expect(discardTakes(full, []).discarded).toEqual([])
     expect(discardTakes(full, ['', ' ']).catalog).toBe(full)
+  })
+})
+
+describe('SOUNDSNAP-ONLY-001', () => {
+  const { soundsnapOnly } = require('@/lib/sfxSwitch')
+  test('on by default; SFX_SOUNDSNAP_ONLY=off turns it off', () => {
+    expect(soundsnapOnly({})).toBe(true)
+    expect(soundsnapOnly({ SFX_SOUNDSNAP_ONLY: 'off' })).toBe(false)
+  })
+  test('production uses only approved Soundsnap takes — an approved old library sound never plays', () => {
+    const names = SFX_CATALOG_NAMES.filter((n) => n.id === 'CR-01')
+    const take = (id: string, source: 'licensed' | 'kept-library') => ({ libraryId: id, path: id, name: id, source, status: 'approved' as const })
+    const old: CatalogFile = { ...emptyCatalog(), entries: { 'CR-01': { takes: [take('a', 'kept-library'), take('b', 'kept-library'), take('c', 'kept-library')] } } }
+    expect(liveNames(old, 'production', names)).toEqual([])
+    const lic: CatalogFile = { ...emptyCatalog(), entries: { 'CR-01': { takes: [take('a', 'licensed'), take('b', 'licensed'), take('c', 'licensed')] } } }
+    expect(liveNames(lic, 'production', names)).toHaveLength(1)
+  })
+  test('report: in catalog mode the script cue is "not played", never counted as AI-made', () => {
+    const P2 = (index: number, kind: any, text: string) => ({ index, kind, speaker: 'NARRATOR', text, isExpected: true, rawLineNumber: index } as any)
+    const r = buildSfxReport('T', [{ episodeNumber: 1, title: 'X', positions: [P2(5, 'sfx', 'rapid gunfire'), P2(6, 'voice', 'Three shots.')], scriptSources: {}, overlay: {
+      storyId: 's', genre: '', createdAt: '', model: null, planner: 'catalog', cues: [],
+    } }])
+    expect(r).toMatch(/line 5 \(script cue\).*not played/)
+    expect(r).not.toMatch(/AI-made \(no kept sound fit\)/)
+    expect(r).toMatch(/0 were AI-made/)
   })
 })
