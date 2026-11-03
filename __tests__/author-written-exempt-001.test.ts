@@ -1,0 +1,252 @@
+/**
+ * AUTHOR-WRITTEN-EXEMPT-001 (Marc commission 2026-11-03, Sunset e9f3ff76 only)
+ *
+ * Flag off = today's behavior. Flag on = skips only the author-copy gates
+ * (series: runtime floor, pre-voice Belle content, position validation,
+ * Belle auto-repair; standalone: runtime floor, pre-voice Belle content,
+ * Belle quality check, Belle AI repair fails closed); technical gates
+ * (numerals, roster voices, transcript QC, loudness, duration, publish)
+ * stay enforced.
+ *
+ * Zero paid ops, zero production writes. The source-wiring section reads the
+ * route file as text — no import of the route module (boots Supabase clients).
+ */
+
+import * as fs from 'fs'
+import * as path from 'path'
+import {
+  AUTHOR_WRITTEN_EXEMPT_ID,
+  AUTHOR_WRITTEN_SUNSET_SERIES_ID,
+  AUTHOR_WRITTEN_SKIPPED_GATES,
+  AUTHOR_WRITTEN_KEPT_GATES,
+  isAuthorWrittenSeries,
+  resolveAuthorWrittenExempt,
+} from '@/lib/authorWrittenExempt'
+
+describe('author-written flag defaults', () => {
+  test('off by default: missing / null / false all behave as today', () => {
+    expect(isAuthorWrittenSeries(null)).toBe(false)
+    expect(isAuthorWrittenSeries(undefined)).toBe(false)
+    expect(isAuthorWrittenSeries({})).toBe(false)
+    expect(isAuthorWrittenSeries({ author_written: false })).toBe(false)
+    expect(isAuthorWrittenSeries({ author_written: null })).toBe(false)
+  })
+
+  test('on only when explicitly true (Sunset row)', () => {
+    expect(isAuthorWrittenSeries({ author_written: true })).toBe(true)
+  })
+
+  test('Sunset series id is pinned', () => {
+    expect(AUTHOR_WRITTEN_SUNSET_SERIES_ID).toBe(
+      'e9f3ff76-9401-4bf5-bf5a-36d83b5398f7',
+    )
+  })
+})
+
+describe('exempt contract: skip list vs keep list', () => {
+  test('skips exactly the author-copy gates (series + standalone)', () => {
+    expect([...AUTHOR_WRITTEN_SKIPPED_GATES]).toEqual([
+      'series_runtime_floor',
+      'series_prevoice_belle_content',
+      'series_belle_position_validation',
+      'series_belle_auto_repair',
+      'standalone_runtime_floor',
+      'standalone_prevoice_belle_content',
+      'standalone_belle_quality',
+      'standalone_belle_auto_repair',
+    ])
+  })
+
+  test('keeps every technical gate', () => {
+    expect([...AUTHOR_WRITTEN_KEPT_GATES]).toEqual(
+      expect.arrayContaining([
+        'numeral_pre_tts_scan',
+        'narrator_roster_voices',
+        'transcript_qc',
+        'loudness',
+        'runtime_gate_measured',
+        'publish_guard',
+      ]),
+    )
+  })
+
+  test('skip list and keep list do not overlap', () => {
+    const overlap = AUTHOR_WRITTEN_SKIPPED_GATES.filter((g) =>
+      (AUTHOR_WRITTEN_KEPT_GATES as readonly string[]).includes(g),
+    )
+    expect(overlap).toEqual([])
+  })
+})
+
+describe('route wiring (source check, no DB)', () => {
+  const routePath = path.join(
+    __dirname,
+    '..',
+    'app',
+    'api',
+    'admin',
+    'production-jobs',
+    'run-next',
+    'route.ts',
+  )
+  const src = fs.readFileSync(routePath, 'utf8')
+
+  test('imports the exemption predicate', () => {
+    expect(src).toContain("from '@/lib/authorWrittenExempt'")
+    expect(src).toContain('isAuthorWrittenExemptSeriesId')
+    expect(src).toContain('resolveAuthorWrittenExempt')
+    expect(src).toContain(AUTHOR_WRITTEN_EXEMPT_ID)
+  })
+
+  test('series runtime floor is gated on the flag (numerals/narrator above untouched)', () => {
+    expect(src).toContain('!authorWrittenExempt')
+    // numeral scan still blocks unconditionally in series preflight
+    expect(src).toMatch(/numeralPreTtsScan\(\(nextEpisode as any\)\.script/)
+  })
+
+  test('pre-voice Belle content gate is gated on the flag', () => {
+    expect(src).toContain('!epBelleExempt && !authorWrittenExempt')
+  })
+
+  test('series package position validation bypasses when flag is on', () => {
+    expect(src).toContain('isBelleExemptEpisode || authorWrittenExempt')
+  })
+
+  test('series Belle auto-retry fails closed when flag is on (no rewrite)', () => {
+    expect(src).toContain('no auto-repair of author-written copy')
+  })
+
+  test('standalone preflight reads the flag from the story series_id', () => {
+    expect(src).toContain('standaloneAuthorExempt')
+    // lookup keys off the story row's series_id (Sunset eps run standalone
+    // jobs with job_type single despite story_type series_episode)
+    expect(src).toContain("(storyForNarrator as any)?.series_id")
+  })
+
+  test('standalone runtime floor is gated on the flag', () => {
+    expect(src).toContain('!runtimeCheck.skipped && !standaloneAuthorExempt')
+    expect(src).toContain('runtime floor skipped (author-written')
+  })
+
+  test('standalone pre-voice Belle content gate is gated on the flag', () => {
+    expect(src).toContain('!gateBelleExempt && !standaloneAuthorExempt')
+  })
+
+  test('standalone Belle quality check skips when flag is on', () => {
+    expect(src).toContain('Belle quality check skipped (author-written')
+    expect(src).toContain("status: 'skipped_author_written'")
+  })
+
+  test('standalone Belle repair fails closed when flag is on (no rewrite)', () => {
+    expect(src).toContain('no auto-repair of author-written copy): ${repairIssues}')
+    // numerals + narrator still block unconditionally in standalone preflight
+    expect(src).toMatch(/numeralPreTtsScan\(storyForNarrator\.script/)
+  })
+})
+
+describe('autoretry fail-closed resolver (commission author-written-autoretry-20261103)', () => {
+  const SUNSET = AUTHOR_WRITTEN_SUNSET_SERIES_ID
+  const OTHER = '11111111-2222-4333-8444-555555555555'
+
+  test('exempt when the flag row is true', async () => {
+    await expect(
+      resolveAuthorWrittenExempt(async () => ({ author_written: true }), SUNSET),
+    ).resolves.toBe(true)
+  })
+
+  test('not exempt when the flag row is false or missing', async () => {
+    await expect(
+      resolveAuthorWrittenExempt(async () => ({ author_written: false }), SUNSET),
+    ).resolves.toBe(false)
+    await expect(resolveAuthorWrittenExempt(async () => null, OTHER)).resolves.toBe(false)
+  })
+
+  test('empty series id is never exempt (lookup not attempted)', async () => {
+    const boom = async (): Promise<never> => {
+      throw new Error('must not be called')
+    }
+    await expect(resolveAuthorWrittenExempt(boom, '')).resolves.toBe(false)
+    await expect(resolveAuthorWrittenExempt(boom, null)).resolves.toBe(false)
+  })
+
+  test('lookup throw fails closed ONLY for Sunset', async () => {
+    const failing = async (): Promise<never> => {
+      throw new Error('db down')
+    }
+    await expect(resolveAuthorWrittenExempt(failing, SUNSET)).resolves.toBe(true)
+    await expect(resolveAuthorWrittenExempt(failing, OTHER)).resolves.toBe(false)
+  })
+
+  test('Sunset id match is exact (near-miss stays today)', async () => {
+    const failing = async (): Promise<never> => {
+      throw new Error('db down')
+    }
+    await expect(
+      resolveAuthorWrittenExempt(failing, ` ${SUNSET} `),
+    ).resolves.toBe(true) // trimmed then matched
+    await expect(
+      resolveAuthorWrittenExempt(failing, `${SUNSET}x`),
+    ).resolves.toBe(false)
+  })
+})
+
+describe('autoretry guard wiring (source check, no DB)', () => {
+  const routePath = path.join(
+    __dirname,
+    '..',
+    'app',
+    'api',
+    'admin',
+    'production-jobs',
+    'run-next',
+    'route.ts',
+  )
+  const src = fs.readFileSync(routePath, 'utf8')
+
+  test('single fail-closed lookup entry exists', () => {
+    expect(src).toContain('async function isAuthorWrittenExemptSeriesId')
+    expect(src).toContain("from '@/lib/authorWrittenExempt'")
+    expect(src).toContain('resolveAuthorWrittenExempt')
+  })
+
+  test('site A: voice-conformance regenerate never clears author copy', () => {
+    expect(src).toContain('voice-conformance regenerate skipped (author-written)')
+    expect(src).toContain('vcResult.shouldRegenerate && !vcExempt')
+  })
+
+  test('site B: validate_script auto-retry never clears/requeues author copy', () => {
+    expect(src).toContain('validate_script auto-retry skipped (author-written)')
+    expect(src).toContain('retryCount < MAX_RETRIES && !validateScriptExempt')
+    expect(src).toContain('safe_resume_point: validateScriptExempt ? undefined')
+  })
+
+  test('site C: voice_preflight auto-retry never clears/requeues author copy (incl numerals)', () => {
+    expect(src).toContain('voice_preflight auto-retry skipped (author-written)')
+    expect(src).toContain('retryCount < MAX_RETRIES && !voicePreflightExempt')
+    expect(src).toContain("!voicePreflightExempt && (failureKind === 'script_unlabeled_lines'")
+  })
+
+  test('sites D+E: series DESCRIPTION repair + rewrite clear skipped for author copy', () => {
+    expect(src).toContain('series DESCRIPTION/rewrite auto-repair skipped (author-written)')
+    expect(src).toContain('MAX_SERIES_DESCRIPTION_RETRIES && !seriesAutoRepairExempt')
+    expect(src).toContain("plan.action === 'rewrite' && !seriesAutoRepairExempt")
+  })
+
+  test('site F: series Belle retry lookup fails closed on Sunset', () => {
+    expect(src).toContain('belleExempt = await isAuthorWrittenExemptSeriesId(sid)')
+  })
+
+  test('site G: standalone Belle repair lookup fails closed on Sunset', () => {
+    expect(src).toContain('if (await isAuthorWrittenExemptSeriesId(repairSeriesId))')
+  })
+
+  test('site G: ATL-PIPE-010 catch never autonomous-retries an exempt error', () => {
+    expect(src).toContain('const isAuthorWrittenExempt = errMessage.includes(AUTHOR_WRITTEN_EXEMPT_ID)')
+    expect(src).toContain('!isAttemptLimit && !isAuthorWrittenExempt && repairAttempts < MAX_BELLE_REPAIR_RETRIES')
+    expect(src).toContain('standalone Belle repair retry skipped (author-written)')
+  })
+
+  test('site H: blocked-Belle auto-resume skips author copy', () => {
+    expect(src).toContain('blocked-Belle auto-resume skipped (author-written)')
+  })
+})
