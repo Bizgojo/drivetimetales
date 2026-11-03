@@ -17,6 +17,7 @@ import {
 import { librarySfxForCue } from '@/lib/sfxLibrary'
 import { overlaySettingsForStyle, styleProfileFrom } from '@/lib/seriesStyle'
 import { isSceneBackground, sfxV2Enabled } from '@/lib/sfxLayeredMix'
+import { soundsnapOnly } from '@/lib/sfxSwitch'
 import { catalogPlannerEnabled, liveNames, loadCatalog, pickCatalogTake, type LiveName } from '@/lib/sfxCatalog'
 import { buildSoundMapPrompt, flagSoundLines, soundLines, soundMapPlannerEnabled, validateSoundMap } from '@/lib/sfxSoundMap'
 
@@ -82,6 +83,8 @@ export async function ensureOverlayPlan(params: {
   const anthropic = new Anthropic({ apiKey: anthropicKey })
   // SFX-CATALOG-001: catalog planner (v4 tests / SFX_PLANNER=catalog) is a sound map limited to catalog IDs.
   const useCatalog = catalogPlannerEnabled(params.tag)
+  // SOUNDSNAP-ONLY-001: no library search and no ElevenLabs sounds outside the catalog.
+  if (!useCatalog && soundsnapOnly()) throw new Error('SOUNDSNAP-ONLY-001: effects come only from the Soundsnap catalog — use a v4 test tag or SFX_PLANNER=catalog')
   const useSoundMap = useCatalog || soundMapPlannerEnabled(params.tag)
   let live: LiveName[] = []
   if (useCatalog) {

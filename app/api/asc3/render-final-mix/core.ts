@@ -9,7 +9,7 @@ import { parseScriptPositions } from '@/lib/scriptLineIndex'
 import { planSpeakerGains, speakerGainFilter, voiceLevelEnabled, type MeasuredLine } from '@/lib/voiceLevel'
 import { buildLayeredStoryBody, layeredMixEnabled, mixV3BedOptions, mixV4SpotOptions, sceneSetterBedOptions, sfxV2Enabled, sfxV2Options, type BodyItem } from '@/lib/sfxLayeredMix'
 import { effectId, ensureMixPlan, mixV4Enabled, sceneLevelsFromTension } from '@/lib/mixPlan'
-import { sfxGloballyOff } from '@/lib/sfxSwitch'
+import { sfxGloballyOff, soundsnapOnly } from '@/lib/sfxSwitch'
 import { catalogPlannerEnabled } from '@/lib/sfxCatalog'
 import { bedDuckEnvelope, envelopeExpr, mixV3Enabled, musicBedDuckEnabled, outroMusicEnvelope, storyMusicEnvelope } from '@/lib/mixV3'
 import { overlayBodyIndex, overlayEnabled } from '@/lib/sfxOverlay'
@@ -844,13 +844,18 @@ export async function runRenderFinalMix(storyId: string, opts: {
     // Competition — all 26 episodes). The flag short-circuits discovery so no SFX files
     // are downloaded or injected into the body timeline.
     // SFX-ALL-OFF-001: SFX_OFF=on — no effects in any mix until the professional library is in.
-    const sfxIsDisabled = storyRow?.sfx_disabled === true || sfxGloballyOff()
+    // SOUNDSNAP-ONLY-001: effects only through the catalog (licensed Soundsnap takes); otherwise none.
+    const catalogPathOn = overlayEnabled() && catalogPlannerEnabled(opts.previewTag || null)
+    const sfxIsDisabled = storyRow?.sfx_disabled === true || sfxGloballyOff() || (soundsnapOnly() && !catalogPathOn)
+    if (soundsnapOnly() && !catalogPathOn && !(storyRow?.sfx_disabled === true || sfxGloballyOff())) {
+      console.log('  SOUNDSNAP-ONLY-001: not in catalog mode — no effects in this mix (only Soundsnap catalog sounds are allowed)')
+    }
     if (sfxIsDisabled) {
       console.log(' [SFX-DISABLED-001] sfx_disabled=true — skipping sfx_*.mp3 assembly')
     }
     // SFX-SOUNDSNAP-001: the catalog planner replaces the script's old effect recordings
     // with catalog sounds, so those files are not used at all in catalog mode.
-    const catalogSfxMode = !sfxIsDisabled && overlayEnabled() && catalogPlannerEnabled(opts.previewTag || null)
+    const catalogSfxMode = !sfxIsDisabled && catalogPathOn
     if (catalogSfxMode) console.log('  SFX-SOUNDSNAP-001: catalog mode — script effect files (sfx_*.mp3) not used; catalog sounds only')
     const sfxPattern = /^sfx_(\d{4})\.mp3$/
     const parsedSfx = sfxIsDisabled || catalogSfxMode ? [] : files
