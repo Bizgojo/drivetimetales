@@ -320,7 +320,15 @@ export async function GET(request: NextRequest) {
   }
   }
 
-  // Fetch all trialing users with subscription_start set
+  // Fetch all NO-CARD trialing users with subscription_start set.
+  // CARD-TRIAL-EXCLUDE-001 (2026-11-04): card-on-file trials (users with a
+  // Stripe subscription) MUST skip the no-card day2 / ends-in-two-days /
+  // ends-tomorrow copy below ("No card, nothing to cancel" / "Nothing will
+  // be charged"). Card trials are covered instead by the Stripe
+  // `customer.subscription.trial_will_end` webhook (app/api/webhook/route.ts),
+  // which is untouched by this filter. No-card trials have
+  // stripe_subscription_id IS NULL, so filter on that column at the DB level.
+  // Welcome (checkout webhook) + day-1 install block below are untouched.
   const { data: users, error } = await supabase
     .from('users')
     .select('id, email, first_name, display_name, plan, subscription_ends_at, trial_started_at')
@@ -328,6 +336,7 @@ export async function GET(request: NextRequest) {
     .neq('plan', 'free')
     .not('subscription_ends_at', 'is', null)
     .not('is_test_account', 'is', true)
+    .is('stripe_subscription_id', null)
 
   if (error || !users) {
     console.error('[trial-emails] Failed to fetch users:', error)
@@ -433,6 +442,10 @@ export async function GET(request: NextRequest) {
       .gt('subscription_ends_at', now.toISOString())
       .not('is_test_account', 'is', true)
       .not('email', 'is', null)
+      // CARD-TRIAL-EXCLUDE-001 item 3 (2026-11-04): card-on-file trials
+      // (stripe_subscription_id set) skip the no-card reach copy too — same
+      // "No card, nothing to cancel" posture as the day2/5/6 cohort above.
+      .is('stripe_subscription_id', null)
 
     if (reachError) {
       // 42703 undefined_column (last_reach_reminder_at / subscription_type) or
