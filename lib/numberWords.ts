@@ -89,8 +89,45 @@ export function titlesEqualCanonical(a: string, b: string): boolean {
  */
 export function episodeNumberNamedIn(text: string, n: number): boolean {
   if (!Number.isFinite(n) || n < 1) return false
-  const normalized = normalizeNumberWords(String(text ?? ''))
+  // EPISODE-NUMBER-COMPOUND-001 (Nov 4, 2026): normalizeNumberWords only
+  // knows one..twenty, so "Episode Twenty-Three" read as "20-3": episode 23
+  // failed this check (Sunset EP23) and episode 3 wrongly passed it. Join
+  // spoken compounds (21-99) into one number HERE only. normalizeNumberWords
+  // itself is unchanged, so Belle freshness fingerprints and title checks
+  // are unaffected.
+  const normalized = normalizeNumberWords(joinSpokenCompounds(String(text ?? '')))
   return new RegExp(`\\b${Math.trunc(n)}\\b`).test(normalized)
+}
+
+const TENS_WORDS: Record<string, number> = {
+  twenty: 20, thirty: 30, forty: 40, fifty: 50, sixty: 60, seventy: 70, eighty: 80, ninety: 90,
+}
+const TENS_ORDINALS: Record<string, number> = {
+  twentieth: 20, thirtieth: 30, fortieth: 40, fiftieth: 50, sixtieth: 60, seventieth: 70, eightieth: 80, ninetieth: 90,
+}
+const UNIT_WORDS: Record<string, number> = {}
+for (let u = 1; u <= 9; u++) {
+  UNIT_WORDS[CARDINALS[u]] = u
+  UNIT_WORDS[ORDINALS[u]] = u
+}
+const COMPOUND_PATTERN = new RegExp(
+  `\\b(${Object.keys(TENS_WORDS).join('|')})[\\s-]+(${Object.keys(UNIT_WORDS).join('|')})\\b`,
+  'gi',
+)
+const TENS_ONLY_PATTERN = new RegExp(
+  `\\b(${[...Object.keys(TENS_WORDS), ...Object.keys(TENS_ORDINALS)].filter((w) => w !== 'twenty').join('|')})\\b`,
+  'gi',
+)
+
+/** "Twenty-Three" / "twenty three" / "twenty-third" → "23"; "thirty"/"thirtieth" → "30". */
+function joinSpokenCompounds(text: string): string {
+  return text
+    .replace(COMPOUND_PATTERN, (_m, tens: string, unit: string) =>
+      String(TENS_WORDS[tens.toLowerCase()] + UNIT_WORDS[unit.toLowerCase()]))
+    .replace(TENS_ONLY_PATTERN, (word: string) => {
+      const key = word.toLowerCase()
+      return String(TENS_WORDS[key] ?? TENS_ORDINALS[key])
+    })
 }
 
 /**

@@ -6096,7 +6096,20 @@ async function verifyStandaloneReadyForReview(job: ProductionJob) {
   // Runs only when structural fields are present (avoids false positives on
   // audio-not-ready stories) and script is available.
   const contentIssues: string[] = [...audioGateIssues]
-  if (structuralOk && audioGateIssues.length === 0 && story.script) {
+  // AUTHOR-WRITTEN-EXEMPT-001 (standalone RFR gap, Nov 4): Sunset runs the
+  // standalone path, and this RFR check still ran the Belle position/style
+  // rules Marc exempted for author-written series (EP23 failed on outro
+  // residue/companion/tease). Same skip as the series package path.
+  let rfrAuthorExempt = false
+  try {
+    rfrAuthorExempt = await isAuthorWrittenExemptSeriesId(story.series_id)
+  } catch {
+    rfrAuthorExempt = false
+  }
+  if (rfrAuthorExempt) {
+    console.log(`[${AUTHOR_WRITTEN_EXEMPT_ID}] story=${storyId} RFR Belle position validation skipped (author-written)`)
+  }
+  if (structuralOk && audioGateIssues.length === 0 && story.script && !rfrAuthorExempt) {
     const introText = extractBelleSection(story.script, 'intro')
     const outroText = extractBelleSection(story.script, 'outro')
     const positionResult = await validateIntroOutroPositionRules(story, introText, outroText)
