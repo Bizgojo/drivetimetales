@@ -68,6 +68,39 @@ a header if set (harmless no-op today, ready if auth is added later), but
 this is worth a separate security pass — anyone with the URL can currently
 trigger it.
 
+## Progress-alarm timer (ALARM-FIXES-4, PR #478)
+
+A systemd timer fires `GET /api/admin/progress-alarm` every 5min — this is
+the alarm's trigger (Vercel crons have been dead since Oct 22; EC2 owns the
+schedule). The scan is read-only except alarm state writes
+(`state_json.progress_alarm` / `state_json.external_wait`) and runner event
+log entries on alert transitions. No publish/queue/text changes.
+
+```bash
+sudo cp scripts/ec2-deploy/endlesstales-progress-alarm.service scripts/ec2-deploy/endlesstales-progress-alarm.timer /etc/systemd/system/
+chmod +x scripts/ec2-deploy/progress-alarm-call.sh
+sudo systemctl daemon-reload
+
+# Enable any time. Effective once PR #478 merges + deploys: the
+# INTERNAL_ADMIN_PATHS entry ships in that PR, so until then the route
+# answers 403 (logged, no state changed). ADMIN_INTERNAL_TOKEN must be set
+# in ~/drivetimetales/.env.local and match the server's value.
+sudo systemctl enable --now endlesstales-progress-alarm.timer
+```
+
+Verify it is firing:
+
+```bash
+systemctl status endlesstales-progress-alarm.timer --no-pager
+systemctl list-timers --all | grep progress-alarm
+tail -5 scripts/ec2-deploy/progress-alarm-call.log
+```
+
+A healthy firing line looks like:
+`progress-alarm scan OK HTTP 200 stuckCount=0 alertsSent=0`.
+A `HTTP 403` line means the PR has not merged/deployed yet — the call fires,
+the route refuses it, nothing changes.
+
 ## Zero-downtime deploys (ZERO-DOWNTIME-001, Marc 2026-11-02)
 
 Every deploy used to rebuild `.next` under the running app and restart it:

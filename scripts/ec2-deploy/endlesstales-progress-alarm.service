@@ -1,0 +1,13 @@
+[Unit]
+Description=Endless Tales progress-alarm scan (Stabilization Week Day1A fixes, PR #478)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/home/ubuntu/drivetimetales
+ExecStart=/usr/bin/env bash /home/ubuntu/drivetimetales/scripts/ec2-deploy/progress-alarm-call.sh
+StandardOutput=append:/home/ubuntu/drivetimetales/scripts/ec2-deploy/progress-alarm-call.log
+StandardError=append:/home/ubuntu/drivetimetales/scripts/ec2-deploy/progress-alarm-call.log
