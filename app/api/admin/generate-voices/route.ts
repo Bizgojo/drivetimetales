@@ -53,6 +53,7 @@ import {
   type BelleValidationContext,
 } from '@/lib/voiceBelleRules'
 import { EL_VOICE_CODE_LABEL } from '@/lib/voice-providers/elevenlabs/constants'
+import { shouldStampAfterBelleOnly, parseBelleEditedLines } from '@/lib/belleOnlyStamp'
 // ATL-FOLLOWUP-002: transcript QC normalization + comparison extracted to a
 // shared, testable module. Both sides (script text and Whisper STT output)
 // are normalized by the same pipeline before similarity/coverage checks.
@@ -2581,6 +2582,12 @@ export async function POST(req: NextRequest) {
       // (empty voiceGeneration state). Safe to send with segmentNumber=0 — the
       // subsequent retryMissingOnly inventory will see all segments as missing.
       purgeExisting = false,
+      // BELLE-ONLY-STAMP-001: 'intro' | 'outro' | 'both' — set ONLY when a
+      // person has confirmed the script edit changed nothing but those Belle
+      // line(s). With it, a successful generateBelleOnly run that regenerated
+      // exactly those line(s) stamps segments_generated_at so the hook gate's
+      // stale-audio check passes. Never sent automatically.
+      belleEditOnlyConfirmed = null,
     } = await req.json()
     if (!storyId) return NextResponse.json({ success: false, error: 'storyId required' }, { status: 400 })
     let script = scriptParam
@@ -2821,7 +2828,31 @@ export async function POST(req: NextRequest) {
       }
 
       result.success = Boolean(result.introUrl && result.outroUrl && result.errors.length === 0)
-      return NextResponse.json(result, { status: result.success ? 200 : 422 })
+      // BELLE-ONLY-STAMP-001: the Belle-only path never stamped
+      // segments_generated_at, so a Belle-line edit left the hook gate failing
+      // on "stale audio" forever (Sunset EP3, Nov 4). Stamp only when a person
+      // named the edited Belle line(s) AND this run regenerated each of them.
+      // Without the flag, behavior is unchanged.
+      const stampDecision = shouldStampAfterBelleOnly({
+        editedLines: parseBelleEditedLines(belleEditOnlyConfirmed),
+        success: result.success,
+        introStatus: result.introStatus,
+        outroStatus: result.outroStatus,
+      })
+      let segmentsStamped = false
+      if (stampDecision) {
+        const { error: stampErr } = await supabase
+          .from('stories')
+          .update({ segments_generated_at: new Date().toISOString() })
+          .eq('id', storyId)
+        if (stampErr) {
+          console.warn(`[BELLE-ONLY-STAMP-001] stamp failed for story ${storyId}: ${stampErr.message}`)
+        } else {
+          segmentsStamped = true
+          console.log(`[BELLE-ONLY-STAMP-001] Stamped segments_generated_at after confirmed Belle-only edit for story ${storyId} (intro=${result.introStatus}, outro=${result.outroStatus})`)
+        }
+      }
+      return NextResponse.json({ ...result, segmentsStamped }, { status: result.success ? 200 : 422 })
     }
     const { data: allVoices } = await supabase.from('narrator_voices').select('name,elevenlabs_voice_id,gender')
     const voiceByName: Record<string, string> = {}
