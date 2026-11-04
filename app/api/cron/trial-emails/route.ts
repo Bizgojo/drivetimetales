@@ -442,6 +442,10 @@ export async function GET(request: NextRequest) {
       .gt('subscription_ends_at', now.toISOString())
       .not('is_test_account', 'is', true)
       .not('email', 'is', null)
+      // CARD-TRIAL-EXCLUDE-001 item 3 (2026-11-04): card-on-file trials
+      // (stripe_subscription_id set) skip the no-card reach copy too — same
+      // "No card, nothing to cancel" posture as the day2/5/6 cohort above.
+      .is('stripe_subscription_id', null)
 
     if (reachError) {
       // 42703 undefined_column (last_reach_reminder_at / subscription_type) or

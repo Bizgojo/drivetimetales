@@ -5,6 +5,8 @@
  *
  * 1. cron trial-emails day2 / ends-in-two-days / ends-tomorrow query filters
  *    stripe_subscription_id IS NULL (card trials skip no-card copy).
+ * 1b. reach-reminder cohort query filters stripe_subscription_id IS NULL too
+ *    (2026-11-04 item 3 — same "No card, nothing to cancel" posture).
  * 2. welcome (checkout webhook) / day-1 install block / Stripe trial_will_end
  *    webhook are untouched.
  * 3. $0 — no sends, no network, no prod writes in this test (static source read).
@@ -22,11 +24,24 @@ describe('CARD-TRIAL-EXCLUDE-001 filter', () => {
     expect(cronSrc).toContain(".is('stripe_subscription_id', null)")
   })
 
-  test('filter sits on the trial cohort query, not elsewhere', () => {
+  test('filter sits on the trial + reach cohort queries, not elsewhere', () => {
     const occurrences = cronSrc.split(".is('stripe_subscription_id', null)").length - 1
-    // Exactly one filter: the trial day2/5/6 cohort. Day-1 install + reach
-    // cohorts must NOT gain this filter (day-1 applies regardless of plan).
-    expect(occurrences).toBe(1)
+    // Exactly two filters: the trial day2/5/6 cohort AND the reach-reminder
+    // cohort. Day-1 install must NOT gain this filter (day-1 applies
+    // regardless of plan).
+    expect(occurrences).toBe(2)
+  })
+
+  test('reach-reminder cohort query filters stripe_subscription_id IS NULL', () => {
+    // CARD-TRIAL-EXCLUDE-001 item 3: card trials skip the no-card reach copy
+    // ("No card, nothing to cancel") — same posture as day2/5/6.
+    // The reach block selects last_reach_reminder_at; the filter must sit in
+    // that same chained query.
+    const reachIdx = cronSrc.indexOf('reachCohort')
+    expect(reachIdx).toBeGreaterThan(-1)
+    const reachBlock = cronSrc.slice(reachIdx, reachIdx + 1200)
+    expect(reachBlock).toContain(".is('stripe_subscription_id', null)")
+    expect(reachBlock).toContain('last_reach_reminder_at')
   })
 
   test('no-card copy preserved on day2/5/6 templates', () => {
@@ -38,7 +53,7 @@ describe('CARD-TRIAL-EXCLUDE-001 filter', () => {
     // Day-1 block header comment intact.
     expect(cronSrc).toContain('Day-1 home-screen install email (RETENTION-PATH-001)')
     // Day-1 query must NOT filter on stripe_subscription_id (verified by
-    // single-occurrence test above), and still stamps day1_email_sent_at.
+    // two-occurrence test above: trial cohort + reach cohort only), and still stamps day1_email_sent_at.
     expect(cronSrc).toContain('day1_email_sent_at')
   })
 
