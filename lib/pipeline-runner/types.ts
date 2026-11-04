@@ -18,6 +18,7 @@ export type RunnerEventKind =
   | 'failure'
   | 'stall'
   | 'progress_stall'
+  | 'external_wait'
   | 'complete'
   | 'budget_exit'
   | 'lease_skip'

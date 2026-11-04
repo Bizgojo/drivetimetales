@@ -19,10 +19,26 @@
  * (state_json.progress_alarm) so no migration is needed.
  *
  * This module is pure (no I/O) so it is unit-testable with $0 spend.
+ *
+ * ALARM-FIXES-4 refinement (same file, no behavior change to the core
+ * evaluator): stuck alerts fire only for BUSY running jobs (updated_at /
+ * locked_at / logs touched in the last 30min) that are NOT SAVING. Queued
+ * jobs are silent (waiting in line, not spinning); idle running jobs are
+ * silent here (zombie detector's domain); waiting_for_external jobs get a
+ * once-a-day WAITING reminder, never a stuck alert.
  */
 
 export const PROGRESS_STALL_MS = 30 * 60 * 1000 // 30 min without a save → stuck
 export const PROGRESS_REMINDER_MS = 2 * 60 * 60 * 1000 // 2 h between reminders
+
+/** ALARM-FIXES-4: BUSY window — a running job counts as busy only if
+ *  updated_at / locked_at / logs were touched inside this window. Idle
+ *  running jobs are the zombie detector's domain, not this alarm's. */
+export const BUSY_MS = 30 * 60 * 1000 // 30 min
+
+/** ALARM-FIXES-4: waiting_for_external jobs get at most one waiting-on-Marc
+ *  reminder per day. They are WAITING, never stuck. */
+export const EXTERNAL_REMINDER_MS = 24 * 60 * 60 * 1000 // 24 h
 
 /** Measurable saved-artifact progress for one running job. */
 export type SavedProgress = {
@@ -70,6 +86,13 @@ export function fingerprintProgress(p: SavedProgress): string {
     String(p.step || ''),
     Math.max(0, Math.floor(Number(p.episodeCount) || 0)),
   ])
+}
+
+/** ALARM-FIXES-4: persisted waiting-reminder state for waiting_for_external
+ *  jobs. Separate key from progress_alarm — waiting is not stuck. */
+export type ExternalWaitState = {
+  /** ISO timestamp of the last waiting-on-Marc reminder, or null if never sent. */
+  lastReminderAt: string | null
 }
 
 function parseMs(iso: string | null | undefined, fallback: number): number {
@@ -177,5 +200,69 @@ export function buildStuckMessage(input: {
     `saved nothing for ${Math.floor(input.minutesSinceSave)}min ` +
     `(presentCount=${input.presentCount}, audio_url/step unchanged). ` +
     `Seg-loop pattern (Nov 2-4 Graves): processing without saving. Needs Marc.`
+  )
+}
+
+/**
+ * ALARM-FIXES-4 — scan triage by status (pure, pins the status contract).
+ *  - 'queued_silent': waiting in line, never scanned, never alerted.
+ *  - 'external_wait': waiting on Marc, daily WAITING reminder only.
+ *  - 'running': BUSY + NOT SAVING alone may alert (see isJobBusy +
+ *    evaluateProgressAlarm); idle running jobs stay silent here.
+ */
+export function scanTriage(status: string | null): 'queued_silent' | 'external_wait' | 'running' {
+  if (status === 'queued') return 'queued_silent'
+  if (status === 'waiting_for_external') return 'external_wait'
+  return 'running'
+}
+
+/**
+ * ALARM-FIXES-4 — BUSY gate (pure). A running job may only raise a stuck
+ * alert when it is BUSY (updated_at / locked_at / logs touched in the last
+ * 30min) AND NOT SAVING (fingerprint unchanged 30min). A running job that
+ * went quiet is idle — the zombie/stale-lock detector's domain, silent here.
+ */
+export function lastLogAt(logs: unknown): string | null {
+  if (!Array.isArray(logs) || logs.length === 0) return null
+  const tail = logs[logs.length - 1] as { at?: unknown }
+  return typeof tail?.at === 'string' ? tail.at : null
+}
+
+export function isJobBusy(
+  input: { updatedAt?: string | null; lockedAt?: string | null; logs?: unknown },
+  nowMs: number = Date.now(),
+): boolean {
+  const touchMs = [
+    parseMs(input.updatedAt, NaN),
+    parseMs(input.lockedAt, NaN),
+    parseMs(lastLogAt(input.logs), NaN),
+  ].filter((t) => Number.isFinite(t))
+  if (touchMs.length === 0) return false
+  return nowMs - Math.max(...touchMs) < BUSY_MS
+}
+
+/** ALARM-FIXES-4 — waiting_for_external reminder cadence (pure). */
+export function externalReminderDue(
+  lastReminderAt: string | null | undefined,
+  nowMs: number = Date.now(),
+): boolean {
+  if (!lastReminderAt) return true
+  return nowMs - parseMs(lastReminderAt, NaN) >= EXTERNAL_REMINDER_MS
+}
+
+/**
+ * ALARM-FIXES-4 — waiting-on-Marc reminder text. Deliberately says WAITING,
+ * never STUCK: a cast-wait / external-wait job holding still is expected.
+ */
+export function buildWaitingMessage(input: {
+  jobId: string
+  step: string | null
+  hoursWaiting: number
+}): string {
+  return (
+    `[progress-alarm] WAITING job ${input.jobId.slice(0, 8)} on step "${input.step ?? 'unknown'}" ` +
+    `is waiting on Marc/external for ${Math.floor(input.hoursWaiting)}h. ` +
+    `Not stuck — queued-in-line and cast-wait jobs hold still by design. ` +
+    `Daily reminder only; no action unless the wait itself is wrong.`
   )
 }
