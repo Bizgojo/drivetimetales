@@ -454,11 +454,13 @@ export async function POST(req: NextRequest) {
     if (alreadyLive) {
       console.warn(`[complete-story-package] PACKAGE-NO-UNPUBLISH-001: story ${storyId} is already published — leaving it visible (caller: ${req.headers.get('user-agent') || 'unknown'}, referer: ${req.headers.get('referer') || 'none'})`)
     } else {
+      // Hidden rows can always flip (they are invisible in the app).
+      // Visible rows are never touched here — alreadyLive above skips them.
       const { error: rfrErr } = await supabase
         .from('stories')
         .update({ status: 'audio_ready', is_hidden: true, published_on: null })
         .eq('id', storyId)
-        .or('workflow_state.is.null,workflow_state.neq.published')
+        .eq('is_hidden', true)
       if (rfrErr) throw new Error(rfrErr.message)
     }
 
