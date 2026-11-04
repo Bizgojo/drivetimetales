@@ -10,8 +10,10 @@ describe('PACKAGE-NO-UNPUBLISH-001', () => {
     expect(block).toMatch(/workflow_state === 'published'/)
     expect(block).toMatch(/if \(alreadyLive\)/)
   })
-  test('the downgrade write itself refuses published rows (race-safe)', () => {
-    expect(src).toMatch(/\.update\(\{ status: 'audio_ready', is_hidden: true, published_on: null \}\)\s*\n\s*\.eq\('id', storyId\)\s*\n\s*\.or\('workflow_state\.is\.null,workflow_state\.neq\.published'\)/)
+  test('the downgrade write relies on the alreadyLive JS guard (RFR-ALREADYLIVE-HIDDEN-001)', () => {
+    // Row-level .or()/.eq() filters removed: the JS guard is the single decision point.
+    expect(src).not.toMatch(/\.or\('workflow_state\.is\.null,workflow_state\.neq\.published'\)/)
+    expect(src).toMatch(/\.update\(\{ status: 'audio_ready', is_hidden: true, published_on: null \}\)\s*\n\s*\.eq\('id', storyId\)\s*\n(?!\s*\.or\(|\s*\.eq\('is_hidden')/)
     expect(src).not.toMatch(/await updateStory\(storyId, \{\s*status: 'audio_ready'/)
   })
 })
