@@ -17,6 +17,7 @@ export type RunnerEventKind =
   | 'step_advance'
   | 'failure'
   | 'stall'
+  | 'progress_stall'
   | 'complete'
   | 'budget_exit'
   | 'lease_skip'
@@ -58,7 +59,7 @@ export type StallRecord = {
 
 export type RunnerEvent = {
   at: string
-  source: 'autonomous-runner'
+  source: 'autonomous-runner' | 'progress-alarm'
   event: RunnerEventKind
   jobId: string
   step: string | null

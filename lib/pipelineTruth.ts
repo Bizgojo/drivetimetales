@@ -66,6 +66,7 @@ export type JobSnapshot = {
   updated_at?: string | null
   error_json?: unknown
   logs?: unknown[]
+  state_json?: unknown
 }
 
 // ---------------------------------------------------------------------------
@@ -172,6 +173,40 @@ export function classifyTrueState(job: JobSnapshot, nowMs: number = Date.now()):
       structuredErrorKind: null,
       ageMs: jobAge,
       lockAgeMs: lockAge,
+    }
+  }
+
+  // ── DAY1A-PROGRESS-ALARM-001: saved-artifact stall ─────────────────────
+  // The progress-alarm scanner (app/api/admin/progress-alarm) measures what
+  // a job actually SAVED (presentCount / audio_url / episodeCount / step)
+  // and flags state_json.progress_alarm.stuck when nothing was saved for
+  // ≥30min. A stuck flag overrides lock freshness: a fresh lock with zero
+  // saves is the Nov 2-4 seg-loop pattern (Graves: 16.9k processed, 0 saved),
+  // not a healthy job. Healthy ⟺ SAVED in the last 30min — log lines and
+  // heartbeats do not count.
+  if (status === 'running') {
+    const alarm = (job.state_json as Record<string, any> | null | undefined)?.progress_alarm as
+      | { stuck?: unknown; lastSavedAt?: unknown }
+      | undefined
+    if (alarm?.stuck === true) {
+      const lastSaved = typeof alarm.lastSavedAt === 'string' ? alarm.lastSavedAt : null
+      const mins = lastSaved
+        ? Math.max(0, Math.round((nowMs - new Date(lastSaved).getTime()) / 60_000))
+        : null
+      return {
+        trueState: 'STALLED',
+        status,
+        currentStep,
+        evidenceSummary: lastSaved
+          ? `Progress alarm: job saved nothing for ${mins}min (presentCount/audio_url/step unchanged). Seg-loop pattern — needs Marc.`
+          : `Progress alarm: job flagged stuck with no saved-artifact movement. Seg-loop pattern — needs Marc.`,
+        marcRequired: true,
+        safeResumePoint: currentStep,
+        autonomousRepairKind: null,
+        structuredErrorKind: 'segment_stale_loop',
+        ageMs: jobAge,
+        lockAgeMs: lockAge,
+      }
     }
   }
 
