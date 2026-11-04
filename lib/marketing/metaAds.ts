@@ -229,6 +229,29 @@ export async function createPausedAd(spec: PausedAdSpec): Promise<{ adId: string
   return { adId: String(data.id), creativeId: data?.creative_id ? String(data.creative_id) : '' }
 }
 
+// Uploads a Hal-captioned mp4 to the ad account video library (inert: no ad,
+// no spend, unpublished). Returns the Meta video ID for wiring into paused ads.
+// No status involved — uploads cannot serve. Hook-6 filenames refused by route.
+export async function uploadPausedVideo(bytes: ArrayBuffer, filename: string): Promise<string> {
+  const token = managementToken()
+  if (!token) throw new Error('META_ADS_MANAGEMENT_TOKEN not configured')
+  const form = new FormData()
+  form.append('access_token', token)
+  form.append('source', new Blob([bytes], { type: 'video/mp4' }), filename)
+  const res = await fetch(`${META_GRAPH_BASE}/act_${accountIdOrThrow()}/advideos`, {
+    method: 'POST',
+    headers: { 'User-Agent': 'EndlessTales-Amendment1/1.0' },
+    body: form,
+  })
+  if (!res.ok) {
+    const text = (await res.text().catch(() => '')).slice(0, 500)
+    throw new Error(`Meta Graph POST advideos ${res.status}: ${text}`)
+  }
+  const data = await res.json()
+  if (!data?.id) throw new Error('Meta advideos upload returned no id')
+  return String(data.id)
+}
+
 function accountIdOrThrow(): string {
   const id = adAccountId()
   if (!id) throw new Error('META_AD_ACCOUNT_ID not configured')
