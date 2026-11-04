@@ -15,8 +15,10 @@
  *   - current_step (production_jobs.current_step advance)
  *
  * Alert policy: one alert per stuck job + a reminder every 2h until the
- * fingerprint moves again. Alert state lives on the job row itself
- * (state_json.progress_alarm) so no migration is needed.
+ * fingerprint moves again. Alert state lives in the alarm's OWN table
+ * (progress_alarm_state keyed by job_id — see lib/progressAlarmStore.ts
+ * + supabase/migrations/20261104120000_progress_alarm_state.sql).
+ * The scanner NEVER writes production_jobs rows.
  *
  * This module is pure (no I/O) so it is unit-testable with $0 spend.
  *
@@ -52,7 +54,7 @@ export type SavedProgress = {
   episodeCount?: number
 }
 
-/** Persisted alarm state (stored at state_json.progress_alarm on the job row). */
+/** Persisted alarm state (stored in progress_alarm_state — OWN table, never production_jobs). */
 export type ProgressAlarmState = {
   fingerprint: string
   /** ISO timestamp of the last observed fingerprint change (= last save). */
@@ -88,8 +90,8 @@ export function fingerprintProgress(p: SavedProgress): string {
   ])
 }
 
-/** ALARM-FIXES-4: persisted waiting-reminder state for waiting_for_external
- *  jobs. Separate key from progress_alarm — waiting is not stuck. */
+/** OWN-STATE-001: persisted waiting-reminder timestamp for waiting_for_external
+ *  jobs (progress_alarm_state.wait_last_reminder_at). Waiting is not stuck. */
 export type ExternalWaitState = {
   /** ISO timestamp of the last waiting-on-Marc reminder, or null if never sent. */
   lastReminderAt: string | null
@@ -209,11 +211,39 @@ export function buildStuckMessage(input: {
  *  - 'external_wait': waiting on Marc, daily WAITING reminder only.
  *  - 'running': BUSY + NOT SAVING alone may alert (see isJobBusy +
  *    evaluateProgressAlarm); idle running jobs stay silent here.
+ *
+ * OWN-STATE-001 + BUSY-BY-ACTIVITY refinement: status is IGNORED for the
+ * busy decision. A QUEUED job that is BUSY (updated_at/locked_at/logs
+ * touched last 30min) with a frozen fingerprint MUST alert — the real
+ * Nov 2-4 pattern flipped running<->queued every cycle while spinning.
+ * Only jobs with NO touch in 30min are silent (incl. untouched queued).
+ * waiting_for_external still takes the daily-WAITING path only.
+ * Use triageByActivity() for the current rule; scanTriage() is kept for
+ * backward-compatible status pinning in older tests.
  */
 export function scanTriage(status: string | null): 'queued_silent' | 'external_wait' | 'running' {
   if (status === 'queued') return 'queued_silent'
   if (status === 'waiting_for_external') return 'external_wait'
   return 'running'
+}
+
+/**
+ * BUSY-BY-ACTIVITY triage (current rule, pure). Status is ignored for the
+ * busy decision — only waiting_for_external takes its own path:
+ *  - 'external_wait': waiting on Marc, daily WAITING reminder only, never stuck.
+ *  - 'silent_idle': NO touch (updated_at/locked_at/logs) in the last 30min
+ *    → silent, any status (incl. untouched queued + idle running).
+ *  - 'scan': BUSY (touched last 30min) → evaluate the saved-progress
+ *    fingerprint; frozen 30min ALERTS, any status (incl. busy queued —
+ *    the Nov 2-4 running<->queued flip pattern).
+ */
+export function triageByActivity(
+  status: string | null,
+  busy: boolean,
+): 'external_wait' | 'silent_idle' | 'scan' {
+  if (status === 'waiting_for_external') return 'external_wait'
+  if (!busy) return 'silent_idle'
+  return 'scan'
 }
 
 /**

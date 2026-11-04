@@ -3,12 +3,16 @@
  *
  * Rule: BUSY (updated_at/locked_at/logs touched last 30min) AND NOT SAVING
  * (no presentCount/audio_url/step progress 30min) → stuck alert + 2h
- * reminders. Queued waiting = silent. waiting_for_external = once-a-day
- * waiting-on-Marc reminder (never stuck).
+ * reminders. Status is IGNORED for the busy decision: a queued job that is
+ * still being touched with frozen saves is the real Nov 2-4
+ * running<->queued flip pattern and MUST alert. Only jobs with NO touch in
+ * 30min are silent (incl. untouched queued). waiting_for_external =
+ * once-a-day waiting-on-Marc reminder (never stuck).
  *
  * Pins, against Nov 2-4 evidence:
  *  1. Graves seg-loop (busy, zero saved 31min) → stuck_first_alert.
- *  2. Queued-in-line job → silent, no alert, no stuck flag, ever.
+ *  2. Untouched queued → silent; BUSY queued (running<->queued flip +
+ *     frozen saves) → stuck_first_alert via the same evaluator.
  *  3. Lake House cast-wait (waiting_for_external) → silent as stuck;
  *     WAITING reminder at most once per 24h.
  */
@@ -22,6 +26,7 @@ import {
   externalReminderDue,
   buildWaitingMessage,
   scanTriage,
+  triageByActivity,
   type SavedProgress,
 } from '@/lib/progressAlarm'
 
@@ -74,13 +79,22 @@ describe('1. Graves loop: BUSY + NOT SAVING → alerts', () => {
   })
 })
 
-describe('2. Queued-in-line: silent, ever', () => {
-  test('triage is silent regardless of how long the fingerprint is frozen', () => {
-    expect(scanTriage('queued')).toBe('queued_silent')
-    // Even a 6h-frozen fingerprint never reaches the evaluator for queued jobs:
-    // the route continues before any storage read / state write / alert.
+describe('2. Queued: silent ONLY when untouched; busy-queued ALERTS', () => {
+  test('untouched queued (no touch 30min) → silent via triageByActivity', () => {
+    expect(triageByActivity('queued', false)).toBe('silent_idle')
+    // A 6h-frozen fingerprint never reaches the evaluator for untouched
+    // queued jobs: the route continues before any storage read / alert.
     const frozen = evaluateProgressAlarm(null, gravesLoop(), T0)
     expect(frozen.decision).toBe('ok') // cold start could never alert anyway
+  })
+  test('BUSY queued (touched <30min) with frozen saves → evaluated, alerts', () => {
+    expect(triageByActivity('queued', true)).toBe('scan')
+    // Same evaluator path as running: baseline then 31min frozen → alert.
+    let r = evaluateProgressAlarm(null, gravesLoop(), T0)
+    expect(r.decision).toBe('ok')
+    r = evaluateProgressAlarm(r.nextState, gravesLoop(), T0 + 31 * MIN)
+    expect(r.decision).toBe('stuck_first_alert')
+    expect(r.healthy).toBe(false)
   })
 })
 

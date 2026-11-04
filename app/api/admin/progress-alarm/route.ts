@@ -7,21 +7,27 @@
  * SAVED (storage presentCount / stories.audio_url / series episode saves /
  * current_step) — NOT log lines, heartbeats, or updated_at freshness.
  *
- * A running job that saves nothing for ≥30min gets exactly one alert, then
- * a reminder every 2h until its fingerprint moves. Alert state persists on
- * the job row (state_json.progress_alarm — no migration). Alerts reuse the
- * existing runner event log + PIPELINE_ALERT_WEBHOOK_URL path.
+ * A BUSY job (updated_at/locked_at/logs touched last 30min) that saves
+ * nothing for ≥30min gets exactly one alert, then a reminder every 2h
+ * until its fingerprint moves. Status is IGNORED for the busy decision —
+ * a queued job that is still being touched with frozen saves is the real
+ * Nov 2-4 running<->queued flip pattern and MUST alert. Only jobs with NO
+ * touch in 30min are silent (incl. untouched queued + idle running).
+ * waiting_for_external jobs get a once-a-day WAITING reminder, never stuck.
+ *
+ * OWN-STATE-001: alarm state lives in the alarm's OWN table
+ * (progress_alarm_state keyed by job_id — see lib/progressAlarmStore.ts).
+ * This scanner NEVER WRITES production_jobs rows: no job-row writes at all,
+ * no logs/updated_at writes. Reads production_jobs/stories/storage only.
+ * Alerts go out via PIPELINE_ALERT_WEBHOOK_URL only (no runner-event DB
+ * writes, which would themselves touch production_jobs rows).
+ *
+ * ⚠️ The progress_alarm_state table needs Marc-side apply
+ * (supabase/migrations/20261104120000_progress_alarm_state.sql). Until
+ * applied, the scanner runs stateless (baseline each scan).
  *
  * Intended trigger: Vercel cron (or manual GET from Production Console).
- * Read-only except: state_json.progress_alarm updates + runner event log
- * writes on alert transitions. No publish/queue/text changes.
- *
- * ALARM-FIXES-4 triage (Stabilization Week):
- *  - queued → silent (waiting in line, not spinning). Reported, never alerted.
- *  - running → stuck alert ONLY when BUSY (updated_at/locked_at/logs touched
- *    in the last 30min) AND NOT SAVING (fingerprint unchanged 30min).
- *    Idle running jobs are silent here (zombie detector's domain).
- *  - waiting_for_external → once-a-day WAITING reminder (needs Marc), never stuck.
+ * No publish/queue/text changes.
  */
 
 import { NextRequest, NextResponse } from 'next/server'
@@ -33,12 +39,16 @@ import {
   isJobBusy,
   externalReminderDue,
   lastLogAt,
-  scanTriage,
-  type ProgressAlarmState,
-  type ExternalWaitState,
+  triageByActivity,
   type SavedProgress,
 } from '@/lib/progressAlarm'
-import { writeRunnerEvent, sendWebhookAlert } from '@/lib/pipeline-runner/notify'
+import {
+  loadAlarmState,
+  saveAlarmState,
+  saveWaitReminder,
+  type AlarmStateDb,
+} from '@/lib/progressAlarmStore'
+import { sendWebhookAlert } from '@/lib/pipeline-runner/notify'
 import type { RunnerEvent } from '@/lib/pipeline-runner/types'
 
 export const runtime = 'nodejs'
@@ -48,6 +58,10 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
+
+// OWN-STATE-001: cast once — the store only ever addresses
+// progress_alarm_state, never production_jobs.
+const alarmDb = supabase as unknown as AlarmStateDb
 
 const SCANNED_STATUSES = ['queued', 'running', 'waiting_for_external']
 const SCAN_LIMIT = 100
@@ -62,18 +76,11 @@ type JobRow = {
   updated_at: string | null
   locked_at: string | null
   logs: unknown
-  state_json?: any
   error_json?: any
 }
 
 function readStoryId(job: JobRow): string | null {
-  const candidates = [
-    job.story_id,
-    job.error_json?.storyId,
-    job.error_json?.story_id,
-    job.state_json?.storyId,
-    job.state_json?.story_id,
-  ]
+  const candidates = [job.story_id, job.error_json?.storyId, job.error_json?.story_id]
   for (const c of candidates) {
     const clean = String(c || '').trim()
     if (clean) return clean
@@ -95,7 +102,7 @@ export async function GET(_req: NextRequest) {
     const nowMs = Date.now()
     const { data: jobs, error: jobsError } = await supabase
       .from('production_jobs')
-      .select('id,status,current_step,story_id,series_id,updated_at,locked_at,logs,state_json,error_json')
+      .select('id,status,current_step,story_id,series_id,updated_at,locked_at,logs,error_json')
       .in('status', SCANNED_STATUSES)
       .order('updated_at', { ascending: false })
       .limit(SCAN_LIMIT)
@@ -110,29 +117,19 @@ export async function GET(_req: NextRequest) {
 
     for (const job of ((jobs || []) as JobRow[])) {
       const step = job.current_step ?? null
+      const busy = isJobBusy(
+        { updatedAt: job.updated_at, lockedAt: job.locked_at, logs: job.logs },
+        nowMs,
+      )
 
-      // ALARM-FIXES-4 triage: queued jobs wait in line — silent by design.
-      // No storage reads, no state writes, never an alert.
-      if (scanTriage(job.status) === 'queued_silent') {
-        report.push({
-          jobId: job.id,
-          status: job.status,
-          step,
-          silent: true,
-          healthy: true,
-          stuck: false,
-          decision: 'silent_queued',
-          alertSent: null,
-          note: 'queued-in-line: holding still by design, no alert',
-        })
-        continue
-      }
+      // BUSY-BY-ACTIVITY triage: waiting_for_external takes the daily
+      // WAITING path; NO-touch jobs are silent (any status); BUSY jobs
+      // of ANY status (incl. busy queued) are evaluated for saves.
+      const triage = triageByActivity(job.status, busy)
 
-      // ALARM-FIXES-4 triage: waiting_for_external jobs wait on Marc — a
-      // once-a-day WAITING reminder, never a stuck alert. Separate state key.
-      if (scanTriage(job.status) === 'external_wait') {
-        const waitState = (job.state_json?.external_wait as ExternalWaitState | undefined) || null
-        const due = externalReminderDue(waitState?.lastReminderAt, nowMs)
+      if (triage === 'external_wait') {
+        const { waitLastReminderAt } = await loadAlarmState(alarmDb, job.id)
+        const due = externalReminderDue(waitLastReminderAt, nowMs)
         const firstTouchMs = [
           new Date(job.updated_at || 0).getTime(),
           new Date(job.locked_at || 0).getTime(),
@@ -151,13 +148,9 @@ export async function GET(_req: NextRequest) {
             needs_marc: true,
             message,
           }
-          await writeRunnerEvent(supabase, job.id, event)
+          // OWN-STATE-001: webhook only — no production_jobs writes.
           await sendWebhookAlert(event)
-          const nextStateJson = {
-            ...(job.state_json || {}),
-            external_wait: { lastReminderAt: new Date(nowMs).toISOString() } satisfies ExternalWaitState,
-          }
-          await supabase.from('production_jobs').update({ state_json: nextStateJson }).eq('id', job.id)
+          await saveWaitReminder(alarmDb, job.id, nowMs)
           alertSent = 'waiting'
           alertsSent += 1
         }
@@ -175,10 +168,7 @@ export async function GET(_req: NextRequest) {
         continue
       }
 
-      // ALARM-FIXES-4 BUSY gate: an idle running job is the zombie
-      // detector's domain — silent here, no state writes, no alert.
-      const busy = isJobBusy({ updatedAt: job.updated_at, lockedAt: job.locked_at, logs: job.logs }, nowMs)
-      if (!busy) {
+      if (triage === 'silent_idle') {
         report.push({
           jobId: job.id,
           status: job.status,
@@ -186,14 +176,18 @@ export async function GET(_req: NextRequest) {
           silent: true,
           healthy: true,
           stuck: false,
-          decision: 'idle_not_busy',
+          decision: job.status === 'queued' ? 'silent_queued' : 'idle_not_busy',
           alertSent: null,
           lastLogAt: lastLogAt(job.logs),
-          note: 'running but quiet >30min: zombie detector owns this, no stuck alert',
+          note:
+            job.status === 'queued'
+              ? 'queued and untouched >30min: waiting in line, no alert'
+              : 'running but quiet >30min: zombie detector owns this, no stuck alert',
         })
         continue
       }
 
+      // BUSY (any status, incl. busy queued): frozen fingerprint 30min ALERTS.
       const storyId = readStoryId(job)
       let presentCount = 0
       let audioUrl: string | null = null
@@ -223,12 +217,11 @@ export async function GET(_req: NextRequest) {
       }
 
       const curr: SavedProgress = { presentCount, audioUrl, step, episodeCount }
-      const prev = (job.state_json?.progress_alarm as ProgressAlarmState | undefined) || null
+      const { progress: prev } = await loadAlarmState(alarmDb, job.id)
       const evalResult = evaluateProgressAlarm(prev, curr, nowMs)
 
-      // Persist (merge — never clobber other state_json keys).
-      const nextStateJson = { ...(job.state_json || {}), progress_alarm: evalResult.nextState }
-      await supabase.from('production_jobs').update({ state_json: nextStateJson }).eq('id', job.id)
+      // OWN-STATE-001: persist to progress_alarm_state ONLY.
+      await saveAlarmState(alarmDb, job.id, evalResult.nextState, null, nowMs)
 
       let alertSent: string | null = null
       if (evalResult.decision === 'stuck_first_alert' || evalResult.decision === 'stuck_reminder_due') {
@@ -249,15 +242,12 @@ export async function GET(_req: NextRequest) {
           needs_marc: true,
           message,
         }
-        await writeRunnerEvent(supabase, job.id, event)
+        // OWN-STATE-001: webhook only — no production_jobs writes.
         await sendWebhookAlert(event)
         // Record the alert timestamp so reminders stay on the 2h cadence.
-        const stamped = {
-          ...nextStateJson,
-          progress_alarm: { ...evalResult.nextState, lastAlertAt: new Date(nowMs).toISOString() },
-        }
-        await supabase.from('production_jobs').update({ state_json: stamped }).eq('id', job.id)
-        evalResult.nextState.lastAlertAt = stamped.progress_alarm.lastAlertAt
+        const stamped = { ...evalResult.nextState, lastAlertAt: new Date(nowMs).toISOString() }
+        await saveAlarmState(alarmDb, job.id, stamped, null, nowMs)
+        evalResult.nextState.lastAlertAt = stamped.lastAlertAt
         alertSent = reminder ? 'reminder' : 'first'
         alertsSent += 1
       }

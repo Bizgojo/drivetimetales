@@ -105,3 +105,59 @@ needed.` → Marc's DM (chat 8737860822).
 - Date:
 - Verdict: APPROVE / CHANGES-REQUESTED
 - Notes:
+
+---
+
+# ADDENDUM — OWN-STATE-001 + BUSY-BY-ACTIVITY (same branch, PR #478, DO NOT MERGE)
+
+Two fixes on top of fixes-4, same branch `feat/atlas-progress-alarm-day1a`.
+No publish/queue/text changes. No spend ($0 — pure logic + read-only scan).
+
+## Fix 1 — busy-by-activity regardless of status
+
+Old rule let a *busy queued* job stay silent. The real Nov 2-4 pattern
+flipped running<->queued every cycle while spinning with frozen saves —
+status must be IGNORED for the busy decision.
+
+- New `triageByActivity(status, busy)` in `lib/progressAlarm.ts`:
+  waiting_for_external → `external_wait` (daily WAITING only);
+  NOT busy (no touch 30min) → `silent_idle` (any status, incl. untouched
+  queued + idle running); BUSY → `scan` (evaluate fingerprint, any status
+  incl. busy queued). `scanTriage()` kept for backward-compat pinning.
+- New test replays the flip pattern: status alternates running<->queued
+  every ~5min, touches fresh, saves frozen 31min → `stuck_first_alert`;
+  plus untouched-queued silent, plus Lake House cast-wait waiting-only.
+
+## Fix 2 — own state, never touch production_jobs
+
+- New table `progress_alarm_state` keyed by job_id:
+  `supabase/migrations/20261104120000_progress_alarm_state.sql`
+  (⚠️ needs Marc-side apply; scanner runs stateless until applied).
+- New `lib/progressAlarmStore.ts`: ONLY writer of alarm state, ONLY to
+  `progress_alarm_state`. Never throws (missing-table fallback).
+- `route.ts` rewritten: reads production_jobs/stories/storage only;
+  persists via the store; alerts via webhook ONLY (runner-event DB writes
+  removed — they update production_jobs rows). No `state_json` anywhere.
+- New test asserts with a mock/spy store (only `progress_alarm_state`
+  addressed) + static route-source check (no production_jobs update/upsert/
+  delete, no state_json, no writeRunnerEvent).
+
+## What to verify
+
+1. `npx jest __tests__/progress-alarm-day1a.test.ts __tests__/progress-alarm-fixes.test.ts __tests__/progress-alarm-own-state.test.ts` → 41/41.
+2. `npx jest __tests__/atl-runner-timeout-001.test.ts` → 6/6 (unchanged).
+3. `tsc --noEmit` clean on touched files (pre-existing `belleGenerator.ts` errors unrelated).
+4. Apply the migration Marc-side; confirm scanner persists across scans.
+
+## Handoff note (worker-box Claude-read)
+
+Worker-box `claude` OAuth is expired, so no worker-side Claude review was
+possible. Request: Orion-side review (fresh reviewer, not Atlas/self) before
+any merge. DO NOT MERGE without Marc's explicit merge word.
+
+## Reviewer report — own-state-001 + busy-by-activity (paste below when done)
+
+- Reviewer (fresh, not Atlas/self):
+- Date:
+- Verdict: APPROVE / CHANGES-REQUESTED
+- Notes:
