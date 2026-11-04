@@ -3309,8 +3309,18 @@ export async function POST(req: NextRequest) {
     // sfx_NNNN.mp3 files as expected artifacts alongside segment_NNNN.mp3 files.
     // Without this, missingSegments never contained SFX file names and the runner
     // considered voice generation complete without ever requesting SFX generation.
+    // SFX-OFF-INVENTORY-001 (prod-series-stuck-20261104 item 2, Marc 2026-11-04):
+    // when SFX generation is disabled (per-story sfx_disabled, SFX_OFF=on, or
+    // SFX_SOUNDSNAP_ONLY on-default — the same sfxDisabled gate that skips
+    // generation below), SFX lines are intentionally never generated and must NOT
+    // count as missing. Otherwise retryMissingOnly reports sfx_NNNN.mp3 missing
+    // forever, run-next re-targets the same SFX index each cycle, and the job
+    // loops at HTTP 200 with zero spend (presentCount never rises). Excluding
+    // them here fixes all three inventory consumers at once (incremental
+    // already-exists check, incremental post-generation report, full-path final
+    // inventory) since they all diff against expectedSegmentNames.
     const expectedSegmentNames = storyLines
-      .filter(line => line.type === 'narrator' || line.type === 'character' || line.type === 'beat' || line.type === 'pause' || line.type === 'sfx')
+      .filter(line => line.type === 'narrator' || line.type === 'character' || line.type === 'beat' || line.type === 'pause' || (line.type === 'sfx' && !sfxDisabled))
       .map(line => line.type === 'sfx'
         ? `sfx_${line.index.toString().padStart(4, '0')}.mp3`
         : `segment_${line.index.toString().padStart(4, '0')}.mp3`)
