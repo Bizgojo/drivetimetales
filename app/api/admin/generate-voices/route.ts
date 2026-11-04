@@ -53,7 +53,7 @@ import {
   type BelleValidationContext,
 } from '@/lib/voiceBelleRules'
 import { EL_VOICE_CODE_LABEL } from '@/lib/voice-providers/elevenlabs/constants'
-import { shouldStampAfterBelleOnly } from '@/lib/belleOnlyStamp'
+import { shouldStampAfterBelleOnly, parseBelleEditedLines } from '@/lib/belleOnlyStamp'
 // ATL-FOLLOWUP-002: transcript QC normalization + comparison extracted to a
 // shared, testable module. Both sides (script text and Whisper STT output)
 // are normalized by the same pipeline before similarity/coverage checks.
@@ -2582,11 +2582,12 @@ export async function POST(req: NextRequest) {
       // (empty voiceGeneration state). Safe to send with segmentNumber=0 — the
       // subsequent retryMissingOnly inventory will see all segments as missing.
       purgeExisting = false,
-      // BELLE-ONLY-STAMP-001: set ONLY when a person has confirmed that the
-      // script edit changed nothing but the Belle intro/outro. With it, a
-      // successful generateBelleOnly run stamps segments_generated_at so the
-      // hook gate's stale-audio check passes. Never sent automatically.
-      belleEditOnlyConfirmed = false,
+      // BELLE-ONLY-STAMP-001: 'intro' | 'outro' | 'both' — set ONLY when a
+      // person has confirmed the script edit changed nothing but those Belle
+      // line(s). With it, a successful generateBelleOnly run that regenerated
+      // exactly those line(s) stamps segments_generated_at so the hook gate's
+      // stale-audio check passes. Never sent automatically.
+      belleEditOnlyConfirmed = null,
     } = await req.json()
     if (!storyId) return NextResponse.json({ success: false, error: 'storyId required' }, { status: 400 })
     let script = scriptParam
@@ -2830,10 +2831,10 @@ export async function POST(req: NextRequest) {
       // BELLE-ONLY-STAMP-001: the Belle-only path never stamped
       // segments_generated_at, so a Belle-line edit left the hook gate failing
       // on "stale audio" forever (Sunset EP3, Nov 4). Stamp only when a person
-      // confirmed the edit was Belle-only AND this run actually regenerated a
-      // Belle line. Without the flag, behavior is unchanged.
+      // named the edited Belle line(s) AND this run regenerated each of them.
+      // Without the flag, behavior is unchanged.
       const stampDecision = shouldStampAfterBelleOnly({
-        confirmed: belleEditOnlyConfirmed === true,
+        editedLines: parseBelleEditedLines(belleEditOnlyConfirmed),
         success: result.success,
         introStatus: result.introStatus,
         outroStatus: result.outroStatus,

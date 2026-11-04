@@ -1,38 +1,51 @@
 /**
  * BELLE-ONLY-STAMP-001 pins.
- *  1. No flag → never stamps (behavior unchanged).
- *  2. Flag + success + a Belle line regenerated → stamps.
- *  3. Flag but nothing regenerated (both skipped) → no stamp.
- *  4. Flag but the run failed → no stamp.
- *  5. The route reads the flag and calls the helper only in the Belle-only path.
+ *  1. No confirmation → never stamps (behavior unchanged). `true` is not accepted.
+ *  2. Confirmed 'outro' + outro regenerated → stamps (Sunset EP3 case).
+ *  3. Confirmed 'intro' but intro skipped (old file kept) → no stamp, even if
+ *     the outro was regenerated (review finding: stale intro must not pass).
+ *  4. Confirmed 'both' needs both regenerated.
+ *  5. Failed run → no stamp.
+ *  6. The route reads the flag and calls the helper only in the Belle-only path.
  */
 
 import * as fs from 'fs'
 import * as path from 'path'
-import { shouldStampAfterBelleOnly } from '@/lib/belleOnlyStamp'
+import { shouldStampAfterBelleOnly, parseBelleEditedLines } from '@/lib/belleOnlyStamp'
 
 describe('BELLE-ONLY-STAMP-001', () => {
-  it('never stamps without the confirmation flag', () => {
-    expect(shouldStampAfterBelleOnly({ confirmed: false, success: true, introStatus: 'skipped_existing', outroStatus: 'generated' })).toBe(false)
+  it('only accepts intro / outro / both', () => {
+    expect(parseBelleEditedLines('outro')).toBe('outro')
+    expect(parseBelleEditedLines(true)).toBeNull()
+    expect(parseBelleEditedLines(undefined)).toBeNull()
+    expect(parseBelleEditedLines('story')).toBeNull()
   })
 
-  it('stamps when confirmed, successful and a Belle line was regenerated', () => {
-    expect(shouldStampAfterBelleOnly({ confirmed: true, success: true, introStatus: 'skipped_existing', outroStatus: 'generated' })).toBe(true)
-    expect(shouldStampAfterBelleOnly({ confirmed: true, success: true, introStatus: 'generated', outroStatus: 'skipped_existing' })).toBe(true)
+  it('never stamps without a confirmation', () => {
+    expect(shouldStampAfterBelleOnly({ editedLines: null, success: true, introStatus: 'generated', outroStatus: 'generated' })).toBe(false)
   })
 
-  it('does not stamp when nothing was regenerated', () => {
-    expect(shouldStampAfterBelleOnly({ confirmed: true, success: true, introStatus: 'skipped_existing', outroStatus: 'skipped_existing' })).toBe(false)
+  it('stamps when the confirmed line was regenerated (EP3: outro)', () => {
+    expect(shouldStampAfterBelleOnly({ editedLines: 'outro', success: true, introStatus: 'skipped_existing', outroStatus: 'generated' })).toBe(true)
+  })
+
+  it('does not stamp over an edited intro that was skipped', () => {
+    expect(shouldStampAfterBelleOnly({ editedLines: 'intro', success: true, introStatus: 'skipped_existing', outroStatus: 'generated' })).toBe(false)
+  })
+
+  it("'both' needs both lines regenerated", () => {
+    expect(shouldStampAfterBelleOnly({ editedLines: 'both', success: true, introStatus: 'generated', outroStatus: 'skipped_existing' })).toBe(false)
+    expect(shouldStampAfterBelleOnly({ editedLines: 'both', success: true, introStatus: 'generated', outroStatus: 'generated' })).toBe(true)
   })
 
   it('does not stamp when the run failed', () => {
-    expect(shouldStampAfterBelleOnly({ confirmed: true, success: false, introStatus: 'skipped_existing', outroStatus: 'failed' })).toBe(false)
+    expect(shouldStampAfterBelleOnly({ editedLines: 'outro', success: false, introStatus: 'skipped_existing', outroStatus: 'generated' })).toBe(false)
   })
 
   it('route wires the flag into the Belle-only path', () => {
     const src = fs.readFileSync(path.join(__dirname, '..', 'app', 'api', 'admin', 'generate-voices', 'route.ts'), 'utf8')
-    expect(src).toMatch(/belleEditOnlyConfirmed = false/)
-    expect(src).toMatch(/confirmed: belleEditOnlyConfirmed === true/)
+    expect(src).toMatch(/belleEditOnlyConfirmed = null/)
+    expect(src).toMatch(/editedLines: parseBelleEditedLines\(belleEditOnlyConfirmed\)/)
     const belleOnlyStart = src.indexOf('if (generateBelleOnly === true) {')
     const stampAt = src.indexOf('shouldStampAfterBelleOnly({')
     const nextPathAt = src.indexOf("const { data: allVoices } = await supabase.from('narrator_voices')")
