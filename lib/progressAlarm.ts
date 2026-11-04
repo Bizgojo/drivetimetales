@@ -90,6 +90,31 @@ export function fingerprintProgress(p: SavedProgress): string {
   ])
 }
 
+/** Count voice segment files (segment_NNNN.mp3) in one storage folder listing. */
+export function countSegments(files: { name: string }[] | null | undefined): number {
+  if (!files) return 0
+  let n = 0
+  for (const f of files) {
+    if (/^segment_\d{4}\.mp3$/.test(f.name)) n += 1
+  }
+  return n
+}
+
+/**
+ * ALARM-SERIES-SEGMENTS-001 (Nov 4): series jobs carry no story_id, so the
+ * scanner saw presentCount=0 and only counted FINISHED episodes (audio_url).
+ * Episodes save segments for hours before an audio_url exists, so busy,
+ * saving series jobs were flagged stuck (Last Well, Callisto). The series
+ * saved-progress count is the sum of segment files across every episode
+ * folder. Re-saving the same segment name (the Nov 2-4 loop) does not raise
+ * the sum, so a real loop still alerts.
+ */
+export function sumSeriesSegments(listings: Array<{ name: string }[] | null | undefined>): number {
+  let total = 0
+  for (const files of listings) total += countSegments(files)
+  return total
+}
+
 /** OWN-STATE-001: persisted waiting-reminder timestamp for waiting_for_external
  *  jobs (progress_alarm_state.wait_last_reminder_at). Waiting is not stuck. */
 export type ExternalWaitState = {

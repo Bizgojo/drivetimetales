@@ -40,6 +40,8 @@ import {
   externalReminderDue,
   lastLogAt,
   triageByActivity,
+  countSegments,
+  sumSeriesSegments,
   type SavedProgress,
 } from '@/lib/progressAlarm'
 import {
@@ -86,15 +88,6 @@ function readStoryId(job: JobRow): string | null {
     if (clean) return clean
   }
   return null
-}
-
-function countSegments(files: { name: string }[] | null): number {
-  if (!files) return 0
-  let n = 0
-  for (const f of files) {
-    if (/^segment_\d{4}\.mp3$/.test(f.name)) n += 1
-  }
-  return n
 }
 
 export async function GET(_req: NextRequest) {
@@ -205,6 +198,23 @@ export async function GET(_req: NextRequest) {
           .from('audio')
           .list(`asc3/${storyId}`, { limit: STORAGE_PAGE_LIMIT })
         presentCount = countSegments(files as { name: string }[] | null)
+      }
+
+      if (job.series_id && !storyId) {
+        // ALARM-SERIES-SEGMENTS-001: series jobs have no story_id; count
+        // saved segments across every episode folder of the series.
+        const { data: eps } = await supabase
+          .from('stories')
+          .select('id')
+          .eq('series_id', job.series_id)
+        const listings: Array<{ name: string }[] | null> = []
+        for (const ep of ((eps || []) as { id: string }[])) {
+          const { data: files } = await supabase.storage
+            .from('audio')
+            .list(`asc3/${ep.id}`, { limit: STORAGE_PAGE_LIMIT })
+          listings.push(files as { name: string }[] | null)
+        }
+        presentCount = sumSeriesSegments(listings)
       }
 
       if (job.series_id) {
