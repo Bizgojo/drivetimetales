@@ -34,14 +34,19 @@ log() { echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] $*"; }
 log "run-next loop starting — URL=$URL interval=${INTERVAL_SECONDS}s"
 
 while true; do
-  if [ -n "${ADMIN_INTERNAL_TOKEN:-${RUN_NEXT_ADMIN_TOKEN:-}}" ]; then
-    AUTH_HEADER=(-H "Authorization: Bearer ${ADMIN_INTERNAL_TOKEN:-${RUN_NEXT_ADMIN_TOKEN:-}}")
+  # HYGIENE-20261104b: per-worker curl config (no shared .tmp race).
+  # umask 077 subshell: bearer file never readable by others, even briefly.
+  BEARER_CONFIG="$HOME/.run-next-curl-config-worker1"
+  TOK="${ADMIN_INTERNAL_TOKEN:-${RUN_NEXT_ADMIN_TOKEN:-}}"
+  if [ -n "$TOK" ]; then
+    ( umask 077; printf 'header = "Authorization: Bearer %s"\n' "$TOK" > "$BEARER_CONFIG.tmp" && mv -f "$BEARER_CONFIG.tmp" "$BEARER_CONFIG" )
+    CURL_AUTH=(-K "$BEARER_CONFIG")
   else
-    AUTH_HEADER=()
+    CURL_AUTH=()
   fi
 
   HTTP_CODE=$(curl -sS --max-time "$MAX_SECONDS" -o /tmp/run-next-last-response.json -w "%{http_code}" \
-    -X POST "${AUTH_HEADER[@]}" \
+    -X POST "${CURL_AUTH[@]}" \
     -H "Content-Type: application/json" \
     -d '{}' \
     "$URL" || echo "000")
