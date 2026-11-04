@@ -250,3 +250,41 @@ describe('autoretry guard wiring (source check, no DB)', () => {
     expect(src).toContain('blocked-Belle auto-resume skipped (author-written)')
   })
 })
+
+describe('generate-voices second gate (commission prod-series-stuck-20261104 item 3)', () => {
+  const gvPath = path.join(
+    __dirname,
+    '..',
+    'app',
+    'api',
+    'admin',
+    'generate-voices',
+    'route.ts',
+  )
+  const gv = fs.readFileSync(gvPath, 'utf8')
+
+  test('imports the exemption predicate', () => {
+    expect(gv).toContain("from '@/lib/authorWrittenExempt'")
+    expect(gv).toContain('resolveAuthorWrittenExempt')
+    expect(gv).toContain(AUTHOR_WRITTEN_EXEMPT_ID)
+  })
+
+  test('post-repair refuse still exists for non-exempt copy', () => {
+    expect(gv).toContain('BELLE_POSTREPAIR_CONFORMANCE_FAILED')
+    expect(gv).toContain('Repaired Belle copy fails publish conformance - refusing before voice spend')
+  })
+
+  test('exempt series skip the post-repair refuse (author copy voices as-is)', () => {
+    expect(gv).toContain('outroValidation.errors.length > 0) && !gvAuthorWrittenExempt')
+    expect(gv).toContain('post-repair conformance skipped (author-written)')
+  })
+
+  test('exempt series never get repaired Belle copy persisted (no rewrite)', () => {
+    expect(gv).toContain('Object.keys(belleRepairUpdates).length > 0 && !gvAuthorWrittenExempt')
+  })
+
+  test('lookup keys off the story row series_id, fails closed via shared resolver', () => {
+    expect(gv).toContain("(storyRow as any)?.series_id")
+    expect(gv).toContain("from('series').select('author_written')")
+  })
+})
