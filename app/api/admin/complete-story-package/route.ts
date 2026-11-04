@@ -442,20 +442,27 @@ export async function POST(req: NextRequest) {
     // auto-published, flipping a live finale back to audio_ready / hidden.
     // A story already published stays published — only the review-ready
     // flags are skipped; every other package step above still ran.
+    // RFR-ALREADYLIVE-HIDDEN-001 (Sunset EP26, Nov 4): workflow_state alone
+    // must not imply live — hidden rows (is_hidden=true) are never visible
+    // in the app, so the review-ready flip is safe for them.
     const { data: liveCheck } = await supabase
       .from('stories')
       .select('workflow_state,status,is_hidden')
       .eq('id', storyId)
       .single()
-    const alreadyLive = liveCheck?.workflow_state === 'published' || (liveCheck?.status === 'published' && liveCheck?.is_hidden === false)
+    const alreadyLive = (liveCheck?.workflow_state === 'published' || liveCheck?.status === 'published') && liveCheck?.is_hidden === false
     if (alreadyLive) {
       console.warn(`[complete-story-package] PACKAGE-NO-UNPUBLISH-001: story ${storyId} is already published — leaving it visible (caller: ${req.headers.get('user-agent') || 'unknown'}, referer: ${req.headers.get('referer') || 'none'})`)
     } else {
+      // RFR-ALREADYLIVE-HIDDEN-001: the alreadyLive JS guard above is the
+      // single decision point (flip iff !alreadyLive, i.e. hidden OR neither
+      // workflow_state nor status is 'published', null-safe). No row-level
+      // filter here — a stale .or()/.eq() silently skips rows the guard
+      // approved (visible+unpublished) or must flip (hidden+published EP26).
       const { error: rfrErr } = await supabase
         .from('stories')
         .update({ status: 'audio_ready', is_hidden: true, published_on: null })
         .eq('id', storyId)
-        .or('workflow_state.is.null,workflow_state.neq.published')
       if (rfrErr) throw new Error(rfrErr.message)
     }
 
