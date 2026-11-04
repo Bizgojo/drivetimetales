@@ -16,6 +16,7 @@ import { createHash } from 'crypto'
 import { isStandaloneOutroRecording } from '@/lib/belleOutroRecording'
 import { CANONICAL_BELLE_B_VOICE_ID, RESERVED_BELLE_B_VOICE_IDS, isBelleBVoiceId } from '@/lib/voiceConstants'
 import { evaluateBelleCopyForPublish } from '@/lib/publicationBelleGate'
+import { AUTHOR_WRITTEN_EXEMPT_ID, resolveAuthorWrittenExempt } from '@/lib/authorWrittenExempt'
 // ATL-PARSER-001: shared script line-index parser — both GV and render-final-mix
 // delegate all counting to this function so [PAUSE] drift can never recur.
 import { parseScriptPositions, isWordlessSpokenText, SCENE_BREAK_PAUSE_SECONDS } from '@/lib/scriptLineIndex'
@@ -2654,7 +2655,24 @@ export async function POST(req: NextRequest) {
     const belleRepairUpdates: Record<string, string> = {}
     if (introValidation.repaired && introValidation.line) belleRepairUpdates.announcement_text = introValidation.line.text
     if (outroValidation.repaired && outroValidation.line) belleRepairUpdates.outro_text = outroValidation.line.text
-    if (Object.keys(belleRepairUpdates).length > 0) {
+    // AUTHOR-WRITTEN-EXEMPT-001 second gate (commission
+    // prod-series-stuck-20261104 item 3, sfx-root-6actions; PR475 covered
+    // run-next only — generate-voices still refused Sunset with
+    // BELLE_POSTREPAIR_CONFORMANCE_FAILED). When the story's series is
+    // author-written exempt: NEVER persist repaired Belle copy (no rewrite
+    // of author text) and NEVER refuse on post-repair conformance — voice
+    // the author copy as-is. Technical gates below (numerals, narrator,
+    // QC, loudness, duration) stay enforced.
+    const gvExemptSeriesId = String((storyRow as any)?.series_id || '').trim()
+    const gvAuthorWrittenExempt = await resolveAuthorWrittenExempt(async (id) => {
+      const { data, error } = await supabase.from('series').select('author_written').eq('id', id).maybeSingle()
+      if (error) throw error
+      return data as { author_written?: unknown } | null
+    }, gvExemptSeriesId)
+    if (gvAuthorWrittenExempt) {
+      console.log(`[${AUTHOR_WRITTEN_EXEMPT_ID}] story=${storyId} post-repair conformance skipped (author-written) — no Belle rewrite, voicing author copy as-is`)
+    }
+    if (Object.keys(belleRepairUpdates).length > 0 && !gvAuthorWrittenExempt) {
       await supabase.from('stories').update(belleRepairUpdates).eq('id', storyId)
     }
     // BELLE-POSTREPAIR-CONFORMANCE-001 (acceptance-close-gaps): invalid Belle
@@ -2665,8 +2683,10 @@ export async function POST(req: NextRequest) {
     // the PRODUCTION publish gate on the to-be-spoken copy BEFORE any provider
     // operation; refuse pre-spend (422) when it fails. Clean copy (no repair,
     // no errors) is untouched: zero behavior change on the passing path.
-    if (introValidation.repaired || outroValidation.repaired ||
-      introValidation.errors.length > 0 || outroValidation.errors.length > 0) {
+    // AUTHOR-WRITTEN-EXEMPT-001 second gate: exempt series skip the whole
+    // post-repair refuse (author copy voices as-is, never repaired above).
+    if ((introValidation.repaired || outroValidation.repaired ||
+      introValidation.errors.length > 0 || outroValidation.errors.length > 0) && !gvAuthorWrittenExempt) {
       const repairedRawLines = script.split('\n')
       for (const rv of [introValidation, outroValidation]) {
         if (!rv.repaired || !rv.line) continue
