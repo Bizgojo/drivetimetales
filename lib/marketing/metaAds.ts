@@ -143,6 +143,98 @@ export async function setAdStatus(adId: string, status: 'ACTIVE' | 'PAUSED'): Pr
   await graphPost(adId, { status })
 }
 
+// ---- Paused-build (campaign-6plus2-nov09-20261104) creation helpers ----
+// Every helper hard-codes status PAUSED. There is intentionally NO status
+// parameter and NO ACTIVE path: callers cannot enable anything through these.
+
+export async function createPausedCampaign(name: string): Promise<string> {
+  const data = await graphPost(`act_${accountIdOrThrow()}/campaigns`, {
+    name,
+    objective: 'OUTCOME_SALES',
+    status: 'PAUSED',
+    special_ad_categories: '[]',
+  })
+  if (!data?.id) throw new Error('Meta campaign create returned no id')
+  return String(data.id)
+}
+
+export interface PausedAdSetSpec {
+  name: string
+  campaignId: string
+  dailyBudgetCents: string
+  pixelId: string
+  customConversionId: string
+}
+
+export async function createPausedAdSet(spec: PausedAdSetSpec): Promise<string> {
+  const data = await graphPost(`act_${accountIdOrThrow()}/adsets`, {
+    name: spec.name,
+    campaign_id: spec.campaignId,
+    daily_budget: spec.dailyBudgetCents,
+    billing_event: 'IMPRESSIONS',
+    optimization_goal: 'OFFSITE_CONVERSIONS',
+    bid_strategy: 'LOWEST_COST_WITHOUT_CAP',
+    status: 'PAUSED',
+    targeting: JSON.stringify({
+      geo_locations: { countries: ['US'] },
+      locales: ['en_US'],
+      age_min: 25,
+      age_max: 54,
+      facebook_positions: ['feed', 'reels', 'story'],
+      instagram_positions: ['reels', 'stream', 'story'],
+    }),
+    promoted_object: JSON.stringify({
+      pixel_id: spec.pixelId,
+      custom_event_type: spec.customConversionId,
+    }),
+    attribution_spec: JSON.stringify([
+      { event_type: 'CLICK_THROUGH', window_days: 7 },
+      { event_type: 'VIEW_THROUGH', window_days: 1 },
+    ]),
+  })
+  if (!data?.id) throw new Error('Meta ad set create returned no id')
+  return String(data.id)
+}
+
+export interface PausedAdSpec {
+  name: string
+  adSetId: string
+  pageId: string
+  videoId: string
+  linkUrl: string
+  message: string
+  title: string
+  linkDescription: string
+}
+
+export async function createPausedAd(spec: PausedAdSpec): Promise<{ adId: string; creativeId: string }> {
+  const data = await graphPost(`act_${accountIdOrThrow()}/ads`, {
+    name: spec.name,
+    adset_id: spec.adSetId,
+    status: 'PAUSED',
+    creative: JSON.stringify({
+      object_story_spec: {
+        page_id: spec.pageId,
+        video_data: {
+          video_id: spec.videoId,
+          link_description: spec.linkDescription,
+          message: spec.message,
+          title: spec.title,
+          call_to_action: { type: 'LEARN_MORE', value: { link: spec.linkUrl } },
+        },
+      },
+    }),
+  })
+  if (!data?.id) throw new Error('Meta ad create returned no id')
+  return { adId: String(data.id), creativeId: data?.creative_id ? String(data.creative_id) : '' }
+}
+
+function accountIdOrThrow(): string {
+  const id = adAccountId()
+  if (!id) throw new Error('META_AD_ACCOUNT_ID not configured')
+  return id.startsWith('act_') ? id.slice(4) : id
+}
+
 export function getAdAccountId(): string | null {
   return adAccountId()
 }
