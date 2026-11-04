@@ -7,6 +7,8 @@
 // creative fetch) prefer the management token too; the read-only token is
 // never used for launches.
 
+import { buildAdSetTargeting, buildPromotedObject } from './pausedBuildNov09'
+
 const META_GRAPH_BASE = 'https://graph.facebook.com/v21.0'
 
 function managementToken(): string | null {
@@ -147,12 +149,14 @@ export async function setAdStatus(adId: string, status: 'ACTIVE' | 'PAUSED'): Pr
 // Every helper hard-codes status PAUSED. There is intentionally NO status
 // parameter and NO ACTIVE path: callers cannot enable anything through these.
 
-export async function createPausedCampaign(name: string): Promise<string> {
+export async function createPausedCampaign(name: string, spendCapCents: number): Promise<string> {
   const data = await graphPost(`act_${accountIdOrThrow()}/campaigns`, {
     name,
     objective: 'OUTCOME_SALES',
     status: 'PAUSED',
     special_ad_categories: '[]',
+    // Claude-review fix (endpoint-fixes-7): $4k ceiling enforced on the object.
+    spend_cap: String(spendCapCents),
   })
   if (!data?.id) throw new Error('Meta campaign create returned no id')
   return String(data.id)
@@ -163,7 +167,6 @@ export interface PausedAdSetSpec {
   campaignId: string
   dailyBudgetCents: string
   pixelId: string
-  customConversionId: string
 }
 
 export async function createPausedAdSet(spec: PausedAdSetSpec): Promise<string> {
@@ -175,18 +178,10 @@ export async function createPausedAdSet(spec: PausedAdSetSpec): Promise<string> 
     optimization_goal: 'OFFSITE_CONVERSIONS',
     bid_strategy: 'LOWEST_COST_WITHOUT_CAP',
     status: 'PAUSED',
-    targeting: JSON.stringify({
-      geo_locations: { countries: ['US'] },
-      locales: ['en_US'],
-      age_min: 25,
-      age_max: 54,
-      facebook_positions: ['feed', 'reels', 'story'],
-      instagram_positions: ['reels', 'stream', 'story'],
-    }),
-    promoted_object: JSON.stringify({
-      pixel_id: spec.pixelId,
-      custom_event_type: spec.customConversionId,
-    }),
+    targeting: JSON.stringify(buildAdSetTargeting()),
+    // Claude-review fix (endpoint-fixes-7): pixel START_TRIAL (app StartTrial),
+    // Adv+ audience targeting_automation + Adv+ placements (no fixed lists).
+    promoted_object: JSON.stringify(buildPromotedObject(spec.pixelId)),
     attribution_spec: JSON.stringify([
       { event_type: 'CLICK_THROUGH', window_days: 7 },
       { event_type: 'VIEW_THROUGH', window_days: 1 },
@@ -201,6 +196,9 @@ export interface PausedAdSpec {
   adSetId: string
   pageId: string
   videoId: string
+  // Claude-review fix (endpoint-fixes-7): exactly one thumbnail per ad.
+  thumbnailHash?: string
+  thumbnailUrl?: string
   linkUrl: string
   message: string
   title: string
@@ -217,6 +215,12 @@ export async function createPausedAd(spec: PausedAdSpec): Promise<{ adId: string
         page_id: spec.pageId,
         video_data: {
           video_id: spec.videoId,
+          // Claude-review fix (endpoint-fixes-7): per-hook thumbnail.
+          ...(spec.thumbnailHash
+            ? { image_hash: spec.thumbnailHash }
+            : spec.thumbnailUrl
+              ? { image_url: spec.thumbnailUrl }
+              : {}),
           link_description: spec.linkDescription,
           message: spec.message,
           title: spec.title,

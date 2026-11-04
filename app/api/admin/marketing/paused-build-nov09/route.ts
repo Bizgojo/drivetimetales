@@ -45,19 +45,22 @@ function plannedPayloads(input: PausedBuildInput) {
       start_time: null,
       end_time: null,
     },
+    campaign_spend_cap_cents: PAUSED_BUILD.spendCapCents,
     adSet: {
       name: PAUSED_BUILD.adSetName,
       daily_budget_cents: PAUSED_BUILD.dailyBudgetCents,
       total_ceiling_cents: PAUSED_BUILD.totalCeilingCents,
       tranche1_cents: [PAUSED_BUILD.tranche1MinCents, PAUSED_BUILD.tranche1MaxCents],
-      targeting: `Advantage+ broad ${PAUSED_BUILD.country} ${PAUSED_BUILD.ageMin}-${PAUSED_BUILD.ageMax}`,
+      targeting: `Advantage+ audience + placements, ${PAUSED_BUILD.country} ${PAUSED_BUILD.ageMin}-${PAUSED_BUILD.ageMax} suggestions`,
       optimization_event: PAUSED_BUILD.optimizationEvent,
+      promoted_object: { pixel_id: input.pixelId, custom_event_type: PAUSED_BUILD.customEventType },
       status: PAUSED_BUILD.status,
     },
     ads: HOOK_CREATIVES.map((h) => ({
       name: h.adName,
       hook: h.hook,
       video_id: input.videoIds[h.hook],
+      thumbnail: input.thumbnails[h.hook],
       link_url: input.gateUrl + h.utm,
       status: PAUSED_BUILD.status,
     })),
@@ -79,7 +82,8 @@ export async function GET() {
       total_ceiling: PAUSED_BUILD.totalCeilingCents,
     },
     spend: 0,
-    note: 'POST with {videoIds hook1..hook5, pageId, pixelId, customConversionId, gateUrl, confirmPaused:true}. ?dryRun=1 validates without Meta calls.',
+    resume: 'Re-POST with campaignId and/or adSetId from a prior piece report to continue instead of duplicating.',
+    note: 'POST with {videoIds hook1..hook5, thumbnails hook1..hook5 (image_hash|xor image_url), pageId, pixelId, gateUrl, confirmPaused:true}. ?dryRun=1 validates without Meta calls.',
   })
 }
 
@@ -107,24 +111,37 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    // Piece 1: campaign shell, PAUSED.
-    const campaignId = await createPausedCampaign(PAUSED_BUILD.campaignName)
-    // Piece 2: single ad set, PAUSED.
-    const adSetId = await createPausedAdSet({
-      name: PAUSED_BUILD.adSetName,
-      campaignId,
-      dailyBudgetCents: String(PAUSED_BUILD.dailyBudgetCents),
-      pixelId: input.pixelId,
-      customConversionId: input.customConversionId,
-    })
+    // Piece 1: campaign shell, PAUSED (+ $4k spend_cap). Skipped when resuming.
+    let campaignId = input.campaignId
+    let campaignReused = false
+    if (!campaignId) {
+      campaignId = await createPausedCampaign(PAUSED_BUILD.campaignName, PAUSED_BUILD.spendCapCents)
+    } else {
+      campaignReused = true
+    }
+    // Piece 2: single ad set, PAUSED. Skipped when resuming.
+    let adSetId = input.adSetId
+    let adSetReused = false
+    if (!adSetId) {
+      adSetId = await createPausedAdSet({
+        name: PAUSED_BUILD.adSetName,
+        campaignId,
+        dailyBudgetCents: String(PAUSED_BUILD.dailyBudgetCents),
+        pixelId: input.pixelId,
+      })
+    } else {
+      adSetReused = true
+    }
     // Piece 3: 5 hook creatives, one at a time, each PAUSED.
     const ads = []
     for (const h of HOOK_CREATIVES) {
+      const thumb = input.thumbnails[h.hook]
       const r = await createPausedAd({
         name: h.adName,
         adSetId,
         pageId: input.pageId,
         videoId: input.videoIds[h.hook],
+        ...(thumb.image_hash ? { thumbnailHash: thumb.image_hash } : { thumbnailUrl: thumb.image_url }),
         linkUrl: input.gateUrl + h.utm,
         message: h.primary,
         title: h.headline,
@@ -135,7 +152,9 @@ export async function POST(req: NextRequest) {
     return noStore({
       success: true,
       campaignId,
+      campaignReused,
       adSetId,
+      adSetReused,
       ads,
       status: 'ALL_PAUSED',
       spend: 0,
