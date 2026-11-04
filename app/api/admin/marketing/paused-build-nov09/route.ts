@@ -1,12 +1,14 @@
 // POST /api/admin/marketing/paused-build-nov09
 // Commission campaign-6plus2-nov09-20261104 = option1-atlas-paused-endpoint.
-// Creates 1 campaign + 1 ad set + 5 ads ALL PAUSED from the Susan mapping.
+// Creates 1 campaign + 1 ad set + 6 ads ALL PAUSED from the Susan mapping
+// (hooks 1–5 + hook6 romance slot).
 // - Auth: admin allowlist (requireAdminEmail), same as other Amendment-1 routes.
 // - Token: META_ADS_MANAGEMENT_TOKEN server-side only (via lib/marketing/metaAds).
 // - No ACTIVE path exists. No schedule, no CBO, no spend released ($0).
 // - Budgets hard-coded from campaign-approval-card-nov09.md ($4k ceiling,
 //   tranche-1 $50/day); caller-supplied budget/status/schedule → 400 REFUSED.
-// - Video wiring requires all 5 Hal-captioned Meta video IDs; Hook-6 refused.
+// - Video wiring requires all 6 Hal-captioned Meta video IDs (hook1..hook6),
+//   each PAUSED-only; refused if not paused.
 // - GET (or POST ?dryRun=1) returns the exact payloads WITHOUT touching Meta.
 
 import { NextRequest, NextResponse } from 'next/server'
@@ -83,7 +85,7 @@ export async function GET() {
     },
     spend: 0,
     resume: 'Re-POST with campaignId and/or adSetId from a prior piece report to continue instead of duplicating.',
-    note: 'POST with {videoIds hook1..hook5, thumbnails hook1..hook5 (image_hash|xor image_url), pageId, pixelId, gateUrl, confirmPaused:true}. ?dryRun=1 validates without Meta calls.',
+    note: 'POST with {videoIds hook1..hook6, thumbnails hook1..hook6 (image_hash|xor image_url), pageId, pixelId, gateUrl, confirmPaused:true}. ?dryRun=1 validates without Meta calls.',
   })
 }
 
@@ -132,7 +134,7 @@ export async function POST(req: NextRequest) {
     } else {
       adSetReused = true
     }
-    // Piece 3: 5 hook creatives, one at a time, each PAUSED.
+    // Piece 3: 6 hook creatives, one at a time, each PAUSED.
     const ads = []
     for (const h of HOOK_CREATIVES) {
       const thumb = input.thumbnails[h.hook]

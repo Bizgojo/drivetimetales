@@ -15,6 +15,7 @@ Builder: `POST /api/admin/marketing/paused-build-nov09` (this branch). ALL PAUSE
 | Ad hook3 | ET_G6_Hook3_LedgerBell_PAUSED | _(pending)_ |
 | Ad hook4 | ET_G6_Hook4_FallsPark_PAUSED | _(pending)_ |
 | Ad hook5 | ET_G6_Hook5_StayQuiet_PAUSED | _(pending)_ |
+| Ad hook6 | ET_G6_Hook6_Romance_PAUSED | _(pending)_ |
 
 Previews/LAUNCH resolve via: `/api/admin/marketing/approvals/[campaignId]?ad_ids=<id,…>`
 using the ad IDs above once filled.
@@ -43,6 +44,7 @@ Per Claude review of P1–P3, corrected without changing PAUSED-only scope:
 | hook3 | clip-hook-c.mp4 (19.50s) | _(pending)_ |
 | hook4 | clip-hook-d-pattern.mp4 (30.00s) | _(pending)_ |
 | hook5 | clip2-falls-park-2m02-2m18.mp4 (16.00s) | _(pending)_ |
+| hook6 | romance-slot clip (Hal-captioned mp4) | _(pending)_ |
 
 ## Thumbnails (one per hook, `image_hash` XOR `image_url`)
 
@@ -53,15 +55,17 @@ Per Claude review of P1–P3, corrected without changing PAUSED-only scope:
 | hook3 | _(Marc to confirm)_ | _(pending)_ |
 | hook4 | _(Marc to confirm)_ | _(pending)_ |
 | hook5 | _(Marc to confirm)_ | _(pending)_ |
+| hook6 | _(Marc to confirm — romance slot)_ | _(pending)_ |
 
-Hal captions PASS 2026-11-04 ~08:55 EST (HAL-CAPTIONS-DONE.md): all 5 verified
-1080x1920, 15–30s band, single clean burned-in captions. Hook-6 deferred.
+Hal captions PASS 2026-11-04 ~08:55 EST (HAL-CAPTIONS-DONE.md): hooks 1–5 verified
+1080x1920, 15–30s band, single clean burned-in captions. Hook6 romance-slot
+caption pending Marc OK.
 
 ## Guards (enforced in code, not convention)
 
-- Status PAUSED hard-coded on campaign + ad set + all 5 ads; no ACTIVE path exists.
+- Status PAUSED hard-coded on campaign + ad set + all 6 ads; no ACTIVE path exists.
 - Budgets: $50/day ad set (~$1,500/30d tranche-1), $4k total ceiling; caller overrides → 400.
-- No schedule/start date, no CBO, Hook-6 refused, PLACEHOLDER gate URL refused.
+- No schedule/start date, no CBO, hook1..hook6 only (7th hook refused), PLACEHOLDER gate URL refused.
 - Launch still requires Marc explicit merge word + Amendment-1 launch gate.
 
 ## Runner (admin session only — no internal token)
@@ -71,15 +75,15 @@ Hal captions PASS 2026-11-04 ~08:55 EST (HAL-CAPTIONS-DONE.md): all 5 verified
 - Therefore NO internal-token path was added and `INTERNAL_ADMIN_PATHS`
   (lib/admin-center/access-policy.ts) is UNCHANGED — no new auth surface.
 - Small pieces, report after each: (1) campaign → record `campaignId`;
-  (2) ad set → record `adSetId`; (3) 5 ads one at a time → record ad IDs.
+  (2) ad set → record `adSetId`; (3) 6 ads one at a time → record ad IDs.
   On any piece failure, re-POST with the recorded IDs to resume (no dupes).
-- HOLD: no Meta upload/call until Marc OKs 5 videos + ad copy. $0 until then.
+- HOLD: no Meta upload/call until Marc OKs 6 videos + ad copy. $0 until then.
 
 ## Status
 
-- [x] Endpoint + upload wiring built, unit-tested (14/14), type-clean (0 new diagnostics; 1 pre-existing narrowing nit in route.ts, untouched)
+- [x] Endpoint + upload wiring built, unit-tested (6-ad suite, incl. hook6 paused-only acceptance), type-clean (0 new diagnostics; 1 pre-existing narrowing nit in route.ts, untouched)
 - [x] Claude-review corrections applied in-branch (promoted_object, thumbnails, spend_cap, Adv+, resumable)
 - [ ] Fresh reviewer verification (see REVIEW-REQUEST.md)
-- [ ] Live run (needs Marc word; token server-side only; HOLD until 5 videos + ad copy OK)
+- [ ] Live run (needs Marc word; token server-side only; HOLD until 6 videos + ad copy OK)
 - [ ] IDs + thumbnails filled above after live run
 - [ ] Merge — MARC ONLY, explicit merge word required

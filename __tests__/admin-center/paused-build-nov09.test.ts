@@ -12,10 +12,11 @@ const goodThumbs = () => ({
   hook3: { image_hash: 'b1b2c3d4e5f60718293a4b5c6d7e8f901' },
   hook4: { image_url: 'https://cdn.example.com/thumb4.jpg' },
   hook5: { image_hash: 'c1b2c3d4e5f60718293a4b5c6d7e8f902' },
+  hook6: { image_url: 'https://cdn.example.com/thumb6.jpg' },
 })
 
 const goodBody = () => ({
-  videoIds: { hook1: '111', hook2: '222', hook3: '333', hook4: '444', hook5: '555' },
+  videoIds: { hook1: '111', hook2: '222', hook3: '333', hook4: '444', hook5: '555', hook6: '666' },
   thumbnails: goodThumbs(),
   pageId: '999',
   pixelId: '888',
@@ -31,8 +32,11 @@ test('budgets mirror the approval card ($4k ceiling, tranche-1 $1k-1.5k, $50/day
   expect(PAUSED_BUILD.status).toBe('PAUSED')
 })
 
-test(' exactly 5 hook creatives, Hook-6 excluded', () => {
-  expect(HOOK_CREATIVES.map((h) => h.hook)).toEqual(['hook1', 'hook2', 'hook3', 'hook4', 'hook5'])
+test(' exactly 6 hook creatives, hook6 romance slot included', () => {
+  expect(HOOK_CREATIVES.map((h) => h.hook)).toEqual(['hook1', 'hook2', 'hook3', 'hook4', 'hook5', 'hook6'])
+  const h6 = HOOK_CREATIVES.find((h) => h.hook === 'hook6')!
+  expect(h6.adName).toMatch(/Hook6.*_PAUSED$/)
+  expect(h6.utm).toContain('hook6')
 })
 
 test('valid body passes', () => {
@@ -54,12 +58,25 @@ test('caller-supplied budget/status/schedule/objective refused', () => {
   }
 })
 
-test('Hook-6 wiring refused', () => {
-  const r = validatePausedBuildInput({ ...goodBody(), videoIds: { ...goodBody().videoIds, hook6: '666' } })
+test('hook6 accepted paused-only; refused if not paused', () => {
+  // Full 6-hook body passes (hook6 wired, PAUSED-only).
+  expect(validatePausedBuildInput(goodBody()).ok).toBe(true)
+  // Missing hook6 video refused.
+  const b: any = goodBody()
+  delete b.videoIds.hook6
+  expect(validatePausedBuildInput(b).ok).toBe(false)
+  // Missing hook6 thumbnail refused.
+  const t: any = goodBody()
+  delete t.thumbnails.hook6
+  expect(validatePausedBuildInput(t).ok).toBe(false)
+  // Non-paused confirmation refused even with hook6 present.
+  expect(validatePausedBuildInput({ ...goodBody(), confirmPaused: false }).ok).toBe(false)
+  // Unknown 7th hook still refused.
+  const r = validatePausedBuildInput({ ...goodBody(), videoIds: { ...goodBody().videoIds, hook7: '777' } })
   expect(r.ok).toBe(false)
 })
 
-test('fewer than 5 videos refused; non-digit video id refused', () => {
+test('fewer than 6 videos refused; non-digit video id refused', () => {
   const b: any = goodBody()
   delete b.videoIds.hook5
   expect(validatePausedBuildInput(b).ok).toBe(false)

@@ -1,8 +1,8 @@
 // POST /api/admin/marketing/paused-build-nov09/upload
-// Uploads ONE Hal-captioned mp4 (hook1..hook5) to the Meta ad video library.
+// Uploads ONE Hal-captioned mp4 (hook1..hook6) to the Meta ad video library.
 // Inert: no ad object, no spend, unpublished. Returns the video ID for wiring
 // into the PAUSED build via POST ../paused-build-nov09.
-// Refuses: Hook-6, non-mp4, >100MB, missing confirmPaused.
+// Refuses: non-hook1..6 hook, non-mp4, >100MB, missing confirmPaused.
 
 import { NextRequest, NextResponse } from 'next/server'
 
@@ -38,7 +38,7 @@ export async function POST(req: NextRequest) {
   }
   const hook = String(form.get('hook') || '')
   if (!HOOKS.has(hook)) {
-    return noStore({ success: false, error: 'REFUSED: hook must be hook1..hook5 — Hook-6 deferred.' }, 400)
+    return noStore({ success: false, error: 'REFUSED: hook must be hook1..hook6.' }, 400)
   }
   const file = form.get('file')
   if (!(file instanceof Blob)) return noStore({ success: false, error: 'file (mp4) required' }, 400)

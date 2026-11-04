@@ -1,6 +1,7 @@
 // lib/marketing/pausedBuildNov09.ts — campaign-6plus2-nov09-20261104 paused-build spec.
 // Commission: option1-atlas-paused-endpoint (Marc 2026-11-04). Admin endpoint
-// creates 1 campaign + 1 ad set + 5 ads ALL PAUSED from the Susan mapping.
+// creates 1 campaign + 1 ad set + 6 ads ALL PAUSED from the Susan mapping
+// (hooks 1–5 + hook6 romance slot).
 // NO ACTIVE path exists in this module. Budgets mirror
 // outbox/governed-6-build-20261103/campaign-approval-card-nov09.md ($4k ceiling,
 // tranche-1 $1,000–1,500); any caller-supplied budget/status/schedule/objective
@@ -42,8 +43,8 @@ export interface HookCreative {
   utm: string
 }
 
-// Susan 5-ad PAUSED mapping (paper log susan-build-log-nov09-5ads.md).
-// Hook-6 is SPEC-ONLY / deferred — never wired here.
+// Susan PAUSED mapping (paper log susan-build-log-nov09-5ads.md) + hook6
+// romance slot (Nov09 round 2). All 6 wired here, ALL PAUSED.
 export const HOOK_CREATIVES: HookCreative[] = [
   {
     hook: 'hook1',
@@ -85,10 +86,18 @@ export const HOOK_CREATIVES: HookCreative[] = [
     description: 'Cancel anytime.',
     utm: '?utm_source=meta&utm_medium=paid&utm_campaign=governed6&utm_content=hook5',
   },
+  {
+    hook: 'hook6',
+    adName: 'ET_G6_Hook6_Romance_PAUSED',
+    primary: 'She left Greenville to forget him. One message brings her back — some stories deserve a second chance.',
+    headline: 'A love story worth hearing.',
+    description: 'Free 14-day trial.',
+    utm: '?utm_source=meta&utm_medium=paid&utm_campaign=governed6&utm_content=hook6',
+  },
 ]
 
 // Per-hook thumbnail for video_data: exactly ONE of image_hash (ad-account
-// library hash) or image_url (public https). Five thumbs, one per hook.
+// library hash) or image_url (public https). Six thumbs, one per hook.
 export interface HookThumbnail {
   image_hash?: string
   image_url?: string
@@ -117,9 +126,6 @@ export interface PausedBuildInput {
   end_time?: unknown
   schedule?: unknown
   objective?: unknown
-  hook6?: unknown
-  hook_6?: unknown
-  videoId6?: unknown
 }
 
 export function validatePausedBuildInput(body: Record<string, unknown>): { ok: true; input: PausedBuildInput } | { ok: false; error: string } {
@@ -129,9 +135,6 @@ export function validatePausedBuildInput(body: Record<string, unknown>): { ok: t
   for (const k of ['daily_budget', 'dailyBudget', 'lifetime_budget', 'budget', 'status', 'configured_status', 'start_time', 'end_time', 'schedule', 'objective']) {
     if (body[k] !== undefined) return fail(`REFUSED: field '${k}' is hard-coded from the approval card and cannot be caller-set.`)
   }
-  if (body.hook6 !== undefined || body.hook_6 !== undefined || body.videoId6 !== undefined)
-    return fail('REFUSED: Hook-6 is SPEC-ONLY / deferred to a later round — not wired in the Nov 9 build.')
-
   // Claude-review fix (endpoint-fixes-7): customConversionId is GONE — pixel
   // START_TRIAL only. Refuse if supplied so nobody miswires a conversion ID.
   if (body.customConversionId !== undefined || body.custom_conversion_id !== undefined)
@@ -139,16 +142,16 @@ export function validatePausedBuildInput(body: Record<string, unknown>): { ok: t
 
   const videoIds = body.videoIds as Record<string, string> | undefined
   const expectedHooks = HOOK_CREATIVES.map((h) => h.hook)
-  if (!videoIds || typeof videoIds !== 'object') return fail('REFUSED: videoIds {hook1..hook5} (Meta video IDs of Hal-captioned uploads) required.')
+  if (!videoIds || typeof videoIds !== 'object') return fail('REFUSED: videoIds {hook1..hook6} (Meta video IDs of Hal-captioned uploads) required.')
   for (const h of expectedHooks) {
     if (!videoIds[h] || !/^\d+$/.test(String(videoIds[h]))) return fail(`REFUSED: videoIds.${h} must be a Meta video ID (digits only).`)
   }
   const extra = Object.keys(videoIds).filter((k) => !expectedHooks.includes(k))
-  if (extra.length) return fail(`REFUSED: unexpected videoIds keys: ${extra.join(',')} — exactly hook1..hook5.`)
+  if (extra.length) return fail(`REFUSED: unexpected videoIds keys: ${extra.join(',')} — exactly hook1..hook6.`)
 
   // Claude-review fix (endpoint-fixes-7): video_data thumbnail per hook.
   const thumbnails = body.thumbnails as Record<string, HookThumbnail> | undefined
-  if (!thumbnails || typeof thumbnails !== 'object') return fail('REFUSED: thumbnails {hook1..hook5} (one image_hash or image_url per hook) required.')
+  if (!thumbnails || typeof thumbnails !== 'object') return fail('REFUSED: thumbnails {hook1..hook6} (one image_hash or image_url per hook) required.')
   for (const h of expectedHooks) {
     const t = thumbnails[h]
     if (!t || typeof t !== 'object') return fail(`REFUSED: thumbnails.${h} required (image_hash or image_url).`)
@@ -159,7 +162,7 @@ export function validatePausedBuildInput(body: Record<string, unknown>): { ok: t
     if (hasUrl && !/^https:\/\/[^\s/$.?#].[^\s]*$/i.test(t.image_url!)) return fail(`REFUSED: thumbnails.${h}.image_url must be a live https URL.`)
   }
   const extraT = Object.keys(thumbnails).filter((k) => !expectedHooks.includes(k))
-  if (extraT.length) return fail(`REFUSED: unexpected thumbnails keys: ${extraT.join(',')} — exactly hook1..hook5.`)
+  if (extraT.length) return fail(`REFUSED: unexpected thumbnails keys: ${extraT.join(',')} — exactly hook1..hook6.`)
 
   for (const k of ['pageId', 'pixelId'] as const) {
     if (!body[k] || !/^\d+$/.test(String(body[k]))) return fail(`REFUSED: ${k} (Meta ID, digits only) required.`)

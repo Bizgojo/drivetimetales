@@ -235,7 +235,7 @@ export async function createPausedAd(spec: PausedAdSpec): Promise<{ adId: string
 
 // Uploads a Hal-captioned mp4 to the ad account video library (inert: no ad,
 // no spend, unpublished). Returns the Meta video ID for wiring into paused ads.
-// No status involved — uploads cannot serve. Hook-6 filenames refused by route.
+// No status involved — uploads cannot serve. Non-hook1..6 filenames refused by route.
 export async function uploadPausedVideo(bytes: ArrayBuffer, filename: string): Promise<string> {
   const token = managementToken()
   if (!token) throw new Error('META_ADS_MANAGEMENT_TOKEN not configured')
