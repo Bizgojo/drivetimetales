@@ -34,12 +34,13 @@ log() { echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] $*"; }
 log "run-next loop starting — URL=$URL interval=${INTERVAL_SECONDS}s"
 
 while true; do
-  # HYGIENE-20261104: bearer travels in a chmod-600 curl config file, never
-# on the process command line (ps-visible). Refreshed every tick.
+  # HYGIENE-20261104b: per-worker curl config (no shared .tmp race).
+  # umask 077 subshell: bearer file never readable by others, even briefly.
+  BEARER_CONFIG="$HOME/.run-next-curl-config-worker1"
   TOK="${ADMIN_INTERNAL_TOKEN:-${RUN_NEXT_ADMIN_TOKEN:-}}"
   if [ -n "$TOK" ]; then
-    printf 'header = "Authorization: Bearer %s"\n' "$TOK" > "$HOME/.run-next-curl-config.tmp" && chmod 600 "$HOME/.run-next-curl-config.tmp" && mv -f "$HOME/.run-next-curl-config.tmp" "$HOME/.run-next-curl-config"
-    CURL_AUTH=(-K "$HOME/.run-next-curl-config")
+    ( umask 077; printf 'header = "Authorization: Bearer %s"\n' "$TOK" > "$BEARER_CONFIG.tmp" && mv -f "$BEARER_CONFIG.tmp" "$BEARER_CONFIG" )
+    CURL_AUTH=(-K "$BEARER_CONFIG")
   else
     CURL_AUTH=()
   fi
