@@ -4,9 +4,15 @@
  * 24-word limit. It was 24 words. Two description auto-repairs were spent, then
  * the series stopped. Word count is arithmetic, not judgment: when the
  * validator's ONLY failure is the description word count and the real count is
- * within the limit, the episode passes.
+ * within the old limit, the episode passes.
+ *
+ * DESC-100-CHAR-001 (Marc 2026-11-05): the description rule is now 100 characters
+ * (lib/validateCardCopy.ts). DESCRIPTION_MAX_WORDS is retired. This truth-check
+ * remains for jobs that may have recorded word-count failures against the old rule;
+ * onlyDescriptionWordCountFailure() is still callable for those legacy error_json rows.
  */
-export const DESCRIPTION_MAX_WORDS = 24
+/** @deprecated Use DESCRIPTION_MAX_CHARS from lib/validateCardCopy.ts instead (100 chars). */
+export const DESCRIPTION_MAX_WORDS = 24 // legacy; no longer enforced by the pipeline
 
 export function countDescriptionWords(description: string): number {
   return String(description || '').trim().split(/\s+/).filter(Boolean).length

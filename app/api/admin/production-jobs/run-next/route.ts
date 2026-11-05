@@ -8,6 +8,7 @@ import { selectableAuthors } from '@/lib/reservedTalent'
 import { belleOutroLooksCutOff } from '@/lib/belleOutroEnding'
 import { parseCharacterGuide } from '@/lib/characterGuide'
 import { descriptionWordCountMiscount } from '@/lib/descriptionWordCountTruth'
+import { validateCardCopy as validateCardCopyLib, extractHeader as extractHeaderLib } from '@/lib/validateCardCopy'
 import { spellOutSpokenNumerals } from '@/lib/spokenNumerals'
 import { createClient } from '@supabase/supabase-js'
 import Anthropic from '@anthropic-ai/sdk'
@@ -272,7 +273,8 @@ const STEP_MODELS = legacyStepModels()
 const NARRATIVE_HOOK_FALLBACK_TIMEOUT_MS = 8000
 const VOICE_PREFLIGHT_TIMEOUT_MS = 120_000
 const TITLE_MAX_CHARS = 28
-const DESCRIPTION_MAX_WORDS = 24
+// DESC-100-CHAR-001: description length now enforced by lib/validateCardCopy.ts (100 chars).
+// DESCRIPTION_MAX_WORDS removed. Use validateCardCopyLib() for all card-copy checks.
 // DESC-TENSE-001: was/were/had only; tense itself is judged by the validator.
 const DESCRIPTION_PAST_TENSE_RE = /\b(was|were|had)\b/i
 
@@ -883,45 +885,10 @@ function normalizeStandaloneDescription(script: string, genre: string, briefDesc
   return result
 }
 
+// DESC-100-CHAR-001: validateCardCopy now delegates to lib/validateCardCopy.ts
+// (single source of truth: 100-char limit). The inline 24-word check is removed.
 function validateCardCopy(script: string) {
-  const title = extractHeader(script, 'TITLE')
-  const description = extractHeader(script, 'DESCRIPTION')
-  const issues: string[] = []
-  const titleWords = countWords(title)
-
-  if (!title) {
-    issues.push('TITLE is required.')
-  } else {
-    if (titleWords < 1 || titleWords > 5) {
-      issues.push(`TITLE must be 1 to 5 words. Current: ${titleWords} words.`)
-    }
-    if (title.length > TITLE_MAX_CHARS) {
-      issues.push(`TITLE must be ${TITLE_MAX_CHARS} characters or fewer so it fits one line on story cards. Current: ${title.length} characters.`)
-    }
-  }
-
-  if (!description) {
-    issues.push('DESCRIPTION is required.')
-  } else {
-    if (description.split(/\s+/).filter(Boolean).length > DESCRIPTION_MAX_WORDS) {
-      issues.push(`DESCRIPTION must be ${DESCRIPTION_MAX_WORDS} words or fewer (DISC-001). Current: ${description.split(/\s+/).filter(Boolean).length} words.`)
-    }
-    const pastTenseMatch = DESCRIPTION_PAST_TENSE_RE.exec(description)
-    if (pastTenseMatch) {
-      // Intentionally strict: any blocked word fails BEFORE audio generation.
-      // This prevents ElevenLabs credit spend on scripts with story-card copy that
-      // will be rejected by the app content team anyway.
-      issues.push(
-        `DESCRIPTION contains forbidden past-tense/blocked word: "${pastTenseMatch[0]}". ` +
-        `Full DESCRIPTION text: "${description}". ` +
-        `Rule: DESCRIPTION_PAST_TENSE_RE. ` +
-        `Rewrite the DESCRIPTION in present tense (≤24 words, DISC-001) using active-voice, present-tense verbs only. ` +
-        `Blocked words: vanished, was, were, had, found, discovered, left, moved, sealed, signed, forged, buried, hidden.`
-      )
-    }
-  }
-
-  return issues
+  return validateCardCopyLib(script)
 }
 
 function belleSectionMarkers(kind: 'intro' | 'outro') {
