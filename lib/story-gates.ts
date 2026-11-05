@@ -469,9 +469,11 @@ export interface PublishableResult { publishable: boolean; reasons: string[] }
 /**
  * AUTHOR-WRITTEN-RELEASE-001 (Nov 4, 2026): the MANUAL series release of an
  * author-written series (Sunset) is Marc's own approval of every episode, so
- * the per-episode approved_ready requirement is replaced by "not live, not
- * pulled": ready_for_review, approved_ready, or a hidden pre-release state
- * all qualify. cold_storage / repair_queue / being_repaired still block.
+ * the per-episode approved_ready requirement is replaced by "not live":
+ * ready_for_review, approved_ready, or a hidden state (workflow_state
+ * 'published' while hidden, or unpublished_library) all qualify — Sunset's
+ * 24 hidden episodes sit in those states. cold_storage / repair_queue /
+ * being_repaired still block, and so does any episode that is already live.
  * Missing fields, ordering and personalization checks are unchanged.
  * Default (no option) is the strict rule.
  */
