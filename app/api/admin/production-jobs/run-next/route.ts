@@ -3704,15 +3704,16 @@ async function generateStandaloneScript(job: ProductionJob, model: string) {
     .single()
 
   if (error || !story) throw new Error(error?.message || 'Story not found')
-  if (!story.brief_json) throw new Error('brief_json missing')
 
-  const brief = story.brief_json as any
-
-  // GEN-SCRIPT-NULL-CHECK-001: a null or empty script is definitive proof that
-  // generation is needed. Always run generate_script when stories.script IS NULL
-  // or empty — even if state_json carries generateScriptSkipped=true from a
-  // previous run. This prevents the skip-flag from firing on retry when
-  // validate_script has cleared the script back to null.
+  // GEN-SCRIPT-REUSE-PRIORITY-001 (ATL-PIPE-SCRIPT-001): check for an existing script
+  // BEFORE checking brief_json. If the story already has a script, skip generation
+  // regardless of brief_json — brief_json is only needed when generating from scratch.
+  // Prior ordering caused data loss: validate_script retries clear stories.script then
+  // re-queue to generate_script, which threw "brief_json missing" before the script-
+  // reuse path was reached, leaving stories with null script and no recovery path.
+  //
+  // GEN-SCRIPT-NULL-CHECK-001 (retained): when stories.script IS NULL, generation is
+  // needed even if state_json carries generateScriptSkipped=true from a prior run.
   if (story.script != null && story.script !== '') {
     // GEN-SCRIPT-REUSE-NULL-CHECK-002: re-verify stories.script in the DB before
     // taking the reuse early return. The initial SELECT (above) is a point-in-time
@@ -3750,6 +3751,9 @@ async function generateStandaloneScript(job: ProductionJob, model: string) {
     }
     // stories.script is null/empty in the DB — fall through to full generation
   }
+
+  if (!story.brief_json) throw new Error('brief_json missing')
+  const brief = story.brief_json as any
 
   await enforcePremiseGateBeforeStage2({
     storyId: String(story.id),
@@ -10381,6 +10385,34 @@ export async function POST(req: NextRequest) {
 
         if (canAutoRetry) {
           const nextRetryCount = retryCount + 1
+
+          // GEN-SCRIPT-NO-CLEAR-MISSING-BRIEF-001 (ATL-PIPE-SCRIPT-001): never clear
+          // stories.script when the story has no brief_json. Without brief_json,
+          // generate_script cannot regenerate — clearing leaves the story with no script
+          // and no recovery path. When brief_json is absent, skip auto-retry and fail
+          // for Marc review with the script preserved.
+          const { data: briefCheck } = await supabase
+            .from('stories')
+            .select('brief_json')
+            .eq('id', result.storyId)
+            .single()
+          if (!briefCheck?.brief_json) {
+            console.warn(`[ATL-PIPE-SCRIPT-001] validate_script retry blocked (brief_json missing) story=${result.storyId} — script preserved, failing for Marc review`)
+            await markStoryNeedsAttention(result.storyId, `validate_script: auto-retry blocked — brief_json missing, script preserved. ${classification.kind}: ${classification.recommendedAction}`)
+            const blockedLogs = appendLog({ ...lockedJob, logs }, `validate_script retry blocked (brief_json missing) — script preserved, Marc review required`, { source: 'autonomous-runner', storyId: result.storyId, failureKind: classification.kind })
+            const { error: blockErr } = await supabase
+              .from('production_jobs')
+              .update({
+                status: 'failed',
+                error_json: buildStructuredError('no_brief_json_retry_blocked', `Marc must restore brief_json before retrying. ${classification.recommendedAction}`, 'validate_script', { storyId: result.storyId, marc_required: true, detail: { failureKind: classification.kind } }),
+                locked_at: null,
+                locked_by: null,
+                logs: blockedLogs,
+              })
+              .match(ownedJobFence(lockedJob, lockHolderId))
+            if (blockErr) throw new Error(`Failed to fail job after brief_json retry block: ${blockErr.message}`)
+            return NextResponse.json({ success: false, action: 'marc_review_required', reason: 'validate_script retry blocked: brief_json missing, script preserved', storyId: result.storyId })
+          }
 
           // Clear story script so generate_script regenerates from scratch
           await supabase
