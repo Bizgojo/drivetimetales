@@ -39,9 +39,10 @@ export default function BottomStickyButtons() {
           <span>Go to Library</span>
         </Link>
         
-        {/* Right Button: Help a Friend */}
+        {/* Right Button: Share with a Friend (SHARE-BUTTON-001, Marc 2026-11-05) */}
         <Link 
-          href="/refer" 
+          href="/refer"
+          aria-label="Share with a Friend"
           style={{ 
             flex: 1, 
             padding: '0.4rem 0.5rem',
@@ -59,8 +60,25 @@ export default function BottomStickyButtons() {
           }}
         >
           <span style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-            <span style={{ fontSize: '16px' }}>❤️</span>
-            <span>Help a Friend</span>
+            {/* Share icon: box-with-arrow (iOS convention), scales with text */}
+            <svg
+              aria-hidden="true"
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              {/* Arrow shaft + head */}
+              <line x1="12" y1="15" x2="12" y2="3" />
+              <polyline points="7 8 12 3 17 8" />
+              {/* Box (bottom portion) */}
+              <path d="M20 15v4a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-4" />
+            </svg>
+            <span>Share with a Friend</span>
           </span>
           <span style={{ fontSize: '11px', fontWeight: 500 }}>It's a Win Win</span>
         </Link>
