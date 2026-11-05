@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 
 export const runtime = 'nodejs'
 import { createClient } from '@supabase/supabase-js'
-import { buildCoverDirectionBrief, buildCoverPrompt, ULTRA_BRIGHT_DIRECTIVE } from '@/lib/coverPrompt'
+import { buildCoverDirectionBrief, buildCoverPrompt, ULTRA_BRIGHT_DIRECTIVE, stripProductionNotes } from '@/lib/coverPrompt'
 import { selectImageBackend } from '@/lib/cover/imageRouter'
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let sharp: any
@@ -131,8 +131,12 @@ function cleanCoverFeedback(value: unknown): string {
 
 function excerptText(value: unknown, max = 900): string {
   if (typeof value !== 'string') return ''
+  // COVER-STORY-OBJECT-001: never feed hidden production notes (STORY
+  // RESOLUTION MAP block, /* */, <!-- -->) into the image prompt — the
+  // excerpt is the first ~650 chars of the script, exactly where series
+  // notes blocks live.
   return cleanConceptPart(
-    value
+    stripProductionNotes(value)
       .replace(/\[[^\]]+\]/g, ' ')
       .replace(/^[A-Z][A-Z0-9 '\-]+:\s*/gm, ' ')
       .replace(/\s+/g, ' ')

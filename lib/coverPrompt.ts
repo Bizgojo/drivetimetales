@@ -123,6 +123,67 @@ const ENDLESS_TALES_COVER_STANDARD = [
   'mystery covers may be moody, but the important visual element must still be clear',
 ].join(' ')
 
+/**
+ * COVER-STORY-OBJECT-001: strip hidden production notes from script/prose
+ * text before it is used to derive cover direction.
+ *
+ * Series scripts open with a hidden notes block headed
+ * "STORY RESOLUTION MAP — remove before audio". If that block reaches the
+ * cover prompt (e.g. via the first ~650 chars of the script), the key-object
+ * heuristic matches production vocabulary ("map", ...) instead of story
+ * content and ~30 covers were told to show a map.
+ *
+ * Removal rule (kept deliberately simple):
+ *   1. `/* ... *\/ ` blocks (non-greedy, multiline) are removed wherever
+ *      they appear.
+ *   2. `<!-- ... -->` blocks (non-greedy, multiline) are removed wherever
+ *      they appear.
+ *   3. A line containing "STORY RESOLUTION MAP" (case-insensitive) starts a
+ *      notes region: that line and every following line are dropped up to
+ *      and including the first blank (whitespace-only) line — i.e. the notes
+ *      block runs to the next blank-line-separated story header/content.
+ *      Safety bound: at most 80 lines / 4000 chars are consumed, so a
+ *      missing terminator can never eat the whole story.
+ * Leftover runs of 3+ newlines are collapsed to a double newline.
+ */
+export function stripProductionNotes(value: string | undefined): string {
+  if (typeof value !== 'string' || !value) return ''
+  let result = value
+  // 1. C-style hidden blocks
+  result = result.replace(/\/\*[\s\S]*?\*\//g, '')
+  // 2. HTML-style hidden blocks
+  result = result.replace(/<!--[\s\S]*?-->/g, '')
+  // 3. STORY RESOLUTION MAP notes region(s)
+  const lines = result.split('\n')
+  const kept: string[] = []
+  let skipping = false
+  let skippedChars = 0
+  const MAX_SKIP_LINES = 80
+  const MAX_SKIP_CHARS = 4000
+  let skippedLines = 0
+  for (const line of lines) {
+    if (!skipping && /story\s+resolution\s+map/i.test(line)) {
+      skipping = true
+      skippedLines = 0
+      skippedChars = 0
+      continue
+    }
+    if (skipping) {
+      skippedLines += 1
+      skippedChars += line.length + 1
+      // A blank line ends the notes block (blank-line-separated story
+      // header/content follows). The blank line itself is dropped; the
+      // story resumes on the next line.
+      if (line.trim() === '' || skippedLines > MAX_SKIP_LINES || skippedChars > MAX_SKIP_CHARS) {
+        skipping = false
+      }
+      continue
+    }
+    kept.push(line)
+  }
+  return kept.join('\n').replace(/\n{3,}/g, '\n\n').trim()
+}
+
 function cleanInput(value: string | undefined, max: number): string {
   return (value || '').replace(/\s+/g, ' ').trim().slice(0, max)
 }
@@ -242,9 +303,10 @@ function inferEmotionalPromise(genre: string, tone?: string, concept?: string): 
   return 'cinematic curiosity, human stakes, and a strong reason to listen'
 }
 
-function inferKeyObjectSymbol(concept?: string, title?: string): string {
-  const combined = cleanInput(`${title || ''}. ${concept || ''}`, 1200)
-  const lower = combined.toLowerCase()
+export function inferKeyObjectSymbol(concept?: string, title?: string): string {
+  // COVER-STORY-OBJECT-001: key object must come from STORY text only —
+  // never production notes. Strip hidden notes before matching.
+  const combined = cleanInput(`${title || ''}. ${stripProductionNotes(concept) || ''}`, 1200)
   const candidates = [
     'manifest',
     'bridge',
@@ -268,7 +330,14 @@ function inferKeyObjectSymbol(concept?: string, title?: string): string {
     'station',
     'fire',
   ]
-  const found = candidates.find((candidate) => lower.includes(candidate))
+  // COVER-STORY-OBJECT-001: whole-word matching only (word-boundary regex,
+  // case-insensitive). Substring matching caused false positives: "map" hit
+  // production notes, "ring" matched "during", "watch" matched "watched",
+  // "key" matched "keyboard".
+  const found = candidates.find((candidate) => {
+    const escaped = candidate.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    return new RegExp(`\\b${escaped}\\b`, 'i').test(combined)
+  })
 
   if (found) return `a visible ${found} that carries story meaning`
 
@@ -294,16 +363,21 @@ function inferSettingBackground(genre: string, concept?: string): string {
 // ─── Public API ─────────────────────────────────────────────────────────────
 
 export function buildCoverDirectionBrief(params: CoverPromptParams): CoverDirectionBrief {
-  const { genre, tone, concept, coverFeedback } = params
+  const { genre, tone, coverFeedback } = params
+  // COVER-STORY-OBJECT-001: every cover-text derivation below must draw on
+  // story text only — never hidden production notes. Strip once, up front.
+  const storyConcept = stripProductionNotes(params.concept || params.script || '') || undefined
+  const storyParams = { ...params, concept: storyConcept, script: undefined }
+  const concept = storyConcept
   const feedback = cleanInput(coverFeedback, 500)
   const lightingOverride = feedbackLightingOverride(feedback)
   const compositionOverride = feedbackCompositionOverride(feedback)
 
   return {
-    primaryVisualSubject: inferPrimaryVisualSubject(params),
+    primaryVisualSubject: inferPrimaryVisualSubject(storyParams),
     emotionalPromise: inferEmotionalPromise(genre, tone, concept),
-    keyObjectSymbol: inferKeyObjectSymbol(concept || params.script, params.title),
-    settingBackground: inferSettingBackground(genre, concept || params.script),
+    keyObjectSymbol: inferKeyObjectSymbol(concept, params.title),
+    settingBackground: inferSettingBackground(genre, concept),
     lightingDirection: lightingOverride || 'well-exposed cinematic image with a hard minimum brightness floor; the cover must remain readable at 120px thumbnail size; use brighter cinematic key lighting, strongly lifted midtones, strong edge/rim lighting, clean highlight separation, brighter skin tones, visible key object glow when appropriate, and high contrast without muddy black shadows or large dark empty areas; prefer over-exposed-cinematic over under-exposed-cinematic',
     compositionCameraDistance: compositionOverride || 'clear foreground subject in close medium shot or close-up; the main face must be clearly visible without zooming when a person is present, and the key object must be readable; both must occupy meaningful visual area; avoid tiny distant silhouettes; focal point centered or in the upper half of the square frame',
     thumbnailReadabilityInstruction: 'optimized for small streaming-app thumbnail readability and must remain readable on a phone-sized streaming thumbnail at about 120px height and at 100x100 px: simple shape language, one dominant focal point, strong subject-background separation, no tiny critical details',
@@ -405,7 +479,9 @@ export function buildCoverPrompt(params: CoverPromptParams): string {
     : ''
 
   // Build story content section, stripping conflicting palette words when retrying
-  const rawConceptText = concept ? `The scene must visually reflect this story: "${concept.slice(0, 300)}". Depict the specific setting, mood, and atmosphere described — not a generic landscape. ` : ''
+  // COVER-STORY-OBJECT-001: story text only — never production notes.
+  const storyConceptText = stripProductionNotes(concept || '')
+  const rawConceptText = storyConceptText ? `The scene must visually reflect this story: "${storyConceptText.slice(0, 300)}". Depict the specific setting, mood, and atmosphere described — not a generic landscape. ` : ''
   const sceneInstruction = hasRetryInstruction
     ? stripConflictingPaletteWords(rawConceptText)
     : rawConceptText
