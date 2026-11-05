@@ -466,17 +466,37 @@ export interface PublishableResult { publishable: boolean; reasons: string[] }
  * ep publishable iff: (a) zero missing fields, (b) workflow approved_ready,
  * (c) every earlier ep published + unhidden, (d) personalization blockers clear.
  */
+/**
+ * AUTHOR-WRITTEN-RELEASE-001 (Nov 4, 2026): the MANUAL series release of an
+ * author-written series (Sunset) is Marc's own approval of every episode, so
+ * the per-episode approved_ready requirement is replaced by "not live":
+ * ready_for_review, approved_ready, or a hidden state (workflow_state
+ * 'published' while hidden, or unpublished_library) all qualify — Sunset's
+ * 24 hidden episodes sit in those states. cold_storage / repair_queue /
+ * being_repaired still block, and so does any episode that is already live.
+ * Missing fields, ordering and personalization checks are unchanged.
+ * Default (no option) is the strict rule.
+ */
+export type PublishApprovalOptions = { releaseCountsAsApproval?: boolean }
+
+const RELEASE_APPROVABLE_STATES = new Set(['approved_ready', 'ready_for_review', 'published', 'unpublished_library'])
+
+function approvalReasons(ep: PublishOrderEpisode, opts?: PublishApprovalOptions): string[] {
+  const ws = _effectiveWorkflowState(ep)
+  if (ws === 'approved_ready') return []
+  if (opts?.releaseCountsAsApproval && RELEASE_APPROVABLE_STATES.has(ws) && !(ep.status === 'published' && ep.is_hidden === false)) return []
+  return [`workflow_state is ${ws}, expected approved_ready`]
+}
+
 export function isEpisodePublishable(
   ep: PublishOrderEpisode,
   earlierEps: PublishOrderEpisode[],
-  batchPublishableIds?: Set<string>
+  batchPublishableIds?: Set<string>,
+  opts?: PublishApprovalOptions
 ): PublishableResult {
   const reasons = [
     ..._publishMissingFields(ep).map(f => `missing ${f}`),
-    ...(() => {
-      const ws = _effectiveWorkflowState(ep)
-      return ws === 'approved_ready' ? [] : [`workflow_state is ${ws}, expected approved_ready`]
-    })(),
+    ...approvalReasons(ep, opts),
     ..._persBlockers(ep as { announcement_url?: string | null; announcement_text?: string | null; script?: string | null }),
   ]
   for (const earlier of earlierEps) {
@@ -502,7 +522,7 @@ export interface SeriesPublishEvaluation {
 }
 
 /** Route-level decision helper: contiguity first, then per-ep predicate in rank order. */
-export function evaluateSeriesPublishOrder(episodes: PublishOrderEpisode[]): SeriesPublishEvaluation {
+export function evaluateSeriesPublishOrder(episodes: PublishOrderEpisode[], opts?: PublishApprovalOptions): SeriesPublishEvaluation {
   const ordered = sortEpisodesForPublish(episodes)
   const contig = assertSeriesContiguity(ordered)
   if (!contig.ok) {
@@ -522,7 +542,7 @@ export function evaluateSeriesPublishOrder(episodes: PublishOrderEpisode[]): Ser
   const batchOk = new Set<string>()
   ordered.forEach((ep, k) => {
     const earlier = ordered.slice(0, k)
-    const res = isEpisodePublishable(ep, earlier, batchOk)
+    const res = isEpisodePublishable(ep, earlier, batchOk, opts)
     if (!res.publishable) {
       const n = episodeRank(ep)
       if (res.reasons.some(r => r.startsWith('earlier episode'))) orderingBlocked = true

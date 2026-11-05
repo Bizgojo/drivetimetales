@@ -5,6 +5,7 @@ import { syncPremiseIndexForTransition } from '@/lib/premiseIndex'
 import { evaluateSeriesPublishOrder, isEpisodePublishable, sortEpisodesForPublish, assertSeriesContiguity } from '@/lib/story-gates'
 import { assertPublishAllowed, isPublicationHeld } from '@/lib/publicationHold'
 import { evaluateBelleUnitForPublish } from '@/lib/publicationBelleGate'
+import { AUTHOR_WRITTEN_EXEMPT_ID, resolveAuthorWrittenExempt } from '@/lib/authorWrittenExempt'
 import { evaluateBelleFreshnessForPublish, BELLE_FRESHNESS_STALE_CODE } from '@/lib/belleFreshness'
 
 export const runtime = 'nodejs'
@@ -90,7 +91,27 @@ export async function POST(req: NextRequest) {
       // PUBLISH-ORDERING GATE (GATE-GAPS-SPEC 1, Canon Rule 1 precondition):
       // contiguity + in-order predicate evaluated BEFORE any write. Zero rows
       // written on failure. Ordering blocks -> 422; field/workflow-only -> 400.
-      const orderEval = evaluateSeriesPublishOrder(episodes as any[])
+      // AUTHOR-WRITTEN-RELEASE-001 (Nov 4, 2026): for an author-written
+      // series (Sunset) this manual release is Marc's approval of every
+      // episode, and Marc exempted its Belle copy from the style rules
+      // (Nov 3). Both are skipped ONLY here, in the manual series release.
+      // Hold, numbering/order, missing fields, personalization and Belle
+      // freshness still run. Every other series is unchanged.
+      let authorWrittenRelease = false
+      try {
+        authorWrittenRelease = await resolveAuthorWrittenExempt(async (id) => {
+          const { data, error } = await supabase.from('series').select('author_written').eq('id', id).maybeSingle()
+          if (error) throw error
+          return data as { author_written?: unknown } | null
+        }, seriesId)
+      } catch {
+        authorWrittenRelease = false
+      }
+      if (authorWrittenRelease) {
+        console.log(`[${AUTHOR_WRITTEN_EXEMPT_ID}] series=${seriesId} manual release: approval per episode and Belle copy rules skipped (author-written)`)
+      }
+
+      const orderEval = evaluateSeriesPublishOrder(episodes as any[], { releaseCountsAsApproval: authorWrittenRelease })
       if (orderEval.code !== 'ok') {
         const blocked = orderEval.blocked
         if (orderEval.code === 'series_episode_number_gap') {
@@ -132,7 +153,9 @@ export async function POST(req: NextRequest) {
       // PUBLICATION-HOLD-001: Belle copy gate — every episode's Belle copy
       // must pass the deployed predicates (naming/hook/credit/closure/
       // reflection/companion/tease). No waiver path; zero rows on failure.
-      const belleVerdict = evaluateBelleUnitForPublish(episodes as any[])
+      const belleVerdict = authorWrittenRelease
+        ? ({ ok: true } as const)
+        : evaluateBelleUnitForPublish(episodes as any[])
       if (!belleVerdict.ok) {
         return NextResponse.json({
           success: false,
