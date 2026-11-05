@@ -3704,15 +3704,16 @@ async function generateStandaloneScript(job: ProductionJob, model: string) {
     .single()
 
   if (error || !story) throw new Error(error?.message || 'Story not found')
-  if (!story.brief_json) throw new Error('brief_json missing')
 
-  const brief = story.brief_json as any
-
-  // GEN-SCRIPT-NULL-CHECK-001: a null or empty script is definitive proof that
-  // generation is needed. Always run generate_script when stories.script IS NULL
-  // or empty — even if state_json carries generateScriptSkipped=true from a
-  // previous run. This prevents the skip-flag from firing on retry when
-  // validate_script has cleared the script back to null.
+  // GEN-SCRIPT-REUSE-PRIORITY-001 (ATL-PIPE-SCRIPT-001): check for an existing script
+  // BEFORE checking brief_json. If the story already has a script, skip generation
+  // regardless of brief_json — brief_json is only needed when generating from scratch.
+  // Prior ordering caused data loss: validate_script retries clear stories.script then
+  // re-queue to generate_script, which threw "brief_json missing" before the script-
+  // reuse path was reached, leaving stories with null script and no recovery path.
+  //
+  // GEN-SCRIPT-NULL-CHECK-001 (retained): when stories.script IS NULL, generation is
+  // needed even if state_json carries generateScriptSkipped=true from a prior run.
   if (story.script != null && story.script !== '') {
     // GEN-SCRIPT-REUSE-NULL-CHECK-002: re-verify stories.script in the DB before
     // taking the reuse early return. The initial SELECT (above) is a point-in-time
@@ -3750,6 +3751,9 @@ async function generateStandaloneScript(job: ProductionJob, model: string) {
     }
     // stories.script is null/empty in the DB — fall through to full generation
   }
+
+  if (!story.brief_json) throw new Error('brief_json missing')
+  const brief = story.brief_json as any
 
   await enforcePremiseGateBeforeStage2({
     storyId: String(story.id),
@@ -9682,6 +9686,34 @@ export async function POST(req: NextRequest) {
               const isFailed = episodeNumber(ep, 0) === plan.failedEpisodeNumber
               const sj = ep.script_json && typeof ep.script_json === 'object' ? ep.script_json : {}
               const backups = Array.isArray(sj.rewrite_backups) ? sj.rewrite_backups.slice(-2) : []
+              // BRIEF-NULL-GUARD (ATL-BRIEF-GUARD-001): never clear an existing script when
+              // brief_json is null — generate_script cannot reconstruct without a brief.
+              // Fail the job (not just continue) so the series-rewrite loop cannot re-enter
+              // on the same episode (e.g. Altar episodes with no brief_json).
+              if (!ep.brief_json) {
+                console.warn(`[ATL-BRIEF-GUARD-001] series-rewrite ep${episodeNumber(ep, 0)} story=${ep.id} brief_json null — failing job, marking needs_attention`)
+                const bjGuardMsg1 = `ATL-BRIEF-GUARD-001 (series-rewrite ep${episodeNumber(ep, 0)}): brief_json null — script clear blocked. Manual brief entry required before this episode can be regenerated.`
+                await markStoryNeedsAttention(String(ep.id), bjGuardMsg1)
+                const bjGuardLogs1 = appendLog(lockedJob, 'ATL-BRIEF-GUARD-001: script clear blocked — brief_json null at series-rewrite', { storyId: ep.id, step, episodeNumber: episodeNumber(ep, 0) })
+                const { data: bjGuardJob1 } = await supabase
+                  .from('production_jobs')
+                  .update({
+                    status: 'failed',
+                    error_json: buildStructuredError('script_clear_blocked_no_brief', bjGuardMsg1, step, {
+                      storyId: ep.id,
+                      marc_required: true,
+                      autonomous_repair: false,
+                      detail: { briefJsonNull: true, episodeNumber: episodeNumber(ep, 0) },
+                    }),
+                    logs: bjGuardLogs1,
+                    locked_at: null,
+                    locked_by: null,
+                  })
+                  .match(ownedJobFence(lockedJob, lockHolderId))
+                  .select('*')
+                  .single()
+                return NextResponse.json({ success: false, jobId: bjGuardJob1?.id, storyId: ep.id, reason: 'brief_json_null_guard', marcRequired: true }, { status: 422 })
+              }
               const { error: clearErr } = await supabase
                 .from('stories')
                 .update({
@@ -10036,7 +10068,7 @@ export async function POST(req: NextRequest) {
       // Load the story to get voice_profile_id and the current script
       const { data: vcStory, error: vcStoryError } = await supabase
         .from('stories')
-        .select('id,script,voice_profile_id,series_id')
+        .select('id,script,voice_profile_id,series_id,brief_json')
         .eq('id', storyId)
         .single()
 
@@ -10189,6 +10221,34 @@ export async function POST(req: NextRequest) {
       }
 
       if (vcResult.shouldRegenerate && !vcExempt) {
+        // BRIEF-NULL-GUARD (ATL-BRIEF-GUARD-001): never clear an existing script when
+        // brief_json is null — generate_script cannot reconstruct without a brief.
+        if (!vcStory.brief_json) {
+          console.warn(`[ATL-BRIEF-GUARD-001] voice_conformance story=${storyId} brief_json null — blocking script clear, failing for Marc review`)
+          const bjGuardMsg = `ATL-BRIEF-GUARD-001 (voice_conformance): brief_json null — auto-retry blocked. Manual brief entry required before script can be regenerated.`
+          await markStoryNeedsAttention(storyId, bjGuardMsg)
+          const bjGuardLogs = appendLog(lockedJob, 'ATL-BRIEF-GUARD-001: script clear blocked — brief_json null at voice_conformance', { storyId, step })
+          await recordStageFailed(lockedJob, 'validate_voice_conformance', 'brief_json null: auto-retry blocked (ATL-BRIEF-GUARD-001)')
+          const { data: bjGuardJob } = await supabase
+            .from('production_jobs')
+            .update({
+              status: 'failed',
+              error_json: buildStructuredError('script_clear_blocked_no_brief', bjGuardMsg, 'validate_voice_conformance', {
+                storyId,
+                marc_required: true,
+                autonomous_repair: false,
+                detail: { briefJsonNull: true },
+              }),
+              logs: bjGuardLogs,
+              locked_at: null,
+              locked_by: null,
+            })
+            .match(ownedJobFence(lockedJob, lockHolderId))
+            .select('*')
+            .single()
+          return NextResponse.json({ success: false, jobId: bjGuardJob?.id, storyId, reason: 'brief_json_null_guard', marcRequired: true }, { status: 422 })
+        }
+
         // Violations + attempts < 2: reset to generate_script
         const nextAttempts = attempts + 1
 
@@ -10381,6 +10441,38 @@ export async function POST(req: NextRequest) {
 
         if (canAutoRetry) {
           const nextRetryCount = retryCount + 1
+
+          // ATL-BRIEF-GUARD-001 / ATL-PIPE-SCRIPT-001: never clear stories.script when
+          // brief_json is null — generate_script cannot regenerate without a brief, leaving
+          // the story with no script and no recovery path.
+          const { data: _bjGuardVS } = await supabase.from('stories').select('brief_json').eq('id', result.storyId).maybeSingle()
+          if (!_bjGuardVS?.brief_json) {
+            console.warn(`[ATL-BRIEF-GUARD-001] validate_script story=${result.storyId} brief_json null — blocking script clear, failing for Marc review`)
+            const bjGuardMsgVS = `ATL-BRIEF-GUARD-001 (validate_script): brief_json null — auto-retry blocked. Manual brief entry required before script can be regenerated.`
+            await markStoryNeedsAttention(result.storyId, bjGuardMsgVS)
+            const bjGuardLogsVS = appendLog({ ...lockedJob, logs }, 'ATL-BRIEF-GUARD-001: script clear blocked — brief_json null at validate_script', { storyId: result.storyId, step, retryCount })
+            const { data: bjGuardJobVS } = await supabase
+              .from('production_jobs')
+              .update({
+                story_id: result.storyId,
+                status: 'failed',
+                current_step: NEXT_STEP_AFTER_STANDALONE_SCRIPT,
+                state_json: { ...result.state, validateScriptRetryCount: retryCount },
+                error_json: buildStructuredError('script_clear_blocked_no_brief', bjGuardMsgVS, 'validate_script', {
+                  storyId: result.storyId,
+                  marc_required: true,
+                  autonomous_repair: false,
+                  detail: { briefJsonNull: true, retryCount, maxRetries: MAX_RETRIES },
+                }),
+                logs: bjGuardLogsVS,
+                locked_at: null,
+                locked_by: null,
+              })
+              .match(ownedJobFence(lockedJob, lockHolderId))
+              .select('*')
+              .single()
+            return NextResponse.json({ success: false, jobId: bjGuardJobVS?.id, storyId: result.storyId, reason: 'brief_json_null_guard', marcRequired: true }, { status: 422 })
+          }
 
           // Clear story script so generate_script regenerates from scratch
           await supabase
@@ -10810,6 +10902,37 @@ export async function POST(req: NextRequest) {
           const preservePassValidatedScript = isNumeralPreTts
 
           if (!preservePassValidatedScript) {
+            // BRIEF-NULL-GUARD (ATL-BRIEF-GUARD-001): never clear an existing script when
+            // brief_json is null — generate_script cannot reconstruct without a brief.
+            const { data: _bjGuardVP } = await supabase.from('stories').select('brief_json').eq('id', result.storyId).maybeSingle()
+            if (!_bjGuardVP?.brief_json) {
+              console.warn(`[ATL-BRIEF-GUARD-001] voice_preflight story=${result.storyId} kind=${failureKind} brief_json null — blocking script clear, failing for Marc review`)
+              const bjGuardMsgVP = `ATL-BRIEF-GUARD-001 (voice_preflight/${failureKind}): brief_json null — auto-retry blocked. Manual brief entry required before script can be regenerated.`
+              await markStoryNeedsAttention(result.storyId, bjGuardMsgVP)
+              const bjGuardLogsVP = appendLog(lockedJob, 'ATL-BRIEF-GUARD-001: script clear blocked — brief_json null at voice_preflight', { storyId: result.storyId, step, failureKind, retryCount })
+              const { data: bjGuardJobVP } = await supabase
+                .from('production_jobs')
+                .update({
+                  story_id: result.storyId,
+                  status: 'failed',
+                  current_step: step,
+                  state_json: { ...(result.state || {}), voicePreflightScriptRetryCount: retryCount },
+                  error_json: buildStructuredError('script_clear_blocked_no_brief', bjGuardMsgVP, 'voice_preflight', {
+                    storyId: result.storyId,
+                    marc_required: true,
+                    autonomous_repair: false,
+                    detail: { briefJsonNull: true, failureKind, retryCount, maxRetries: MAX_RETRIES },
+                  }),
+                  logs: bjGuardLogsVP,
+                  locked_at: null,
+                  locked_by: null,
+                })
+                .match(ownedJobFence(lockedJob, lockHolderId))
+                .select('*')
+                .single()
+              return NextResponse.json({ success: false, jobId: bjGuardJobVP?.id, storyId: result.storyId, reason: 'brief_json_null_guard', marcRequired: true }, { status: 422 })
+            }
+
             // Clear script so generate_script regenerates (non-numeral kinds only)
             await supabase
               .from('stories')

@@ -2611,9 +2611,9 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
   miniToggleRef.current = handlePlayPause
   useEffect(() => {
     if (!story) return
-    onPlaybackSnapshot?.({ storyId, title: story.title, coverUrl: story.cover_url, seek: seconds => miniSeekRef.current(seconds), completed: playbackEnded, markRemoved: () => { removedFromContinueRef.current = true }, isPlaying, currentTime: effCur, duration: effTotal,
+    onPlaybackSnapshot?.({ storyId, title: story.title, coverUrl: story.cover_url, seriesName: story.series_name ?? null, episodeNumber: story.episode_number ?? null, seek: seconds => miniSeekRef.current(seconds), completed: playbackEnded, markRemoved: () => { removedFromContinueRef.current = true }, isPlaying, currentTime: effCur, duration: effTotal,
       toggle: () => miniToggleRef.current() })
-  }, [storyId, story?.title, isPlaying, playbackEnded, effCur, effTotal, onPlaybackSnapshot])
+  }, [storyId, story?.title, story?.series_name, story?.episode_number, isPlaying, playbackEnded, effCur, effTotal, onPlaybackSnapshot])
   // Position: the OS extrapolates from (position, playbackRate), so update on
   // play/pause, seeks and every 5s bucket rather than on every timeupdate.
   // Uses the same global (multi-segment) position/total as the progress bar.
