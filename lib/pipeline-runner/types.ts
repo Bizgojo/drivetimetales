@@ -159,6 +159,8 @@ export type StructuredErrorJsonKind =
   | 'mission_context_missing'
   | 'unknown_step'
   | 'unknown_qc'
+  // ATL-BRIEF-GUARD-001: script clear blocked because brief_json is null
+  | 'script_clear_blocked_no_brief'  // brief_json null at auto-retry: cannot regenerate script without a brief (marc_required, never auto-retry)
   | string  // extensible
 
 export type StructuredErrorJson = {

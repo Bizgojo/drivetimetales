@@ -9684,10 +9684,31 @@ export async function POST(req: NextRequest) {
               const backups = Array.isArray(sj.rewrite_backups) ? sj.rewrite_backups.slice(-2) : []
               // BRIEF-NULL-GUARD (ATL-BRIEF-GUARD-001): never clear an existing script when
               // brief_json is null — generate_script cannot reconstruct without a brief.
+              // Fail the job (not just continue) so the series-rewrite loop cannot re-enter
+              // on the same episode (e.g. Altar episodes with no brief_json).
               if (!ep.brief_json) {
-                console.warn(`[ATL-BRIEF-GUARD-001] series-rewrite ep${episodeNumber(ep, 0)} story=${ep.id} brief_json null — skipping clear, marking needs_attention`)
-                await markStoryNeedsAttention(String(ep.id), `ATL-BRIEF-GUARD-001 (series-rewrite ep${episodeNumber(ep, 0)}): brief_json null — script clear skipped. Manual brief entry required before this episode can be regenerated.`)
-                continue
+                console.warn(`[ATL-BRIEF-GUARD-001] series-rewrite ep${episodeNumber(ep, 0)} story=${ep.id} brief_json null — failing job, marking needs_attention`)
+                const bjGuardMsg1 = `ATL-BRIEF-GUARD-001 (series-rewrite ep${episodeNumber(ep, 0)}): brief_json null — script clear blocked. Manual brief entry required before this episode can be regenerated.`
+                await markStoryNeedsAttention(String(ep.id), bjGuardMsg1)
+                const bjGuardLogs1 = appendLog(lockedJob, 'ATL-BRIEF-GUARD-001: script clear blocked — brief_json null at series-rewrite', { storyId: ep.id, step, episodeNumber: episodeNumber(ep, 0) })
+                const { data: bjGuardJob1 } = await supabase
+                  .from('production_jobs')
+                  .update({
+                    status: 'failed',
+                    error_json: buildStructuredError('script_clear_blocked_no_brief', bjGuardMsg1, step, {
+                      storyId: ep.id,
+                      marc_required: true,
+                      autonomous_repair: false,
+                      detail: { briefJsonNull: true, episodeNumber: episodeNumber(ep, 0) },
+                    }),
+                    logs: bjGuardLogs1,
+                    locked_at: null,
+                    locked_by: null,
+                  })
+                  .match(ownedJobFence(lockedJob, lockHolderId))
+                  .select('*')
+                  .single()
+                return NextResponse.json({ success: false, jobId: bjGuardJob1?.id, storyId: ep.id, reason: 'brief_json_null_guard', marcRequired: true }, { status: 422 })
               }
               const { error: clearErr } = await supabase
                 .from('stories')
@@ -10208,7 +10229,7 @@ export async function POST(req: NextRequest) {
             .from('production_jobs')
             .update({
               status: 'failed',
-              error_json: buildStructuredError('unknown_qc', bjGuardMsg, 'validate_voice_conformance', {
+              error_json: buildStructuredError('script_clear_blocked_no_brief', bjGuardMsg, 'validate_voice_conformance', {
                 storyId,
                 marc_required: true,
                 autonomous_repair: false,
@@ -10432,7 +10453,7 @@ export async function POST(req: NextRequest) {
                 status: 'failed',
                 current_step: NEXT_STEP_AFTER_STANDALONE_SCRIPT,
                 state_json: { ...result.state, validateScriptRetryCount: retryCount },
-                error_json: buildStructuredError('unknown_qc', bjGuardMsgVS, 'validate_script', {
+                error_json: buildStructuredError('script_clear_blocked_no_brief', bjGuardMsgVS, 'validate_script', {
                   storyId: result.storyId,
                   marc_required: true,
                   autonomous_repair: false,
@@ -10891,7 +10912,7 @@ export async function POST(req: NextRequest) {
                   status: 'failed',
                   current_step: step,
                   state_json: { ...(result.state || {}), voicePreflightScriptRetryCount: retryCount },
-                  error_json: buildStructuredError('unknown_qc', bjGuardMsgVP, 'voice_preflight', {
+                  error_json: buildStructuredError('script_clear_blocked_no_brief', bjGuardMsgVP, 'voice_preflight', {
                     storyId: result.storyId,
                     marc_required: true,
                     autonomous_repair: false,
