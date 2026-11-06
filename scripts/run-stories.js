@@ -57,7 +57,7 @@ async function generateAndPublish(story) {
   try {
     const res = await fetch(`${BASE}/api/asc3/generate-story-complete`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'x-et-internal-key': process.env.ADMIN_INTERNAL_TOKEN || '' },
       body: JSON.stringify(story.payload),
       signal: AbortSignal.timeout(600000) // 10 min timeout
     })
@@ -82,7 +82,7 @@ async function generateAndPublish(story) {
   try {
     const sunoRes = await fetch(`${BASE}/api/asc3/generate-music`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'x-et-internal-key': process.env.ADMIN_INTERNAL_TOKEN || '' },
       body: JSON.stringify({ storyId, sunoPrompt: genData.data?.sunoPrompt, title }),
       signal: AbortSignal.timeout(300000) // 5 min timeout
     })
@@ -98,7 +98,7 @@ async function generateAndPublish(story) {
   try {
     const pubRes = await fetch(`${BASE}/api/asc3/publish-story`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'x-et-internal-key': process.env.ADMIN_INTERNAL_TOKEN || '' },
       body: JSON.stringify({ storyId, destinations: ['app'] })
     })
     const pubData = await pubRes.json()

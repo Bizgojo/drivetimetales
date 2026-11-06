@@ -15,6 +15,7 @@ echo "📝 Generating script + audio + cover..." | tee -a $LOG
 
 STORY1=$(curl -s -m 900 -X POST "$BASE/api/asc3/generate-story-complete" \
   -H "Content-Type: application/json" \
+  -H "x-et-internal-key: $ADMIN_INTERNAL_TOKEN" \
   -d '{
     "primaryGenre": "Horror",
     "secondaryGenre1": "Mystery",
@@ -40,6 +41,7 @@ if [ "$STORY1_SUCCESS" = "True" ] && [ -n "$STORY1_ID" ]; then
   echo "🎵 Generating Suno music..." | tee -a $LOG
   SUNO1=$(curl -s -m 300 -X POST "$BASE/api/asc3/generate-music" \
     -H "Content-Type: application/json" \
+  -H "x-et-internal-key: $ADMIN_INTERNAL_TOKEN" \
     -d "{\"storyId\":\"$STORY1_ID\",\"title\":\"$STORY1_TITLE\"}" 2>/dev/null)
   SUNO1_OK=$(echo $SUNO1 | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('success',False))" 2>/dev/null)
   if [ "$SUNO1_OK" = "True" ]; then echo "✅ Music generated" | tee -a $LOG
@@ -48,6 +50,7 @@ if [ "$STORY1_SUCCESS" = "True" ] && [ -n "$STORY1_ID" ]; then
   echo "📤 Publishing..." | tee -a $LOG
   PUB1=$(curl -s -m 30 -X POST "$BASE/api/asc3/publish-story" \
     -H "Content-Type: application/json" \
+  -H "x-et-internal-key: $ADMIN_INTERNAL_TOKEN" \
     -d "{\"storyId\":\"$STORY1_ID\",\"destinations\":[\"app\"]}")
   PUB1_OK=$(echo $PUB1 | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('success',False))" 2>/dev/null)
   if [ "$PUB1_OK" = "True" ]; then echo "🚀 PUBLISHED: \"$STORY1_TITLE\"" | tee -a $LOG
@@ -70,6 +73,7 @@ echo "📝 Generating script + audio + cover..." | tee -a $LOG
 
 STORY2=$(curl -s -m 900 -X POST "$BASE/api/asc3/generate-story-complete" \
   -H "Content-Type: application/json" \
+  -H "x-et-internal-key: $ADMIN_INTERNAL_TOKEN" \
   -d '{
     "primaryGenre": "Uplifting",
     "secondaryGenre1": "Drama",
@@ -95,6 +99,7 @@ if [ "$STORY2_SUCCESS" = "True" ] && [ -n "$STORY2_ID" ]; then
   echo "🎵 Generating Suno music..." | tee -a $LOG
   SUNO2=$(curl -s -m 300 -X POST "$BASE/api/asc3/generate-music" \
     -H "Content-Type: application/json" \
+  -H "x-et-internal-key: $ADMIN_INTERNAL_TOKEN" \
     -d "{\"storyId\":\"$STORY2_ID\",\"title\":\"$STORY2_TITLE\"}" 2>/dev/null)
   SUNO2_OK=$(echo $SUNO2 | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('success',False))" 2>/dev/null)
   if [ "$SUNO2_OK" = "True" ]; then echo "✅ Music generated" | tee -a $LOG
@@ -103,6 +108,7 @@ if [ "$STORY2_SUCCESS" = "True" ] && [ -n "$STORY2_ID" ]; then
   echo "📤 Publishing..." | tee -a $LOG
   PUB2=$(curl -s -m 30 -X POST "$BASE/api/asc3/publish-story" \
     -H "Content-Type: application/json" \
+  -H "x-et-internal-key: $ADMIN_INTERNAL_TOKEN" \
     -d "{\"storyId\":\"$STORY2_ID\",\"destinations\":[\"app\"]}")
   PUB2_OK=$(echo $PUB2 | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('success',False))" 2>/dev/null)
   if [ "$PUB2_OK" = "True" ]; then echo "🚀 PUBLISHED: \"$STORY2_TITLE\"" | tee -a $LOG

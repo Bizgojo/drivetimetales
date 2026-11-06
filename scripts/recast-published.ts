@@ -135,7 +135,7 @@ async function main() {
     if (failed) { console.log(`${label}: ${failed} clip(s) failed; NOT re-mixed (old voice restored for those lines)`); continue }
     if (!render) { console.log(`${label}: clips re-recorded; re-mix skipped (no --render)`); continue }
     const mix = await fetch(`${origin}/api/asc3/render-final-mix`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ storyId: ep.id }),
+      method: 'POST', headers: { 'Content-Type': 'application/json', 'x-et-internal-key': process.env.ADMIN_INTERNAL_TOKEN || '' }, body: JSON.stringify({ storyId: ep.id }),
     }).catch((e) => ({ ok: false, json: async () => ({ error: String(e) }) } as any))
     const body: any = await mix.json().catch(() => ({}))
     console.log(`${label}: re-mix ${mix.ok && body?.success !== false ? 'OK' : 'FAILED: ' + String(body?.error || '').slice(0, 200)}`)

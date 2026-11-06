@@ -302,7 +302,7 @@ async function main() {
   console.log('\nStep 11: Triggering render-final-mix...')
   const renderRes = await fetch('https://app.endless-tales.com/api/asc3/render-final-mix', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', 'x-et-internal-key': process.env.ADMIN_INTERNAL_TOKEN || '' },
     body: JSON.stringify({ storyId: STORY_ID }),
   })
   const renderJson = await renderRes.json().catch(() => ({ raw: renderRes.status }))

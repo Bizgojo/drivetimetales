@@ -164,7 +164,7 @@ async function poll() {
       log(`Calling render API for story ${job.story_id}...`)
       const response = await fetch(LOCAL_RENDER_URL, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'x-et-internal-key': process.env.ADMIN_INTERNAL_TOKEN || '' },
         body: JSON.stringify({ storyId: job.story_id }),
       })
       renderResult = await response.json()
