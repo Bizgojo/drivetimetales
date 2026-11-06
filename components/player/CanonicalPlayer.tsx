@@ -3157,6 +3157,13 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
                   ? { padding:'12px', borderRadius:'10px', border:'1px solid rgba(255,255,255,0.16)', background:'rgba(255,255,255,0.06)', color:'white', fontSize:'13px', fontWeight:700, cursor:'pointer' }
                   : { padding:'12px', borderRadius:'10px', border:'none', background:'#f97316', color:'white', fontSize:'14px', fontWeight:800, cursor:'pointer' } }
               >↺ Play Again</button>
+              {/* PLAYER-HOME-NAV-001 (Marc, 2026-11-06): a way out for listeners
+                  who never noticed the Home button at the top. */}
+              <button
+                data-testid="end-state-browse"
+                onClick={() => { window.location.assign('/home') }}
+                style={{ padding:'12px', borderRadius:'10px', border:'1px solid rgba(249,115,22,0.5)', background:'transparent', color:'#f97316', fontSize:'14px', fontWeight:800, cursor:'pointer' }}
+              >🏠 Browse more stories</button>
             </div>
           </div>
         )}

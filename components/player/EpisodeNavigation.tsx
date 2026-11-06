@@ -14,7 +14,7 @@ export default function EpisodeNavigation({episodes,currentId,currentProgress,er
  return <div className="et-episode-navigation">
   <div className="et-episode-buttons">
    <button type="button" disabled={!previous} onClick={()=>previous&&select(previous.id)} aria-label="Previous episode">← Previous</button>
-   <button type="button" aria-haspopup="dialog" aria-expanded={open} onClick={()=>{dialog.current?.showModal();setOpen(true)}}>Episodes</button>
+   <button type="button" aria-haspopup="dialog" aria-expanded={open} onClick={()=>{dialog.current?.showModal();setOpen(true)}}>{episodes.length===1?'1 Episode':episodes.length>1?`${episodes.length} Episodes`:'Episodes'}</button>
    <button type="button" disabled={!next} onClick={()=>next&&select(next.id)} aria-label="Next episode">Next →</button>
   </div>
   <dialog ref={dialog} aria-labelledby="series-episodes-heading" onCancel={()=>setOpen(false)} onClose={()=>setOpen(false)} onClick={e=>{if(e.target===e.currentTarget)close()}}>
