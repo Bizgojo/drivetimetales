@@ -76,7 +76,10 @@ export function buildBelleValidationContext(storyRow: any, script: string, story
   const episodeNumber = Number(storyRow?.episode_number || storyRow?.series_episode_number || parseHeaderValue(script, 'EPISODE') || 0) || null
   const seriesTotal = Number(storyRow?.series_total || storyRow?.series_total_episodes || parseHeaderValue(script, 'SERIES_TOTAL_EPISODES') || 0) || null
   const scriptFinale = parseHeaderValue(script, 'SERIES_IS_FINALE').toLowerCase()
-  const isFinale = storyRow?.series_is_finale === true || scriptFinale === 'true' || Boolean(seriesTotal && episodeNumber && episodeNumber >= seriesTotal)
+  // PHASED-SERIES-002: explicit series_is_finale=false on the row wins over the count.
+  const isFinale = storyRow?.series_is_finale === false
+    ? false
+    : storyRow?.series_is_finale === true || scriptFinale === 'true' || Boolean(seriesTotal && episodeNumber && episodeNumber >= seriesTotal)
   return {
     storyId,
     title,
