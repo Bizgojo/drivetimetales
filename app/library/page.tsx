@@ -806,7 +806,7 @@ export default function LibraryPage() {
       style={{
         minHeight: '100vh',
         backgroundColor: '#0a0a0a',
-        paddingBottom: validPlaylist.length > 0 ? 'calc(180px + env(safe-area-inset-bottom))' : '20px',
+        paddingBottom: validPlaylist.length > 0 ? 'calc(100px + env(safe-area-inset-bottom))' : '20px',
       }}
     >
 

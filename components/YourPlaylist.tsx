@@ -135,6 +135,27 @@ export default function YourPlaylist({ onIdsLoaded, sticky = false }: { onIdsLoa
     <section aria-label={sticky ? 'Playlist controls' : 'My Playlist'} style={sticky
       ? { position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 46, padding: '8px 12px calc(8px + env(safe-area-inset-bottom))', background: '#020617' }
       : { padding: '1.5rem 1rem 0' }}>
+      {sticky ? (
+        // CARD-COMPACT-001 (Marc, 2026-11-06): slim one-row bar on Library so
+        // more story cards fit above it (was ~110px tall).
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: 8, background: '#3b4556', borderRadius: 13, border: '1px solid #64748b' }}>
+          <img src="/images/playlist_icon.png" alt="" width={44} height={44} style={{ width: 44, height: 44, flexShrink: 0, objectFit: 'cover', borderRadius: 6, background: 'white' }} />
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <h2 style={{ fontWeight: 800, fontSize: 17, color: 'white', lineHeight: '20px', margin: 0, whiteSpace: 'nowrap' }}>My Playlist</h2>
+            <div style={{ fontWeight: 600, fontSize: 12, color: '#cbd5e1', lineHeight: '16px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              {remaining} {remaining === 1 ? 'Story' : 'Stories'} · {formatRemainingMinutes(totalMins)}
+            </div>
+          </div>
+          <button type="button" onClick={play}
+            style={{ flexShrink: 0, height: 40, padding: '0 14px', background: playlist.started ? '#22c55e' : '#f97316', color: 'white', border: 'none', borderRadius: 10, fontSize: 14, fontWeight: 800, cursor: 'pointer' }}>
+            ▶ {playlist.started ? 'Continue' : 'Play'}
+          </button>
+          <button type="button" onClick={() => window.location.assign(`/playlist?returnTo=${encodeURIComponent(pathname === '/library' || pathname === '/library-new' ? '/library' : '/home')}`)}
+            style={{ flexShrink: 0, height: 40, padding: '0 10px', background: '#3b82f6', color: 'white', border: 'none', borderRadius: 10, fontSize: 13, fontWeight: 800, cursor: 'pointer' }}>
+            Downloads
+          </button>
+        </div>
+      ) : (
       <div
         style={{
           background: '#1e293b',
@@ -163,6 +184,7 @@ export default function YourPlaylist({ onIdsLoaded, sticky = false }: { onIdsLoa
           </div>
         </div>
       </div>
+      )}
     </section>
   )
 }
