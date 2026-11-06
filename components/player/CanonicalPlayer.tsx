@@ -1669,6 +1669,11 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
     // results get one retry, and partial results still produce a usable total
     // (the main element's own loadedmetadata keeps refining segDursRef).
     const PROBE_TIMEOUT_MS = 4000
+    // RESUME-NEW-NAME-001 (Marc, 2026-11-06): a brand-new listener's personal
+    // greeting is rendered on demand and the clip route waits up to 12s for it.
+    // A 4s probe gave up first, so resume never seeked, autoplay never started,
+    // and "Could not restore your saved position" showed after signup.
+    const GREETING_PROBE_TIMEOUT_MS = 15000
     const probeSegmentDuration = (url: string): Promise<number> =>
       new Promise<number>((resolve) => {
         let settled = false
@@ -1685,7 +1690,7 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
         const timer = window.setTimeout(() => {
           console.warn('[player] duration probe timeout:', url.slice(-60))
           finish(0)
-        }, PROBE_TIMEOUT_MS)
+        }, url.includes('/api/personal-greeting/clip') ? GREETING_PROBE_TIMEOUT_MS : PROBE_TIMEOUT_MS)
         probe.preload = 'metadata'
         probe.onloadedmetadata = () => finish(Number.isFinite(probe.duration) && probe.duration > 0 ? probe.duration : 0)
         probe.onerror = () => finish(0)
@@ -1705,13 +1710,21 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
           storyId,
           failedSegments: failed.map((entry) => entry.index),
         })
-        if (resumeRef.current > 0) {
-          setAudioErrorMessage('Could not restore your saved position. Try again or choose Start Over.')
-        }
       }
+      // RESUME-NEW-NAME-001: an unmeasurable greeting/intro/outro clip must not
+      // block the listener. Count it as ~0s so the resume lands in the story
+      // (at most a few seconds later than saved). Only a missing STORY segment
+      // is a real failure — and even then we start playing instead of showing
+      // a dead-end "Try again / Back to Library" box.
+      const storyFailed = failed.some(({ index }) => queue[index]?.type === 'story')
       durations.forEach(({ index, duration: segmentDuration }) => {
         if (segmentDuration > 0) segDursRef.current[index] = segmentDuration
+        else if (!storyFailed && queue[index]?.type !== 'story') segDursRef.current[index] = 0.01
       })
+      if (storyFailed && resumeRef.current > 0) {
+        console.warn('[player] story segment unmeasurable — starting from the top instead of resuming', { storyId })
+        resumeRef.current = 0
+      }
       const total = segDursRef.current.reduce((sum, value) => sum + (Number.isFinite(value) && value > 0 ? value : 0), 0)
       if (total > 0) setTotalDur(total)
     }

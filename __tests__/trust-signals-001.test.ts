@@ -71,16 +71,13 @@ describe('TRUST-SIGNALS-001: reminder accuracy constraints', () => {
 // 3. Page wiring — both constants imported and rendered
 // ============================================================================
 describe('TRUST-SIGNALS-001: page wiring source pins', () => {
-  test('GO_SOCIAL_PROOF_LINE imported in GoLandingPageClient.tsx', () => {
-    expect(clientSrc).toContain('GO_SOCIAL_PROOF_LINE')
+  test('social proof line removed from the landing (Marc, 2026-11-06)', () => {
+    expect(clientSrc).not.toContain('{GO_SOCIAL_PROOF_LINE}')
+    expect(pageSrc).not.toContain('{GO_SOCIAL_PROOF_LINE}')
   })
 
   test('GO_TRIAL_REMINDER_LINE imported in GoLandingPageClient.tsx', () => {
     expect(clientSrc).toContain('GO_TRIAL_REMINDER_LINE')
-  })
-
-  test('social proof rendered via {GO_SOCIAL_PROOF_LINE}', () => {
-    expect(clientSrc).toContain('{GO_SOCIAL_PROOF_LINE}')
   })
 
   test('trial reminder rendered via {GO_TRIAL_REMINDER_LINE}', () => {
@@ -96,20 +93,6 @@ describe('TRUST-SIGNALS-001: page wiring source pins', () => {
 //    reminder in both sheet and static footer
 // ============================================================================
 describe('TRUST-SIGNALS-001: placement constraints', () => {
-  test('social proof is NOT gated behind sheetVisible (always visible on page load)', () => {
-    // feat/funnel-fixes-001: static CTA removed; use the Legal links section
-    // as the post-proof landmark instead.
-    const proofIdx = pageSrc.indexOf('{GO_SOCIAL_PROOF_LINE}')
-    const legalIdx = pageSrc.indexOf('Legal — small, bottom')
-    expect(proofIdx).toBeGreaterThan(0)
-    expect(legalIdx).toBeGreaterThan(0)
-    // Social proof appears before the legal section
-    expect(proofIdx).toBeLessThan(legalIdx)
-    // Social proof is NOT inside a sheetVisible conditional (appears before any such gating)
-    const proofContext = pageSrc.slice(Math.max(0, proofIdx - 200), proofIdx)
-    expect(proofContext).not.toMatch(/sheetVisible &&/)
-  })
-
   test('reminder appears in bottom sheet section (static footer removed by feat/funnel-fixes-001)', () => {
     // Static CTA removed; reminder is only in the bottom sheet now.
     expect(pageSrc).not.toContain('STATIC BOTTOM CTA')

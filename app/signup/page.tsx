@@ -9,7 +9,7 @@ import { claimStoredReferral, normalizeReferralCode, readStoredReferral } from '
 import { buildAttributionUpdatePayload, hasUtmAttribution, normalizePromoCode, readSignupAttribution, readStoredUtm } from '@/lib/utm'
 import { normalizeEmail } from '@/lib/email'
 import { applyPromoTrialDays } from '@/lib/promo'
-import { GO_BASE_TRIAL_DAYS } from '@/lib/landing'
+import { GO_BASE_TRIAL_DAYS, loadFreshestResumableSample, sampleResumeHref } from '@/lib/landing'
 import { ANNUAL_MONTHLY_EQUIVALENT_DISPLAY, ANNUAL_PRICE_DISPLAY, ANNUAL_SAVINGS_PERCENT, MONTHLY_PRICE_DISPLAY, TRIAL_DAYS } from '@/lib/pricing'
 import { isEntitledUser } from '@/lib/entitlement'
 import { carryQueryString, AUTHED_REDIRECT_EXCLUDED_PARAMS } from '@/lib/subscribeFunnel'
@@ -89,7 +89,11 @@ function SignUpContent() {
     // (e.g. canceled) user clicking an ad link keeps promo/utm params through
     // this bounce — bare '/home' was silently dropping them. 'canceled' and
     // 'returnTo' are stripped (stale routing state, not attribution).
-    router.replace(`/home${carryQueryString(searchParams.toString(), AUTHED_REDIRECT_EXCLUDED_PARAMS)}`)
+    // POST-SIGNUP-RETURN-001 (Marc, 2026-11-06): an already-signed-in listener
+    // who taps "Start free trial" on a /go sample goes straight back into that
+    // story at the spot they reached — not to /home with the story at 0:00.
+    const resumeHref = searchParams.get('source') === 'go' ? sampleResumeHref(loadFreshestResumableSample()) : null
+    router.replace(resumeHref ?? `/home${carryQueryString(searchParams.toString(), AUTHED_REDIRECT_EXCLUDED_PARAMS)}`)
   }, [authLoading, redirectAuthed, router, searchParams])
 
   useEffect(() => {

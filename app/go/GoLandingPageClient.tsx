@@ -14,7 +14,6 @@ import {
   resolveGoStory,
   shouldRevealTrialCta,
   CTA_REVEAL_LISTEN_SEC,
-  GO_SOCIAL_PROOF_LINE,
   GO_TRIAL_REMINDER_LINE,
 } from '@/lib/landing'
 import GoSamplePlayer from '@/components/GoSamplePlayer'
@@ -335,15 +334,7 @@ function GoLandingContent() {
         {/* TRUST-SIGNALS-001: catalog depth social proof — displayed in the
             page body, always visible once the page loads (no reveal gate).
             Signals product substance before the listener commits. */}
-        <div style={{
-          fontSize: '12px',
-          color: '#9ca3af',
-          textAlign: 'center',
-          marginBottom: '0.75rem',
-          letterSpacing: '0.01em',
-        }}>
-          {GO_SOCIAL_PROOF_LINE}
-        </div>
+        {/* GO_SOCIAL_PROOF_LINE removed — Marc, 2026-11-06 ("remove this"). */}
 
         {/* DUPLICATE-CTA-REMOVED (Marc ruling 2026-07-22): static in-flow
             'Start free trial' block removed. The fixed bottom sheet is the

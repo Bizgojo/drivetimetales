@@ -170,6 +170,42 @@ export const GO_STORY_VARIANTS: Record<string, GoStory> = {
   },
 }
 
+// ============================================================================
+// HOOK-LANDING-001 (Claude, 2026-11-06): one /go landing per hook series, so
+// each Meta ad lands on its OWN story (?v=widow|rise|miami|rerouted|home).
+// Audio and cover are the catalog EP1 files themselves, so the listener's
+// sample position maps 1:1 onto the app player after signup.
+// APPROVAL GATE unchanged: these serve only once Marc adds the key to
+// GO_LIVE_VARIANTS below.
+// ============================================================================
+const ASC3 = 'https://vmyhlfeouzslixtkmddy.supabase.co/storage/v1/object/public/audio/asc3'
+function hookVariant(id: string, title: string, genre: string, hook: string, coverFile: string): GoStory {
+  return {
+    id: `go-hook-${id.slice(0, 8)}`,
+    title,
+    genre,
+    hook,
+    catalogStoryId: id,
+    ctaRevealSeconds: CTA_REVEAL_LISTEN_SEC,
+    completedHeading: GO_COMPLETED_HEADING_SERIES,
+    coverUrl: `${ASC3}/${id}/${coverFile}`,
+    audioUrl: `${ASC3}/${id}/final_mix.mp3`,
+  }
+}
+export const GO_HOOK_VARIANTS: Record<string, GoStory> = {
+  widow: hookVariant('3b4509ba-b4f3-4e21-a5e4-27b589ca307c', 'The Widow Who Watched', 'Suspense',
+    'Declared dead, she hides at her own funeral to watch her husband.', 'cover_1793921101304.jpg'),
+  rise: hookVariant('92587140-6371-4bed-875c-548fdbb9abc7', 'Second Rise', 'Romance',
+    'Her ex buys her failing bakery, then orders a cake for his fiancée.', 'cover_1793923486066.jpg'),
+  miami: hookVariant('9d8f6c00-fbe1-4919-85bd-86a085f45e71', 'Weekend Wife in Miami', 'Romance',
+    "Triple pay to play her boss's wife for one weekend in Miami.", 'cover_1793936694555.jpg'),
+  rerouted: hookVariant('9b2a779d-282e-48b0-867b-6315bfefe707', 'Rerouted', 'Thriller',
+    "A night driver's GPS starts speaking in his dead wife's voice.", 'cover_1793936644850.jpg'),
+  home: hookVariant('b189941d-0e1e-46d5-a42d-ede1600b325b', 'Don’t Go Home', 'Thriller',
+    "A night nurse gets texts from her own number. Tonight: don't go home.", 'cover_1793923036374.jpg'),
+}
+Object.assign(GO_STORY_VARIANTS, GO_HOOK_VARIANTS)
+
 // APPROVAL GATE (Marc): per-variant allowlist. A variant serves ONLY after
 // Marc has listened to the story and approved its hook line.
 //   'a' (Commuter of the Year): APPROVED — published + hook approved,
@@ -567,4 +603,15 @@ export function loadFreshestResumableSample(): ResumableSample | null {
   } catch {
     return null
   }
+}
+
+/**
+ * POST-SIGNUP-RETURN-001 (Marc, 2026-11-06): where a brand-new subscriber goes
+ * after Belle's welcome — back into the story they were sampling, at the spot
+ * they stopped. null = no resumable sample (caller keeps its old default).
+ */
+export function sampleResumeHref(sample: Pick<ResumableSample, 'catalogStoryId' | 'seconds'> | null | undefined): string | null {
+  if (!sample?.catalogStoryId) return null
+  const secs = Number.isFinite(sample.seconds) ? Math.max(0, Math.floor(sample.seconds)) : 0
+  return `/player/${sample.catalogStoryId}?resume=${secs}&autoplay=1&playNow=1`
 }
