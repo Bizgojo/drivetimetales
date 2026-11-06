@@ -37,8 +37,9 @@ import MediaButtonLabel from '@/components/MediaButtonLabel'
 // line or two — content is centered inside that fixed box.
 const cardButtonStyle = {
   flex: 1,
-  height: '58px',
-  padding: '4px',
+  // CARD-COMPACT-001 (Marc, 2026-11-06): icon beside the word → 38px (was 58).
+  height: '38px',
+  padding: '2px 4px',
   borderRadius: '6px',
   fontSize: '12px',
   lineHeight: 1.25,
@@ -152,8 +153,8 @@ export default function LibraryStoryCard({
         <div
           onClick={onCoverClick}
           style={{
-            width: '108px',
-            minHeight: '126px',
+            width: '92px',
+            minHeight: '92px',
             borderRadius: '8px',
             backgroundColor: '#1e1b4b',
             backgroundImage: item.cover ? `url(${item.cover})` : undefined,
@@ -259,7 +260,7 @@ export default function LibraryStoryCard({
                 border: 'none',
               }}
             >
-              <MediaButtonLabel kind={readingOnly ? 'read' : 'listen'}>
+              <MediaButtonLabel inline kind={readingOnly ? 'read' : 'listen'}>
                 {showPlayAgain ? 'Play Again' : inProgress ? 'Continue Listening' : readingOnly ? 'Continue Reading' : 'Listen'}
               </MediaButtonLabel>
             </button>
@@ -313,12 +314,12 @@ export default function LibraryStoryCard({
                 border: state.readingInProgress ? 'none' : '1px solid rgba(234,179,8,0.9)',
               }}
             >
-              <MediaButtonLabel kind="read">{state.readingInProgress ? 'Continue Reading' : 'Read'}</MediaButtonLabel>
+              <MediaButtonLabel inline kind="read">{state.readingInProgress ? 'Continue Reading' : 'Read'}</MediaButtonLabel>
             </button>
           </div>
 
-          {/* Row 7: progress bar */}
-          <div
+          {/* Row 7: progress bar — CARD-COMPACT-001: only once there is progress or a finish */}
+          {(showProgress || state.completed) && <div
             style={{
               height: '3px',
               background: state.completed ? '#16a34a' : 'rgba(148,163,184,0.15)',
@@ -344,7 +345,7 @@ export default function LibraryStoryCard({
                 }}
               />
             )}
-          </div>
+          </div>}
         </div>
       </div>
     </div>
