@@ -102,7 +102,7 @@ export default function AppHeader() {
           <button
             type="button"
             onClick={() => { dismissHomeTip(); goBack() }}
-            className="inline-flex h-11 flex-shrink-0 items-center justify-center gap-1 rounded-md bg-orange-500 px-3 text-sm font-bold text-slate-950 transition-colors hover:bg-orange-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-orange-400"
+            className="inline-flex h-11 flex-shrink-0 items-center justify-center gap-1 rounded-md bg-orange-500 px-3 text-sm font-bold text-white transition-colors hover:bg-orange-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-orange-400"
             aria-label="Home — browse all stories"
           >
             <span aria-hidden="true">🏠</span> Home
@@ -121,7 +121,7 @@ export default function AppHeader() {
         ) : (
           <Link
             href="/library"
-            className="inline-flex h-11 flex-shrink-0 items-center justify-center rounded-md bg-orange-500 px-2 text-sm font-bold text-slate-950 transition-colors hover:bg-orange-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-orange-400"
+            className="inline-flex h-11 flex-shrink-0 items-center justify-center rounded-md bg-orange-500 px-2 text-sm font-bold text-white transition-colors hover:bg-orange-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-orange-400"
           >
             Library
           </Link>
@@ -150,7 +150,8 @@ export default function AppHeader() {
             <span style={{ color: '#f97316' }}>Tales</span>
           </span>
           </span>
-          {showGreeting && <span className="block max-w-[190px] truncate text-xs font-semibold leading-tight text-white" title={`Hi ${firstName}`}>Hi {firstName}</span>}
+          {/* HOME-POLISH-001 (Marc, 2026-11-06): friendlier rounded greeting. */}
+          {showGreeting && <span className="block max-w-[200px] truncate text-sm font-bold leading-tight text-orange-200" style={{ fontFamily: 'ui-rounded, "SF Pro Rounded", "Nunito", "Varela Round", system-ui, sans-serif' }} title={`Hi, ${firstName}!`}>Hi, {firstName}!</span>}
         </button>
 
         <div className="flex items-center">
