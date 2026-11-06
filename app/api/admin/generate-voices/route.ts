@@ -2760,6 +2760,20 @@ export async function POST(req: NextRequest) {
         })[0]
       if (introValidation.repaired) existingIntroFile = undefined
       if (outroValidation.repaired) existingOutroFile = undefined
+      // BELLE-ONLY-FORCE-REGEN-001: when the caller has confirmed a Belle line
+      // was edited (belleEditOnlyConfirmed is non-null), force regeneration by
+      // clearing any existing file reference for the confirmed edited line(s).
+      // Without this, a pre-existing announcement.mp3 or outro.mp3 is kept
+      // regardless of text change, status becomes 'skipped_existing', and
+      // shouldStampAfterBelleOnly returns false → segments_generated_at is
+      // never updated → stale-audio gate fails forever after a Belle edit.
+      // Root-cause found 2026-11-05 (Orion/Atlas), PR BELLE-ONLY-FORCE-REGEN-001.
+      if (belleEditOnlyConfirmed === 'intro' || belleEditOnlyConfirmed === 'both') {
+        existingIntroFile = undefined
+      }
+      if (belleEditOnlyConfirmed === 'outro' || belleEditOnlyConfirmed === 'both') {
+        existingOutroFile = undefined
+      }
       const introUrlFromFile = existingIntroFile ? `${BASE_STORAGE}/${storyAudioFolder}/${existingIntroFile.name}` : null
       const outroUrlFromFile = existingOutroFile ? `${BASE_STORAGE}/${storyAudioFolder}/${existingOutroFile.name}` : null
       const result: {
