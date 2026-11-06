@@ -44,6 +44,35 @@ export function getPlayerGenres(story: PlayerGenreFields | null | undefined): st
   return labels
 }
 
+export interface EpisodeLineFields {
+  title?: unknown
+  episode_title?: unknown
+  episode_number?: unknown
+  series_episode_number?: unknown
+}
+
+/**
+ * PLAYER-COMPACT-001 (Marc, 2026-11-06): one line under the series title,
+ * "Episode 2 - The Seventh Token". The episode title comes from episode_title,
+ * else from the story title with any "<series> — Episode N:" prefix removed.
+ * Returns null for standalone stories (no episode number).
+ */
+export function getEpisodeLine(story: EpisodeLineFields | null | undefined, seriesTitle: string): string | null {
+  const num = Number(story?.series_episode_number ?? story?.episode_number)
+  if (!Number.isFinite(num) || num <= 0) return null
+  const clean = (v: unknown) => (typeof v === 'string' ? v.trim() : '')
+  let epTitle = clean(story?.episode_title)
+  if (!epTitle) {
+    epTitle = clean(story?.title)
+    const m = epTitle.match(/episode\s+\d+\s*[:\-–—]\s*(.+)$/i)
+    if (m) epTitle = m[1].trim()
+    else if (/episode\s+\d+\s*$/i.test(epTitle)) epTitle = ''
+  }
+  const series = clean(seriesTitle)
+  if (series && epTitle.toLocaleLowerCase('en-US') === series.toLocaleLowerCase('en-US')) epTitle = ''
+  return epTitle ? `Episode ${num} - ${epTitle}` : `Episode ${num}`
+}
+
 /** A saved global position cannot be mapped safely from partial segment durations. */
 export function waitForSegmentResume(segmented: boolean, pendingSeconds: number, completeDurations: boolean): boolean {
   return segmented && Number.isFinite(pendingSeconds) && pendingSeconds > 0 && !completeDurations

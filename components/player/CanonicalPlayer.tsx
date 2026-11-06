@@ -16,7 +16,7 @@ import PlayerTransport from './PlayerTransport'
 import EpisodeNavigation, {type NavigableEpisode} from './EpisodeNavigation'
 import { PlaybackCheckpoint } from '@/lib/playbackCheckpoint'
 import type { PlaybackSnapshot } from './PersistentPlayer'
-import { getPlayerGenres, shouldAutoStartPlayer, waitForSegmentResume } from '@/lib/playerControls'
+import { getEpisodeLine, getPlayerGenres, shouldAutoStartPlayer, waitForSegmentResume } from '@/lib/playerControls'
 import InstallAppBanner from '@/components/InstallAppBanner'
 import { requestInstallReoffer } from '@/lib/installReoffer'
 import { welcomeClipCompleted } from '@/lib/welcomePlayback'
@@ -1277,7 +1277,7 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
         stage = 'story-row'
         const { data, error } = await supabase
           .from('stories')
-          .select('id,title,author,genre,primary_genre,genre_secondary,genre_third,sub_genres,audio_url,cover_url,duration_mins,intro_audio_url,outro_audio_url,background_music_url,episode_number,series_episode_number,series_id,series_name,series_is_finale,is_free,prose_text,content_start_ms,content_end_ms,author_id,narrator_voice_id,narrator_voice_name,status,is_hidden,published_on')
+          .select('id,title,author,genre,primary_genre,genre_secondary,genre_third,sub_genres,audio_url,cover_url,duration_mins,intro_audio_url,outro_audio_url,background_music_url,episode_number,episode_title,series_episode_number,series_id,series_name,series_is_finale,is_free,prose_text,content_start_ms,content_end_ms,author_id,narrator_voice_id,narrator_voice_name,status,is_hidden,published_on')
           .eq('id', storyId)
           .maybeSingle()
 
@@ -2593,6 +2593,7 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
     : (actualAudioDuration || (story?.duration_mins || 0) * 60)
   const effCur   = isASC3 ? cumTime : currentTime
   const playerGenres = getPlayerGenres(story)
+  const playerEpisodeLine = playerSeriesTitle ? getEpisodeLine(story as any, playerSeriesTitle) : null
   const miniSeekRef = useRef(seekToSeconds)
   miniSeekRef.current = seekToSeconds
   const miniToggleRef = useRef(handlePlayPause)
@@ -3051,18 +3052,19 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
       {/* Controls */}
       <div style={{ flex:1, display:'flex', flexDirection:'column', justifyContent:'flex-start', padding:'18px 16px calc(14px + env(safe-area-inset-bottom))', gap:'10px', minHeight:0 }}>
         <div>
-          {playerSeriesTitle && (
-            <div style={{ color:'white', fontSize:'22px', fontWeight:900, margin:'0 0 6px', textAlign:'center', lineHeight:1.08, fontFamily:'Inter, system-ui, sans-serif' }}>{playerSeriesTitle}</div>
+          {/* PLAYER-COMPACT-001 (Marc, 2026-11-06): title, then ONE line
+              "Episode # - {episode title}", then "by Author · Genre" on one
+              line — frees vertical space so Pause stays visible without
+              cropping the cover. */}
+          <h1 style={{ color:'white', fontSize: playerSeriesTitle ? '22px' : '20px', fontWeight:900, margin:0, textAlign:'center', lineHeight:1.12, fontFamily:'Inter, system-ui, sans-serif' }}>{playerSeriesTitle || story.title}</h1>
+          {playerEpisodeLine && (
+            <p style={{ color:'white', fontSize:'15px', margin:'4px 0 0', textAlign:'center', fontWeight:700, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{playerEpisodeLine}</p>
           )}
-          {(story as any).episode_number && (
-            <p style={{ color:'white', fontSize:'13px', margin:'0 0 2px', textAlign:'center', fontWeight:700, opacity:0.9 }}>Episode {(story as any).episode_number}</p>
-          )}
-          <h1 style={{ fontSize: playerSeriesTitle ? '18px' : '20px', fontWeight:800, margin:0, color:'white', textAlign:'center', lineHeight:1.2 }}>{story.title}</h1>
           <StoryContributorCredit storyId={storyId} />
-          <p style={{ color:'white', fontSize:'13px', margin:'3px 0 0', textAlign:'center', opacity:0.7 }}>by {story.author || 'Endless Tales'}</p>
-          {playerGenres.length > 0 && <ul aria-label="Genres" style={{ listStyle:'none', padding:0, margin:'9px 0 0', display:'flex', flexWrap:'wrap', gap:'6px', justifyContent:'center' }}>
-            {playerGenres.map(genre => <li key={genre} style={{ fontSize:'11px', color:'#fdba74', border:'1px solid rgba(249,115,22,.3)', background:'rgba(249,115,22,.08)', borderRadius:'20px', padding:'4px 9px' }}>{genre}</li>)}
-          </ul>}
+          <p style={{ color:'white', fontSize:'13px', margin:'3px 0 0', textAlign:'center' }}>
+            <span style={{ opacity:0.75 }}>by {story.author || 'Endless Tales'}</span>
+            {playerGenres.length > 0 && <span aria-label="Genres" style={{ color:'#fdba74' }}>{' · '}{playerGenres.join(' · ')}</span>}
+          </p>
           {/* QUEUE-OFFLINE-001 (Marc, 2026-10-04): manual per-episode download
               button removed — queueing a story now auto-saves it offline
               (see lib/offline/queueDownload.ts). Manage/remove saved
