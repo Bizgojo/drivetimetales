@@ -1,3 +1,4 @@
+import { internalKeyHeaders } from '@/lib/admin-center/access-policy'
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 
@@ -172,7 +173,7 @@ export async function POST(request: NextRequest) {
         const baseUrl = getBaseUrl()
         const coverRes = await fetch(`${baseUrl}/api/asc3/regenerate-cover`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: internalKeyHeaders({ 'Content-Type': 'application/json' }),
           body: JSON.stringify({ storyId })
         })
 

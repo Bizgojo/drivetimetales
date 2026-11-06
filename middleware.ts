@@ -1,4 +1,4 @@
-import { ADMIN_EMAILS, validInternalToken } from '@/lib/admin-center/access-policy'
+import { ADMIN_EMAILS, validInternalToken, isProtectedAsc3Write, tokenMatches } from '@/lib/admin-center/access-policy'
 import { hasValidRequestOrigin } from '@/lib/requestOrigin'
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
@@ -83,10 +83,13 @@ export async function middleware(request: NextRequest) {
 
   // Admin APIs are never public. Machine access is narrowly scoped to the
   // existing production self-fetch paths and requires a dedicated secret.
-  if (pathname === '/api/admin' || pathname.startsWith('/api/admin/')) {
+  // ASC3-AUTH-001: /api/asc3 write routes get the same gate as /api/admin.
+  const asc3Write = isProtectedAsc3Write(pathname, request.method)
+  if (pathname === '/api/admin' || pathname.startsWith('/api/admin/') || asc3Write) {
     const deny = (status: number) => NextResponse.json({ error: 'Administrator authorization required' }, { status, headers: { 'Cache-Control': 'private, no-store' } })
     const provided = request.headers.get('x-et-internal-key') || request.headers.get('authorization')?.replace(/^Bearer\s+/i, '') || null
     if (validInternalToken(provided, process.env.ADMIN_INTERNAL_TOKEN, pathname)) return NextResponse.next()
+    if (asc3Write && tokenMatches(provided, process.env.ADMIN_INTERNAL_TOKEN)) return NextResponse.next()
     if (!['GET','HEAD','OPTIONS'].includes(request.method) && !hasValidRequestOrigin(request)) return deny(403)
     try {
       let refreshed: any[] = []
@@ -192,5 +195,5 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/api/admin/:path*', '/((?!_next/static|_next/image|favicon.ico|images|icons|api|podcast|manifest.json|sw.js|offline.html).*)'],
+  matcher: ['/api/admin/:path*', '/api/asc3/:path*', '/((?!_next/static|_next/image|favicon.ico|images|icons|api|podcast|manifest.json|sw.js|offline.html).*)'],
 }
