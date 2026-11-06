@@ -13,13 +13,15 @@ interface PlayerTransportProps {
   ended: boolean
   autoplayBlocked: boolean
   onboarding?: boolean
+  /** AUTOSTART-LABEL-001: playback is about to start on its own — show Pause. */
+  starting?: boolean
   onToggle: () => void
   onSeek: (seconds: number) => void
   onRestart: () => void
 }
 
 export default function PlayerTransport({ currentTime, duration, seekEnabled, isPlaying, isBuffering,
-  hasStarted, ended, autoplayBlocked, onboarding = false, onToggle, onSeek, onRestart }: PlayerTransportProps) {
+  hasStarted, ended, autoplayBlocked, onboarding = false, starting = false, onToggle, onSeek, onRestart }: PlayerTransportProps) {
   const [draft, setDraft] = useState<number | null>(null)
   const dragging = useRef(false)
   const total = Number.isFinite(duration) && duration > 0 ? duration : 0
@@ -30,8 +32,9 @@ export default function PlayerTransport({ currentTime, duration, seekEnabled, is
     setDraft(null)
     onSeek(value)
   }
+  const showPlaying = isPlaying || starting
   const label = onboarding ? '▶ Continue your story'
-    : isPlaying ? (isBuffering ? 'Buffering…' : '⏸ Pause')
+    : showPlaying ? (isBuffering && isPlaying ? 'Buffering…' : '⏸ Pause')
       : ended ? '▶ Play Again' : currentTime > 0 ? '▶ Continue' : '▶ Play'
 
   return <div className="et-player-transport">
@@ -59,8 +62,8 @@ export default function PlayerTransport({ currentTime, duration, seekEnabled, is
         disabled={!seekEnabled || onboarding} onClick={() => onSeek(Math.max(0, currentTime - 15))}>
         <span aria-hidden="true">↶</span><small>15s</small>
       </button>
-      <button type="button" className={`et-player-toggle ${isPlaying ? 'is-playing' : ''}`}
-        onClick={onToggle} aria-label={isPlaying ? 'Pause' : onboarding ? 'Continue your story' : ended ? 'Play Again' : currentTime > 0 ? 'Continue' : 'Play'}>
+      <button type="button" className={`et-player-toggle ${showPlaying ? 'is-playing' : ''}`}
+        onClick={onToggle} aria-label={showPlaying ? 'Pause' : onboarding ? 'Continue your story' : ended ? 'Play Again' : currentTime > 0 ? 'Continue' : 'Play'}>
         {label}
       </button>
       <button type="button" className="et-player-skip" aria-label="Forward 15 seconds" title="Forward 15 seconds"

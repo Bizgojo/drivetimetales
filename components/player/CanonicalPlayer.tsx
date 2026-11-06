@@ -162,6 +162,9 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
   // Buffering… instead of lying with a playing state).
   const [isBuffering, setIsBuffering] = useState(false)
   const [autoplayBlocked, setAutoplayBlocked] = useState(false)
+  // AUTOSTART-LABEL-001 (Marc, 2026-11-06): while an auto-start is on its way,
+  // the big button already reads "Pause" — no one-second "Play" flash.
+  const [autoStartPending, setAutoStartPending] = useState(false)
   const [showSeriesContinueOverlay, setShowSeriesContinueOverlay] = useState(false)
   const isAdvancingRef = useRef(false)
   const mountedRef = useRef(false)
@@ -1908,6 +1911,23 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
     }
   }
 
+  useEffect(() => {
+    setAutoStartPending(playlistAutoplayPendingRef.current || shouldAutoStartPlayer(window.location.search))
+    const timer = window.setTimeout(() => setAutoStartPending(false), 10000)
+    return () => window.clearTimeout(timer)
+  }, [storyId])
+  useEffect(() => {
+    if (isPlaying || autoplayBlocked || audioErrorMessage || playbackEnded) setAutoStartPending(false)
+  }, [isPlaying, autoplayBlocked, audioErrorMessage, playbackEnded])
+  const cancelAutoStart = () => {
+    // Tapping "Pause" before sound starts means: don't start.
+    seriesContinueAutoplayAttemptedRef.current = true
+    resumePlayRequestedRef.current = false
+    playlistAutoplayPendingRef.current = false
+    setAutoStartPending(false)
+    audioRef.current?.pause()
+  }
+
   // ── Play / Pause ───────────────────────────────────────────────────────────
 
   // ORION-PLAYER-STALL-001: watchdog — samples currentTime every 2s while the
@@ -3201,7 +3221,8 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
           hasStarted={hasPlaybackStarted || hasProgress || effCur > 0 || playbackEnded}
           ended={isAtNaturalEnd()} autoplayBlocked={autoplayBlocked}
           onboarding={onboardActive}
-          onToggle={onboardActive ? handleOnboardContinue : handlePlayPause}
+          starting={autoStartPending && !isPlaying && !onboardActive}
+          onToggle={onboardActive ? handleOnboardContinue : (autoStartPending && !isPlaying) ? cancelAutoStart : handlePlayPause}
           onSeek={seekToSeconds}
           onRestart={restartFromBeginning}
         />
