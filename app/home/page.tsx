@@ -308,12 +308,14 @@ function AnimatedBars() {
 }
 
 interface WelcomeAudioCardProps {
+  /** HOME-POLISH-001: the tap gate says what the tap really does. */
+  resumingStory?: boolean
   seg1Url: string | null
   firstName: string
   onDismiss: () => void
 }
 
-function WelcomeAudioCard({ seg1Url, firstName, onDismiss }: WelcomeAudioCardProps) {
+function WelcomeAudioCard({ seg1Url, firstName, onDismiss, resumingStory }: WelcomeAudioCardProps) {
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const [isPlaying, setIsPlaying] = useState(false)
   const [autoplayBlocked, setAutoplayBlocked] = useState(false)
@@ -407,7 +409,7 @@ function WelcomeAudioCard({ seg1Url, firstName, onDismiss }: WelcomeAudioCardPro
       {autoplayBlocked && (
         <div
           role="button"
-          aria-label="Tap to hear your welcome message"
+          aria-label={resumingStory ? 'Continue my story — Belle has a quick hello first' : 'Start listening — Belle has a quick hello first'}
           tabIndex={0}
           onClick={startPlayback}
           onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') startPlayback() }}
@@ -436,7 +438,7 @@ function WelcomeAudioCard({ seg1Url, firstName, onDismiss }: WelcomeAudioCardPro
             padding: '0 32px',
             lineHeight: 1.3,
           }}>
-            Tap to hear your welcome
+            {resumingStory ? 'Continue my story' : 'Start listening'}
           </span>
           <div style={{
             width: '72px',
@@ -454,12 +456,12 @@ function WelcomeAudioCard({ seg1Url, firstName, onDismiss }: WelcomeAudioCardPro
             ▶
           </div>
           <span style={{
-            color: 'rgba(255,255,255,0.5)',
-            fontSize: '14px',
+            color: 'rgba(255,255,255,0.8)',
+            fontSize: '17px',
             textAlign: 'center',
             padding: '0 40px',
           }}>
-            Belle has a message for you
+            Belle has a quick hello first.
           </span>
         </div>
       )}
@@ -699,6 +701,7 @@ function HomeContent() {
         {showWelcome && (
           <div style={{ padding: '1rem 1rem 0' }}>
             <WelcomeAudioCard
+              resumingStory={Boolean(loadFreshestResumableSample())}
               seg1Url={seg1Url}
               firstName={firstName}
               onDismiss={() => {

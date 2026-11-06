@@ -165,6 +165,8 @@ export default function PersistentPlayer({ children }: { children: ReactNode }) 
 
       <aside ref={continueShellRef} aria-label="Continue listening" style={{ position: 'fixed', top: 56, left: 0, right: 0,
         zIndex: 45, padding: '8px 12px 12px', background: '#020617', color: 'white' }}>
+        {/* HOME-POLISH-001 (Marc, 2026-11-06): section header, same style as NEW ARRIVALS. */}
+        <h2 style={{ fontSize: 18, lineHeight: '28px', fontWeight: 700, color: 'white', margin: '0 0 6px 2px' }}>CONTINUE YOUR LAST STORY</h2>
         <div style={{ padding: 10, borderRadius: 14, background: '#1e293b', border: '1px solid #475569' }}>
         {/* Main row: cover + text (clickable) | right col: × top / Continue bottom */}
         <div style={{ display: 'flex', gap: 10, alignItems: 'stretch' }}>
