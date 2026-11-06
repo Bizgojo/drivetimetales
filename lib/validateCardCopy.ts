@@ -11,7 +11,10 @@
  */
 
 export const TITLE_MAX_CHARS = 28
-export const DESCRIPTION_MAX_CHARS = 70
+// DESC-100-CHAR-001 (Marc 2026-11-05): one rule in one place — 100 characters fits
+// two card lines on a phone. Replaces the 24-word word-count rule (removed from
+// run-next/route.ts inline validateCardCopy and from lib/descriptionWordCountTruth.ts).
+export const DESCRIPTION_MAX_CHARS = 100
 /**
  * DESC-TENSE-001 (Marc 2026-10-29): the rule is "no past-tense sentences",
  * not a list of banned words. Only was/were/had are blocked here because
@@ -57,7 +60,7 @@ export function validateCardCopy(script: string): string[] {
   } else {
     if (description.length > DESCRIPTION_MAX_CHARS) {
       issues.push(
-        `DESCRIPTION must be ${DESCRIPTION_MAX_CHARS} characters or fewer so it fits two lines on story cards. Current: ${description.length} characters.`
+        `DESCRIPTION must be ${DESCRIPTION_MAX_CHARS} characters or fewer so it fits two lines on a phone card. Current: ${description.length} characters.`
       )
     }
     if (DESCRIPTION_PAST_TENSE_RE.test(description)) {
