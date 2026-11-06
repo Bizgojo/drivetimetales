@@ -3009,10 +3009,28 @@ async function createStoryRow(job: ProductionJob) {
   }
 }
 
+/**
+ * PHASED-SERIES-001 (Marc, 2026-11-06): a PUBLISHED episode is read-only in a
+ * series job. Steps may read it (continuity, validation context) but must
+ * never voice, mix, rewrite, re-describe, re-cover or re-state it. Used when
+ * EP2+ are added to a series whose EP1 is already live.
+ */
+export function isFrozenSeriesEpisode(episode: any): boolean {
+  const wf = String(episode?.workflow_state || '').trim()
+  const st = String(episode?.status || '').trim()
+  return wf === 'published' || st === 'published'
+}
+export function withoutFrozenEpisodes<T>(episodes: T[]): T[] {
+  return (episodes || []).filter((episode) => !isFrozenSeriesEpisode(episode))
+}
+async function loadSeriesWorkEpisodes(seriesId: string) {
+  return withoutFrozenEpisodes(await loadSeriesEpisodes(seriesId))
+}
+
 async function loadSeriesEpisodes(seriesId: string) {
   const { data, error } = await supabase
     .from('stories')
-    .select('id,title,author,author_style,genre,narrative_voice,description,brief_json,status,script,script_json,script_version,series_id,series_name,episode_number,series_episode_number,series_total_episodes,series_is_finale,story_type,validator_result,validator_report,validator_passed_at,narrator_voice_id,narrator_voice_name,audio_url,story_audio_url,duration_mins,dispatch_failure_reset_at')
+    .select('id,title,author,author_style,genre,narrative_voice,description,brief_json,status,workflow_state,script,script_json,script_version,series_id,series_name,episode_number,series_episode_number,series_total_episodes,series_is_finale,story_type,validator_result,validator_report,validator_passed_at,narrator_voice_id,narrator_voice_name,audio_url,story_audio_url,duration_mins,dispatch_failure_reset_at')
     .eq('series_id', seriesId)
     // Rule-1 doctrine (Marc 2026-07-09): cold_storage episodes are retired from
     // production and must not contaminate series validation/production - a
@@ -5727,9 +5745,15 @@ async function resolveSeriesPackageEpisodes(job: ProductionJob) {
 
   for (const episode of fromState) byId.set(episode.storyId, episode)
 
+  let frozenCount = 0
   if (seriesId) {
-    const dbEpisodes = await loadSeriesEpisodes(seriesId)
-    for (const episode of dbEpisodes) {
+    const allEpisodes = await loadSeriesEpisodes(seriesId)
+    // PHASED-SERIES-001: published episodes never go through package completion
+    // (it re-runs cover/description/assembly). Drop them even if job state lists them.
+    for (const episode of allEpisodes) {
+      if (isFrozenSeriesEpisode(episode)) { byId.delete(String(episode.id)); frozenCount += 1 }
+    }
+    for (const episode of withoutFrozenEpisodes(allEpisodes)) {
       byId.set(String(episode.id), {
         storyId: String(episode.id),
         episodeNumber: episodeNumber(episode, byId.size + 1),
@@ -5741,7 +5765,7 @@ async function resolveSeriesPackageEpisodes(job: ProductionJob) {
   const episodes = Array.from(byId.values())
     .sort((a, b) => (a.episodeNumber || 999) - (b.episodeNumber || 999))
 
-  const expectedCount = Number(state.totalEpisodes || state.seriesValidation?.episodeCount || 0)
+  const expectedCount = Math.max(0, Number(state.totalEpisodes || state.seriesValidation?.episodeCount || 0) - frozenCount)
   if (!episodes.length) throw new Error('Series package completion could not resolve episode story IDs')
   if (expectedCount > 0 && episodes.length < expectedCount) {
     throw new Error(`Series package completion resolved ${episodes.length}/${expectedCount} episode story IDs`)
@@ -7965,7 +7989,7 @@ async function runSeriesVoicePreflight(job: ProductionJob, origin: string) {
     throw new Error('Series package validation must pass with earned evidence (this job, current scripts) before series_voice_preflight')
   }
 
-  const episodes = preflightEpisodes
+  const episodes = withoutFrozenEpisodes(preflightEpisodes) // PHASED-SERIES-001
 
   // AUTHOR-WRITTEN-EXEMPT-001: series-level flag (Sunset only). When on,
   // author copy skips quality gates (runtime floor, pre-voice Belle
@@ -8412,7 +8436,7 @@ async function runSeriesCastReview(job: ProductionJob, origin: string) {
   const state = job.state_json && typeof job.state_json === 'object' ? job.state_json : {}
   const seriesId = String(job.series_id || state.seriesId || '')
   if (!seriesId) throw new Error('Series job is missing series_id')
-  const episodes = await loadSeriesEpisodes(seriesId)
+  const episodes = await loadSeriesWorkEpisodes(seriesId) // PHASED-SERIES-001
   if (!episodes.length) throw new Error('No child episodes found for cast review')
   const endpoint = `${resolveSelfFetchOrigin(origin)}/api/admin/generate-voices`
   for (const ep of episodes as any[]) {
@@ -8519,7 +8543,7 @@ async function runSeriesVoiceSegment(job: ProductionJob, origin: string): Promis
     throw new Error('Series voice preflight has failed episodes')
   }
 
-  const episodes = await loadSeriesEpisodes(String(seriesId))
+  const episodes = await loadSeriesWorkEpisodes(String(seriesId)) // PHASED-SERIES-001
   if (!episodes.length) throw new Error('No child episodes found for series voice generation')
 
   const preflight = state.seriesVoicePreflight && typeof state.seriesVoicePreflight === 'object'
@@ -8775,7 +8799,7 @@ async function runSeriesBelleAssets(job: ProductionJob, origin: string) {
   const seriesId = job.series_id || state.seriesId
   if (!seriesId) throw new Error('Series job missing series_id')
 
-  const episodes = await loadSeriesEpisodes(String(seriesId))
+  const episodes = await loadSeriesWorkEpisodes(String(seriesId)) // PHASED-SERIES-001
   const prev = state.seriesBelleGeneration && typeof state.seriesBelleGeneration === 'object'
     ? state.seriesBelleGeneration : {}
   const doneByEp: Record<string, boolean> = prev.doneByEp || {}
@@ -8833,7 +8857,7 @@ async function runSeriesMusicGeneration(job: ProductionJob, origin: string) {
   const seriesId = job.series_id || state.seriesId
   if (!seriesId) throw new Error('Series job missing series_id')
 
-  const episodes = await loadSeriesEpisodes(String(seriesId))
+  const episodes = await loadSeriesWorkEpisodes(String(seriesId)) // PHASED-SERIES-001
   const prev = state.seriesMusicGeneration && typeof state.seriesMusicGeneration === 'object'
     ? state.seriesMusicGeneration : {}
   const doneByEp: Record<string, boolean | string> = prev.doneByEp || {}
@@ -9006,7 +9030,7 @@ async function runSeriesRenderFinalMix(job: ProductionJob, origin: string) {
   const seriesId = job.series_id || state.seriesId
   if (!seriesId) throw new Error('Series job missing series_id')
 
-  const episodes = await loadSeriesEpisodes(String(seriesId))
+  const episodes = await loadSeriesWorkEpisodes(String(seriesId)) // PHASED-SERIES-001
   const prev = state.seriesRenderFinalMix && typeof state.seriesRenderFinalMix === 'object'
     ? state.seriesRenderFinalMix : {}
   const doneByEp: Record<string, boolean> = prev.doneByEp || {}
@@ -9506,6 +9530,10 @@ export async function POST(req: NextRequest) {
           if (!targetEpisode?.id || !targetEpisode?.script) {
             throw new Error(`Description repair target episode ${descriptionFailure.episodeNumber} was not found or has no script`)
           }
+          if (isFrozenSeriesEpisode(targetEpisode)) {
+            // PHASED-SERIES-001: never rewrite a live episode's card copy.
+            throw new Error(`PHASED-SERIES-001: description check failed on PUBLISHED episode ${descriptionFailure.episodeNumber}; it is read-only. Human review needed.`)
+          }
 
           const repairedDescription = await regenerateSeriesDescriptionFromEpisodeFeedback(
             targetEpisode,
@@ -9648,8 +9676,15 @@ export async function POST(req: NextRequest) {
           })
           if (plan.action === 'rewrite' && !seriesAutoRepairExempt) {
             const feedback = extractValidatorFixList(String(result.episodeResult.report))
+            // PHASED-SERIES-001: a failing PUBLISHED episode is never rewritten.
+            const frozenTarget = ((result.episodes || []) as any[]).find((ep: any) =>
+              episodeNumber(ep, 0) === plan.failedEpisodeNumber && isFrozenSeriesEpisode(ep))
+            if (frozenTarget) {
+              throw new Error(`PHASED-SERIES-001: validation failed on PUBLISHED episode ${plan.failedEpisodeNumber}; it is read-only. Human review needed.`)
+            }
             for (const ep of (result.episodes || []) as any[]) {
               if (!plan.clearStoryIds.includes(String(ep.id))) continue
+              if (isFrozenSeriesEpisode(ep)) continue
               const isFailed = episodeNumber(ep, 0) === plan.failedEpisodeNumber
               const sj = ep.script_json && typeof ep.script_json === 'object' ? ep.script_json : {}
               const backups = Array.isArray(sj.rewrite_backups) ? sj.rewrite_backups.slice(-2) : []
@@ -12810,7 +12845,7 @@ export async function POST(req: NextRequest) {
               ''
           ),
           loadSeriesStories: lockedJob.series_id
-            ? () => loadSeriesEpisodes(String(lockedJob.series_id))
+            ? () => loadSeriesWorkEpisodes(String(lockedJob.series_id))
             : undefined,
           job: lockedJob,
           fence: ownedJobFence(lockedJob, lockHolderId),
@@ -12871,7 +12906,7 @@ export async function POST(req: NextRequest) {
           const hoistedDrainResolutions = await recoverPendingPinDrains(supabase, {
             failingStoryId: String(result?.episode?.storyId || ''),
             loadSeriesStories: result.seriesId
-              ? () => loadSeriesEpisodes(String(result.seriesId))
+              ? () => loadSeriesWorkEpisodes(String(result.seriesId))
               : undefined,
           })
           if (hoistedDrainResolutions.length > 0) {
@@ -14649,7 +14684,7 @@ export async function POST(req: NextRequest) {
             ''
         ),
         loadSeriesStories: lockedJob.series_id
-          ? () => loadSeriesEpisodes(String(lockedJob.series_id))
+          ? () => loadSeriesWorkEpisodes(String(lockedJob.series_id))
           : undefined,
         job: lockedJob,
       })
