@@ -213,7 +213,9 @@ Object.assign(GO_STORY_VARIANTS, GO_HOOK_VARIANTS)
 //   'b' (Murder at Falls Park): APPROVED — published + hook + Liberty Bridge
 //        cover PASS, Marc 2026-07-12 15:50 EDT ("flip variant B live — full A/B active").
 // GO_AB_LIVE retained for compatibility: true = at least one variant live.
-export const GO_LIVE_VARIANTS: ReadonlyArray<string> = ['a', 'b']
+//   HOOK-LANDING-001 (5 hook series): live once Marc approves this PR after
+//   listening on its private test copy.
+export const GO_LIVE_VARIANTS: ReadonlyArray<string> = ['a', 'b', 'widow', 'rise', 'miami', 'rerouted', 'home']
 export const GO_AB_LIVE = GO_LIVE_VARIANTS.length > 0
 
 /**
@@ -286,7 +288,9 @@ export interface GoCtaCopy {
 export const GO_CTA_COPY_DEFAULT: GoCtaCopy = {
   heading: 'Keep the story going',
   buttonLabel: 'Start free trial',
-  footnote: 'Your story keeps playing while you sign up.',
+  // GO-FOOTNOTE-001 (Marc, 2026-11-06): the old line ("keeps playing while you
+  // sign up") was false — signup is a new page. Resume after signup is real.
+  footnote: "After you sign up, we'll pick up right where you left off.",
 }
 
 /** Completion-state sheet copy (CTA-002; strings revised per Marc verdict,
