@@ -26,7 +26,7 @@ CHAPTER ONE — The Creek That Wasn't There
 Mara stood at the dry creek bed where water should have been, holding her grandmother's brass compass. The wind moved through the cottonwoods while the old lantern swung from the porch rail.`;
 
 const GENUINE_MAP_STORY = `CHAPTER ONE — The Creek That Wasn't There
-Mara unfolded the surveyor's map across the tailgate, tracing the creek's vanished path with one finger. The old chart showed water where only dust remained.`;
+Mara unfolded the surveyor's map across the tailgate, tracing the creek's vanished path with one finger. The old map showed water where only dust remained.`;
 
 describe('COVER-STORY-OBJECT-001: production notes never drive cover direction', () => {
   it('(a) a series script WITH the STORY RESOLUTION MAP notes block must NOT yield "a visible map"', () => {
@@ -72,7 +72,15 @@ describe('COVER-STORY-OBJECT-001: production notes never drive cover direction',
     // Sanity: the real whole words still match.
     expect(inferKeyObjectSymbol('She twisted the brass ring on her finger by the fire.')).toContain('ring')
     expect(inferKeyObjectSymbol('The old watch stopped at midnight near the station.')).toContain('watch')
-    expect(inferKeyObjectSymbol('He turned the iron key in the chapel door.')).toContain('key')
+    expect(inferKeyObjectSymbol('He turned the iron key in the chapel door. The key was cold.')).toContain('key')
+  })
+
+  it('COVER-NO-KEYS-001: one passing mention of key or map does not put it on the cover', () => {
+    expect(inferKeyObjectSymbol('The key is to stay calm on the night shift.')).not.toContain('key')
+    expect(inferKeyObjectSymbol('She checked the map once and drove on.')).not.toContain('map')
+    expect(inferKeyObjectSymbol('A widow returns to the old house.')).not.toContain('house')
+    const brief = buildCoverDirectionBrief({ title: 'T', author: 'A', genre: 'thriller', script: 'A nurse walks home.' })
+    expect(brief.whatToAvoid.join(' ')).toContain('keys')
   })
 })
 
