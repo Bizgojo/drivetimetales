@@ -37,11 +37,15 @@ def write_pipeline_state(path: Path, payload: dict):
 
 def post_json(url: str, payload: dict, timeout: int = 300):
     data = json.dumps(payload).encode("utf-8")
+    _headers = {"Content-Type": "application/json"}
+    _internal_key = os.environ.get("ADMIN_INTERNAL_TOKEN", "")
+    if _internal_key:
+        _headers["x-et-internal-key"] = _internal_key
     req = urllib.request.Request(
         url,
         data=data,
         method="POST",
-        headers={"Content-Type": "application/json"},
+        headers=_headers,
     )
     try:
         with urllib.request.urlopen(req, timeout=timeout) as r:
