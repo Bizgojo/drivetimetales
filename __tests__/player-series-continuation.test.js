@@ -1,0 +1,96 @@
+const fs = require('fs')
+const path = require('path')
+const ts = require('typescript')
+const vm = require('vm')
+const source = fs.readFileSync(path.join(__dirname, '../components/player/CanonicalPlayer.tsx'), 'utf8')
+const ast = ts.createSourceFile('player.tsx', source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX)
+// Execute the real player handlers, with browser/audio/DB boundaries stubbed.
+function find(predicate) {
+  let result
+  function visit(node) { if (predicate(node)) result = node; else ts.forEachChild(node, visit) }
+  visit(ast)
+  if (!result) throw new Error('Player handler not found')
+  return result
+}
+function initializer(name) {
+  return find(n => ts.isVariableDeclaration(n) && n.name.getText(ast) === name).initializer.getText(ast)
+}
+function jsxHandler(name) {
+  return find(n => ts.isJsxAttribute(n) && n.name.getText(ast) === name).initializer.expression.getText(ast)
+}
+function harness(next = { story: { id: 'well-ep2' }, reason: 'next_series_episode' }) {
+  const noop = jest.fn()
+  const audio = { paused: false, ended: false, currentTime: 300,
+    pause() { this.paused = true }, play() { this.paused = false; return Promise.resolve() } }
+  const ctx = { console, clearTimeout, setTimeout, Date,
+    autoAdvanceEnabledRef: { current: true }, mountedRef: { current: true }, isAdvancingRef: { current: false },
+    autoAdvanceTimerRef: { current: null }, stillListeningTimerRef: { current: null },
+    audioRef: { current: audio }, musicRef: { current: null }, storyId: 'well-ep1', story: { series_id: 'well' }, mode: 'series',
+    setAutoAdvanceDisabledReason: noop, setAutoAdvanceCandidate: noop, setStillListeningPrompt: noop,
+    setEndStateCandidate: noop, setPlaybackEnded: jest.fn(), setCatalogExhausted: noop,
+    fetchDirectSeriesAutoAdvanceCandidate: jest.fn(async () => next), startAutoAdvanceTo: jest.fn(),
+    waitForSegmentResume: () => false, isASC3: false, resumeRef: { current: 0 }, hasAllQueueDurations: () => true,
+    removedFromContinueRef: { current: false }, saveProgress: noop, getProgressSeconds: () => audio.currentTime,
+    endAnalyticsSession: noop, setIsPlaying: noop, isAtNaturalEnd: () => false,
+    checkpointRef: { current: { capture: noop, restore: noop } }, playbackSource: noop,
+    setAutoplayBlocked: noop, setShowSeriesContinueOverlay: noop, user: null, sessionStartRef: { current: 1 },
+    startAnalyticsSession: noop, noMusicRef: { current: true }, loading: false,
+    audioStoryIdRef: { current: 'well-ep1' }, inWelcomeRef: { current: false }, saveTimer: { current: null },
+    analyticsTrackedRef: { current: false }, router: { push: jest.fn() }, mediaHandlersRef: { current: {} },
+  }
+  const media = find(n => ts.isBinaryExpression(n) && n.left.getText(ast) === 'mediaHandlersRef.current').right.getText(ast)
+  const code = ['disableAutoAdvanceForSession', 'handlePlayPause', 'maybeAutoAdvanceFromNaturalEnd', 'leaveForEpisode']
+    .map(name => `var ${name} = ${initializer(name)}`).join('\n') +
+    `\nvar onPause = ${jsxHandler('onPause')}; mediaHandlersRef.current = ${media};`
+  vm.createContext(ctx)
+  vm.runInContext(ts.transpileModule(code, { compilerOptions: { target: ts.ScriptTarget.ES2020 } }).outputText, ctx)
+  return ctx
+}
+
+describe('series continuation survives interruptions', () => {
+  test.each(['screen', 'media', 'native'])( '%s pause + native resume still advances EP1 to EP2', async pause => {
+    const c = harness()
+    if (pause === 'screen') c.handlePlayPause()
+    else if (pause === 'media') c.mediaHandlersRef.current.pause()
+    else c.audioRef.current.pause()
+    c.onPause({ currentTarget: c.audioRef.current })
+    // Native resumption intentionally bypasses the on-screen Resume handler.
+    await c.audioRef.current.play()
+    // Repeat native pause/resume for screen lock or an OS interruption.
+    c.audioRef.current.pause(); c.onPause({ currentTarget: c.audioRef.current })
+    await c.audioRef.current.play()
+    await c.maybeAutoAdvanceFromNaturalEnd('natural_ended')
+    expect(c.autoAdvanceEnabledRef.current).toBe(true)
+    expect(c.startAutoAdvanceTo).toHaveBeenCalledWith(expect.objectContaining({ story: { id: 'well-ep2' } }))
+  })
+  test('on-screen resume also preserves continuation', async () => {
+    const c = harness(); c.handlePlayPause(); c.handlePlayPause()
+    await c.maybeAutoAdvanceFromNaturalEnd('natural_ended')
+    expect(c.startAutoAdvanceTo).toHaveBeenCalledTimes(1)
+  })
+  test.each([false, true])('explicit media Stop blocks advance even if already paused=%s', async paused => {
+    const c = harness(); c.audioRef.current.paused = paused
+    c.mediaHandlersRef.current.stop()
+    c.handlePlayPause()
+    await c.maybeAutoAdvanceFromNaturalEnd('natural_ended')
+    expect(c.autoAdvanceEnabledRef.current).toBe(false)
+    expect(c.startAutoAdvanceTo).not.toHaveBeenCalled()
+  })
+  test('choosing another episode cancels the old continuation', async () => {
+    const c = harness(); c.leaveForEpisode('another-episode')
+    await c.maybeAutoAdvanceFromNaturalEnd('natural_ended')
+    expect(c.startAutoAdvanceTo).not.toHaveBeenCalled()
+    expect(c.router.push).toHaveBeenCalledTimes(1)
+  })
+  test('finale shows the end card without advancing', async () => {
+    const c = harness(null); c.handlePlayPause(); await c.audioRef.current.play()
+    await c.maybeAutoAdvanceFromNaturalEnd('natural_ended')
+    expect(c.startAutoAdvanceTo).not.toHaveBeenCalled()
+    expect(c.setPlaybackEnded).toHaveBeenCalledWith(true)
+  })
+  test('only Stop and different-story call sites can disable continuation', () => {
+    const reasons = [...source.matchAll(/disableAutoAdvanceForSession\('([^']+)'\)/g)].map(m => m[1])
+    expect(reasons.length).toBeGreaterThan(0)
+    expect(reasons.every(r => ['stop', 'different_story'].includes(r))).toBe(true)
+  })
+})

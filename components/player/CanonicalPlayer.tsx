@@ -53,17 +53,8 @@ const RAISE_MS        = 600    // ms to raise after voice ends
 const AUTO_ADVANCE_STORY_SELECT = 'id,title,author,genre,audio_url,cover_url,duration_mins,episode_number,series_id,series_name,is_free,prose_text,content_start_ms,content_end_ms,author_id,narrator_voice_id,narrator_voice_name,status,is_hidden,published_on'
 const ADMIN_REVIEW_EMAILS = new Set(['marc@endless-tales.com', 'm.postlewaite@gmail.com'])
 
-// ── ORION-PLAYER-ENDSTATE-001 §3 — RE-ARM TOGGLE (Marc ruling A, 2026-07-15) ──
-// RULED A by Marc (2026-07-15 16:40 EDT, msg 2634): in-page resume after a
-// manual pause RE-ARMS auto-advance. Rationale (spec log): hands-free is the
-// product promise; a pause is an interruption, resume is the intent signal;
-// the 10-second countdown remains the escape hatch. This CONSCIOUSLY
-// SUPERSEDES the pause-path spec accepted 2026-07-15 AM (soak-validated
-// 2026-07-14): pause no longer disarms for the whole session once resumed.
-// Scope guard below: re-arm clears ONLY the 'manual_pause' disable reason —
-// an explicit auto-advance Stop is never silently re-armed.
-// One-line switch only; do not add further conditions without a ruling.
-const REARM_AUTO_ADVANCE_ON_RESUME = true
+// Marc's rule: interruptions never cancel series continuation. Only an explicit
+// Stop or selecting another story can disable auto-advance for this story.
 
 interface CanonicalPlayerProps {
   storyId: string
@@ -632,11 +623,6 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
     })
   }, [navigationKey])
 
-  useEffect(() => {
-    if (!returnContext.approvalReview) return
-    disableAutoAdvanceForSession('navigation')
-  }, [returnContext.approvalReview])
-
   const getQueueCompletedSeconds = (targetIndex: number) => {
     return segDursRef.current
       .slice(0, Math.max(0, targetIndex))
@@ -989,7 +975,7 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
     if (!autoAdvanceEnabledRef.current) {
       // ORION-PLAYER-QUIT-001 (2026-07-15): this used to setTimeout-navigate to
       // /library 1.5s after a natural end whenever auto-advance had been disabled
-      // earlier in the session (e.g. by a manual pause). Combined with any falsely
+      // earlier in the session by an explicit Stop. Combined with any falsely
       // trusted 'ended', that is an abrupt mid-play yank to the library with zero
       // user action — Marc walk #2 failure class. Never navigate on the player's
       // own initiative: stay on the finished player; the user owns navigation.
@@ -1114,6 +1100,8 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
     setAutoAdvanceCandidate(null)
     setCatalogExhausted(false)
     setStillListeningPrompt(false)
+    // In-place story changes start a fresh continuation session.
+    autoAdvanceEnabledRef.current = true
     setAutoAdvanceDisabledReason(null)
     setPlaybackEnded(false)
     setEndStateCandidate(null)
@@ -1967,10 +1955,6 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
   const restartFromBeginning = () => {
     checkpointRef.current.clear()
     if (saveTimer.current) { clearTimeout(saveTimer.current); saveTimer.current = null }
-    if (autoAdvanceDisabledReason === 'manual_pause') {
-      autoAdvanceEnabledRef.current = true
-      setAutoAdvanceDisabledReason(null)
-    }
     setPlaybackEnded(false)
     setEndStateCandidate(null)
     setCatalogExhausted(false)
@@ -2017,7 +2001,6 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
       return
     }
     if (!audioRef.current.paused) {
-      disableAutoAdvanceForSession('manual_pause')
       audioRef.current.pause(); musicRef.current?.pause()
       endAnalyticsSession('manual_pause')
       saveProgress(getProgressSeconds()); setIsPlaying(false)
@@ -2028,14 +2011,6 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
       if (isAtNaturalEnd()) {
         restartFromBeginning()
         return
-      }
-      // ORION-PLAYER-ENDSTATE-001 §3: behind the default-OFF switch above —
-      // when enabled, an explicit resume after a manual pause re-arms
-      // auto-advance (explicit play = fresh intent). Default false preserves
-      // the soak-validated spec: manual pause disarms for the whole session.
-      if (REARM_AUTO_ADVANCE_ON_RESUME && autoAdvanceDisabledReason === 'manual_pause') {
-        autoAdvanceEnabledRef.current = true
-        setAutoAdvanceDisabledReason(null)
       }
       checkpointRef.current.restore(audioRef.current, playbackSource())
       // src is pre-loaded in useEffect — play directly to preserve user gesture
@@ -2129,7 +2104,6 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
   }
 
   const handleNotForMe = async () => {
-    disableAutoAdvanceForSession('not_for_me')
     audioRef.current?.pause(); musicRef.current?.pause()
     // Analytics: track not_for_me
     if (analyticsTrackedRef.current) {
@@ -2165,7 +2139,6 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
     returnToSource('/library')
   }
   const handleBack = () => {
-    disableAutoAdvanceForSession('navigation')
     audioRef.current?.pause(); musicRef.current?.pause(); saveProgress(getProgressSeconds())
     // Analytics: track navigated_away
     if (analyticsTrackedRef.current) {
@@ -2519,6 +2492,7 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
   } : null
 
   const leaveForEpisode = (targetId: string) => {
+    if (targetId !== storyId) disableAutoAdvanceForSession('different_story')
     audioRef.current?.pause(); musicRef.current?.pause()
     saveProgress(getProgressSeconds())
     if (analyticsTrackedRef.current) endAnalyticsSession('navigated_away')
@@ -2548,6 +2522,7 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
       else void saveProgress(getProgressSeconds())
     },
     stop: () => {
+      disableAutoAdvanceForSession('stop')
       if (!audioRef.current) return
       if (!audioRef.current.paused) handlePlayPause()
       else void saveProgress(getProgressSeconds())
@@ -2636,7 +2611,7 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
     autoAdvanceCandidate?.reasonLabel || ''
 
   if (loading && !story) return <div style={{ height:'100dvh', backgroundColor:'#020617', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:'14px' }}><div style={{ width:'40px', height:'40px', border:'4px solid #f97316', borderTopColor:'transparent', borderRadius:'50%', animation:'spin 1s linear infinite' }} /><p style={{ color:'rgba(255,255,255,0.72)', fontSize:'14px', fontWeight:600, margin:0 }}>Loading story...</p><style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style></div>
-  if (!story)   return <div style={{ height:'100dvh', backgroundColor:'#020617', color:'white', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', padding:'24px', textAlign:'center' }}><p style={{ marginBottom:'16px' }}>This story isn’t available yet.</p><button onClick={() => { disableAutoAdvanceForSession('navigation'); returnToSource('/library') }} style={{ color:'#f97316', background:'none', border:'1px solid rgba(249,115,22,0.35)', borderRadius:'10px', padding:'10px 16px', cursor:'pointer', fontWeight:700 }}>{safeReturnUrl ? 'Back to Approval' : 'Back to Library'}</button></div>
+  if (!story)   return <div style={{ height:'100dvh', backgroundColor:'#020617', color:'white', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', padding:'24px', textAlign:'center' }}><p style={{ marginBottom:'16px' }}>This story isn’t available yet.</p><button onClick={() => { returnToSource('/library') }} style={{ color:'#f97316', background:'none', border:'1px solid rgba(249,115,22,0.35)', borderRadius:'10px', padding:'10px 16px', cursor:'pointer', fontWeight:700 }}>{safeReturnUrl ? 'Back to Approval' : 'Back to Library'}</button></div>
 
   return (
     <div data-auto-advance-disabled-reason={autoAdvanceDisabledReason || undefined} style={{ height:'100dvh', backgroundColor:'#020617', color:'white', display:'flex', flexDirection:'column', overflow:'hidden' }}>
@@ -3175,7 +3150,7 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
             <p style={{ color:'white', fontSize:'13px', fontWeight:800, margin:'0 0 4px' }}>{(story as any)?.series_id ? 'Series complete' : 'Catalog exhausted'}</p>
             <p style={{ color:'rgba(255,255,255,0.7)', fontSize:'12px', margin:0 }}>{(story as any)?.series_id ? 'You have reached the final episode.' : 'No untouched story is ready to play next.'}</p>
             <button
-              onClick={() => { disableAutoAdvanceForSession('navigation'); returnToSource('/library') }}
+              onClick={() => { returnToSource('/library') }}
               style={{ marginTop: 12, padding: '10px 20px', background: 'transparent', border: '1px solid rgba(249,115,22,0.5)', borderRadius: 10, color: '#f97316', fontSize: 14, fontWeight: 700, cursor: 'pointer', width: '100%' }}
             >
               Back to Library
@@ -3186,8 +3161,8 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
           <div style={{ border:'1px solid rgba(249,115,22,0.28)', background:'rgba(249,115,22,0.08)', borderRadius:'14px', padding:'12px', textAlign:'center' }}>
             <p style={{ color:'white', fontSize:'13px', fontWeight:700, margin:'0 0 10px' }}>{audioErrorMessage}</p>
             <div style={{ display:'flex', gap:'8px' }}>
-              <button onClick={() => { disableAutoAdvanceForSession('navigation'); window.location.reload() }} style={{ flex:1, padding:'10px 12px', borderRadius:'10px', border:'none', background:'#f97316', color:'white', fontSize:'13px', fontWeight:800, cursor:'pointer' }}>Try again</button>
-              <button onClick={() => { disableAutoAdvanceForSession('navigation'); returnToSource('/library') }} style={{ flex:1, padding:'10px 12px', borderRadius:'10px', border:'1px solid rgba(255,255,255,0.16)', background:'rgba(255,255,255,0.06)', color:'white', fontSize:'13px', fontWeight:700, cursor:'pointer' }}>{safeReturnUrl ? 'Back to Approval' : 'Back to Library'}</button>
+              <button onClick={() => { window.location.reload() }} style={{ flex:1, padding:'10px 12px', borderRadius:'10px', border:'none', background:'#f97316', color:'white', fontSize:'13px', fontWeight:800, cursor:'pointer' }}>Try again</button>
+              <button onClick={() => { returnToSource('/library') }} style={{ flex:1, padding:'10px 12px', borderRadius:'10px', border:'1px solid rgba(255,255,255,0.16)', background:'rgba(255,255,255,0.06)', color:'white', fontSize:'13px', fontWeight:700, cursor:'pointer' }}>{safeReturnUrl ? 'Back to Approval' : 'Back to Library'}</button>
             </div>
           </div>
         )}
@@ -3553,7 +3528,6 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
               <button
                 onClick={() => {
                   setTrialWallVisible(false)
-                  disableAutoAdvanceForSession('navigation')
                   returnToSource('/home')
                 }}
                 style={{
@@ -3594,7 +3568,7 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
 
               {/* Back link */}
               <button
-                onClick={() => { disableAutoAdvanceForSession('navigation'); returnToSource('/library') }}
+                onClick={() => { returnToSource('/library') }}
                 style={{
                   background: 'transparent',
                   border: 'none',

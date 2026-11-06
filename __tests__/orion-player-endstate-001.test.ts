@@ -1,23 +1,5 @@
-/**
- * ORION-PLAYER-ENDSTATE-001 (2026-07-15, walk-blocking): after ORION-PLAYER-QUIT-001
- * correctly removed the /library yank on natural end, a completed episode with
- * auto-advance disarmed (manual pause earlier in the session disarms it for the
- * whole session) DEAD-ENDED: the CTA read "▶ Continue" at 0.0 min left and
- * resumed into the final seconds — Marc looped the tail replay three times.
- * Server evidence: ends classified 'completed' + user_library completed=true
- * written; purely missing end-state UX.
- *
- * Pins:
- *  1. Completed end-state card renders Play Again + user-gesture Next episode
- *     (wired to the live-validated fetchDirectSeriesAutoAdvanceCandidate query).
- *  2. CTA label: at-end never renders "▶ Continue"; it becomes "▶ Play Again"
- *     and restarts from 0 (not resume-from-end).
- *  3. RE-ARM toggle exists behind a one-line switch, DEFAULT FALSE (pending
- *     Marc's design ruling; default preserves the soak-validated pause spec).
- *  4. ORION-PLAYER-QUIT-001 contract intact: pause still disarms, and the
- *     player still NEVER auto-navigates on natural end when disarmed — the
- *     Next-episode button is user-initiated, never a timer.
- */
+/** Completed-player UX. Pause cancellation was superseded by Marc's
+ * permanent series-continuation rule (2026-11-05). */
 import fs from 'fs'
 import path from 'path'
 
@@ -75,19 +57,10 @@ describe('ORION-PLAYER-ENDSTATE-001: completed end-state (Play Again / Next epis
     )
   })
 
-  test('re-arm toggle is ON per Marc ruling A (2026-07-15 msg 2634): resume re-arms auto-advance', () => {
-    expect(PLAYER).toMatch(/const REARM_AUTO_ADVANCE_ON_RESUME = true/)
-    expect(PLAYER).not.toMatch(/const REARM_AUTO_ADVANCE_ON_RESUME = false/)
-    // Resume branch honors it: clears the manual_pause disable reason when ON
-    expect(PLAYER).toMatch(
-      /REARM_AUTO_ADVANCE_ON_RESUME && autoAdvanceDisabledReason === 'manual_pause'[\s\S]{0,200}setAutoAdvanceDisabledReason\(null\)/
-    )
-  })
-
-  test('ORION-PLAYER-QUIT-001 contract intact: pause-disarm line untouched, no auto-navigation added', () => {
-    // Manual pause still disarms auto-advance for the session
+  test('pause preserves continuation; explicit Stop still prevents navigation', () => {
     const playPauseBlock = PLAYER.slice(PLAYER.indexOf('const handlePlayPause'), PLAYER.indexOf('const saveProgress'))
-    expect(playPauseBlock).toMatch(/disableAutoAdvanceForSession\('manual_pause'\)/)
+    expect(playPauseBlock).not.toMatch(/disableAutoAdvanceForSession/)
+    expect(PLAYER).not.toContain('REARM_AUTO_ADVANCE_ON_RESUME')
     // The disarmed natural-end branch performs NO navigation (fetch is display-only)
     const disarmBlock = PLAYER.slice(
       PLAYER.indexOf('const maybeAutoAdvanceFromNaturalEnd'),

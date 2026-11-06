@@ -61,14 +61,7 @@ export interface AutoAdvanceCandidate {
   score?: number;
 }
 
-export type AutoAdvanceDisabledReason =
-  | 'manual_pause'
-  | 'stop'
-  | 'skip'
-  | 'close'
-  | 'navigation'
-  | 'not_for_me'
-  | 'timeout';
+export type AutoAdvanceDisabledReason = 'stop' | 'different_story';
 
 export interface PlayerSessionState {
   mode: PlayerMode;
