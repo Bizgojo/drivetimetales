@@ -78,8 +78,8 @@ describe('SUS/ATL-LANDING-002 rev C: shouldRevealTrialCta (45s-only)', () => {
 describe('SUS/ATL-LANDING-002 rev C: story variants (Greenville A/B, per-variant gate)', () => {
   // Marc 2026-07-12: A approved 13:57; B approved 15:50 (published + hook +
   // Liberty Bridge cover PASS) — full A/B active.
-  test('live allowlist: both Greenville variants approved', () => {
-    expect(GO_LIVE_VARIANTS).toEqual(['a', 'b'])
+  test('live allowlist: both Greenville variants + 5 hook landings approved (HOOK-LANDING-001)', () => {
+    expect(GO_LIVE_VARIANTS).toEqual(['a', 'b', 'widow', 'rise', 'miami', 'rerouted', 'home'])
     expect(GO_AB_LIVE).toBe(true)
   })
 

@@ -18,9 +18,11 @@ describe('HOOK-LANDING-001', () => {
       expect(v.audioUrl).toContain(`/asc3/${v.catalogStoryId}/final_mix.mp3`)
     }
   })
-  it('stays behind the approval gate until Marc approves', () => {
-    expect(resolveGoStory('v=widow').title).toBe(resolveGoStory('').title)
-    expect(resolveGoStory('v=widow', [...GO_LIVE_VARIANTS, 'widow']).title).toBe('The Widow Who Watched')
+  it('each hook landing serves its own story', () => {
+    for (const [key, v] of Object.entries(GO_HOOK_VARIANTS)) {
+      expect(GO_LIVE_VARIANTS).toContain(key)
+      expect(resolveGoStory(`v=${key}`).title).toBe(v.title)
+    }
   })
   it('a hook sample is resumable after signup', () => {
     const v = GO_HOOK_VARIANTS.rerouted
