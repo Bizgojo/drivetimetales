@@ -102,7 +102,7 @@ describe('UX-GO-001 CTA-002: completion state copy (byte-exact)', () => {
   test('pre-completion copy is the unchanged rev C set', () => {
     expect(GO_CTA_COPY_DEFAULT.heading).toBe('Keep the story going')
     expect(GO_CTA_COPY_DEFAULT.buttonLabel).toBe('Start free trial')
-    expect(GO_CTA_COPY_DEFAULT.footnote).toBe('Your story keeps playing while you sign up.')
+    expect(GO_CTA_COPY_DEFAULT.footnote).toBe("After you sign up, we'll pick up right where you left off.")
   })
 
   test('completion copy default (STANDALONE-safe — bare /go): Marc msg 3015 heading + button, footnote REMOVED (CTA-004)', () => {
@@ -150,13 +150,13 @@ describe('UX-GO-001 CTA-002: completion state copy (byte-exact)', () => {
   })
 
   test('CTA-004: footnote present pre-completion, absent post-completion', () => {
-    expect(getGoCtaCopy(false).footnote).toBe('Your story keeps playing while you sign up.')
+    expect(getGoCtaCopy(false).footnote).toBe("After you sign up, we'll pick up right where you left off.")
     expect(getGoCtaCopy(true).footnote).toBeNull()
     // The page renders the footnote conditionally — no unconditional <p>.
     expect(pageSrc).toContain('{ctaCopy.footnote && (')
     // The literal footnote string no longer lives in the page (single source
     // of truth in lib/landing.ts).
-    expect(pageSrc).not.toContain('Your story keeps playing while you sign up.')
+    expect(pageSrc).not.toContain("After you sign up, we'll pick up right where you left off.")
   })
 })
 

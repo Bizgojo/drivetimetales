@@ -288,7 +288,9 @@ export interface GoCtaCopy {
 export const GO_CTA_COPY_DEFAULT: GoCtaCopy = {
   heading: 'Keep the story going',
   buttonLabel: 'Start free trial',
-  footnote: 'Your story keeps playing while you sign up.',
+  // GO-FOOTNOTE-001 (Marc, 2026-11-06): the old line ("keeps playing while you
+  // sign up") was false — signup is a new page. Resume after signup is real.
+  footnote: "After you sign up, we'll pick up right where you left off.",
 }
 
 /** Completion-state sheet copy (CTA-002; strings revised per Marc verdict,
