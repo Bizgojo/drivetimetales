@@ -78,7 +78,10 @@ export async function GET(request: NextRequest) {
   // -v3 suffix: BELL-ONBOARD-001 (Marc 2026-08-23) — new welcome text replaces
   // Seg1+Seg2 chain. v2 rows used old phrasing ("Welcome, [Name]. I'm glad...");
   // v3 rows use the new self-contained line ("Hi [Name]... Episode 2 of The Bell...").
-  const cacheKey = `${name}-v3`
+  // POST-SIGNUP-RETURN-001 (Marc, 2026-11-06): variant=story is the line for a
+  // listener who signed up mid-sample — Belle sends them back to THEIR story.
+  const storyVariant = searchParams.get('variant') === 'story'
+  const cacheKey = storyVariant ? `${name}-story-v1` : `${name}-v3`
 
   const { data: cached } = await supabase
     .from('name_audio')
@@ -94,7 +97,9 @@ export async function GET(request: NextRequest) {
 
   // BELL-ONBOARD-001 (Marc, 2026-08-23): New self-contained welcome line.
   // Replaces old Seg1+Seg2 chain — single clip, no catch-up segment.
-  const seg1Text = `Hi ${name}. Glad you decided to join us. I'm Belle, your personal assistant — now let's continue with Episode 2 of The Bell Beneath Falls Park.`
+  const seg1Text = storyVariant
+    ? `Hi ${name}. Glad you decided to join us. I'm Belle, your personal assistant — now let's get back to your story.`
+    : `Hi ${name}. Glad you decided to join us. I'm Belle, your personal assistant — now let's continue with Episode 2 of The Bell Beneath Falls Park.`
 
   const elRes = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
     method: 'POST',
@@ -112,7 +117,9 @@ export async function GET(request: NextRequest) {
   const audioBuffer = applyVolumeFfmpeg(rawBuf)
 
   // File name includes -v3 to match cache key convention (BELL-ONBOARD-001)
-  const fileName = `welcome-seg1-${name.toLowerCase()}-${voiceId.slice(0, 8)}-v3.mp3`
+  const fileName = storyVariant
+    ? `welcome-story-${name.toLowerCase()}-${voiceId.slice(0, 8)}-v1.mp3`
+    : `welcome-seg1-${name.toLowerCase()}-${voiceId.slice(0, 8)}-v3.mp3`
 
   const { error: uploadError } = await supabase.storage
     .from('names')

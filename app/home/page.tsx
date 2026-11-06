@@ -11,6 +11,7 @@ import RecommendedForYou from '@/components/RecommendedForYou'
 import BottomStickyButtons from '@/components/BottomStickyButtons'
 import InstallAppBanner from '@/components/InstallAppBanner'
 import ContinueSampleHero from '@/components/ContinueSampleHero'
+import { loadFreshestResumableSample, sampleResumeHref } from '@/lib/landing'
 import YourPlaylist from '@/components/YourPlaylist'
 import HorizontalStoryCard from '@/components/HorizontalStoryCard'
 import { buildSeriesPlaybackTarget } from '@/lib/seriesPlayback'
@@ -584,6 +585,28 @@ function HomeContent() {
     const firstName = (user as any)?.user_metadata?.first_name || ''
 
     // Fast path: pre-rendered URL already present in session JWT
+    // POST-SIGNUP-RETURN-001: a listener who was sampling a story gets Belle's
+    // "now let's get back to your story" line (rendered on demand, cached per
+    // name). The Bell EP2 clips below would promise the wrong story.
+    const resumeSample = loadFreshestResumableSample()
+    if (resumeSample) {
+      if (!firstName) { setSeg1Url(null); return }
+      let cancelledStory = false
+      ;(async () => {
+        try {
+          const ctrl = new AbortController()
+          const t = setTimeout(() => ctrl.abort(), 6000)
+          const r = await fetch(`/api/name-audio?variant=story&name=${encodeURIComponent(firstName)}`, { signal: ctrl.signal })
+          clearTimeout(t)
+          const json = await r.json()
+          if (!cancelledStory) setSeg1Url(json?.audio_url || null)
+        } catch {
+          if (!cancelledStory) setSeg1Url(null)
+        }
+      })()
+      return () => { cancelledStory = true }
+    }
+
     const preRendered: string | undefined = (user as any)?.user_metadata?.welcome_seg1_url
     if (preRendered) {
       setSeg1Url(preRendered)
@@ -685,7 +708,9 @@ function HomeContent() {
                 // /home and must find EP2 in Continue Listening on their own — cold ad
                 // traffic on mobile does not do this (0/5 post-fix signups activated).
                 // Bell EP2: "The Seventh Token" (759dc525-185c-450f-b249-17e4a525ba60).
-                router.push('/player/759dc525-185c-450f-b249-17e4a525ba60')
+                // POST-SIGNUP-RETURN-001 (Marc, 2026-11-06): a listener who was
+                // sampling a story goes back to THAT story at the spot they left.
+                router.push(sampleResumeHref(loadFreshestResumableSample()) ?? '/player/759dc525-185c-450f-b249-17e4a525ba60')
                 // Persist dismissal so reload/revisit doesn't re-show the banner
                 void supabase.auth.updateUser({ data: { welcome_dismissed: true } })
               }}
