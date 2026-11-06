@@ -8,6 +8,8 @@ import { usePathname, useRouter } from 'next/navigation'
 import { User } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
 
+const HOME_TIP_KEY = 'et_player_home_tip_seen'
+
 export default function AppHeader() {
   const [mounted, setMounted] = useState(false)
   useEffect(() => setMounted(true), [])
@@ -18,6 +20,37 @@ export default function AppHeader() {
   const nameValue = (accountUser && 'first_name' in accountUser ? accountUser.first_name : '') || accountUser?.user_metadata?.first_name || accountUser?.user_metadata?.full_name || accountUser?.user_metadata?.name
   const firstName = typeof nameValue === 'string' ? nameValue.trim().split(/\s+/)[0] : ''
   const showGreeting = pathname === '/home' && !loading && !!firstName
+  const onPlayer = Boolean(pathname?.startsWith('/player/'))
+
+  // PLAYER-HOME-NAV-001 (Marc, 2026-11-06): one-time tip for first-time
+  // listeners, shown only once the story is paused or has ended (never while
+  // they are listening in the car). Dismissed for good on tap.
+  const [showHomeTip, setShowHomeTip] = useState(false)
+  useEffect(() => {
+    if (!onPlayer) { setShowHomeTip(false); return }
+    let seen = false
+    try { seen = localStorage.getItem(HOME_TIP_KEY) === '1' } catch {}
+    if (seen) return
+    let timer: number | undefined
+    const onStop = (e: Event) => {
+      const el = e.target as HTMLMediaElement | null
+      if (!el || el.tagName !== 'AUDIO' || el.loop) return
+      window.clearTimeout(timer)
+      // Segment hand-offs pause for a moment; only a real stop shows the tip.
+      timer = window.setTimeout(() => { if (el.paused) setShowHomeTip(true) }, 1500)
+    }
+    document.addEventListener('pause', onStop, true)
+    document.addEventListener('ended', onStop, true)
+    return () => {
+      window.clearTimeout(timer)
+      document.removeEventListener('pause', onStop, true)
+      document.removeEventListener('ended', onStop, true)
+    }
+  }, [onPlayer])
+  const dismissHomeTip = () => {
+    setShowHomeTip(false)
+    try { localStorage.setItem(HOME_TIP_KEY, '1') } catch {}
+  }
 
   if (pathname?.startsWith('/admin')) return null
 
@@ -65,7 +98,16 @@ export default function AppHeader() {
       <div className="mx-auto flex h-full max-w-7xl items-center justify-between">
         {/* APP-HEADER-HOME-001: hide back button on /home — no meaningful back destination
              from the home screen (router.back() returns to /go ad teaser for funnel users). */}
-        {pathname !== '/home' ? (
+        {onPlayer ? (
+          <button
+            type="button"
+            onClick={() => { dismissHomeTip(); goBack() }}
+            className="inline-flex h-11 flex-shrink-0 items-center justify-center gap-1 rounded-md bg-orange-500 px-3 text-sm font-bold text-slate-950 transition-colors hover:bg-orange-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-orange-400"
+            aria-label="Home — browse all stories"
+          >
+            <span aria-hidden="true">🏠</span> Home
+          </button>
+        ) : pathname !== '/home' ? (
           <button
             type="button"
             onClick={goBack}
@@ -129,6 +171,18 @@ export default function AppHeader() {
           </button>
         </div>
       </div>
+      {onPlayer && showHomeTip && (
+        <button
+          type="button"
+          data-testid="player-home-tip"
+          onClick={dismissHomeTip}
+          className="absolute left-3 top-[60px] max-w-[260px] rounded-xl border border-orange-400 bg-slate-900 px-4 py-3 text-left text-base font-semibold leading-snug text-white shadow-lg"
+        >
+          <span aria-hidden="true" className="absolute -top-2 left-6 h-4 w-4 rotate-45 border-l border-t border-orange-400 bg-slate-900" />
+          Tap <span className="text-orange-400">Home</span> anytime to browse all stories.
+          <span className="mt-1 block text-sm font-normal text-slate-400">Tap to close</span>
+        </button>
+      )}
     </header>
   )
   return mounted ? createPortal(header, document.body) : header
