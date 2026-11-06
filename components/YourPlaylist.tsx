@@ -138,7 +138,7 @@ export default function YourPlaylist({ onIdsLoaded, sticky = false }: { onIdsLoa
       {sticky ? (
         // CARD-COMPACT-001 (Marc, 2026-11-06): slim one-row bar on Library so
         // more story cards fit above it (was ~110px tall).
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: 8, background: '#1e293b', borderRadius: 13, border: '1px solid rgba(148,163,184,0.06)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: 8, background: '#3b4556', borderRadius: 13, border: '1px solid #64748b' }}>
           <img src="/images/playlist_icon.png" alt="" width={44} height={44} style={{ width: 44, height: 44, flexShrink: 0, objectFit: 'cover', borderRadius: 6, background: 'white' }} />
           <div style={{ flex: 1, minWidth: 0 }}>
             <h2 style={{ fontWeight: 800, fontSize: 17, color: 'white', lineHeight: '20px', margin: 0, whiteSpace: 'nowrap' }}>My Playlist</h2>
