@@ -2,7 +2,7 @@
 import {useRef, useState} from 'react'
 import {formatPlaybackTime} from '@/lib/playerControls'
 
-export type NavigableEpisode = {id:string;title:string;number:number;progress:number;progressKnown?:boolean;completed:boolean;duration:number}
+export type NavigableEpisode = {id:string;title:string;number:number;progress:number;progressKnown?:boolean;completed:boolean;duration:number;coverUrl?:string|null}
 export default function EpisodeNavigation({episodes,currentId,currentProgress,error,onSelect}:{episodes:NavigableEpisode[];currentId:string;currentProgress:number;error?:string;onSelect:(id:string)=>void}){
  const dialog=useRef<HTMLDialogElement>(null)
  const [open,setOpen]=useState(false)
@@ -26,8 +26,11 @@ export default function EpisodeNavigation({episodes,currentId,currentProgress,er
     const current=ep.id===currentId
     const progress=current?currentProgress:ep.progress
     return <li key={ep.id}><button type="button" aria-current={current?'true':undefined} onClick={()=>select(ep.id)}>
-     <strong>Episode {ep.number} · {ep.title}</strong>
-     <span>{current?'Now selected · ':''}{!current&&ep.progressKnown===false?'Saved progress unavailable':ep.completed?'Completed':progress>0?`Resume at ${formatPlaybackTime(progress)}`:'Not started'}{ep.duration>0?` · ${formatPlaybackTime(ep.duration)} total`:''}</span>
+     {ep.coverUrl?<img className="et-episode-cover" src={ep.coverUrl} alt="" loading="lazy" width={64} height={64}/>:<span className="et-episode-cover et-episode-cover-empty" aria-hidden="true"/>}
+     <span className="et-episode-text">
+      <strong>Episode {ep.number} · {ep.title}</strong>
+      <span>{current?'Now selected · ':''}{!current&&ep.progressKnown===false?'Saved progress unavailable':ep.completed?'Completed':progress>0?`Resume at ${formatPlaybackTime(progress)}`:'Not started'}{ep.duration>0?` · ${formatPlaybackTime(ep.duration)} total`:''}</span>
+     </span>
     </button></li>
    })}</ol>
   </dialog>
@@ -39,8 +42,9 @@ export default function EpisodeNavigation({episodes,currentId,currentProgress,er
    .et-episode-navigation dialog::backdrop{background:#000b}.et-episode-navigation header{display:flex;align-items:center;justify-content:space-between;gap:8px}
    .et-episode-navigation h2{font-size:20px;margin:0}.et-episode-navigation header button{min-width:44px;min-height:44px;background:transparent;border:1px solid #64748b;border-radius:10px;color:white}
    .et-episode-navigation p{font-size:13px;color:#cbd5e1;line-height:1.5}.et-episode-navigation ol{list-style:none;padding:0;margin:12px 0 0}
-   .et-episode-navigation li button{display:flex;flex-direction:column;gap:7px;text-align:left;width:100%;min-height:64px;padding:14px;margin-top:8px;background:#ffffff08;border:1px solid #ffffff25;border-radius:10px;color:white;cursor:pointer;font:inherit}
+   .et-episode-navigation li button{display:flex;flex-direction:row;align-items:center;gap:12px;text-align:left;width:100%;min-height:64px;padding:14px;margin-top:8px;background:#ffffff08;border:1px solid #ffffff25;border-radius:10px;color:white;cursor:pointer;font:inherit}
    .et-episode-navigation li button[aria-current]{border-color:#f97316;background:#f9731618}.et-episode-navigation li span{font-size:12px;color:#cbd5e1}.et-episode-navigation strong{font-size:14px;line-height:1.4}
+   .et-episode-cover{flex:0 0 64px;width:64px;height:64px;border-radius:8px;object-fit:cover;background:#1e293b}.et-episode-text{display:flex;flex-direction:column;gap:6px;min-width:0}
    .et-episode-navigation button:focus-visible{outline:3px solid #fdba74;outline-offset:2px}
   `}</style>
  </div>
