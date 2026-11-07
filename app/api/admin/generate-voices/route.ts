@@ -2590,6 +2590,9 @@ export async function POST(req: NextRequest) {
       // (empty voiceGeneration state). Safe to send with segmentNumber=0 — the
       // subsequent retryMissingOnly inventory will see all segments as missing.
       purgeExisting = false,
+      // ARTIFACT-TIMING-001: with retryMissingOnly + segmentNumber, re-record that ONE
+      // existing line (same voice, same text) even though its file is present.
+      rerecordSegment = false,
       // BELLE-ONLY-STAMP-001: 'intro' | 'outro' | 'both' — set ONLY when a
       // person has confirmed the script edit changed nothing but those Belle
       // line(s). With it, a successful generateBelleOnly run that regenerated
@@ -3418,7 +3421,7 @@ export async function POST(req: NextRequest) {
         )
       }
       // BELL-FREEZE-GUARD-001: frozen guard for incremental path
-      if (purgeExisting === true) {
+      if (purgeExisting === true || rerecordSegment === true) {
         const incrManifest = await loadManifest(storyId)
         const incrFrozenCheck = checkFrozenGuard({
           manifest: incrManifest as any,
@@ -3544,7 +3547,11 @@ export async function POST(req: NextRequest) {
       const targetFileName = targetLine.type === 'sfx'
         ? `sfx_${requestedSegmentNumber.toString().padStart(4, '0')}.mp3`
         : `segment_${requestedSegmentNumber.toString().padStart(4, '0')}.mp3`
-      if (existingSegmentNames.has(targetFileName)) {
+      if (rerecordSegment === true && targetLine.type !== 'narrator' && targetLine.type !== 'character') {
+        return NextResponse.json({ success: false, error: `ARTIFACT-TIMING-001: ${targetFileName} is not a spoken line; nothing to re-record` }, { status: 400 })
+      }
+      if (rerecordSegment === true) console.log(`  🔁 ARTIFACT-TIMING-001 re-recording ${targetFileName} (timing check flagged it)`)
+      if (existingSegmentNames.has(targetFileName) && rerecordSegment !== true) {
         const inventory = buildInventoryReport(existingSegmentNames)
         return NextResponse.json({
           success: true,

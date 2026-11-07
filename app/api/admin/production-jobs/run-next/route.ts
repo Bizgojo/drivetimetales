@@ -86,6 +86,7 @@ import { runVoiceConformanceGate, type VoiceProfile } from '@/lib/voiceConforman
 import { legacyStepModels, routeStep, resolveModelForStep, coerceValidationModelToClaude } from '@/lib/model-router'
 import { buildContinuityPins, hashScript, verifyContinuityPins } from '@/lib/continuityPin'
 import { checkSeriesFacts, formatFactSheet, castListsText } from '@/lib/seriesFacts'
+import { planTimingPass, finishTimingPass, timedLinesFromSizes, sizesFromListing, type TimingCheckState } from '@/lib/timingPass'
 import {
   hasEarnedPackageEvidence,
   stampPackageEvidence,
@@ -8831,6 +8832,57 @@ async function runSeriesVoiceSegment(job: ProductionJob, origin: string): Promis
 // Each function iterates episodes, skips already-complete ones, and advances
 // the state so run-next can be called repeatedly until all episodes are done.
 
+/**
+ * ARTIFACT-TIMING-001: once voicing is done, re-record (once) any spoken line
+ * whose audio does not fit its words — an extra sound like "aaaaaa" or a
+ * cut-off. One line per tick. Never blocks: lines still off are listed in
+ * state.timingCheck.stillFlagged for review.
+ */
+async function loadTimedEpisodes(storyIds: string[]) {
+  const out: Array<{ storyId: string; lines: ReturnType<typeof timedLinesFromSizes> }> = []
+  for (const storyId of storyIds) {
+    const { data: story, error } = await supabase.from('stories').select('id,script').eq('id', storyId).single()
+    if (error || !story) throw new Error(`ARTIFACT-TIMING-001: story ${storyId} not found: ${error?.message || 'missing'}`)
+    const { data: files, error: listError } = await supabase.storage.from('audio').list(`asc3/${storyId}`, { limit: 1000 })
+    if (listError) throw new Error(`ARTIFACT-TIMING-001: could not list asc3/${storyId}: ${listError.message}`)
+    out.push({ storyId, lines: timedLinesFromSizes(String(story.script || ''), sizesFromListing(files || [])) })
+  }
+  return out
+}
+
+async function runTimingPass(job: ProductionJob, storyIds: string[], origin: string): Promise<{ done: boolean; state: any; message: string }> {
+  const state = job.state_json && typeof job.state_json === 'object' ? { ...job.state_json } as any : {} as any
+  const current = state.timingCheck as TimingCheckState | undefined
+  if (current?.done) return { done: true, state, message: 'timing check already done' }
+  if (!current) {
+    const plan = planTimingPass(await loadTimedEpisodes(storyIds), nowIso())
+    state.timingCheck = plan
+    return { done: plan.done, state, message: `ARTIFACT-TIMING-001: ${plan.flagged.length} line(s) flagged, ${plan.queue.length} to re-record` }
+  }
+  if (current.queue.length > 0) {
+    const [item, ...rest] = current.queue
+    let ok = false
+    let error: string | undefined
+    try {
+      const response = await internalAdminFetch(`${resolveSelfFetchOrigin(origin)}/api/admin/generate-voices`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ storyId: item.storyId, retryMissingOnly: true, segmentNumber: item.index, rerecordSegment: true }),
+      })
+      const report = await readJsonOrDiagnostic(response, '/api/admin/generate-voices')
+      ok = response.ok && report?.success !== false && !(Array.isArray(report?.failures) && report.failures.length)
+      if (!ok) error = String(report?.error || report?.failures?.[0]?.error || `HTTP ${response.status}`).slice(0, 300)
+    } catch (e) {
+      error = (e instanceof Error ? e.message : String(e)).slice(0, 300)
+    }
+    state.timingCheck = { ...current, queue: rest, rerecorded: [...current.rerecorded, { ...item, ok, ...(error ? { error } : {}) }] }
+    return { done: false, state, message: `ARTIFACT-TIMING-001: re-recorded segment_${String(item.index).padStart(4, '0')} (${item.speaker}) ${ok ? 'ok' : `failed: ${error}`}; ${rest.length} left` }
+  }
+  const finished = finishTimingPass(current, await loadTimedEpisodes(storyIds), nowIso())
+  state.timingCheck = finished
+  return { done: true, state, message: `ARTIFACT-TIMING-001: done — ${finished.rerecorded.length} re-recorded, ${finished.stillFlagged.length} still off (listed for review)` }
+}
+
 async function runSeriesBelleAssets(job: ProductionJob, origin: string) {
   const state = job.state_json && typeof job.state_json === 'object' ? job.state_json : {}
   const seriesId = job.series_id || state.seriesId
@@ -11588,6 +11640,18 @@ export async function POST(req: NextRequest) {
       }
 
       const origin = new URL(req.url).origin
+      // ARTIFACT-TIMING-001: re-record off-timing lines before Belle/music/render.
+      const standaloneTimingId = String(lockedJob.story_id || (lockedJob.state_json as any)?.storyId || '')
+      const standaloneTiming = await runTimingPass(lockedJob, standaloneTimingId ? [standaloneTimingId] : [], origin)
+      if (!standaloneTiming.done) {
+        const timingLogs = appendLog(lockedJob, standaloneTiming.message)
+        const { error: timingError } = await supabase.from('production_jobs')
+          .update({ status: 'queued', current_step: step, state_json: standaloneTiming.state, error_json: null, logs: timingLogs, locked_at: null, locked_by: null })
+          .match(ownedJobFence(lockedJob, lockHolderId))
+        if (timingError) throw new Error(`Failed to save timing check state: ${timingError.message}`)
+        return NextResponse.json({ success: true, jobId: lockedJob.id, currentStep: step, nextStep: step, timingCheck: standaloneTiming.message })
+      }
+      lockedJob.state_json = standaloneTiming.state
       const result = await runStandaloneBelleAssets(lockedJob, origin)
       const logs = appendLog(lockedJob, result.success
         ? 'Generated standalone Belle intro/outro assets'
@@ -14725,7 +14789,20 @@ export async function POST(req: NextRequest) {
           : undefined,
         job: lockedJob,
       })
-      const result = await runSeriesBelleAssets(lockedJob, origin)
+      // ARTIFACT-TIMING-001: re-record off-timing lines before Belle/music/render.
+      const timingStoryIds = lockedJob.series_id
+        ? (await loadSeriesWorkEpisodes(String(lockedJob.series_id))).map((ep: any) => String(ep.id))
+        : [String(lockedJob.story_id || (lockedJob.state_json as any)?.storyId || '')].filter(Boolean)
+      const timing = await runTimingPass(lockedJob, timingStoryIds, origin)
+      if (!timing.done) {
+        const timingLogs = appendLog(lockedJob, timing.message)
+        const { error: timingError } = await supabase.from('production_jobs')
+          .update({ status: 'queued', current_step: NEXT_STEP_AFTER_SERIES_VOICES, state_json: timing.state, error_json: null, logs: timingLogs, locked_at: null, locked_by: null })
+          .match(ownedJobFence(lockedJob, lockHolderId))
+        if (timingError) throw new Error(`Failed to save timing check state: ${timingError.message}`)
+        return NextResponse.json({ success: true, jobId: lockedJob.id, currentStep: step, nextStep: NEXT_STEP_AFTER_SERIES_VOICES, timingCheck: timing.message })
+      }
+      const result = await runSeriesBelleAssets({ ...lockedJob, state_json: timing.state } as ProductionJob, origin)
       const nextStep = result.allDone ? NEXT_STEP_AFTER_SERIES_BELLE : NEXT_STEP_AFTER_SERIES_VOICES
       const logs = appendLog(lockedJob,
         result.allDone ? 'Series Belle assets complete for all episodes' : `Belle generated for Ep${result.processedEp}`,
