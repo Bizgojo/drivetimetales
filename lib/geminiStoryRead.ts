@@ -20,12 +20,14 @@ export const STORY_READ_QUESTIONS: Array<{ id: string; stages: StoryReadStage[];
   { id: 'logic', stages: ['script', 'final'], ask: 'Logic: does each episode follow from the last, with no gap a listener would trip on?' },
   { id: 'promise', stages: ['script', 'final'], ask: 'Promise: does Episode 1 deliver its hook, and does each episode end hard (a reveal, threat, arrival or choice), or close properly if it is the finale?' },
   { id: 'audio', stages: ['final'], ask: 'Audio: do the FLAGGED AUDIO LINES listed below match their script text, with no garble, cut-off or extra sound described?' },
-  { id: 'credibility', stages: ['script', 'final'], ask: 'Credibility: does every event and conclusion follow from what the story has established, or is it explained? Judge by the story\'s own rules, not the real world. FAIL any character who contradicts their own instruction or plan, any character who knows something the story never told them, and any line that refers to the story\'s own events by episode or chapter number ("in chapter four", "next episode") instead of "earlier", "back then", "later". Only flag what a listener would notice.' },
+  { id: 'credibility', stages: ['script', 'final'], ask: 'Credibility: does every event and conclusion follow from what the story has established, or is it explained? Judge by the story\'s own rules, not the real world. FAIL any character who contradicts their own instruction or plan (including inside one conversation), any host outro (Belle B) that describes something the episode did not show, any character who knows something the story never told them, and any line that refers to the story\'s own events by episode or chapter number ("in chapter four", "next episode") instead of "earlier", "back then", "later" (the host Belle B may say "next episode"; a book or chapter a character mentions is not a self-reference). Only flag what a listener would notice.' },
 ]
 
 export function buildStoryReadPrompt(input: {
   stage: StoryReadStage
   seriesTitle: string
+  /** Episodes in the whole series, when only some are being read. */
+  totalEpisodes?: number
   factSheet?: string
   castLists?: string
   outline?: string
@@ -33,8 +35,11 @@ export function buildStoryReadPrompt(input: {
   episodes: Array<{ episodeNumber: number; title: string; body: string }>
 }): string {
   const qs = STORY_READ_QUESTIONS.filter((q) => q.stages.includes(input.stage))
-  return `You are the final reader for the audio drama series "${input.seriesTitle}" (${input.episodes.length} episodes), heard by people while they drive. Read every episode in full, in order, as a listener would.
-
+  const partial = input.totalEpisodes && input.totalEpisodes > input.episodes.length
+    ? `\nYou are reading only episodes ${input.episodes.map((e) => e.episodeNumber).join(', ')} of ${input.totalEpisodes}. The series continues after the last one here: do NOT report that it fails to close or resolve.\n`
+    : ''
+  return `You are the final reader for the audio drama series "${input.seriesTitle}" (${input.totalEpisodes || input.episodes.length} episodes), heard by people while they drive. Read every episode in full, in order, as a listener would.
+${partial}
 Answer each question below. For each problem give: the episode number, the exact line (quoted), what is wrong, and the smallest fix (a setup line earlier, an explaining line, a changed line). Do not report style or taste. If a question has no clear problem, it passes.
 
 QUESTIONS
@@ -44,6 +49,18 @@ Reply with JSON only:
 {"questions":[{"id":"<id>","pass":true|false,"issues":[{"episode":<n>,"line":"<quote>","problem":"...","fix":"..."}]}]}
 
 ${input.episodes.map((e) => `===== EPISODE ${e.episodeNumber}: ${e.title} =====\n${e.body}`).join('\n\n')}`
+}
+
+/**
+ * What the listener hears, including Belle's outro. storyBodyText() (used by our own continuity
+ * check) cuts the outro, so on Nov 7 Gemini never saw Belle's "you heard his name on that tape" in
+ * Rerouted EP3, a claim the story never made. The outro is part of what a listener judges.
+ */
+export function listenerText(script: string): string {
+  const s = String(script || '')
+  const start = s.indexOf('[START AUDIO DRAMA SCRIPT]')
+  const body = start >= 0 ? s.slice(start + '[START AUDIO DRAMA SCRIPT]'.length) : s
+  return body.replace(/\n\s*BELLE B OUTRO\b[^\n]*\n(?:-{3,}\n)?/i, '\n\n[HOST OUTRO — Belle B, the show host, speaks to the listener]\n').replace(/\n{3,}/g, '\n\n').trim()
 }
 
 /** Parse Gemini's reply; tolerant of code fences and notes around the JSON. Never throws. */
@@ -82,7 +99,8 @@ export function geminiStoryModel(env: Record<string, string | undefined> = proce
 }
 
 /** Default per-call limit. A worker tick must never hang on Gemini. GEMINI_STORY_TIMEOUT_MS overrides. */
-export const GEMINI_STORY_TIMEOUT_MS = 180_000
+// Measured Nov 7 on Rerouted EP1-3: 159s (22,785 thinking tokens). 3 min left no margin; 6 min fits a 16-min tick.
+export const GEMINI_STORY_TIMEOUT_MS = 360_000
 export function geminiStoryTimeoutMs(env: Record<string, string | undefined> = process.env): number {
   const n = Number(env.GEMINI_STORY_TIMEOUT_MS)
   return Number.isFinite(n) && n >= 10_000 ? n : GEMINI_STORY_TIMEOUT_MS
