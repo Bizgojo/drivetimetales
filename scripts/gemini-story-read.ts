@@ -11,8 +11,7 @@
 import fs from 'fs'
 import { createClient } from '@supabase/supabase-js'
 import { checkSeriesFacts, formatFactSheet, castListsText } from '../lib/seriesFacts'
-import { storyBodyText } from '../lib/seriesContinuity'
-import { runGeminiStoryRead, summarizeStoryRead, type StoryReadStage } from '../lib/geminiStoryRead'
+import { listenerText, runGeminiStoryRead, summarizeStoryRead, type StoryReadStage } from '../lib/geminiStoryRead'
 
 export function parseEpisodeRange(arg: string | undefined): [number, number] | null {
   if (!arg) return null
@@ -39,9 +38,10 @@ async function main() {
   const result = await runGeminiStoryRead({
     stage,
     seriesTitle: series,
+    totalEpisodes: (data || []).length,
     factSheet: formatFactSheet(facts.facts),
     castLists: castListsText(factEpisodes),
-    episodes: eps.map((e: any) => ({ episodeNumber: Number(e.episode_number), title: String(e.title || ''), body: storyBodyText(String(e.script || '')) })),
+    episodes: eps.map((e: any) => ({ episodeNumber: Number(e.episode_number), title: String(e.title || ''), body: listenerText(String(e.script || '')) })),
   }, 'cli', env)
   const out = `/tmp/gemini-story-read-${series.replace(/[^A-Za-z0-9]+/g, '-')}.json`
   fs.writeFileSync(out, JSON.stringify(result, null, 2))

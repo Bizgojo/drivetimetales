@@ -86,7 +86,7 @@ import { runVoiceConformanceGate, type VoiceProfile } from '@/lib/voiceConforman
 import { legacyStepModels, routeStep, resolveModelForStep, coerceValidationModelToClaude } from '@/lib/model-router'
 import { buildContinuityPins, hashScript, verifyContinuityPins } from '@/lib/continuityPin'
 import { checkSeriesFacts, formatFactSheet, castListsText } from '@/lib/seriesFacts'
-import { runGeminiStoryRead } from '@/lib/geminiStoryRead'
+import { runGeminiStoryRead, listenerText } from '@/lib/geminiStoryRead'
 import { planTimingPass, finishTimingPass, timedLinesFromSizes, sizesFromListing, type TimingCheckState } from '@/lib/timingPass'
 import {
   hasEarnedPackageEvidence,
@@ -7929,7 +7929,7 @@ async function scoreValidateSeriesPackage(job: ProductionJob, model: string) {
         factSheet: formatFactSheet(factCheck.facts),
         castLists: castListsText(factEpisodes),
         outline: outlineText,
-        episodes: sortedEps.map((ep: any) => ({ episodeNumber: episodeNumber(ep, 0), title: String(ep.title || ''), body: storyBodyText(String(ep.script || '')) })),
+        episodes: sortedEps.map((ep: any) => ({ episodeNumber: episodeNumber(ep, 0), title: String(ep.title || ''), body: listenerText(String(ep.script || '')) })),
       }, continuityFingerprint)
       console.log(`[GEMINI-STORY-READ-001] series ${seriesId}: ${geminiRead.skipped ? `skipped (${geminiRead.skipped})` : geminiRead.error ? `error: ${geminiRead.error}` : `${geminiRead.verdict} — ${(geminiRead.questions || []).filter((q) => !q.pass).map((q) => `${q.id}:${q.issues.length}`).join(', ') || 'all pass'}`}`)
       ;(nextContinuityState as any).geminiScriptRead = geminiRead

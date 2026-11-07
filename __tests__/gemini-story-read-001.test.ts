@@ -60,12 +60,38 @@ describe('GEMINI-STORY-READ-001 report-only series read', () => {
 describe('GEMINI-READ-TIMING-001 timeout is set per caller and reported with seconds', () => {
   it('default 3 min, env override, nonsense ignored', () => {
     const { geminiStoryTimeoutMs } = require('@/lib/geminiStoryRead')
-    expect(geminiStoryTimeoutMs({})).toBe(180000)
+    expect(geminiStoryTimeoutMs({})).toBe(360000)
     expect(geminiStoryTimeoutMs({ GEMINI_STORY_TIMEOUT_MS: '600000' })).toBe(600000)
-    expect(geminiStoryTimeoutMs({ GEMINI_STORY_TIMEOUT_MS: 'abc' })).toBe(180000)
+    expect(geminiStoryTimeoutMs({ GEMINI_STORY_TIMEOUT_MS: 'abc' })).toBe(360000)
   })
   it('the CLI waits 10 minutes', () => {
     const src = fs.readFileSync(path.join(__dirname, '../scripts/gemini-story-read.ts'), 'utf8')
     expect(src).toContain("GEMINI_STORY_TIMEOUT_MS || '600000'")
+  })
+})
+
+describe('GEMINI-READ-PARTIAL-001 a partial read is not judged as the finale', () => {
+  it('says how many episodes the series has and that it continues', () => {
+    const p = buildStoryReadPrompt({ ...input, totalEpisodes: 7 })
+    expect(p).toContain('(7 episodes)')
+    expect(p).toContain('only episodes 1, 2 of 7')
+    expect(p).toContain('do NOT report that it fails to close')
+    expect(buildStoryReadPrompt(input)).not.toContain('only episodes')
+  })
+})
+
+describe('GEMINI-READ-OUTRO-001 Gemini hears the host outro', () => {
+  it('keeps Belle B outro, labeled as the host', () => {
+    const { listenerText } = require('@/lib/geminiStoryRead')
+    const t = listenerText('HEADER\n[START AUDIO DRAMA SCRIPT]\nNARRATOR: Twenty-two feet.\n\nBELLE B OUTRO\n---\nBELLE B: You heard his name on that tape.\n')
+    expect(t).toContain('NARRATOR: Twenty-two feet.')
+    expect(t).toContain('[HOST OUTRO')
+    expect(t).toContain('You heard his name on that tape.')
+    expect(t).not.toContain('HEADER')
+  })
+  it('pipeline and CLI both send listenerText', () => {
+    for (const f of ['../scripts/gemini-story-read.ts', '../app/api/admin/production-jobs/run-next/route.ts']) {
+      expect(fs.readFileSync(path.join(__dirname, f), 'utf8')).toMatch(/body: listenerText\(/)
+    }
   })
 })
