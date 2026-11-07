@@ -47,3 +47,11 @@ describe('PHASED-SERIES-001: published episodes are read-only in series jobs', (
     expect(src).not.toContain('() => loadSeriesEpisodes(String(lockedJob.series_id))')
   })
 })
+
+describe('PHASED-SERIES-002: explicit not-finale wins over the episode count', () => {
+  it('writer self-check and voice rules honor series_is_finale=false', () => {
+    expect(src).toContain('const selfCheckIsFinale = targetEpisode.series_is_finale === false')
+    const rules = fs.readFileSync('lib/voiceBelleRules.ts', 'utf8')
+    expect(rules).toContain("const isFinale = storyRow?.series_is_finale === false")
+  })
+})

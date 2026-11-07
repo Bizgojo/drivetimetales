@@ -6844,7 +6844,11 @@ async function generateOneSeriesEpisodeScript(job: ProductionJob, model: string)
   }
   // Finale / total from the episode row, as production's preflight does (review L6).
   const selfCheckTotal = Number(targetEpisode.series_total_episodes || 0) || Number(series.total_episodes || 0) || episodes.length
-  const selfCheckIsFinale = Boolean(targetEpisode.series_is_finale) || (selfCheckTotal > 0 && targetEpisodeNumber >= selfCheckTotal)
+  // PHASED-SERIES-002 (Marc, 2026-11-06): an explicit series_is_finale=false wins
+  // over "last row = finale". A Season-1 batch of EP1-3 out of 7 is not a finale.
+  const selfCheckIsFinale = targetEpisode.series_is_finale === false
+    ? false
+    : Boolean(targetEpisode.series_is_finale) || (selfCheckTotal > 0 && targetEpisodeNumber >= selfCheckTotal)
   let writerDraftIndex = 0
   const writerStepStartedAt = Date.now()
   let selfCheck: Awaited<ReturnType<typeof writeWithSelfCheck>>
