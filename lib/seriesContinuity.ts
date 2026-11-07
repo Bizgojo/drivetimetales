@@ -33,6 +33,10 @@ export function buildContinuityPrompt(input: {
   outlineText?: string
   /** SERIES-NEMESIS-001 exception text, if any. */
   exceptionNote?: string
+  /** SERIES-FACTS-001: every episode's cast list (the spoken bodies below omit it). */
+  castLists?: string
+  /** SERIES-FACTS-001: relationship facts read from the cast lists. */
+  factSheet?: string
   episodes: Array<{ episodeNumber: number; title: string; body: string }>
 }): string {
   return `You are the continuity editor for the audio drama series "${input.seriesTitle}" (${input.episodes.length} episodes). Read every episode in full, in order, and find CLEAR continuity errors a listener would notice.
@@ -43,10 +47,11 @@ Fail the series only for these:
 3. A dead, jailed or captured character back later with no explanation.
 4. Facts that contradict each other across episodes (who did what, where someone is, what an object is).
 5. A later episode ignoring something major that happened earlier.
+6. Dialogue that contradicts the CAST LISTS or FACT SHEET below: the wrong relationship word ("my sister" for a sister-in-law), a relative or contact given to two different characters, a job or relationship that changes between episodes.
 
 Do NOT report style, pacing, or small details. If there is nothing clear, pass.${input.exceptionNote ? `\n${input.exceptionNote}` : ''}
 For each problem, name the ONE episode that should be rewritten to fix it (usually the earlier episode that resolves something too soon, or the later one that contradicts it) and say exactly what to change.
-${input.outlineText ? `\nTHE SERIES PLAN THE EPISODES WERE WRITTEN FROM:\n${input.outlineText}\n` : ''}
+${input.outlineText ? `\nTHE SERIES PLAN THE EPISODES WERE WRITTEN FROM:\n${input.outlineText}\n` : ''}${input.factSheet ? `\nFACT SHEET (fixed facts; dialogue must agree):\n${input.factSheet}\n` : ''}${input.castLists ? `\nCAST LISTS (from each episode's character guide):\n${input.castLists}\n` : ''}
 Return JSON only, no markdown:
 {"pass": true|false, "issues": [{"episode": <number to rewrite>, "problem": "...", "fix": "..."}]}
 

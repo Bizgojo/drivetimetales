@@ -1,3 +1,4 @@
+import { recentGroups, mainCharacterVoiceIds, groupKey, type VoiceAssignmentRow } from '@/lib/voiceReuseWindow'
 import { NextRequest, NextResponse } from 'next/server'
 import { sfxGloballyOff, soundsnapOnly } from '@/lib/sfxSwitch'
 import { inferGender, seriesGenderHints } from '@/lib/characterGender'
@@ -1055,37 +1056,42 @@ function voiceMatchesRegionalTags(voice: CharacterVoiceRow, regionalTags: string
 // blockedVoiceIds before scoring. If excluding recent voices leaves no valid
 // candidates, fall back to the full pool (soft exclusion grace).
 
-const HARD_ROTATION_STORY_WINDOW = 20
+// VOICE-REUSE-001 (Marc 2026-11-07): a main character's voice cannot be reused
+// for 30 stories/series. Replaces the old "last 20 stories" lookup, which read
+// job_type='story' jobs with a voiceMap — none exist — so it never blocked anything.
+const recentMainVoiceCache = new Map<string, { at: number; ids: Set<string> }>()
 
-async function getRecentlyUsedVoiceIds(currentStoryId: string): Promise<Set<string>> {
-  try {
-    // Fetch the 20 most recently produced stories (excluding the current one)
-    const { data: recentStories, error } = await supabase
-      .from('production_jobs')
-      .select('state_json')
-      .eq('job_type', 'story')
-      .eq('status', 'complete')
-      .neq('story_id', currentStoryId)
-      .order('completed_at', { ascending: false })
-      .limit(HARD_ROTATION_STORY_WINDOW)
-
-    if (error || !recentStories?.length) return new Set()
-
-    const recentVoiceIds = new Set<string>()
-    for (const job of recentStories) {
-      const stateJson = (job.state_json as Record<string, unknown>) || {}
-      const voiceMap = stateJson.voiceMap as Record<string, string> | undefined
-      if (voiceMap) {
-        for (const voiceId of Object.values(voiceMap)) {
-          if (voiceId) recentVoiceIds.add(voiceId)
-        }
-      }
-    }
-    return recentVoiceIds
-  } catch {
-    // Non-fatal: if query fails, proceed without exclusion
-    return new Set()
+async function getRecentlyUsedVoiceIds(currentStoryId: string, currentSeriesId: string | null): Promise<Set<string>> {
+  const currentKey = groupKey({ series_id: currentSeriesId, story_id: currentStoryId })
+  const cached = recentMainVoiceCache.get(currentKey)
+  if (cached && Date.now() - cached.at < 10 * 60 * 1000) return cached.ids
+  const { data: rows, error } = await supabase
+    .from('character_voice_assignments')
+    .select('story_id,series_id,character_name,character_name_normalized,voice_id,assigned_at')
+    .order('assigned_at', { ascending: false })
+    .limit(4000)
+  if (error) throw new Error(`VOICE-REUSE-001: could not load recent voice assignments: ${error.message}`)
+  const groups = recentGroups((rows || []) as VoiceAssignmentRow[], currentKey)
+  const seriesIds = groups.map((g) => g.seriesId).filter(Boolean) as string[]
+  const storyIds = groups.filter((g) => !g.seriesId).flatMap((g) => g.storyIds)
+  const scripts: Array<{ id: string; series_id: string | null; script: string | null }> = []
+  if (seriesIds.length) {
+    const { data, error: e } = await supabase.from('stories').select('id,series_id,script').in('series_id', seriesIds)
+    if (e) throw new Error(`VOICE-REUSE-001: could not load series scripts: ${e.message}`)
+    scripts.push(...((data || []) as any[]))
   }
+  if (storyIds.length) {
+    const { data, error: e } = await supabase.from('stories').select('id,series_id,script').in('id', storyIds)
+    if (e) throw new Error(`VOICE-REUSE-001: could not load story scripts: ${e.message}`)
+    scripts.push(...((data || []) as any[]))
+  }
+  const ids = mainCharacterVoiceIds(groups.map((g) => ({
+    ...g,
+    scripts: scripts.filter((s) => (g.seriesId ? s.series_id === g.seriesId : g.storyIds.includes(s.id))).map((s) => String(s.script || '')),
+  })))
+  console.log(`  VOICE-REUSE-001: ${ids.size} main-character voices blocked from the last ${groups.length} stories/series`)
+  recentMainVoiceCache.set(currentKey, { at: Date.now(), ids })
+  return ids
 }
 
 function pickRotatedCandidate(
@@ -1337,9 +1343,9 @@ async function findVoiceForCharacter(
     return { voiceId, reusedVoice: true, voiceName: voiceName || undefined }
   }
 
-  // Hard rotation exclusion: also block voices used in the last 20 completed stories.
-  // This is a hard exclusion - not a soft down-weight. Falls back to full pool if needed.
-  const recentlyUsedVoiceIds = await getRecentlyUsedVoiceIds(context.storyId)
+  // VOICE-REUSE-001: block main-character voices from the last 30 stories/series.
+  const recentlyUsedVoiceIds = await getRecentlyUsedVoiceIds(context.storyId, context.seriesId)
+  let reusedRecentMainVoice = false
   const blockedVoiceIds = new Set<string>([
     ...usedVoiceIds,
     narratorVoiceId,
@@ -1350,7 +1356,8 @@ async function findVoiceForCharacter(
   if (scored.length === 0 && recentlyUsedVoiceIds.size > 0) {
     // Hard exclusion removed all candidates - fall back to pool without recent exclusion
     // (grace mode: avoid infinite voice starvation on small pools)
-    console.log(`  ${characterName}: hard rotation exclusion left 0 candidates - falling back to soft exclusion`)
+    console.warn(`  VOICE-REUSE-001: no unused voice fits ${characterName}; reusing a recent main-character voice. Add more voices of this type.`)
+    reusedRecentMainVoice = true
     const blockedWithoutRecent = new Set<string>([...usedVoiceIds, narratorVoiceId, ...RESERVED_BELLE_B_VOICE_IDS])
     scored = scoreCharacterVoiceCandidates(meta, characterVoices, blockedWithoutRecent)
   }
@@ -1434,7 +1441,8 @@ async function findVoiceForCharacter(
   console.log(`  ${characterName}: ${pick.name} (score:${rotatedPick.score}, ${pick.gender}, ${pick.age}, ${pick.accent}, ${pick.descriptive})`)
   return {
     voiceId: pick.voice_id,
-    reusedVoice: false,
+    // VOICE-REUSE-001: surfaced in the cast review as a reused voice.
+    reusedVoice: reusedRecentMainVoice,
     voiceName: pick.name || undefined,
     score: rotatedPick.score,
   }

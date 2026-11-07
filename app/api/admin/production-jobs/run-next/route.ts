@@ -85,6 +85,7 @@ import { runVoiceConformanceGate, type VoiceProfile } from '@/lib/voiceConforman
 // fallback to the current Claude models when DEEPSEEK_API_KEY is absent.
 import { legacyStepModels, routeStep, resolveModelForStep, coerceValidationModelToClaude } from '@/lib/model-router'
 import { buildContinuityPins, hashScript, verifyContinuityPins } from '@/lib/continuityPin'
+import { checkSeriesFacts, formatFactSheet, castListsText } from '@/lib/seriesFacts'
 import {
   hasEarnedPackageEvidence,
   stampPackageEvidence,
@@ -3302,6 +3303,8 @@ HARD CHARACTER CONTINUITY RULES:
 - Do NOT replace a roster character with a new name that serves the same story role.
 - Keep gender, age, accent, and description consistent with the locked roster.
 - New characters are allowed only when they are genuinely new people, not renamed versions of roster characters.
+- SERIES-FACTS-001: relationships in the descriptions are fixed facts. Use the exact word: a sister-in-law is never "my sister", an ex-wife is never "my wife".
+- A relative or contact (for example "a cousin at the sheriff's office") belongs to ONE character only. Never give the same relative to two characters.
 
 LOCKED ROSTER:
 ${JSON.stringify(roster.map((character: any) => ({
@@ -7821,6 +7824,13 @@ async function scoreValidateSeriesPackage(job: ProductionJob, model: string) {
   const continuityFingerprint = scriptsFingerprint(refreshedEpisodes.map((ep: any) => String(ep.script || '')))
   if (seriesContinuityEnabled() && !isLandingPackage && continuityState.passedFingerprint !== continuityFingerprint) {
     const sortedEps = [...refreshedEpisodes].sort((a: any, b: any) => episodeNumber(a, 0) - episodeNumber(b, 0))
+    // SERIES-FACTS-001: plain-text check of dialogue against the cast lists (no AI).
+    const factEpisodes = sortedEps.map((ep: any) => ({ episodeNumber: episodeNumber(ep, 0), script: String(ep.script || '') }))
+    const factCheck = checkSeriesFacts(factEpisodes)
+    const frozenNumbers = new Set(sortedEps.filter((ep: any) => isFrozenSeriesEpisode(ep)).map((ep: any) => episodeNumber(ep, 0)))
+    const publishedFactIssues = factCheck.issues.filter((i) => frozenNumbers.has(i.episode))
+    const blockingFactIssues = factCheck.issues.filter((i) => !frozenNumbers.has(i.episode))
+    if (factCheck.issues.length) console.log(`[SERIES-FACTS-001] series ${seriesId}: ${blockingFactIssues.length} blocking, ${publishedFactIssues.length} in published episodes`)
     const outline = (sortedEps[0]?.brief_json as any)?.series_outline as SeriesOutline | undefined
     const outlineText = outline?.episodes?.length
       ? [
@@ -7834,6 +7844,8 @@ async function scoreValidateSeriesPackage(job: ProductionJob, model: string) {
       outlineText,
       exceptionNote: sequelHookValidatorNote(sequelHookOf(sortedEps[0]?.brief_json), String((sortedEps[0]?.brief_json as any)?.series_name || sortedEps[0]?.series_name || '')),
       episodes: sortedEps.map((ep: any) => ({ episodeNumber: episodeNumber(ep, 0), title: String(ep.title || ''), body: storyBodyText(String(ep.script || '')) })),
+      castLists: castListsText(factEpisodes),
+      factSheet: formatFactSheet(factCheck.facts),
     })
     // CONTINUITY-JSON-001 (2026-11-01, The Last Well): on 7 episodes the
     // checker writes its tracking notes before the JSON and ran out of room at
@@ -7869,9 +7881,12 @@ async function scoreValidateSeriesPackage(job: ProductionJob, model: string) {
     let parsedVerdict: unknown = null
     try { parsedVerdict = parseJsonObject(rawVerdict) } catch { parsedVerdict = null }
     if (!parsedVerdict) throw new Error('SERIES-CONTINUITY-001: continuity check returned no JSON verdict')
-    const verdict = parseContinuityVerdict(parsedVerdict, sortedEps.length)
+    const aiVerdict = parseContinuityVerdict(parsedVerdict, sortedEps.length)
+    const verdict = blockingFactIssues.length
+      ? { pass: false, issues: [...blockingFactIssues.map(({ episode, problem, fix }) => ({ episode, problem: `${problem} (fact check)`, fix })), ...aiVerdict.issues] }
+      : aiVerdict
     const runs = Number(continuityState.runs || 0) + 1
-    const nextContinuityState = { runs, lastAt: nowIso(), lastIssues: verdict.issues, passedFingerprint: verdict.pass ? continuityFingerprint : continuityState.passedFingerprint || null }
+    const nextContinuityState = { runs, lastAt: nowIso(), lastIssues: verdict.issues, passedFingerprint: verdict.pass ? continuityFingerprint : continuityState.passedFingerprint || null, factSheet: factCheck.facts, publishedFactIssues }
     console.log(`[SERIES-CONTINUITY-001] series ${seriesId} run ${runs}: ${verdict.pass ? 'PASS' : `FAIL (${verdict.issues.length} issue(s))`}`)
     const target = continuityRewriteTarget(verdict)
     if (target) {
