@@ -156,7 +156,10 @@ export default function PersistentPlayer({ children }: { children: ReactNode }) 
   return <OpenPlayerContext.Provider value={openPlayer}><PlayerContext.Provider value={request}><NowPlayingContext.Provider value={miniature ? snapshot : null}>
     <div style={{ paddingTop: miniature ? continueHeight : 0, '--et-continue-bottom': `${56 + (miniature ? continueHeight : 0)}px` } as CSSProperties}>{children}</div>
     {selection && !clearForRoute && <div hidden={!playerPage} style={playerPage
-      ? { position: 'fixed', top: 56, bottom: 0, left: 0, right: 0, zIndex: 40, overflowY: 'auto', background: '#020617' }
+      // PLAYER-ON-TOP-001 (Marc, 2026-11-06): the full player must cover every
+      // page bar (Library genre bar z44, Continue card z45, playlist bar z46)
+      // but stay under the app header (z60).
+      ? { position: 'fixed', top: 56, bottom: 0, left: 0, right: 0, zIndex: 55, overflowY: 'auto', background: '#020617' }
       : { display: 'none' }}>
       <CanonicalPlayer storyId={selection.storyId} mode={selection.mode} resumeParam={selection.resumeParam} navigationKey={selection.navigationKey}
         onPlaybackSnapshot={setSnapshot} onAdvanceInPlace={advance} />
