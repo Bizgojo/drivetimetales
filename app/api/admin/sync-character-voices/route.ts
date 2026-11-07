@@ -1,3 +1,4 @@
+import { keepExistingVoiceDecisions } from '@/lib/voiceSyncKeep'
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { createServerClient } from '@supabase/ssr'
@@ -128,6 +129,8 @@ async function fetchAllElevenLabsVoices() {
   return voices
 }
 
+type ExistingVoiceRow = { voice_id: string; is_character_eligible: boolean | null; gender: string | null; age: string | null; accent: string | null }
+
 function chunk<T>(items: T[], size: number) {
   const chunks: T[][] = []
   for (let index = 0; index < items.length; index += size) {
@@ -173,35 +176,50 @@ export async function POST(_req: NextRequest) {
     const voiceIds = voices.map((voice) => voice.voice_id).filter(Boolean)
 
     const existingIds = new Set<string>()
+    // VOICE-SYNC-KEEP-001: rows already in the table keep the decisions we made
+    // about them (character eligibility after scoring, labels we filled in where
+    // ElevenLabs has none). The sync only fills gaps and adds new voices.
+    const existingById = new Map<string, ExistingVoiceRow>()
     for (const idChunk of chunk(voiceIds, 500)) {
       const { data, error } = await supabase
         .from('character_voices')
-        .select('voice_id')
+        .select('voice_id,is_character_eligible,gender,age,accent')
         .in('voice_id', idChunk)
 
       if (error) return json({ success: false, error: error.message }, 500)
-      for (const row of data || []) existingIds.add(row.voice_id)
+      for (const row of data || []) {
+        existingIds.add(row.voice_id)
+        existingById.set(row.voice_id, row as ExistingVoiceRow)
+      }
     }
 
     const rows = voices.map((voice) => {
       const labels = voice.labels || {}
-      const gender = clean(labels.gender).toLowerCase()
+      const existing = existingById.get(voice.voice_id)
+      const kept = keepExistingVoiceDecisions(existing, {
+        gender: clean(labels.gender).toLowerCase() || null,
+        age: normalizeAge(labels.age),
+        accent: clean(labels.accent) || null,
+      })
+      const gender = kept.gender || ''
       const useCase = clean(labels.use_case).toLowerCase()
 
       return {
         voice_id: voice.voice_id,
         name: clean(voice.name),
         category: clean(voice.category) || null,
-        gender: gender || null,
-        age: normalizeAge(labels.age),
-        accent: clean(labels.accent) || null,
+        gender: kept.gender,
+        age: kept.age,
+        accent: kept.accent,
         regional_tags: deriveRegionalTags(voice),
         use_case: useCase || null,
         descriptive: clean(labels.descriptive) || null,
         description: clean(voice.description) || null,
         preview_url: clean(voice.preview_url) || null,
         is_active: true,
-        is_character_eligible: useCase !== 'narrative_story',
+        // New voices: ElevenLabs "narrative_story" voices start excluded until scored.
+        // Existing voices: keep the stored decision (VOICE-SYNC-KEEP-001).
+        is_character_eligible: existing ? existing.is_character_eligible !== false : useCase !== 'narrative_story',
         needs_labeling: !gender,
         last_seen_at: now,
         updated_at: now,
