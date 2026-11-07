@@ -76,3 +76,11 @@ describe('PHASED-SERIES-002c: metadata validator allows an explicit not-finale l
     expect(src).toContain('if (!phasedBatchLast && Boolean(episode.series_is_finale) !== shouldBeFinale)')
   })
 })
+
+describe('PHASED-SERIES-002d: package reviewer is told a phased batch has no finale', () => {
+  it('prompt switches to phased-batch rules when the last row is explicitly not finale', () => {
+    expect(src).toContain('const phasedBatch = lastEpisode?.series_is_finale === false')
+    expect(src).toContain('You are validating an Endless Tales ${packageScope} before audio production.')
+    expect(src).toContain('This is a phased batch: there is NO finale here.')
+  })
+})
