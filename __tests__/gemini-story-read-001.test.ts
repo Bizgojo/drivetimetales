@@ -95,3 +95,11 @@ describe('GEMINI-READ-OUTRO-001 Gemini hears the host outro', () => {
     }
   })
 })
+
+describe('GEMINI-READ-IDS-001 numbered question ids are understood', () => {
+  it('"1" maps to the first question of the stage, "[logic]" to logic', () => {
+    const r = parseStoryRead('{"questions":[{"id":"1","pass":false,"issues":[{"episode":3,"line":"x","problem":"p","fix":"f"}]},{"id":"[logic]","pass":true,"issues":[]},{"id":"9","pass":true,"issues":[]}]}', 'script')!
+    expect(r.questions.map((q) => q.id)).toEqual(['continuity', 'logic'])
+    expect(r.verdict).toBe('fix')
+  })
+})
