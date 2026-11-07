@@ -69,3 +69,10 @@ describe('PHASED-SERIES-002b: every Belle finale check honors explicit false', (
     expect(v).toContain("story?.series_is_finale !== false && total > 0")
   })
 })
+
+describe('PHASED-SERIES-002c: metadata validator allows an explicit not-finale last row', () => {
+  it('only an explicit false on the last row is allowed', () => {
+    expect(src).toContain("const phasedBatchLast = shouldBeFinale && episode.series_is_finale === false")
+    expect(src).toContain('if (!phasedBatchLast && Boolean(episode.series_is_finale) !== shouldBeFinale)')
+  })
+})

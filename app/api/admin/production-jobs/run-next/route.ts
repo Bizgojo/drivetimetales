@@ -7159,7 +7159,11 @@ function validateSeriesMetadata(episodes: any[], seriesId: string) {
       issues.push(`Episode ${expectedEpisodeNumber} has series_total_episodes=${episode.series_total_episodes}, expected ${total}.`)
     }
     const shouldBeFinale = expectedEpisodeNumber === total
-    if (Boolean(episode.series_is_finale) !== shouldBeFinale) {
+    // PHASED-SERIES-002c (Marc, 2026-11-06): the last row of a phased batch
+    // (EP1-3 of a 7-episode season) may be explicitly NOT the finale. Only an
+    // explicit false is allowed; a middle episode marked finale still fails.
+    const phasedBatchLast = shouldBeFinale && episode.series_is_finale === false
+    if (!phasedBatchLast && Boolean(episode.series_is_finale) !== shouldBeFinale) {
       issues.push(`Episode ${expectedEpisodeNumber} has series_is_finale=${Boolean(episode.series_is_finale)}, expected ${shouldBeFinale}.`)
     }
     if (!episode.script) {
