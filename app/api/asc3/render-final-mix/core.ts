@@ -1437,7 +1437,13 @@ export async function runRenderFinalMix(storyId: string, opts: {
     // ── END POST-UPLOAD VERIFICATION ─────────────────────────────────────────
 
     const finalAudioUrl = `${BASE_STORAGE}/${mixPath}`
-    const versionedFinalAudioUrl = `${finalAudioUrl}?v=${Date.now()}`
+    // MIX-VERSION-001 (Marc 2026-11-07, Rerouted EP1 "My sister"): files are uploaded with a
+    // one-year cache at FIXED paths, so after a remix every device that played the old mix kept
+    // playing it. The stored URLs now carry this render's version, so a remix is a new address:
+    // devices fetch it fresh, and personalized mixes (keyed on the body URL) rebuild.
+    const renderVersion = `?v=${Date.now()}`
+    const versionedFinalAudioUrl = `${finalAudioUrl}${renderVersion}`
+    const versionedStoryBodyUrl = `${storyBodyUrl}${renderVersion}`
 
     // Update story — story_audio_url for queue mode, audio_url for fallback
     // HAL-PIPE-002 fix: check for DB update error instead of silently discarding
@@ -1464,7 +1470,7 @@ export async function runRenderFinalMix(storyId: string, opts: {
           scriptJson: (freshnessRow as any).script_json,
           scriptText: (freshnessRow as any).script,
           renderRequestFingerprint: currentBelleFingerprint(storyRow?.script),
-          outputAsset: finalAudioUrl,
+          outputAsset: versionedFinalAudioUrl,
           renderAtIso: freshnessRenderAt,
         })
         if (clearance.changed) freshnessScriptJson = clearance.scriptJson
@@ -1474,10 +1480,10 @@ export async function runRenderFinalMix(storyId: string, opts: {
       console.warn(`  [${BELLE_FRESHNESS_MARKER}] pre-update freshness re-read failed (non-fatal; publish refuses without evidence):`, freshnessErr instanceof Error ? freshnessErr.message : String(freshnessErr))
     }
     const { error: storyUpdateErr } = await supabase.from('stories').update({
-      story_audio_url: storyBodyUrl,
-      audio_url: finalAudioUrl,  // store plain URL (no ?v= cache-buster — versioning in response only)
-      ...(outroWithMusicStorageUrl ? { outro_with_music_url: outroWithMusicStorageUrl } : {}),
-      ...(storyBodyWithOutroStorageUrl ? { story_body_with_outro_url: storyBodyWithOutroStorageUrl } : {}),
+      story_audio_url: versionedStoryBodyUrl,
+      audio_url: versionedFinalAudioUrl,  // MIX-VERSION-001: versioned; Belle freshness binds to this same value
+      ...(outroWithMusicStorageUrl ? { outro_with_music_url: `${outroWithMusicStorageUrl}${renderVersion}` } : {}),
+      ...(storyBodyWithOutroStorageUrl ? { story_body_with_outro_url: `${storyBodyWithOutroStorageUrl}${renderVersion}` } : {}),
       ...(freshnessScriptJson ? { script_json: freshnessScriptJson } : {}),
       duration_mins: Math.ceil(durationSecs / 60)
     }).eq('id', storyId)
@@ -1502,7 +1508,7 @@ export async function runRenderFinalMix(storyId: string, opts: {
     return {
       success: true,
       finalAudioUrl: versionedFinalAudioUrl,
-      storyBodyUrl,
+      storyBodyUrl: versionedStoryBodyUrl,
       durationSecs,
       tmpPrefetchProbe,
     }
