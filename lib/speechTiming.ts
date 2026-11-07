@@ -97,3 +97,14 @@ export function findTimingOutliers(lines: TimedLine[]): TimingFlag[] {
 }
 
 const round = (n: number) => Math.round(n * 100) / 100
+
+/**
+ * SCRIPT-AUDIO-MATCH-001: null when the script's segment files and the stored files are the
+ * same set; otherwise a short reason. Timing checks and re-records are only valid then.
+ */
+export function scriptAudioMismatch(expected: Set<string>, stored: Set<string>): string | null {
+  const missing = [...expected].filter((n) => !stored.has(n)).length
+  const extra = [...stored].filter((n) => !expected.has(n)).length
+  if (!missing && !extra) return null
+  return `script expects ${expected.size} segment files, storage has ${stored.size}; ${missing} missing, ${extra} not in script`
+}
