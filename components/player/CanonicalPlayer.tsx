@@ -1275,7 +1275,14 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
         setAudioErrorMessage('')
         // MARC-PLAYLIST-FRESH-001: captured once per load(), before anything
         // below can reset the ref for a *subsequent* in-place advance.
-        const skipResumeForFreshPlaylistItem = playlistAutoplayPendingRef.current || (mode === 'playlist' && forceFreshStartRef.current)
+        // AUTOADVANCE-FRESH-001 (Marc, 2026-11-06): arriving by auto-advance or
+        // series-continue means "play the next episode from the top". An old
+        // partial listen of that episode must not drop the listener mid-episode.
+        const arrivedByAutoAdvance = typeof window !== 'undefined' && (() => {
+          const q = new URLSearchParams(window.location.search)
+          return q.get('autoAdvance') === '1' || q.get('seriesContinue') === '1'
+        })()
+        const skipResumeForFreshPlaylistItem = playlistAutoplayPendingRef.current || arrivedByAutoAdvance || (mode === 'playlist' && forceFreshStartRef.current)
         forceFreshStartRef.current = false
         stage = 'story-row'
         const { data, error } = await supabase
