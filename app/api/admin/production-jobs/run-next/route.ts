@@ -7351,6 +7351,19 @@ async function validateSeriesPackageWithAi(episodes: any[], metadataIssues: stri
   }
 
   const episodeCount = episodes.length
+  // PHASED-SERIES-002d (Marc, 2026-11-06): a phased batch (e.g. EP1-3 of a
+  // 7-episode season) has NO finale in the package. Tell the reviewer so it
+  // does not demand arc closure from the last episode in the batch.
+  const lastEpisode: any = episodes[episodes.length - 1]
+  const phasedBatch = lastEpisode?.series_is_finale === false
+  const plannedSeasonTotal = (() => {
+    const fromHeader = Number(extractHeader(String(lastEpisode?.script || ''), 'SERIES_TOTAL_EPISODES') || 0)
+    const fromBrief = Number((lastEpisode?.brief_json as any)?.series_total_episodes || 0)
+    return Math.max(fromHeader, fromBrief, 0)
+  })()
+  const packageScope = phasedBatch
+    ? `episodes 1-${episodeCount} of a${plannedSeasonTotal > episodeCount ? ` planned ${plannedSeasonTotal}-episode` : ' longer'} series (a phased batch; later episodes come after). NONE of these episodes is the finale`
+    : `${episodeCount}-episode series package`
   const packageBrief = episodes.map((episode: any, index: number) => {
     const script = String(episode.script || '')
     return {
@@ -7370,7 +7383,7 @@ async function validateSeriesPackageWithAi(episodes: any[], metadataIssues: stri
     temperature: 0,
     messages: [{
       role: 'user',
-      content: `You are validating an Endless Tales ${episodeCount}-episode series package before audio production.
+      content: `You are validating an Endless Tales ${packageScope} before audio production.
 
 Return JSON only. Do not include markdown.
 
@@ -7385,10 +7398,9 @@ Required JSON shape:
 Validation rules:
 - All episodes must clearly belong to one continuous series arc.
 - Every non-finale episode must end with an intentional continuation hook, not standalone closure.
-- The finale episode must close the series arc and must not tease another episode.
-- No episode should be treated as a standalone story.
-- Metadata must be consistent with episode order and finale status.
-- Fail if the finale leaves the main series question unresolved.
+${phasedBatch
+  ? `- This is a phased batch: there is NO finale here. EVERY episode, including Episode ${episodeCount}, must end with an intentional continuation hook and may tease the next episode. Do NOT require arc closure or credits.\n- No episode should be treated as a standalone story.\n- Metadata must be consistent with episode order (all seriesIsFinale=false is correct).`
+  : `- The finale episode must close the series arc and must not tease another episode.\n- No episode should be treated as a standalone story.\n- Metadata must be consistent with episode order and finale status.\n- Fail if the finale leaves the main series question unresolved.`}
 ${sequelHookOf(episodes[0]?.brief_json) ? `- ${sequelHookValidatorNote(sequelHookOf(episodes[0]?.brief_json), String((episodes[0]?.brief_json as any)?.series_name || episodes[0]?.series_name || ''))}\n` : ''}
 SERIES PACKAGE:
 ${JSON.stringify(packageBrief, null, 2)}`,
@@ -8169,8 +8181,10 @@ async function runSeriesVoicePreflight(job: ProductionJob, origin: string) {
   // pre-spend. Finales get no forward cover: "Episode N+1" there is genuine.
   {
     const fwdTotal = Number((nextEpisode as any).series_total_episodes || 0) || null
-    const fwdIsFinale = Boolean((nextEpisode as any).series_is_finale) ||
-      (fwdTotal !== null && number > 0 && number >= fwdTotal)
+    // PHASED-SERIES-002d: explicit series_is_finale=false wins over the count.
+    const fwdIsFinale = (nextEpisode as any).series_is_finale === false
+      ? false
+      : Boolean((nextEpisode as any).series_is_finale) || (fwdTotal !== null && number > 0 && number >= fwdTotal)
     const numeralScan = numeralPreTtsScan((nextEpisode as any).script || '', {
       episodeNumberPassThrough: number,
       ...(!fwdIsFinale && number > 0 ? { nextEpisodeNumberPassThrough: number + 1 } : {}),
