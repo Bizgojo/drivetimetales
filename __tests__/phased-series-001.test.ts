@@ -55,3 +55,17 @@ describe('PHASED-SERIES-002: explicit not-finale wins over the episode count', (
     expect(rules).toContain("const isFinale = storyRow?.series_is_finale === false")
   })
 })
+
+describe('PHASED-SERIES-002b: every Belle finale check honors explicit false', () => {
+  it('belleEpisodeState: isFinale=false is not a finale even on the last row', () => {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { belleEpisodeState } = require('../lib/voiceBelleRules')
+    expect(belleEpisodeState({ seriesName: 'Rerouted', episodeNumber: 3, seriesTotal: 3, isFinale: false })).toBe('series_non_final')
+    expect(belleEpisodeState({ seriesName: 'Rerouted', episodeNumber: 3, seriesTotal: 3, isFinale: null })).toBe('series_finale')
+    expect(belleEpisodeState({ seriesName: 'Rerouted', episodeNumber: 3, seriesTotal: 7, isFinale: true })).toBe('series_finale')
+  })
+  it('belle variants position honors series_is_finale=false', () => {
+    const v = fs.readFileSync('app/api/admin/generate-belle-variants/route.ts', 'utf8')
+    expect(v).toContain("story?.series_is_finale !== false && total > 0")
+  })
+})
