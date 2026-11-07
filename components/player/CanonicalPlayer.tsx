@@ -1340,7 +1340,7 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
           if ((data as any).series_id) {
             const { data: seriesEpisodes, error: seriesError } = await supabase
               .from('stories')
-              .select('id, title, episode_number, prose_text, series_name, duration_mins')
+              .select('id, title, episode_number, prose_text, series_name, duration_mins, cover_url')
               .eq('series_id', (data as any).series_id)
               .eq('status', 'published')
               .eq('is_hidden', false)
@@ -1357,7 +1357,7 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
             if (!cancelled) setSeriesEpisodes((seriesEpisodes || []).filter(ep=>ep.id && ep.episode_number).map(ep=>{
               const local = getLocalPlayerProgress(ep.id, user?.id)
               const merged = mergePlayerProgress(progressRows.find(row=>row.story_id===ep.id), local)
-              return {id:ep.id,title:ep.title,number:ep.episode_number,progress:merged.progress,progressKnown:progressKnown || Boolean(local),completed:merged.completed,duration:local?.durationSecs || Number(ep.duration_mins || 0)*60}
+              return {id:ep.id,title:ep.title,number:ep.episode_number,progress:merged.progress,progressKnown:progressKnown || Boolean(local),completed:merged.completed,duration:local?.durationSecs || Number(ep.duration_mins || 0)*60,coverUrl:(ep as any).cover_url || null}
             }))
 
             const proseChapters = (seriesEpisodes || [])
