@@ -86,6 +86,7 @@ import { runVoiceConformanceGate, type VoiceProfile } from '@/lib/voiceConforman
 import { legacyStepModels, routeStep, resolveModelForStep, coerceValidationModelToClaude } from '@/lib/model-router'
 import { buildContinuityPins, hashScript, verifyContinuityPins } from '@/lib/continuityPin'
 import { checkSeriesFacts, formatFactSheet, castListsText } from '@/lib/seriesFacts'
+import { runGeminiStoryRead } from '@/lib/geminiStoryRead'
 import { planTimingPass, finishTimingPass, timedLinesFromSizes, sizesFromListing, type TimingCheckState } from '@/lib/timingPass'
 import {
   hasEarnedPackageEvidence,
@@ -7918,6 +7919,22 @@ async function scoreValidateSeriesPackage(job: ProductionJob, model: string) {
           },
         },
       }
+    }
+    // GEMINI-STORY-READ-001 (spec §6.3, phase 1 report-only): once the scripts pass our own
+    // continuity check, a different model reads the whole series. Stored, never blocks.
+    if (verdict.pass && (continuityState.geminiScriptRead as any)?.fingerprint !== continuityFingerprint) {
+      const geminiRead = await runGeminiStoryRead({
+        stage: 'script',
+        seriesTitle: String(sortedEps[0]?.series_name || ''),
+        factSheet: formatFactSheet(factCheck.facts),
+        castLists: castListsText(factEpisodes),
+        outline: outlineText,
+        episodes: sortedEps.map((ep: any) => ({ episodeNumber: episodeNumber(ep, 0), title: String(ep.title || ''), body: storyBodyText(String(ep.script || '')) })),
+      }, continuityFingerprint)
+      console.log(`[GEMINI-STORY-READ-001] series ${seriesId}: ${geminiRead.skipped ? `skipped (${geminiRead.skipped})` : geminiRead.error ? `error: ${geminiRead.error}` : `${geminiRead.verdict} — ${(geminiRead.questions || []).filter((q) => !q.pass).map((q) => `${q.id}:${q.issues.length}`).join(', ') || 'all pass'}`}`)
+      ;(nextContinuityState as any).geminiScriptRead = geminiRead
+    } else if (continuityState.geminiScriptRead) {
+      ;(nextContinuityState as any).geminiScriptRead = continuityState.geminiScriptRead
     }
     ;(state as any).seriesContinuity = nextContinuityState
   }
