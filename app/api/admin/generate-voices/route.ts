@@ -1,5 +1,6 @@
 import { recentGroups, mainCharacterVoiceIds, groupKey, type VoiceAssignmentRow } from '@/lib/voiceReuseWindow'
 import { scriptAudioMismatch } from '@/lib/speechTiming'
+import { speakableText } from '@/lib/speakableText'
 import { NextRequest, NextResponse } from 'next/server'
 import { sfxGloballyOff, soundsnapOnly } from '@/lib/sfxSwitch'
 import { inferGender, seriesGenderHints } from '@/lib/characterGender'
@@ -1674,7 +1675,8 @@ async function generateVoiceLine(rawText: string, voiceId: string, storyId: stri
     const res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
       method: 'POST',
       headers: { 'xi-api-key': EL_API_KEY, 'Content-Type': 'application/json', 'Accept': 'audio/mpeg' },
-      body: JSON.stringify({ text: inputText, model_id: 'eleven_multilingual_v2', voice_settings: resolveVoiceSettings(voiceId, EL_SETTINGS) })
+      // TRAILING-DASH-001: a line ending in a dash is voiced with a trailing pause instead of garble.
+      body: JSON.stringify({ text: speakableText(inputText), model_id: 'eleven_multilingual_v2', voice_settings: resolveVoiceSettings(voiceId, EL_SETTINGS) })
     })
     if (!res.ok) throw new Error(`ElevenLabs error ${res.status}: ${(await res.text()).slice(0, 200)}`)
     const rawBuf = Buffer.from(await res.arrayBuffer())
