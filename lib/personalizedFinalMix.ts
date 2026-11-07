@@ -303,12 +303,15 @@ async function renderPersonalizedAudio(story: StoryAudioRow, userId: string, pre
   const scriptVersion = Number(story.script_version || 1)
   const nameHash = hashPart(preferredName.toLowerCase())
   const userHash = hashPart(userId)
-  const storagePath = `asc3/${story.id}/personalized/${userHash}/${nameHash}/${scriptVersion}/${opener.id}/${PERSONALIZED_MIX_VERSION}/final_mix.mp3`
+  const bodyUrl = String(story.story_audio_url || '').trim()
+  const outroUrl = String(story.outro_with_music_url || story.outro_audio_url || '').trim()
+  // MIX-VERSION-001: a remix gives the body/outro URLs a new ?v=, so the personalized
+  // copy is rebuilt instead of serving the listener's old personalized file forever.
+  const sourceHash = hashPart(`${bodyUrl}|${outroUrl}`)
+  const storagePath = `asc3/${story.id}/personalized/${userHash}/${nameHash}/${scriptVersion}/${opener.id}/${PERSONALIZED_MIX_VERSION}/${sourceHash}/final_mix.mp3`
   const publicUrl = `${BASE_STORAGE}/${storagePath}`
   if (await publicFileExists(publicUrl)) return { finalMixUrl: publicUrl, cached: true }
 
-  const bodyUrl = String(story.story_audio_url || '').trim()
-  const outroUrl = String(story.outro_with_music_url || story.outro_audio_url || '').trim()
   if (!bodyUrl) throw new Error('Story is missing story_audio_url')
   if (!outroUrl) throw new Error('Story is missing outro_with_music_url/outro_audio_url')
 
