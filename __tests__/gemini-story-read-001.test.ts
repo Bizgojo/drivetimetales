@@ -56,3 +56,16 @@ describe('GEMINI-STORY-READ-001 report-only series read', () => {
     expect(parseEpisodeRange(undefined)).toBeNull()
   })
 })
+
+describe('GEMINI-READ-TIMING-001 timeout is set per caller and reported with seconds', () => {
+  it('default 3 min, env override, nonsense ignored', () => {
+    const { geminiStoryTimeoutMs } = require('@/lib/geminiStoryRead')
+    expect(geminiStoryTimeoutMs({})).toBe(180000)
+    expect(geminiStoryTimeoutMs({ GEMINI_STORY_TIMEOUT_MS: '600000' })).toBe(600000)
+    expect(geminiStoryTimeoutMs({ GEMINI_STORY_TIMEOUT_MS: 'abc' })).toBe(180000)
+  })
+  it('the CLI waits 10 minutes', () => {
+    const src = fs.readFileSync(path.join(__dirname, '../scripts/gemini-story-read.ts'), 'utf8')
+    expect(src).toContain("GEMINI_STORY_TIMEOUT_MS || '600000'")
+  })
+})
