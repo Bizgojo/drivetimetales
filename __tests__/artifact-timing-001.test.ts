@@ -78,3 +78,16 @@ describe('ARTIFACT-TIMING-001 re-record pass', () => {
     expect(gv).toMatch(/if \(purgeExisting === true \|\| rerecordSegment === true\) \{/)
   })
 })
+
+import { scriptAudioMismatch } from '@/lib/speechTiming'
+describe('SCRIPT-AUDIO-MATCH-001', () => {
+  it('passes only when script positions and stored files are the same set', () => {
+    expect(scriptAudioMismatch(new Set(['segment_0001.mp3', 'segment_0002.mp3']), new Set(['segment_0001.mp3', 'segment_0002.mp3']))).toBeNull()
+    // Sunset Ep 18 shape: script edited after voicing, far more positions than files.
+    expect(scriptAudioMismatch(new Set(['segment_0001.mp3', 'segment_0002.mp3', 'segment_0003.mp3']), new Set(['segment_0001.mp3']))).toMatch(/2 missing/)
+  })
+  it('re-record refuses when they do not line up', () => {
+    const gv = require('fs').readFileSync(require('path').join(__dirname, '../app/api/admin/generate-voices/route.ts'), 'utf8')
+    expect(gv).toMatch(/SCRIPT-AUDIO-MATCH-001: script and audio files do not line up/)
+  })
+})

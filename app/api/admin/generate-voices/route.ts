@@ -1,4 +1,5 @@
 import { recentGroups, mainCharacterVoiceIds, groupKey, type VoiceAssignmentRow } from '@/lib/voiceReuseWindow'
+import { scriptAudioMismatch } from '@/lib/speechTiming'
 import { NextRequest, NextResponse } from 'next/server'
 import { sfxGloballyOff, soundsnapOnly } from '@/lib/sfxSwitch'
 import { inferGender, seriesGenderHints } from '@/lib/characterGender'
@@ -3550,7 +3551,22 @@ export async function POST(req: NextRequest) {
       if (rerecordSegment === true && targetLine.type !== 'narrator' && targetLine.type !== 'character') {
         return NextResponse.json({ success: false, error: `ARTIFACT-TIMING-001: ${targetFileName} is not a spoken line; nothing to re-record` }, { status: 400 })
       }
-      if (rerecordSegment === true) console.log(`  🔁 ARTIFACT-TIMING-001 re-recording ${targetFileName} (timing check flagged it)`)
+      // SCRIPT-AUDIO-MATCH-001: re-recording speaks the line from the CURRENT script at this
+      // index. If the script was edited after voicing (lines added/split), the index points at
+      // a different line than the audio file holds (Sunset Eps 18-20). Refuse unless the
+      // script's segment positions and the stored segment files line up exactly.
+      if (rerecordSegment === true) {
+        const expectedNames = new Set(storyLines
+          .filter(line => line.type === 'narrator' || line.type === 'character' || line.type === 'beat' || line.type === 'pause')
+          .filter(line => !nonDialogueSpeakers.has(line.speaker.toUpperCase()))
+          .map(line => `segment_${line.index.toString().padStart(4, '0')}.mp3`))
+        const storedNames = new Set(allSegmentFiles.map(file => file.name))
+        const mismatch = scriptAudioMismatch(expectedNames, storedNames)
+        if (mismatch) {
+          return NextResponse.json({ success: false, error: `SCRIPT-AUDIO-MATCH-001: script and audio files do not line up (${mismatch}); re-recording would speak the wrong line` }, { status: 409 })
+        }
+        console.log(`  🔁 ARTIFACT-TIMING-001 re-recording ${targetFileName} (timing check flagged it)`)
+      }
       if (existingSegmentNames.has(targetFileName) && rerecordSegment !== true) {
         const inventory = buildInventoryReport(existingSegmentNames)
         return NextResponse.json({

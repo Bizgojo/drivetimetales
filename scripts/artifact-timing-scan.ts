@@ -13,7 +13,7 @@ import fs from 'fs'
 import { execFileSync } from 'child_process'
 import { createClient } from '@supabase/supabase-js'
 import { parseScriptPositions } from '../lib/scriptLineIndex'
-import { findTimingOutliers, type TimedLine } from '../lib/speechTiming'
+import { findTimingOutliers, scriptAudioMismatch, type TimedLine } from '../lib/speechTiming'
 
 const BYTES_PER_SECOND = 24000
 
@@ -41,6 +41,16 @@ async function main() {
       if (m) size.set(Number(m[1]), Number((f.metadata as any)?.size || 0))
     }
     const positions = parseScriptPositions(String(ep.script || ''))
+    // SCRIPT-AUDIO-MATCH-001: if the script was edited after voicing, lines and files no longer
+    // pair up and every timing would be compared with the wrong words. Report, don't scan.
+    const expected = new Set(positions.filter((p) => p.isExpected).map((p) => `segment_${String(p.index).padStart(4, '0')}.mp3`))
+    const stored = new Set([...size.keys()].map((i) => `segment_${String(i).padStart(4, '0')}.mp3`))
+    const mismatch = scriptAudioMismatch(expected, stored)
+    if (mismatch) {
+      console.log(`Ep ${ep.episode_number}: NOT SCANNED — script and audio do not line up (${mismatch})`)
+      rows.push([ep.episode_number, '', '', 'script_audio_mismatch', '', '', '', '', '', JSON.stringify(mismatch)].join(','))
+      continue
+    }
     // Timeline of the story body (voice + silence segments, in order).
     let t = 0
     const at = new Map<number, number>()
