@@ -63,7 +63,8 @@ export function belleEpisodeState(ctx: {
   isFinale?: boolean | null
 }): BelleEpisodeState {
   if (!ctx.seriesName) return 'standalone'
-  if (ctx.isFinale || (ctx.seriesTotal && ctx.episodeNumber && ctx.episodeNumber >= ctx.seriesTotal)) return 'series_finale'
+  // PHASED-SERIES-002b: an explicit isFinale=false wins over the episode count.
+  if (ctx.isFinale === true || (ctx.isFinale !== false && ctx.seriesTotal && ctx.episodeNumber && ctx.episodeNumber >= ctx.seriesTotal)) return 'series_finale'
   if (!ctx.episodeNumber || ctx.episodeNumber <= 1) return 'series_first'
   return 'series_non_final'
 }

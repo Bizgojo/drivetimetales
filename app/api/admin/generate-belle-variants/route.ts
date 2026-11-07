@@ -180,7 +180,9 @@ function seriesPosition(story: any) {
   const total = Number(story?.series_total || story?.series_total_episodes || 0)
   if (!story?.series_id && !story?.series_name) return null
   if (episodeNumber <= 1) return 'first'
-  if (total > 0 && episodeNumber >= total) return 'finale'
+  if (story?.series_is_finale === true) return 'finale'
+  // PHASED-SERIES-002b: explicit series_is_finale=false wins over the count.
+  if (story?.series_is_finale !== false && total > 0 && episodeNumber >= total) return 'finale'
   return 'middle'
 }
 
@@ -192,7 +194,7 @@ export async function POST(req: NextRequest) {
 
     const { data: story, error } = await supabase
       .from('stories')
-      .select('id,title,author,genre,primary_genre,description,script,prose_text,episode_title,series_name,series_id,episode_number,series_number,series_total,series_total_episodes')
+      .select('id,title,author,genre,primary_genre,description,script,prose_text,episode_title,series_name,series_id,episode_number,series_number,series_total,series_total_episodes,series_is_finale')
       .eq('id', storyId)
       .single()
 
