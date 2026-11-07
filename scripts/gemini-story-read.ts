@@ -5,6 +5,7 @@
  *   npx tsx scripts/gemini-story-read.ts "<series name>" [--stage final] [--episodes 1-3]
  *
  * Needs NEXT_PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, GEMINI_API_KEY (never printed).
+ * Waits up to 10 minutes for Gemini (GEMINI_STORY_TIMEOUT_MS). Exit code 1 when NOT READ.
  * Model: GEMINI_STORY_MODEL or GEMINI_MODEL, default gemini-flash-latest.
  */
 import fs from 'fs'
@@ -31,6 +32,8 @@ async function main() {
   if (error) throw new Error(error.message)
   const eps = (data || []).filter((e: any) => !range || (e.episode_number >= range[0] && e.episode_number <= range[1]))
   if (!eps.length) throw new Error(`no episodes found for "${series}"`)
+  // The CLI is not inside a worker tick, so it may wait longer (10 min) unless told otherwise.
+  const env = { ...process.env, GEMINI_STORY_TIMEOUT_MS: process.env.GEMINI_STORY_TIMEOUT_MS || '600000' }
   const factEpisodes = eps.map((e: any) => ({ episodeNumber: Number(e.episode_number), script: String(e.script || '') }))
   const facts = checkSeriesFacts(factEpisodes)
   const result = await runGeminiStoryRead({
@@ -39,7 +42,7 @@ async function main() {
     factSheet: formatFactSheet(facts.facts),
     castLists: castListsText(factEpisodes),
     episodes: eps.map((e: any) => ({ episodeNumber: Number(e.episode_number), title: String(e.title || ''), body: storyBodyText(String(e.script || '')) })),
-  }, 'cli')
+  }, 'cli', env)
   const out = `/tmp/gemini-story-read-${series.replace(/[^A-Za-z0-9]+/g, '-')}.json`
   fs.writeFileSync(out, JSON.stringify(result, null, 2))
   console.log(`Series: ${series} — episodes ${eps.map((e: any) => e.episode_number).join(', ')} — model ${result.model}`)

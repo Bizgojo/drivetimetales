@@ -81,24 +81,44 @@ export function geminiStoryModel(env: Record<string, string | undefined> = proce
   return env.GEMINI_STORY_MODEL || env.GEMINI_MODEL || 'gemini-flash-latest'
 }
 
-/** One Gemini call. Throws on HTTP/network errors; callers record the error and carry on. */
+/** Default per-call limit. A worker tick must never hang on Gemini. GEMINI_STORY_TIMEOUT_MS overrides. */
+export const GEMINI_STORY_TIMEOUT_MS = 180_000
+export function geminiStoryTimeoutMs(env: Record<string, string | undefined> = process.env): number {
+  const n = Number(env.GEMINI_STORY_TIMEOUT_MS)
+  return Number.isFinite(n) && n >= 10_000 ? n : GEMINI_STORY_TIMEOUT_MS
+}
+
+/**
+ * One Gemini call. Throws on HTTP/network errors and timeouts; callers record the error and carry on.
+ * Logs the seconds taken and Gemini's token counts (prompt / thinking / answer) so a slow read can be
+ * traced to its cause instead of guessed at (GEMINI-READ-TIMING-001).
+ */
 export async function callGeminiStoryRead(prompt: string, env: Record<string, string | undefined> = process.env): Promise<string> {
   const key = env.GEMINI_API_KEY
   if (!key) throw new Error('GEMINI_API_KEY is not set')
   const model = geminiStoryModel(env)
-  const res = await fetch(`${GEMINI_API}/v1beta/models/${model}:generateContent?key=${key}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    // A worker tick must never hang on Gemini; 3 minutes covers a 10-episode read.
-    signal: AbortSignal.timeout(180_000),
-    body: JSON.stringify({
-      contents: [{ role: 'user', parts: [{ text: prompt }] }],
-      generationConfig: { temperature: 0, responseMimeType: 'application/json' },
-    }),
-  })
+  const limitMs = geminiStoryTimeoutMs(env)
+  const started = Date.now()
+  let res: Response
+  try {
+    res = await fetch(`${GEMINI_API}/v1beta/models/${model}:generateContent?key=${key}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      signal: AbortSignal.timeout(limitMs),
+      body: JSON.stringify({
+        contents: [{ role: 'user', parts: [{ text: prompt }] }],
+        generationConfig: { temperature: 0, responseMimeType: 'application/json' },
+      }),
+    })
+  } catch (e) {
+    const secs = Math.round((Date.now() - started) / 1000)
+    throw new Error(`Gemini ${model} gave no answer after ${secs}s (limit ${Math.round(limitMs / 1000)}s, prompt ${prompt.length} chars): ${e instanceof Error ? e.message : String(e)}`)
+  }
   const json: any = await res.json().catch(() => null)
+  const u = json?.usageMetadata || {}
+  console.log(`[GEMINI-STORY-READ-001] ${model}: ${Math.round((Date.now() - started) / 1000)}s, HTTP ${res.status}, tokens prompt=${u.promptTokenCount ?? '?'} thinking=${u.thoughtsTokenCount ?? 0} answer=${u.candidatesTokenCount ?? '?'}, finish=${json?.candidates?.[0]?.finishReason ?? '?'}`)
   if (!res.ok) throw new Error(`Gemini ${model} HTTP ${res.status}: ${JSON.stringify(json?.error?.message || json).slice(0, 200)}`)
-  return (json?.candidates?.[0]?.content?.parts || []).map((p: any) => p?.text || '').join('')
+  return (json?.candidates?.[0]?.content?.parts || []).filter((p: any) => !p?.thought).map((p: any) => p?.text || '').join('')
 }
 
 export type GeminiReadState = {
