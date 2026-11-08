@@ -10,6 +10,7 @@ interface Data {
   sections: Record<string, number[]>; memo: Record<string, number[]>; totals: { revenue: number[]; expenses: number[]; result: number[]; plowBack: number[]; retained: number[] }
   pipeline?: { stages: { stage: string; episodes: number; series: { title: string; episodes: number; live: number; total: number }[] }[]; coldStorage: number }
   vpDetail: { stories: { title: string; episodes: number; voiceCost: Num; complete?: boolean }[][]; finished: { title: string; episodes: number; voiceCost: Num; live?: number }[][]; costPerEpisode: { item: string; ai_service: string | null; total: number; perEpisode: Num }[][] }
+  recon?: { mercury: Record<string, number[]>; stripe: Record<string, number[]>; outside: Record<string, number[]>; check: Num[] }
   campaigns: Camp[]; uncategorizedCount: number; notes: string[]; lastSynced: string | null; error?: string
 }
 const SECTIONS = ['Operating Exp', 'Production Exp', 'Ad Spend', 'Marketing Services', 'R & D', 'Uncategorized']
@@ -27,6 +28,14 @@ export default function StatementPage() {
   const [open, setOpen] = useState<Record<string, boolean>>({ 'Ad Spend': true }), [openItem, setOpenItem] = useState<Record<string, boolean>>({})
   const [drill, setDrill] = useState<{ row: string; col: number } | null>(null)
   const [openStage, setOpenStage] = useState<string | null>(null)
+  const [ideas, setIdeas] = useState<{ month: string; items: { title: string; detail: string; impact: string }[]; created_at: string } | null>(null)
+  const [ideasBusy, setIdeasBusy] = useState(false), [ideasMsg, setIdeasMsg] = useState('')
+  useEffect(() => { fetch('/api/admin/finance/suggestions', { cache: 'no-store' }).then(r => r.json()).then(j => setIdeas(j.suggestions || null)).catch(() => {}) }, [])
+  async function writeIdeas() {
+    setIdeasBusy(true); setIdeasMsg('')
+    try { const r = await fetch('/api/admin/finance/suggestions', { method: 'POST' }); const j = await r.json(); if (!r.ok) throw new Error(j.error || 'Suggestions failed'); setIdeas(j.suggestions) }
+    catch (e) { setIdeasMsg(e instanceof Error ? e.message : 'Suggestions failed') } finally { setIdeasBusy(false) }
+  }
 
   const load = useCallback(async () => {
     setLoading(true); setMsg('')
@@ -120,6 +129,26 @@ export default function StatementPage() {
           <tr className="sec"><td colSpan={cols.length + 1}>Memo (not counted in revenue or cash flow)</td></tr>
           {Object.entries(data.memo || {}).map(([k, v]) => row(k, v, money, 'item'))}
         </tbody></table></div>
+      {data.recon && <section className="fs-pipe" aria-label="Mercury reconciliation">
+        <h2>Mercury reconciliation <span className="fs-muted">— where every dollar that moved through Mercury went</span></h2>
+        <div className="fs-table"><table>
+          <thead><tr><th>Mercury</th>{cols.map(c => <th key={c}>{c}</th>)}</tr></thead>
+          <tbody>
+            {Object.entries(data.recon.mercury).map(([k, v]) => row(k, v, money, k === 'Net change across Mercury accounts' ? 'total' : 'item'))}
+            <tr className="sec"><td colSpan={cols.length + 1}>Stripe → Mercury</td></tr>
+            {Object.entries(data.recon.stripe).map(([k, v]) => row(k, v, money, 'item'))}
+            <tr className="sec"><td colSpan={cols.length + 1}>Costs not paid through Mercury</td></tr>
+            {Object.entries(data.recon.outside).map(([k, v]) => row(k, v, money, 'item'))}
+            <tr className="grand"><td>Check: statement vs Mercury</td>{data.recon.check.map((v, i) => <td key={i} className="n">{v == null ? 'cash view only' : v === 0 ? '✓ $0.00' : <span className="neg">✗ {money(v)}</span>}</td>)}</tr>
+          </tbody></table></div>
+        <p className="fs-muted" style={{ margin: 0 }}>The check compares the expenses on this statement that Mercury paid with Mercury's own money out. ✓ $0.00 means they match to the cent. "Unexplained" should always be $0.00. Stripe in transit is money Stripe has paid out that hasn't landed in Mercury yet.</p>
+      </section>}
+      <section className="fs-pipe" aria-label="Profit suggestions">
+        <h2>Profit suggestions <span className="fs-muted">— written by Claude from this statement{ideas ? ` · ${new Date(ideas.created_at).toLocaleDateString()}` : ''}</span></h2>
+        <p className="fs-muted" style={{ margin: 0 }}>Rule for every suggestion: story quality stays the same. No cheaper voices, no weaker script model, no shorter episodes.</p>
+        {ideas ? <ol className="fs-list">{ideas.items.map(x => <li key={x.title}><b>{x.title}.</b> {x.detail} {x.impact && <span className="fs-muted">— {x.impact}</span>}</li>)}</ol> : <p style={{ margin: 0 }}>No suggestions yet for this month.</p>}
+        <div><button onClick={writeIdeas} disabled={ideasBusy}>{ideasBusy ? 'Claude is writing…' : ideas ? 'Rewrite suggestions' : "Write this month's suggestions"}</button>{ideasMsg && <span role="status" className="fs-warn" style={{ marginLeft: 10 }}>{ideasMsg}</span>}</div>
+      </section>
       {data.pipeline && <section className="fs-pipe" aria-label="In the pipeline now">
         <h2>In the pipeline now <span className="fs-muted">— not yet live to listeners{data.pipeline.coldStorage ? ` · ${data.pipeline.coldStorage} in cold storage (not shown)` : ''}</span></h2>
         <table><thead><tr><th>Stage</th><th className="n">Stories</th><th className="n">Episodes</th></tr></thead><tbody>

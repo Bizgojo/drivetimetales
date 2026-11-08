@@ -207,6 +207,8 @@ export interface Statement {
   sections: Record<string, number[]>
   /** Shown below the statement; not part of revenue or the result. */
   memo: Record<string, number[]>
+  /** Mercury reconciliation: where every dollar that moved through Mercury went, per column (cash). */
+  recon: { mercury: Record<string, number[]>; stripe: Record<string, number[]>; outside: Record<string, number[]>; check: (number | null)[] }
   /** Click-through detail for V&P rows, one list per column. */
   vpDetail: { stories: StoryDetail[][]; finished: StoryDetail[][]; costPerEpisode: CostDetail[][] }
   totals: { revenue: number[]; expenses: number[]; result: number[]; plowBack: number[]; retained: number[] }
@@ -352,6 +354,47 @@ export function buildStatement(input: {
     return Math.max(0, prev.totals.result[0]) * PLOW_BACK
   })
 
+  // ---------- Mercury reconciliation (always cash, by the day money moved) ----------
+  const mercuryCls = cls.filter(x => x.t.kind !== 'stripe')
+  const sumIn = (w: Window, f: (x: { t: Txn; c: Classified }) => boolean) => mercuryCls.filter(f).reduce((a, x) => a + amountIn(x.t, x.c, w, 'cash'), 0)
+  const isExpense = (c: Classified) => EXPENSE_SECTIONS.includes(c.section)
+  const isOwner = (c: Classified) => c.section === 'Excluded' && /owner/i.test(c.item)
+  const isPayoutIn = (x: { t: Txn; c: Classified }) => x.c.item === PAYOUT_TRANSFER_ITEM || x.c.item === STRIPE_ITEM
+  const mercury: Record<string, number[]> = {
+    'Owner money in (capital)': windows.map(w => sumIn(w, x => isOwner(x.c) && x.t.amount > 0)),
+    'Stripe payouts received': windows.map(w => sumIn(w, x => isPayoutIn(x))),
+    'Card cashback': windows.map(w => sumIn(w, x => x.c.section === 'Revenue' && x.c.item === CASHBACK_ITEM)),
+    'Interest': windows.map(w => sumIn(w, x => x.c.section === 'Revenue' && x.c.item === INTEREST_ITEM)),
+    'Other money in (needs a category)': windows.map(w => sumIn(w, x => x.c.section === 'Revenue' && x.c.item === OTHER_ITEM)),
+    'Vendor refunds & credits': windows.map(w => sumIn(w, x => isExpense(x.c) && x.t.amount > 0)),
+    'Expenses paid from Mercury': windows.map(w => sumIn(w, x => isExpense(x.c) && x.t.amount < 0)),
+    'Owner withdrawals': windows.map(w => sumIn(w, x => isOwner(x.c) && x.t.amount < 0)),
+    'Card payments & transfers between Mercury accounts': windows.map(w => sumIn(w, x => x.c.section === 'Excluded' && !isOwner(x.c) && !isPayoutIn(x))),
+  }
+  const mercuryNet = windows.map(w => sumIn(w, () => true))
+  mercury['Net change across Mercury accounts'] = mercuryNet
+  mercury['Unexplained'] = windows.map((_, i) => mercuryNet[i] - Object.entries(mercury).filter(([k]) => k !== 'Net change across Mercury accounts').reduce((a, [, v]) => a + v[i], 0))
+  const stripeRows = input.stripe || []
+  const stripeIn = (w: Window, f: (st: StripeTxn) => boolean, pick: (st: StripeTxn) => number) => stripeRows.filter(f).reduce((a, st) => { const x = Date.parse(st.created_at); return a + (x >= w.start.getTime() && x < w.end.getTime() ? pick(st) : 0) }, 0)
+  const isPayoutRow = (st: StripeTxn) => /^payout/.test(st.type) || /^payout/.test(st.reporting_category || '')
+  const stripeNet = windows.map(w => stripeIn(w, st => !isPayoutRow(st) && !/^(topup|transfer)/.test(st.type), st => st.net))
+  const stripePaid = windows.map(w => -stripeIn(w, isPayoutRow, st => st.amount))
+  const stripe: Record<string, number[]> = {
+    'Stripe: charges − refunds − fees': stripeNet,
+    'Stripe: paid out to Mercury': stripePaid,
+    'Stripe: received in Mercury': mercury['Stripe payouts received'],
+    'Stripe: in transit (paid out, not yet in Mercury)': windows.map((_, i) => stripePaid[i] - mercury['Stripe payouts received'][i]),
+  }
+  const outside: Record<string, number[]> = { [EL_ITEM + ' — estimated, paid outside Mercury']: elCost }
+  // Integrity check (cash basis): statement expenses that Mercury paid must equal Mercury's own
+  // expense money out net of vendor refunds. Anything but $0.00 means a transaction was lost or doubled.
+  const stripeFees = items.filter(it => it.item === STRIPE_FEE_ITEM)
+  const check = basis !== 'cash' ? windows.map(() => null) : windows.map((_, i) => {
+    const statementMercury = totalExpenses[i] - elCost[i] - stripeFees.reduce((a, it) => a + it.values[i], 0)
+    return Math.round((statementMercury + mercury["Expenses paid from Mercury"][i] + mercury["Vendor refunds & credits"][i]) * 100) / 100 + 0 // + 0 turns -0 into 0
+  })
+  const recon = { mercury, stripe, outside, check }
+
   // Volume & productivity
   const pub = windows.map(w => input.stories.filter(s => inWin(s.published_on, w)))
   // Per-episode cost always uses spread-out costs (a yearly purchase counts 1/12 a month),
@@ -441,6 +484,7 @@ export function buildStatement(input: {
   return {
     basis, columns: windows.map(w => w.label), vp, revenue, items, sections,
     vpDetail,
+    recon,
     memo: {
       [AVAILABLE_ITEM]: available,
       [PAYOUT_MEMO]: windows.map(w => payouts.reduce((a, x) => a + amountIn(x.t, x.c, w, 'cash'), 0)),
