@@ -170,34 +170,34 @@ export default function StatementPage() {
 const CSS = `
 .fs{max-width:1180px;margin:0 auto;padding-block:20px 48px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));font-size:17px;display:grid;gap:14px}
 .fs h1{margin:0;font-size:30px}
-.fs-crumb{margin:0;font-size:15px;color:#566373}.fs-crumb a{color:inherit}
+.fs-crumb{margin:0;font-size:16px;color:#2f3a46}.fs-crumb a{color:inherit}
 .fs-controls{display:flex;flex-wrap:wrap;gap:14px;align-items:end;border:1px solid #d9dee5;border-radius:10px;padding:14px}
-.fs-controls label{display:grid;gap:4px;font-size:14px;font-weight:600;color:#566373;text-transform:uppercase;letter-spacing:.05em}
+.fs-controls label{display:grid;gap:4px;font-size:15px;font-weight:700;color:#2f3a46;text-transform:uppercase;letter-spacing:.05em}
 .fs-controls select,.fs-controls input,.fs-controls button{font:inherit;font-size:18px;padding:8px 10px;border:1px solid #d9dee5;border-radius:8px;min-height:44px;text-transform:none;letter-spacing:0}
 .fs-controls button{cursor:pointer;font-weight:600}
 .fs-dates{display:flex;gap:8px;flex-wrap:wrap}
-.fs-muted{font-size:15px;color:#566373}
+.fs-muted{font-size:16px;color:#3b4552}
 .fs-msg{margin:0;font-size:16px}.fs-warn{margin:0;padding:10px 14px;border-radius:8px;background:#fff3cd;color:#6b4e00;font-size:16px}
 .fs-table{overflow-x:auto;border:1px solid #d9dee5;border-radius:10px}
 .fs table{border-collapse:collapse;width:100%;min-width:560px}
 .fs th,.fs td{padding:9px 12px;border-bottom:1px solid #d9dee5;text-align:right;white-space:nowrap}
 .fs th:first-child,.fs td:first-child{text-align:left;white-space:normal;min-width:230px}
-.fs thead th{background:#1f5f7a;color:#fff;font-size:16px}
+.fs thead th{background:#0b3a66;color:#fff;font-size:17px}
 .fs td.n{font-variant-numeric:tabular-nums;font-size:16px}.fs td.neg{color:#b3362c}
-.fs tr.sec td{background:#e9edf2;font-weight:700;font-size:15px;letter-spacing:.06em;text-transform:uppercase;color:#566373}
+.fs tr.sec td{background:#e9edf2;font-weight:700;font-size:16px;letter-spacing:.06em;text-transform:uppercase;color:#2f3a46}
 .fs tr.cat td{text-align:left;padding-top:14px;cursor:pointer}
 .fs tr.click{cursor:pointer}.fs tr.click:hover td,.fs tr.cat:hover td{background:#f0f3f6}
 .fs tr.item td:first-child{padding-left:38px}
-.fs tr.sub td{font-weight:700;border-top:1px solid #566373}.fs tr.sub td:first-child{padding-left:38px}
+.fs tr.sub td{font-weight:700;border-top:1px solid #3b4552}.fs tr.sub td:first-child{padding-left:38px}
 .fs tr.total td{font-weight:700;border-top:2px solid currentColor}
 .fs tr.grand td{font-weight:700;font-size:18px;background:#e9edf2}
-.fs tr.detail td{text-align:left;white-space:normal;font-size:15px;color:#566373;padding-left:56px}
-.fs .car{display:inline-block;width:1.1em;color:#1f5f7a;font-weight:700}
-.fs-drill{font:inherit;color:#1f5f7a;background:none;border:0;padding:2px 0;cursor:pointer;text-decoration:underline dotted;text-underline-offset:3px}
+.fs tr.detail td{text-align:left;white-space:normal;font-size:17px;color:#1f2933;padding-left:56px}
+.fs .car{display:inline-block;width:1.1em;color:#0b3a8f;font-weight:800}
+.fs-drill{font:inherit;font-weight:700;color:#0b3a8f;background:none;border:0;padding:2px 0;cursor:pointer;text-decoration:underline;text-decoration-thickness:2px;text-underline-offset:4px}
 .fs-pipe{display:grid;gap:8px}.fs-pipe h2{margin:8px 0 0;font-size:21px}.fs-pipe table{width:100%;border-collapse:collapse}.fs-pipe th,.fs-pipe td{padding:8px 10px;border-bottom:1px solid #d9dee5;text-align:left}.fs-pipe .n{text-align:right}
 .fs-list{margin:6px 0 0;padding-left:20px;display:grid;gap:3px}
-.fs-mini{margin-top:8px;border-collapse:collapse;font-size:15px}.fs-mini th,.fs-mini td{padding:4px 12px 4px 0;text-align:left}.fs-mini td.n{text-align:right}
-.fs tr:focus-visible,.fs button:focus-visible,.fs select:focus-visible{outline:3px solid #1f5f7a;outline-offset:2px}
-.fs-notes{margin:0;padding-left:1.2em;font-size:15px;color:#566373;display:grid;gap:4px}
-@media (prefers-color-scheme:dark){.fs-drill,.fs .car{color:#7cc4e0}.fs-crumb,.fs-muted,.fs-notes,.fs tr.detail td,.fs-controls label{color:#9aa7b6}.fs tr.sec td,.fs tr.grand td{background:#1b2531;color:#e6ebf1}.fs tr.click:hover td,.fs tr.cat:hover td{background:#1b2531}.fs th,.fs td,.fs-table,.fs-controls{border-color:#2a3542}}
+.fs-mini{margin-top:8px;border-collapse:collapse;font-size:17px}.fs-mini th,.fs-mini td{padding:4px 12px 4px 0;text-align:left}.fs-mini td.n{text-align:right}
+.fs tr:focus-visible,.fs button:focus-visible,.fs select:focus-visible{outline:3px solid #0b3a8f;outline-offset:2px}
+.fs-notes{margin:0;padding-left:1.2em;font-size:16px;color:#2f3a46;display:grid;gap:4px}
+@media (prefers-color-scheme:dark){.fs-drill,.fs .car{color:#a9dcff}.fs thead th{background:#123f6b}.fs-crumb,.fs-muted,.fs-notes,.fs tr.detail td,.fs-controls label{color:#d3dbe4}.fs tr.sec td,.fs tr.grand td{background:#1b2531;color:#e6ebf1}.fs tr.click:hover td,.fs tr.cat:hover td{background:#1b2531}.fs th,.fs td,.fs-table,.fs-controls{border-color:#2a3542}}
 `
