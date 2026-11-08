@@ -30,7 +30,9 @@ export interface UserRow {
   id: string; is_test_account: boolean | null; trial_started_at: string | null; first_paid_date: string | null
   cancelled_at: string | null; billing_cycle: string | null; utm_campaign: string | null
 }
-export interface StoryRow { id: string; series_id: string | null; published_on: string | null }
+export interface StoryRow { id: string; series_id: string | null; published_on: string | null; title?: string | null; series_title?: string | null }
+export interface StoryDetail { title: string; episodes: number }
+export interface CostDetail { item: string; ai_service: string | null; total: number; perEpisode: number | null }
 export interface Campaign { id: string; name: string; platform: string; start_date: string; end_date: string | null; utm_campaign: string | null; notes: string | null }
 export interface Window { label: string; start: Date; end: Date } // [start, end)
 
@@ -141,6 +143,8 @@ export interface Statement {
   sections: Record<string, number[]>
   /** Shown below the statement; not part of revenue or the result. */
   memo: Record<string, number[]>
+  /** Click-through detail for V&P rows, one list per column. */
+  vpDetail: { stories: StoryDetail[][]; costPerEpisode: CostDetail[][] }
   totals: { revenue: number[]; expenses: number[]; result: number[]; plowBack: number[]; retained: number[] }
   campaigns: CampaignDetail[]
   uncategorizedCount: number
@@ -267,6 +271,22 @@ export function buildStatement(input: {
     'Run rate (yearly)': subs.map(s => s.runRate),
   }
 
+  // Click-through detail: which stories (episodes each), and what each production line cost per episode
+  const vpDetail = {
+    stories: pub.map(p => {
+      const by = new Map<string, StoryDetail>()
+      for (const st of p) {
+        const k = st.series_id || st.id
+        const d = by.get(k) || { title: st.series_title || st.title || 'Untitled', episodes: 0 }
+        d.episodes++; by.set(k, d)
+      }
+      return Array.from(by.values()).sort((a, b) => b.episodes - a.episodes || a.title.localeCompare(b.title))
+    }),
+    costPerEpisode: pub.map((p, i) => items.filter(it => it.section === 'Production Exp' && Math.abs(it.values[i]) > 0.004)
+      .map(it => ({ item: it.item, ai_service: it.ai_service, total: it.values[i], perEpisode: p.length ? it.values[i] / p.length : null }))
+      .sort((a, b) => b.total - a.total)),
+  }
+
   // Campaign details over each campaign's whole life (not just the window)
   const allCash = cls.filter(x => x.c.section === 'Ad Spend')
   const now = input.now || new Date()
@@ -281,6 +301,7 @@ export function buildStatement(input: {
 
   return {
     basis, columns: windows.map(w => w.label), vp, revenue, items, sections,
+    vpDetail,
     memo: { [AVAILABLE_ITEM]: available, [TEST_ITEM]: revenueCash[TEST_ITEM] },
     totals: {
       revenue: totalRevenue, expenses: totalExpenses, result,

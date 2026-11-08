@@ -73,6 +73,21 @@ describe('FINANCE-STATEMENT-001', () => {
     expect(buildStatement({ ...base, users, basis: 'cash', windows: SEP_OCT, txns }).revenue[STRIPE_ITEM][1]).toBeCloseTo(9.99)
   })
 
+  test('drill-down: stories with episode counts and production cost per episode by AI', () => {
+    const stories = [
+      { id: 'e1', series_id: 's1', published_on: '2026-10-02', title: 'Ep 1', series_title: 'Rerouted' },
+      { id: 'e2', series_id: 's1', published_on: '2026-10-09', title: 'Ep 2', series_title: 'Rerouted' },
+      { id: 'e3', series_id: null, published_on: '2026-10-12', title: 'The Bell', series_title: null },
+    ]
+    const txns = [tx('a', '2026-10-03T00:00:00Z', -90, 'Anthropic'), tx('s', '2026-10-04T00:00:00Z', -30, 'Sound Ideas')]
+    const st = buildStatement({ ...base, stories, basis: 'cash', windows: SEP_OCT, txns })
+    expect(st.vpDetail.stories[1]).toEqual([{ title: 'Rerouted', episodes: 2 }, { title: 'The Bell', episodes: 1 }])
+    const c = st.vpDetail.costPerEpisode[1]
+    expect(c.map(x => x.item)).toEqual([CLAUDE_PIPELINE_ITEM, 'Sound effects library'])
+    expect(c[0].perEpisode).toBeCloseTo(30)
+    expect(st.vpDetail.stories[0]).toEqual([])
+  })
+
   test('a loss month plows back nothing', () => {
     const users = [realUser('r1', '2026-08-01T00:00:00Z')]
     const txns = [tx('r', '2026-09-10T00:00:00Z', 100, 'Stripe', 'other'), tx('e', '2026-09-11T00:00:00Z', -500, 'Anthropic')]

@@ -8,11 +8,13 @@ interface Camp { name: string; platform: string; dates: string; days: number; tr
 interface Data {
   basis: string; columns: string[]; vp: Record<string, Num[]>; revenue: Record<string, number[]>; items: Item[]
   sections: Record<string, number[]>; memo: Record<string, number[]>; totals: { revenue: number[]; expenses: number[]; result: number[]; plowBack: number[]; retained: number[] }
+  vpDetail: { stories: { title: string; episodes: number }[][]; costPerEpisode: { item: string; ai_service: string | null; total: number; perEpisode: Num }[][] }
   campaigns: Camp[]; uncategorizedCount: number; notes: string[]; lastSynced: string | null; error?: string
 }
 const SECTIONS = ['Operating Exp', 'Production Exp', 'Ad Spend', 'Marketing Services', 'R & D', 'Uncategorized']
 const MONEY_ROWS = new Set(['Production cost per episode', 'Ad spend', 'Blended cost per trial', 'Blended CAC', 'LTV (assumed)', 'Net LTV-CAC $', 'Run rate (yearly)'])
 const PCT_ROWS = new Set(['Net LTV-CAC %'])
+const DRILL_ROWS = new Set(['Stories published', 'Production cost per episode'])
 
 const money = (v: Num) => v == null || !isFinite(v) ? '—' : (v < 0 ? '−$' : '$') + (Math.abs(v) >= 100 ? Math.round(Math.abs(v)).toLocaleString() : Math.abs(v).toFixed(2))
 const fmt = (row: string, v: Num) => v == null || !isFinite(v as number) ? '—' : PCT_ROWS.has(row) ? Math.round((v as number) * 100) + '%' : MONEY_ROWS.has(row) ? money(v) : Math.round(v as number).toLocaleString()
@@ -22,6 +24,7 @@ export default function StatementPage() {
   const [from, setFrom] = useState(''), [to, setTo] = useState('')
   const [data, setData] = useState<Data | null>(null), [loading, setLoading] = useState(false), [msg, setMsg] = useState('')
   const [open, setOpen] = useState<Record<string, boolean>>({ 'Ad Spend': true }), [openItem, setOpenItem] = useState<Record<string, boolean>>({})
+  const [drill, setDrill] = useState<{ row: string; col: number } | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true); setMsg('')
@@ -63,7 +66,25 @@ export default function StatementPage() {
         <thead><tr><th>{data.basis === 'cash' ? 'Cash flow' : 'Accrual'}</th>{cols.map(c => <th key={c}>{c}</th>)}</tr></thead>
         <tbody>
           <tr className="sec"><td colSpan={cols.length + 1}>Volume &amp; productivity</td></tr>
-          {Object.entries(data.vp).map(([k, v]) => row(k, v, x => fmt(k, x)))}
+          {Object.entries(data.vp).flatMap(([k, v]) => {
+            if (!DRILL_ROWS.has(k)) return [row(k, v, x => fmt(k, x))]
+            const d = drill && drill.row === k ? drill : null
+            const out = [<tr key={k}><td>{k}</td>{v.map((x, i) => <td key={i} className="n"><button className="fs-drill" aria-expanded={!!d && d.col === i} onClick={() => setDrill(d && d.col === i ? null : { row: k, col: i })}>{fmt(k, x)} <span className="car">{d && d.col === i ? '▾' : '▸'}</span></button></td>)}</tr>]
+            if (d) {
+              const stories = data.vpDetail.stories[d.col] || [], costs = data.vpDetail.costPerEpisode[d.col] || []
+              const eps = data.vp['Episodes published'][d.col] || 0
+              out.push(<tr key={k + '-d'} className="detail"><td colSpan={cols.length + 1}>
+                <b>{cols[d.col]}</b>{' — '}
+                {k === 'Stories published'
+                  ? (stories.length ? <ul className="fs-list">{stories.map(s => <li key={s.title}>{s.title} <span className="fs-muted">· {s.episodes} episode{s.episodes === 1 ? '' : 's'}</span></li>)}</ul> : 'No stories published in this period.')
+                  : (costs.length ? <table className="fs-mini"><thead><tr><th>Cost</th><th>AI / service</th><th>Paid</th><th>Per episode</th></tr></thead><tbody>
+                      {costs.map(c => <tr key={c.item}><td>{c.item}</td><td>{c.ai_service || '—'}</td><td className="n">{money(c.total)}</td><td className="n">{money(c.perEpisode)}</td></tr>)}
+                      <tr className="sub"><td>Total ({eps} episode{eps === 1 ? '' : 's'})</td><td></td><td className="n">{money(costs.reduce((a, c) => a + c.total, 0))}</td><td className="n">{money(eps ? costs.reduce((a, c) => a + c.total, 0) / eps : null)}</td></tr>
+                    </tbody></table> : 'No production costs in this period.')}
+              </td></tr>)
+            }
+            return out
+          })}
           <tr className="sec"><td colSpan={cols.length + 1}>Revenues</td></tr>
           {Object.entries(data.revenue).map(([k, v]) => row(k, v, money, 'item'))}
           {row('Total revenue', data.totals.revenue, money, 'total')}
@@ -125,7 +146,10 @@ const CSS = `
 .fs tr.grand td{font-weight:700;font-size:18px;background:#e9edf2}
 .fs tr.detail td{text-align:left;white-space:normal;font-size:15px;color:#566373;padding-left:56px}
 .fs .car{display:inline-block;width:1.1em;color:#1f5f7a;font-weight:700}
+.fs-drill{font:inherit;color:#1f5f7a;background:none;border:0;padding:2px 0;cursor:pointer;text-decoration:underline dotted;text-underline-offset:3px}
+.fs-list{margin:6px 0 0;padding-left:20px;display:grid;gap:3px}
+.fs-mini{margin-top:8px;border-collapse:collapse;font-size:15px}.fs-mini th,.fs-mini td{padding:4px 12px 4px 0;text-align:left}.fs-mini td.n{text-align:right}
 .fs tr:focus-visible,.fs button:focus-visible,.fs select:focus-visible{outline:3px solid #1f5f7a;outline-offset:2px}
 .fs-notes{margin:0;padding-left:1.2em;font-size:15px;color:#566373;display:grid;gap:4px}
-@media (prefers-color-scheme:dark){.fs-crumb,.fs-muted,.fs-notes,.fs tr.detail td,.fs-controls label{color:#9aa7b6}.fs tr.sec td,.fs tr.grand td{background:#1b2531;color:#e6ebf1}.fs tr.click:hover td,.fs tr.cat:hover td{background:#1b2531}.fs th,.fs td,.fs-table,.fs-controls{border-color:#2a3542}}
+@media (prefers-color-scheme:dark){.fs-drill,.fs .car{color:#7cc4e0}.fs-crumb,.fs-muted,.fs-notes,.fs tr.detail td,.fs-controls label{color:#9aa7b6}.fs tr.sec td,.fs tr.grand td{background:#1b2531;color:#e6ebf1}.fs tr.click:hover td,.fs tr.cat:hover td{background:#1b2531}.fs th,.fs td,.fs-table,.fs-controls{border-color:#2a3542}}
 `
