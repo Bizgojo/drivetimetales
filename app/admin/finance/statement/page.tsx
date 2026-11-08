@@ -8,13 +8,14 @@ interface Camp { name: string; platform: string; dates: string; days: number; tr
 interface Data {
   basis: string; columns: string[]; vp: Record<string, Num[]>; revenue: Record<string, number[]>; items: Item[]
   sections: Record<string, number[]>; memo: Record<string, number[]>; totals: { revenue: number[]; expenses: number[]; result: number[]; plowBack: number[]; retained: number[] }
-  vpDetail: { stories: { title: string; episodes: number }[][]; costPerEpisode: { item: string; ai_service: string | null; total: number; perEpisode: Num }[][] }
+  pipeline?: { stages: { stage: string; episodes: number; series: { title: string; episodes: number; live: number; total: number }[] }[]; coldStorage: number }
+  vpDetail: { stories: { title: string; episodes: number; voiceCost: Num; complete?: boolean }[][]; costPerEpisode: { item: string; ai_service: string | null; total: number; perEpisode: Num }[][] }
   campaigns: Camp[]; uncategorizedCount: number; notes: string[]; lastSynced: string | null; error?: string
 }
 const SECTIONS = ['Operating Exp', 'Production Exp', 'Ad Spend', 'Marketing Services', 'R & D', 'Uncategorized']
 const MONEY_ROWS = new Set(['Production cost per episode', 'Ad spend', 'Blended cost per trial', 'Blended CAC', 'LTV (assumed)', 'Net LTV-CAC $', 'Run rate (yearly)'])
 const PCT_ROWS = new Set(['Net LTV-CAC %'])
-const DRILL_ROWS = new Set(['Stories published', 'Production cost per episode'])
+const DRILL_ROWS = new Set(['Stories published', 'Partly published (rule break)', 'Production cost per episode'])
 
 const money = (v: Num) => v == null || !isFinite(v) ? '—' : (v < 0 ? '−$' : '$') + (Math.abs(v) >= 100 ? Math.round(Math.abs(v)).toLocaleString() : Math.abs(v).toFixed(2))
 const fmt = (row: string, v: Num) => v == null || !isFinite(v as number) ? '—' : PCT_ROWS.has(row) ? Math.round((v as number) * 100) + '%' : MONEY_ROWS.has(row) ? money(v) : Math.round(v as number).toLocaleString()
@@ -25,6 +26,7 @@ export default function StatementPage() {
   const [data, setData] = useState<Data | null>(null), [loading, setLoading] = useState(false), [msg, setMsg] = useState('')
   const [open, setOpen] = useState<Record<string, boolean>>({ 'Ad Spend': true }), [openItem, setOpenItem] = useState<Record<string, boolean>>({})
   const [drill, setDrill] = useState<{ row: string; col: number } | null>(null)
+  const [openStage, setOpenStage] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true); setMsg('')
@@ -71,16 +73,18 @@ export default function StatementPage() {
             const d = drill && drill.row === k ? drill : null
             const out = [<tr key={k}><td>{k}</td>{v.map((x, i) => <td key={i} className="n"><button className="fs-drill" aria-expanded={!!d && d.col === i} onClick={() => setDrill(d && d.col === i ? null : { row: k, col: i })}>{fmt(k, x)} <span className="car">{d && d.col === i ? '▾' : '▸'}</span></button></td>)}</tr>]
             if (d) {
-              const stories = data.vpDetail.stories[d.col] || [], costs = data.vpDetail.costPerEpisode[d.col] || []
+              const partly = k === 'Partly published (rule break)'
+              const stories = (data.vpDetail.stories[d.col] || []).filter(s => partly ? s.complete === false : s.complete !== false), costs = data.vpDetail.costPerEpisode[d.col] || []
               const eps = data.vp['Episodes published'][d.col] || 0
               out.push(<tr key={k + '-d'} className="detail"><td colSpan={cols.length + 1}>
                 <b>{cols[d.col]}</b>{' — '}
-                {k === 'Stories published'
-                  ? (stories.length ? <ul className="fs-list">{stories.map(s => <li key={s.title}>{s.title} <span className="fs-muted">· {s.episodes} episode{s.episodes === 1 ? '' : 's'}</span></li>)}</ul> : 'No stories published in this period.')
-                  : (costs.length ? <table className="fs-mini"><thead><tr><th>Cost</th><th>AI / service</th><th>Paid</th><th>Per episode</th></tr></thead><tbody>
+                {k !== 'Production cost per episode'
+                  ? (stories.length ? <ul className="fs-list">{stories.map(s => <li key={s.title}>{s.title} <span className="fs-muted">· {s.episodes} episode{s.episodes === 1 ? '' : 's'}{s.voiceCost != null ? <> · voices {money(s.voiceCost)}</> : null}</span></li>)}</ul> : partly ? 'None. Every story published this period has all its episodes live.' : 'No complete stories published in this period.')
+                  : (costs.length ? <table className="fs-mini"><thead><tr><th>Cost</th><th>AI / service</th><th>Cost this period</th><th>Per episode</th></tr></thead><tbody>
                       {costs.map(c => <tr key={c.item}><td>{c.item}</td><td>{c.ai_service || '—'}</td><td className="n">{money(c.total)}</td><td className="n">{money(c.perEpisode)}</td></tr>)}
                       <tr className="sub"><td>Total ({eps} episode{eps === 1 ? '' : 's'})</td><td></td><td className="n">{money(costs.reduce((a, c) => a + c.total, 0))}</td><td className="n">{money(eps ? costs.reduce((a, c) => a + c.total, 0) / eps : null)}</td></tr>
                     </tbody></table> : 'No production costs in this period.')}
+                {k === 'Production cost per episode' && <p className="fs-muted" style={{ margin: '6px 0 0' }}>Yearly purchases (Sound Ideas, Soundsnap, Airtable) are spread evenly over their year, so each month carries 1/12. ElevenLabs is credits used × your plan's price per credit.</p>}
               </td></tr>)
             }
             return out
@@ -115,6 +119,19 @@ export default function StatementPage() {
           <tr className="sec"><td colSpan={cols.length + 1}>Memo (not counted in revenue or cash flow)</td></tr>
           {Object.entries(data.memo || {}).map(([k, v]) => row(k, v, money, 'item'))}
         </tbody></table></div>
+      {data.pipeline && <section className="fs-pipe" aria-label="In the pipeline now">
+        <h2>In the pipeline now <span className="fs-muted">— not yet live to listeners{data.pipeline.coldStorage ? ` · ${data.pipeline.coldStorage} in cold storage (not shown)` : ''}</span></h2>
+        <table><thead><tr><th>Stage</th><th className="n">Stories</th><th className="n">Episodes</th></tr></thead><tbody>
+          {data.pipeline.stages.flatMap(st => {
+            const o = openStage === st.stage
+            return [
+              <tr key={st.stage} className="click" tabIndex={0} role="button" aria-expanded={o} onClick={() => setOpenStage(o ? null : st.stage)} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setOpenStage(o ? null : st.stage) } }}>
+                <td><span className="car">{o ? '▾' : '▸'}</span>{st.stage}</td><td className="n">{st.series.length}</td><td className="n">{st.episodes}</td></tr>,
+              ...(o ? [<tr key={st.stage + '-d'} className="detail"><td colSpan={3}><ul className="fs-list">{st.series.map(x => <li key={x.title}>{x.title} <span className="fs-muted">· {x.episodes} episode{x.episodes === 1 ? '' : 's'} at this stage · {x.live} of {x.total} live</span></li>)}</ul></td></tr>] : []),
+            ]
+          })}
+        </tbody></table>
+      </section>}
       <ul className="fs-notes">{data.notes.map(n => <li key={n}>{n}</li>)}<li>Blended CAC and cost per trial use all new subscribers and trials in the period; per-campaign figures are under Ad Spend.</li></ul>
     </>}
   </main>
@@ -147,6 +164,7 @@ const CSS = `
 .fs tr.detail td{text-align:left;white-space:normal;font-size:15px;color:#566373;padding-left:56px}
 .fs .car{display:inline-block;width:1.1em;color:#1f5f7a;font-weight:700}
 .fs-drill{font:inherit;color:#1f5f7a;background:none;border:0;padding:2px 0;cursor:pointer;text-decoration:underline dotted;text-underline-offset:3px}
+.fs-pipe{display:grid;gap:8px}.fs-pipe h2{margin:8px 0 0;font-size:21px}.fs-pipe table{width:100%;border-collapse:collapse}.fs-pipe th,.fs-pipe td{padding:8px 10px;border-bottom:1px solid #d9dee5;text-align:left}.fs-pipe .n{text-align:right}
 .fs-list{margin:6px 0 0;padding-left:20px;display:grid;gap:3px}
 .fs-mini{margin-top:8px;border-collapse:collapse;font-size:15px}.fs-mini th,.fs-mini td{padding:4px 12px 4px 0;text-align:left}.fs-mini td.n{text-align:right}
 .fs tr:focus-visible,.fs button:focus-visible,.fs select:focus-visible{outline:3px solid #1f5f7a;outline-offset:2px}

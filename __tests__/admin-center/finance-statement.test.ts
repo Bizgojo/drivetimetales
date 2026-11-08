@@ -1,4 +1,4 @@
-import { buildStatement, classify, windowsFor, monthlyWindows, CLAUDE_PIPELINE_ITEM, CLAUDE_REST_ITEM, AVAILABLE_ITEM, ANNUAL_ITEM, MONTHLY_ITEM, REFUND_ITEM, INTEREST_ITEM, CASHBACK_ITEM, OTHER_ITEM, STRIPE_FEE_ITEM, PAYOUT_MEMO, type StripeTxn, type Rule, type Txn } from '@/lib/finance/statement'
+import { buildStatement, pipelineSnapshot, classify, windowsFor, monthlyWindows, CLAUDE_PIPELINE_ITEM, CLAUDE_REST_ITEM, AVAILABLE_ITEM, ANNUAL_ITEM, MONTHLY_ITEM, REFUND_ITEM, INTEREST_ITEM, CASHBACK_ITEM, OTHER_ITEM, STRIPE_FEE_ITEM, PAYOUT_MEMO, type StripeTxn, type Rule, type Txn } from '@/lib/finance/statement'
 import { lastFour, toRow } from '@/lib/finance/mercury-sync'
 
 const rule = (id: number, priority: number, cp: string, section: any, item: string, accrual = 1): Rule =>
@@ -121,18 +121,45 @@ describe('FINANCE-STATEMENT-001', () => {
     expect(st.uncategorizedCount).toBe(1)
   })
 
-  test('drill-down: stories with episode counts and production cost per episode by AI', () => {
+  test('a story counts as published only when every episode is live; partial series are flagged; pipeline groups by stage', () => {
+    const stories = [
+      { id: 'a1', series_id: 'A', published_on: '2026-10-02', series_title: 'Complete' },
+      { id: 'b1', series_id: 'B', published_on: '2026-10-02', series_title: 'Hook' },
+    ]
+    const pipeline = [
+      { id: 'a1', series_id: 'A', status: 'published', is_hidden: false, series_title: 'Complete', series_total: 1 },
+      { id: 'b1', series_id: 'B', status: 'published', is_hidden: false, series_title: 'Hook', series_total: 7 },
+      { id: 'b2', series_id: 'B', status: 'audio_ready', is_hidden: true, series_title: 'Hook', series_total: 7 },
+      { id: 'c1', series_id: 'C', status: 'brief_complete', is_hidden: true, series_title: 'New', series_total: 3 },
+      { id: 'd1', series_id: 'D', status: 'cold_storage', is_hidden: true, series_title: 'Old', series_total: 1 },
+    ]
+    const st = buildStatement({ ...base, stories, pipeline, basis: 'cash', windows: SEP_OCT, txns: [] })
+    expect(st.vp['Stories published'][1]).toBe(1)
+    expect(st.vp['Partly published (rule break)'][1]).toBe(1)
+    expect(st.vpDetail.stories[1].find(x => x.title === 'Hook')!.complete).toBe(false)
+    const snap = pipelineSnapshot(pipeline)
+    expect(snap.coldStorage).toBe(1)
+    expect(snap.stages.map(x => x.stage)).toEqual(['Idea & brief', 'Voiced, not released'])
+    expect(snap.stages[1].series[0]).toEqual({ title: 'Hook', episodes: 1, live: 1, total: 7 })
+  })
+
+  test('drill-down: stories with episode counts and voice cost; per-episode costs spread yearly purchases', () => {
     const stories = [
       { id: 'e1', series_id: 's1', published_on: '2026-10-02', title: 'Ep 1', series_title: 'Rerouted' },
       { id: 'e2', series_id: 's1', published_on: '2026-10-09', title: 'Ep 2', series_title: 'Rerouted' },
       { id: 'e3', series_id: null, published_on: '2026-10-12', title: 'The Bell', series_title: null },
     ]
-    const txns = [tx('a', '2026-10-03T00:00:00Z', -90, 'Anthropic'), tx('s', '2026-10-04T00:00:00Z', -30, 'Sound Ideas')]
-    const st = buildStatement({ ...base, stories, basis: 'cash', windows: SEP_OCT, txns })
-    expect(st.vpDetail.stories[1]).toEqual([{ title: 'Rerouted', episodes: 2 }, { title: 'The Bell', episodes: 1 }])
+    const txns = [tx('a', '2026-10-03T00:00:00Z', -90, 'Anthropic'), tx('s', '2026-10-01T00:00:00Z', -365, 'Sound Ideas')]
+    const elDaily = [{ day: '2026-10-05', credits: 100000 }]
+    const elPlans = [{ captured_on: '2026-09-01', tier: 'pro', credit_limit: 500000, monthly_price_usd: 99 }]
+    const storyChars = { e1: 10000, e2: 10000, e3: 20000 }
+    const st = buildStatement({ ...base, stories, basis: 'cash', windows: SEP_OCT, txns, elDaily, elPlans, storyChars })
+    expect(st.vpDetail.stories[1]).toEqual([{ title: 'Rerouted', episodes: 2, voiceCost: expect.closeTo(9.9, 2), complete: true }, { title: 'The Bell', episodes: 1, voiceCost: expect.closeTo(9.9, 2), complete: true }])
     const c = st.vpDetail.costPerEpisode[1]
-    expect(c.map(x => x.item)).toEqual([CLAUDE_PIPELINE_ITEM, 'Sound effects library'])
-    expect(c[0].perEpisode).toBeCloseTo(30)
+    expect(c.find(x => x.item === 'Voices (ElevenLabs)')!.total).toBeCloseTo(19.8)
+    expect(c.find(x => x.item === 'Sound effects library')!.total).toBeCloseTo(31, 0) // 31 of 365 days, not the whole $365
+    expect(st.items.find(i => i.item === 'Sound effects library')!.values[1]).toBeCloseTo(365) // cash statement still shows the payment
+    expect(st.vp['Production cost per episode'][1]).toBeCloseTo((90 + 31 + 19.8) / 3, 0)
     expect(st.vpDetail.stories[0]).toEqual([])
   })
 

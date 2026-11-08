@@ -40,7 +40,48 @@ export interface StripeTxn {
   interval: string | null; customer_email: string | null
 }
 export interface StoryRow { id: string; series_id: string | null; published_on: string | null; title?: string | null; series_title?: string | null }
-export interface StoryDetail { title: string; episodes: number }
+/** Every story row with its pipeline status (for the published vs in-pipeline split). */
+export interface PipelineRow { id: string; series_id: string | null; status: string | null; is_hidden: boolean | null; title?: string | null; series_title?: string | null; series_total?: number | null }
+export interface PipelineStage { stage: string; series: { title: string; episodes: number; live: number; total: number }[]; episodes: number }
+
+// Pipeline stages, in production order. Statuses not listed fall under "Other status".
+export const PIPELINE_STAGES: [string, string[]][] = [
+  ['Idea & brief', ['pending', 'queued', 'draft', 'active', 'brief_complete']],
+  ['Script being written or fixed', ['script_drafted', 'script_revised', 'script_ready', 'scripts_ready', 'validator_failed', 'repair_queue']],
+  ['Script approved, waiting for voices', ['validator_passed']],
+  ['Voiced, not released', ['in_production', 'mixed_locally', 'audio_ready']],
+  ['Waiting for your review', ['ready_for_review']],
+  ['Published but hidden', ['published']],
+]
+/** Snapshot of everything not yet live, grouped by stage and series. Cold storage is left out. */
+export function pipelineSnapshot(rows: PipelineRow[]): { stages: PipelineStage[]; coldStorage: number } {
+  const live = (r: PipelineRow) => r.status === 'published' && !r.is_hidden
+  const bySeries = new Map<string, PipelineRow[]>()
+  for (const r of rows) { const k = r.series_id || r.id; bySeries.set(k, [...(bySeries.get(k) || []), r]) }
+  const stageOf = (status: string | null) => (PIPELINE_STAGES.find(([, ss]) => ss.includes(status || '')) || ['Other status'])[0]
+  const out = new Map<string, PipelineStage>()
+  for (const r of rows) {
+    if (live(r) || r.status === 'cold_storage') continue
+    const st = stageOf(r.status), k = r.series_id || r.id
+    const group = bySeries.get(k) || [r]
+    const title = r.series_title || r.title || 'Untitled'
+    const stage = out.get(st) || { stage: st, series: [], episodes: 0 }
+    stage.episodes++
+    let s = stage.series.find(x => x.title === title)
+    if (!s) { s = { title, episodes: 0, live: group.filter(live).length, total: Math.max(group.length, r.series_total || 0) }; stage.series.push(s) }
+    s.episodes++
+    out.set(st, stage)
+  }
+  const order = [...PIPELINE_STAGES.map(([n]) => n), 'Other status']
+  return {
+    stages: Array.from(out.values()).sort((a, b) => order.indexOf(a.stage) - order.indexOf(b.stage)).map(x => ({ ...x, series: x.series.sort((a, b) => b.episodes - a.episodes || a.title.localeCompare(b.title)) })),
+    coldStorage: rows.filter(r => r.status === 'cold_storage').length,
+  }
+}
+export interface StoryDetail { title: string; episodes: number; voiceCost: number | null; complete?: boolean }
+/** ElevenLabs credits used per day, and the plan's price per credit over time. */
+export interface ElDay { day: string; credits: number }
+export interface ElPlan { captured_on: string; tier: string | null; credit_limit: number | null; monthly_price_usd: number | null }
 export interface CostDetail { item: string; ai_service: string | null; total: number; perEpisode: number | null }
 export interface Campaign { id: string; name: string; platform: string; start_date: string; end_date: string | null; utm_campaign: string | null; notes: string | null }
 export interface Window { label: string; start: Date; end: Date } // [start, end)
@@ -59,6 +100,7 @@ export const CASHBACK_ITEM = 'Card cashback rewards'
 export const OTHER_ITEM = 'Other (not yet categorized)'
 export const STRIPE_FEE_ITEM = 'Payment processing (Stripe fees)'
 export const PAYOUT_TRANSFER_ITEM = 'Stripe payouts (transfer)'
+export const EL_ITEM = 'Voices (ElevenLabs)'
 export const PAYOUT_MEMO = 'Stripe payouts received in Mercury'
 const LEGACY_CASHBACK = ['Interest income (card cashback)', 'Other']
 export const AVAILABLE_ITEM = 'Available for ads this month (75% of last month\'s profit)'
@@ -178,6 +220,13 @@ export function buildStatement(input: {
   noPlowBack?: boolean
   /** Stripe ledger: charges, refunds, fees (finance_stripe_txns). */
   stripe?: StripeTxn[]
+  /** ElevenLabs credits used per day and plan snapshots (price per credit). */
+  elDaily?: ElDay[]
+  elPlans?: ElPlan[]
+  /** All story rows with status, for complete vs partly-published series. */
+  pipeline?: PipelineRow[]
+  /** Voiced script length per story id (for splitting voice cost across stories). */
+  storyChars?: Record<string, number>
 }): Statement {
   const { basis, windows } = input
   const ov = new Map(input.overrides.map(o => [o.txn_id, o]))
@@ -265,6 +314,22 @@ export function buildStatement(input: {
     })
     if (rest.values.some(v => v)) itemMap.set(restKey, rest)
   }
+  // ElevenLabs is billed as a subscription (not on a Mercury card). Its cost is usage-based:
+  // credits used each day × the plan's price per credit (monthly price ÷ monthly credits).
+  const plans = (input.elPlans || []).filter(p => p.credit_limit && p.monthly_price_usd).sort((a, b) => a.captured_on.localeCompare(b.captured_on))
+  const perCredit = (day: string) => {
+    const p = [...plans].reverse().find(x => x.captured_on <= day) || plans[0]
+    return p ? Number(p.monthly_price_usd) / Number(p.credit_limit) : 0
+  }
+  const elCost = windows.map(w => (input.elDaily || []).reduce((a, d) => {
+    const x = Date.parse(d.day + 'T00:00:00Z'), share = overlap(x, x + DAY, w.start.getTime(), w.end.getTime()) / DAY
+    return a + (share ? Number(d.credits) * perCredit(d.day) * share : 0)
+  }, 0))
+  if (elCost.some(v => v)) itemMap.set('Production Exp|' + EL_ITEM, {
+    section: 'Production Exp', item: EL_ITEM, ai_service: 'ElevenLabs text-to-speech' + (plans.length ? ` (${plans[plans.length - 1].tier || 'plan'})` : ''),
+    purpose: 'Every voiced line. Usage-based: credits used × plan price per credit. Paid outside Mercury.', cards: ['outside Mercury'], values: elCost,
+  })
+
   const items = Array.from(itemMap.values()).sort((a, b) => EXPENSE_SECTIONS.indexOf(a.section) - EXPENSE_SECTIONS.indexOf(b.section) || b.values.reduce((x, y) => x + y, 0) - a.values.reduce((x, y) => x + y, 0))
   const sections: Record<string, number[]> = {}
   for (const s of EXPENSE_SECTIONS) sections[s] = windows.map((_, i) => items.filter(it => it.section === s).reduce((a, it) => a + it.values[i], 0))
@@ -285,11 +350,27 @@ export function buildStatement(input: {
 
   // Volume & productivity
   const pub = windows.map(w => input.stories.filter(s => inWin(s.published_on, w)))
+  // Per-episode cost always uses spread-out costs (a yearly purchase counts 1/12 a month),
+  // whatever basis the statement is on; otherwise a $1,500 yearly library lands on one month.
+  const unitItems = basis === 'accrual' || input.noPlowBack ? items
+    : buildStatement({ ...input, basis: 'accrual', noPlowBack: true }).items
+  const unitProd = windows.map((_, i) => unitItems.filter(it => it.section === 'Production Exp').reduce((a, it) => a + it.values[i], 0))
   const adSpend = sections['Ad Spend']
+  // A story counts as published only when every episode of its series is live. A series with
+  // some episodes live and others not breaks the publishing rule and is counted separately.
+  const allRows = input.pipeline || []
+  const seriesComplete = (key: string) => {
+    const eps = allRows.filter(r => (r.series_id || r.id) === key)
+    if (!eps.length) return true // no pipeline data: treat as complete
+    const total = Math.max(eps.length, eps[0].series_total || 0)
+    return eps.filter(r => r.status === 'published' && !r.is_hidden).length >= total
+  }
+  const seriesKeys = (p: StoryRow[]) => Array.from(new Set(p.map(s => s.series_id || s.id)))
   const vp: Record<string, (number | null)[]> = {
-    'Stories published': pub.map(p => new Set(p.map(s => s.series_id || s.id)).size),
+    'Stories published': pub.map(p => seriesKeys(p).filter(seriesComplete).length),
+    'Partly published (rule break)': pub.map(p => seriesKeys(p).filter(k => !seriesComplete(k)).length),
     'Episodes published': pub.map(p => p.length),
-    'Production cost per episode': pub.map((p, i) => p.length ? sections['Production Exp'][i] / p.length : null),
+    'Production cost per episode': pub.map((p, i) => p.length ? unitProd[i] / p.length : null),
     'Meta campaigns': windows.map(w => input.campaigns.filter(c => Date.parse(c.start_date) < w.end.getTime() && (!c.end_date || Date.parse(c.end_date) + DAY > w.start.getTime())).length),
     'Ad spend': adSpend,
     'New trials': subs.map(s => s.trials),
@@ -306,16 +387,21 @@ export function buildStatement(input: {
 
   // Click-through detail: which stories (episodes each), and what each production line cost per episode
   const vpDetail = {
-    stories: pub.map(p => {
+    stories: pub.map((p, i) => {
+      // Voice cost split across the period's episodes by script length (longer script → more credits).
+      const chars = (st: StoryRow) => input.storyChars?.[st.id] ?? 0
+      const totalChars = p.reduce((a, st) => a + chars(st), 0)
       const by = new Map<string, StoryDetail>()
       for (const st of p) {
         const k = st.series_id || st.id
-        const d = by.get(k) || { title: st.series_title || st.title || 'Untitled', episodes: 0 }
-        d.episodes++; by.set(k, d)
+        const d = by.get(k) || { title: st.series_title || st.title || 'Untitled', episodes: 0, voiceCost: elCost[i] && totalChars ? 0 : null, complete: seriesComplete(k) }
+        d.episodes++
+        if (d.voiceCost != null) d.voiceCost += elCost[i] * chars(st) / totalChars
+        by.set(k, d)
       }
       return Array.from(by.values()).sort((a, b) => b.episodes - a.episodes || a.title.localeCompare(b.title))
     }),
-    costPerEpisode: pub.map((p, i) => items.filter(it => it.section === 'Production Exp' && Math.abs(it.values[i]) > 0.004)
+    costPerEpisode: pub.map((p, i) => unitItems.filter(it => it.section === 'Production Exp' && Math.abs(it.values[i]) > 0.004)
       .map(it => ({ item: it.item, ai_service: it.ai_service, total: it.values[i], perEpisode: p.length ? it.values[i] / p.length : null }))
       .sort((a, b) => b.total - a.total)),
   }
