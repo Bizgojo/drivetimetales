@@ -56,6 +56,23 @@ describe('FINANCE-STATEMENT-001', () => {
     expect(st.revenue['Plow back']).toBeUndefined()
   })
 
+  test('current month shows the full plow back from day one (no proration)', () => {
+    const users = [realUser('r1', '2026-08-01T00:00:00Z')]
+    const txns = [tx('r', '2026-10-10T00:00:00Z', 100, 'Stripe', 'other')]
+    const st = buildStatement({ ...base, users, basis: 'cash', windows: windowsFor('monthly', NOW), txns })
+    expect(st.memo[AVAILABLE_ITEM][st.columns.indexOf('Nov 2026')]).toBeCloseTo(75)
+    expect(buildStatement({ ...base, users, basis: 'cash', windows: windowsFor('d1', NOW), txns }).memo[AVAILABLE_ITEM][0]).toBeCloseTo(75)
+  })
+
+  test('a payout with nobody paying is not revenue; a subscriber who just cancelled still counts', () => {
+    const txns = [tx('r', '2026-10-10T00:00:00Z', 9.99, 'Stripe', 'other')]
+    const none = buildStatement({ ...base, basis: 'cash', windows: SEP_OCT, txns })
+    expect(none.revenue[STRIPE_ITEM][1]).toBeCloseTo(0)
+    expect(none.memo[TEST_ITEM][1]).toBeCloseTo(9.99)
+    const users = [{ ...realUser('r1', '2026-09-08T00:00:00Z'), cancelled_at: '2026-10-08T00:00:00Z' }]
+    expect(buildStatement({ ...base, users, basis: 'cash', windows: SEP_OCT, txns }).revenue[STRIPE_ITEM][1]).toBeCloseTo(9.99)
+  })
+
   test('a loss month plows back nothing', () => {
     const users = [realUser('r1', '2026-08-01T00:00:00Z')]
     const txns = [tx('r', '2026-09-10T00:00:00Z', 100, 'Stripe', 'other'), tx('e', '2026-09-11T00:00:00Z', -500, 'Anthropic')]

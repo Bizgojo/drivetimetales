@@ -172,8 +172,9 @@ export function buildStatement(input: {
   // Stripe pays out for every paying account, Marc's test accounts included. Only the share that
   // belongs to real (non-test) paying subscribers on the payout day counts as revenue.
   const realShareAt = (iso: string) => {
+    // Stripe pays out a few days after the charge, so count anyone paying in the 7 days before the payout.
     const at = Date.parse(iso)
-    const paying = input.users.filter(u => activeAt(u, at))
+    const paying = input.users.filter(u => activeAt(u, at) || activeAt(u, at - 7 * DAY))
     const real = paying.filter(u => !u.is_test_account).length
     return paying.length ? real / paying.length : 0 // nobody paying → not a customer payment
   }
@@ -237,15 +238,12 @@ export function buildStatement(input: {
   // Plow back: 75% of the PREVIOUS calendar month's profit (cash flow on cash basis), and only
   // when that month made money. A loss month plows back $0. It is money available for ads,
   // not revenue, so it sits below the statement and is never added to totals.
+  // Each column shows the full amount for the calendar month it ends in (no proration), so the
+  // current month shows all of last month's plow back from day one.
   const available = input.noPlowBack ? zero() : windows.map(w => {
-    let total = 0
-    for (let m = monthStart(w.start); m < w.end; m = addMonths(m, 1)) {
-      const mEnd = addMonths(m, 1), share = overlap(m.getTime(), mEnd.getTime(), w.start.getTime(), w.end.getTime()) / (mEnd.getTime() - m.getTime())
-      if (share <= 0) continue
-      const prev = buildStatement({ ...input, windows: [{ label: '', start: addMonths(m, -1), end: m }], noPlowBack: true })
-      total += Math.max(0, prev.totals.result[0]) * PLOW_BACK * share
-    }
-    return total
+    const m = monthStart(new Date(w.end.getTime() - 1))
+    const prev = buildStatement({ ...input, windows: [{ label: '', start: addMonths(m, -1), end: m }], noPlowBack: true })
+    return Math.max(0, prev.totals.result[0]) * PLOW_BACK
   })
 
   // Volume & productivity
