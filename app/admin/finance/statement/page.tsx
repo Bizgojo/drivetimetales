@@ -175,6 +175,9 @@ const CSS = `
 .fs-controls label{display:grid;gap:4px;font-size:15px;font-weight:700;color:#2f3a46;text-transform:uppercase;letter-spacing:.05em}
 .fs-controls select,.fs-controls input,.fs-controls button{font:inherit;font-size:18px;padding:8px 10px;border:1px solid #d9dee5;border-radius:8px;min-height:44px;text-transform:none;letter-spacing:0}
 .fs-controls button{cursor:pointer;font-weight:600}
+.fs button,.fs select,.fs input{color:#002266;-webkit-text-fill-color:#002266}
+.fs a{color:#002266}
+.fs button:not(.fs-drill){font-weight:700;background:#fff;border:2px solid #002266;border-radius:8px;padding:8px 14px;font-size:17px;cursor:pointer}
 .fs-dates{display:flex;gap:8px;flex-wrap:wrap}
 .fs-muted{font-size:16px;color:#3b4552}
 .fs-msg{margin:0;font-size:16px}.fs-warn{margin:0;padding:10px 14px;border-radius:8px;background:#fff3cd;color:#6b4e00;font-size:16px}
@@ -199,5 +202,4 @@ const CSS = `
 .fs-mini{margin-top:8px;border-collapse:collapse;font-size:17px}.fs-mini th,.fs-mini td{padding:4px 12px 4px 0;text-align:left}.fs-mini td.n{text-align:right}
 .fs tr:focus-visible,.fs button:focus-visible,.fs select:focus-visible{outline:3px solid #002266;outline-offset:2px}
 .fs-notes{margin:0;padding-left:1.2em;font-size:16px;color:#2f3a46;display:grid;gap:4px}
-@media (prefers-color-scheme:dark){.fs thead th{background:#123f6b}.fs-crumb,.fs-muted,.fs-notes,.fs tr.detail td,.fs-controls label{color:#d3dbe4}.fs tr.sec td,.fs tr.grand td{background:#1b2531;color:#e6ebf1}.fs tr.click:hover td,.fs tr.cat:hover td{background:#1b2531}.fs th,.fs td,.fs-table,.fs-controls{border-color:#2a3542}}
 `
