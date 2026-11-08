@@ -174,6 +174,25 @@ describe('FINANCE-STATEMENT-001', () => {
     expect(st.vp['Partly published (rule break)'][1]).toBe(1)
   })
 
+  test('Mercury reconciliation: every dollar accounted for, statement matches Mercury to the cent, Stripe in transit shown', () => {
+    const txns = [
+      tx('a', '2026-09-03T00:00:00Z', -100, 'Anthropic'), tx('f', '2026-09-04T00:00:00Z', -50, 'Facebook'), tx('v', '2026-09-05T00:00:00Z', 0.02, 'Sound Ideas'),
+      tx('o', '2026-09-06T00:00:00Z', 5000, 'SouthState Bank x', 'externalTransfer'), tx('p', '2026-09-07T00:00:00Z', -150, 'Mercury Credit', 'other'),
+      tx('c', '2026-09-08T00:00:00Z', 2.25, 'Mercury IO Cashback', 'other'), tx('s', '2026-09-20T00:00:00Z', 9.40, 'Stripe', 'other'),
+      tx('u', '2026-09-21T00:00:00Z', -12, 'Mystery Vendor'),
+    ]
+    const stripe = [sx('ch', '2026-09-10T00:00:00Z', 'charge', 9.99, 0.59, 'month'), sx('po', '2026-09-30T00:00:00Z', 'payout', -9.40, 0)]
+    const st = buildStatement({ ...base, stripe, txns, basis: 'cash', windows: SEP_OCT })
+    expect(st.recon.check[0]).toBe(0)
+    expect(st.recon.mercury['Unexplained'][0]).toBeCloseTo(0)
+    expect(st.recon.mercury['Expenses paid from Mercury'][0]).toBeCloseTo(-162)
+    expect(st.recon.mercury['Owner money in (capital)'][0]).toBeCloseTo(5000)
+    expect(st.recon.mercury['Net change across Mercury accounts'][0]).toBeCloseTo(-100 - 50 + 0.02 + 5000 - 150 + 2.25 + 9.40 - 12)
+    expect(st.recon.stripe['Stripe: charges − refunds − fees'][0]).toBeCloseTo(9.40)
+    expect(st.recon.stripe['Stripe: in transit (paid out, not yet in Mercury)'][0]).toBeCloseTo(0)
+    expect(buildStatement({ ...base, stripe, txns, basis: 'accrual', windows: SEP_OCT }).recon.check[0]).toBeNull()
+  })
+
   test('blocked and cancelled charges are ignored', () => {
     const txns = [{ ...tx('b', '2026-10-03T00:00:00Z', -100, 'Anthropic'), status: 'blocked' }, { ...tx('c', '2026-10-03T00:00:00Z', -40, 'Anthropic'), status: 'cancelled' }]
     const st = buildStatement({ ...base, basis: 'cash', windows: windowsFor('monthly', NOW), txns })
@@ -210,5 +229,17 @@ describe('FINANCE-STATEMENT-001', () => {
     expect(lastFour('Credit Card ••3396')).toBe('••3396')
     const r = toRow({ id: 'x', postedAt: '2026-11-01T00:00:00Z', amount: -5, status: 'sent', kind: 'creditCardTransaction', counterpartyName: 'Kie', details: { creditCardInfo: { paymentMethod: 'Credit Card ••9424' } } }, new Map([['••9424', 'ET-ElevenLabs']]))
     expect(r).toMatchObject({ card: '••9424', card_nickname: 'ET-ElevenLabs', amount: -5 })
+  })
+})
+
+describe('FINANCE-STATEMENT-007 suggestions', () => {
+  const { parseSuggestions, buildPrompt } = require('@/lib/finance/suggestions')
+  test('parses a JSON array even with fences or stray text; drops malformed items', () => {
+    const items = parseSuggestions('Here you go:\n```json\n[{"title":"Push annual","detail":"More annual plans.","impact":"≈ $50/mo"},{"nope":1}]\n```')
+    expect(items).toEqual([{ title: 'Push annual', detail: 'More annual plans.', impact: '≈ $50/mo' }])
+    expect(() => parseSuggestions('no list here')).toThrow()
+  })
+  test('prompt carries the quality rule', () => {
+    expect(buildPrompt('X')).toMatch(/story quality must not drop/)
   })
 })
