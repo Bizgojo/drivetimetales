@@ -92,7 +92,6 @@ export interface Window { label: string; start: Date; end: Date } // [start, end
 
 export const PRICE_MONTHLY = 9.99
 export const PRICE_ANNUAL = 79.99
-export const LTV_ASSUMED = 92 // $9.20/mo contribution ÷ 10% churn (assumption until churn is measured)
 export const PLOW_BACK = 0.75
 export const STRIPE_ITEM = 'Subscriptions (Stripe payouts)' // Mercury rule name for Stripe payouts (treated as transfers)
 export const ANNUAL_ITEM = 'Annual subs'
@@ -416,6 +415,22 @@ export function buildStatement(input: {
     return eps.filter(r => r.status === 'published' && !r.is_hidden).length >= total
   }
   const seriesKeys = (p: StoryRow[]) => Array.from(new Set(p.map(s => s.series_id || s.id)))
+  // LTV is left blank until it can be measured: it needs a real CAC (ad spend and real new
+  // subscribers in the period) and a real churn rate (real cancellations over the 3 months
+  // ending with the period). Test accounts never count. No assumed figures.
+  const cac = subs.map((s, i) => s.newSubs && adSpend[i] ? adSpend[i] / s.newSubs : null)
+  const churn = windows.map(w => {
+    let active = 0, cancels = 0
+    for (let k = 0; k < 3; k++) {
+      const end = new Date(w.end.getTime() - k * 30 * DAY), start = new Date(end.getTime() - 30 * DAY)
+      const st = subscriberStats(input.users, { label: '', start, end })
+      active += st.activeMonthly + st.activeAnnual + st.cancels // subscribers at risk during that month
+      cancels += st.cancels
+    }
+    return active && cancels ? cancels / active : null
+  })
+  const arpu = subs.map(s => { const a = s.activeMonthly + s.activeAnnual; return a ? s.runRate / 12 / a : null })
+  const ltv = windows.map((_, i) => cac[i] != null && churn[i] && arpu[i] != null ? arpu[i]! / churn[i]! : null)
   const vp: Record<string, (number | null)[]> = {
     'Stories published': pub.map(p => seriesKeys(p).filter(seriesComplete).length),
     'Partly published (rule break)': pub.map(p => seriesKeys(p).filter(k => !seriesComplete(k)).length),
@@ -427,12 +442,13 @@ export function buildStatement(input: {
     'New trials': subs.map(s => s.trials),
     'Blended cost per trial': subs.map((s, i) => s.trials ? adSpend[i] / s.trials : null),
     'New subs': subs.map(s => s.newSubs),
-    'Blended CAC': subs.map((s, i) => s.newSubs ? adSpend[i] / s.newSubs : null),
+    'Blended CAC': cac,
     'Cancellations': subs.map(s => s.cancels),
     'Net subs': subs.map(s => s.newSubs - s.cancels),
-    'LTV (assumed)': windows.map(() => LTV_ASSUMED),
-    'Net LTV-CAC %': subs.map((s, i) => s.newSubs && adSpend[i] ? (LTV_ASSUMED - adSpend[i] / s.newSubs) / (adSpend[i] / s.newSubs) : null),
-    'Net LTV-CAC $': subs.map((s, i) => s.newSubs ? LTV_ASSUMED - adSpend[i] / s.newSubs : null),
+    'Monthly churn (measured)': churn,
+    'LTV (measured)': ltv,
+    'Net LTV-CAC %': ltv.map((l, i) => l != null && cac[i] ? (l - cac[i]!) / cac[i]! : null),
+    'Net LTV-CAC $': ltv.map((l, i) => l != null && cac[i] != null ? l - cac[i]! : null),
     'Run rate (yearly)': subs.map(s => s.runRate),
   }
 
@@ -501,6 +517,7 @@ export function buildStatement(input: {
       'Owner deposits, card payments and transfers between Mercury accounts are excluded: they are not revenue or expense.',
       'Subscription revenue comes straight from Stripe: every charge, refund and fee. Stripe payouts into Mercury are transfers, shown below for reconciliation (payouts ≈ charges − refunds − fees, a few days later).',
       'Other (not yet categorized) is money that came in with no rule yet. Anything there needs a category.',
+      'LTV stays blank until it can be measured: it needs a real CAC (ad spend and real new subscribers) and real cancellations over the last 3 months. LTV = average monthly revenue per subscriber ÷ monthly churn. Test accounts never count.',
       'Plow back is 75% of a month\'s profit and only when the month made money. It shows next month as money available for ads, not as revenue.',
     ],
   }
