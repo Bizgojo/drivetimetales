@@ -193,6 +193,25 @@ describe('FINANCE-STATEMENT-001', () => {
     expect(buildStatement({ ...base, stripe, txns, basis: 'accrual', windows: SEP_OCT }).recon.check[0]).toBeNull()
   })
 
+  test('LTV is blank without real CAC and churn; measured once both exist', () => {
+    const txns = [tx('f', '2026-10-05T00:00:00Z', -100, 'Facebook')]
+    const none = buildStatement({ ...base, basis: 'cash', windows: SEP_OCT, txns })
+    expect(none.vp['LTV (measured)']).toEqual([null, null])
+    expect(none.vp['Net LTV-CAC $']).toEqual([null, null])
+    const u = (id: string, paid: string, cancelled: string | null, test = false) => ({ id, is_test_account: test, trial_started_at: null, first_paid_date: paid, cancelled_at: cancelled, billing_cycle: 'monthly', utm_campaign: null })
+    const users = [
+      ...Array.from({ length: 9 }, (_, k) => u('r' + k, '2026-08-01T00:00:00Z', null)),
+      u('c1', '2026-08-01T00:00:00Z', '2026-10-10T00:00:00Z'),
+      u('n1', '2026-10-06T00:00:00Z', null), u('n2', '2026-10-07T00:00:00Z', null),
+      u('t1', '2026-10-06T00:00:00Z', '2026-10-08T00:00:00Z', true), // test account: ignored
+    ]
+    const st = buildStatement({ ...base, users, basis: 'cash', windows: SEP_OCT, txns })
+    expect(st.vp['Blended CAC'][1]).toBeCloseTo(50) // $100 ÷ 2 real new subs
+    expect(st.vp['Monthly churn (measured)'][1]).toBeGreaterThan(0)
+    expect(st.vp['LTV (measured)'][1]).toBeCloseTo(9.99 / (st.vp['Monthly churn (measured)'][1] as number), 1)
+    expect(st.vp['LTV (measured)'][0]).toBeNull() // no ad spend in September → no CAC → blank
+  })
+
   test('blocked and cancelled charges are ignored', () => {
     const txns = [{ ...tx('b', '2026-10-03T00:00:00Z', -100, 'Anthropic'), status: 'blocked' }, { ...tx('c', '2026-10-03T00:00:00Z', -40, 'Anthropic'), status: 'cancelled' }]
     const st = buildStatement({ ...base, basis: 'cash', windows: windowsFor('monthly', NOW), txns })

@@ -14,8 +14,8 @@ interface Data {
   campaigns: Camp[]; uncategorizedCount: number; notes: string[]; lastSynced: string | null; error?: string
 }
 const SECTIONS = ['Operating Exp', 'Production Exp', 'Ad Spend', 'Marketing Services', 'R & D', 'Uncategorized']
-const MONEY_ROWS = new Set(['Production cost per finished episode', 'Ad spend', 'Blended cost per trial', 'Blended CAC', 'LTV (assumed)', 'Net LTV-CAC $', 'Run rate (yearly)'])
-const PCT_ROWS = new Set(['Net LTV-CAC %'])
+const MONEY_ROWS = new Set(['Production cost per finished episode', 'Ad spend', 'Blended cost per trial', 'Blended CAC', 'LTV (measured)', 'Net LTV-CAC $', 'Run rate (yearly)'])
+const PCT_ROWS = new Set(['Net LTV-CAC %', 'Monthly churn (measured)'])
 const DRILL_ROWS = new Set(['Stories published', 'Partly published (rule break)', 'Episodes finished (voiced)', 'Production cost per finished episode'])
 
 const money = (v: Num) => v == null || !isFinite(v) ? '—' : (v < 0 ? '−$' : '$') + (Math.abs(v) >= 100 ? Math.round(Math.abs(v)).toLocaleString() : Math.abs(v).toFixed(2))
