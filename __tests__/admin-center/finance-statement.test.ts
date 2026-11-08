@@ -61,6 +61,20 @@ describe('FINANCE-STATEMENT-001', () => {
     expect(st.revenue['Subscriptions (Stripe payouts)']).toBeUndefined()
   })
 
+  test('payout reversals and top-ups are not revenue; a Mercury STRIPE deposit with no rule is still a transfer', () => {
+    const stripe = [sx('pr', '2026-09-03T00:00:00Z', 'payout_reversal', 50, 0), sx('tu', '2026-09-04T00:00:00Z', 'topup', 100, 0)]
+    const st = buildStatement({ ...base, rules: RULES.filter(r => r.match_counterparty !== 'Stripe'), stripe, basis: 'cash', windows: SEP_OCT, txns: [tx('po', '2026-09-10T00:00:00Z', 30, 'STRIPE TRANSFER', 'other')] })
+    expect(st.totals.revenue[0]).toBeCloseTo(0)
+    expect(st.memo[PAYOUT_MEMO][0]).toBeCloseTo(30)
+  })
+
+  test('an annual refund on accrual is spread like its charge', () => {
+    const stripe = [sx('a', '2026-09-01T00:00:00Z', 'charge', 120, 0, 'year'), sx('r', '2026-09-01T00:00:00Z', 'refund', -120, 0, 'year')]
+    const st = buildStatement({ ...base, stripe, txns: [], basis: 'accrual', windows: SEP_OCT })
+    expect(st.totals.revenue[0]).toBeCloseTo(0)
+    expect(st.totals.revenue[1]).toBeCloseTo(0)
+  })
+
   test('accrual spreads an annual charge over 12 months and a monthly one over its month', () => {
     const stripe = [sx('a', '2026-09-01T00:00:00Z', 'charge', 120, 0, 'year'), sx('m', '2026-09-16T00:00:00Z', 'charge', 10, 0, 'month')]
     const st = buildStatement({ ...base, stripe, txns: [], basis: 'accrual', windows: SEP_OCT })

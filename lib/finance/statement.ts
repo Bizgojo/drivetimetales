@@ -186,9 +186,9 @@ export function buildStatement(input: {
   // Mercury side: Stripe payouts are transfers from the Stripe balance (revenue is counted from
   // Stripe itself); cashback has its own line; unmatched money in shows as Other so it gets spotted.
   const PAYOUT_ITEMS = [STRIPE_ITEM, PAYOUT_TRANSFER_ITEM]
-  const payouts = cls.filter(x => PAYOUT_ITEMS.includes(x.c.item) && x.t.amount > 0)
+  const payouts = cls.filter(x => (PAYOUT_ITEMS.includes(x.c.item) || (x.c.section === 'Uncategorized' && /^stripe\b/i.test(x.t.counterparty))) && x.t.amount > 0)
   for (const x of cls) {
-    if (x.c.section === 'Revenue' && x.c.item === STRIPE_ITEM) x.c = { ...x.c, section: 'Excluded', item: PAYOUT_TRANSFER_ITEM }
+    if (((x.c.section === 'Revenue' && x.c.item === STRIPE_ITEM) || (x.c.section === 'Uncategorized' && /^stripe\b/i.test(x.t.counterparty))) && x.t.amount > 0) x.c = { ...x.c, section: 'Excluded', item: PAYOUT_TRANSFER_ITEM }
     else if (x.c.section === 'Revenue' && /cashback/i.test(x.t.counterparty) && LEGACY_CASHBACK.includes(x.c.item)) x.c = { ...x.c, item: CASHBACK_ITEM }
     else if (x.c.section === 'Uncategorized' && x.t.amount > 0) x.c = { ...x.c, section: 'Revenue', item: OTHER_ITEM }
   }
@@ -200,18 +200,20 @@ export function buildStatement(input: {
   })
   for (const st of input.stripe || []) {
     const cat = st.reporting_category || st.type
-    if (cat === 'payout' || cat === 'transfer' || st.type === 'payout') continue
+    // Money moving between Stripe and the bank, or held in reserve, is not revenue.
+    if (['payout', 'payout_reversal', 'transfer', 'transfer_reversal', 'topup', 'topup_reversal', 'risk_reserved_funds', 'connect_reserved_funds'].includes(cat) || /^(payout|topup|transfer)/.test(st.type)) continue
+    const annual = /^(year|ann)/i.test(st.interval || ''), monthly = /^month/i.test(st.interval || '')
+    const months = annual ? 12 : 1, spread = annual || monthly
     if (cat === 'charge') {
-      const annual = /^(year|ann)/i.test(st.interval || ''), monthly = /^month/i.test(st.interval || '')
-      mk(st, st.amount, 'Revenue', annual ? ANNUAL_ITEM : monthly ? MONTHLY_ITEM : ONE_TIME_ITEM, annual ? 12 : 1, annual || monthly)
+      mk(st, st.amount, 'Revenue', annual ? ANNUAL_ITEM : monthly ? MONTHLY_ITEM : ONE_TIME_ITEM, months, spread)
     } else if (['refund', 'dispute', 'dispute_reversal', 'partial_capture_reversal', 'charge_failure', 'refund_failure'].includes(cat)) {
-      mk(st, st.amount, 'Revenue', REFUND_ITEM)
+      mk(st, st.amount, 'Revenue', REFUND_ITEM, months, spread) // spread like the charge it reverses
     } else if (cat === 'fee' || st.type === 'stripe_fee') {
       mk(st, st.net, 'Operating Exp', STRIPE_FEE_ITEM); continue
     } else {
       mk(st, st.amount, 'Revenue', OTHER_ITEM)
     }
-    if (st.fee) mk(st, -st.fee, 'Operating Exp', STRIPE_FEE_ITEM)
+    if (st.fee) mk(st, -st.fee, 'Operating Exp', STRIPE_FEE_ITEM, months, spread)
   }
   cls.push(...stripeCls)
   const n = windows.length, zero = () => Array(n).fill(0)
@@ -344,7 +346,7 @@ export function buildStatement(input: {
     campaigns,
     uncategorizedCount: cls.filter(x => x.c.section === 'Uncategorized' || x.c.item === OTHER_ITEM).length,
     notes: [
-      basis === 'cash' ? 'Cash basis matches Mercury: money counted the day it moved.' : 'Accrual basis spreads annual plans and yearly purchases over the months they cover; subscription revenue comes from paid subscribers.',
+      basis === 'cash' ? 'Cash basis matches Mercury: money counted the day it moved.' : 'Accrual basis spreads annual plans and yearly purchases over the months they cover; Stripe charges, their refunds and fees follow the plan length (12 months annual, 1 month monthly).',
       'Prepaid AI credits (Anthropic, OpenAI, DeepSeek, Google) are counted when bought on both bases until vendor usage feeds are connected.',
       'Owner deposits, card payments and transfers between Mercury accounts are excluded: they are not revenue or expense.',
       'Subscription revenue comes straight from Stripe: every charge, refund and fee. Stripe payouts into Mercury are transfers, shown below for reconciliation (payouts ≈ charges − refunds − fees, a few days later).',
