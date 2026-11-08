@@ -37,7 +37,14 @@ export async function syncElevenLabs(supabase: SupabaseClient, opts: { key: stri
   const stats = await get(`/usage/character-stats?start_unix=${start}&end_unix=${end}&aggregation_interval=day`, opts.key)
   const days = dailyFromStats(stats).map(d => ({ ...d, synced_at: new Date().toISOString() }))
   const sub = await get('/user/subscription', opts.key)
-  const plan = { captured_on: new Date().toISOString().slice(0, 10), ...planFromSubscription(sub, opts.monthlyPrice), synced_at: new Date().toISOString() }
+  // ElevenLabs' next invoice can be a proration or partial amount, so a price Marc entered by hand
+  // (price_source = 'manual') wins over it until a new one is entered.
+  let manual = opts.monthlyPrice ?? null
+  if (manual == null) {
+    const { data } = await supabase.from('finance_el_plan').select('monthly_price_usd').eq('price_source', 'manual').order('captured_on', { ascending: false }).limit(1)
+    if (data?.[0]?.monthly_price_usd != null) manual = Number(data[0].monthly_price_usd)
+  }
+  const plan = { captured_on: new Date().toISOString().slice(0, 10), ...planFromSubscription(sub, manual), synced_at: new Date().toISOString() }
   log(`${days.length} days of credit usage since ${opts.since}; plan ${plan.tier} ${plan.credit_limit} credits at ${plan.monthly_price_usd ?? 'UNKNOWN'} $/month (${plan.price_source ?? 'no price'})`)
   if (opts.dryRun) return { days: days.length, plan }
   const a = await supabase.from('finance_el_daily').upsert(days, { onConflict: 'day' })
