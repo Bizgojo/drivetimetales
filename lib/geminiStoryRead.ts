@@ -46,7 +46,7 @@ QUESTIONS
 ${qs.map((q, i) => `${i + 1}. [${q.id}] ${q.ask}`).join('\n')}
 ${input.factSheet ? `\nFACT SHEET (fixed facts):\n${input.factSheet}\n` : ''}${input.castLists ? `\nCAST LISTS:\n${input.castLists}\n` : ''}${input.outline ? `\nSERIES PLAN:\n${input.outline}\n` : ''}${input.flaggedAudio ? `\nFLAGGED AUDIO LINES:\n${input.flaggedAudio}\n` : ''}
 Reply with JSON only:
-{"questions":[{"id":"<id>","pass":true|false,"issues":[{"episode":<n>,"line":"<quote>","problem":"...","fix":"..."}]}]}
+{"questions":[{"id":"<the word in brackets, e.g. continuity>","pass":true|false,"issues":[{"episode":<n>,"line":"<quote>","problem":"...","fix":"..."}]}]}
 
 ${input.episodes.map((e) => `===== EPISODE ${e.episodeNumber}: ${e.title} =====\n${e.body}`).join('\n\n')}`
 }
@@ -70,9 +70,19 @@ export function parseStoryRead(raw: string, stage: StoryReadStage): StoryReadRep
   let obj: any = null
   for (const c of candidates) { try { obj = JSON.parse(c.trim()); break } catch { /* next */ } }
   if (!obj || !Array.isArray(obj.questions)) return null
-  const known = new Set(STORY_READ_QUESTIONS.filter((q) => q.stages.includes(stage)).map((q) => q.id))
+  // GEMINI-READ-IDS-001: the prompt numbers the questions ("1. [continuity] ..."), and on Nov 7
+  // gemini-pro answered with id "1" instead of "continuity", so every answer was dropped.
+  // Accept the number as the question in that position.
+  const order = STORY_READ_QUESTIONS.filter((q) => q.stages.includes(stage)).map((q) => q.id)
+  const idOf = (raw: unknown): string | null => {
+    const v = String(raw ?? '').trim().replace(/^\[|\]$/g, '').toLowerCase()
+    if (order.includes(v)) return v
+    const n = Number(v)
+    return Number.isInteger(n) && n >= 1 && n <= order.length ? order[n - 1] : null
+  }
   const questions: StoryReadQuestion[] = obj.questions
-    .filter((q: any) => known.has(String(q?.id)))
+    .filter((q: any) => idOf(q?.id))
+    .map((q: any) => ({ ...q, id: idOf(q.id) }))
     .map((q: any) => {
       const issues: StoryReadIssue[] = (Array.isArray(q.issues) ? q.issues : [])
         .map((i: any) => ({ episode: Math.round(Number(i?.episode)) || 0, line: String(i?.line || '').trim(), problem: String(i?.problem || '').trim(), fix: String(i?.fix || '').trim() }))
