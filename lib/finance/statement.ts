@@ -172,15 +172,18 @@ export function buildStatement(input: {
   }
 
   const itemMap = new Map<string, ItemCell>()
-  const revenueCash: Record<string, number[]> = { [STRIPE_ITEM]: zero(), [TEST_ITEM]: zero(), 'Custom stories': zero(), [INTEREST_ITEM]: zero(), 'Other': zero() }
+  const revenueCash: Record<string, number[]> = { 'Annual subs': zero(), 'Monthly subs': zero(), [TEST_ITEM]: zero(), 'Custom stories': zero(), [INTEREST_ITEM]: zero(), 'Other': zero() }
   // Stripe pays out for every paying account, Marc's test accounts included. Only the share that
   // belongs to real (non-test) paying subscribers on the payout day counts as revenue.
-  const realShareAt = (iso: string) => {
+  const isAnnualUser = (u: UserRow) => /^(ann|year)/i.test(u.billing_cycle || '')
+  const payoutSplitAt = (iso: string) => {
     // Stripe pays out a few days after the charge, so count anyone paying in the 7 days before the payout.
     const at = Date.parse(iso)
     const paying = input.users.filter(u => activeAt(u, at) || activeAt(u, at - 7 * DAY))
-    const real = paying.filter(u => !u.is_test_account).length
-    return paying.length ? real / paying.length : 0 // nobody paying → not a customer payment
+    const real = paying.filter(u => !u.is_test_account)
+    if (!paying.length) return { annual: 0, monthly: 0 } // nobody paying → not a customer payment
+    const annual = real.filter(isAnnualUser).length
+    return { annual: annual / paying.length, monthly: (real.length - annual) / paying.length }
   }
   for (const { t, c } of cls) {
     if (c.section === 'Excluded') continue
@@ -188,8 +191,13 @@ export function buildStatement(input: {
     if (c.section === 'Ad Spend') item = campaignFor(t.posted_at)?.name || 'Ads outside any campaign'
     if (c.section === 'Revenue') {
       if (item === STRIPE_ITEM) {
-        const share = realShareAt(t.posted_at)
-        windows.forEach((w, i) => { const a = amountIn(t, c, w, 'cash'); revenueCash[STRIPE_ITEM][i] += a * share; revenueCash[TEST_ITEM][i] += a * (1 - share) })
+        // Real subscribers' share goes to Annual / Monthly subs; test accounts' share is a memo line.
+        const sp = payoutSplitAt(t.posted_at)
+        windows.forEach((w, i) => {
+          const a = amountIn(t, c, w, 'cash')
+          revenueCash['Annual subs'][i] += a * sp.annual; revenueCash['Monthly subs'][i] += a * sp.monthly
+          revenueCash[TEST_ITEM][i] += a * (1 - sp.annual - sp.monthly)
+        })
         continue
       }
       const key = revenueCash[item] && item !== TEST_ITEM ? item : 'Other'
@@ -206,7 +214,7 @@ export function buildStatement(input: {
   // Revenue lines (customer money and interest only; test payments and plow back are memo lines)
   const subs = windows.map(w => subscriberStats(input.users, w))
   const revenue: Record<string, number[]> = basis === 'cash'
-    ? { 'Annual subs': zero(), 'Monthly subs': zero(), [STRIPE_ITEM]: revenueCash[STRIPE_ITEM] }
+    ? { 'Annual subs': revenueCash['Annual subs'], 'Monthly subs': revenueCash['Monthly subs'] }
     : { 'Annual subs': subs.map(s => s.accrualAnnual), 'Monthly subs': subs.map(s => s.accrualMonthly) }
   revenue['Custom stories'] = revenueCash['Custom stories']
   revenue[INTEREST_ITEM] = revenueCash[INTEREST_ITEM]
@@ -313,7 +321,7 @@ export function buildStatement(input: {
       basis === 'cash' ? 'Cash basis matches Mercury: money counted the day it moved.' : 'Accrual basis spreads annual plans and yearly purchases over the months they cover; subscription revenue comes from paid subscribers.',
       'Prepaid AI credits (Anthropic, OpenAI, DeepSeek, Google) are counted when bought on both bases until vendor usage feeds are connected.',
       'Owner deposits, card payments and transfers between Mercury accounts are excluded: they are not revenue or expense.',
-      'Stripe payouts count as revenue only for the share paid by real subscribers; payments from test accounts are shown below the statement and not counted.',
+      'Stripe payouts go to Annual or Monthly subs by the real subscribers paying at the time; payments from test accounts are shown below the statement and not counted.',
       'Plow back is 75% of a month\'s profit and only when the month made money. It shows next month as money available for ads, not as revenue.',
     ],
   }
