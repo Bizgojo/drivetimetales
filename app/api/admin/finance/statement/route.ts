@@ -8,6 +8,17 @@ import { buildStatement, windowsFor, type Basis } from '@/lib/finance/statement'
 
 export const dynamic = 'force-dynamic'
 
+async function allWhere(table: string, columns: string, order: string, where: (q: any) => any) {
+  const out: any[] = []
+  for (let page = 0; page < 50; page++) {
+    const { data, error } = await where(db().from(table).select(columns)).order(order, { ascending: true }).order('id', { ascending: true }).range(page * 1000, page * 1000 + 999)
+    if (error) throw new Error(`${table}: ${error.message}`)
+    out.push(...(data || []))
+    if ((data || []).length < 1000) return out
+  }
+  throw new Error(`${table}: more than 50,000 rows`)
+}
+
 async function all(table: string, columns: string, order: string) {
   const out: any[] = []
   for (let page = 0; page < 50; page++) {
@@ -33,13 +44,14 @@ export async function GET(request: Request) {
       all('finance_txn_overrides', '*', 'txn_id'),
       all('finance_campaigns', '*', 'start_date'),
       all('users', 'id,is_test_account,trial_started_at,first_paid_date,cancelled_at,billing_cycle,utm_campaign', 'id'),
-      db().from('stories').select('id,series_id,published_on').eq('status', 'published').not('published_on', 'is', null).eq('is_hidden', false).limit(20000).then(r => { if (r.error) throw new Error('stories: ' + r.error.message); return r.data || [] }),
+      allWhere('stories', 'id,series_id,published_on', 'published_on', q => q.eq('status', 'published').not('published_on', 'is', null).eq('is_hidden', false)),
       db().from('finance_transactions').select('synced_at').order('synced_at', { ascending: false }).limit(1).then(r => r.data?.[0]?.synced_at || null),
       all('finance_pipeline_claude_daily', 'day,usd', 'day'),
     ])
     const statement = buildStatement({ basis, windows, txns, rules, overrides, users, stories, campaigns, now, pipelineClaudeDaily })
     return NextResponse.json({ ...statement, period, lastSynced: sync, generatedAt: now.toISOString() }, { headers: { 'Cache-Control': 'no-store' } })
   } catch (e) {
+    if (e instanceof RangeError) return NextResponse.json({ error: e.message }, { status: 400 })
     return NextResponse.json({ error: e instanceof Error ? e.message : 'Statement unavailable' }, { status: 503 })
   }
 }

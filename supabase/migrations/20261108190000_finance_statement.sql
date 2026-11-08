@@ -68,6 +68,7 @@ create or replace view public.finance_pipeline_claude_daily with (security_invok
 revoke all on public.finance_pipeline_claude_daily from anon, authenticated;
 
 -- Vendor rules (Marc's categories, Nov 8 2026). Lower priority number wins.
+create unique index if not exists finance_vendor_rules_match_uidx on public.finance_vendor_rules (priority, coalesce(match_counterparty,''), coalesce(match_description,''), coalesce(match_card,''));
 insert into public.finance_vendor_rules (priority, match_counterparty, match_description, match_card, section, item, ai_service, purpose, accrual_months) values
  (1,  'Mercury Credit', null, null, 'Excluded', 'Card payments (internal)', null, 'Paying the Mercury credit card from checking. Not an expense.', 1),
  (1,  'Mercury Checking%', null, null, 'Excluded', 'Card payments (internal)', null, 'Paying the Mercury credit card from checking. Not an expense.', 1),
@@ -96,7 +97,8 @@ insert into public.finance_vendor_rules (priority, match_counterparty, match_des
  (41, 'Apple', null, null, 'Operating Exp', 'Apple subscriptions (review)', null, 'Recurring Apple charges. Confirm which are business.', 1),
  (42, 'South Carolina Business Filing%', null, null, 'Operating Exp', 'Business filings & licenses', null, 'State filing fees.', 1),
  (50, 'Airtable', null, null, 'Marketing Services', 'Airtable (campaigns base)', null, 'Marketing campaigns base. Annual plan.', 12),
- (51, 'Kit.com', null, null, 'Marketing Services', 'Email marketing (Kit)', null, 'Email list and newsletters.', 1);
+ (51, 'Kit.com', null, null, 'Marketing Services', 'Email marketing (Kit)', null, 'Email list and newsletters.', 1)
+on conflict do nothing;
 
 insert into public.finance_campaigns (name, platform, start_date, end_date, utm_campaign, notes) values
  ('GVL-TEST-001', 'Meta', '2026-07-10', '2026-08-05', 'gvl-test-001', 'First funnel test. Meta bills after ads run, so early charges can land in the next campaign''s dates.'),

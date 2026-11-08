@@ -38,6 +38,7 @@ export const PRICE_MONTHLY = 9.99
 export const PRICE_ANNUAL = 79.99
 export const LTV_ASSUMED = 92 // $9.20/mo contribution ÷ 10% churn (assumption until churn is measured)
 export const PLOW_BACK = 0.75
+export const STRIPE_ITEM = 'Subscriptions (Stripe payouts)'
 export const CLAUDE_PIPELINE_ITEM = 'Claude API — story pipeline'
 export const CLAUDE_REST_ITEM = 'Orion, agents & dev tools — Claude'
 const DAY = 86400000
@@ -56,7 +57,8 @@ export function classify(t: Txn, rules: Rule[], overrides: Map<string, Override>
     .find(r => like(t.counterparty, r.match_counterparty) && like(t.bank_description, r.match_description) && like(t.card, r.match_card))
   if (o) return { section: o.section, item: o.item, ai_service: rule?.ai_service ?? null, purpose: o.reason ?? rule?.purpose ?? null, accrual_months: o.accrual_months ?? rule?.accrual_months ?? 1, rule_id: rule?.id ?? null, overridden: true }
   if (rule) return { section: rule.section, item: rule.item, ai_service: rule.ai_service, purpose: rule.purpose, accrual_months: Math.max(1, rule.accrual_months || 1), rule_id: rule.id, overridden: false }
-  return { section: t.amount >= 0 ? 'Revenue' : 'Uncategorized', item: t.amount >= 0 ? 'Other' : (t.counterparty || 'Unknown'), ai_service: null, purpose: null, accrual_months: 1, rule_id: null, overridden: false }
+  // No rule: never assume incoming money is revenue (could be owner capital, a refund, interest).
+  return { section: 'Uncategorized', item: (t.counterparty || 'Unknown') + (t.amount >= 0 ? ' (money in)' : ''), ai_service: null, purpose: 'No vendor rule yet', accrual_months: 1, rule_id: null, overridden: false }
 }
 
 // ---------- time helpers ----------
@@ -76,7 +78,8 @@ export function monthlyWindows(first: Date, now: Date): Window[] {
 export function amountIn(t: Txn, c: Classified, w: Window, basis: Basis): number {
   const at = Date.parse(t.posted_at)
   if (basis === 'cash' || c.accrual_months <= 1) return at >= w.start.getTime() && at < w.end.getTime() ? t.amount : 0
-  const s = monthStart(new Date(at)).getTime(), e = addMonths(new Date(s), c.accrual_months).getTime()
+  const d = new Date(at), s = at
+  const e = Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + c.accrual_months, d.getUTCDate(), d.getUTCHours(), d.getUTCMinutes(), d.getUTCSeconds())
   return t.amount * overlap(s, e, w.start.getTime(), w.end.getTime()) / (e - s)
 }
 
@@ -115,7 +118,8 @@ export function windowsFor(period: string, now: Date, from?: string | null, to?:
   if (period === 'custom') {
     const s = from && /^\d{4}-\d{2}-\d{2}$/.test(from) ? new Date(from + 'T00:00:00Z') : new Date(now.getTime() - 30 * DAY)
     const e = to && /^\d{4}-\d{2}-\d{2}$/.test(to) ? new Date(Date.parse(to + 'T00:00:00Z') + DAY) : now
-    if (!(e > s)) throw new Error('The end date must be after the start date')
+    const ok = (v: string | null | undefined, d: Date) => !v || d.toISOString().slice(0, 10) === v
+    if (!ok(from, s) || (to && !ok(to, new Date(e.getTime() - DAY))) || !(e > s)) throw new RangeError('Choose a valid start and end date, with the end on or after the start')
     return [{ label: `${s.toISOString().slice(0, 10)} → ${new Date(e.getTime() - DAY).toISOString().slice(0, 10)}`, start: s, end: e }]
   }
   const days = period === 'd1' ? 1 : period === 'd7' ? 7 : 30
@@ -146,7 +150,7 @@ export function buildStatement(input: {
 }): Statement {
   const { basis, windows } = input
   const ov = new Map(input.overrides.map(o => [o.txn_id, o]))
-  const txns = input.txns.filter(t => t.status !== 'cancelled' && t.status !== 'failed' && t.status !== 'reversed')
+  const txns = input.txns.filter(t => !['cancelled', 'failed', 'reversed', 'blocked'].includes(t.status))
   const cls = txns.map(t => ({ t, c: classify(t, input.rules, ov) }))
   const n = windows.length, zero = () => Array(n).fill(0)
 
@@ -157,7 +161,7 @@ export function buildStatement(input: {
   }
 
   const itemMap = new Map<string, ItemCell>()
-  const revenueCash: Record<string, number[]> = { 'Subscriptions (Stripe payouts)': zero(), 'Custom stories': zero(), 'Other': zero() }
+  const revenueCash: Record<string, number[]> = { [STRIPE_ITEM]: zero(), 'Custom stories': zero(), 'Other': zero() }
   for (const { t, c } of cls) {
     if (c.section === 'Excluded') continue
     let item = c.item
@@ -177,22 +181,29 @@ export function buildStatement(input: {
   // Revenue lines
   const subs = windows.map(w => subscriberStats(input.users, w))
   const revenue: Record<string, number[]> = basis === 'cash'
-    ? { 'Annual subs': zero(), 'Monthly subs': zero(), 'Subscriptions (Stripe payouts)': revenueCash['Subscriptions (Stripe payouts)'] }
-    : { 'Annual subs': subs.map(s => s.accrualAnnual), 'Monthly subs': subs.map(s => s.accrualMonthly), 'Subscriptions (Stripe payouts)': zero() }
+    ? { 'Annual subs': zero(), 'Monthly subs': zero(), [STRIPE_ITEM]: revenueCash[STRIPE_ITEM] }
+    : { 'Annual subs': subs.map(s => s.accrualAnnual), 'Monthly subs': subs.map(s => s.accrualMonthly), [STRIPE_ITEM]: zero() }
   revenue['Custom stories'] = revenueCash['Custom stories']
   revenue['Other'] = revenueCash['Other']
   const customer = windows.map((_, i) => Object.values(revenue).reduce((a, r) => a + r[i], 0))
-  // plow back: previous calendar month's customer revenue × 75%
+  // plow back: for every calendar month the window touches, 75% of the PREVIOUS month's customer
+  // revenue × the share of that month inside the window.
   revenue['Plow back'] = windows.map(w => {
-    const prev: Window = { label: '', start: addMonths(monthStart(w.start), -1), end: monthStart(w.start) }
-    const frac = (w.end.getTime() - w.start.getTime()) / (addMonths(monthStart(w.start), 1).getTime() - monthStart(w.start).getTime())
-    const prevCustomer = customerRevenue(prev)
-    return prevCustomer * PLOW_BACK * Math.min(1, frac)
+    let total = 0
+    for (let m = monthStart(w.start); m < w.end; m = addMonths(m, 1)) {
+      const mEnd = addMonths(m, 1), share = overlap(m.getTime(), mEnd.getTime(), w.start.getTime(), w.end.getTime()) / (mEnd.getTime() - m.getTime())
+      if (share > 0) total += customerRevenue({ label: '', start: addMonths(m, -1), end: m }) * PLOW_BACK * share
+    }
+    return total
   })
   function customerRevenue(w: Window) {
     const s = subscriberStats(input.users, w)
     let r = basis === 'cash' ? 0 : s.accrualAnnual + s.accrualMonthly
-    for (const { t, c } of cls) if (c.section === 'Revenue') r += amountIn(t, c, w, basis)
+    for (const { t, c } of cls) {
+      if (c.section !== 'Revenue') continue
+      if (basis === 'accrual' && c.item === STRIPE_ITEM) continue // accrual uses paid subscribers instead
+      r += amountIn(t, c, w, basis)
+    }
     return r
   }
 
@@ -200,10 +211,20 @@ export function buildStatement(input: {
   // usage, so that part stays in Production; the rest (agent fleet, dev tools) goes to Operating.
   const claude = itemMap.get('Production Exp|' + CLAUDE_PIPELINE_ITEM)
   if (claude && input.pipelineClaudeDaily) {
-    const logged = windows.map(w => input.pipelineClaudeDaily!.reduce((a, d) => { const x = Date.parse(d.day + 'T12:00:00Z'); return a + (x >= w.start.getTime() && x < w.end.getTime() ? Number(d.usd) : 0) }, 0))
+    // Credits are bought in lumps and used later, so compare against usage over the 90 days before
+    // each window ends: pipeline share = pipeline-logged usage ÷ Anthropic charges in that span.
+    const claudeTx = cls.filter(x => x.c.section === 'Production Exp' && x.c.item === CLAUDE_PIPELINE_ITEM)
+    const span = (from: number, to: number) => ({
+      logged: input.pipelineClaudeDaily!.reduce((a, d) => { const x = Date.parse(d.day + 'T12:00:00Z'); return a + (x >= from && x < to ? Number(d.usd) : 0) }, 0),
+      charged: claudeTx.reduce((a, x) => { const t = Date.parse(x.t.posted_at); return a + (t >= from && t < to ? -x.t.amount : 0) }, 0),
+    })
     const restKey = 'Operating Exp|' + CLAUDE_REST_ITEM
-    const rest: ItemCell = itemMap.get(restKey) || { section: 'Operating Exp' as Section, item: CLAUDE_REST_ITEM, ai_service: 'Claude API (keys other than the app server)', purpose: 'Orion and the agent fleet, Claude Code and other tools. Charges above what the pipeline logged.', cards: claude.cards.slice(), values: zero() }
-    claude.values = claude.values.map((v, i) => { const keep = Math.max(0, Math.min(v, logged[i])); rest.values[i] += v - keep; return keep })
+    const rest: ItemCell = itemMap.get(restKey) || { section: 'Operating Exp' as Section, item: CLAUDE_REST_ITEM, ai_service: 'Claude API (keys other than the app server)', purpose: 'Orion and the agent fleet, Claude Code and other tools. Estimated: Anthropic charges minus the pipeline\'s share of logged usage over the trailing 90 days.', cards: claude.cards.slice(), values: zero() }
+    claude.values = claude.values.map((v, i) => {
+      const end = windows[i].end.getTime(), { logged, charged } = span(end - 90 * DAY, end)
+      const share = charged > 0 ? Math.min(1, logged / charged) : 1
+      const keep = v * share; rest.values[i] += v - keep; return keep
+    })
     if (rest.values.some(v => v)) itemMap.set(restKey, rest)
   }
   const items = Array.from(itemMap.values()).sort((a, b) => EXPENSE_SECTIONS.indexOf(a.section) - EXPENSE_SECTIONS.indexOf(b.section) || b.values.reduce((x, y) => x + y, 0) - a.values.reduce((x, y) => x + y, 0))
@@ -222,9 +243,9 @@ export function buildStatement(input: {
     'Meta campaigns': windows.map(w => input.campaigns.filter(c => Date.parse(c.start_date) < w.end.getTime() && (!c.end_date || Date.parse(c.end_date) + DAY > w.start.getTime())).length),
     'Ad spend': adSpend,
     'New trials': subs.map(s => s.trials),
-    'Cost per trial': subs.map((s, i) => s.trials ? adSpend[i] / s.trials : null),
+    'Blended cost per trial': subs.map((s, i) => s.trials ? adSpend[i] / s.trials : null),
     'New subs': subs.map(s => s.newSubs),
-    'CAC': subs.map((s, i) => s.newSubs ? adSpend[i] / s.newSubs : null),
+    'Blended CAC': subs.map((s, i) => s.newSubs ? adSpend[i] / s.newSubs : null),
     'Cancellations': subs.map(s => s.cancels),
     'Net subs': subs.map(s => s.newSubs - s.cancels),
     'LTV (assumed)': windows.map(() => LTV_ASSUMED),

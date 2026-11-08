@@ -36,7 +36,7 @@ describe('FINANCE-STATEMENT-001', () => {
     const txns = [tx('s', '2026-11-06T08:00:00Z', -1500, 'Sound Ideas')]
     const w = [{ label: 'Nov', start: new Date('2026-11-01T00:00:00Z'), end: new Date('2026-12-01T00:00:00Z') }]
     expect(buildStatement({ ...base, basis: 'cash', windows: w, txns }).totals.expenses[0]).toBeCloseTo(1500)
-    expect(buildStatement({ ...base, basis: 'accrual', windows: w, txns }).totals.expenses[0]).toBeCloseTo(1500 * 30 / 365, 0)
+    expect(buildStatement({ ...base, basis: 'accrual', windows: w, txns }).totals.expenses[0]).toBeCloseTo(1500 * (24 + 16 / 24) / 365, 0) // spread from the purchase day, not the 1st
   })
 
   test("plow back: 75% of last month's customer revenue appears as revenue next month", () => {
@@ -44,6 +44,22 @@ describe('FINANCE-STATEMENT-001', () => {
     const st = buildStatement({ ...base, basis: 'cash', windows: monthlyWindows(new Date('2026-09-01T00:00:00Z'), new Date('2026-10-31T23:00:00Z')), txns })
     expect(st.revenue['Plow back'][0]).toBeCloseTo(0)
     expect(st.revenue['Plow back'][1]).toBeCloseTo(75, 0)
+  })
+
+  test('accrual plow back ignores Stripe payouts (subscriber-based revenue only); unmatched money in is not revenue', () => {
+    const txns = [tx('r', '2026-09-10T00:00:00Z', 100, 'Stripe', 'other'), tx('x', '2026-09-12T00:00:00Z', 7000, 'Unknown Bank', 'externalTransfer')]
+    const w = monthlyWindows(new Date('2026-09-01T00:00:00Z'), new Date('2026-10-31T23:00:00Z'))
+    const acc = buildStatement({ ...base, basis: 'accrual', windows: w, txns })
+    expect(acc.revenue['Plow back'][1]).toBeCloseTo(0)
+    const cash = buildStatement({ ...base, basis: 'cash', windows: w, txns })
+    expect(cash.totals.revenue[0]).toBeCloseTo(100)
+    expect(cash.uncategorizedCount).toBe(1)
+  })
+
+  test('blocked and cancelled charges are ignored', () => {
+    const txns = [{ ...tx('b', '2026-10-03T00:00:00Z', -100, 'Anthropic'), status: 'blocked' }, { ...tx('c', '2026-10-03T00:00:00Z', -40, 'Anthropic'), status: 'cancelled' }]
+    const st = buildStatement({ ...base, basis: 'cash', windows: windowsFor('monthly', NOW), txns })
+    expect(st.totals.expenses.reduce((a, b) => a + b, 0)).toBeCloseTo(0)
   })
 
   test('Anthropic charges above the pipeline log move to Operating', () => {

@@ -36,7 +36,7 @@ async function get(path: string, token: string) {
   return r.json()
 }
 
-export async function syncMercury(supabase: SupabaseClient, opts: { token: string; since: string; dryRun?: boolean; log?: (s: string) => void }) {
+export async function syncMercury(supabase: SupabaseClient, opts: { token: string; since: string; dryRun?: boolean; maxDetailFetches?: number; log?: (s: string) => void }) {
   const log = opts.log || (() => {})
   // card last-four → nickname
   const cardNames = new Map<string, string>()
@@ -46,22 +46,28 @@ export async function syncMercury(supabase: SupabaseClient, opts: { token: strin
   } catch (e) { log('cards list unavailable: ' + (e as Error).message) }
 
   const rows: any[] = []
-  let after: string | null = null
+  let after: string | null = null, detailFetches = 0
+  const LIMIT = 1000
   for (let page = 0; page < 200; page++) {
-    const q = new URLSearchParams({ postedStart: opts.since, limit: '500', order: 'asc' })
+    // GET /api/v1/transactions (docs.mercury.com/reference/listtransactions): postedStart, order, limit ≤ 1000, start_after
+    const q = new URLSearchParams({ postedStart: opts.since, limit: String(LIMIT), order: 'asc' })
     if (after) q.set('start_after', after)
     const res = await get('/transactions?' + q.toString(), opts.token)
     const list: any[] = res.transactions || []
     for (const t of list) {
-      if (['cancelled', 'failed', 'blocked'].includes(t.status)) continue
+      // keep every status: a stored pending charge that later cancels must be updated, not left behind
+      if (!t.postedAt && !t.createdAt) { log('skipped a transaction with no date: ' + t.id); continue }
       // list responses may omit card details; fetch one-by-one only when needed
-      if (t.kind === 'creditCardTransaction' && !t?.details?.creditCardInfo) {
+      if (t.kind === 'creditCardTransaction' && !t?.details?.creditCardInfo && detailFetches < (opts.maxDetailFetches ?? 40)) {
+        detailFetches++
         try { const full = await get('/transaction/' + encodeURIComponent(t.id), opts.token); Object.assign(t, full.transaction || full) } catch { /* keep partial row */ }
       }
       rows.push(toRow(t, cardNames))
     }
-    after = res.page?.nextPage || null
-    if (!after || !list.length) break
+    if (!list.length) break
+    // Response paging field is not documented; fall back to the last id (ascending order, start_after is exclusive).
+    after = res.page?.nextPage || (list.length === LIMIT ? String(list[list.length - 1].id) : null)
+    if (!after) break
   }
   log(`fetched ${rows.length} Mercury transactions since ${opts.since}`)
   if (opts.dryRun) return { fetched: rows.length, written: 0 }

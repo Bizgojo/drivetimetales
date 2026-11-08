@@ -11,7 +11,7 @@ interface Data {
   campaigns: Camp[]; uncategorizedCount: number; notes: string[]; lastSynced: string | null; error?: string
 }
 const SECTIONS = ['Operating Exp', 'Production Exp', 'Ad Spend', 'Marketing Services', 'R & D', 'Uncategorized']
-const MONEY_ROWS = new Set(['Production cost per episode', 'Ad spend', 'Cost per trial', 'CAC', 'LTV (assumed)', 'Net LTV-CAC $', 'Run rate (yearly)'])
+const MONEY_ROWS = new Set(['Production cost per episode', 'Ad spend', 'Blended cost per trial', 'Blended CAC', 'LTV (assumed)', 'Net LTV-CAC $', 'Run rate (yearly)'])
 const PCT_ROWS = new Set(['Net LTV-CAC %'])
 
 const money = (v: Num) => v == null || !isFinite(v) ? '—' : (v < 0 ? '−$' : '$') + (Math.abs(v) >= 100 ? Math.round(Math.abs(v)).toLocaleString() : Math.abs(v).toFixed(2))
@@ -29,7 +29,7 @@ export default function StatementPage() {
       const q = new URLSearchParams({ basis, period }); if (period === 'custom') { if (from) q.set('from', from); if (to) q.set('to', to) }
       const r = await fetch('/api/admin/finance/statement?' + q.toString(), { cache: 'no-store' })
       const j = await r.json(); if (!r.ok) throw new Error(j.error || 'Statement unavailable'); setData(j)
-    } catch (e) { setMsg(e instanceof Error ? e.message : 'Statement unavailable') } finally { setLoading(false) }
+    } catch (e) { setData(null); setMsg(e instanceof Error ? e.message : 'Statement unavailable') } finally { setLoading(false) }
   }, [basis, period, from, to])
   useEffect(() => { if (period !== 'custom' || (from && to)) load() }, [load, period, from, to])
 
@@ -92,7 +92,7 @@ export default function StatementPage() {
           {row('Retained %', cols.map(() => 0.25), v => Math.round((v || 0) * 100) + '%')}
           {row('Retained $', data.totals.retained, money)}
         </tbody></table></div>
-      <ul className="fs-notes">{data.notes.map(n => <li key={n}>{n}</li>)}</ul>
+      <ul className="fs-notes">{data.notes.map(n => <li key={n}>{n}</li>)}<li>Plow back is shown as revenue in the following month, so adding the monthly Cash flow row across months counts that 75% twice.</li><li>Blended CAC and cost per trial use all new subscribers and trials in the period; per-campaign figures are under Ad Spend.</li></ul>
     </>}
   </main>
 }
