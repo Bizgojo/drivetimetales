@@ -38,16 +38,19 @@ export async function GET(request: Request) {
     const period = ['d1', 'd7', 'd30', 'custom', 'monthly'].includes(url.searchParams.get('period') || '') ? url.searchParams.get('period')! : 'd30'
     const now = new Date()
     const windows = windowsFor(period, now, url.searchParams.get('from'), url.searchParams.get('to'))
-    const [txns, rules, overrides, campaigns, users, stories, sync, pipelineClaudeDaily] = await Promise.all([
+    const [txns, rules, overrides, campaigns, users, storyRows, series, sync, pipelineClaudeDaily] = await Promise.all([
       all('finance_transactions', 'id,posted_at,amount,status,kind,counterparty,bank_description,card,note', 'posted_at'),
       all('finance_vendor_rules', '*', 'priority'),
       all('finance_txn_overrides', '*', 'txn_id'),
       all('finance_campaigns', '*', 'start_date'),
       all('users', 'id,is_test_account,trial_started_at,first_paid_date,cancelled_at,billing_cycle,utm_campaign', 'id'),
-      allWhere('stories', 'id,series_id,published_on', 'published_on', q => q.eq('status', 'published').not('published_on', 'is', null).eq('is_hidden', false)),
+      allWhere('stories', 'id,series_id,published_on,title', 'published_on', q => q.eq('status', 'published').not('published_on', 'is', null).eq('is_hidden', false)),
+      all('series', 'id,title', 'id'),
       db().from('finance_transactions').select('synced_at').order('synced_at', { ascending: false }).limit(1).then(r => r.data?.[0]?.synced_at || null),
       all('finance_pipeline_claude_daily', 'day,usd', 'day'),
     ])
+    const seriesTitle = new Map(series.map((x: any) => [x.id, x.title]))
+    const stories = storyRows.map((x: any) => ({ ...x, series_title: x.series_id ? seriesTitle.get(x.series_id) ?? null : null }))
     const statement = buildStatement({ basis, windows, txns, rules, overrides, users, stories, campaigns, now, pipelineClaudeDaily })
     return NextResponse.json({ ...statement, period, lastSynced: sync, generatedAt: now.toISOString() }, { headers: { 'Cache-Control': 'no-store' } })
   } catch (e) {
