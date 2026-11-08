@@ -121,18 +121,23 @@ describe('FINANCE-STATEMENT-001', () => {
     expect(st.uncategorizedCount).toBe(1)
   })
 
-  test('drill-down: stories with episode counts and production cost per episode by AI', () => {
+  test('drill-down: stories with episode counts and voice cost; per-episode costs spread yearly purchases', () => {
     const stories = [
       { id: 'e1', series_id: 's1', published_on: '2026-10-02', title: 'Ep 1', series_title: 'Rerouted' },
       { id: 'e2', series_id: 's1', published_on: '2026-10-09', title: 'Ep 2', series_title: 'Rerouted' },
       { id: 'e3', series_id: null, published_on: '2026-10-12', title: 'The Bell', series_title: null },
     ]
-    const txns = [tx('a', '2026-10-03T00:00:00Z', -90, 'Anthropic'), tx('s', '2026-10-04T00:00:00Z', -30, 'Sound Ideas')]
-    const st = buildStatement({ ...base, stories, basis: 'cash', windows: SEP_OCT, txns })
-    expect(st.vpDetail.stories[1]).toEqual([{ title: 'Rerouted', episodes: 2 }, { title: 'The Bell', episodes: 1 }])
+    const txns = [tx('a', '2026-10-03T00:00:00Z', -90, 'Anthropic'), tx('s', '2026-10-01T00:00:00Z', -365, 'Sound Ideas')]
+    const elDaily = [{ day: '2026-10-05', credits: 100000 }]
+    const elPlans = [{ captured_on: '2026-09-01', tier: 'pro', credit_limit: 500000, monthly_price_usd: 99 }]
+    const storyChars = { e1: 10000, e2: 10000, e3: 20000 }
+    const st = buildStatement({ ...base, stories, basis: 'cash', windows: SEP_OCT, txns, elDaily, elPlans, storyChars })
+    expect(st.vpDetail.stories[1]).toEqual([{ title: 'Rerouted', episodes: 2, voiceCost: expect.closeTo(9.9, 2) }, { title: 'The Bell', episodes: 1, voiceCost: expect.closeTo(9.9, 2) }])
     const c = st.vpDetail.costPerEpisode[1]
-    expect(c.map(x => x.item)).toEqual([CLAUDE_PIPELINE_ITEM, 'Sound effects library'])
-    expect(c[0].perEpisode).toBeCloseTo(30)
+    expect(c.find(x => x.item === 'Voices (ElevenLabs)')!.total).toBeCloseTo(19.8)
+    expect(c.find(x => x.item === 'Sound effects library')!.total).toBeCloseTo(31, 0) // 31 of 365 days, not the whole $365
+    expect(st.items.find(i => i.item === 'Sound effects library')!.values[1]).toBeCloseTo(365) // cash statement still shows the payment
+    expect(st.vp['Production cost per episode'][1]).toBeCloseTo((90 + 31 + 19.8) / 3, 0)
     expect(st.vpDetail.stories[0]).toEqual([])
   })
 

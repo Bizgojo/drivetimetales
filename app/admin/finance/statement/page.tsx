@@ -8,7 +8,7 @@ interface Camp { name: string; platform: string; dates: string; days: number; tr
 interface Data {
   basis: string; columns: string[]; vp: Record<string, Num[]>; revenue: Record<string, number[]>; items: Item[]
   sections: Record<string, number[]>; memo: Record<string, number[]>; totals: { revenue: number[]; expenses: number[]; result: number[]; plowBack: number[]; retained: number[] }
-  vpDetail: { stories: { title: string; episodes: number }[][]; costPerEpisode: { item: string; ai_service: string | null; total: number; perEpisode: Num }[][] }
+  vpDetail: { stories: { title: string; episodes: number; voiceCost: Num }[][]; costPerEpisode: { item: string; ai_service: string | null; total: number; perEpisode: Num }[][] }
   campaigns: Camp[]; uncategorizedCount: number; notes: string[]; lastSynced: string | null; error?: string
 }
 const SECTIONS = ['Operating Exp', 'Production Exp', 'Ad Spend', 'Marketing Services', 'R & D', 'Uncategorized']
@@ -76,11 +76,12 @@ export default function StatementPage() {
               out.push(<tr key={k + '-d'} className="detail"><td colSpan={cols.length + 1}>
                 <b>{cols[d.col]}</b>{' — '}
                 {k === 'Stories published'
-                  ? (stories.length ? <ul className="fs-list">{stories.map(s => <li key={s.title}>{s.title} <span className="fs-muted">· {s.episodes} episode{s.episodes === 1 ? '' : 's'}</span></li>)}</ul> : 'No stories published in this period.')
-                  : (costs.length ? <table className="fs-mini"><thead><tr><th>Cost</th><th>AI / service</th><th>Paid</th><th>Per episode</th></tr></thead><tbody>
+                  ? (stories.length ? <ul className="fs-list">{stories.map(s => <li key={s.title}>{s.title} <span className="fs-muted">· {s.episodes} episode{s.episodes === 1 ? '' : 's'}{s.voiceCost != null ? <> · voices {money(s.voiceCost)}</> : null}</span></li>)}</ul> : 'No stories published in this period.')
+                  : (costs.length ? <table className="fs-mini"><thead><tr><th>Cost</th><th>AI / service</th><th>Cost this period</th><th>Per episode</th></tr></thead><tbody>
                       {costs.map(c => <tr key={c.item}><td>{c.item}</td><td>{c.ai_service || '—'}</td><td className="n">{money(c.total)}</td><td className="n">{money(c.perEpisode)}</td></tr>)}
                       <tr className="sub"><td>Total ({eps} episode{eps === 1 ? '' : 's'})</td><td></td><td className="n">{money(costs.reduce((a, c) => a + c.total, 0))}</td><td className="n">{money(eps ? costs.reduce((a, c) => a + c.total, 0) / eps : null)}</td></tr>
                     </tbody></table> : 'No production costs in this period.')}
+                {k === 'Production cost per episode' && <p className="fs-muted" style={{ margin: '6px 0 0' }}>Yearly purchases (Sound Ideas, Soundsnap, Airtable) are spread evenly over their year, so each month carries 1/12. ElevenLabs is credits used × your plan's price per credit.</p>}
               </td></tr>)
             }
             return out
