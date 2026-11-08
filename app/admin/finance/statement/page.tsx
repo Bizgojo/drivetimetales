@@ -1,0 +1,129 @@
+'use client'
+// FINANCE-STATEMENT-001 — Admin → Finance → Statement (approved sample, Nov 8 2026).
+import { useCallback, useEffect, useState } from 'react'
+
+type Num = number | null
+interface Item { section: string; item: string; ai_service: string | null; purpose: string | null; cards: string[]; values: number[] }
+interface Camp { name: string; platform: string; dates: string; days: number; trials: number; subs: number; cost: number; costPerTrial: Num; cac: Num; status: string }
+interface Data {
+  basis: string; columns: string[]; vp: Record<string, Num[]>; revenue: Record<string, number[]>; items: Item[]
+  sections: Record<string, number[]>; totals: { revenue: number[]; expenses: number[]; result: number[]; plowBack: number[]; retained: number[] }
+  campaigns: Camp[]; uncategorizedCount: number; notes: string[]; lastSynced: string | null; error?: string
+}
+const SECTIONS = ['Operating Exp', 'Production Exp', 'Ad Spend', 'Marketing Services', 'R & D', 'Uncategorized']
+const MONEY_ROWS = new Set(['Production cost per episode', 'Ad spend', 'Blended cost per trial', 'Blended CAC', 'LTV (assumed)', 'Net LTV-CAC $', 'Run rate (yearly)'])
+const PCT_ROWS = new Set(['Net LTV-CAC %'])
+
+const money = (v: Num) => v == null || !isFinite(v) ? '—' : (v < 0 ? '−$' : '$') + (Math.abs(v) >= 100 ? Math.round(Math.abs(v)).toLocaleString() : Math.abs(v).toFixed(2))
+const fmt = (row: string, v: Num) => v == null || !isFinite(v as number) ? '—' : PCT_ROWS.has(row) ? Math.round((v as number) * 100) + '%' : MONEY_ROWS.has(row) ? money(v) : Math.round(v as number).toLocaleString()
+
+export default function StatementPage() {
+  const [basis, setBasis] = useState('cash'), [period, setPeriod] = useState('d30')
+  const [from, setFrom] = useState(''), [to, setTo] = useState('')
+  const [data, setData] = useState<Data | null>(null), [loading, setLoading] = useState(false), [msg, setMsg] = useState('')
+  const [open, setOpen] = useState<Record<string, boolean>>({ 'Ad Spend': true }), [openItem, setOpenItem] = useState<Record<string, boolean>>({})
+
+  const load = useCallback(async () => {
+    setLoading(true); setMsg('')
+    try {
+      const q = new URLSearchParams({ basis, period }); if (period === 'custom') { if (from) q.set('from', from); if (to) q.set('to', to) }
+      const r = await fetch('/api/admin/finance/statement?' + q.toString(), { cache: 'no-store' })
+      const j = await r.json(); if (!r.ok) throw new Error(j.error || 'Statement unavailable'); setData(j)
+    } catch (e) { setData(null); setMsg(e instanceof Error ? e.message : 'Statement unavailable') } finally { setLoading(false) }
+  }, [basis, period, from, to])
+  useEffect(() => { if (period !== 'custom' || (from && to)) load() }, [load, period, from, to])
+
+  async function sync() {
+    setLoading(true); setMsg('')
+    try { const r = await fetch('/api/admin/finance/sync', { method: 'POST' }); const j = await r.json(); setMsg(j.message || j.error); if (r.ok) await load() }
+    catch { setMsg('Mercury sync failed') } finally { setLoading(false) }
+  }
+
+  const cols = data?.columns || []
+  const row = (label: string, vals: Num[], f: (v: Num) => string, cls = '', extra: any = {}) =>
+    <tr className={cls} key={label + cls} {...extra}><td>{label}</td>{vals.map((v, i) => <td key={i} className={'n' + ((v ?? 0) < 0 ? ' neg' : '')}>{f(v)}</td>)}</tr>
+
+  return <main className="fs">
+    <style>{CSS}</style>
+    <p className="fs-crumb"><a href="/admin/finance">Finance</a> › Statement</p>
+    <h1>Financial statement</h1>
+    <div className="fs-controls">
+      <label>Basis<select value={basis} onChange={e => setBasis(e.target.value)}><option value="cash">Cash flow</option><option value="accrual">Accrual</option></select></label>
+      <label>Time period<select value={period} onChange={e => setPeriod(e.target.value)}>
+        <option value="d1">Last 24 hours</option><option value="d7">Last 7 days</option><option value="d30">Last 30 days</option>
+        <option value="custom">Custom</option><option value="monthly">Actual monthly</option></select></label>
+      {period === 'custom' && <label>From – To<span className="fs-dates"><input type="date" value={from} onChange={e => setFrom(e.target.value)} /><input type="date" value={to} onChange={e => setTo(e.target.value)} /></span></label>}
+      <button onClick={sync} disabled={loading}>Sync Mercury now</button>
+      <span className="fs-muted">{loading ? 'Loading…' : data?.lastSynced ? 'Mercury synced ' + new Date(data.lastSynced).toLocaleString() : ''}</span>
+    </div>
+    {msg && <p role="status" className="fs-msg">{msg}</p>}
+    {data && data.uncategorizedCount > 0 && <p className="fs-warn">{data.uncategorizedCount} Mercury transactions have no category yet. They appear under “Uncategorized” until a vendor rule covers them.</p>}
+    {data && <>
+      <div className="fs-table"><table>
+        <thead><tr><th>{data.basis === 'cash' ? 'Cash flow' : 'Accrual'}</th>{cols.map(c => <th key={c}>{c}</th>)}</tr></thead>
+        <tbody>
+          <tr className="sec"><td colSpan={cols.length + 1}>Volume &amp; productivity</td></tr>
+          {Object.entries(data.vp).map(([k, v]) => row(k, v, x => fmt(k, x)))}
+          <tr className="sec"><td colSpan={cols.length + 1}>Revenues</td></tr>
+          {Object.entries(data.revenue).map(([k, v]) => row(k, v, money, 'item'))}
+          {row('Total revenue', data.totals.revenue, money, 'total')}
+          <tr className="sec"><td colSpan={cols.length + 1}>Expenses</td></tr>
+          {SECTIONS.filter(s => data.items.some(it => it.section === s)).map(s => {
+            const items = data.items.filter(it => it.section === s), o = !!open[s]
+            return [
+              <tr key={s} className="cat" tabIndex={0} role="button" aria-expanded={o} onClick={() => setOpen({ ...open, [s]: !o })} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setOpen({ ...open, [s]: !o }) } }}>
+                <td colSpan={cols.length + 1}><span className="car">{o ? '▾' : '▸'}</span><b>{s}</b> <span className="fs-muted">{items.length} items</span></td></tr>,
+              ...(o ? items.flatMap(it => {
+                const k = s + '|' + it.item, oi = !!openItem[k], camp = s === 'Ad Spend' ? data.campaigns.find(c => c.name === it.item) : undefined
+                return [
+                  <tr key={k} className="item click" tabIndex={0} role="button" aria-expanded={oi} onClick={() => setOpenItem({ ...openItem, [k]: !oi })} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setOpenItem({ ...openItem, [k]: !oi }) } }}>
+                    <td><span className="car">{oi ? '▾' : '▸'}</span>{it.item}</td>{it.values.map((v, i) => <td key={i} className="n">{money(v)}</td>)}</tr>,
+                  ...(oi ? [<tr key={k + '-d'} className="detail"><td colSpan={cols.length + 1}>{camp
+                    ? <>{camp.dates} ({camp.days} days) · <b>{camp.status}</b> · Total cost <b>{money(camp.cost)}</b> · Trials <b>{camp.trials}</b> · Cost per trial <b>{money(camp.costPerTrial)}</b> · Paid subs <b>{camp.subs}</b> · CAC <b>{camp.cac == null ? '— (no paid subs yet)' : money(camp.cac)}</b></>
+                    : <>{it.ai_service && <>AI / service: <b>{it.ai_service}</b> · </>}{it.purpose || 'No description yet'}{it.cards.length ? <> · Card {it.cards.join(', ')}</> : null}</>}</td></tr>] : [])]
+              }) : []),
+              row('Subtotal ' + s, data.sections[s], money, 'sub'),
+            ]
+          })}
+          {row('Total expenses', data.totals.expenses, money, 'total')}
+          {row(data.basis === 'cash' ? 'Cash flow' : 'Profit before tax', data.totals.result, money, 'grand')}
+          {row('Plow back % ', cols.map(() => 0.75), v => Math.round((v || 0) * 100) + '%')}
+          {row('Plow back $ (to next month)', data.totals.plowBack, money)}
+          {row('Retained %', cols.map(() => 0.25), v => Math.round((v || 0) * 100) + '%')}
+          {row('Retained $', data.totals.retained, money)}
+        </tbody></table></div>
+      <ul className="fs-notes">{data.notes.map(n => <li key={n}>{n}</li>)}<li>Plow back is shown as revenue in the following month, so adding the monthly Cash flow row across months counts that 75% twice.</li><li>Blended CAC and cost per trial use all new subscribers and trials in the period; per-campaign figures are under Ad Spend.</li></ul>
+    </>}
+  </main>
+}
+
+const CSS = `
+.fs{max-width:1180px;margin:0 auto;padding-block:20px 48px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));font-size:17px;display:grid;gap:14px}
+.fs h1{margin:0;font-size:30px}
+.fs-crumb{margin:0;font-size:15px;color:#566373}.fs-crumb a{color:inherit}
+.fs-controls{display:flex;flex-wrap:wrap;gap:14px;align-items:end;border:1px solid #d9dee5;border-radius:10px;padding:14px}
+.fs-controls label{display:grid;gap:4px;font-size:14px;font-weight:600;color:#566373;text-transform:uppercase;letter-spacing:.05em}
+.fs-controls select,.fs-controls input,.fs-controls button{font:inherit;font-size:18px;padding:8px 10px;border:1px solid #d9dee5;border-radius:8px;min-height:44px;text-transform:none;letter-spacing:0}
+.fs-controls button{cursor:pointer;font-weight:600}
+.fs-dates{display:flex;gap:8px;flex-wrap:wrap}
+.fs-muted{font-size:15px;color:#566373}
+.fs-msg{margin:0;font-size:16px}.fs-warn{margin:0;padding:10px 14px;border-radius:8px;background:#fff3cd;color:#6b4e00;font-size:16px}
+.fs-table{overflow-x:auto;border:1px solid #d9dee5;border-radius:10px}
+.fs table{border-collapse:collapse;width:100%;min-width:560px}
+.fs th,.fs td{padding:9px 12px;border-bottom:1px solid #d9dee5;text-align:right;white-space:nowrap}
+.fs th:first-child,.fs td:first-child{text-align:left;white-space:normal;min-width:230px}
+.fs thead th{background:#1f5f7a;color:#fff;font-size:16px}
+.fs td.n{font-variant-numeric:tabular-nums;font-size:16px}.fs td.neg{color:#b3362c}
+.fs tr.sec td{background:#e9edf2;font-weight:700;font-size:15px;letter-spacing:.06em;text-transform:uppercase;color:#566373}
+.fs tr.cat td{text-align:left;padding-top:14px;cursor:pointer}
+.fs tr.click{cursor:pointer}.fs tr.click:hover td,.fs tr.cat:hover td{background:#f0f3f6}
+.fs tr.item td:first-child{padding-left:38px}
+.fs tr.sub td{font-weight:700;border-top:1px solid #566373}.fs tr.sub td:first-child{padding-left:38px}
+.fs tr.total td{font-weight:700;border-top:2px solid currentColor}
+.fs tr.grand td{font-weight:700;font-size:18px;background:#e9edf2}
+.fs tr.detail td{text-align:left;white-space:normal;font-size:15px;color:#566373;padding-left:56px}
+.fs .car{display:inline-block;width:1.1em;color:#1f5f7a;font-weight:700}
+.fs tr:focus-visible,.fs button:focus-visible,.fs select:focus-visible{outline:3px solid #1f5f7a;outline-offset:2px}
+.fs-notes{margin:0;padding-left:1.2em;font-size:15px;color:#566373;display:grid;gap:4px}
+@media (prefers-color-scheme:dark){.fs-crumb,.fs-muted,.fs-notes,.fs tr.detail td,.fs-controls label{color:#9aa7b6}.fs tr.sec td,.fs tr.grand td{background:#1b2531;color:#e6ebf1}.fs tr.click:hover td,.fs tr.cat:hover td{background:#1b2531}.fs th,.fs td,.fs-table,.fs-controls{border-color:#2a3542}}
+`
