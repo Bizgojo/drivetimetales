@@ -143,24 +143,35 @@ describe('FINANCE-STATEMENT-001', () => {
     expect(snap.stages[1].series[0]).toEqual({ title: 'Hook', episodes: 1, live: 1, total: 7 })
   })
 
-  test('drill-down: stories with episode counts and voice cost; per-episode costs spread yearly purchases', () => {
+  test('cost per episode uses episodes FINISHED (published or not); voice cost per story; yearly purchases spread', () => {
     const stories = [
       { id: 'e1', series_id: 's1', published_on: '2026-10-02', title: 'Ep 1', series_title: 'Rerouted' },
-      { id: 'e2', series_id: 's1', published_on: '2026-10-09', title: 'Ep 2', series_title: 'Rerouted' },
       { id: 'e3', series_id: null, published_on: '2026-10-12', title: 'The Bell', series_title: null },
+    ]
+    const pipeline = [
+      { id: 'e1', series_id: 's1', status: 'published', is_hidden: false, series_title: 'Rerouted', series_total: 2, has_audio: true, finished_at: '2026-10-01T00:00:00Z' },
+      { id: 'e2', series_id: 's1', status: 'audio_ready', is_hidden: true, series_title: 'Rerouted', series_total: 2, has_audio: true, finished_at: '2026-10-08T00:00:00Z' },
+      { id: 'e3', series_id: null, status: 'published', is_hidden: false, title: 'The Bell', series_total: null, has_audio: true, finished_at: '2026-10-10T00:00:00Z' },
+      { id: 'e4', series_id: 's9', status: 'brief_complete', is_hidden: true, series_title: 'Idea', series_total: 3, has_audio: false, finished_at: '2026-10-10T00:00:00Z' },
     ]
     const txns = [tx('a', '2026-10-03T00:00:00Z', -90, 'Anthropic'), tx('s', '2026-10-01T00:00:00Z', -365, 'Sound Ideas')]
     const elDaily = [{ day: '2026-10-05', credits: 100000 }]
     const elPlans = [{ captured_on: '2026-09-01', tier: 'pro', credit_limit: 500000, monthly_price_usd: 99 }]
     const storyChars = { e1: 10000, e2: 10000, e3: 20000 }
-    const st = buildStatement({ ...base, stories, basis: 'cash', windows: SEP_OCT, txns, elDaily, elPlans, storyChars })
-    expect(st.vpDetail.stories[1]).toEqual([{ title: 'Rerouted', episodes: 2, voiceCost: expect.closeTo(9.9, 2), complete: true }, { title: 'The Bell', episodes: 1, voiceCost: expect.closeTo(9.9, 2), complete: true }])
+    const st = buildStatement({ ...base, stories, pipeline, basis: 'cash', windows: SEP_OCT, txns, elDaily, elPlans, storyChars })
+    expect(st.vp['Episodes published'][1]).toBe(2)
+    expect(st.vp['Episodes finished (voiced)'][1]).toBe(3) // includes the hidden, finished EP2
+    expect(st.vpDetail.finished[1]).toEqual([
+      { title: 'Rerouted', episodes: 2, live: 1, voiceCost: expect.closeTo(9.9, 2) },
+      { title: 'The Bell', episodes: 1, live: 1, voiceCost: expect.closeTo(9.9, 2) },
+    ])
     const c = st.vpDetail.costPerEpisode[1]
     expect(c.find(x => x.item === 'Voices (ElevenLabs)')!.total).toBeCloseTo(19.8)
     expect(c.find(x => x.item === 'Sound effects library')!.total).toBeCloseTo(31, 0) // 31 of 365 days, not the whole $365
     expect(st.items.find(i => i.item === 'Sound effects library')!.values[1]).toBeCloseTo(365) // cash statement still shows the payment
-    expect(st.vp['Production cost per episode'][1]).toBeCloseTo((90 + 31 + 19.8) / 3, 0)
-    expect(st.vpDetail.stories[0]).toEqual([])
+    expect(st.vp['Production cost per finished episode'][1]).toBeCloseTo((90 + 31 + 19.8) / 3, 0)
+    expect(st.vp['Stories published'][1]).toBe(1) // The Bell; Rerouted is partly published
+    expect(st.vp['Partly published (rule break)'][1]).toBe(1)
   })
 
   test('blocked and cancelled charges are ignored', () => {

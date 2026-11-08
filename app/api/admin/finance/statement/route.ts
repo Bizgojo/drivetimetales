@@ -55,11 +55,15 @@ export async function GET(request: Request) {
       optional(all('finance_el_plan', 'captured_on,tier,credit_limit,monthly_price_usd', 'captured_on')),
       optional(all('finance_story_chars', 'id,chars', 'id')),
       optional(all('finance_stripe_txns', 'id,created_at,type,reporting_category,amount,fee,net,description,interval,customer_email', 'created_at')),
-      all('stories', 'id,series_id,status,is_hidden,title', 'id'),
+      all('stories', 'id,series_id,status,is_hidden,title,audio_url,story_audio_url,segments_generated_at,published_on,workflow_state_changed_at,created_at', 'id'),
     ])
     const seriesTitle = new Map(series.map((x: any) => [x.id, x.title]))
     const seriesTotal = new Map(series.map((x: any) => [x.id, x.total_episodes ?? null]))
-    const pipeline = allStories.map((x: any) => ({ ...x, series_title: x.series_id ? seriesTitle.get(x.series_id) ?? null : null, series_total: x.series_id ? seriesTotal.get(x.series_id) ?? null : null }))
+    // Finished = has audio. Date: when segments were generated; older rows fall back to publish date,
+    // then the last workflow change, then creation.
+    const pipeline = allStories.map(({ audio_url, story_audio_url, segments_generated_at, published_on, workflow_state_changed_at, created_at, ...x }: any) => ({ ...x,
+      has_audio: !!(audio_url || story_audio_url),
+      finished_at: segments_generated_at || (published_on ? published_on + 'T12:00:00Z' : null) || workflow_state_changed_at || created_at, series_title: x.series_id ? seriesTitle.get(x.series_id) ?? null : null, series_total: x.series_id ? seriesTotal.get(x.series_id) ?? null : null }))
     const stories = storyRows.map((x: any) => ({ ...x, series_title: x.series_id ? seriesTitle.get(x.series_id) ?? null : null }))
     const statement = buildStatement({ basis, windows, txns, rules, overrides, users, stories, campaigns, now, pipelineClaudeDaily, stripe: stripe.map((x: any) => ({ ...x, amount: Number(x.amount), fee: Number(x.fee), net: Number(x.net) })),
       elDaily: elDaily.map((x: any) => ({ day: x.day, credits: Number(x.credits) })),
