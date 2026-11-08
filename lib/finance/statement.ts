@@ -41,7 +41,11 @@ export interface StripeTxn {
 }
 export interface StoryRow { id: string; series_id: string | null; published_on: string | null; title?: string | null; series_title?: string | null }
 /** Every story row with its pipeline status (for the published vs in-pipeline split). */
-export interface PipelineRow { id: string; series_id: string | null; status: string | null; is_hidden: boolean | null; title?: string | null; series_title?: string | null; series_total?: number | null }
+export interface PipelineRow {
+  id: string; series_id: string | null; status: string | null; is_hidden: boolean | null; title?: string | null; series_title?: string | null; series_total?: number | null
+  /** When the episode's audio was finished (voiced and mixed), whether or not it is published yet. */
+  finished_at?: string | null; has_audio?: boolean | null
+}
 export interface PipelineStage { stage: string; series: { title: string; episodes: number; live: number; total: number }[]; episodes: number }
 
 // Pipeline stages, in production order. Statuses not listed fall under "Other status".
@@ -78,7 +82,7 @@ export function pipelineSnapshot(rows: PipelineRow[]): { stages: PipelineStage[]
     coldStorage: rows.filter(r => r.status === 'cold_storage').length,
   }
 }
-export interface StoryDetail { title: string; episodes: number; voiceCost: number | null; complete?: boolean }
+export interface StoryDetail { title: string; episodes: number; voiceCost: number | null; complete?: boolean; live?: number }
 /** ElevenLabs credits used per day, and the plan's price per credit over time. */
 export interface ElDay { day: string; credits: number }
 export interface ElPlan { captured_on: string; tier: string | null; credit_limit: number | null; monthly_price_usd: number | null }
@@ -204,7 +208,7 @@ export interface Statement {
   /** Shown below the statement; not part of revenue or the result. */
   memo: Record<string, number[]>
   /** Click-through detail for V&P rows, one list per column. */
-  vpDetail: { stories: StoryDetail[][]; costPerEpisode: CostDetail[][] }
+  vpDetail: { stories: StoryDetail[][]; finished: StoryDetail[][]; costPerEpisode: CostDetail[][] }
   totals: { revenue: number[]; expenses: number[]; result: number[]; plowBack: number[]; retained: number[] }
   campaigns: CampaignDetail[]
   uncategorizedCount: number
@@ -354,6 +358,9 @@ export function buildStatement(input: {
   // whatever basis the statement is on; otherwise a $1,500 yearly library lands on one month.
   const unitItems = basis === 'accrual' || input.noPlowBack ? items
     : buildStatement({ ...input, basis: 'accrual', noPlowBack: true }).items
+  // Cost per episode is measured on episodes FINISHED in the period (voiced and mixed), published
+  // or not: the money is spent when the episode is made, not when it is released.
+  const fin = windows.map(w => (input.pipeline || []).filter(r => r.has_audio && r.status !== 'cold_storage' && inWin(r.finished_at ?? null, w)))
   const unitProd = windows.map((_, i) => unitItems.filter(it => it.section === 'Production Exp').reduce((a, it) => a + it.values[i], 0))
   const adSpend = sections['Ad Spend']
   // A story counts as published only when every episode of its series is live. A series with
@@ -370,7 +377,8 @@ export function buildStatement(input: {
     'Stories published': pub.map(p => seriesKeys(p).filter(seriesComplete).length),
     'Partly published (rule break)': pub.map(p => seriesKeys(p).filter(k => !seriesComplete(k)).length),
     'Episodes published': pub.map(p => p.length),
-    'Production cost per episode': pub.map((p, i) => p.length ? unitProd[i] / p.length : null),
+    'Episodes finished (voiced)': fin.map(f => f.length),
+    'Production cost per finished episode': fin.map((f, i) => f.length ? unitProd[i] / f.length : null),
     'Meta campaigns': windows.map(w => input.campaigns.filter(c => Date.parse(c.start_date) < w.end.getTime() && (!c.end_date || Date.parse(c.end_date) + DAY > w.start.getTime())).length),
     'Ad spend': adSpend,
     'New trials': subs.map(s => s.trials),
@@ -386,23 +394,35 @@ export function buildStatement(input: {
   }
 
   // Click-through detail: which stories (episodes each), and what each production line cost per episode
+  const live = (r: PipelineRow) => r.status === 'published' && !r.is_hidden
   const vpDetail = {
-    stories: pub.map((p, i) => {
-      // Voice cost split across the period's episodes by script length (longer script → more credits).
-      const chars = (st: StoryRow) => input.storyChars?.[st.id] ?? 0
-      const totalChars = p.reduce((a, st) => a + chars(st), 0)
+    stories: pub.map(p => {
       const by = new Map<string, StoryDetail>()
       for (const st of p) {
         const k = st.series_id || st.id
-        const d = by.get(k) || { title: st.series_title || st.title || 'Untitled', episodes: 0, voiceCost: elCost[i] && totalChars ? 0 : null, complete: seriesComplete(k) }
+        const d = by.get(k) || { title: st.series_title || st.title || 'Untitled', episodes: 0, voiceCost: null, complete: seriesComplete(k) }
+        d.episodes++; by.set(k, d)
+      }
+      return Array.from(by.values()).sort((a, b) => b.episodes - a.episodes || a.title.localeCompare(b.title))
+    }),
+    // Episodes finished in the period, by story, with each story's voice cost: the period's
+    // ElevenLabs cost split by script length (longer script → more credits).
+    finished: fin.map((f, i) => {
+      const chars = (r: PipelineRow) => input.storyChars?.[r.id] ?? 0
+      const totalChars = f.reduce((a, r) => a + chars(r), 0)
+      const by = new Map<string, StoryDetail>()
+      for (const r of f) {
+        const k = r.series_id || r.id
+        const d = by.get(k) || { title: r.series_title || r.title || 'Untitled', episodes: 0, voiceCost: elCost[i] && totalChars ? 0 : null, live: 0 }
         d.episodes++
-        if (d.voiceCost != null) d.voiceCost += elCost[i] * chars(st) / totalChars
+        if (live(r)) d.live!++
+        if (d.voiceCost != null) d.voiceCost += elCost[i] * chars(r) / totalChars
         by.set(k, d)
       }
       return Array.from(by.values()).sort((a, b) => b.episodes - a.episodes || a.title.localeCompare(b.title))
     }),
-    costPerEpisode: pub.map((p, i) => unitItems.filter(it => it.section === 'Production Exp' && Math.abs(it.values[i]) > 0.004)
-      .map(it => ({ item: it.item, ai_service: it.ai_service, total: it.values[i], perEpisode: p.length ? it.values[i] / p.length : null }))
+    costPerEpisode: fin.map((f, i) => unitItems.filter(it => it.section === 'Production Exp' && Math.abs(it.values[i]) > 0.004)
+      .map(it => ({ item: it.item, ai_service: it.ai_service, total: it.values[i], perEpisode: f.length ? it.values[i] / f.length : null }))
       .sort((a, b) => b.total - a.total)),
   }
 

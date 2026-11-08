@@ -9,13 +9,13 @@ interface Data {
   basis: string; columns: string[]; vp: Record<string, Num[]>; revenue: Record<string, number[]>; items: Item[]
   sections: Record<string, number[]>; memo: Record<string, number[]>; totals: { revenue: number[]; expenses: number[]; result: number[]; plowBack: number[]; retained: number[] }
   pipeline?: { stages: { stage: string; episodes: number; series: { title: string; episodes: number; live: number; total: number }[] }[]; coldStorage: number }
-  vpDetail: { stories: { title: string; episodes: number; voiceCost: Num; complete?: boolean }[][]; costPerEpisode: { item: string; ai_service: string | null; total: number; perEpisode: Num }[][] }
+  vpDetail: { stories: { title: string; episodes: number; voiceCost: Num; complete?: boolean }[][]; finished: { title: string; episodes: number; voiceCost: Num; live?: number }[][]; costPerEpisode: { item: string; ai_service: string | null; total: number; perEpisode: Num }[][] }
   campaigns: Camp[]; uncategorizedCount: number; notes: string[]; lastSynced: string | null; error?: string
 }
 const SECTIONS = ['Operating Exp', 'Production Exp', 'Ad Spend', 'Marketing Services', 'R & D', 'Uncategorized']
-const MONEY_ROWS = new Set(['Production cost per episode', 'Ad spend', 'Blended cost per trial', 'Blended CAC', 'LTV (assumed)', 'Net LTV-CAC $', 'Run rate (yearly)'])
+const MONEY_ROWS = new Set(['Production cost per finished episode', 'Ad spend', 'Blended cost per trial', 'Blended CAC', 'LTV (assumed)', 'Net LTV-CAC $', 'Run rate (yearly)'])
 const PCT_ROWS = new Set(['Net LTV-CAC %'])
-const DRILL_ROWS = new Set(['Stories published', 'Partly published (rule break)', 'Production cost per episode'])
+const DRILL_ROWS = new Set(['Stories published', 'Partly published (rule break)', 'Episodes finished (voiced)', 'Production cost per finished episode'])
 
 const money = (v: Num) => v == null || !isFinite(v) ? '—' : (v < 0 ? '−$' : '$') + (Math.abs(v) >= 100 ? Math.round(Math.abs(v)).toLocaleString() : Math.abs(v).toFixed(2))
 const fmt = (row: string, v: Num) => v == null || !isFinite(v as number) ? '—' : PCT_ROWS.has(row) ? Math.round((v as number) * 100) + '%' : MONEY_ROWS.has(row) ? money(v) : Math.round(v as number).toLocaleString()
@@ -74,17 +74,18 @@ export default function StatementPage() {
             const out = [<tr key={k}><td>{k}</td>{v.map((x, i) => <td key={i} className="n"><button className="fs-drill" aria-expanded={!!d && d.col === i} onClick={() => setDrill(d && d.col === i ? null : { row: k, col: i })}>{fmt(k, x)} <span className="car">{d && d.col === i ? '▾' : '▸'}</span></button></td>)}</tr>]
             if (d) {
               const partly = k === 'Partly published (rule break)'
-              const stories = (data.vpDetail.stories[d.col] || []).filter(s => partly ? s.complete === false : s.complete !== false), costs = data.vpDetail.costPerEpisode[d.col] || []
-              const eps = data.vp['Episodes published'][d.col] || 0
+              const finishedRow = k === 'Episodes finished (voiced)'
+              const stories = finishedRow ? (data.vpDetail.finished[d.col] || []) : (data.vpDetail.stories[d.col] || []).filter(s => partly ? s.complete === false : s.complete !== false), costs = data.vpDetail.costPerEpisode[d.col] || []
+              const eps = data.vp['Episodes finished (voiced)'][d.col] || 0
               out.push(<tr key={k + '-d'} className="detail"><td colSpan={cols.length + 1}>
                 <b>{cols[d.col]}</b>{' — '}
-                {k !== 'Production cost per episode'
-                  ? (stories.length ? <ul className="fs-list">{stories.map(s => <li key={s.title}>{s.title} <span className="fs-muted">· {s.episodes} episode{s.episodes === 1 ? '' : 's'}{s.voiceCost != null ? <> · voices {money(s.voiceCost)}</> : null}</span></li>)}</ul> : partly ? 'None. Every story published this period has all its episodes live.' : 'No complete stories published in this period.')
+                {k !== 'Production cost per finished episode'
+                  ? (stories.length ? <ul className="fs-list">{stories.map(s => <li key={s.title}>{s.title} <span className="fs-muted">· {s.episodes} episode{s.episodes === 1 ? '' : 's'}{finishedRow ? <> · {s.live || 0} live</> : null}{s.voiceCost != null ? <> · voices {money(s.voiceCost)}</> : null}</span></li>)}</ul> : finishedRow ? 'No episodes finished in this period.' : partly ? 'None. Every story published this period has all its episodes live.' : 'No complete stories published in this period.')
                   : (costs.length ? <table className="fs-mini"><thead><tr><th>Cost</th><th>AI / service</th><th>Cost this period</th><th>Per episode</th></tr></thead><tbody>
                       {costs.map(c => <tr key={c.item}><td>{c.item}</td><td>{c.ai_service || '—'}</td><td className="n">{money(c.total)}</td><td className="n">{money(c.perEpisode)}</td></tr>)}
                       <tr className="sub"><td>Total ({eps} episode{eps === 1 ? '' : 's'})</td><td></td><td className="n">{money(costs.reduce((a, c) => a + c.total, 0))}</td><td className="n">{money(eps ? costs.reduce((a, c) => a + c.total, 0) / eps : null)}</td></tr>
                     </tbody></table> : 'No production costs in this period.')}
-                {k === 'Production cost per episode' && <p className="fs-muted" style={{ margin: '6px 0 0' }}>Yearly purchases (Sound Ideas, Soundsnap, Airtable) are spread evenly over their year, so each month carries 1/12. ElevenLabs is credits used × your plan's price per credit.</p>}
+                {k === 'Production cost per finished episode' && <p className="fs-muted" style={{ margin: '6px 0 0' }}>Yearly purchases (Sound Ideas, Soundsnap, Airtable) are spread evenly over their year, so each month carries 1/12. ElevenLabs is credits used × your plan's price per credit. Divided by episodes finished this period, published or not.</p>}
               </td></tr>)
             }
             return out
