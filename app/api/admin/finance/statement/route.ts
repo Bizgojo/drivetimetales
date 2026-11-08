@@ -1,6 +1,6 @@
 // FINANCE-STATEMENT-001 — GET /api/admin/finance/statement?basis=cash|accrual&period=d1|d7|d30|custom|monthly&from=YYYY-MM-DD&to=YYYY-MM-DD
 // Admin-only, read-only. Loads Mercury transactions (finance_transactions), vendor rules,
-// overrides, campaigns, paid users and published episodes, then runs the pure engine.
+// overrides, campaigns, paid users, published episodes and the Stripe ledger, then runs the pure engine.
 import { NextResponse } from 'next/server'
 import { adminAccess } from '@/lib/admin-center/auth'
 import { db } from '@/lib/admin-center/store'
@@ -38,7 +38,7 @@ export async function GET(request: Request) {
     const period = ['d1', 'd7', 'd30', 'custom', 'monthly'].includes(url.searchParams.get('period') || '') ? url.searchParams.get('period')! : 'd30'
     const now = new Date()
     const windows = windowsFor(period, now, url.searchParams.get('from'), url.searchParams.get('to'))
-    const [txns, rules, overrides, campaigns, users, storyRows, series, sync, pipelineClaudeDaily] = await Promise.all([
+    const [txns, rules, overrides, campaigns, users, storyRows, series, sync, pipelineClaudeDaily, stripe] = await Promise.all([
       all('finance_transactions', 'id,posted_at,amount,status,kind,counterparty,bank_description,card,note', 'posted_at'),
       all('finance_vendor_rules', '*', 'priority'),
       all('finance_txn_overrides', '*', 'txn_id'),
@@ -48,10 +48,11 @@ export async function GET(request: Request) {
       all('series', 'id,title', 'id'),
       db().from('finance_transactions').select('synced_at').order('synced_at', { ascending: false }).limit(1).then(r => r.data?.[0]?.synced_at || null),
       all('finance_pipeline_claude_daily', 'day,usd', 'day'),
+      all('finance_stripe_txns', 'id,created_at,type,reporting_category,amount,fee,net,description,interval,customer_email', 'created_at'),
     ])
     const seriesTitle = new Map(series.map((x: any) => [x.id, x.title]))
     const stories = storyRows.map((x: any) => ({ ...x, series_title: x.series_id ? seriesTitle.get(x.series_id) ?? null : null }))
-    const statement = buildStatement({ basis, windows, txns, rules, overrides, users, stories, campaigns, now, pipelineClaudeDaily })
+    const statement = buildStatement({ basis, windows, txns, rules, overrides, users, stories, campaigns, now, pipelineClaudeDaily, stripe: stripe.map((x: any) => ({ ...x, amount: Number(x.amount), fee: Number(x.fee), net: Number(x.net) })) })
     return NextResponse.json({ ...statement, period, lastSynced: sync, generatedAt: now.toISOString() }, { headers: { 'Cache-Control': 'no-store' } })
   } catch (e) {
     if (e instanceof RangeError) return NextResponse.json({ error: e.message }, { status: 400 })

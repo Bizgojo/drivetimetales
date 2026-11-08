@@ -6,7 +6,10 @@
 //   cash    — money counted on the day it moved in Mercury.
 //   accrual — revenue/cost spread evenly by day over the period it covers
 //             (accrual_months on the vendor rule or a per-transaction override).
-//             Subscription revenue on accrual is computed from paid users.
+//             Subscription revenue comes from the Stripe ledger (finance_stripe_txns):
+//             every charge, refund and fee, test accounts included (they were real money).
+//             On accrual an annual charge is spread over 12 months, a monthly one over 1.
+//             Stripe payouts landing in Mercury are transfers, not revenue.
 // Plow back (Marc, Nov 8 2026, revised): 75% of a month's PROFIT (positive cash
 // flow) is set aside for ads and shows next month as "Available for ads". A loss
 // month plows back $0. It is not revenue and never enters totals.
@@ -30,6 +33,12 @@ export interface UserRow {
   id: string; is_test_account: boolean | null; trial_started_at: string | null; first_paid_date: string | null
   cancelled_at: string | null; billing_cycle: string | null; utm_campaign: string | null
 }
+/** One Stripe balance transaction (finance_stripe_txns). Amounts in dollars. */
+export interface StripeTxn {
+  id: string; created_at: string; type: string; reporting_category: string | null
+  amount: number; fee: number; net: number; description: string | null
+  interval: string | null; customer_email: string | null
+}
 export interface StoryRow { id: string; series_id: string | null; published_on: string | null; title?: string | null; series_title?: string | null }
 export interface StoryDetail { title: string; episodes: number }
 export interface CostDetail { item: string; ai_service: string | null; total: number; perEpisode: number | null }
@@ -40,9 +49,18 @@ export const PRICE_MONTHLY = 9.99
 export const PRICE_ANNUAL = 79.99
 export const LTV_ASSUMED = 92 // $9.20/mo contribution ÷ 10% churn (assumption until churn is measured)
 export const PLOW_BACK = 0.75
-export const STRIPE_ITEM = 'Subscriptions (Stripe payouts)'
-export const INTEREST_ITEM = 'Interest income (card cashback)'
-export const TEST_ITEM = 'Test / internal payments (not counted)'
+export const STRIPE_ITEM = 'Subscriptions (Stripe payouts)' // Mercury rule name for Stripe payouts (treated as transfers)
+export const ANNUAL_ITEM = 'Annual subs'
+export const MONTHLY_ITEM = 'Monthly subs'
+export const ONE_TIME_ITEM = 'Custom stories & one-time purchases'
+export const REFUND_ITEM = 'Refunds & disputes'
+export const INTEREST_ITEM = 'Interest income (Mercury)'
+export const CASHBACK_ITEM = 'Card cashback rewards'
+export const OTHER_ITEM = 'Other (not yet categorized)'
+export const STRIPE_FEE_ITEM = 'Payment processing (Stripe fees)'
+export const PAYOUT_TRANSFER_ITEM = 'Stripe payouts (transfer)'
+export const PAYOUT_MEMO = 'Stripe payouts received in Mercury'
+const LEGACY_CASHBACK = ['Interest income (card cashback)', 'Other']
 export const AVAILABLE_ITEM = 'Available for ads this month (75% of last month\'s profit)'
 export const CLAUDE_PIPELINE_ITEM = 'Claude API — story pipeline'
 export const CLAUDE_REST_ITEM = 'Orion, agents & dev tools — Claude'
@@ -55,7 +73,7 @@ function like(value: string | null | undefined, pattern: string | null): boolean
   const re = new RegExp('^' + pattern.split('%').map(s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('.*') + '$', 'i')
   return re.test(value)
 }
-export interface Classified { section: Section; item: string; ai_service: string | null; purpose: string | null; accrual_months: number; rule_id: number | null; overridden: boolean }
+export interface Classified { section: Section; item: string; ai_service: string | null; purpose: string | null; accrual_months: number; rule_id: number | null; overridden: boolean; spread?: boolean }
 export function classify(t: Txn, rules: Rule[], overrides: Map<string, Override>): Classified {
   const o = overrides.get(t.id)
   const rule = [...rules].filter(r => r.active).sort((a, b) => a.priority - b.priority)
@@ -82,7 +100,7 @@ export function monthlyWindows(first: Date, now: Date): Window[] {
 // Amount of a transaction that falls in a window, on the chosen basis.
 export function amountIn(t: Txn, c: Classified, w: Window, basis: Basis): number {
   const at = Date.parse(t.posted_at)
-  if (basis === 'cash' || c.accrual_months <= 1) return at >= w.start.getTime() && at < w.end.getTime() ? t.amount : 0
+  if (basis === 'cash' || (c.accrual_months <= 1 && !c.spread)) return at >= w.start.getTime() && at < w.end.getTime() ? t.amount : 0
   const d = new Date(at), s = at
   const e = Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + c.accrual_months, d.getUTCDate(), d.getUTCHours(), d.getUTCMinutes(), d.getUTCSeconds())
   return t.amount * overlap(s, e, w.start.getTime(), w.end.getTime()) / (e - s)
@@ -158,11 +176,44 @@ export function buildStatement(input: {
   pipelineClaudeDaily?: { day: string; usd: number }[]
   /** internal: skip the previous-month plow-back lookup (prevents recursion) */
   noPlowBack?: boolean
+  /** Stripe ledger: charges, refunds, fees (finance_stripe_txns). */
+  stripe?: StripeTxn[]
 }): Statement {
   const { basis, windows } = input
   const ov = new Map(input.overrides.map(o => [o.txn_id, o]))
   const txns = input.txns.filter(t => !['cancelled', 'failed', 'reversed', 'blocked'].includes(t.status))
   const cls = txns.map(t => ({ t, c: classify(t, input.rules, ov) }))
+  // Mercury side: Stripe payouts are transfers from the Stripe balance (revenue is counted from
+  // Stripe itself); cashback has its own line; unmatched money in shows as Other so it gets spotted.
+  const PAYOUT_ITEMS = [STRIPE_ITEM, PAYOUT_TRANSFER_ITEM]
+  const payouts = cls.filter(x => PAYOUT_ITEMS.includes(x.c.item) && x.t.amount > 0)
+  for (const x of cls) {
+    if (x.c.section === 'Revenue' && x.c.item === STRIPE_ITEM) x.c = { ...x.c, section: 'Excluded', item: PAYOUT_TRANSFER_ITEM }
+    else if (x.c.section === 'Revenue' && /cashback/i.test(x.t.counterparty) && LEGACY_CASHBACK.includes(x.c.item)) x.c = { ...x.c, item: CASHBACK_ITEM }
+    else if (x.c.section === 'Uncategorized' && x.t.amount > 0) x.c = { ...x.c, section: 'Revenue', item: OTHER_ITEM }
+  }
+  // Stripe side, turned into the same shape so both bases share one path.
+  const stripeCls: { t: Txn; c: Classified }[] = []
+  const mk = (st: StripeTxn, amount: number, section: Section, item: string, months = 1, spread = false) => stripeCls.push({
+    t: { id: 'stripe:' + st.id + ':' + item, posted_at: st.created_at, amount, status: 'sent', kind: 'stripe', counterparty: 'Stripe', bank_description: st.description, card: null, note: st.customer_email },
+    c: { section, item, ai_service: section === 'Revenue' ? null : 'Stripe', purpose: section === 'Revenue' ? null : 'Card processing fees Stripe keeps from each payment.', accrual_months: months, rule_id: null, overridden: false, spread },
+  })
+  for (const st of input.stripe || []) {
+    const cat = st.reporting_category || st.type
+    if (cat === 'payout' || cat === 'transfer' || st.type === 'payout') continue
+    if (cat === 'charge') {
+      const annual = /^(year|ann)/i.test(st.interval || ''), monthly = /^month/i.test(st.interval || '')
+      mk(st, st.amount, 'Revenue', annual ? ANNUAL_ITEM : monthly ? MONTHLY_ITEM : ONE_TIME_ITEM, annual ? 12 : 1, annual || monthly)
+    } else if (['refund', 'dispute', 'dispute_reversal', 'partial_capture_reversal', 'charge_failure', 'refund_failure'].includes(cat)) {
+      mk(st, st.amount, 'Revenue', REFUND_ITEM)
+    } else if (cat === 'fee' || st.type === 'stripe_fee') {
+      mk(st, st.net, 'Operating Exp', STRIPE_FEE_ITEM); continue
+    } else {
+      mk(st, st.amount, 'Revenue', OTHER_ITEM)
+    }
+    if (st.fee) mk(st, -st.fee, 'Operating Exp', STRIPE_FEE_ITEM)
+  }
+  cls.push(...stripeCls)
   const n = windows.length, zero = () => Array(n).fill(0)
 
   // Ad Spend transactions are assigned to the campaign running on that date.
@@ -172,36 +223,15 @@ export function buildStatement(input: {
   }
 
   const itemMap = new Map<string, ItemCell>()
-  const revenueCash: Record<string, number[]> = { 'Annual subs': zero(), 'Monthly subs': zero(), [TEST_ITEM]: zero(), 'Custom stories': zero(), [INTEREST_ITEM]: zero(), 'Other': zero() }
-  // Stripe pays out for every paying account, Marc's test accounts included. Only the share that
-  // belongs to real (non-test) paying subscribers on the payout day counts as revenue.
-  const isAnnualUser = (u: UserRow) => /^(ann|year)/i.test(u.billing_cycle || '')
-  const payoutSplitAt = (iso: string) => {
-    // Stripe pays out a few days after the charge, so count anyone paying in the 7 days before the payout.
-    const at = Date.parse(iso)
-    const paying = input.users.filter(u => activeAt(u, at) || activeAt(u, at - 7 * DAY))
-    const real = paying.filter(u => !u.is_test_account)
-    if (!paying.length) return { annual: 0, monthly: 0 } // nobody paying → not a customer payment
-    const annual = real.filter(isAnnualUser).length
-    return { annual: annual / paying.length, monthly: (real.length - annual) / paying.length }
-  }
+  const REVENUE_LINES = [ANNUAL_ITEM, MONTHLY_ITEM, ONE_TIME_ITEM, REFUND_ITEM, INTEREST_ITEM, CASHBACK_ITEM, OTHER_ITEM]
+  const revenue: Record<string, number[]> = Object.fromEntries(REVENUE_LINES.map(k => [k, zero()]))
   for (const { t, c } of cls) {
     if (c.section === 'Excluded') continue
     let item = c.item
     if (c.section === 'Ad Spend') item = campaignFor(t.posted_at)?.name || 'Ads outside any campaign'
     if (c.section === 'Revenue') {
-      if (item === STRIPE_ITEM) {
-        // Real subscribers' share goes to Annual / Monthly subs; test accounts' share is a memo line.
-        const sp = payoutSplitAt(t.posted_at)
-        windows.forEach((w, i) => {
-          const a = amountIn(t, c, w, 'cash')
-          revenueCash['Annual subs'][i] += a * sp.annual; revenueCash['Monthly subs'][i] += a * sp.monthly
-          revenueCash[TEST_ITEM][i] += a * (1 - sp.annual - sp.monthly)
-        })
-        continue
-      }
-      const key = revenueCash[item] && item !== TEST_ITEM ? item : 'Other'
-      windows.forEach((w, i) => { revenueCash[key][i] += amountIn(t, c, w, basis) })
+      const key = revenue[item] ? item : (/custom stor/i.test(item) ? ONE_TIME_ITEM : OTHER_ITEM)
+      windows.forEach((w, i) => { revenue[key][i] += amountIn(t, c, w, basis) })
       continue
     }
     const k = c.section + '|' + item
@@ -211,14 +241,7 @@ export function buildStatement(input: {
     itemMap.set(k, cell)
   }
 
-  // Revenue lines (customer money and interest only; test payments and plow back are memo lines)
   const subs = windows.map(w => subscriberStats(input.users, w))
-  const revenue: Record<string, number[]> = basis === 'cash'
-    ? { 'Annual subs': revenueCash['Annual subs'], 'Monthly subs': revenueCash['Monthly subs'] }
-    : { 'Annual subs': subs.map(s => s.accrualAnnual), 'Monthly subs': subs.map(s => s.accrualMonthly) }
-  revenue['Custom stories'] = revenueCash['Custom stories']
-  revenue[INTEREST_ITEM] = revenueCash[INTEREST_ITEM]
-  revenue['Other'] = revenueCash['Other']
 
   // Anthropic charges cover every Claude API key on the account. The pipeline logs its own
   // usage, so that part stays in Production; the rest (agent fleet, dev tools) goes to Operating.
@@ -310,18 +333,22 @@ export function buildStatement(input: {
   return {
     basis, columns: windows.map(w => w.label), vp, revenue, items, sections,
     vpDetail,
-    memo: { [AVAILABLE_ITEM]: available, [TEST_ITEM]: revenueCash[TEST_ITEM] },
+    memo: {
+      [AVAILABLE_ITEM]: available,
+      [PAYOUT_MEMO]: windows.map(w => payouts.reduce((a, x) => a + amountIn(x.t, x.c, w, 'cash'), 0)),
+    },
     totals: {
       revenue: totalRevenue, expenses: totalExpenses, result,
       plowBack: result.map(r => Math.max(0, r) * PLOW_BACK), retained: result.map(r => Math.max(0, r) * (1 - PLOW_BACK)),
     },
     campaigns,
-    uncategorizedCount: cls.filter(x => x.c.section === 'Uncategorized').length,
+    uncategorizedCount: cls.filter(x => x.c.section === 'Uncategorized' || x.c.item === OTHER_ITEM).length,
     notes: [
       basis === 'cash' ? 'Cash basis matches Mercury: money counted the day it moved.' : 'Accrual basis spreads annual plans and yearly purchases over the months they cover; subscription revenue comes from paid subscribers.',
       'Prepaid AI credits (Anthropic, OpenAI, DeepSeek, Google) are counted when bought on both bases until vendor usage feeds are connected.',
       'Owner deposits, card payments and transfers between Mercury accounts are excluded: they are not revenue or expense.',
-      'Stripe payouts go to Annual or Monthly subs by the real subscribers paying at the time; payments from test accounts are shown below the statement and not counted.',
+      'Subscription revenue comes straight from Stripe: every charge, refund and fee. Stripe payouts into Mercury are transfers, shown below for reconciliation (payouts ≈ charges − refunds − fees, a few days later).',
+      'Other (not yet categorized) is money that came in with no rule yet. Anything there needs a category.',
       'Plow back is 75% of a month\'s profit and only when the month made money. It shows next month as money available for ads, not as revenue.',
     ],
   }

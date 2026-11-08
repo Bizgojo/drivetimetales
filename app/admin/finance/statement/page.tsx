@@ -56,7 +56,7 @@ export default function StatementPage() {
         <option value="d1">Last 24 hours</option><option value="d7">Last 7 days</option><option value="d30">Last 30 days</option>
         <option value="custom">Custom</option><option value="monthly">Actual monthly</option></select></label>
       {period === 'custom' && <label>From – To<span className="fs-dates"><input type="date" value={from} onChange={e => setFrom(e.target.value)} /><input type="date" value={to} onChange={e => setTo(e.target.value)} /></span></label>}
-      <button onClick={sync} disabled={loading}>Sync Mercury now</button>
+      <button onClick={sync} disabled={loading}>Sync Mercury &amp; Stripe now</button>
       <span className="fs-muted">{loading ? 'Loading…' : data?.lastSynced ? 'Mercury synced ' + new Date(data.lastSynced).toLocaleString() : ''}</span>
     </div>
     {msg && <p role="status" className="fs-msg">{msg}</p>}
@@ -87,7 +87,7 @@ export default function StatementPage() {
           })}
           <tr className="sec"><td colSpan={cols.length + 1}>Revenues</td></tr>
           {Object.entries(data.revenue).map(([k, v]) => row(k, v, money, 'item'))}
-          {row('Total revenue', data.totals.revenue, money, 'total')}
+          {row('Total revenue (net)', data.totals.revenue, money, 'total')}
           <tr className="sec"><td colSpan={cols.length + 1}>Expenses</td></tr>
           {SECTIONS.filter(s => data.items.some(it => it.section === s)).map(s => {
             const items = data.items.filter(it => it.section === s), o = !!open[s]
