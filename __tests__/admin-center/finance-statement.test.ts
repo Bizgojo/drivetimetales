@@ -1,4 +1,4 @@
-import { buildStatement, classify, windowsFor, monthlyWindows, CLAUDE_PIPELINE_ITEM, CLAUDE_REST_ITEM, type Rule, type Txn } from '@/lib/finance/statement'
+import { buildStatement, classify, windowsFor, monthlyWindows, CLAUDE_PIPELINE_ITEM, CLAUDE_REST_ITEM, STRIPE_ITEM, TEST_ITEM, AVAILABLE_ITEM, INTEREST_ITEM, type Rule, type Txn } from '@/lib/finance/statement'
 import { lastFour, toRow } from '@/lib/finance/mercury-sync'
 
 const rule = (id: number, priority: number, cp: string, section: any, item: string, accrual = 1): Rule =>
@@ -10,6 +10,7 @@ const RULES: Rule[] = [
   rule(4, 10, 'Facebook', 'Ad Spend', 'Meta ads'),
   rule(5, 20, 'Anthropic', 'Production Exp', CLAUDE_PIPELINE_ITEM),
   rule(6, 25, 'Sound Ideas%', 'Production Exp', 'Sound effects library', 12),
+  rule(7, 6, 'Mercury IO Cashback', 'Revenue', 'Interest income (card cashback)'),
 ]
 const tx = (id: string, at: string, amount: number, cp: string, kind = 'creditCardTransaction'): Txn =>
   ({ id, posted_at: at, amount, status: 'sent', kind, counterparty: cp, bank_description: null, card: null, note: null })
@@ -39,21 +40,49 @@ describe('FINANCE-STATEMENT-001', () => {
     expect(buildStatement({ ...base, basis: 'accrual', windows: w, txns }).totals.expenses[0]).toBeCloseTo(1500 * (24 + 16 / 24) / 365, 0) // spread from the purchase day, not the 1st
   })
 
-  test("plow back: 75% of last month's customer revenue appears as revenue next month", () => {
-    const txns = [tx('r', '2026-09-10T00:00:00Z', 100, 'Stripe', 'other')]
-    const st = buildStatement({ ...base, basis: 'cash', windows: monthlyWindows(new Date('2026-09-01T00:00:00Z'), new Date('2026-10-31T23:00:00Z')), txns })
-    expect(st.revenue['Plow back'][0]).toBeCloseTo(0)
-    expect(st.revenue['Plow back'][1]).toBeCloseTo(75, 0)
+  const realUser = (id: string, paid: string, test = false) => ({ id, is_test_account: test, trial_started_at: null, first_paid_date: paid, cancelled_at: null, billing_cycle: 'monthly', utm_campaign: null })
+  const SEP_OCT = monthlyWindows(new Date('2026-09-01T00:00:00Z'), new Date('2026-10-31T23:00:00Z'))
+
+  test("plow back: 75% of last month's PROFIT shows next month as available for ads, not revenue", () => {
+    const users = [realUser('r1', '2026-08-01T00:00:00Z')]
+    const txns = [tx('r', '2026-09-10T00:00:00Z', 100, 'Stripe', 'other'), tx('e', '2026-09-11T00:00:00Z', -20, 'Anthropic')]
+    const st = buildStatement({ ...base, users, basis: 'cash', windows: SEP_OCT, txns })
+    expect(st.totals.result[0]).toBeCloseTo(80)
+    expect(st.totals.plowBack[0]).toBeCloseTo(60)
+    expect(st.totals.retained[0]).toBeCloseTo(20)
+    expect(st.memo[AVAILABLE_ITEM][0]).toBeCloseTo(0)
+    expect(st.memo[AVAILABLE_ITEM][1]).toBeCloseTo(60, 0)
+    expect(st.totals.revenue[1]).toBeCloseTo(0) // not revenue
+    expect(st.revenue['Plow back']).toBeUndefined()
   })
 
-  test('accrual plow back ignores Stripe payouts (subscriber-based revenue only); unmatched money in is not revenue', () => {
-    const txns = [tx('r', '2026-09-10T00:00:00Z', 100, 'Stripe', 'other'), tx('x', '2026-09-12T00:00:00Z', 7000, 'Unknown Bank', 'externalTransfer')]
-    const w = monthlyWindows(new Date('2026-09-01T00:00:00Z'), new Date('2026-10-31T23:00:00Z'))
-    const acc = buildStatement({ ...base, basis: 'accrual', windows: w, txns })
-    expect(acc.revenue['Plow back'][1]).toBeCloseTo(0)
-    const cash = buildStatement({ ...base, basis: 'cash', windows: w, txns })
-    expect(cash.totals.revenue[0]).toBeCloseTo(100)
-    expect(cash.uncategorizedCount).toBe(1)
+  test('a loss month plows back nothing', () => {
+    const users = [realUser('r1', '2026-08-01T00:00:00Z')]
+    const txns = [tx('r', '2026-09-10T00:00:00Z', 100, 'Stripe', 'other'), tx('e', '2026-09-11T00:00:00Z', -500, 'Anthropic')]
+    const st = buildStatement({ ...base, users, basis: 'cash', windows: SEP_OCT, txns })
+    expect(st.totals.plowBack[0]).toBe(0)
+    expect(st.totals.retained[0]).toBe(0)
+    expect(st.memo[AVAILABLE_ITEM][1]).toBe(0)
+  })
+
+  test('Stripe payouts from test accounts are a memo line, not revenue', () => {
+    const users = [realUser('r1', '2026-08-01T00:00:00Z'), realUser('t1', '2026-08-01T00:00:00Z', true), realUser('t2', '2026-08-01T00:00:00Z', true), realUser('t3', '2026-08-01T00:00:00Z', true)]
+    const txns = [tx('r', '2026-09-10T00:00:00Z', 40, 'Stripe', 'other'), tx('o', '2026-09-12T00:00:00Z', 30, 'Stripe', 'other')]
+    const st = buildStatement({ ...base, users: users.slice(1), basis: 'cash', windows: SEP_OCT, txns: txns.slice(1) })
+    expect(st.revenue[STRIPE_ITEM][0]).toBeCloseTo(0)
+    expect(st.memo[TEST_ITEM][0]).toBeCloseTo(30)
+    const mixed = buildStatement({ ...base, users, basis: 'cash', windows: SEP_OCT, txns: txns.slice(0, 1) })
+    expect(mixed.revenue[STRIPE_ITEM][0]).toBeCloseTo(10)
+    expect(mixed.memo[TEST_ITEM][0]).toBeCloseTo(30)
+  })
+
+  test('card cashback is interest income; Other stays empty; unmatched money in is not revenue', () => {
+    const txns = [tx('c', '2026-09-10T00:00:00Z', 3.5, 'Mercury IO Cashback', 'other'), tx('x', '2026-09-12T00:00:00Z', 7000, 'Unknown Bank', 'externalTransfer')]
+    const st = buildStatement({ ...base, basis: 'cash', windows: SEP_OCT, txns })
+    expect(st.revenue[INTEREST_ITEM][0]).toBeCloseTo(3.5)
+    expect(st.revenue['Other'][0]).toBeCloseTo(0)
+    expect(st.totals.revenue[0]).toBeCloseTo(3.5)
+    expect(st.uncategorizedCount).toBe(1)
   })
 
   test('blocked and cancelled charges are ignored', () => {

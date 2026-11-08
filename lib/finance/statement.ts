@@ -7,9 +7,9 @@
 //   accrual — revenue/cost spread evenly by day over the period it covers
 //             (accrual_months on the vendor rule or a per-transaction override).
 //             Subscription revenue on accrual is computed from paid users.
-// Plow back (Marc, Nov 8 2026): 75% of a month's customer revenue is set aside
-// for ads and shows up as "Plow back" revenue in the NEXT month. It is computed
-// on customer revenue only, so it never compounds on itself.
+// Plow back (Marc, Nov 8 2026, revised): 75% of a month's PROFIT (positive cash
+// flow) is set aside for ads and shows next month as "Available for ads". A loss
+// month plows back $0. It is not revenue and never enters totals.
 
 export type Basis = 'cash' | 'accrual'
 export type Section =
@@ -39,6 +39,9 @@ export const PRICE_ANNUAL = 79.99
 export const LTV_ASSUMED = 92 // $9.20/mo contribution ÷ 10% churn (assumption until churn is measured)
 export const PLOW_BACK = 0.75
 export const STRIPE_ITEM = 'Subscriptions (Stripe payouts)'
+export const INTEREST_ITEM = 'Interest income (card cashback)'
+export const TEST_ITEM = 'Test / internal payments (not counted)'
+export const AVAILABLE_ITEM = 'Available for ads this month (75% of last month\'s profit)'
 export const CLAUDE_PIPELINE_ITEM = 'Claude API — story pipeline'
 export const CLAUDE_REST_ITEM = 'Orion, agents & dev tools — Claude'
 const DAY = 86400000
@@ -136,6 +139,8 @@ export interface Statement {
   revenue: Record<string, number[]>
   items: ItemCell[]
   sections: Record<string, number[]>
+  /** Shown below the statement; not part of revenue or the result. */
+  memo: Record<string, number[]>
   totals: { revenue: number[]; expenses: number[]; result: number[]; plowBack: number[]; retained: number[] }
   campaigns: CampaignDetail[]
   uncategorizedCount: number
@@ -147,6 +152,8 @@ export function buildStatement(input: {
   users: UserRow[]; stories: StoryRow[]; campaigns: Campaign[]; now?: Date
   /** Daily cost the story pipeline logged itself (anthropic_usage_log). Used to split Anthropic charges. */
   pipelineClaudeDaily?: { day: string; usd: number }[]
+  /** internal: skip the previous-month plow-back lookup (prevents recursion) */
+  noPlowBack?: boolean
 }): Statement {
   const { basis, windows } = input
   const ov = new Map(input.overrides.map(o => [o.txn_id, o]))
@@ -161,13 +168,26 @@ export function buildStatement(input: {
   }
 
   const itemMap = new Map<string, ItemCell>()
-  const revenueCash: Record<string, number[]> = { [STRIPE_ITEM]: zero(), 'Custom stories': zero(), 'Other': zero() }
+  const revenueCash: Record<string, number[]> = { [STRIPE_ITEM]: zero(), [TEST_ITEM]: zero(), 'Custom stories': zero(), [INTEREST_ITEM]: zero(), 'Other': zero() }
+  // Stripe pays out for every paying account, Marc's test accounts included. Only the share that
+  // belongs to real (non-test) paying subscribers on the payout day counts as revenue.
+  const realShareAt = (iso: string) => {
+    const at = Date.parse(iso)
+    const paying = input.users.filter(u => activeAt(u, at))
+    const real = paying.filter(u => !u.is_test_account).length
+    return paying.length ? real / paying.length : 0 // nobody paying → not a customer payment
+  }
   for (const { t, c } of cls) {
     if (c.section === 'Excluded') continue
     let item = c.item
     if (c.section === 'Ad Spend') item = campaignFor(t.posted_at)?.name || 'Ads outside any campaign'
     if (c.section === 'Revenue') {
-      const key = revenueCash[item] ? item : 'Other'
+      if (item === STRIPE_ITEM) {
+        const share = realShareAt(t.posted_at)
+        windows.forEach((w, i) => { const a = amountIn(t, c, w, 'cash'); revenueCash[STRIPE_ITEM][i] += a * share; revenueCash[TEST_ITEM][i] += a * (1 - share) })
+        continue
+      }
+      const key = revenueCash[item] && item !== TEST_ITEM ? item : 'Other'
       windows.forEach((w, i) => { revenueCash[key][i] += amountIn(t, c, w, basis) })
       continue
     }
@@ -178,34 +198,14 @@ export function buildStatement(input: {
     itemMap.set(k, cell)
   }
 
-  // Revenue lines
+  // Revenue lines (customer money and interest only; test payments and plow back are memo lines)
   const subs = windows.map(w => subscriberStats(input.users, w))
   const revenue: Record<string, number[]> = basis === 'cash'
     ? { 'Annual subs': zero(), 'Monthly subs': zero(), [STRIPE_ITEM]: revenueCash[STRIPE_ITEM] }
-    : { 'Annual subs': subs.map(s => s.accrualAnnual), 'Monthly subs': subs.map(s => s.accrualMonthly), [STRIPE_ITEM]: zero() }
+    : { 'Annual subs': subs.map(s => s.accrualAnnual), 'Monthly subs': subs.map(s => s.accrualMonthly) }
   revenue['Custom stories'] = revenueCash['Custom stories']
+  revenue[INTEREST_ITEM] = revenueCash[INTEREST_ITEM]
   revenue['Other'] = revenueCash['Other']
-  const customer = windows.map((_, i) => Object.values(revenue).reduce((a, r) => a + r[i], 0))
-  // plow back: for every calendar month the window touches, 75% of the PREVIOUS month's customer
-  // revenue × the share of that month inside the window.
-  revenue['Plow back'] = windows.map(w => {
-    let total = 0
-    for (let m = monthStart(w.start); m < w.end; m = addMonths(m, 1)) {
-      const mEnd = addMonths(m, 1), share = overlap(m.getTime(), mEnd.getTime(), w.start.getTime(), w.end.getTime()) / (mEnd.getTime() - m.getTime())
-      if (share > 0) total += customerRevenue({ label: '', start: addMonths(m, -1), end: m }) * PLOW_BACK * share
-    }
-    return total
-  })
-  function customerRevenue(w: Window) {
-    const s = subscriberStats(input.users, w)
-    let r = basis === 'cash' ? 0 : s.accrualAnnual + s.accrualMonthly
-    for (const { t, c } of cls) {
-      if (c.section !== 'Revenue') continue
-      if (basis === 'accrual' && c.item === STRIPE_ITEM) continue // accrual uses paid subscribers instead
-      r += amountIn(t, c, w, basis)
-    }
-    return r
-  }
 
   // Anthropic charges cover every Claude API key on the account. The pipeline logs its own
   // usage, so that part stays in Production; the rest (agent fleet, dev tools) goes to Operating.
@@ -232,6 +232,21 @@ export function buildStatement(input: {
   for (const s of EXPENSE_SECTIONS) sections[s] = windows.map((_, i) => items.filter(it => it.section === s).reduce((a, it) => a + it.values[i], 0))
   const totalRevenue = windows.map((_, i) => Object.values(revenue).reduce((a, r) => a + r[i], 0))
   const totalExpenses = windows.map((_, i) => EXPENSE_SECTIONS.reduce((a, s) => a + sections[s][i], 0))
+  const result = totalRevenue.map((r, i) => r - totalExpenses[i])
+
+  // Plow back: 75% of the PREVIOUS calendar month's profit (cash flow on cash basis), and only
+  // when that month made money. A loss month plows back $0. It is money available for ads,
+  // not revenue, so it sits below the statement and is never added to totals.
+  const available = input.noPlowBack ? zero() : windows.map(w => {
+    let total = 0
+    for (let m = monthStart(w.start); m < w.end; m = addMonths(m, 1)) {
+      const mEnd = addMonths(m, 1), share = overlap(m.getTime(), mEnd.getTime(), w.start.getTime(), w.end.getTime()) / (mEnd.getTime() - m.getTime())
+      if (share <= 0) continue
+      const prev = buildStatement({ ...input, windows: [{ label: '', start: addMonths(m, -1), end: m }], noPlowBack: true })
+      total += Math.max(0, prev.totals.result[0]) * PLOW_BACK * share
+    }
+    return total
+  })
 
   // Volume & productivity
   const pub = windows.map(w => input.stories.filter(s => inWin(s.published_on, w)))
@@ -268,9 +283,10 @@ export function buildStatement(input: {
 
   return {
     basis, columns: windows.map(w => w.label), vp, revenue, items, sections,
+    memo: { [AVAILABLE_ITEM]: available, [TEST_ITEM]: revenueCash[TEST_ITEM] },
     totals: {
-      revenue: totalRevenue, expenses: totalExpenses, result: totalRevenue.map((r, i) => r - totalExpenses[i]),
-      plowBack: customer.map(r => r * PLOW_BACK), retained: customer.map(r => r * (1 - PLOW_BACK)),
+      revenue: totalRevenue, expenses: totalExpenses, result,
+      plowBack: result.map(r => Math.max(0, r) * PLOW_BACK), retained: result.map(r => Math.max(0, r) * (1 - PLOW_BACK)),
     },
     campaigns,
     uncategorizedCount: cls.filter(x => x.c.section === 'Uncategorized').length,
@@ -278,6 +294,8 @@ export function buildStatement(input: {
       basis === 'cash' ? 'Cash basis matches Mercury: money counted the day it moved.' : 'Accrual basis spreads annual plans and yearly purchases over the months they cover; subscription revenue comes from paid subscribers.',
       'Prepaid AI credits (Anthropic, OpenAI, DeepSeek, Google) are counted when bought on both bases until vendor usage feeds are connected.',
       'Owner deposits, card payments and transfers between Mercury accounts are excluded: they are not revenue or expense.',
+      'Stripe payouts count as revenue only for the share paid by real subscribers; payments from test accounts are shown below the statement and not counted.',
+      'Plow back is 75% of a month\'s profit and only when the month made money. It shows next month as money available for ads, not as revenue.',
     ],
   }
 }

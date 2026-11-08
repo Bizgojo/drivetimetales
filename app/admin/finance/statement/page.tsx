@@ -7,7 +7,7 @@ interface Item { section: string; item: string; ai_service: string | null; purpo
 interface Camp { name: string; platform: string; dates: string; days: number; trials: number; subs: number; cost: number; costPerTrial: Num; cac: Num; status: string }
 interface Data {
   basis: string; columns: string[]; vp: Record<string, Num[]>; revenue: Record<string, number[]>; items: Item[]
-  sections: Record<string, number[]>; totals: { revenue: number[]; expenses: number[]; result: number[]; plowBack: number[]; retained: number[] }
+  sections: Record<string, number[]>; memo: Record<string, number[]>; totals: { revenue: number[]; expenses: number[]; result: number[]; plowBack: number[]; retained: number[] }
   campaigns: Camp[]; uncategorizedCount: number; notes: string[]; lastSynced: string | null; error?: string
 }
 const SECTIONS = ['Operating Exp', 'Production Exp', 'Ad Spend', 'Marketing Services', 'R & D', 'Uncategorized']
@@ -88,11 +88,13 @@ export default function StatementPage() {
           {row('Total expenses', data.totals.expenses, money, 'total')}
           {row(data.basis === 'cash' ? 'Cash flow' : 'Profit before tax', data.totals.result, money, 'grand')}
           {row('Plow back % ', cols.map(() => 0.75), v => Math.round((v || 0) * 100) + '%')}
-          {row('Plow back $ (to next month)', data.totals.plowBack, money)}
+          {row('Plow back $ (to next month, profit months only)', data.totals.plowBack, money)}
           {row('Retained %', cols.map(() => 0.25), v => Math.round((v || 0) * 100) + '%')}
           {row('Retained $', data.totals.retained, money)}
+          <tr className="sec"><td colSpan={cols.length + 1}>Memo (not counted in revenue or cash flow)</td></tr>
+          {Object.entries(data.memo || {}).map(([k, v]) => row(k, v, money, 'item'))}
         </tbody></table></div>
-      <ul className="fs-notes">{data.notes.map(n => <li key={n}>{n}</li>)}<li>Plow back is shown as revenue in the following month, so adding the monthly Cash flow row across months counts that 75% twice.</li><li>Blended CAC and cost per trial use all new subscribers and trials in the period; per-campaign figures are under Ad Spend.</li></ul>
+      <ul className="fs-notes">{data.notes.map(n => <li key={n}>{n}</li>)}<li>Blended CAC and cost per trial use all new subscribers and trials in the period; per-campaign figures are under Ad Spend.</li></ul>
     </>}
   </main>
 }
