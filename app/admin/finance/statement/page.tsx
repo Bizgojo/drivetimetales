@@ -192,12 +192,12 @@ const CSS = `
 .fs tr.total td{font-weight:700;border-top:2px solid currentColor}
 .fs tr.grand td{font-weight:700;font-size:18px;background:#e9edf2}
 .fs tr.detail td{text-align:left;white-space:normal;font-size:17px;color:#1f2933;padding-left:56px}
-.fs .car{display:inline-block;width:1.1em;color:#0b3a8f;font-weight:800}
-.fs-drill{font:inherit;font-weight:700;color:#0b3a8f;background:none;border:0;padding:2px 0;cursor:pointer;text-decoration:underline;text-decoration-thickness:2px;text-underline-offset:4px}
+.fs .car{display:inline-block;width:1.1em;color:#002266;font-weight:800}
+.fs-drill{font:inherit;font-weight:700;color:#002266;background:none;border:0;padding:2px 0;cursor:pointer;text-decoration:underline;text-decoration-thickness:2px;text-underline-offset:4px}
 .fs-pipe{display:grid;gap:8px}.fs-pipe h2{margin:8px 0 0;font-size:21px}.fs-pipe table{width:100%;border-collapse:collapse}.fs-pipe th,.fs-pipe td{padding:8px 10px;border-bottom:1px solid #d9dee5;text-align:left}.fs-pipe .n{text-align:right}
 .fs-list{margin:6px 0 0;padding-left:20px;display:grid;gap:3px}
 .fs-mini{margin-top:8px;border-collapse:collapse;font-size:17px}.fs-mini th,.fs-mini td{padding:4px 12px 4px 0;text-align:left}.fs-mini td.n{text-align:right}
-.fs tr:focus-visible,.fs button:focus-visible,.fs select:focus-visible{outline:3px solid #0b3a8f;outline-offset:2px}
+.fs tr:focus-visible,.fs button:focus-visible,.fs select:focus-visible{outline:3px solid #002266;outline-offset:2px}
 .fs-notes{margin:0;padding-left:1.2em;font-size:16px;color:#2f3a46;display:grid;gap:4px}
-@media (prefers-color-scheme:dark){.fs-drill,.fs .car{color:#a9dcff}.fs thead th{background:#123f6b}.fs-crumb,.fs-muted,.fs-notes,.fs tr.detail td,.fs-controls label{color:#d3dbe4}.fs tr.sec td,.fs tr.grand td{background:#1b2531;color:#e6ebf1}.fs tr.click:hover td,.fs tr.cat:hover td{background:#1b2531}.fs th,.fs td,.fs-table,.fs-controls{border-color:#2a3542}}
+@media (prefers-color-scheme:dark){.fs thead th{background:#123f6b}.fs-crumb,.fs-muted,.fs-notes,.fs tr.detail td,.fs-controls label{color:#d3dbe4}.fs tr.sec td,.fs tr.grand td{background:#1b2531;color:#e6ebf1}.fs tr.click:hover td,.fs tr.cat:hover td{background:#1b2531}.fs th,.fs td,.fs-table,.fs-controls{border-color:#2a3542}}
 `
