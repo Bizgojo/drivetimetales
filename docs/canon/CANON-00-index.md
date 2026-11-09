@@ -43,13 +43,16 @@ Covers: the list of canon documents, which one wins when they disagree, and how 
 8. The files the story writer loads into its prompts (Bible/CANON_REGISTRY_STORY_RULES.md, Bible/ET_Story_Rules_v3_2_CANONICAL.md, docs/STAGE2_SCRIPT_PROMPT.md, docs/BELLE_B_PROMPT_RULES.md) must say the same thing as CANON-03 and CANON-04. When they differ, the canon document wins and the prompt file is updated.
 9. Any document not on this list is history or reference, not law.
 
-## How a rule is added or changed
+## How a new rule is made (the only way)
 
-10. Only Marc adds, changes or removes a rule.
-11. To change one, Marc tells Claude the document number and rule number (for example, "CANON-11 rule 7: make the gap 2 seconds"). Claude edits the document, Marc approves, and Claude lists any code that must change to match.
-12. Agents never edit canon. They may propose a change to Marc.
-13. When a new situation comes up that no rule answers, it goes on CANON-99 as an open question until Marc decides. Then the answer is added to the right document.
-14. Every canon document can be read in Admin → Documentation → **Canon (rules)**. The files live in the code repository at docs/canon/.
+10. **Anyone may spot the need:** Marc, Claude, or an agent. An agent that meets a situation no canon rule answers, or two rules that disagree, **stops that step and reports "RULE NEEDED:"** with the situation in one or two sentences. It never guesses or invents a rule.
+11. **Claude drafts it.** Claude picks the one canon document that owns the step, writes the rule in plain words, checks it against every canon document for conflicts and gaps, and adds a recommendation (and the options, when there is a real choice).
+12. **It goes on CANON-99 as the next numbered item, marked Proposed,** naming its document, the rule text, why it is needed, any conflict it settles, and the code it would change.
+13. **Marc decides.** Marc replies "approve N", "change N: …", or "reject N". Several at once are fine ("approve 125–130"). Nothing is law until Marc says so.
+14. **Claude writes it in.** An approved rule goes into its document marked **Agreed (Marc, date)**, with a **[MARC DECIDES]** or **[MARC DOES]** tag where it needs Marc, and its CANON-99 item is marked APPROVED. Admin is rebuilt in the same pull request. Claude lists any code that must change to match; those changes are separate pull requests that Marc merges.
+15. **Changing or removing a rule** follows the same path: Claude proposes the change on CANON-99, Marc decides.
+16. **Only Marc adds, changes or removes a rule. Agents never edit canon.**
+17. **Every canon document can be read in Admin → Documentation → Canon (rules).** The files live in the code repository at docs/canon/. CANON-99 always shows what is waiting for Marc.
 
 ## Earlier canon this set brings together
 
