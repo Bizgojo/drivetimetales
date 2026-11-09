@@ -45,7 +45,7 @@ async function main() {
   if (se || !series) throw new Error(se?.message || 'series not found')
 
   const { data: rows, error: re } = await db.from('stories')
-    .select('id,title,description,script,status,is_hidden,brief_json,episode_number,series_episode_number,author,author_style,genre,narrative_voice,narrator_voice_name,duration_label,duration_mins')
+    .select('id,title,description,script,status,is_hidden,brief_json,episode_number,series_episode_number,author,author_style,genre,narrative_voice,narrator_voice_name,narrator_voice_id,author_id,duration_label,duration_mins')
     .eq('series_id', seriesId)
   if (re) throw new Error(re.message)
   const existing: ExistingEpisode[] = (rows || []).map((r: any) => ({
@@ -55,11 +55,12 @@ async function main() {
   const have = checkContinuable(existing, total)
   const ep1: any = (rows || []).find((r: any) => Number(r.series_episode_number || r.episode_number) === 1)
   const defaults: EpisodeDefaults = {
-    author: ep1.author || series.author, author_style: ep1.author_style || null, genre: ep1.genre,
-    narrative_voice: ep1.narrative_voice || null, narrator_voice_name: ep1.narrator_voice_name || null,
+    author: ep1.author || series.author, author_id: ep1.author_id || null, author_style: ep1.author_style || null, genre: ep1.genre,
+    narrative_voice: ep1.narrative_voice || null, narrator_voice_name: ep1.narrator_voice_name || null, narrator_voice_id: ep1.narrator_voice_id || null,
     duration_label: ep1.duration_label || null, duration_mins: ep1.duration_mins || null,
   }
   if (!defaults.author || !defaults.genre) throw new Error('episode 1 has no author or genre')
+  if (!defaults.author_id) throw new Error('episode 1 has no author_id; the voice step needs it (SERIES-CONTINUE-AUTHOR-001)')
 
   const planIn = arg('--plan-in')
   if (!dryRun && !planIn) throw new Error('saving needs --plan-in <file> from the dry run Marc approved (SERIES-CONTINUE-002)')
