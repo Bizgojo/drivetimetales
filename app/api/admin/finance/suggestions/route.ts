@@ -37,3 +37,26 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: e instanceof Error ? e.message : 'Suggestions failed' }, { status: 502 })
   }
 }
+
+// PATCH: Marc reorders or deletes suggestions. Body: { month: 'YYYY-MM-01', items: [{title, detail, impact}] }.
+// Only items already in that month's list are accepted (no new text can be injected this way).
+export async function PATCH(request: Request) {
+  const denied = await adminAccess(request); if (denied) return denied
+  try {
+    const body = await request.json()
+    const month = String(body?.month || '')
+    if (!/^\d{4}-\d{2}-01$/.test(month) || !Array.isArray(body?.items)) return NextResponse.json({ error: 'Send month and items.' }, { status: 400 })
+    const { data, error } = await db().from('finance_suggestions').select('items').eq('month', month).limit(1)
+    if (error || !data?.[0]) return NextResponse.json({ error: 'No suggestions saved for that month.' }, { status: 404 })
+    const saved: any[] = Array.isArray(data[0].items) ? data[0].items : []
+    const key = (x: any) => `${x?.title}\u0000${x?.detail}`
+    const known = new Map(saved.map(x => [key(x), x]))
+    const items = body.items.map((x: any) => known.get(key(x))).filter(Boolean)
+    if (items.length !== body.items.length || new Set(items.map(key)).size !== items.length) return NextResponse.json({ error: 'The list changed; reload the page and try again.' }, { status: 409 })
+    const upd = await db().from('finance_suggestions').update({ items }).eq('month', month)
+    if (upd.error) throw new Error(upd.error.message)
+    return NextResponse.json({ suggestions: { ...body, items } })
+  } catch (e) {
+    return NextResponse.json({ error: e instanceof Error ? e.message : 'Could not save' }, { status: 502 })
+  }
+}
