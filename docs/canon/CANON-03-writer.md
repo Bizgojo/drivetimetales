@@ -10,7 +10,7 @@ Every rule in this document that needs Marc. **[MARC DECIDES]** = Marc approves,
 - **Rule 58 [MARC DECIDES]:** NARRATIVE_VOICE is declared (first_person, third_limited, third_omniscient) and held on every narrator line. second_person needs Marc's approval.
 - **Rule 59 [MARC DECIDES]:** NARRATOR_IS_CHARACTER: true needs Marc's approval and a non-platform voice.
 - **Rule 90 [MARC DECIDES]:** Gemini reads the scripts before voicing (continuity, easy listening, logic, promise, credibility) and lists exact fixes. Report-only until Marc…
-- **Still open:** 4 conflicts or questions below, each with a recommendation in CANON-99 Part 2.
+- **Still open:** nothing. Every conflict and question below is RESOLVED (CANON-99 Parts 1 and 2, Nov 9, 2026).
 
 ## Rules
 
@@ -25,7 +25,7 @@ Every rule in this document that needs Marc. **[MARC DECIDES]** = Marc approves,
 
 ### B. Before drafting
 8. The writer first makes a Story Resolution Map with six parts: main hook/problem, why the solution seems hard, middle movement, final solution (stated specifically), why the ending is earned, and how this story differs from recent ones. It goes in a comment block (<!-- … -->) that is removed before audio. — **Agreed** (STAGE2_SCRIPT_PROMPT v2.3, approved June 10)
-9. The map fails if: the hook is generic, the difficulty is not stated, the middle does not shape the ending, the solution could happen in minute two, or "earned" is explained with vague words like "because of the journey." — **Proposed** (docs/STORY_RESOLUTION_MAP_RULES.md, Marc-owned doctrine with no approval record)
+9. The map fails if: the hook is generic, the difficulty is not stated, the middle does not shape the ending, the solution could happen in minute two, or "earned" is explained with vague words like "because of the journey." — **Agreed** (Marc, Nov 9, 2026, CANON-99 decision 69; was: docs/STORY_RESOLUTION_MAP_RULES.md, Marc-owned doctrine with no approval record)
 10. Production notes live only in the map comment block or the header. Nothing else above or inside the story body. — **Proposed** (the cover maker read the map block and drew maps on ~30 covers, Nov 4)
 11. Write the cliffhanger first; write or revise the opening after the rest of the episode. — **Agreed** (STAGE2 r38, r42)
 12. Variety: do not lean on worn shapes — "the trusted authority was the villain", "the narrator was dead all along", "the monster was grief", last-minute villain confession, final newspaper/radio/voicemail reveal. — **Agreed** (STAGE2 map "Variety guardrail") with the list **Proposed** (docs/CLAUDE_STORY_ARCHITECTURE_BIBLE.md)
@@ -51,7 +51,7 @@ Every rule in this document that needs Marc. **[MARC DECIDES]** = Marc approves,
 28. Action stories (style "action"): move faster, describe less, keep it easy to follow by ear. — **Agreed** (Marc Oct 29, memory story-pipeline.md; SERIES-STYLE-ACTION-001, lib/seriesStyle.ts)
 29. Believable: every event and conclusion follows from what the story has set up, judged by the story's own rules. No character knows something the story never told them. — **Agreed** (Story Production Spec §3.4 and §6.3; Bible Part XI)
 30. A character never contradicts their own instruction or plan within a scene. — **Agreed** (Story Production Spec §3.4, Rerouted EP2)
-31. Stakes may grow, but the type of threat stays inside what the premise set up (no small-town fraud turning into a global conspiracy without setup). — **Proposed** (CLAUDE_STORY_ARCHITECTURE_BIBLE "Escalation Ceiling", no approval record)
+31. Stakes may grow, but the type of threat stays inside what the premise set up (no small-town fraud turning into a global conspiracy without setup). — **Agreed** (Marc, Nov 9, 2026, CANON-99 decision 69; was: CLAUDE_STORY_ARCHITECTURE_BIBLE "Escalation Ceiling", no approval record)
 32. Protagonists are good at something; the problem exceeds their skill. — **Agreed** (Bible Part VIII)
 33. Story first. Never stop to teach a lesson; no character speaks for the author. The last narrator line is a concrete image or action, never "She had learned that…", "He understood now that…", "The truth was that…". — **Agreed** (Bible Entertainment First Rule; STAGE2 r39)
 
@@ -141,6 +141,10 @@ Marc answered CANON-99 on Nov 9, 2026. These decisions are **Agreed** and overri
 - **Decision 12:** **Retire old manual documents** as history: STORY_PRODUCTION_PROCESS v1.2, SCRIPT_VALIDATOR.md, STORY_GRADING_RUBRIC.md, STORY_BRIEF_TEMPLATE v2.2, NEDS scoring, character-attachment scoring, MASTER_RULES.md, DEPLOY.md, DEPLOYMENT-RUNBOOK.md, HAL_SESSION_START_PROTOCOL.md, MIX_SPEC.md and MIX_NOTE_PROTOCOL.md level tables, et_mix_assembly.py, ACQUISITION-RETENTION-001 Parts A, D, E. Decided: yes, all. (01 C1, 02 C4, Q5, Q6, 03 Q7, 07 C4, C6, 13 C9, 15 C3–C5) — **Agreed** (Marc, Nov 9, 2026, CANON-99)
 - **Decision 14:** **Script order.** Decided: header, character guide, then Belle's intro (the Nov 7 spec; what the code reads). (03 C1) — **Agreed** (Marc, Nov 9, 2026, CANON-99)
 - **Decision 15:** **Description load.** Decided: 2 sensory details per scene for standard stories; one short detail for action and Pocket FM stories. (03 C7) — **Agreed** (Marc, Nov 9, 2026, CANON-99)
+- **Decision 66:** Story clarity: the goal is clear within about 480 spoken words (3 minutes at 160 words per minute). (03 C9) — **Agreed** (Marc, Nov 9, 2026, CANON-99 Part 2)
+- **Decision 67:** Drop the NEDS score header. (03 C11) — **Agreed** (Marc, Nov 9, 2026, CANON-99 Part 2)
+- **Decision 68:** The old sound rules in the writer documents (3–6 anchor sounds, no beds, sounds 6 dB under voices) are removed; the sound and mix canons own sound. (03 C12, 06 C1, 06 C7) — **Agreed** (Marc, Nov 9, 2026, CANON-99 Part 2)
+- **Decision 69:** The Escalation Ceiling and the story-map acceptance checks become law. (03 Q6) — **Agreed** (Marc, Nov 9, 2026, CANON-99 Part 2)
 
 ## Conflicts found
 - C1. **[RESOLVED by decision 14, Marc Nov 9, 2026]** Script order: STAGE2 v2.4 puts the Belle intro block BEFORE the header; the Story Production Spec (Nov 7) and the run-next writer template put header, guide, then Belle. Recommendation: the Spec order (newer, and what the code parses).
@@ -151,10 +155,10 @@ Marc answered CANON-99 on Nov 9, 2026. These decisions are **Agreed** and overri
 - C6. **[RESOLVED by decision 6, Marc Nov 9, 2026]** Cast size: STORY-CLARITY (Nov 8) says 4 or 6 named speakers; lib/seriesStyle.ts allows 5 (action) or 7 main characters. Recommendation: Nov 8 numbers; update the code.
 - C7. **[RESOLVED by decision 15, Marc Nov 9, 2026]** Description load: Sensory Anchor Rule (June, 2 details per scene) vs Marc Oct 29 "action stories less environment description" and Pocket FM "little description". Recommendation: keep 2 details for standard mode, one short detail for action and Pocket FM modes.
 - C8. **[RESOLVED by decision 9, Marc Nov 9, 2026]** Open endings: PUBLISHED_STORY_SPEC v1.5 "No ambiguous endings" and Bible "finale … not ambiguity" (June) vs ENDING-OPEN-001 (Nov 1) allowing ~1 in 5. Recommendation: Nov 1 wins for standalones; a closed series' finale still answers its central question.
-- C9. Early investment word count: STAGE2 r42 says ~400 words by minute 3 (130 wpm); STORY-CLARITY says ~480 (160 wpm). Recommendation: 480.
+- C9. **[RESOLVED by decision 66, Marc Nov 9, 2026]** Early investment word count: STAGE2 r42 says ~400 words by minute 3 (130 wpm); STORY-CLARITY says ~480 (160 wpm). Recommendation: 480.
 - C10. **[RESOLVED by decision 10, Marc Nov 9, 2026]** HAL-SCRIPT-006 tells the writer to put "Yes." on its own line before the same character's next line, which breaks the Dialogue Separation Rule (rule 65). HAL-SCRIPT-007 (5-word minimum) also fights natural short dialogue and Pocket FM's fast style. Both exist only to suit the transcript checker. Recommendation: drop 006 and 007 from the prompt and fix the transcript check instead.
-- C11. NEDS_SCORE header: required by Bible and STAGE2 r37; the series writer template in run-next does not ask for it and no code reads it. Recommendation: drop it (see CANON-02 Q5).
-- C12. STAGE2, SCRIPT_VALIDATOR and the brief template still require 3–6 "anchor" sound effects; Marc removed the cap Oct 31 and sound is off. Recommendation: sound doc owns this; delete from writer docs.
+- C11. **[RESOLVED by decision 67, Marc Nov 9, 2026]** NEDS_SCORE header: required by Bible and STAGE2 r37; the series writer template in run-next does not ask for it and no code reads it. Recommendation: drop it (see CANON-02 Q5).
+- C12. **[RESOLVED by decision 68, Marc Nov 9, 2026]** STAGE2, SCRIPT_VALIDATOR and the brief template still require 3–6 "anchor" sound effects; Marc removed the cap Oct 31 and sound is off. Recommendation: sound doc owns this; delete from writer docs.
 
 ## Open questions for Marc
 - Q1. **[RESOLVED by decision 10, Marc Nov 9, 2026]** Rule 76 (no sentence split across lines with a trailing dash): make it a writer rule and a check? Suggested answer: yes; the voice-step fix stays as a safety net.
@@ -162,7 +166,7 @@ Marc answered CANON-99 on Nov 9, 2026. These decisions are **Agreed** and overri
 - Q3. **[RESOLVED by decision 11, Marc Nov 9, 2026]** Rule 51: should it also cover in-story books ("you fall asleep in chapter four", Rerouted EP2)? Claude asked Nov 7; no answer found. Suggested answer: yes, avoid "chapter" and "episode" in story dialogue entirely.
 - Q4. **[RESOLVED by decision 10, Marc Nov 9, 2026]** Keep the 5-word minimum per dialogue line (rule 81)? Suggested answer: no (Conflict C10).
 - Q5. **[RESOLVED by decision 7, Marc Nov 9, 2026]** Years: may a spoken line say "1998" as digits, or must it be "nineteen ninety-eight"? Suggested answer: words.
-- Q6. Should the Escalation Ceiling (rule 31) and the map acceptance checks (rule 9) become law? Suggested answer: yes; Gemini's credibility question already covers most of it.
+- Q6. **[RESOLVED by decision 69, Marc Nov 9, 2026]** Should the Escalation Ceiling (rule 31) and the map acceptance checks (rule 9) become law? Suggested answer: yes; Gemini's credibility question already covers most of it.
 - Q7. **[RESOLVED by decision 12, Marc Nov 9, 2026]** Retire SCRIPT_VALIDATOR.md (manual paste-into-chat validator) and STORY_GRADING_RUBRIC.md (Marc listens to every story) now that the self-check, clarity check and Gemini read exist? Suggested answer: yes, both become history.
 
 ## Enforcement status

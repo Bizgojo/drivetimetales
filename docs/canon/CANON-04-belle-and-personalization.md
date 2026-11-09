@@ -7,7 +7,8 @@ Covers: what Belle says at the start and end of every story and episode, where t
 Every rule in this document that needs Marc. **[MARC DECIDES]** = Marc approves, chooses or gives his OK. **[MARC DOES]** = something only Marc does himself (tests on his phone, listens, enters a key). The same tag marks each rule below.
 
 - **Rule 19 [MARC DECIDES]:** Broad time-of-day mood: see Conflict C3. Until Marc decides, writers use none.
-- **Still open:** 5 conflicts or questions below, each with a recommendation in CANON-99 Part 2.
+- **Decision 72 [MARC DOES]:** Turn the live name greeting on for everyone after Marc tests it on his phone.
+- **Still open:** nothing. Every conflict and question below is RESOLVED (CANON-99 Parts 1 and 2, Nov 9, 2026).
 
 ## Rules
 
@@ -89,26 +90,30 @@ Marc answered CANON-99 on Nov 9, 2026. These decisions are **Agreed** and overri
 - **Decision 30:** **Outro length.** Decided: at most 42 words. (04 C6) — **Agreed** (Marc, Nov 9, 2026, CANON-99)
 - **Decision 31:** **Standalone stories.** Decided: same as a finale: sting and intro, name greeting, story, name sign-off, credits. No "bridge line" to other series. (04 C7, Q2) — **Agreed** (Marc, Nov 9, 2026, CANON-99)
 - **Decision 32:** **Sting and Belle.** Decided: the sting is always the very first sound, and Belle starts 1.5 seconds in, over the sting's tail, on every path. You confirm by ear. (04 C9, Q4, 07 C3, Q1) — **Agreed** (Marc, Nov 9, 2026, CANON-99)
+- **Decision 70:** The listener's name comes from one field everywhere: the name they enter as "what friends call you". (04 C5) — **Agreed** (Marc, Nov 9, 2026, CANON-99 Part 2)
+- **Decision 71:** Belle names the author in Episode 1's intro (BELLE-004). (04 C8) — **Agreed** (Marc, Nov 9, 2026, CANON-99 Part 2)
+- **Decision 72:** Turn the live name greeting on for everyone after Marc tests it on his phone. (04 Q3) — **Agreed** (Marc, Nov 9, 2026, CANON-99 Part 2)
+- **Decision 73:** Each added batch of episodes is a new season: its first episode gets the Episode 1 intro; the last episode of a season promotes the next season's first episode by number (it is not a finale). (04 Q5, Q6) — **Agreed** (Marc, Nov 9, 2026, CANON-99 Part 2)
 
 ## Conflicts found
 - C1. **[RESOLVED by decision 26, Marc Nov 9, 2026]** Naming in series intros. BELLE-006 (Canon Registry, Aug 28) says episodes 2 to N−1 must NOT name the title or author. The writer prompt and the publish gate (run-next buildSeriesEpisodePrompt; lib/publicationBelleGate.ts) REQUIRE every series intro to say the series title, "Episode N" and the episode title, and lib/belleStructureGate.ts still checks BELLE-006 (as "inconclusive"). Recommendation: every series intro says the series name and episode number (a driver needs to know where they are), and never the author. Episode titles optional. Retire BELLE-006's title ban. Marc decides.
 - C2. **[RESOLVED: fact checked or done, Nov 9, 2026; see CANON-99 Part 2]** Non-final outro content. BELLE-OUTRO-FORWARD (Nov 8) = one recap sentence + next episode by number. REFLECTION-RULE-UNIFICATION-001 (lib/belleValidation.ts, "Marc 2026-10-22, PERMANENT") plus FIX-BELLE-SERIES-TEMPLATE-001 still REQUIRE emotional reflection and "companion presence" ("you"/"we"), and the writer prompt requires the words "next episode", not the number. Recommendation: Nov 8 wins (newer, in canon). Retire the reflection and companion requirement for non-final outros; require the next episode's number. Marc decides.
 - C3. **[RESOLVED by decision 29, Marc Nov 9, 2026]** Time-of-day. BELLE_B_PROMPT_RULES.md and INTRO_OUTRO_BIBLE.md (May) allow broad mood ("on this late drive"). The writer prompt templates and REFLECTION_RULE_PROMPT_FRAGMENT (Oct) say "no time-of-day reference". Recommendation: ban it. The audio is made once and heard at any hour, so "late drive" is wrong half the time. Marc decides.
 - C4. **[RESOLVED by decision 27, Marc Nov 9, 2026]** Finale sign-off order. Marc Oct 29 (FINALE-SIGNOFF-ORDER-001, in code): story → name sign-off → Belle's credits. Nov 8 rule and PLAYER-RULES: the finale "ends with the personalization statement… no gap between Belle's outro and the personalization", and keep it "exactly as it works today". These read as opposite orders. Recommendation: keep today's code order (sign-off, then credits) and reword PLAYER-RULES 9 to match; the no-gap rule applies either way. Marc decides.
-- C5. Name source. BELLE-001 says display_name, not the legal first name. lib/personalization/signupEnsure.ts uses the account's first_name. Recommendation: confirm which field the app shows as "what friends call you" and use one field everywhere. Marc decides.
+- C5. **[RESOLVED by decision 70, Marc Nov 9, 2026]** Name source. BELLE-001 says display_name, not the legal first name. lib/personalization/signupEnsure.ts uses the account's first_name. Recommendation: confirm which field the app shows as "what friends call you" and use one field everywhere. Marc decides.
 - C6. **[RESOLVED by decision 30, Marc Nov 9, 2026]** Finale/standalone outro length. BELLE-005 says at most 42 words. lib/voiceBelleRules.ts and the writer prompt allow 55. Recommendation: 42 (newer than the May docs, Marc-owned registry). Marc decides.
 - C7. **[RESOLVED by decision 31, Marc Nov 9, 2026]** Standalone "bridge line". PUBLISHED_STORY_SPEC.md v1.4 lets a standalone outro add one sentence pointing to the author's other series. The Nov 8 rule says a standalone never points to another story. Recommendation: Nov 8 wins; drop the bridge line.
-- C8. Author in intros. PUBLISHED_STORY_SPEC.md (June) says Belle's intro never names the author or narrator. BELLE-004 (Aug 28) says Episode 1 names the author. Recommendation: BELLE-004 wins (newer).
+- C8. **[RESOLVED by decision 71, Marc Nov 9, 2026]** Author in intros. PUBLISHED_STORY_SPEC.md (June) says Belle's intro never names the author or narrator. BELLE-004 (Aug 28) says Episode 1 names the author. Recommendation: BELLE-004 wins (newer).
 - C9. **[RESOLVED by decision 32, Marc Nov 9, 2026]** Sting-to-Belle timing. PUBLISHED_STORY_SPEC: Belle starts at 1.2 s. lib/personalizedFinalMix.ts uses 0.5 s. Recommendation: 1.2 s. Marc decides by ear.
 - C10. **[RESOLVED: fact checked or done, Nov 9, 2026; see CANON-99 Part 2]** Old docs still say "briefly recap the cliffhanger" / "Next time on…" (BELLE_B_PROMPT_RULES.md, INTRO_OUTRO_BIBLE.md, INTRO_OUTRO_PRODUCTION_RULES.md). Recommendation: update them to rule 20 or mark them replaced by this doc.
 
 ## Open questions for Marc
 - Q1. **[RESOLVED by decision 28, Marc Nov 9, 2026]** Does the finale credit still name the narrator? BELLE-005 (Sep 6) says yes; your Nov 8 example ("You've been listening to … by …, an Endless Tales Original") leaves it out. Suggested answer: yes, "…by [author], read by [narrator], an Endless Tales Original."
 - Q2. **[RESOLVED by decision 31, Marc Nov 9, 2026]** Standalone stories: do they get a name greeting and a name sign-off, or only the stock name opener? Today the live greeting is series-only, and the stock opener plays BEFORE Belle's intro (story-playlist/route.ts), which puts the name ahead of the sting. Suggested answer: standalones get the same pattern as a series finale: sting + intro → greeting → story → sign-off → credits.
-- Q3. Is the live greeting switched on for everyone? It is behind the LIVE_GREETINGS setting (off / allowlist / on). Suggested answer: "on", after your phone test.
+- Q3. **[RESOLVED by decision 72, Marc Nov 9, 2026]** Is the live greeting switched on for everyone? It is behind the LIVE_GREETINGS setting (off / allowlist / on). Suggested answer: "on", after your phone test.
 - Q4. **[RESOLVED by decision 32, Marc Nov 9, 2026]** Where does the sting go when a name opener plays first? Suggested answer: the sting is always the very first sound; any name clip comes after Belle's intro.
-- Q5. Hook-series episodes added after a series is live: does the Episode 1 "first season" intro rule (title + author) apply to the first episode of each added batch? Suggested answer: yes, treat each added batch as a new season.
-- Q6. When there are multiple seasons, does the last episode of a season (not the series) count as a finale (credits, sign-off) or as non-final (next episode by number)? Suggested answer: non-final, promote the next season's first episode by number.
+- Q5. **[RESOLVED by decision 73, Marc Nov 9, 2026]** Hook-series episodes added after a series is live: does the Episode 1 "first season" intro rule (title + author) apply to the first episode of each added batch? Suggested answer: yes, treat each added batch as a new season.
+- Q6. **[RESOLVED by decision 73, Marc Nov 9, 2026]** When there are multiple seasons, does the last episode of a season (not the series) count as a finale (credits, sign-off) or as non-final (next episode by number)? Suggested answer: non-final, promote the next season's first episode by number.
 
 ## Enforcement status
 - Rules 1, 2, 4, 7, 23, 26 → not enforced in code (writer prompt only, or not at all).

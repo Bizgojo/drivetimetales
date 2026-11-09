@@ -18,7 +18,11 @@ Every rule in this document that needs Marc. **[MARC DECIDES]** = Marc approves,
 - **Rule 41 [MARC DECIDES]:** After the test, monthly ad spend may not go over that month's "Available for ads" amount (plow back, defined in CANON-14) without Marc's approval.
 - **Rule 51 [MARC DECIDES]:** Low-cost video promo clips (one still image per scene, slow pan, story audio) are a future option only. No build until Marc approves a test, and…
 - **Rule 61 [MARC DOES]:** TikTok ads use the same approval card, 6 checks, Marc's phone test and playbook read as Meta before any spend.
-- **Still open:** 8 conflicts or questions below, each with a recommendation in CANON-99 Part 2.
+- **Decision 105 [MARC DECIDES]:** Meta's own phone preview never counts as approval, except as a written, dated, one-time override by Marc.
+- **Decision 107 [MARC DECIDES]:** After the $4,000 test, the monthly ad budget is "Available for ads"; more needs Marc's approval.
+- **Decision 109 [MARC DOES]:** "Owner tested personally" must be ticked before Approve works.
+- **Decision 110 [MARC DECIDES]:** Amendment 1 is overridden only in writing on the approval card, with the date.
+- **Still open:** nothing. Every conflict and question below is RESOLVED (CANON-99 Parts 1 and 2, Nov 9, 2026).
 
 ## Rules
 
@@ -112,6 +116,14 @@ Marc answered CANON-99 on Nov 9, 2026. These decisions are **Agreed** and overri
 - **Decision 52:** **Prices and trial.** Decided: $9.99/month, $79.99/year; 14-day trial with a card required for ad traffic; refund once within 7 days of the first charge. Fix the old $7.99 numbers everywhere. (12 C1–C3, Q4, 13 C1, C2) — **Agreed** (Marc, Nov 9, 2026, CANON-99)
 - **Decision 56:** **Meta.** Decided: Approve Strategos's stop rules as written. Meta optimizes for Trial Start. CAC goal is under $30; stop above $45. Agents reach Meta only through the gated server routes. Ads run from a new or renamed Endless Tales ad account. (13 C3, C4, C7, Q1–Q3) — **Agreed** (Marc, Nov 9, 2026, CANON-99)
 - **Decision 57:** **Plow back.** Marc's decision: the plow-back percentage is a setting that starts at 75%; only Marc changes it, each change is recorded with its date and applies from the next month on. Plow back = that percentage of the previous month's profit ($0 after a loss month), shown as one number ("Available for ads"). The Command Center reads the same setting. The rest stays as reserve. Minimum cash reserve: $5,000 or 90 days of spending, whichever is larger. (13 C8, 14 C3, C4, Q1, Q3) — **Agreed** (Marc, Nov 9, 2026, CANON-99)
+- **Decision 103:** Strategos sends his brief straight to Susan; Marc's gate is the approval card before launch. (13 C6) — **Agreed** (Marc, Nov 9, 2026, CANON-99 Part 2)
+- **Decision 104:** The Meta key lives in the EC2 server's settings (not Vercel). (13 C10) — **Agreed** (Marc, Nov 9, 2026, CANON-99 Part 2)
+- **Decision 105:** Meta's own phone preview never counts as approval, except as a written, dated, one-time override by Marc. (13 C11) — **Agreed** (Marc, Nov 9, 2026, CANON-99 Part 2)
+- **Decision 106:** Retire the Airtable campaign system; keep its cash-floor test on the approval card. (13 Q4) — **Agreed** (Marc, Nov 9, 2026, CANON-99 Part 2)
+- **Decision 107:** After the $4,000 test, the monthly ad budget is "Available for ads"; more needs Marc's approval. (13 Q5) — **Agreed** (Marc, Nov 9, 2026, CANON-99 Part 2)
+- **Decision 108:** Decide what influencer/PR outreach is for after the Meta test. (13 Q6) — **Agreed** (Marc, Nov 9, 2026, CANON-99 Part 2)
+- **Decision 109:** "Owner tested personally" must be ticked before Approve works. (13 Q7) — **Agreed** (Marc, Nov 9, 2026, CANON-99 Part 2)
+- **Decision 110:** Amendment 1 is overridden only in writing on the approval card, with the date. (13 Q8) — **Agreed** (Marc, Nov 9, 2026, CANON-99 Part 2)
 
 ## Conflicts found
 - C1. **[RESOLVED by decision 52, Marc Nov 9, 2026]** Price. Amendment 1 (Oct 29) and memory (Nov 2): $9.99/month, $79.99/year. governance/ACQUISITION-RETENTION-001.md A4 shows "$7.99/month" on the lock screen. docs/CODEX_CAMPAIGN_SYSTEM_SPEC.md (May) and memory /areas/endless-tales-platform.md (Aug) say $7.99/$59.99. DEPLOY.md lists old tiers and credit packs. Recommendation: $9.99/$79.99 wins (newest; also in code, lib/finance/statement.ts). Fix the old docs. Marc decides.
@@ -119,22 +131,22 @@ Marc answered CANON-99 on Nov 9, 2026. These decisions are **Agreed** and overri
 - C3. **[RESOLVED by decision 56, Marc Nov 9, 2026]** Meta access. Aug–Oct standing rule: "Meta Ads Manager is Marc-only; no agent has access to Meta" (memory bell-meta-marketing.md; Oct 11 ways-of-working). Amendment 1 (Oct 29): Susan builds paused drafts through the API and Susan/Orion press LAUNCH. Recommendation: Amendment 1 wins: agents touch Meta only through the gated server routes, never by logging into Ads Manager. Marc decides.
 - C4. **[RESOLVED by decision 56, Marc Nov 9, 2026]** What Meta optimizes for. Amendment 1 §11.3 and the Oct 29 plan: signup (CompleteRegistration). CAC chat (Nov 2) and Susan's Nov 7 paper plan: Trial Start. The question was reopened Nov 1 and never closed. Recommendation: Trial Start, because the CAC goal is built on cost per trial. Marc decides.
 - C5. **[RESOLVED by decision 1, Marc Nov 9, 2026]** When a hook ad may run. Nov 6: launch as soon as that series' Episodes 2 and 3 are live. Nov 8 and PIPELINE-CANON HOOK-SERIES: all 7 Season 1 episodes publish together. Recommendation: Nov 8 wins: the ad waits until the whole Season 1 is live. Marc decides.
-- C6. Brief approval. Oct 27 plan: Marc approves Strategos's brief before Susan starts. Nov 2 handoff: Strategos sends the brief straight to Susan; Marc's only gate is before launch. Recommendation: keep Marc's gate before launch only (rule 1), and add rule 8. Marc decides.
+- C6. **[RESOLVED by decision 103, Marc Nov 9, 2026]** Brief approval. Oct 27 plan: Marc approves Strategos's brief before Susan starts. Nov 2 handoff: Strategos sends the brief straight to Susan; Marc's only gate is before launch. Recommendation: keep Marc's gate before launch only (rule 1), and add rule 8. Marc decides.
 - C7. **[RESOLVED by decision 56, Marc Nov 9, 2026]** CAC lines. Nov 2 CAC chat: pass under $40, target $26–31, stop over $60. 6+2 plan: goal under $30, stop blended CAC over $45. Recommendation: the 6+2 numbers win (newer, and in the plan). Marc decides.
 - C8. **[RESOLVED by decision 57, Marc Nov 9, 2026]** Plow back. Nov 2 pro forma: 75% of revenue goes to marketing; Admin Command Center "Marketing target %" (default 75) is applied to Stripe collections. Nov 8: 75% of the previous month's profit, $0 after a loss month. Recommendation: Nov 8 wins (see CANON-14). Marc decides.
 - C9. **[RESOLVED by decision 12, Marc Nov 9, 2026]** Test market. ACQUISITION-RETENTION-001 Parts A, D, E: Greenville-local stories, 12 test cells, no Belle before signup. Nov 2026 plan: broad US, ages 30–65, hook series. Recommendation: mark Parts A, D and E of ACQUISITION-RETENTION-001 as history for marketing. Marc decides.
-- C10. Where the Meta key lives. Amendment 1 §7.5 says Vercel. The app and agents run on EC2, so Susan could not use the key (Nov 7). Recommendation: update the spec to "server environment on EC2" (rule 26). Marc decides.
-- C11. Ad Manager phone preview as approval. Nov 7, Claude offered a one-time Monday launch where Marc builds the Rerouted ad in Ads Manager and Meta's "Preview on phone" counts as approval. That breaks rules 9 and 21. No answer from Marc was found. Recommendation: allow only as a written, one-time override (rule 12). Marc decides.
+- C10. **[RESOLVED by decision 104, Marc Nov 9, 2026]** Where the Meta key lives. Amendment 1 §7.5 says Vercel. The app and agents run on EC2, so Susan could not use the key (Nov 7). Recommendation: update the spec to "server environment on EC2" (rule 26). Marc decides.
+- C11. **[RESOLVED by decision 105, Marc Nov 9, 2026]** Ad Manager phone preview as approval. Nov 7, Claude offered a one-time Monday launch where Marc builds the Rerouted ad in Ads Manager and Meta's "Preview on phone" counts as approval. That breaks rules 9 and 21. No answer from Marc was found. Recommendation: allow only as a written, one-time override (rule 12). Marc decides.
 
 ## Open questions for Marc
 - Q1. **[RESOLVED by decision 56, Marc Nov 9, 2026]** Do you approve Strategos's stop rules (rules 34–39)? They are still marked "awaiting approval." Suggested answer: approve as written.
 - Q2. **[RESOLVED by decision 56, Marc Nov 9, 2026]** Should Meta optimize for Trial Start or signup? Suggested answer: Trial Start.
 - Q3. **[RESOLVED by decision 56, Marc Nov 9, 2026]** Which Meta ad account runs Endless Tales ads (WonderBooks Press, your personal one, or a new Endless Tales account)? Suggested answer: a new or renamed Endless Tales account, paid by the ad-spend card.
-- Q4. Is the Airtable campaign system (cash test, 3-campaign limit, daily recommendations) still in use, or replaced by Admin → Marketing? Suggested answer: retire Airtable; keep the cash-floor test as a check on the Approval Card.
-- Q5. After the $4,000 test, who sets the monthly ad budget? Suggested answer: it equals "Available for ads" (plow back); more needs your approval.
-- Q6. What is influencer/PR outreach for: press, partnerships or paid creators? Suggested answer: decide after the Meta test.
-- Q7. Must "Owner tested personally" be ticked before APPROVE works? Suggested answer: yes.
-- Q8. Can you override Amendment 1 in a chat message, or only on the card? Suggested answer: only in writing, saved on the card with the date.
+- Q4. **[RESOLVED by decision 106, Marc Nov 9, 2026]** Is the Airtable campaign system (cash test, 3-campaign limit, daily recommendations) still in use, or replaced by Admin → Marketing? Suggested answer: retire Airtable; keep the cash-floor test as a check on the Approval Card.
+- Q5. **[RESOLVED by decision 107, Marc Nov 9, 2026]** After the $4,000 test, who sets the monthly ad budget? Suggested answer: it equals "Available for ads" (plow back); more needs your approval.
+- Q6. **[RESOLVED by decision 108, Marc Nov 9, 2026]** What is influencer/PR outreach for: press, partnerships or paid creators? Suggested answer: decide after the Meta test.
+- Q7. **[RESOLVED by decision 109, Marc Nov 9, 2026]** Must "Owner tested personally" be ticked before APPROVE works? Suggested answer: yes.
+- Q8. **[RESOLVED by decision 110, Marc Nov 9, 2026]** Can you override Amendment 1 in a chat message, or only on the card? Suggested answer: only in writing, saved on the card with the date.
 
 ## Enforcement status
 - Rules 9–13, 18, 19, 21–23 → enforced in code: app/admin/marketing/approvals/[campaignId]/page.tsx; app/api/admin/marketing/approvals/[campaignId]/route.ts (approveEnabled = all 6 checks pass); app/api/admin/marketing/approvals/[campaignId]/launch/route.ts (hash re-check, 403/409 refusals); supabase/migrations/20261029_amendment1_campaign_approvals.sql.

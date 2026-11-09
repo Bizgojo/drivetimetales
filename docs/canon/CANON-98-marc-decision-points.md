@@ -2,7 +2,7 @@
 Status: DRAFT for Marc's approval · Nov 9, 2026 · Owner: Marc
 Covers: one list of every place in the canon where Marc must decide or act himself, document by document. Does not cover: the rules themselves (each is in its own document) or the open decisions (CANON-99).
 
-84 decision points across 15 documents. Open decisions are in CANON-99.
+92 decision points across 15 documents (84 from the audit plus 8 added by CANON-99 Part 2, Nov 9, 2026). Every audit item in CANON-99 is answered; new requests appear in CANON-99 Part 3.
 
 **[MARC DECIDES]** = Marc approves, chooses or gives his OK. **[MARC DOES]** = something only Marc does himself (tests on his phone, listens, enters a key). Agents never act in Marc's place on these.
 
@@ -14,7 +14,7 @@ Covers: one list of every place in the canon where Marc must decide or act himse
 - **CANON-01 rule 35 [MARC DECIDES]:** Never merge a PR without Marc's word (except rule 18), and never run a migration without Marc's OK.
 - **CANON-01 rule 56 [MARC DECIDES]:** Stop and ask Marc when any step could overwrite or hide live content.
 - **CANON-01 rule 57 [MARC DECIDES]:** Author-written series (Sunset of Competition) are never rewritten by the pipeline. On a failed check it stops and reports; only approved…
-- Open in this document: 5 conflicts, 4 questions (see CANON-99).
+- Open in this document: Nothing open in this document (CANON-99 answered Nov 9, 2026).
 
 ## CANON-02 — Story Ideas, Series Planning & Briefs
 
@@ -28,7 +28,7 @@ Covers: one list of every place in the canon where Marc must decide or act himse
 - **CANON-02 rule 53 [MARC DECIDES]:** After a series finale, the series is scored for character attachment (0–8); 5+ = recommend a new season to Marc. New seasons must raise stakes,…
 - **CANON-02 rule 54 [MARC DECIDES]:** Adding episodes never re-plans, rewrites, re-titles, re-hides or re-voices episodes that already exist. New episodes are planned only for the…
 - **CANON-02 rule 63 [MARC DECIDES]:** When Marc or Maya sets a per-episode length, each episode lands within ±20% of it.
-- Open in this document: 7 conflicts, 7 questions (see CANON-99).
+- Open in this document: Nothing open in this document (CANON-99 answered Nov 9, 2026).
 
 ## CANON-03 — The Writer (Script Rules)
 
@@ -36,19 +36,21 @@ Covers: one list of every place in the canon where Marc must decide or act himse
 - **CANON-03 rule 58 [MARC DECIDES]:** NARRATIVE_VOICE is declared (first_person, third_limited, third_omniscient) and held on every narrator line. second_person needs Marc's approval.
 - **CANON-03 rule 59 [MARC DECIDES]:** NARRATOR_IS_CHARACTER: true needs Marc's approval and a non-platform voice.
 - **CANON-03 rule 90 [MARC DECIDES]:** Gemini reads the scripts before voicing (continuity, easy listening, logic, promise, credibility) and lists exact fixes. Report-only until Marc…
-- Open in this document: 12 conflicts, 7 questions (see CANON-99).
+- Open in this document: Nothing open in this document (CANON-99 answered Nov 9, 2026).
 
 ## CANON-04 — Belle Intro/Outro & Listener-Name Personalization
 
 - **CANON-04 rule 19 [MARC DECIDES]:** Broad time-of-day mood: see Conflict C3. Until Marc decides, writers use none.
-- Open in this document: 10 conflicts, 6 questions (see CANON-99).
+- **CANON-04 decision 72 [MARC DOES]:** Turn the live name greeting on for everyone after Marc tests it on his phone.
+- Open in this document: Nothing open in this document (CANON-99 answered Nov 9, 2026).
 
 ## CANON-05 — Voices & Voice Generation
 
 - **CANON-05 rule 1 [MARC DECIDES]:** Belle's voice is ElevenLabs voice GMhgX8fCR9GUtd3kmlKC, settings: stability 0.49, similarity 0.51, style 0.0, speaker boost on, speed 1.0, model…
 - **CANON-05 rule 10 [MARC DECIDES]:** After the first episode of each new series is voiced, Gemini listens. Only mismatches Gemini flags go to Marc.
 - **CANON-05 rule 47 [MARC DECIDES]:** A published story is re-voiced only with Marc's approval, and the new version is delivered as a link first.
-- Open in this document: 4 conflicts, 5 questions (see CANON-99).
+- **CANON-05 decision 78 [MARC DOES]:** Re-voicing a published story always waits for Marc's listen, even in Direct mode.
+- Open in this document: Nothing open in this document (CANON-99 answered Nov 9, 2026).
 
 ## CANON-06 — Sound Effects
 
@@ -62,14 +64,15 @@ Covers: one list of every place in the canon where Marc must decide or act himse
 - **CANON-06 rule 53 [MARC DECIDES]:** A published episode is re-mixed for sound only on Marc's explicit word.
 - **CANON-06 rule 54 [MARC DECIDES]:** The first test with the new library is one episode only (Rerouted EP1). Nothing else gets sounds until Marc approves that test.
 - **CANON-06 rule 55 [MARC DOES]:** When sounds are added back to published episodes, it is done one series at a time: one test episode, Marc listens, then the rest.
-- Open in this document: 7 conflicts, 7 questions (see CANON-99).
+- **CANON-06 decision 80 [MARC DECIDES]:** Once a week, Claude proposes new sound names from the "wanted" list; Marc approves the list.
+- Open in this document: Nothing open in this document (CANON-99 answered Nov 9, 2026).
 
 ## CANON-07 — Music & Final Mix
 
 - **CANON-07 rule 32 [MARC DECIDES]:** Music is made at most 3 times per story or episode. After that the story is flagged for attention; only Marc can re-queue it.
 - **CANON-07 rule 39 [MARC DOES]:** Every mix change goes behind an on/off switch. A test copy goes to a preview folder. Marc listens before it goes live. If it goes wrong, the…
 - **CANON-07 rule 43 [MARC DECIDES]:** No corrected episode replaces a published final_mix.mp3 until Marc listens and approves.
-- Open in this document: 7 conflicts, 6 questions (see CANON-99).
+- Open in this document: Nothing open in this document (CANON-99 answered Nov 9, 2026).
 
 ## CANON-08 — Quality Gates & Marc's Review
 
@@ -80,7 +83,7 @@ Covers: one list of every place in the canon where Marc must decide or act himse
 - **CANON-08 rule 39 [MARC DECIDES]:** Episode Correction Loop: Marc listens → approves or sends corrections → the corrected version comes to him as a link, not published → Marc…
 - **CANON-08 rule 41 [MARC DOES]:** Marc checks player changes on a real phone before they are accepted.
 - **CANON-08 rule 44 [MARC DECIDES]:** A Gemini final read of the whole series decides publish / fix (2 rounds) / hold, and Marc gets one message only on hold.
-- Open in this document: 8 conflicts, 5 questions (see CANON-99).
+- Open in this document: Nothing open in this document (CANON-99 answered Nov 9, 2026).
 
 ## CANON-09 — Publishing & Release
 
@@ -92,7 +95,7 @@ Covers: one list of every place in the canon where Marc must decide or act himse
 - **CANON-09 rule 34 [MARC DECIDES]:** Only Marc releases the hold. Claude or Orion may turn it on to stop test content or a wrong publish, then must tell Marc at once.
 - **CANON-09 rule 42 [MARC DECIDES]:** A live story with a problem stays live unless Marc says otherwise ("After the Last Train" stays up).
 - **CANON-09 rule 45 [MARC DECIDES]:** A partly published series breaks rule 11. On finding one, do not publish more single episodes. Either finish all episodes and publish them…
-- Open in this document: 5 conflicts, 5 questions (see CANON-99).
+- Open in this document: Nothing open in this document (CANON-99 answered Nov 9, 2026).
 
 ## CANON-10 — Covers, Images & eBooks
 
@@ -100,14 +103,14 @@ Covers: one list of every place in the canon where Marc must decide or act himse
 - **CANON-10 rule 20 [MARC DECIDES]:** Bulk remakes need Marc's OK on the list and the cost first.
 - **CANON-10 rule 27 [MARC DOES]:** Marc tops up image credits himself. No key or card number is ever sent in chat. Image spend is charged to the ET-R&D card, or ET-Marketing for ad…
 - **CANON-10 rule 33 [MARC DECIDES]:** Applies to new production only. Stories published before Oct 4, 2026 are not forced back. Backfill is a separate order from Marc.
-- Open in this document: 4 conflicts, 5 questions (see CANON-99).
+- Open in this document: Nothing open in this document (CANON-99 answered Nov 9, 2026).
 
 ## CANON-11 — The Player
 
 - **CANON-11 rule 37 [MARC DECIDES]:** All episodes publish together. A series stays hidden until every episode is finished and approved, then they all go live at the same time.
 - **CANON-11 rule 40 [MARC DECIDES]:** The publish switch on the Admin page decides who approves. It is checked when a story is ready to publish. On "Review", every story waits for Marc…
 - **CANON-11 rule 46 [MARC DOES]:** Marc checks it on a real phone before any player change is accepted.
-- Open in this document: 6 conflicts, 7 questions (see CANON-99).
+- Open in this document: Nothing open in this document (CANON-99 answered Nov 9, 2026).
 
 ## CANON-12 — The Listener App
 
@@ -115,7 +118,7 @@ Covers: one list of every place in the canon where Marc must decide or act himse
 - **CANON-12 rule 60 [MARC DECIDES]:** A new landing story serves only after Marc adds it to the live list.
 - **CANON-12 rule 68 [MARC DECIDES]:** Push notifications are off until Marc approves what they say and when.
 - **CANON-12 rule 73 [MARC DOES]:** Marc checks every listener-facing change on a real phone before it is accepted.
-- Open in this document: 9 conflicts, 9 questions (see CANON-99).
+- Open in this document: Nothing open in this document (CANON-99 answered Nov 9, 2026).
 
 ## CANON-13 — Marketing & Ads
 
@@ -131,13 +134,17 @@ Covers: one list of every place in the canon where Marc must decide or act himse
 - **CANON-13 rule 41 [MARC DECIDES]:** After the test, monthly ad spend may not go over that month's "Available for ads" amount (plow back, defined in CANON-14) without Marc's approval.
 - **CANON-13 rule 51 [MARC DECIDES]:** Low-cost video promo clips (one still image per scene, slow pan, story audio) are a future option only. No build until Marc approves a test, and…
 - **CANON-13 rule 61 [MARC DOES]:** TikTok ads use the same approval card, 6 checks, Marc's phone test and playbook read as Meta before any spend.
-- Open in this document: 11 conflicts, 8 questions (see CANON-99).
+- **CANON-13 decision 105 [MARC DECIDES]:** Meta's own phone preview never counts as approval, except as a written, dated, one-time override by Marc.
+- **CANON-13 decision 107 [MARC DECIDES]:** After the $4,000 test, the monthly ad budget is "Available for ads"; more needs Marc's approval.
+- **CANON-13 decision 109 [MARC DOES]:** "Owner tested personally" must be ticked before Approve works.
+- **CANON-13 decision 110 [MARC DECIDES]:** Amendment 1 is overridden only in writing on the approval card, with the date.
+- Open in this document: Nothing open in this document (CANON-99 answered Nov 9, 2026).
 
 ## CANON-14 — Finance & Reporting
 
 - **CANON-14 rule 52 [MARC DECIDES]:** Susan may use the marketing card only with Marc's approval.
 - **CANON-14 rule 59 [MARC DECIDES]:** No automatic profit transfers. Any transfer needs Marc's explicit word.
-- Open in this document: 7 conflicts, 6 questions (see CANON-99).
+- Open in this document: Nothing open in this document (CANON-99 answered Nov 9, 2026).
 
 ## CANON-15 — Agents, Code & Operations
 
@@ -148,5 +155,6 @@ Covers: one list of every place in the canon where Marc must decide or act himse
 - **CANON-15 rule 8 [MARC DECIDES]:** Stop and ask Marc when a step could overwrite or hide live content.
 - **CANON-15 rule 10 [MARC DECIDES]:** No crontab hold line (#HOLD-…) or paused service is turned back on without Marc's word.
 - **CANON-15 rule 54 [MARC DOES]:** Marc enters money-spending keys himself (for example Meta ads_management). Low-risk test keys may be passed through Orion.
-- Open in this document: 10 conflicts, 8 questions (see CANON-99).
+- **CANON-15 decision 118 [MARC DECIDES]:** Orion's INCIDENT-RULE-001 is Proposed until Marc approves it.
+- Open in this document: Nothing open in this document (CANON-99 answered Nov 9, 2026).
 

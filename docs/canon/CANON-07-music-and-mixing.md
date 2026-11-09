@@ -34,7 +34,7 @@ Every rule in this document that needs Marc. **[MARC DECIDES]** = Marc approves,
 - **Rule 32 [MARC DECIDES]:** Music is made at most 3 times per story or episode. After that the story is flagged for attention; only Marc can re-queue it.
 - **Rule 39 [MARC DOES]:** Every mix change goes behind an on/off switch. A test copy goes to a preview folder. Marc listens before it goes live. If it goes wrong, the…
 - **Rule 43 [MARC DECIDES]:** No corrected episode replaces a published final_mix.mp3 until Marc listens and approves.
-- **Still open:** 1 conflicts or questions below, each with a recommendation in CANON-99 Part 2.
+- **Still open:** nothing. Every conflict and question below is RESOLVED (CANON-99 Parts 1 and 2, Nov 9, 2026).
 
 ## Rules
 
@@ -108,6 +108,7 @@ Marc answered CANON-99 on Nov 9, 2026. These decisions are **Agreed** and overri
 - **Decision 41:** **Loudness.** Decided: the whole episode measures −16 LUFS (±1), peaks no higher than −1 dB, and no section is more than 2 units off the story. (07 Q4) — **Agreed** (Marc, Nov 9, 2026, CANON-99)
 - **Decision 42:** **[MUSIC:OUT] / [MUSIC:IN] marks.** Decided: build them (3-second fades, at most twice per story). (07 C5, Q3) — **Agreed** (Marc, Nov 9, 2026, CANON-99)
 - **Decision 43:** **Re-mixing a published episode.** Decided: Gemini checks the new mix and you're asked only when it flags a problem. (07 C7, Q5) — **Agreed** (Marc, Nov 9, 2026, CANON-99)
+- **Decision 83:** Belle sits about 3 dB above the story voices (replaces the unbuilt "1.5x" rule). (07 Q6) — **Agreed** (Marc, Nov 9, 2026, CANON-99 Part 2)
 
 ## Conflicts found
 - C1. **[RESOLVED by decision 40, Marc Nov 9, 2026]** Bible/MIX_SPEC.md (Aug 24–25) and the MUSIC-002 header in core.ts give older outro numbers: music down to 0.019, then "rises to 0.50", a 2-second fade (Aug 25), and the code value set to 0 (Belle with no music). Marc's Nov 1 drawing rule is 0.13 under Belle and a 3-second fade. Recommendation: Nov 1 wins; rewrite MIX_SPEC.md and the core.ts header. Marc decides.
@@ -124,7 +125,7 @@ Marc answered CANON-99 on Nov 9, 2026. These decisions are **Agreed** and overri
 - Q3. **[RESOLVED by decision 42, Marc Nov 9, 2026]** Should [MUSIC:OUT] / [MUSIC:IN] work? Suggested answer: build it, at most twice per story, with 3-second fades.
 - Q4. **[RESOLVED by decision 41, Marc Nov 9, 2026]** There is no loudness target for the whole episode, and no check that intro, story and outro match. Suggested answer: measure the whole final mix; target −16 LUFS (±1), true peak no higher than −1 dB, and no section more than 2 LU off the story.
 - Q5. **[RESOLVED by decision 43, Marc Nov 9, 2026]** Who approves a re-mix of a published episode now that production should run without you? Suggested answer: Gemini reviews the new mix for timestamped problems; you are asked only when it flags one.
-- Q6. Is BELLE-008 (Belle at 1.5x) still wanted? The code does not apply it; Belle is only resampled. Suggested answer: measure Belle against the story voices and set her about 3 dB above them.
+- Q6. **[RESOLVED by decision 83, Marc Nov 9, 2026]** Is BELLE-008 (Belle at 1.5x) still wanted? The code does not apply it; Belle is only resampled. Suggested answer: measure Belle against the story voices and set her about 3 dB above them.
 
 ## Enforcement status
 - 1–2 → enforced in core.ts assembly order; lib/stingDetectorGate.ts checks the sting but runs only in lib/assembleAndVerifyFinalMix.ts, not in the main render.

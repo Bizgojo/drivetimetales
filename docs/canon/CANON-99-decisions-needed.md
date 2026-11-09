@@ -1,5 +1,5 @@
 # CANON-99 — Decisions Needed (Nov 9, 2026)
-Status: PART 1 ANSWERED (Marc, Nov 9, 2026: all 60 decided; 57 changed by Marc) · PART 2 OPEN (items 61–124) · Owner: Marc
+Status: PART 1 ANSWERED (Marc, Nov 9, 2026: all 60 decided; 57 changed by Marc) · PART 2 ANSWERED (Marc, Nov 9, 2026: "accept part 2", all 64 approved) · Owner: Marc
 Covers: every conflict and unanswered question found in the canon audit, with a recommendation for each. Does not cover: rules already agreed (those are in CANON-01 to CANON-15).
 
 ## Marc's answer (Nov 9, 2026)
@@ -120,7 +120,7 @@ Each item names the canon document it belongs to, for example (03 C2) = CANON-03
 
 # Part 2 — Remaining items (added Nov 9, 2026, after Marc's answer to Part 1)
 
-These smaller conflicts and questions were not on the Part 1 list. Each has a recommendation. Reply **"accept part 2"** or **"accept part 2 except …"**.
+**Marc's answer (Nov 9, 2026): "accept part 2."** Every recommendation below (61–124) is now an Agreed decision, written into its canon document with its conflict or question marked RESOLVED. Nothing from the audit is still open; new rules arrive through Part 3.
 
 ## Already settled (facts checked or done today; no decision needed)
 

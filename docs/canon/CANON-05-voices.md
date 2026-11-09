@@ -9,7 +9,8 @@ Every rule in this document that needs Marc. **[MARC DECIDES]** = Marc approves,
 - **Rule 1 [MARC DECIDES]:** Belle's voice is ElevenLabs voice GMhgX8fCR9GUtd3kmlKC, settings: stability 0.49, similarity 0.51, style 0.0, speaker boost on, speed 1.0, model…
 - **Rule 10 [MARC DECIDES]:** After the first episode of each new series is voiced, Gemini listens. Only mismatches Gemini flags go to Marc.
 - **Rule 47 [MARC DECIDES]:** A published story is re-voiced only with Marc's approval, and the new version is delivered as a link first.
-- **Still open:** 6 conflicts or questions below, each with a recommendation in CANON-99 Part 2.
+- **Decision 78 [MARC DOES]:** Re-voicing a published story always waits for Marc's listen, even in Direct mode.
+- **Still open:** nothing. Every conflict and question below is RESOLVED (CANON-99 Parts 1 and 2, Nov 9, 2026).
 
 ## Rules
 
@@ -78,19 +79,24 @@ Marc answered CANON-99 on Nov 9, 2026. These decisions are **Agreed** and overri
 
 - **Decision 33:** **Cast approval.** Decided: retired (you said Nov 4 you no longer approve casts); one voice grid for all voices. (05 C1, C2) — **Agreed** (Marc, Nov 9, 2026, CANON-99)
 - **Decision 34:** **ElevenLabs budget.** The big credit block expired today. Decided: a monthly cap that you set, with a stop-and-ask at 80%. (05 Q1) — **Agreed** (Marc, Nov 9, 2026, CANON-99)
+- **Decision 74:** The voice-reuse rule is 30 stories (old 20-story logic removed). Ongoing-series leads get their own custom voice, reserved forever. (05 C3, C4) — **Agreed** (Marc, Nov 9, 2026, CANON-99 Part 2)
+- **Decision 75:** The writer adds a pronunciation hint for unusual names in the character guide; the voice step uses it. (05 Q2) — **Agreed** (Marc, Nov 9, 2026, CANON-99 Part 2)
+- **Decision 76:** Build Gemini's listen of each new series' Episode 1 before the next new series is voiced. (05 Q3) — **Agreed** (Marc, Nov 9, 2026, CANON-99 Part 2)
+- **Decision 77:** The weekly report shows the count of screened voices. (05 Q4) — **Agreed** (Marc, Nov 9, 2026, CANON-99 Part 2)
+- **Decision 78:** Re-voicing a published story always waits for Marc's listen, even in Direct mode. (05 Q5) — **Agreed** (Marc, Nov 9, 2026, CANON-99 Part 2)
 
 ## Conflicts found
 - C1. **[RESOLVED by decision 33, Marc Nov 9, 2026]** Cast approval. CAST-REVIEW-001 (lib/castReview.ts, Marc Oct 29: "let me listen to the voices… and approve") vs Marc Nov 4 (no longer approves casts). Code keeps it behind CAST_REVIEW, off by default. Recommendation: Nov 4 wins; retire CAST-REVIEW-001 and say so in lib/castReview.ts.
 - C2. **[RESOLVED by decision 33, Marc Nov 9, 2026]** Two voice tables. The voice grid Marc asked for is narrator_voices (107 active, Nov 5). The character caster draws from character_voices (683 synced, memory /areas/audio-pipeline.md), and VOICE-FALLBACK-001 requires a voice to be in narrator_voices. Recommendation: one grid for all voices, as Marc asked on Nov 4. Marc decides.
-- C3. Old reuse rule vs new. Code once excluded voices from "the last 20 stories" (never worked, per lib/voiceReuseWindow.ts). VOICE-REUSE-001 says 30. Recommendation: 30 wins; remove any remaining 20-story logic.
-- C4. Custom voices vs screened library. Nov 4: custom voices for main characters/narrators of ongoing series. VOICE-REUSE-001 (Nov 7) assumes main characters come from the shared pool. Recommendation: custom voices for ongoing-series leads (reserved forever); the 30-story rule for everyone else.
+- C3. **[RESOLVED by decision 74, Marc Nov 9, 2026]** Old reuse rule vs new. Code once excluded voices from "the last 20 stories" (never worked, per lib/voiceReuseWindow.ts). VOICE-REUSE-001 says 30. Recommendation: 30 wins; remove any remaining 20-story logic.
+- C4. **[RESOLVED by decision 74, Marc Nov 9, 2026]** Custom voices vs screened library. Nov 4: custom voices for main characters/narrators of ongoing series. VOICE-REUSE-001 (Nov 7) assumes main characters come from the shared pool. Recommendation: custom voices for ongoing-series leads (reserved forever); the 30-story rule for everyone else.
 
 ## Open questions for Marc
 - Q1. **[RESOLVED by decision 34, Marc Nov 9, 2026]** The 1.56 million credits expired today (Nov 9). What is the monthly credit budget from now on? Suggested answer: set a monthly cap and a stop-and-ask point at 80%.
-- Q2. Character and place names that ElevenLabs mispronounces: is there a pronunciation list for story names? None found. Suggested answer: the writer adds a pronunciation hint to the character guide; the voice step uses it.
-- Q3. Is Gemini's listen of each new series' Episode 1 built and running? Not found in code. Suggested answer: build it before the next new series is voiced.
-- Q4. Is the "hundreds of voices" pool filled, and are the custom lead voices made for the five hook series? Unverified. Suggested answer: report the count of active, screened voices each week.
-- Q5. Should a recast of a published story wait for your listen even in "direct" mode? Suggested answer: yes; a recast is a correction and follows the Episode Correction Loop.
+- Q2. **[RESOLVED by decision 75, Marc Nov 9, 2026]** Character and place names that ElevenLabs mispronounces: is there a pronunciation list for story names? None found. Suggested answer: the writer adds a pronunciation hint to the character guide; the voice step uses it.
+- Q3. **[RESOLVED by decision 76, Marc Nov 9, 2026]** Is Gemini's listen of each new series' Episode 1 built and running? Not found in code. Suggested answer: build it before the next new series is voiced.
+- Q4. **[RESOLVED by decision 77, Marc Nov 9, 2026]** Is the "hundreds of voices" pool filled, and are the custom lead voices made for the five hook series? Unverified. Suggested answer: report the count of active, screened voices each week.
+- Q5. **[RESOLVED by decision 78, Marc Nov 9, 2026]** Should a recast of a published story wait for your listen even in "direct" mode? Suggested answer: yes; a recast is a correction and follows the Episode Correction Loop.
 
 ## Enforcement status
 - 1–3 → lib/voiceConstants.ts, lib/castCollision.ts (blocks before spend).
