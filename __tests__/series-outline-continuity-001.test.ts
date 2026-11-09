@@ -97,7 +97,9 @@ describe('SERIES-STYLE-ACTION-001', () => {
     expect(styleProfileFrom('Action')).toBe('action')
     expect(styleProfileFrom(undefined)).toBeNull()
     expect(buildStylePromptBlock(null, { episodeNumber: 1 })).toBe('')
-    expect(maxMainCharacters('action')).toBe(5)
+    expect(maxMainCharacters('action', 7)).toBe(6)
+    expect(maxMainCharacters(null, 7)).toBe(6)
+    expect(maxMainCharacters('action', 3)).toBe(4)
   })
 
   test('writer block: pace, reading level, names, recap after episode 1', () => {
