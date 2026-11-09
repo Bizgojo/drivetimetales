@@ -11,7 +11,13 @@ export function overviewMetrics(data:any):SharedMetric[]{const stripe=data?.stri
  {id:'cancellations',label:'Cancellation requests · period',value:count(stripe.cancellations),note:stripe.cancellationReason},
  {id:'cac',label:'Paid acquisition CAC · period',value:data?.acquisition?.status==='connected'?money(data.acquisition.cac):'Unavailable',note:'Requires complete matched acquisition costs'},
  {id:'churn',label:'Subscriber churn · period',value:typeof stripe.churn==='number'&&Number.isFinite(stripe.churn)?stripe.churn.toFixed(2)+'%':'Unavailable',note:'Opening paid cohort whose access ended'},
+ {id:'ltv',label:'Lifetime value (LTV)',value:ltv(stripe,data),note:'Revenue per subscriber per month ÷ churn. Blank until there is a real CAC and real churn'},
 ]}
+// LTV (Marc, Nov 8 2026): no assumed figures. Shown only when CAC and churn are both measured.
+function ltv(stripe:any,data:any){const cacOk=data?.acquisition?.status==='connected'&&typeof data.acquisition.cac==='number'&&Number.isFinite(data.acquisition.cac)&&data.acquisition.cac>0
+ const churn=typeof stripe.churn==='number'&&Number.isFinite(stripe.churn)&&stripe.churn>0?stripe.churn/100:null
+ const arpu=typeof stripe.mrr==='number'&&typeof stripe.paid==='number'&&stripe.paid>0?stripe.mrr/stripe.paid:null
+ return cacOk&&churn&&arpu?money(arpu/churn):'Unavailable'}
 export function financeMetrics(data:any):SharedMetric[]{const target=data?.policy?.data?.[0]?.policy?.marketingPercent;return[
  {id:'cash',label:'Bank available cash',value:money(data?.mercury?.status==='connected'?data.mercury.cash:null)},
  {id:'collections',label:'Net collections · 30 days',value:money(data?.stripe?.status==='connected'?data.stripe.collections:null)},
