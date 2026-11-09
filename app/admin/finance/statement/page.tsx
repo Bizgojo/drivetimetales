@@ -31,6 +31,17 @@ export default function StatementPage() {
   const [ideas, setIdeas] = useState<{ month: string; items: { title: string; detail: string; impact: string }[]; created_at: string } | null>(null)
   const [ideasBusy, setIdeasBusy] = useState(false), [ideasMsg, setIdeasMsg] = useState('')
   useEffect(() => { fetch('/api/admin/finance/suggestions', { cache: 'no-store' }).then(r => r.json()).then(j => setIdeas(j.suggestions || null)).catch(() => {}) }, [])
+  async function saveIdeas(items: { title: string; detail: string; impact: string }[]) {
+    if (!ideas) return
+    const before = ideas
+    setIdeas({ ...ideas, items }); setIdeasMsg('')
+    try {
+      const r = await fetch('/api/admin/finance/suggestions', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ month: ideas.month, items }) })
+      const j = await r.json(); if (!r.ok) throw new Error(j.error || 'Could not save')
+    } catch (e) { setIdeas(before); setIdeasMsg(e instanceof Error ? e.message : 'Could not save') }
+  }
+  const moveIdea = (i: number, d: -1 | 1) => { if (!ideas) return; const a = ideas.items.slice(), j = i + d; if (j < 0 || j >= a.length) return; [a[i], a[j]] = [a[j], a[i]]; saveIdeas(a) }
+  const deleteIdea = (i: number) => { if (!ideas) return; saveIdeas(ideas.items.filter((_, k) => k !== i)) }
   async function writeIdeas() {
     setIdeasBusy(true); setIdeasMsg('')
     try { const r = await fetch('/api/admin/finance/suggestions', { method: 'POST' }); const j = await r.json(); if (!r.ok) throw new Error(j.error || 'Suggestions failed'); setIdeas(j.suggestions) }
@@ -146,7 +157,13 @@ export default function StatementPage() {
       <section className="fs-pipe" aria-label="Profit suggestions">
         <h2>Profit suggestions <span className="fs-muted">— written by Claude from this statement{ideas ? ` · ${new Date(ideas.created_at).toLocaleDateString()}` : ''}</span></h2>
         <p className="fs-muted" style={{ margin: 0 }}>Rule for every suggestion: story quality stays the same. No cheaper voices, no weaker script model, no shorter episodes.</p>
-        {ideas ? <ol className="fs-list">{ideas.items.map(x => <li key={x.title}><b>{x.title}.</b> {x.detail} {x.impact && <span className="fs-muted">— {x.impact}</span>}</li>)}</ol> : <p style={{ margin: 0 }}>No suggestions yet for this month.</p>}
+        {ideas ? <ol className="fs-ideas">{ideas.items.map((x, i) => <li key={x.title + i}>
+          <div className="fs-idea-text"><b>{x.title}.</b> {x.detail} {x.impact && <span className="fs-muted">— {x.impact}</span>}</div>
+          <div className="fs-idea-btns">
+            <button aria-label={'Move up: ' + x.title} disabled={i === 0} onClick={() => moveIdea(i, -1)}>▲ Up</button>
+            <button aria-label={'Move down: ' + x.title} disabled={i === ideas.items.length - 1} onClick={() => moveIdea(i, 1)}>▼ Down</button>
+            <button aria-label={'Delete: ' + x.title} onClick={() => deleteIdea(i)}>✕ Delete</button>
+          </div></li>)}</ol> : <p style={{ margin: 0 }}>No suggestions yet for this month.</p>}
         <div><button onClick={writeIdeas} disabled={ideasBusy}>{ideasBusy ? 'Claude is writing…' : ideas ? 'Rewrite suggestions' : "Write this month's suggestions"}</button>{ideasMsg && <span role="status" className="fs-warn" style={{ marginLeft: 10 }}>{ideasMsg}</span>}</div>
       </section>
       {data.pipeline && <section className="fs-pipe" aria-label="In the pipeline now">
@@ -198,6 +215,7 @@ const CSS = `
 .fs .car{display:inline-block;width:1.1em;color:#002266;font-weight:800}
 .fs-drill{font:inherit;font-weight:700;color:#002266;background:none;border:0;padding:2px 0;cursor:pointer;text-decoration:underline;text-decoration-thickness:2px;text-underline-offset:4px}
 .fs-pipe{display:grid;gap:8px}.fs-pipe h2{margin:8px 0 0;font-size:21px}.fs-pipe table{width:100%;border-collapse:collapse}.fs-pipe th,.fs-pipe td{padding:8px 10px;border-bottom:1px solid #d9dee5;text-align:left}.fs-pipe .n{text-align:right}
+.fs-ideas{margin:6px 0 0;padding-left:24px;display:grid;gap:12px}.fs-ideas li{display:grid;gap:6px}.fs-idea-btns{display:flex;flex-wrap:wrap;gap:8px}.fs-idea-btns button{min-height:40px;font-size:16px;padding:6px 12px}.fs-idea-btns button:disabled{opacity:.35;cursor:default}
 .fs-list{margin:6px 0 0;padding-left:20px;display:grid;gap:3px}
 .fs-mini{margin-top:8px;border-collapse:collapse;font-size:17px}.fs-mini th,.fs-mini td{padding:4px 12px 4px 0;text-align:left}.fs-mini td.n{text-align:right}
 .fs tr:focus-visible,.fs button:focus-visible,.fs select:focus-visible{outline:3px solid #002266;outline-offset:2px}
