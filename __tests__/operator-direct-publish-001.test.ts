@@ -22,8 +22,6 @@
 
 import {
   DIRECT_PUBLISH_EPISODE_COLUMNS,
-  DIRECT_PUBLISH_MAX_DURATION_MINS,
-  DIRECT_PUBLISH_MIN_DURATION_MINS,
   DirectPublishError,
   OPERATOR_DIRECT_PUBLISH_DECISION_ALLOWLIST,
   OPERATOR_DIRECT_PUBLISH_EDGES,
@@ -34,6 +32,7 @@ import {
   type DirectPublishDb,
   type PreflightGateResult,
 } from '@/lib/storyQueue/directPublish'
+import { publishLengthIssue } from '@/lib/episodeLength'
 import { buildContinuityPins } from '@/lib/continuityPin'
 import { currentBelleFingerprint } from '@/lib/belleFreshness'
 import { transitionAllowed, WORKFLOW_TRANSITIONS } from '@/lib/workflowTransitions'
@@ -206,6 +205,8 @@ function passingEpisode(id: string, epNum: number, script: string, overrides: Ro
     background_music_url: `https://cdn.example/bed-${epNum}.mp3`,
     description: 'A test episode.',
     duration_mins: 17,
+    brief_json: { runtime: '15 minutes' },
+    script_updated_at: '2026-11-11T00:00:00Z',
     script,
     workflow_state: 'repair_queue',
     review_status: 'pending',
@@ -422,14 +423,14 @@ describe('gates-enforced refuse (zero story writes each)', () => {
     const episodes = passingSeries()
     episodes[0] = { ...episodes[0], duration_mins: 12 }
     const blockers = await expectRefused(episodes, preflightOk)
-    expect(blockers.join(' ')).toMatch(/duration_mins.*outside.*15–20/)
+    expect(blockers.join(' ')).toMatch(/at least 12.5 minutes/)
   })
 
   test('long duration (25 min) refuses', async () => {
     const episodes = passingSeries()
     episodes[1] = { ...episodes[1], duration_mins: 25 }
     const blockers = await expectRefused(episodes, preflightOk)
-    expect(blockers.join(' ')).toMatch(/duration_mins/)
+    expect(blockers.join(' ')).toMatch(/at most 20.3 minutes/)
   })
 
   test('missing music bed refuses', async () => {
@@ -543,9 +544,8 @@ describe('gate preservation (matrix + shared predicates untouched)', () => {
     }
   })
 
-  test('duration band constants match the product minimum + brief cap', () => {
-    expect(DIRECT_PUBLISH_MIN_DURATION_MINS).toBe(15)
-    expect(DIRECT_PUBLISH_MAX_DURATION_MINS).toBe(20)
+  test('length follows EPISODE-LENGTH-001, not the retired 15–20 band', () => {
+    expect(publishLengthIssue({ durationMins: 13, briefJson: { runtime: '12-15 minutes' }, isSeries: true })).toBeNull()
   })
 
   test('real preflight validator PASSES a well-formed repaired episode', async () => {

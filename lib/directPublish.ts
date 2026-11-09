@@ -49,12 +49,13 @@ import {
 import { assertPublishAllowed, isPublicationHeld } from '@/lib/publicationHold'
 import { evaluateBelleUnitForPublish } from '@/lib/publicationBelleGate'
 import { evaluateBelleFreshnessForPublish } from '@/lib/belleFreshness'
+import { publishLengthIssue } from '@/lib/episodeLength'
 
 export const DIRECT_PUBLISH_CHANGED_BY = 'autonomous-runner'
 
 /** Columns the manual publish-story route selects to run its guards. */
 export const DIRECT_PUBLISH_GUARD_COLUMNS =
-  'id,title,author,genre,audio_url,cover_url,description,duration_mins,' +
+  'id,title,author,genre,audio_url,cover_url,description,duration_mins,brief_json,script_updated_at,' +
   'status,is_hidden,review_status,workflow_state,published_on,' +
   'series_id,series_name,episode_number,series_number,series_is_finale,announcement_url,announcement_text,script,script_json'
 
@@ -113,7 +114,13 @@ function requiredFieldBlockers(story: Record<string, unknown>): string[] {
   if (!clean(story.cover_url)) missing.push('cover_url')
   if (!clean(story.description)) missing.push('description')
   if (!(Number(story.duration_mins) > 0)) missing.push('duration_mins')
-  return missing.map((f) => `missing required publish field: ${f}`)
+  const out = missing.map((f) => `missing required publish field: ${f}`)
+  // EPISODE-LENGTH-001 (CANON-99 decision 4): the same length rule as the operator path.
+  if (Number(story.duration_mins) > 0) {
+    const lengthIssue = publishLengthIssue({ durationMins: story.duration_mins, briefJson: story.brief_json, isSeries: Boolean(clean(story.series_id)), scriptUpdatedAt: story.script_updated_at ?? null })
+    if (lengthIssue) out.push(`length: ${lengthIssue}`)
+  }
+  return out
 }
 
 /**

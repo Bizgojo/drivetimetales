@@ -1,3 +1,4 @@
+import { publishLengthIssue } from '@/lib/episodeLength'
 /**
  * OPERATOR DIRECT-PUBLISH — audited direct-mode series publish
  * (Marc order 2026-10-23 05:10 EDT).
@@ -71,7 +72,7 @@ import { parseEpisodeNumberToken } from '@/lib/numberWords'
  */
 export const DIRECT_PUBLISH_EPISODE_COLUMNS =
   'id,series_id,episode_number,series_number,series_is_finale,title,author,genre,audio_url,cover_url,description,' +
-  'duration_mins,announcement_url,announcement_text,background_music_url,script,script_json,series_name,' +
+  'duration_mins,brief_json,script_updated_at,announcement_url,announcement_text,background_music_url,script,script_json,series_name,' +
   'narrator_voice_id,narrator_voice_name,author_id,workflow_state,review_status,' +
   'status,is_hidden,production_repair_count,published_on,' +
   'workflow_state_changed_by,workflow_state_changed_at,workflow_state_change_reason'
@@ -101,9 +102,8 @@ export const OPERATOR_DIRECT_PUBLISH_DECISION_ALLOWLIST: readonly string[] = [
   'lake-marion-romantic-horror-direct-publish',
 ]
 
-/** Product runtime band: 15-min minimum (SCRIPT-RUNTIME-PREFLIGHT-001) … 20-min brief cap. */
-export const DIRECT_PUBLISH_MIN_DURATION_MINS = 15
-export const DIRECT_PUBLISH_MAX_DURATION_MINS = 20
+/** RETIRED (CANON-99 decision 4): the 15–20 minute band. Length now follows EPISODE-LENGTH-001
+ * (lib/episodeLength.ts): series 12.5 min to 1.35 × brief; standalone ±10% of brief. */
 
 /**
  * The chained promotion edges. repair_queue → approved_ready is NOT an edge
@@ -266,13 +266,14 @@ export function evaluateOperatorDirectGates(
     const storyId = String((ep as { id?: unknown }).id ?? '')
     if (!entryOk.has(storyId)) continue
 
-    // Duration band 15–20 min.
-    const duration = durationOrNull((ep as { duration_mins?: unknown }).duration_mins)
-    if (duration === null || duration < DIRECT_PUBLISH_MIN_DURATION_MINS || duration > DIRECT_PUBLISH_MAX_DURATION_MINS) {
-      blockers.push(
-        `${label}: duration_mins ${String((ep as { duration_mins?: unknown }).duration_mins ?? '(missing)')} outside direct-publish band ${DIRECT_PUBLISH_MIN_DURATION_MINS}–${DIRECT_PUBLISH_MAX_DURATION_MINS}`
-      )
-    }
+    // EPISODE-LENGTH-001 (CANON-99 decision 4): one length rule for every publish path.
+    const lengthIssue = publishLengthIssue({
+      durationMins: (ep as { duration_mins?: unknown }).duration_mins,
+      briefJson: (ep as { brief_json?: unknown }).brief_json,
+      isSeries: Boolean((ep as { series_id?: unknown }).series_id),
+      scriptUpdatedAt: (ep as { script_updated_at?: unknown }).script_updated_at ?? null,
+    })
+    if (lengthIssue) blockers.push(`${label}: ${lengthIssue}`)
 
     // Music bed.
     if (!clean((ep as { background_music_url?: unknown }).background_music_url)) {
