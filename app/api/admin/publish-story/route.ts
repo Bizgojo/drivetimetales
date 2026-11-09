@@ -1,3 +1,4 @@
+import { testStoryReason, partialSeriesReason } from '@/lib/publishGuards'
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { personalizationPublishBlockers } from '@/lib/personalization/publishGuard'
@@ -77,6 +78,11 @@ export async function POST(req: NextRequest) {
       }
       if (!episodes || episodes.length === 0) {
         return NextResponse.json({ success: false, error: 'Series not found' }, { status: 404 })
+      }
+      // PUBLISH-GUARDS-001 (CANON-99 decision 89): test stories are never published.
+      const testEp = (episodes as any[]).map((e) => testStoryReason(e)).find(Boolean)
+      if (testEp) {
+        return NextResponse.json({ success: false, code: 'test_story_refused', error: testEp, seriesId }, { status: 422 })
       }
 
       // PUBLICATION-HOLD-001: durable global hold — checked here (fail fast)
@@ -272,6 +278,12 @@ export async function POST(req: NextRequest) {
       )
     }
 
+    // PUBLISH-GUARDS-001 (CANON-99 decision 89): test stories are never published.
+    const testReason = testStoryReason(existingStory as any)
+    if (testReason) {
+      return NextResponse.json({ success: false, code: 'test_story_refused', error: testReason }, { status: 422 })
+    }
+
     // PERS-FIX-002: publish-time personalization guard. "Weight of the Water"
     // shipped with a legacy [LISTENER_NAME] intro and announcement_url = NULL,
     // which hard-disabled personalized playback (PERS-DIAG-001). Blocking.
@@ -309,6 +321,11 @@ export async function POST(req: NextRequest) {
       const _c = assertSeriesContiguity(_ordered)
       if (!_c.ok) {
         return NextResponse.json({ success: false, code: 'series_episode_number_gap', error: _c.error, seriesId: (existingStory as any).series_id, blocked: [{ storyId: storyId, episodeNumber: (merged as any).episode_number ?? (merged as any).series_number ?? null, reasons: [_c.error ?? 'episode number gap'] }] }, { status: 422 })
+      }
+      // PUBLISH-GUARDS-001 (CANON-99 decision 44): no episode goes live alone.
+      const _partial = partialSeriesReason(storyId, fam as any[])
+      if (_partial) {
+        return NextResponse.json({ success: false, code: 'series_partial_publish', error: _partial, seriesId: (existingStory as any).series_id }, { status: 422 })
       }
       const _rank = _ordered.findIndex((e: any) => e.id === merged.id)
       const _res = isEpisodePublishable(_ordered[_rank] as any, _ordered.slice(0, _rank) as any[])

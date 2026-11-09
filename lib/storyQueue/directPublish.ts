@@ -1,3 +1,4 @@
+import { testStoryReason } from '@/lib/publishGuards'
 import { publishLengthIssue } from '@/lib/episodeLength'
 /**
  * OPERATOR DIRECT-PUBLISH — audited direct-mode series publish
@@ -265,6 +266,10 @@ export function evaluateOperatorDirectGates(
     const label = `episode ${String((ep as { id?: unknown }).id ?? '(unknown)')}`
     const storyId = String((ep as { id?: unknown }).id ?? '')
     if (!entryOk.has(storyId)) continue
+
+    // PUBLISH-GUARDS-001 (CANON-99 decision 89): test stories are never published.
+    const testReason = testStoryReason(ep as any)
+    if (testReason) blockers.push(`${label}: ${testReason}`)
 
     // EPISODE-LENGTH-001 (CANON-99 decision 4): one length rule for every publish path.
     const lengthIssue = publishLengthIssue({

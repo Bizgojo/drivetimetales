@@ -1,3 +1,4 @@
+import { testStoryReason, partialSeriesReason } from '@/lib/publishGuards'
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { personalizationPublishBlockers } from '@/lib/personalization/publishGuard'
@@ -43,6 +44,16 @@ export async function POST(req: NextRequest) {
         { success: false, error: `Missing required publish field(s): ${missing.join(', ')}` },
         { status: 400 }
       )
+    }
+
+    // PUBLISH-GUARDS-001 (CANON-99 decisions 44, 89): no test stories, no episode live alone.
+    const testReason = testStoryReason(story as any)
+    if (testReason) return NextResponse.json({ success: false, code: 'test_story_refused', error: testReason }, { status: 422 })
+    if ((story as any).series_id) {
+      const { data: sibs, error: sibErr } = await supabase.from('stories').select('id,status,is_hidden').eq('series_id', (story as any).series_id)
+      if (sibErr) return NextResponse.json({ success: false, error: sibErr.message }, { status: 500 })
+      const partial = partialSeriesReason(String((story as any).id), (sibs || []) as any[])
+      if (partial) return NextResponse.json({ success: false, code: 'series_partial_publish', error: partial }, { status: 422 })
     }
 
     // PERS-FIX-002: publish-time personalization guard — no story may ship
