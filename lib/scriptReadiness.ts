@@ -29,6 +29,8 @@ import { checkScriptRuntimeMeetsMinimum, SCRIPT_RUNTIME_PREFLIGHT } from './scri
 import { checkNarrationPresence } from './narrationPresence'
 import { parseScriptPositions } from './scriptLineIndex'
 import { RUNTIME_GATE } from './runtimeGate'
+import { findSpokenTextIssues } from './spokenTextChecks'
+import { DESCRIPTION_MAX_CHARS } from './validateCardCopy'
 
 // Mirrors app/api/admin/production-jobs/run-next/route.ts (pinned by test).
 export const RUNNEXT_TITLE_MAX_CHARS = 28
@@ -128,14 +130,22 @@ export function checkScriptReadiness(input: ReadinessInput): ReadinessReport {
   }
   if (!description) blockers.push({ gate: 'CARD-COPY', detail: 'DESCRIPTION missing' })
   else {
-    if (words(description) > RUNNEXT_DESCRIPTION_MAX_WORDS)
-      blockers.push({ gate: 'CARD-COPY', detail: `DESCRIPTION ${words(description)} words (max ${RUNNEXT_DESCRIPTION_MAX_WORDS})` })
+    // DESC-100-CHAR-001 / CANON-99 decision 8: 100 characters, the same rule the validator uses.
+    if (description.length > DESCRIPTION_MAX_CHARS)
+      blockers.push({ gate: 'CARD-COPY', detail: `DESCRIPTION ${description.length} characters (max ${DESCRIPTION_MAX_CHARS})` })
     const blocked = RUNNEXT_DESCRIPTION_PAST_TENSE_RE.exec(description)
     if (blocked) blockers.push({ gate: 'CARD-COPY', detail: `DESCRIPTION blocked word "${blocked[0]}"` })
   }
 
   // 2. Narrator header + narration presence
   const narrator = header(script, 'NARRATOR')
+  // SPOKEN-TEXT-001 (CANON-99 decisions 10, 11): blocking spoken-text checks.
+  const spoken = findSpokenTextIssues(script)
+  const spokenLabel = { 'SPLIT-DASH': 'sentence split across lines with a trailing dash (finish the sentence on one line)', 'REPEATED-LINE': 'the same line said twice in a row', 'CHAPTER-EPISODE': 'a character says "chapter" or "episode"' } as const
+  for (const kind of ['SPLIT-DASH', 'REPEATED-LINE', 'CHAPTER-EPISODE'] as const) {
+    const hits = spoken.filter((x) => x.check === kind)
+    if (hits.length) blockers.push({ gate: 'SPOKEN-TEXT-001', detail: `${hits.length} line(s): ${spokenLabel[kind]}`, evidence: hits.slice(0, 10).map((h) => h.line) })
+  }
   if (!narrator) blockers.push({ gate: 'NARRATOR', detail: 'NARRATOR header missing' })
   else if (input.narratorVoiceNames && !input.narratorVoiceNames.some((n) => n.trim().toLowerCase() === narrator.toLowerCase()))
     blockers.push({ gate: 'NARRATOR', detail: `NARRATOR "${narrator}" not in narrator_voices` })

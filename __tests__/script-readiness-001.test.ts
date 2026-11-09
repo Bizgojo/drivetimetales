@@ -116,7 +116,7 @@ describe('SCRIPT-READINESS-001', () => {
   test('constants are pinned to the run-next gate that actually blocks production', () => {
     const src = readFileSync(join(__dirname, '..', 'app/api/admin/production-jobs/run-next/route.ts'), 'utf8')
     expect(src).toContain(`const TITLE_MAX_CHARS = ${RUNNEXT_TITLE_MAX_CHARS}`)
-    expect(src).toContain(`const DESCRIPTION_MAX_WORDS = ${RUNNEXT_DESCRIPTION_MAX_WORDS}`)
+    expect(src).toContain('DESCRIPTION_MAX_WORDS removed') // DESC-100-CHAR-001: 100 characters (validateCardCopy)
     expect(src).toContain(`const DESCRIPTION_PAST_TENSE_RE = ${RUNNEXT_DESCRIPTION_PAST_TENSE_RE.toString()}`)
     expect(VALIDATOR_SFX_MAX).toBe(Number.POSITIVE_INFINITY)
     expect(src).toContain('SFX (SFX-001, Marc 2026-10-31): no fixed number.')

@@ -3571,31 +3571,11 @@ HAL-SCRIPT-004: NUMBER AND CURRENCY FORMATTING RULE
 
 HAL-SCRIPT-005: When writing numbers in dialogue or narration, use consistent form. If you write forty-five, write all two-digit numbers as words. If you write 45, use digits. Mixed forms within a sentence create QC noise.
 
-HAL-SCRIPT-006: SHORT DIALOGUE SENTENCE RULE
-Do NOT write a character dialogue line that begins with a standalone one-word sentence followed immediately by more content in the same line.
-BAD:  ROSA: Yes. He retired eight months ago.
-BAD:  GARRITY: No. The file was stamped last week.
-BAD:  DOLAN: Sure. I can check the register.
-GOOD: ROSA: He retired eight months ago-she nodded and confirmed it.
-GOOD: GARRITY: He said no; the file was stamped last week.
-GOOD: ROSA: Yes, he retired eight months ago.
-REASON: Whisper voice activity detection stops after the first short sentence ("Yes.") because the natural period pause reads as segment end. Combining into a single flowing sentence prevents false QC truncation.
-If an affirmation/negation is necessary, write it as a separate ROSA: line before the continuation line.
-
-HAL-SCRIPT-007: SHORT DIALOGUE LINE MINIMUM LENGTH
-Dialogue lines MUST be at least 5 words. Lines shorter than 5 words cause Whisper to drop
-the opening word(s) - e.g. "It's open." → Whisper returns "Open." (contraction dropped).
-BAD:  LEN: It's open.
-BAD:  ROSA: Come in.
-BAD:  WARD: Too late.
-GOOD: LEN: The door is already open, come through.
-GOOD: ROSA: You can come in now, he is ready.
-GOOD: WARD: I am afraid you are already too late.
-If the dramatic beat requires a very short response, write it as subtext in the narration or
-merge with the character's next line. Never leave a standalone line under 5 words.
-REASON: Short audio clips from ElevenLabs can cause Whisper VAD to miss the opening
-word(s), producing a partial transcript that fails QC. ATL-PIPE-017 catches some cases
-but HAL-SCRIPT-007 prevents all of them at the source.
+SPOKEN-TEXT-001 (blocking; CANON-99 decisions 10 and 11):
+- Never split one sentence across two lines with a trailing dash. Finish the sentence on one line. A dash is only for a character being interrupted by someone else.
+- Never write the same line twice in a row.
+- Characters never say "chapter" or "episode" in the story.
+- Short lines are fine ("It's open." is fine); there is no minimum line length.
 
 HAL-SCRIPT-003: DESCRIPTION PROTAGONIST CONSISTENCY RULE
 - The DESCRIPTION field must name the protagonist using the EXACT role/occupation that appears in the script body.
