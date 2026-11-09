@@ -13,7 +13,7 @@ Every rule in this document that needs Marc. **[MARC DECIDES]** = Marc approves,
 - **Rule 39 [MARC DECIDES]:** Episode Correction Loop: Marc listens → approves or sends corrections → the corrected version comes to him as a link, not published → Marc…
 - **Rule 41 [MARC DOES]:** Marc checks player changes on a real phone before they are accepted.
 - **Rule 44 [MARC DECIDES]:** A Gemini final read of the whole series decides publish / fix (2 rounds) / hold, and Marc gets one message only on hold.
-- **Still open:** 8 conflicts and 5 questions at the end of this document wait for Marc's decision (all listed in CANON-99).
+- **Still open:** 4 conflicts or questions below, each with a recommendation in CANON-99 Part 2.
 
 ## Rules
 
@@ -76,20 +76,32 @@ Each line: step name → what it checks → on failure.
 43. Marc wants production to run without him; he steps in when he chooses. — **Agreed** (Marc Nov 7, memory story-pipeline.md)
 44. **[MARC DECIDES]** A Gemini final read of the whole series decides publish / fix (2 rounds) / hold, and Marc gets one message only on hold. — **Proposed** (Marc asked for it Nov 7, but the Story Production Spec is a draft he has not approved to build)
 
+## Marc's decisions (Nov 9, 2026)
+
+Marc answered CANON-99 on Nov 9, 2026. These decisions are **Agreed** and override any rule above that says otherwise. Each conflict or question below that they settle is marked RESOLVED.
+
+- **Decision 3:** **Hook length.** The rules say 15 words; the code passes up to 30. Decided: 15 words, blocking, for every new Episode 1. The 5 live hooks keep their wording. (02 C2, 03 C2, 08 C1) — **Agreed** (Marc, Nov 9, 2026, CANON-99)
+- **Decision 4:** **Episode length.** Decided: standalones within ±10% of target; series episodes between the 12.5-minute floor and 1.35 × the brief; speaking rate 160 words per minute everywhere. Publish code uses the same numbers (today it only allows 15–20 minutes). (02 C5, 03 C3, 08 C2, 09 C4) — **Agreed** (Marc, Nov 9, 2026, CANON-99)
+- **Decision 18:** **Repairs.** Decided: text problems go back to the pipeline writer automatically (never an agent); a whole failed production gets one repair pass, then cold storage. "Hal rewrite" in PIPELINE-CANON becomes "pipeline writer rewrite". (01 C2, C3, 08 C7) — **Agreed** (Marc, Nov 9, 2026, CANON-99)
+- **Decision 21:** **Series skip three final checks** (hook, length, quality). Decided: run them on every series episode too. (08 C4) — **Agreed** (Marc, Nov 9, 2026, CANON-99)
+- **Decision 22:** **Quality score pass mark.** Decided: 24 out of 30 (the code's stricter number). (08 C3) — **Agreed** (Marc, Nov 9, 2026, CANON-99)
+- **Decision 23:** **Parked stories.** Decided: one daily list; Orion sorts them and asks you only when no rule answers. (08 C6, Q3) — **Agreed** (Marc, Nov 9, 2026, CANON-99)
+- **Decision 25:** **Story clarity check until it's built.** Decided: a fresh AI reviewer (never the writer) runs it, and the result is saved with the episode. (08 Q2) — **Agreed** (Marc, Nov 9, 2026, CANON-99)
+
 ## Conflicts found
-- C1. Hook deadline. Canon says the hook lands within 15 spoken words (memory /areas/story-pipeline.md; Marc ruling Jul 24 "start at canon"; HOOK-001 note). lib/hookGate.ts passes up to 30 words (HOOK_PASS_WORD_LIMIT = 30), and its "warn" band is empty. Recommendation: 15 words, blocking. Marc decides.
-- C2. Length tolerance. LENGTH-002 (Canon Registry, Aug 28): each episode within ±20% of the commissioned length. RUNTIME-GATE-001 (code, Oct 11 decision): ±10%. Writer self-check also uses ±10%. Recommendation: ±10% (newer, and the floor is 12.5 min). Marc decides.
-- C3. Quality score bar. June canon (memory /areas/story-pipeline.md): "30-point rubric gates publish at 22+, 26 gold". Code: 24 or more passes. Recommendation: 24 (newer code, stricter). Marc decides.
-- C4. Series skip three final checks. HOOK-GATE-001, RUNTIME-GATE-001 and QUALITY-GATE-001 run only for standalones; series episodes go straight to review or publish. Rule 2 says every check must be able to stop the run. Recommendation: run them per episode (rule 32). Marc decides.
+- C1. **[RESOLVED by decision 3, Marc Nov 9, 2026]** Hook deadline. Canon says the hook lands within 15 spoken words (memory /areas/story-pipeline.md; Marc ruling Jul 24 "start at canon"; HOOK-001 note). lib/hookGate.ts passes up to 30 words (HOOK_PASS_WORD_LIMIT = 30), and its "warn" band is empty. Recommendation: 15 words, blocking. Marc decides.
+- C2. **[RESOLVED by decision 4, Marc Nov 9, 2026]** Length tolerance. LENGTH-002 (Canon Registry, Aug 28): each episode within ±20% of the commissioned length. RUNTIME-GATE-001 (code, Oct 11 decision): ±10%. Writer self-check also uses ±10%. Recommendation: ±10% (newer, and the floor is 12.5 min). Marc decides.
+- C3. **[RESOLVED by decision 22, Marc Nov 9, 2026]** Quality score bar. June canon (memory /areas/story-pipeline.md): "30-point rubric gates publish at 22+, 26 gold". Code: 24 or more passes. Recommendation: 24 (newer code, stricter). Marc decides.
+- C4. **[RESOLVED by decision 21, Marc Nov 9, 2026]** Series skip three final checks. HOOK-GATE-001, RUNTIME-GATE-001 and QUALITY-GATE-001 run only for standalones; series episodes go straight to review or publish. Rule 2 says every check must be able to stop the run. Recommendation: run them per episode (rule 32). Marc decides.
 - C5. Warn-only checks without written justification (Rule 2 requires one): hook-gate genre check, garble stop-line when its report is missing (continues), runtime gate when length can't be measured (continues), Belle structure "inconclusive" results, Gemini series read (report only). Covered: missing cover (COVER-PIPELINE-DECOUPLE-001), premise clusters (Marc Jul 18). Recommendation: each one gets its written justification or becomes blocking.
-- C6. Who hears about parked stories. Quality-gate exhaustion: "do NOT notify Marc" (code). Ready-for-review exhaustion: notify Marc (GAP2-NOTIFY). Nov 7: Marc wants to be left out. Recommendation: one daily list of parked stories, nothing else. Marc decides.
-- C7. Hand-written fixes. Rule 1 and AGENTS.md: the pipeline writer makes text fixes. In practice Claude wrote replacement Belle outros for Orion → Hal to paste (Rerouted EP2–3, Nov 7). Recommendation: always route through the writer with the failure quoted.
+- C6. **[RESOLVED by decision 23, Marc Nov 9, 2026]** Who hears about parked stories. Quality-gate exhaustion: "do NOT notify Marc" (code). Ready-for-review exhaustion: notify Marc (GAP2-NOTIFY). Nov 7: Marc wants to be left out. Recommendation: one daily list of parked stories, nothing else. Marc decides.
+- C7. **[RESOLVED by decision 18, Marc Nov 9, 2026]** Hand-written fixes. Rule 1 and AGENTS.md: the pipeline writer makes text fixes. In practice Claude wrote replacement Belle outros for Orion → Hal to paste (Rerouted EP2–3, Nov 7). Recommendation: always route through the writer with the failure quoted.
 - C8. Where the AI read goes. Story-clarity rule (Nov 8): before voicing, blocking. Production Spec draft (Nov 7): Gemini read before publishing decides publish. Claude advised on Nov 7 that the read should come before voicing. Recommendation: clarity gate before voicing (approved); final Gemini read only after Marc approves the spec.
 
 ## Open questions for Marc
-- Q1. Is the publish switch on Direct right now, and is the global publication hold on or off? It was turned back on Oct 23–24 during a test (chat "Clearing CEO series flag"). Suggested answer: report both values in every status report.
-- Q2. Who runs the story clarity check by hand until the gate is built? Suggested answer: a fresh AI reviewer (not the writer), output stored with the episode.
-- Q3. After a story is parked (needs_attention), who clears it and how often? Suggested answer: Orion reviews the parked list daily, classifies A/B, and only asks Marc when a rule is unclear.
+- Q1. **[RESOLVED: fact checked or done, Nov 9, 2026; see CANON-99 Part 2]** Is the publish switch on Direct right now, and is the global publication hold on or off? It was turned back on Oct 23–24 during a test (chat "Clearing CEO series flag"). Suggested answer: report both values in every status report.
+- Q2. **[RESOLVED by decision 25, Marc Nov 9, 2026]** Who runs the story clarity check by hand until the gate is built? Suggested answer: a fresh AI reviewer (not the writer), output stored with the episode.
+- Q3. **[RESOLVED by decision 23, Marc Nov 9, 2026]** After a story is parked (needs_attention), who clears it and how often? Suggested answer: Orion reviews the parked list daily, classifies A/B, and only asks Marc when a rule is unclear.
 - Q4. In "Review" mode, how does Marc get the play link: admin Review tab, Telegram, or both? Suggested answer: one Telegram message per series with one play link per episode, plus the Review tab.
 - Q5. Does the Belle structure check (BELLE-004 to 006) stay at assembly, or move to the writer self-check so it fails before spend? Suggested answer: writer self-check and voice preflight, both using the same function.
 

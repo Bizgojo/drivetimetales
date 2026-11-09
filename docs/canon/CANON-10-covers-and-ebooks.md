@@ -10,7 +10,7 @@ Every rule in this document that needs Marc. **[MARC DECIDES]** = Marc approves,
 - **Rule 20 [MARC DECIDES]:** Bulk remakes need Marc's OK on the list and the cost first.
 - **Rule 27 [MARC DOES]:** Marc tops up image credits himself. No key or card number is ever sent in chat. Image spend is charged to the ET-R&D card, or ET-Marketing for ad…
 - **Rule 33 [MARC DECIDES]:** Applies to new production only. Stories published before Oct 4, 2026 are not forced back. Backfill is a separate order from Marc.
-- **Still open:** 4 conflicts and 5 questions at the end of this document wait for Marc's decision (all listed in CANON-99).
+- **Still open:** 5 conflicts or questions below, each with a recommendation in CANON-99 Part 2.
 
 ## Rules
 
@@ -69,14 +69,21 @@ Every rule in this document that needs Marc. **[MARC DECIDES]** = Marc approves,
 42. **The eBook is checked for leftover script marks** (labels, brackets, cue words) before review. — **Proposed** (fills the missing style gate for rules 36 and 39)
 43. **The eBook is checked for length** against the script (for example at least 70% of the script's spoken words) so a cut-off text fails. — **Proposed** (the generator caps output at 4,000 tokens; a long episode could be cut off with no check)
 
+## Marc's decisions (Nov 9, 2026)
+
+Marc answered CANON-99 on Nov 9, 2026. These decisions are **Agreed** and override any rule above that says otherwise. Each conflict or question below that they settle is marked RESOLVED.
+
+- **Decision 46:** **Series cover.** Decided: the Library shows one series cover (Episode 1's, unless you pick another). (10 C4, Q1) — **Agreed** (Marc, Nov 9, 2026, CANON-99)
+- **Decision 47:** **eBooks.** Decided: rewrite the eBook prompt to produce real book prose, and make the publish check require the eBook. (10 C1, C2) — **Agreed** (Marc, Nov 9, 2026, CANON-99)
+
 ## Conflicts found
-- C1. EBOOK-STYLE (Oct 4) says the eBook must read as a genuine book. The code prompt (complete-story-package/route.ts) says "convert this audio drama script into clean readable prose … keep story meaning and dialogue … preserve the story", using a small model (claude-haiku-4-5, 4,000 tokens). Recommendation: canon wins; rewrite the prompt and add the style check (rules 41–42). Marc decides.
-- C2. EBOOK-COMPLETENESS says the publish gate blocks a missing eBook. The publish checks (lib/story-gates.ts _publishMissingFields, lib/directPublish.ts) do not check `prose_text`; only Ready for Review does. Recommendation: add `prose_text` to the publish check.
+- C1. **[RESOLVED by decision 47, Marc Nov 9, 2026]** EBOOK-STYLE (Oct 4) says the eBook must read as a genuine book. The code prompt (complete-story-package/route.ts) says "convert this audio drama script into clean readable prose … keep story meaning and dialogue … preserve the story", using a small model (claude-haiku-4-5, 4,000 tokens). Recommendation: canon wins; rewrite the prompt and add the style check (rules 41–42). Marc decides.
+- C2. **[RESOLVED by decision 47, Marc Nov 9, 2026]** EBOOK-COMPLETENESS says the publish gate blocks a missing eBook. The publish checks (lib/story-gates.ts _publishMissingFields, lib/directPublish.ts) do not check `prose_text`; only Ready for Review does. Recommendation: add `prose_text` to the publish check.
 - C3. READY-PUBLISH-URLS-001 (Oct 5) made a missing cover block "publish-ready". COVER-PIPELINE-DECOUPLE-001 (Oct 8) made a missing cover only a warning at Ready for Review. They fit together only if the cover blocks at publish and not before; that is how the code works today. Recommendation: confirm that reading (rule 3). Marc decides.
-- C4. Covers are made per episode, but a series also has a series cover (Nov 5 handoff: "Re-upload The Third Key series cover"). No rule says where the series cover comes from or which one the Library shows. Recommendation: see Q1.
+- C4. **[RESOLVED by decision 46, Marc Nov 9, 2026]** Covers are made per episode, but a series also has a series cover (Nov 5 handoff: "Re-upload The Third Key series cover"). No rule says where the series cover comes from or which one the Library shows. Recommendation: see Q1.
 
 ## Open questions for Marc
-- Q1. Should a series show one series cover in the Library and episode covers inside? Suggested answer: yes; the series cover is Episode 1's cover unless Marc picks another.
+- Q1. **[RESOLVED by decision 46, Marc Nov 9, 2026]** Should a series show one series cover in the Library and episode covers inside? Suggested answer: yes; the series cover is Episode 1's cover unless Marc picks another.
 - Q2. Should Marc see new covers before a story goes live in Direct mode? Suggested answer: no; Gemini vision checks for maps, keys, text and darkness, and fails the cover if found.
 - Q3. One eBook per series, or one per episode joined in the reader? Suggested answer: one per episode in the database, shown as one book in the reader.
 - Q4. Backfill eBooks for stories published before Oct 4? Suggested answer: only for stories that stay live, as a separate low-priority order.

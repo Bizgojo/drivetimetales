@@ -13,7 +13,7 @@ Every rule in this document that needs Marc. **[MARC DECIDES]** = Marc approves,
 - **Rule 8 [MARC DECIDES]:** Stop and ask Marc when a step could overwrite or hide live content.
 - **Rule 10 [MARC DECIDES]:** No crontab hold line (#HOLD-…) or paused service is turned back on without Marc's word.
 - **Rule 54 [MARC DOES]:** Marc enters money-spending keys himself (for example Meta ads_management). Low-risk test keys may be passed through Orion.
-- **Still open:** 10 conflicts and 8 questions at the end of this document wait for Marc's decision (all listed in CANON-99).
+- **Still open:** 9 conflicts or questions below, each with a recommendation in CANON-99 Part 2.
 
 ## Rules
 
@@ -94,21 +94,29 @@ Every rule in this document that needs Marc. **[MARC DECIDES]** = Marc approves,
 58. No key, token or password is ever written in a repo document or memory. — **Proposed** (see C6)
 59. Server security updates are installed in a planned window run by Orion. — **Proposed** (todo item 16a: 17 security updates pending)
 
+## Marc's decisions (Nov 9, 2026)
+
+Marc answered CANON-99 on Nov 9, 2026. These decisions are **Agreed** and override any rule above that says otherwise. Each conflict or question below that they settle is marked RESOLVED.
+
+- **Decision 12:** **Retire old manual documents** as history: STORY_PRODUCTION_PROCESS v1.2, SCRIPT_VALIDATOR.md, STORY_GRADING_RUBRIC.md, STORY_BRIEF_TEMPLATE v2.2, NEDS scoring, character-attachment scoring, MASTER_RULES.md, DEPLOY.md, DEPLOYMENT-RUNBOOK.md, HAL_SESSION_START_PROTOCOL.md, MIX_SPEC.md and MIX_NOTE_PROTOCOL.md level tables, et_mix_assembly.py, ACQUISITION-RETENTION-001 Parts A, D, E. Decided: yes, all. (01 C1, 02 C4, Q5, Q6, 03 Q7, 07 C4, C6, 13 C9, 15 C3–C5) — **Agreed** (Marc, Nov 9, 2026, CANON-99)
+- **Decision 59:** **Merging and database changes.** Today, AGENTS.md says nothing merges and no database change happens without your word. Older rules (Oct 11 and Nov 2) let Claude merge low-risk pipeline PRs and apply add-only migrations. Decided: keep your word required for every merge and migration (today's rule). It's simple, and you've been giving it quickly. (15 C1, C2, Q1, Q2) — **Agreed** (Marc, Nov 9, 2026, CANON-99)
+- **Decision 60:** **Security, urgent.** Rotate the three exposed secrets (Susan's API key and a Telegram bot token in repository documents, an email-service key in memory) and remove them from the documents. Put a login gate on the open /api/v2 production routes. (15 C5, C6) — **Agreed** (Marc, Nov 9, 2026, CANON-99)
+
 ## Conflicts found
-- C1. Merging. AGENTS.md (canon, Nov 9): never merge without Marc's explicit word. Oct 11: Claude may merge low-risk PRs after reading the diff, except billing, auth or data deletion. Nov 2 and memory agent-fleet.md: "Claude merges pipeline PRs" once tests, build and mergeability pass. Recommendation: AGENTS.md binds the OpenClaw agents; Claude keeps the pipeline-PR exception with the billing/auth/data-deletion carve-out. Write this into AGENTS.md. Marc decides.
-- C2. Database changes. AGENTS.md: no migration without Marc's OK. Oct 11: Claude may apply add-only migrations; destructive ones need Marc. Recommendation: same split as C1, written into AGENTS.md. Marc decides.
-- C3. MASTER_RULES.md (Jan 18, 2026) says: host on Vercel, commit straight to main from the Mac ("git add . && git commit && git push"), all text white, credits model, news briefings. These clash with the PR flow, EC2 deploys, admin light background, and news being removed. Recommendation: MASTER_RULES.md becomes history. Marc decides.
-- C4. DEPLOY.md (old Vercel setup, old price tiers and credit packs) and docs/DEPLOYMENT-RUNBOOK.md (wait 3 minutes for Vercel, drivetimetales.com) clash with rule 23–24 (Orion deploys to EC2, zero downtime). Recommendation: retire both; rule 25 becomes the runbook. Marc decides.
-- C5. docs/HAL_SESSION_START_PROTOCOL.md (April) gives Hal script-adjacent and publishing duties, points to retired ET_Story_Rules_v3, and its recovery steps open Telegram to everyone (allowFrom "*", dmPolicy open). It also contains a live-looking Telegram bot token in plain text. Recommendation: retire it, rotate that token. Marc decides.
-- C6. Secrets in documents break rule 53: docs/SUSAN-MARKETING-API.md shows Susan's API key in plain text; HAL_SESSION_START_PROTOCOL.md shows a bot token; memory /areas/endless-tales-platform.md holds a Resend key. Recommendation: rotate all three and scrub them. Marc decides.
+- C1. **[RESOLVED by decision 59, Marc Nov 9, 2026]** Merging. AGENTS.md (canon, Nov 9): never merge without Marc's explicit word. Oct 11: Claude may merge low-risk PRs after reading the diff, except billing, auth or data deletion. Nov 2 and memory agent-fleet.md: "Claude merges pipeline PRs" once tests, build and mergeability pass. Recommendation: AGENTS.md binds the OpenClaw agents; Claude keeps the pipeline-PR exception with the billing/auth/data-deletion carve-out. Write this into AGENTS.md. Marc decides.
+- C2. **[RESOLVED by decision 59, Marc Nov 9, 2026]** Database changes. AGENTS.md: no migration without Marc's OK. Oct 11: Claude may apply add-only migrations; destructive ones need Marc. Recommendation: same split as C1, written into AGENTS.md. Marc decides.
+- C3. **[RESOLVED by decision 12, Marc Nov 9, 2026]** MASTER_RULES.md (Jan 18, 2026) says: host on Vercel, commit straight to main from the Mac ("git add . && git commit && git push"), all text white, credits model, news briefings. These clash with the PR flow, EC2 deploys, admin light background, and news being removed. Recommendation: MASTER_RULES.md becomes history. Marc decides.
+- C4. **[RESOLVED by decision 12, Marc Nov 9, 2026]** DEPLOY.md (old Vercel setup, old price tiers and credit packs) and docs/DEPLOYMENT-RUNBOOK.md (wait 3 minutes for Vercel, drivetimetales.com) clash with rule 23–24 (Orion deploys to EC2, zero downtime). Recommendation: retire both; rule 25 becomes the runbook. Marc decides.
+- C5. **[RESOLVED by decision 12, 60, Marc Nov 9, 2026]** docs/HAL_SESSION_START_PROTOCOL.md (April) gives Hal script-adjacent and publishing duties, points to retired ET_Story_Rules_v3, and its recovery steps open Telegram to everyone (allowFrom "*", dmPolicy open). It also contains a live-looking Telegram bot token in plain text. Recommendation: retire it, rotate that token. Marc decides.
+- C6. **[RESOLVED by decision 60, Marc Nov 9, 2026]** Secrets in documents break rule 53: docs/SUSAN-MARKETING-API.md shows Susan's API key in plain text; HAL_SESSION_START_PROTOCOL.md shows a bot token; memory /areas/endless-tales-platform.md holds a Resend key. Recommendation: rotate all three and scrub them. Marc decides.
 - C7. Memory /areas/endless-tales-platform.md (Aug): "all code written directly on Mac via heredoc; commit immediately." Nov 6: PRs on main only. Recommendation: Nov 6 wins. Marc decides.
 - C8. Orion's model. Nov 5: Claude Sonnet, DeepSeek fallback. Nov 8: fleet on DeepSeek. Recommendation: Nov 8 wins (memory says it supersedes). Marc decides.
-- C9. scripts/ec2-deploy/README.md says run-next has no auth. middleware.ts now gates all /api/admin routes. Recommendation: fix the README note. Marc decides.
+- C9. **[RESOLVED: fact checked or done, Nov 9, 2026; see CANON-99 Part 2]** scripts/ec2-deploy/README.md says run-next has no auth. middleware.ts now gates all /api/admin routes. Recommendation: fix the README note. Marc decides.
 - C10. workspace-orion/governance/INCIDENT-RULE-001.md is owned by Orion (failure owners, 15-minute detection) with no sign Marc approved it. Recommendation: treat as Proposed until Marc approves. Marc decides.
 
 ## Open questions for Marc
-- Q1. Who may merge what? Suggested answer: Claude merges pipeline/app PRs that pass tests and build, except billing, auth, data deletion and migrations that remove data; everything else needs your word.
-- Q2. May Claude apply add-only database migrations without asking? Suggested answer: yes, and report them in Report 101.
+- Q1. **[RESOLVED by decision 59, Marc Nov 9, 2026]** Who may merge what? Suggested answer: Claude merges pipeline/app PRs that pass tests and build, except billing, auth, data deletion and migrations that remove data; everything else needs your word.
+- Q2. **[RESOLVED by decision 59, Marc Nov 9, 2026]** May Claude apply add-only database migrations without asking? Suggested answer: yes, and report them in Report 101.
 - Q3. Does Codex still have a job? Suggested answer: no; Claude does that work now.
 - Q4. Which agents exist today (Vega, Maya, Lex, Lyra, Holly, Scribe)? Suggested answer: keep a one-line roster in this doc; retire names with no work.
 - Q5. Six PRs (#333–#338) were self-merged with no review on Oct 11–12. Revert, accept, or re-review? Suggested answer: Claude re-reviews them and reports.

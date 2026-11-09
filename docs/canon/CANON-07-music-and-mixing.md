@@ -34,7 +34,7 @@ Every rule in this document that needs Marc. **[MARC DECIDES]** = Marc approves,
 - **Rule 32 [MARC DECIDES]:** Music is made at most 3 times per story or episode. After that the story is flagged for attention; only Marc can re-queue it.
 - **Rule 39 [MARC DOES]:** Every mix change goes behind an on/off switch. A test copy goes to a preview folder. Marc listens before it goes live. If it goes wrong, the…
 - **Rule 43 [MARC DECIDES]:** No corrected episode replaces a published final_mix.mp3 until Marc listens and approves.
-- **Still open:** 7 conflicts and 6 questions at the end of this document wait for Marc's decision (all listed in CANON-99).
+- **Still open:** 1 conflicts or questions below, each with a recommendation in CANON-99 Part 2.
 
 ## Rules
 
@@ -97,21 +97,33 @@ Every rule in this document that needs Marc. **[MARC DECIDES]** = Marc approves,
 42. If a mix problem happens once, fix that mix. If it happens in 2 or more stories, change the rule. — **Agreed** (docs/MIX_NOTE_PROTOCOL.md v1.0, owner Marc)
 43. **[MARC DECIDES]** No corrected episode replaces a published final_mix.mp3 until Marc listens and approves. — **Agreed** (MIX_SPEC.md, Marc Aug 21) — see Q5
 
+## Marc's decisions (Nov 9, 2026)
+
+Marc answered CANON-99 on Nov 9, 2026. These decisions are **Agreed** and override any rule above that says otherwise. Each conflict or question below that they settle is marked RESOLVED.
+
+- **Decision 12:** **Retire old manual documents** as history: STORY_PRODUCTION_PROCESS v1.2, SCRIPT_VALIDATOR.md, STORY_GRADING_RUBRIC.md, STORY_BRIEF_TEMPLATE v2.2, NEDS scoring, character-attachment scoring, MASTER_RULES.md, DEPLOY.md, DEPLOYMENT-RUNBOOK.md, HAL_SESSION_START_PROTOCOL.md, MIX_SPEC.md and MIX_NOTE_PROTOCOL.md level tables, et_mix_assembly.py, ACQUISITION-RETENTION-001 Parts A, D, E. Decided: yes, all. (01 C1, 02 C4, Q5, Q6, 03 Q7, 07 C4, C6, 13 C9, 15 C3–C5) — **Agreed** (Marc, Nov 9, 2026, CANON-99)
+- **Decision 32:** **Sting and Belle.** Decided: the sting is always the very first sound, and Belle starts 1.5 seconds in, over the sting's tail, on every path. You confirm by ear. (04 C9, Q4, 07 C3, Q1) — **Agreed** (Marc, Nov 9, 2026, CANON-99)
+- **Decision 39:** **Rights in ads.** Decided: no library sounds or music in paid ads until the license is confirmed in writing; record each story's music source. (06 Q3, 07 Q2) — **Agreed** (Marc, Nov 9, 2026, CANON-99)
+- **Decision 40:** **Outro music.** Decided: music sits at 0.13 under Belle with a 3-second fade (your Nov 1 drawing); old numbers and the unused music-bed check are updated. (07 C1, C2) — **Agreed** (Marc, Nov 9, 2026, CANON-99)
+- **Decision 41:** **Loudness.** Decided: the whole episode measures −16 LUFS (±1), peaks no higher than −1 dB, and no section is more than 2 units off the story. (07 Q4) — **Agreed** (Marc, Nov 9, 2026, CANON-99)
+- **Decision 42:** **[MUSIC:OUT] / [MUSIC:IN] marks.** Decided: build them (3-second fades, at most twice per story). (07 C5, Q3) — **Agreed** (Marc, Nov 9, 2026, CANON-99)
+- **Decision 43:** **Re-mixing a published episode.** Decided: Gemini checks the new mix and you're asked only when it flags a problem. (07 C7, Q5) — **Agreed** (Marc, Nov 9, 2026, CANON-99)
+
 ## Conflicts found
-- C1. Bible/MIX_SPEC.md (Aug 24–25) and the MUSIC-002 header in core.ts give older outro numbers: music down to 0.019, then "rises to 0.50", a 2-second fade (Aug 25), and the code value set to 0 (Belle with no music). Marc's Nov 1 drawing rule is 0.13 under Belle and a 3-second fade. Recommendation: Nov 1 wins; rewrite MIX_SPEC.md and the core.ts header. Marc decides.
-- C2. lib/musicBedGate.ts checks for MUSIC-002 levels (flat 0.13 bed, outro rise to 0.50). Today's mixes would fail it. It is not wired into any render. Recommendation: update it to MIX-V3/V4 shapes or retire it. Marc decides.
-- C3. Four sting timings exist: core.ts (Belle at 1.5 s over the sting, 1.2 s fade), lib/personalizedFinalMix.ts (sting fades from 0.5 s, then 0.4 s silence, then the name opener), Bible/et_mix_assembly.py (sting v6, Belle at 1.2 s), and memory "sting crossfade 1200 ms". Marc's drawing showed the sting ending before Belle. Recommendation: one timing for both paths; see Q1. Marc decides.
-- C4. docs/MIX_NOTE_PROTOCOL.md (April) lists levels in dB (bed −28 dB, Belle −60 dB, beats −18 dB, swell −10 dB, sound effects −6 dB under dialogue). docs/INTRO_OUTRO_* (May) and the memory note "music ducks to 15%" are also older. Recommendation: replace those tables with this document's levels. Marc decides.
-- C5. STAGE2 v2.3 (June 10) lets writers use [MUSIC:OUT] / [MUSIC:IN] (music to silence and back, "to its 15% bed", at most twice). The mixer ignores these marks, so nothing happens. Recommendation: either build it (fade to 0 over 3 s, back to the tension level over 3 s) or remove it from STAGE2. Marc decides.
-- C6. Bible/et_mix_assembly.py targets −14 LUFS with an old v6 sting and an old Belle voice ID. core.ts targets −16 LUFS. Recommendation: core.ts wins; mark the .py file as history. Marc decides.
-- C7. Rule 43 (Marc listens before a published mix is replaced, Aug 21) conflicts with Marc's Nov 7 wish for fully autonomous production. Recommendation: see Q5.
+- C1. **[RESOLVED by decision 40, Marc Nov 9, 2026]** Bible/MIX_SPEC.md (Aug 24–25) and the MUSIC-002 header in core.ts give older outro numbers: music down to 0.019, then "rises to 0.50", a 2-second fade (Aug 25), and the code value set to 0 (Belle with no music). Marc's Nov 1 drawing rule is 0.13 under Belle and a 3-second fade. Recommendation: Nov 1 wins; rewrite MIX_SPEC.md and the core.ts header. Marc decides.
+- C2. **[RESOLVED by decision 40, Marc Nov 9, 2026]** lib/musicBedGate.ts checks for MUSIC-002 levels (flat 0.13 bed, outro rise to 0.50). Today's mixes would fail it. It is not wired into any render. Recommendation: update it to MIX-V3/V4 shapes or retire it. Marc decides.
+- C3. **[RESOLVED by decision 32, Marc Nov 9, 2026]** Four sting timings exist: core.ts (Belle at 1.5 s over the sting, 1.2 s fade), lib/personalizedFinalMix.ts (sting fades from 0.5 s, then 0.4 s silence, then the name opener), Bible/et_mix_assembly.py (sting v6, Belle at 1.2 s), and memory "sting crossfade 1200 ms". Marc's drawing showed the sting ending before Belle. Recommendation: one timing for both paths; see Q1. Marc decides.
+- C4. **[RESOLVED by decision 12, Marc Nov 9, 2026]** docs/MIX_NOTE_PROTOCOL.md (April) lists levels in dB (bed −28 dB, Belle −60 dB, beats −18 dB, swell −10 dB, sound effects −6 dB under dialogue). docs/INTRO_OUTRO_* (May) and the memory note "music ducks to 15%" are also older. Recommendation: replace those tables with this document's levels. Marc decides.
+- C5. **[RESOLVED by decision 42, Marc Nov 9, 2026]** STAGE2 v2.3 (June 10) lets writers use [MUSIC:OUT] / [MUSIC:IN] (music to silence and back, "to its 15% bed", at most twice). The mixer ignores these marks, so nothing happens. Recommendation: either build it (fade to 0 over 3 s, back to the tension level over 3 s) or remove it from STAGE2. Marc decides.
+- C6. **[RESOLVED by decision 12, Marc Nov 9, 2026]** Bible/et_mix_assembly.py targets −14 LUFS with an old v6 sting and an old Belle voice ID. core.ts targets −16 LUFS. Recommendation: core.ts wins; mark the .py file as history. Marc decides.
+- C7. **[RESOLVED by decision 43, Marc Nov 9, 2026]** Rule 43 (Marc listens before a published mix is replaced, Aug 21) conflicts with Marc's Nov 7 wish for fully autonomous production. Recommendation: see Q5.
 
 ## Open questions for Marc
-- Q1. Should Belle start over the sting (1.5 s in, today's main mix), or after the sting ends (your drawing, and the personalized path)? Suggested answer: keep 1.5 s over the sting for both paths, so every listener hears the same opening.
-- Q2. Which music do we have rights to? Kie/Suno output and the shared tracks in lib/music-library.json have no licence record. Suggested answer: confirm the Kie/Suno plan allows commercial streaming and ads, and record the source per story.
-- Q3. Should [MUSIC:OUT] / [MUSIC:IN] work? Suggested answer: build it, at most twice per story, with 3-second fades.
-- Q4. There is no loudness target for the whole episode, and no check that intro, story and outro match. Suggested answer: measure the whole final mix; target −16 LUFS (±1), true peak no higher than −1 dB, and no section more than 2 LU off the story.
-- Q5. Who approves a re-mix of a published episode now that production should run without you? Suggested answer: Gemini reviews the new mix for timestamped problems; you are asked only when it flags one.
+- Q1. **[RESOLVED by decision 32, Marc Nov 9, 2026]** Should Belle start over the sting (1.5 s in, today's main mix), or after the sting ends (your drawing, and the personalized path)? Suggested answer: keep 1.5 s over the sting for both paths, so every listener hears the same opening.
+- Q2. **[RESOLVED by decision 39, Marc Nov 9, 2026]** Which music do we have rights to? Kie/Suno output and the shared tracks in lib/music-library.json have no licence record. Suggested answer: confirm the Kie/Suno plan allows commercial streaming and ads, and record the source per story.
+- Q3. **[RESOLVED by decision 42, Marc Nov 9, 2026]** Should [MUSIC:OUT] / [MUSIC:IN] work? Suggested answer: build it, at most twice per story, with 3-second fades.
+- Q4. **[RESOLVED by decision 41, Marc Nov 9, 2026]** There is no loudness target for the whole episode, and no check that intro, story and outro match. Suggested answer: measure the whole final mix; target −16 LUFS (±1), true peak no higher than −1 dB, and no section more than 2 LU off the story.
+- Q5. **[RESOLVED by decision 43, Marc Nov 9, 2026]** Who approves a re-mix of a published episode now that production should run without you? Suggested answer: Gemini reviews the new mix for timestamped problems; you are asked only when it flags one.
 - Q6. Is BELLE-008 (Belle at 1.5x) still wanted? The code does not apply it; Belle is only resampled. Suggested answer: measure Belle against the story voices and set her about 3 dB above them.
 
 ## Enforcement status

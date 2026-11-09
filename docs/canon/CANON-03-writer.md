@@ -10,7 +10,7 @@ Every rule in this document that needs Marc. **[MARC DECIDES]** = Marc approves,
 - **Rule 58 [MARC DECIDES]:** NARRATIVE_VOICE is declared (first_person, third_limited, third_omniscient) and held on every narrator line. second_person needs Marc's approval.
 - **Rule 59 [MARC DECIDES]:** NARRATOR_IS_CHARACTER: true needs Marc's approval and a non-platform voice.
 - **Rule 90 [MARC DECIDES]:** Gemini reads the scripts before voicing (continuity, easy listening, logic, promise, credibility) and lists exact fixes. Report-only until Marc…
-- **Still open:** 12 conflicts and 7 questions at the end of this document wait for Marc's decision (all listed in CANON-99).
+- **Still open:** 4 conflicts or questions below, each with a recommendation in CANON-99 Part 2.
 
 ## Rules
 
@@ -126,28 +126,44 @@ Every character in a spoken line is sent to the voice. Anything that is not a wo
 90. **[MARC DECIDES]** Gemini reads the scripts before voicing (continuity, easy listening, logic, promise, credibility) and lists exact fixes. Report-only until Marc gives it power. — **Agreed** (Story Production Spec §6.3 and §9.2, Nov 7) and **In force (code, report-only)** (GEMINI-STORY-READ-001)
 91. The whole series is read together for contradictions (an event resolved twice, a character under two names, the dead returning), and every "my sister / my cousin" line is checked against the fact sheet. A failure rewrites that episode and every later one, at most 2 times. — **Agreed** (Marc Oct 29 "permanent"; SERIES-FACTS-001 Nov 7) and **In force (code)** (SERIES-CONTINUITY-001, SERIES-FACTS-001, SERIES-REWRITE-001)
 
+## Marc's decisions (Nov 9, 2026)
+
+Marc answered CANON-99 on Nov 9, 2026. These decisions are **Agreed** and override any rule above that says otherwise. Each conflict or question below that they settle is marked RESOLVED.
+
+- **Decision 3:** **Hook length.** The rules say 15 words; the code passes up to 30. Decided: 15 words, blocking, for every new Episode 1. The 5 live hooks keep their wording. (02 C2, 03 C2, 08 C1) — **Agreed** (Marc, Nov 9, 2026, CANON-99)
+- **Decision 4:** **Episode length.** Decided: standalones within ±10% of target; series episodes between the 12.5-minute floor and 1.35 × the brief; speaking rate 160 words per minute everywhere. Publish code uses the same numbers (today it only allows 15–20 minutes). (02 C5, 03 C3, 08 C2, 09 C4) — **Agreed** (Marc, Nov 9, 2026, CANON-99)
+- **Decision 6:** **Cast size.** Decided: the Nov 8 clarity rule wins: at most 4 named speakers (short stories), at most 6 (longer series). The code's 5/7 is changed. (03 C6) — **Agreed** (Marc, Nov 9, 2026, CANON-99)
+- **Decision 7:** **Numbers.** Decided: every number spoken is written in words, including years ("nineteen ninety-eight"). (03 C5, Q5) — **Agreed** (Marc, Nov 9, 2026, CANON-99)
+- **Decision 8:** **Story card description.** Decided: fills two lines, never a third (about 100 characters), checked in one place. The old 24-word and 70-character limits go. (03 C4, 12 C6) — **Agreed** (Marc, Nov 9, 2026, CANON-99)
+- **Decision 9:** **Endings.** Decided: about 1 in 5 standalones may end open; a series finale always answers its central question; one escaped villain is allowed; Belle never teases a sequel. (02 C6, 03 C8) — **Agreed** (Marc, Nov 9, 2026, CANON-99)
+- **Decision 10:** **Spoken-text checks.** Decided: two new blocking writer checks: (a) no sentence split across lines with a trailing dash; (b) no line said twice in a row. Drop HAL-SCRIPT-006 and the 5-word minimum per line. (03 C10, Q1, Q2, Q4) — **Agreed** (Marc, Nov 9, 2026, CANON-99)
+- **Decision 11:** **"Chapter" and "episode" inside the story.** Decided: characters never say "chapter" or "episode" in dialogue. (03 Q3) — **Agreed** (Marc, Nov 9, 2026, CANON-99)
+- **Decision 12:** **Retire old manual documents** as history: STORY_PRODUCTION_PROCESS v1.2, SCRIPT_VALIDATOR.md, STORY_GRADING_RUBRIC.md, STORY_BRIEF_TEMPLATE v2.2, NEDS scoring, character-attachment scoring, MASTER_RULES.md, DEPLOY.md, DEPLOYMENT-RUNBOOK.md, HAL_SESSION_START_PROTOCOL.md, MIX_SPEC.md and MIX_NOTE_PROTOCOL.md level tables, et_mix_assembly.py, ACQUISITION-RETENTION-001 Parts A, D, E. Decided: yes, all. (01 C1, 02 C4, Q5, Q6, 03 Q7, 07 C4, C6, 13 C9, 15 C3–C5) — **Agreed** (Marc, Nov 9, 2026, CANON-99)
+- **Decision 14:** **Script order.** Decided: header, character guide, then Belle's intro (the Nov 7 spec; what the code reads). (03 C1) — **Agreed** (Marc, Nov 9, 2026, CANON-99)
+- **Decision 15:** **Description load.** Decided: 2 sensory details per scene for standard stories; one short detail for action and Pocket FM stories. (03 C7) — **Agreed** (Marc, Nov 9, 2026, CANON-99)
+
 ## Conflicts found
-- C1. Script order: STAGE2 v2.4 puts the Belle intro block BEFORE the header; the Story Production Spec (Nov 7) and the run-next writer template put header, guide, then Belle. Recommendation: the Spec order (newer, and what the code parses).
-- C2. Hook: 15 words (HOOK-FIRST-001, Spec Nov 7) vs 30 words in lib/hookGate.ts (HOOK_PASS_WORD_LIMIT=30, comment says 15) vs approved ad hooks up to 21 words (Nov 4). Recommendation: 15 in prompt and code; the 5 live hooks keep their wording.
-- C3. Speaking rate: code 160 wpm (calibrated Oct 22); STAGE2 and SCRIPT_VALIDATOR word tables use 130 wpm; hook gate uses 3 words/second (180). Recommendation: 160 everywhere; delete the 130-wpm tables.
-- C4. Card description: Marc Nov 5 "fills two lines" and lib/validateCardCopy.ts (100 characters) vs the writer prompts (run-next and generate-script DESCRIPTION-001) and lib/scriptReadiness.ts still demanding ≤24 words. Recommendation: 100 characters, one rule in one file.
-- C5. Numbers: Spec says "all numbers as words, including Belle lines"; but YEAR-DIGITS-001 (code) lets 4-digit years stay as digits; the standalone prompt says badge, case and code numbers "may use digits" while the numeral scan blocks them; HAL-SCRIPT-005 allows digits if used consistently; code lets the digit in "Episode N" through in Belle's intro. Recommendation: words everywhere in spoken lines, years included ("nineteen ninety-eight"); remove the digit exceptions from the prompts. Belle's "Episode N" goes to the Belle doc.
-- C6. Cast size: STORY-CLARITY (Nov 8) says 4 or 6 named speakers; lib/seriesStyle.ts allows 5 (action) or 7 main characters. Recommendation: Nov 8 numbers; update the code.
-- C7. Description load: Sensory Anchor Rule (June, 2 details per scene) vs Marc Oct 29 "action stories less environment description" and Pocket FM "little description". Recommendation: keep 2 details for standard mode, one short detail for action and Pocket FM modes.
-- C8. Open endings: PUBLISHED_STORY_SPEC v1.5 "No ambiguous endings" and Bible "finale … not ambiguity" (June) vs ENDING-OPEN-001 (Nov 1) allowing ~1 in 5. Recommendation: Nov 1 wins for standalones; a closed series' finale still answers its central question.
+- C1. **[RESOLVED by decision 14, Marc Nov 9, 2026]** Script order: STAGE2 v2.4 puts the Belle intro block BEFORE the header; the Story Production Spec (Nov 7) and the run-next writer template put header, guide, then Belle. Recommendation: the Spec order (newer, and what the code parses).
+- C2. **[RESOLVED by decision 3, Marc Nov 9, 2026]** Hook: 15 words (HOOK-FIRST-001, Spec Nov 7) vs 30 words in lib/hookGate.ts (HOOK_PASS_WORD_LIMIT=30, comment says 15) vs approved ad hooks up to 21 words (Nov 4). Recommendation: 15 in prompt and code; the 5 live hooks keep their wording.
+- C3. **[RESOLVED by decision 4, Marc Nov 9, 2026]** Speaking rate: code 160 wpm (calibrated Oct 22); STAGE2 and SCRIPT_VALIDATOR word tables use 130 wpm; hook gate uses 3 words/second (180). Recommendation: 160 everywhere; delete the 130-wpm tables.
+- C4. **[RESOLVED by decision 8, Marc Nov 9, 2026]** Card description: Marc Nov 5 "fills two lines" and lib/validateCardCopy.ts (100 characters) vs the writer prompts (run-next and generate-script DESCRIPTION-001) and lib/scriptReadiness.ts still demanding ≤24 words. Recommendation: 100 characters, one rule in one file.
+- C5. **[RESOLVED by decision 7, Marc Nov 9, 2026]** Numbers: Spec says "all numbers as words, including Belle lines"; but YEAR-DIGITS-001 (code) lets 4-digit years stay as digits; the standalone prompt says badge, case and code numbers "may use digits" while the numeral scan blocks them; HAL-SCRIPT-005 allows digits if used consistently; code lets the digit in "Episode N" through in Belle's intro. Recommendation: words everywhere in spoken lines, years included ("nineteen ninety-eight"); remove the digit exceptions from the prompts. Belle's "Episode N" goes to the Belle doc.
+- C6. **[RESOLVED by decision 6, Marc Nov 9, 2026]** Cast size: STORY-CLARITY (Nov 8) says 4 or 6 named speakers; lib/seriesStyle.ts allows 5 (action) or 7 main characters. Recommendation: Nov 8 numbers; update the code.
+- C7. **[RESOLVED by decision 15, Marc Nov 9, 2026]** Description load: Sensory Anchor Rule (June, 2 details per scene) vs Marc Oct 29 "action stories less environment description" and Pocket FM "little description". Recommendation: keep 2 details for standard mode, one short detail for action and Pocket FM modes.
+- C8. **[RESOLVED by decision 9, Marc Nov 9, 2026]** Open endings: PUBLISHED_STORY_SPEC v1.5 "No ambiguous endings" and Bible "finale … not ambiguity" (June) vs ENDING-OPEN-001 (Nov 1) allowing ~1 in 5. Recommendation: Nov 1 wins for standalones; a closed series' finale still answers its central question.
 - C9. Early investment word count: STAGE2 r42 says ~400 words by minute 3 (130 wpm); STORY-CLARITY says ~480 (160 wpm). Recommendation: 480.
-- C10. HAL-SCRIPT-006 tells the writer to put "Yes." on its own line before the same character's next line, which breaks the Dialogue Separation Rule (rule 65). HAL-SCRIPT-007 (5-word minimum) also fights natural short dialogue and Pocket FM's fast style. Both exist only to suit the transcript checker. Recommendation: drop 006 and 007 from the prompt and fix the transcript check instead.
+- C10. **[RESOLVED by decision 10, Marc Nov 9, 2026]** HAL-SCRIPT-006 tells the writer to put "Yes." on its own line before the same character's next line, which breaks the Dialogue Separation Rule (rule 65). HAL-SCRIPT-007 (5-word minimum) also fights natural short dialogue and Pocket FM's fast style. Both exist only to suit the transcript checker. Recommendation: drop 006 and 007 from the prompt and fix the transcript check instead.
 - C11. NEDS_SCORE header: required by Bible and STAGE2 r37; the series writer template in run-next does not ask for it and no code reads it. Recommendation: drop it (see CANON-02 Q5).
 - C12. STAGE2, SCRIPT_VALIDATOR and the brief template still require 3–6 "anchor" sound effects; Marc removed the cap Oct 31 and sound is off. Recommendation: sound doc owns this; delete from writer docs.
 
 ## Open questions for Marc
-- Q1. Rule 76 (no sentence split across lines with a trailing dash): make it a writer rule and a check? Suggested answer: yes; the voice-step fix stays as a safety net.
-- Q2. Rule 78 (no line said twice in a row): add a free check that flags exact repeated spoken lines? Suggested answer: yes, block on it.
-- Q3. Rule 51: should it also cover in-story books ("you fall asleep in chapter four", Rerouted EP2)? Claude asked Nov 7; no answer found. Suggested answer: yes, avoid "chapter" and "episode" in story dialogue entirely.
-- Q4. Keep the 5-word minimum per dialogue line (rule 81)? Suggested answer: no (Conflict C10).
-- Q5. Years: may a spoken line say "1998" as digits, or must it be "nineteen ninety-eight"? Suggested answer: words.
+- Q1. **[RESOLVED by decision 10, Marc Nov 9, 2026]** Rule 76 (no sentence split across lines with a trailing dash): make it a writer rule and a check? Suggested answer: yes; the voice-step fix stays as a safety net.
+- Q2. **[RESOLVED by decision 10, Marc Nov 9, 2026]** Rule 78 (no line said twice in a row): add a free check that flags exact repeated spoken lines? Suggested answer: yes, block on it.
+- Q3. **[RESOLVED by decision 11, Marc Nov 9, 2026]** Rule 51: should it also cover in-story books ("you fall asleep in chapter four", Rerouted EP2)? Claude asked Nov 7; no answer found. Suggested answer: yes, avoid "chapter" and "episode" in story dialogue entirely.
+- Q4. **[RESOLVED by decision 10, Marc Nov 9, 2026]** Keep the 5-word minimum per dialogue line (rule 81)? Suggested answer: no (Conflict C10).
+- Q5. **[RESOLVED by decision 7, Marc Nov 9, 2026]** Years: may a spoken line say "1998" as digits, or must it be "nineteen ninety-eight"? Suggested answer: words.
 - Q6. Should the Escalation Ceiling (rule 31) and the map acceptance checks (rule 9) become law? Suggested answer: yes; Gemini's credibility question already covers most of it.
-- Q7. Retire SCRIPT_VALIDATOR.md (manual paste-into-chat validator) and STORY_GRADING_RUBRIC.md (Marc listens to every story) now that the self-check, clarity check and Gemini read exist? Suggested answer: yes, both become history.
+- Q7. **[RESOLVED by decision 12, Marc Nov 9, 2026]** Retire SCRIPT_VALIDATOR.md (manual paste-into-chat validator) and STORY_GRADING_RUBRIC.md (Marc listens to every story) now that the self-check, clarity check and Gemini read exist? Suggested answer: yes, both become history.
 
 ## Enforcement status
 - Rule 1 → not enforced in code (agent rule). Rule 2 → enforced (lib/authorWrittenExempt.ts).
