@@ -1,3 +1,5 @@
+> **RETIRED (Nov 9, 2026). NOT CANON.** This rule (early release with a rendered-episode buffer) contradicts the EPISODE-ADDITION RULE in docs/PIPELINE-CANON.md and docs/PLAYER-RULES.md: a series stays hidden until every episode is finished and approved, then all episodes go live together. Kept as history only.
+
 # SERIES-RELEASE-RULE v2 — CANON
 
 Drafted: 2026-07-11 by Orion, per Marc directive.

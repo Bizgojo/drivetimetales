@@ -1,3 +1,5 @@
+> **REPLACED. NOT CANON.** Despite its name, this version is superseded by Bible/ET_Story_Rules_v3_2_CANONICAL.md, which the script writer uses. See the Canon index in AGENTS.md.
+
 # Endless Tales Story Bible v3.0
 ## Retention-First Edition
 
