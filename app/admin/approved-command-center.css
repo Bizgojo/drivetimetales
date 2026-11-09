@@ -44,3 +44,4 @@
 .acc-root dialog .docs-article,.acc-root dialog .docs-article p,.acc-root dialog .docs-article li{color:var(--ink,#1d2a24)}
 .acc-root dialog .docs-article{font-size:17px;line-height:1.75}.acc-root dialog .docs-article h2{font-size:23px}.acc-root dialog .docs-article h3{font-size:20px}.acc-root dialog .docs-status{font-size:15px}
 .acc-root .docs-article .marc-tag{display:inline-block;background:#fde2c4;color:#7a3300;border:1px solid #f2b47e;border-radius:6px;padding:1px 8px;font-size:.85em;font-weight:700;letter-spacing:.3px;white-space:nowrap}
+.acc-root .docs-article ol>li::marker{font-weight:700;color:var(--ink)}

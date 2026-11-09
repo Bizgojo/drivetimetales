@@ -14,7 +14,7 @@ export function inline(s: string): string {
   return t
 }
 
-type Item = { indent: number; ordered: boolean; text: string }
+type Item = { indent: number; ordered: boolean; num: number | null; text: string }
 
 function renderList(items: Item[]): string {
   let html = ''
@@ -26,7 +26,8 @@ function renderList(items: Item[]): string {
     if (!stack.length || it.indent > stack[stack.length - 1].indent) { html += `<${tag}>`; stack.push({ indent: it.indent, tag }); openLi = false }
     else if (openLi) html += '</li>'
     const box = it.text.match(/^\[( |x|X)\]\s+(.*)$/)
-    html += box ? `<li class="check">${box[1].trim() ? '☑' : '☐'} ${inline(box[2])}` : `<li>${inline(it.text)}`
+    const value = it.ordered && it.num !== null ? ` value="${it.num}"` : ''
+    html += box ? `<li class="check">${box[1].trim() ? '☑' : '☐'} ${inline(box[2])}` : `<li${value}>${inline(it.text)}`
     openLi = true
   }
   while (stack.length) html += `</li></${stack.pop()!.tag}>`
@@ -65,7 +66,7 @@ export function markdownToHtml(md: string): string {
       const items: Item[] = []
       while (i < lines.length) {
         const m = lines[i].match(/^(\s*)([-*+]|\d+[.)])\s+(.*)$/)
-        if (m) { items.push({ indent: m[1].length, ordered: /\d/.test(m[2]), text: m[3] }); i++; continue }
+        if (m) { items.push({ indent: m[1].length, ordered: /\d/.test(m[2]), num: /\d/.test(m[2]) ? parseInt(m[2], 10) : null, text: m[3] }); i++; continue }
         if (lines[i].trim() && /^\s{2,}\S/.test(lines[i]) && items.length) { items[items.length - 1].text += ' ' + lines[i].trim(); i++; continue }
         break
       }
