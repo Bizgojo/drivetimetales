@@ -16,6 +16,29 @@
 
 ---
 
+## CANON SYNC — approved canon, Nov 9, 2026 (read this first)
+Status: ACTIVE | Scope: Universal | Source: docs/canon/CANON-03 (Writer), CANON-04 (Belle), CANON-06 (Sound), approved by Marc Nov 9, 2026
+Rule: These rules come from the approved canon and override anything below in this file, in ET Story Rules v3.2 and in the STAGE 2 prompt.
+1. DESCRIPTION (story card): one complete present-tense sentence, 100 characters or fewer, counting spaces (about 15 words). Count the characters.
+2. HOOK: an Episode 1 opens with its hook in the first 15 words of the story.
+3. LENGTH: speaking rate is 160 words per minute. Standalones land within ±10% of the target; series episodes run from 12.5 minutes up to 1.35 × the brief's target.
+4. CLARITY: the listener knows whose story it is, what they want and what stands in the way within about 480 spoken words (3 minutes).
+5. CAST: at most 4 named speakers in a short story, at most 6 in a longer series.
+6. NUMBERS: every spoken number is written in words, including years ("nineteen ninety-eight").
+7. SPOKEN TEXT: never split a sentence across lines with a trailing dash; never write the same line twice in a row. Characters never say "chapter" or "episode" in dialogue.
+8. SOUND: a sound cue is written only where something truly happens in the scene right now (never metaphors, memories, plans or thoughts), and the sound is named or reacted to just before or after. There is no fixed number of sound cues. Never put a cue where the line says it is NOT happening. Format: [SFX: short description] on its own line. The old "3–6 anchor SFX", "every 60–90 seconds" and "no beds" rules are retired.
+9. NO NEDS_SCORE header. The NEDS scoring framework is retired (history only).
+10. ESCALATION CEILING: stakes may grow, but the threat stays the kind the premise set up.
+11. SCRIPT ORDER: header, character guide, then Belle's intro.
+12. ENDINGS: a series finale answers its central question; about 1 in 5 standalones may end open; Belle never teases a sequel.
+13. BELLE INTROS: Episode 1 names the title and the author. Every other series intro says the series title, "Episode N" and the episode title, and never the author. (BELLE-006 is retired.)
+14. BELLE NON-FINAL OUTRO: exactly two sentences, at most 42 words: one recap sentence (about 18 words), then the next episode by number and series name (about 20 words): In Episode Four of "Rerouted," ... Never "an Endless Tales original" here, never time of day.
+15. BELLE FINALE / STANDALONE OUTRO: at most one short closing sentence (12 words or fewer), then: You've been listening to "[title]" by [author], read by [narrator], an Endless Tales Original. At most 42 words. Never point to another episode or story.
+16. BELLE never mentions time of day ("late drive", "tonight").
+Conflict: None. Changes only through CANON-99 (Marc approves).
+
+---
+
 ## STING-001
 Status: ACTIVE | Scope: Universal | Last Revised: Aug 28, 2026
 Purpose: A consistent, recognizable show-open signature, without becoming repetitive or confusing about where in the episode the listener is.
@@ -59,13 +82,13 @@ Conflict: None. Compatible with BELLE-002 — the first episode is already exemp
 ## BELLE-005
 Status: ACTIVE | Scope: Final episode of a series AND standalone stories | Last Revised: Sep 6, 2026
 Purpose: Close out a series or standalone story with a satisfying sense of completion and remind the listener what they just finished, for recall and word-of-mouth.
-Rule: The series finale outro and all standalone story outros must be 1–2 sentences, ≤42 words total. No "That was" opener. Open with an emotional beat that references the story's resolution or the character left in the listener's mind. Then credit: title + author + narrator name + "an Endless Tales original." Narrator credit (narrator name) is required in the outro. Rating is prompted via the review screen — Belle must NOT include a spoken rating CTA in the outro. [LISTENER_NAME] is restricted to series episodes only in Belle's intro and must never appear in the outro (BELLE-003).
+Rule: The series finale outro and all standalone story outros must be 1–2 sentences, ≤42 words total. No "That was" opener. Open with an emotional beat that references the story's resolution or the character left in the listener's mind. Then credit, exactly: You've been listening to "[title]" by [author], read by [narrator], an Endless Tales Original. (CANON-99 decision 28) Narrator credit (narrator name) is required in the outro. Rating is prompted via the review screen — Belle must NOT include a spoken rating CTA in the outro. [LISTENER_NAME] is restricted to series episodes only in Belle's intro and must never appear in the outro (BELLE-003).
 Conflict: None. (Expanded Sep 6, 2026 to cover standalone outros with the same constraint, add mandatory narrator credit, remove spoken rating CTA, and clarify [LISTENER_NAME] intro scope.)
 
 ---
 
 ## BELLE-006
-Status: ACTIVE | Scope: Interior (non-first, non-final) episodes only | Last Revised: Aug 28, 2026
+Status: RETIRED (Marc, Nov 9, 2026, CANON-99 decision 26; see CANON SYNC rule 13). Kept for history only | Scope: Interior (non-first, non-final) episodes only | Last Revised: Aug 28, 2026
 Purpose: Avoid unnecessary repetition of the title and author on every single episode, which the listener already knows by the time they reach the middle of a series.
 Rule: Interior episodes must not name the title or the author in either the intro or the outro. If the series is broken up into seasons, the beginning of each season should give the title and author.
 Conflict: None.
@@ -84,7 +107,7 @@ Conflict: None.
 Status: ACTIVE | Scope: Universal | Last Revised: Aug 29, 2026
 Purpose: Belle needs to read clearly above the story's dialogue and music bed at all times, since she is the through-line host across every episode.
 Rule: Belle's voice track is mixed at 1.5x volume relative to the story's other dialogue tracks.
-Conflict: None.
+Conflict: REPLACED (Marc, Nov 9, 2026, CANON-99 decision 83): Belle sits about 3 dB above the story voices. This is a mixing rule; the writer does nothing with it.
 
 ---
 

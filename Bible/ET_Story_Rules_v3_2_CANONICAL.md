@@ -1,3 +1,5 @@
+> **CANON NOTE (Nov 9, 2026):** The approved canon (docs/canon/CANON-03 Writer, CANON-04 Belle, CANON-06 Sound) and the "CANON SYNC" section of Bible/CANON_REGISTRY_STORY_RULES.md win wherever this file differs. NEDS scoring and the "SFX every 60–90 seconds" rule are retired.
+
 # Endless Tales Story Bible v3.0
 ## Retention-First Edition
 
@@ -327,7 +329,9 @@ Test: Can the cliffhanger be written as a specific question?
 
 ---
 
-## PART VII — NEDS FRAMEWORK
+## PART VII — NEDS FRAMEWORK (RETIRED — history only)
+
+> **RETIRED (Marc, Nov 9, 2026, CANON-99 decisions 12 and 67).** NEDS scoring is no longer used: no NEDS score on briefs or scripts, no NEDS gates. Everything about NEDS in this file is history. Story quality is judged by the checks in docs/canon/CANON-08.
 ### Next Episode Desire Score
 
 Every non-finale episode receives a NEDS score before production is finalized. The score is evaluated at the brief stage, not after production.
@@ -584,10 +588,9 @@ ANNOUNCER:
 NARRATIVE_VOICE:
 NARRATOR_IS_CHARACTER:
 SUNO PROMPT:
-NEDS_SCORE: [total]/10  ← NEW in v3.0
 ```
 
-`NEDS_SCORE` is required on all scripts from v3.0 forward. Hal provides this score with each brief.
+The NEDS_SCORE header is retired (Marc, Nov 9, 2026, CANON-99 decision 67). Do not write it.
 
 ### Dialogue Format (r5)
 
@@ -634,7 +637,7 @@ Include in header — 2–3 sentences describing genre, instrumentation, tempo, 
 
 ### Description (r14)
 
-24 words or fewer. Present tense. Designed to make a driver press play. No spoilers.
+100 characters or fewer, counting spaces (about 15 words). Present tense. Designed to make a driver press play. No spoilers.
 
 > ✅ *"A long-haul trucker's final delivery holds a secret that could cost him everything."*
 > ❌ *"This is a story about a trucker who discovers something surprising in his cargo."*
@@ -736,7 +739,7 @@ This means:
 
 ### SFX Frequency (r11)
 
-Include at least one significant SFX cue every 60–90 seconds of script.
+RETIRED (Nov 9, 2026, CANON-99 decision 68). There is no fixed number of sound cues: write [SFX: ...] only where something truly happens in the scene right now, named or reacted to just before or after (CANON-06 rules 25–28).
 
 ### Dialogue Turn Length (r10)
 
@@ -1090,7 +1093,6 @@ ANNOUNCER: JAKE
 NARRATIVE_VOICE: third_limited
 NARRATOR_IS_CHARACTER: false
 SUNO PROMPT: Sparse western guitar, slow tension build, desert atmosphere, no vocals, cinematic.
-NEDS_SCORE: 9/10
 
 CHARACTER GUIDE
 ---

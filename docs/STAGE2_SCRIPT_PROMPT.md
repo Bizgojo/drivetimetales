@@ -55,7 +55,7 @@ SERIES_TOTAL_EPISODES: [total episode count — required for series]
 SERIES_IS_FINALE: [true or false — required for series]
 AUTHOR: [author name from ET roster]
 GENRE: [primary genre]
-DESCRIPTION: [24 words maximum — punchy present-tense hook for the app listing]
+DESCRIPTION: [100 characters or fewer, counting spaces — punchy present-tense hook for the app listing]
 NARRATOR: [narrator name — use the NARRATOR LOOKUP TABLE below]
 ANNOUNCER: Belle B
 NARRATIVE_VOICE: [first_person | third_limited | third_omniscient | second_person]
@@ -117,27 +117,19 @@ CROSS: Every word.
 ~~~
 Always paired, always on their own lines. Use **at most twice per story**, and only at the single biggest dramatic moment(s) — the discovery, the revelation, the confession. After minutes of constant low music, total silence makes every word land heavier. This is a scalpel, not a default: most stories use it once or not at all. Never leave a `[MUSIC:OUT]` unclosed.
 
-### SFX Frequency — ANCHOR SFX (v2.3)
-Include **3 to 6 anchor SFX cues per story — no more, no fewer.** An anchor SFX is a bold, foregrounded, story-critical sound: the door at the moment it matters, the gunshot, the train, the phone that changes everything.
+### Sound cues (canon, Nov 9, 2026: CANON-06 rules 25–28; replaces the old "3–6 anchor SFX" rule)
+- Write `[SFX: short, specific description]` on its own line, only where something truly happens in the scene right now: a door, a gunshot, an engine, a phone. Be specific: not `[SFX: door]` but `[SFX: heavy wooden door creaking open]`.
+- Never for metaphors ("like thunder"), negations, memories, plans or thoughts. Never where the line says the thing is NOT happening ("He didn't drive yet" gets no driving sound).
+- Every sound is named or reacted to by a character or the narrator right before or right after it.
+- There is no fixed number of cues. Action scenes get many; quiet dialogue gets none.
 
-Placement rules:
-- Place anchors at **scene transitions and pivotal dramatic moments** — where sound does work that words can't
-- SFX must sit in a **natural gap** — never under or overlapping dialogue or narration
-- **No continuous ambience beds** (rain throughout, crowd murmur throughout, engine hum throughout). ET listeners are in moving vehicles — subtle ambience is lost to road noise and fights the background music. One bold sound that lands beats ten quiet ones that don't.
-- Every anchor must be specific and concrete enough for a sound designer to produce: not `[SFX: door]` but `[SFX: heavy wooden door creaking open slowly]`
+### Script Length — 160 WPM STANDARD (canon, Nov 9, 2026)
+Target runtime is specified in the Story Brief. Word counts are calculated at **160 words per minute**, the rate measured on our finished audio (CANON-99 decision 4).
 
-SFX is not decoration — it orients the listener in physical space and feeds the mental imagery that drives immersion. But on this platform, sparse and bold beats dense and subtle.
-
-### Dialogue Turn Length
-Most dialogue exchanges: 1–3 sentences per turn. No speeches. No monologues longer than 5 sentences unless dramatically essential, and even then, break them with a reaction or a NARRATOR line.
-
-### Script Length — 130 WPM STANDARD
-Target runtime is specified in the Story Brief. Word counts are calculated at **130 words per minute** to account for dramatic pacing, SFX pauses, and BEAT markers. Do not use 150 wpm — it produces scripts that run short.
-
-- 10 minutes = approximately 1,200–1,400 words of dialogue and narration (excluding header, SFX, and BEAT/PAUSE markers)
-- 15 minutes = approximately 1,800–2,100 words
-- 20 minutes = approximately 2,400–2,800 words
-- 25 minutes = approximately 3,000–3,500 words
+- 10 minutes = approximately 1,600 words of dialogue and narration (excluding header, SFX, and BEAT/PAUSE markers)
+- 15 minutes = approximately 2,400 words
+- 20 minutes = approximately 3,200 words
+- 25 minutes = approximately 4,000 words
 
 **Series episode default (v2.3):** unless the Story Brief explicitly specifies otherwise, series episodes target **12–18 minutes**. Each episode is one commute-sized attention arc ending on a cliffhanger — shorter episodes mean more cliffhangers and more completion moments per listening hour. Runtimes of 20–25 minutes are reserved for standalones, finales, and episodes that genuinely earn the length.
 
@@ -944,7 +936,7 @@ The final line must create a burning question the listener cannot let go of. "To
 At least one major development from this episode must be referenced or felt in the next. Characters are changed by events. The world cannot be in the same state at the end that it was at the beginning.
 
 ### The Turn Rule (r33) — NEW in v2.3
-Every 3–4 script minutes (roughly every 450–520 words at 130 wpm), something must change the listener's understanding or raise the stakes: a reveal, a reversal, a new threat, a decision with consequences, or a question answered that opens a bigger one. **No scene may end in the same state of knowledge it began in.**
+Every 3–4 script minutes (roughly every 480–640 words at 160 wpm), something must change the listener's understanding or raise the stakes: a reveal, a reversal, a new threat, a decision with consequences, or a question answered that opens a bigger one. **No scene may end in the same state of knowledge it began in.**
 
 For stories of 20 minutes or longer, the script must contain a clear **midpoint reversal** — a development near the middle that reframes the protagonist's goal or what the listener believes is happening.
 
@@ -953,7 +945,7 @@ Why: listener attention runs in 8–12 minute cycles. A strong opening and a str
 ### Sensory Anchor Rule (r34) — NEW in v2.3
 Every scene must establish its physical space through **at least two concrete sensory details** (sound, temperature, smell, texture, light) within the first three NARRATOR lines of the scene. Specific, not generic: "the smell of burnt coffee and wet wool," not "the room smelled bad."
 
-Why: stories are voice-and-music with only 3–6 anchor SFX. The prose carries the sensory load. Vivid mental imagery is the engine of immersion — and imagery only comes from concrete specifics. The narrator is the listener's eyes. Write like it.
+Why: sound effects play only where something truly happens, so the prose carries most of the sensory load. Vivid mental imagery is the engine of immersion — and imagery only comes from concrete specifics. The narrator is the listener's eyes. Write like it.
 
 ### Standalone endings (r31)
 Every standalone story must:
@@ -1008,10 +1000,10 @@ Belle B may not appear as any in-story character. No character in the CHARACTER 
 - Is the narrator assigned using the NARRATOR LOOKUP TABLE?
 - Are there any parentheticals inside dialogue lines? (Remove all)
 - Are all [BEAT], [PAUSE:X], and [SFX:] markers on their own dedicated lines?
-- Are there 3–6 anchor SFX cues — each bold, specific, at a transition or pivotal moment, in a natural gap, with no ambience beds?
+- Does every [SFX: ...] cue mark something that truly happens right then, named or reacted to by a character or the narrator, and never where the text says it is not happening?
 - If [MUSIC:OUT] is used: is it paired with [MUSIC:IN], on its own line, and used at most twice?
-- Is the DESCRIPTION 24 words or fewer, present tense, punchy?
-- Is the word count appropriate for the runtime at 130 wpm?
+- Is the DESCRIPTION 100 characters or fewer (count them), present tense, punchy?
+- Is the word count appropriate for the runtime at 160 wpm?
 
 **Voice:**
 - Does the narrative voice declared in the header match every single NARRATOR line?
@@ -1071,8 +1063,7 @@ VICTOR: Your routine is very predictable.
 ### r36 — BELLE INTRO REQUIRED ELEMENTS
 Belle's single intro line must contain: (1) a protagonist reference (name or clear description), (2) the inciting event or central conflict stated concretely, (3) a tension-forward hook. BANNED phrases: "settle in for a story," "built to carry you," "carry you cleanly," and any wording that could be moved to a different story unchanged. All existing Belle rules stand (one line, [LISTENER_NAME] once at a natural pause in full pipeline mode, no "presents," no time-of-day, no author/narrator names).
 
-### r37 — NEDS_SCORE HEADER FIELD (required)
-Every script header includes `NEDS_SCORE: [total]/10` — the Next Episode Desire Score assigned at the brief stage (STORY_BIBLE v4.0 Part 8: Curiosity 0–3, Stakes 0–2, Escalation 0–2, Emotional Investment 0–2, Cliffhanger 0–1; standalones max 9). Briefs below 7 are revised before writing. If the brief arrives unscored, score it yourself and report the score before writing; below 7, request a revised brief instead of writing a weak script.
+### r37 — RETIRED: NEDS_SCORE header (Marc, Nov 9, 2026, CANON-99 decision 67). Do not write a NEDS_SCORE line.
 
 ### r38 — CLIFFHANGER TYPES AND THE FAKE TEST
 Series non-finale endings must be one of five types: Revelation, Danger, Betrayal, Discovery, or Decision (irreversible choice). The Fake Cliffhanger Test: the hook must be writable as a SPECIFIC question unanswerable without the next episode. "Who was the second person in the canyon that night?" is real; "What will happen to Hale?" is fake. Banned weak patterns: vague escalation ("things will get worse"), repeated same-type peril, hooks resolved in the next episode's first 60 seconds, ominous stranger appearances, "little did she know," and weather/mechanical peril as stakes. Write the cliffhanger FIRST — know the ending before the beginning.
