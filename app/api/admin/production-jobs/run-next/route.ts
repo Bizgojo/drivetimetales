@@ -6596,7 +6596,7 @@ async function assertSeriesCastContinuity(seriesId: string, episodes: any[]) {
 async function createSeriesOutline(job: ProductionJob, model: string, series: any, episodes: any[], brief: any, namePaletteBlock: string): Promise<SeriesOutline | null> {
   const totalEpisodes = Number(brief.series_total_episodes || episodes.length)
   const style = styleProfileOfBrief(brief)
-  const maxMain = maxMainCharacters(style)
+  const maxMain = maxMainCharacters(style, totalEpisodes)
   const basePrompt = buildSeriesOutlinePrompt({
     title: String(series.title || brief.series_name || ''),
     premise: String(brief.premise || ''),

@@ -20,8 +20,11 @@ export function styleProfileOfBrief(brief: unknown): StyleProfile | null {
 }
 
 /** Max main speaking characters for the series under this style. */
-export function maxMainCharacters(style: StyleProfile | null): number {
-  return style === 'action' ? 5 : 7
+/** CAST-LIMIT-001 (CANON-03 rule 44, decision 6, Marc Nov 9 2026): named speaking characters,
+ * not counting Belle — at most 4 for a standalone or a series of 3 episodes or fewer,
+ * at most 6 for longer series. Same for every style (was 5 action / 7 other). */
+export function maxMainCharacters(_style: StyleProfile | null, totalEpisodes?: number): number {
+  return totalEpisodes != null && totalEpisodes <= 3 ? 4 : 6
 }
 
 export function buildStylePromptBlock(style: StyleProfile | null, opts: { episodeNumber: number }): string {
@@ -30,7 +33,7 @@ export function buildStylePromptBlock(style: StyleProfile | null, opts: { episod
 🎯 ACTION STYLE — EASY TO FOLLOW WHILE DRIVING (NON-NEGOTIABLE)
 - Move the story forward. At most two sentences of setting when a scene starts, then something happens. No paragraphs describing rooms, buildings, weather or skylines.
 - Plain, short narration: about a grade seven to eight reading level. Adult words, but most narration sentences under fifteen words. No long winding sentences.
-- At most five main speaking characters in the whole series, plus at most two one-scene small parts per episode. Introduce each person by full name and role the first time. Every character keeps exactly ONE name and ONE speaker label for the whole series — never switch between a first name, a last name and a nickname.
+- At most six named speaking characters in the whole series (four if it has three episodes or fewer), and at most two new named characters per episode after Episode 1. Introduce each person by full name and role the first time. Every character keeps exactly ONE name and ONE speaker label for the whole series — never switch between a first name, a last name and a nickname.
 - Characters say each other's names often, so the listener always knows who is talking.
 - One clear goal for this episode. At most one side plot across the whole series.
 - One scene, one place. Do not cut between places in the middle of a scene.

@@ -66,6 +66,22 @@ const HOOK_PASS_WORD_LIMIT = 30
 /** Words before which a hook landing is a warn (16–30 words ≈ 5–10 seconds). */
 const HOOK_WARN_WORD_LIMIT = 30
 
+/** HOOK-15-001 (CANON-03, decision 3, Marc Nov 9 2026): every NEW Episode 1 (and every new
+ * standalone) lands its hook in the first 15 spoken words, blocking, no warn band. Scripts
+ * written before this rule went live (including the 5 live hooks) keep the old 30-word check. */
+export const HOOK_CANON_WORD_LIMIT = 15
+export const HOOK_CANON_FROM = '2026-11-10T00:00:00Z'
+
+/** 15 for a new Episode 1 or standalone, otherwise the old 30. */
+export function hookWordLimitFor(script: string, scriptUpdatedAt?: string | null): number {
+  const t = scriptUpdatedAt ? Date.parse(scriptUpdatedAt) : NaN
+  if (!Number.isFinite(t) || t < Date.parse(HOOK_CANON_FROM)) return HOOK_PASS_WORD_LIMIT
+  const ep = script.match(/^EPISODE:\s*(\d+)/im)?.[1] ?? script.match(/^Episode_?Number:\s*(\d+)/im)?.[1]
+  const isSeries = /^SERIES:\s*\S/im.test(script)
+  if (isSeries && ep && Number(ep) !== 1) return HOOK_PASS_WORD_LIMIT
+  return HOOK_CANON_WORD_LIMIT
+}
+
 /** For SFX check: scripts pre-dating the [SFX:...] template are legacy. */
 // A script is "new" (non-legacy) if it contains at least one [SFX:...] marker
 /** FIX-HOOK-GATE-SFX-EXEMPTION-001: Origin 2.0 (science non-fiction) pre-dates SFX template. */
@@ -218,7 +234,7 @@ function extractAudioDramaSection(script: string): string {
  * Returns the word offset from the start of the drama section where the
  * first hook-like NARRATOR line starts, or null if none found.
  */
-async function detectHookWordOffset(dramaSectionText: string): Promise<number | null> {
+async function detectHookWordOffset(dramaSectionText: string, passLimit: number = HOOK_PASS_WORD_LIMIT): Promise<number | null> {
   const lines = dramaSectionText.split('\n')
   let wordOffset = 0
 
@@ -269,7 +285,7 @@ async function detectHookWordOffset(dramaSectionText: string): Promise<number | 
 
     // Check if this narrator line is a hook
     const isHook = HOOK_PATTERNS.some(pat => pat.test(narratorText))
-    if (isHook && wordOffset <= HOOK_PASS_WORD_LIMIT) {
+    if (isHook && wordOffset <= passLimit) {
       // Return the word count at the start of this line
       return wordOffset
     }
@@ -338,7 +354,7 @@ async function detectHookWordOffset(dramaSectionText: string): Promise<number | 
 // Check 1: Hook within 30 spoken seconds
 // ---------------------------------------------------------------------------
 
-async function checkHook(script: string): Promise<HookCheckResult> {
+async function checkHook(script: string, passLimit: number = HOOK_PASS_WORD_LIMIT): Promise<HookCheckResult> {
   const dramaSection = extractAudioDramaSection(script)
   if (!dramaSection.trim()) {
     return {
@@ -349,7 +365,7 @@ async function checkHook(script: string): Promise<HookCheckResult> {
     }
   }
 
-  const hookOffset = await detectHookWordOffset(dramaSection)
+  const hookOffset = await detectHookWordOffset(dramaSection, passLimit)
 
   if (hookOffset === null) {
     return {
@@ -358,6 +374,12 @@ async function checkHook(script: string): Promise<HookCheckResult> {
       hookFound: false,
       detail: 'No narrative hook detected in NARRATOR lines of audio drama section',
     }
+  }
+
+  if (passLimit === HOOK_CANON_WORD_LIMIT) {
+    return hookOffset <= HOOK_CANON_WORD_LIMIT
+      ? { status: 'pass', wordsBeforeHook: hookOffset, hookFound: true, detail: `Hook at word ${hookOffset} (≤${HOOK_CANON_WORD_LIMIT}, HOOK-15-001) — PASS` }
+      : { status: 'fail', wordsBeforeHook: hookOffset, hookFound: true, detail: `Hook at word ${hookOffset}; a new Episode 1 must land its hook in the first ${HOOK_CANON_WORD_LIMIT} words (HOOK-15-001, CANON-03) — FAIL` }
   }
 
   if (hookOffset <= HOOK_PASS_WORD_LIMIT) {
@@ -866,7 +888,7 @@ export async function runHookGate(input: RunHookGateInput): Promise<HookGateResu
           'LANDING-STORY-001 cold-open format: keyword gate exempt. ' +
           'LLM hook rubric required before RfR — see HOOK-GATE-001 compensating check.',
       }
-    : await checkHook(script)
+    : await checkHook(script, hookWordLimitFor(script, scriptUpdatedAt))
   const sfxCheck = checkSfx(script, seriesId)
   // Belle check: skip for LANDING-STORY-001 (no Belle B by design)
   const belleCheck: BelleCheckResult = isBelleExempt
