@@ -9,7 +9,7 @@ import { selectableAuthors } from '@/lib/reservedTalent'
 import { belleOutroLooksCutOff } from '@/lib/belleOutroEnding'
 import { parseCharacterGuide } from '@/lib/characterGuide'
 import { descriptionWordCountMiscount } from '@/lib/descriptionWordCountTruth'
-import { validateCardCopy as validateCardCopyLib, extractHeader as extractHeaderLib } from '@/lib/validateCardCopy'
+import { validateCardCopy as validateCardCopyLib, extractHeader as extractHeaderLib, DESCRIPTION_MAX_CHARS } from '@/lib/validateCardCopy'
 import { spellOutSpokenNumerals } from '@/lib/spokenNumerals'
 import { createClient } from '@supabase/supabase-js'
 import Anthropic from '@anthropic-ai/sdk'
@@ -350,8 +350,8 @@ function classifyValidateScriptFailure(
       isAutonomousRetryable: true,
       marcRequired: false,
       recommendedAction: hasBlockedWord
-        ? 'DESCRIPTION uses a forbidden past-tense word. Re-generate with explicit rule: DESCRIPTION must be ≤24 words, present-tense, active-voice. Blocked words: vanished, was, were, had, found, discovered, left, moved, sealed, signed, forged, buried, hidden.'
-        : 'TITLE or DESCRIPTION format violation. Re-generate with card-copy constraints (TITLE ≤5 words / 28 chars; DESCRIPTION ≤24 words, present tense).',
+        ? 'DESCRIPTION uses a forbidden past-tense word. Re-generate with explicit rule: DESCRIPTION must be 100 characters or fewer (about 15 words), present-tense, active-voice. Blocked words: vanished, was, were, had, found, discovered, left, moved, sealed, signed, forged, buried, hidden.'
+        : 'TITLE or DESCRIPTION format violation. Re-generate with card-copy constraints (TITLE ≤5 words / 28 chars; DESCRIPTION 100 characters or fewer, present tense).',
     }
   }
 
@@ -1724,7 +1724,7 @@ Use the CURRENT rules:
 - Belle B is never narrator or character.
 - SFX (SFX-001, Marc 2026-10-31): no fixed number. Write a [SFX: short description] cue wherever the story makes a sound the listener should hear: action, arrivals, doors, phones, weather, a change of place. Every cue must come from something that happens in the story; never decorate quiet dialogue.
 - The title must be 1 to 5 words and 28 characters or fewer.
-- Description: ≤24 words, present tense (DISC-001). No spoilers. No past tense.
+- Description: 100 characters or fewer (about 15 words), present tense (DESC-100-CHAR-001). No spoilers. No past tense.
 - DESCRIPTION fails if it uses past-tense constructions or past-tense story-card phrasing such as "vanished", "was", "were", "had", "found", "discovered", "left", "moved", "sealed", "signed", "forged", "buried", "hidden", or "lost".
 - DESCRIPTION PROTAGONIST RULE: the DESCRIPTION must accurately reflect who the protagonist actually is and what they are trying to do. If the script's protagonist is a security guard, DESCRIPTION must not say "driver". If the protagonist is a nurse, DESCRIPTION must not say "teacher". Mismatches between DESCRIPTION and actual protagonist role are a hard fail.
 - DESCRIPTION SPOILER RULE: DESCRIPTION is a story-card teaser, not a plot summary. It must raise a question, not answer it. HARD FAIL if DESCRIPTION reveals: the survivor, the culprit, the missing person's status, a hidden person alive or dead, the final discovery, or the resolution payoff. Examples of failing DESCRIPTION phrases: "to a survivor", "to the killer", "reveals who did it", "the missing child is alive".
@@ -3503,7 +3503,7 @@ SERIES_TOTAL_EPISODES:
 SERIES_IS_FINALE:
 AUTHOR:
 GENRE:
-DESCRIPTION: [complete sentence, ≤24 words, present tense only (DISC-001), tease a question without revealing the climax, twist, final discovery, or resolution payoff]
+DESCRIPTION: [complete sentence, 100 characters or fewer (about 15 words), present tense only, tease a question without revealing the climax, twist, final discovery, or resolution payoff]
 NARRATOR: ${narratorContext.mode === 'assigned' ? narratorContext.narratorName : '[pick exactly one name from the narrator selection list above]'}
 ANNOUNCER: Belle B
 NARRATIVE_VOICE:
@@ -3553,7 +3553,7 @@ Additional production-format hard rules:
 - Right: NARRATOR: Pike's jaw tightened.
 
 Additional rules:
-- DESCRIPTION must be a COMPLETE sentence, ≤24 words, present tense only (DISC-001). If the brief-provided description exceeds 24 words or uses past-tense constructions, rewrite it to comply. Before final output, self-check DESCRIPTION word count; if it is over 24 words, rewrite it internally until it is complete and ≤24 words. Never cut DESCRIPTION mid-word or mid-phrase. Never output a fragment. Every sentence must be present tense; never use "was", "were" or "had". Words like "hidden" or "lost" are fine as descriptions ("hidden cameras record her"). DESCRIPTION must TEASE a question, never reveal the story's climax, twist, final discovery, or resolution payoff. Raise curiosity about the setup or mystery; do NOT state the outcome. Example: tease "strange notes under a neighbor's door at 3:12 a.m."; do NOT reveal "someone is trapped inside."
+- DESCRIPTION must be a COMPLETE sentence of 100 characters or fewer, counting spaces (about 15 words), present tense only (DESC-100-CHAR-001). If the brief-provided description is longer or uses past-tense constructions, rewrite it to comply. Before final output, COUNT THE CHARACTERS; if it is over 100, shorten it until it is complete and 100 or fewer. Never cut DESCRIPTION mid-word or mid-phrase. Never output a fragment. Every sentence must be present tense; never use "was", "were" or "had". Words like "hidden" or "lost" are fine as descriptions ("hidden cameras record her"). DESCRIPTION must TEASE a question, never reveal the story's climax, twist, final discovery, or resolution payoff. Raise curiosity about the setup or mystery; do NOT state the outcome. Example: tease "strange notes under a neighbor's door at 3:12 a.m."; do NOT reveal "someone is trapped inside."
 - If NARRATOR_IS_CHARACTER is false, NARRATOR must not be a story character name and must not include "(character)".
 - If the narrator is a story character, NARRATOR_IS_CHARACTER must be true and the script must use consistent first-person narration.
 - Standalone stories must end conclusively.
@@ -6268,7 +6268,7 @@ SERIES_TOTAL_EPISODES: ${totalEpisodes}
 SERIES_IS_FINALE: ${isFinale ? 'true' : 'false'}
 AUTHOR: ${episode.author || brief.author || ''}
 GENRE: ${episode.genre || brief.genre || ''}
-DESCRIPTION: [complete sentence, ≤24 words, present tense only (DISC-001), tease a question without revealing the episode climax, twist, final discovery, or resolution payoff]
+DESCRIPTION: [complete sentence, 100 characters or fewer (about 15 words), present tense only, tease a question without revealing the episode climax, twist, final discovery, or resolution payoff]
 NARRATOR: ${assignedNarratorName}
 ANNOUNCER: Belle B
 NARRATIVE_VOICE: ${episode.narrative_voice || brief.narrative_voice || ''}
@@ -6314,7 +6314,7 @@ Series rules:
 - ${isFinale ? 'This is the finale. Resolve the season arc completely.' : 'This is not the finale. End on a specific cliffhanger with forward momentum. Do not use "to be continued" phrasing.'}
 
 Additional rules:
-- DESCRIPTION must be a COMPLETE sentence, ≤24 words, present tense only (DISC-001). Before final output, self-check DESCRIPTION word count; if it is over 24 words, rewrite it internally until it is complete and ≤24 words. Never cut DESCRIPTION mid-word or mid-phrase. Never output a fragment. DESCRIPTION must TEASE a question, never reveal the episode's climax, twist, final discovery, or resolution payoff. Raise curiosity about the setup or mystery; do NOT state the outcome. Example: tease "strange notes under a neighbor's door at three in the morning"; do NOT reveal "someone is trapped inside."
+- DESCRIPTION must be a COMPLETE sentence of 100 characters or fewer, counting spaces (about 15 words), present tense only (DESC-100-CHAR-001). Before final output, COUNT THE CHARACTERS; if it is over 100, shorten it until it is complete and 100 or fewer. Never cut DESCRIPTION mid-word or mid-phrase. Never output a fragment. DESCRIPTION must TEASE a question, never reveal the episode's climax, twist, final discovery, or resolution payoff. Raise curiosity about the setup or mystery; do NOT state the outcome. Example: tease "strange notes under a neighbor's door at three in the morning"; do NOT reveal "someone is trapped inside."
 - If NARRATOR_IS_CHARACTER is false, NARRATOR must not be a story character name and must not include "(character)".
 - If the narrator is a story character, NARRATOR_IS_CHARACTER must be true and the script must use consistent first-person narration.
 - Keep narrator voice consistent.
@@ -7548,11 +7548,11 @@ Use the validator feedback exactly.
 
 Rules:
 - Return JSON only: {"description": "text"}
-- DESCRIPTION must be a complete sentence, ≤24 words (DISC-001). It must end on a complete thought — never stop mid-phrase (e.g. "the real reason it.").
+- DESCRIPTION must be a complete sentence of 100 characters or fewer, counting spaces (about 15 words; DESC-100-CHAR-001). It must end on a complete thought — never stop mid-phrase (e.g. "the real reason it.").
 - DESCRIPTION must center on the PROTAGONIST below and what they are trying to do; other characters appear only as the situation they bring.
 - DESCRIPTION must be present tense.
 - DESCRIPTION must tease a question, not reveal the climax, twist, final discovery, culprit/survivor/status, or resolution payoff.
-- Before returning, self-check the word count and rewrite internally if it is over 24 words.
+- Before returning, COUNT THE CHARACTERS and shorten it if it is over 100. Example (78 characters): Daniel stakes out the overpass, but the man who shows up is not who he expects.
 - Do not reuse the current DESCRIPTION verbatim; generate a fresh compliant sentence.
 - Prefer the validator's suggested wording when it gives one.
 
@@ -7574,8 +7574,18 @@ ${JSON.stringify({
     .join('')
     .trim()
   const parsed = parseJsonObject(raw)
-  const description = sanitizeDescription(String(parsed.description || ''))
+  let description = sanitizeDescription(String(parsed.description || ''))
   if (!description) throw new Error('Description repair did not return description')
+  // DESC-100-REPAIR-001: the validator rejects anything over 100 characters, so check
+  // the length here and ask again (twice at most) instead of spending a package retry.
+  for (let attempt = 0; attempt < 2 && description.length > DESCRIPTION_MAX_CHARS; attempt++) {
+    const shorter = await anthropic.messages.create({
+      model, max_tokens: 300, temperature: 0,
+      messages: [{ role: 'user', content: `This story-card DESCRIPTION is ${description.length} characters. It must be ${DESCRIPTION_MAX_CHARS} characters or fewer, counting spaces. Shorten it to one complete present-tense sentence about the same protagonist and situation; keep the question it teases; reveal nothing more. Return JSON only: {"description": "text"}\n\nDESCRIPTION: ${description}` }],
+    })
+    const next = sanitizeDescription(String(parseJsonObject(shorter.content.map((c: any) => ('text' in c ? c.text : '')).join('').trim()).description || ''))
+    if (next) description = next
+  }
 
   logAnthropicCall({
     route: '/api/admin/production-jobs/run-next',

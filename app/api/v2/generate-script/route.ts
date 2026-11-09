@@ -394,8 +394,8 @@ Loaded from: docs/STAGE2_SCRIPT_PROMPT.md
 Note: Where this document conflicts with the Canon Registry above, Canon Registry wins (CANON-001).
 Note: Internal footer version mismatch (footer says v2.3, header says v2.4) — header is correct;
       the Early Investment Rule (r42) was added June 26 2026 as v2.4 and the footer was not updated.
-DISC-001 RESOLVED: DESCRIPTION constraint is 24 words max (DESCRIPTION-001) per Marc ruling
-      2026-08-29. Prior 70-char limit in the inline block below has been updated to match.
+DESCRIPTION length: 100 characters or fewer (DESC-100-CHAR-001, Marc 2026-11-05; CANON-99 decision 8).
+      This replaces the older 24-word rule wherever a document below still says 24 words.
 Known conflict: SFX frequency — this document (3–6 anchors) supersedes ET Story Rules r11
       (every 60–90s). SFX-001 (no fixed count, Marc 2026-10-31) supersedes both. Follow SFX-001.
 ${'='.repeat(80)}
@@ -505,7 +505,7 @@ SERIES_TOTAL_EPISODES:
 SERIES_IS_FINALE:
 AUTHOR:
 GENRE:
-DESCRIPTION: [24 words or fewer, present tense only — DESCRIPTION-001]
+DESCRIPTION: [100 characters or fewer (about 15 words), present tense only — DESC-100-CHAR-001]
 NARRATOR: [assigned voice name from narrator_voices — ALWAYS the voice talent name (e.g. "Ray Dolan"), NEVER a story character name, even when NARRATOR_IS_CHARACTER is true]
 ANNOUNCER: Belle B
 NARRATIVE_VOICE:
@@ -544,7 +544,7 @@ Production-format hard rules:
 - Right: NARRATOR: Pike's jaw tightened.
 
 Additional rules:
-- DESCRIPTION must be 24 words or fewer and present tense only (DESCRIPTION-001). If the brief-provided description is longer than 24 words or uses past-tense constructions, rewrite it to comply. Reject past-tense story-card phrasing such as "vanished", "was", "were", "had", "found", "discovered", "left", "moved", "sealed", "signed", "forged", "buried", or "hidden".
+- DESCRIPTION must be 100 characters or fewer, counting spaces (about 15 words), and present tense only (DESC-100-CHAR-001). If the brief-provided description is longer than 100 characters or uses past-tense constructions, rewrite it to comply. Reject past-tense story-card phrasing such as "vanished", "was", "were", "had", "found", "discovered", "left", "moved", "sealed", "signed", "forged", "buried", or "hidden".
 - NARRATOR header must ALWAYS be the assigned voice talent name (e.g. "Ray Dolan", "Samuel Cord"). Never a story character name. This rule has no exceptions. (HAL-SCRIPT-001)
 - If NARRATOR_IS_CHARACTER is false, the narrator is a detached third-person voice.
 - If NARRATOR_IS_CHARACTER is true, the narrator is a story character speaking in first person — but the NARRATOR header still uses the voice talent name, not the character name.
