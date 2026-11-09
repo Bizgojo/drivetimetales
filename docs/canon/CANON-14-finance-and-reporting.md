@@ -2,6 +2,14 @@
 Status: DRAFT for Marc's approval · Nov 9, 2026 · Owner: Marc
 Covers: the Admin → Finance statement (revenue, expenses, plow back, cost per episode, LTV, Mercury reconciliation, profit suggestions, overview tiles); expense categories; Mercury cards; spending limits. Does not cover: ad approval, CAC test rules and ad creative (CANON-13 Marketing & Ads); agent roles and AI-credit alerts (CANON-15 Agents & Operations); story production (PIPELINE-CANON).
 
+## Where Marc decides
+
+Every rule in this document that needs Marc. **[MARC DECIDES]** = Marc approves, chooses or gives his OK. **[MARC DOES]** = something only Marc does himself (tests on his phone, listens, enters a key). The same tag marks each rule below.
+
+- **Rule 52 [MARC DECIDES]:** Susan may use the marketing card only with Marc's approval.
+- **Rule 59 [MARC DECIDES]:** No automatic profit transfers. Any transfer needs Marc's explicit word.
+- **Still open:** 7 conflicts and 6 questions at the end of this document wait for Marc's decision (all listed in CANON-99).
+
 ## Rules
 
 ### A. The statement page
@@ -70,7 +78,7 @@ Covers: the Admin → Finance statement (revenue, expenses, plow back, cost per 
 49. Strategos (DeepSeek R1) is split between Marketing and Story Production. — **Agreed** (Nov 8, memory admin-finance-page.md)
 50. Mercury has one virtual card per spending group (4 made Nov 2), replacing one card per service. — **Agreed** (Nov 2, memory business-spending.md, business-banking.md)
 51. Marketing gets two cards: one for ad spend only, one for marketing services and tools. — **Agreed** (Nov 8, memory business-spending.md)
-52. Susan may use the marketing card only with Marc's approval. — **Agreed** (Nov 2, memory business-expenses.md, endless-tales-finances.md)
+52. **[MARC DECIDES]** Susan may use the marketing card only with Marc's approval. — **Agreed** (Nov 2, memory business-expenses.md, endless-tales-finances.md)
 53. The $4,000 Meta test money sits in its own Mercury marketing account with a Meta debit card. — **Agreed** (chat "Meta campaign testing plan", Oct 30)
 54. Every vendor charge must be billed to the card of its spending group, so the statement can sort it by card. — **Proposed** (card switch still in progress, claude/mercury-card-switch-checklist.md)
 
@@ -79,7 +87,7 @@ Covers: the Admin → Finance statement (revenue, expenses, plow back, cost per 
 56. Susan's Claude key for ad copy is capped at $25 a month. — **Agreed** (Nov 8, memory agent-fleet.md)
 57. ElevenLabs extra-use (overage) cap is 200,000 credits. — **Agreed** (Nov 5, memory audio-pipeline.md, project copy)
 58. No agent holds a tool that can send money. Bart's Mercury access is read-only. — **Agreed** for Bart read-only (memory /areas/endless-tales-platform.md); **Proposed** for all agents (Nov 5 Marc removed Mercury from Orion on Claude's advice)
-59. No automatic profit transfers. Any transfer needs Marc's explicit word. — **In force (code)** (app/admin/CommandCenter.tsx: transfer buttons locked)
+59. **[MARC DECIDES]** No automatic profit transfers. Any transfer needs Marc's explicit word. — **In force (code)** (app/admin/CommandCenter.tsx: transfer buttons locked)
 
 ## Conflicts found
 - C1. Test-account payments. Commit 10e3e0c (Nov 8) put them on a memo line, not revenue. Commit 51fd5a2 (Nov 8, later) and memory say they count. Recommendation: they count as revenue (newer, Marc's words). They stay out of subscriber counts, churn, LTV and CAC. Marc decides.

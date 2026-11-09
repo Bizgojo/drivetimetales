@@ -2,11 +2,21 @@
 Status: DRAFT for Marc's approval · Nov 9, 2026 · Owner: Marc
 Covers: everything the pipeline script writer must do — who may write, maps before drafting, hook and opening, structure, cliffhangers and endings, clarity, script format, speaker labels, text the voices will speak, length, and the writer's own checks. Does not cover: planning and briefs (CANON-02); Belle intro/outro wording (Belle CANON doc); sound effects, mixing, voices, covers, publishing and the player (their own CANON docs).
 
+## Where Marc decides
+
+Every rule in this document that needs Marc. **[MARC DECIDES]** = Marc approves, chooses or gives his OK. **[MARC DOES]** = something only Marc does himself (tests on his phone, listens, enters a key). The same tag marks each rule below.
+
+- **Rule 2 [MARC DECIDES]:** Author-written series (today only The Sunset of Competition) are never rewritten or regenerated. On a failed check the pipeline stops and reports;…
+- **Rule 58 [MARC DECIDES]:** NARRATIVE_VOICE is declared (first_person, third_limited, third_omniscient) and held on every narrator line. second_person needs Marc's approval.
+- **Rule 59 [MARC DECIDES]:** NARRATOR_IS_CHARACTER: true needs Marc's approval and a non-platform voice.
+- **Rule 90 [MARC DECIDES]:** Gemini reads the scripts before voicing (continuity, easy listening, logic, promise, credibility) and lists exact fixes. Report-only until Marc…
+- **Still open:** 12 conflicts and 7 questions at the end of this document wait for Marc's decision (all listed in CANON-99).
+
 ## Rules
 
 ### A. Who writes
 1. Only the pipeline writer writes or edits scripts. No agent (Orion, Hal, Atlas, Claude in chat) writes or edits a script, even to fix one line. A failed check sends the script back to the pipeline writer. — **Agreed** (AGENTS.md "All story writing goes through the pipeline; no agent writes or edits scripts"; PIPELINE-CANON STORY-CLARITY RULE Defaults, Nov 8)
-2. Author-written series (today only The Sunset of Competition) are never rewritten or regenerated. On a failed check the pipeline stops and reports; only mechanical edits Marc approves are made. — **Agreed** (Marc Nov 3, memory /projects/…/areas/sunset-of-competition.md)
+2. **[MARC DECIDES]** Author-written series (today only The Sunset of Competition) are never rewritten or regenerated. On a failed check the pipeline stops and reports; only mechanical edits Marc approves are made. — **Agreed** (Marc Nov 3, memory /projects/…/areas/sunset-of-competition.md)
 3. The writer writes from the author's database record and style sheet every time, never from memory. — **Agreed** (CANON_REGISTRY STYLE-001, Nov 1)
 4. Lines using Claude's stock phrases ("a testament to", "something shifted", "the silence stretched", "a breath she didn't know she was holding" and the rest of the list) are sent back for a rewrite in the author's voice. — **Agreed** (STYLE-001; list in lib/authorStyle.ts STOCK_PHRASES)
 5. When a check fails, the writer gets the exact problem and the exact lines, and rewrites — at most 2 rewrites per episode. After that the story stops with one plain reason. — **Agreed** (Story Production Spec §1 and §5, approved Nov 7)
@@ -74,8 +84,8 @@ Covers: everything the pipeline script writer must do — who may write, maps be
 55. TITLE: 1–5 words, 28 characters or fewer, never "Episode N" or the series title. — **Agreed** (Story Production Spec §5)
 56. DESCRIPTION (story card): fits two card lines (at most 100 characters), present tense only, teases a question, never reveals the twist or outcome. — **Agreed** (Marc Nov 5 "fills two lines"; DESC-TENSE-001 Marc Oct 29; DESC-100-CHAR-001) — see Conflict C4
 57. NARRATOR header is the assigned narrator's voice name from the author's pairing, never a story character. — **Agreed** (STAGE2 lookup table) and **In force (code)** (HAL-SCRIPT-001; run-next narrator check)
-58. NARRATIVE_VOICE is declared (first_person, third_limited, third_omniscient) and held on every narrator line. second_person needs Marc's approval. — **Agreed** (Bible r22, r27)
-59. NARRATOR_IS_CHARACTER: true needs Marc's approval and a non-platform voice. — **Agreed** (Bible Part XIII)
+58. **[MARC DECIDES]** NARRATIVE_VOICE is declared (first_person, third_limited, third_omniscient) and held on every narrator line. second_person needs Marc's approval. — **Agreed** (Bible r22, r27)
+59. **[MARC DECIDES]** NARRATOR_IS_CHARACTER: true needs Marc's approval and a non-platform voice. — **Agreed** (Bible Part XIII)
 60. CHARACTER GUIDE lists every speaking character, starting with the exact speaker label, then age, gender, accent and a personality/tone note. — **Agreed** (STAGE2 "Character Guide"; PUBLISHED_STORY_SPEC v1.5) and **In force (code)** (CAST-GUIDE-001)
 61. Every spoken line in the body starts with a speaker label in CAPITAL LETTERS, exactly as in the guide, using the character's full canonical name from the series cast. — **Agreed** (Story Production Spec §5) and **In force (code)** (HAL-SCRIPT-002, SCRIPT-LABELS-001)
 62. A character has one label however they are addressed (John Smith, Mr. Smith, John → one label, one voice). — **Agreed** (CHARACTER-NAMES-001, Marc Oct 30)
@@ -113,7 +123,7 @@ Every character in a spoken line is sent to the voice. Anything that is not a wo
 
 ### J. Checks on the writer's work before voicing
 89. Writer self-check (free, every draft): card copy, narrator header, narration presence, numbers, labels, sound-cue format, stock phrases, runtime floor and ceiling, Belle line present, character guide. — **In force (code)** (SCRIPT-READINESS-001, WRITER-SELF-CHECK-001)
-90. Gemini reads the scripts before voicing (continuity, easy listening, logic, promise, credibility) and lists exact fixes. Report-only until Marc gives it power. — **Agreed** (Story Production Spec §6.3 and §9.2, Nov 7) and **In force (code, report-only)** (GEMINI-STORY-READ-001)
+90. **[MARC DECIDES]** Gemini reads the scripts before voicing (continuity, easy listening, logic, promise, credibility) and lists exact fixes. Report-only until Marc gives it power. — **Agreed** (Story Production Spec §6.3 and §9.2, Nov 7) and **In force (code, report-only)** (GEMINI-STORY-READ-001)
 91. The whole series is read together for contradictions (an event resolved twice, a character under two names, the dead returning), and every "my sister / my cousin" line is checked against the fact sheet. A failure rewrites that episode and every later one, at most 2 times. — **Agreed** (Marc Oct 29 "permanent"; SERIES-FACTS-001 Nov 7) and **In force (code)** (SERIES-CONTINUITY-001, SERIES-FACTS-001, SERIES-REWRITE-001)
 
 ## Conflicts found

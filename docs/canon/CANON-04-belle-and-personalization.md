@@ -2,6 +2,13 @@
 Status: DRAFT for Marc's approval · Nov 9, 2026 · Owner: Marc
 Covers: what Belle says at the start and end of every story and episode, where the sting sits, credits, time-of-day words, and how the listener's name is added (or left out). Does not cover: Belle's voice settings and casting (CANON-05 Voices), story-body writing (writer canon), music under Belle and mix levels (sound/mixing canon), player behavior beyond the sting and the name (Player Rules, docs/PLAYER-RULES.md).
 
+## Where Marc decides
+
+Every rule in this document that needs Marc. **[MARC DECIDES]** = Marc approves, chooses or gives his OK. **[MARC DOES]** = something only Marc does himself (tests on his phone, listens, enters a key). The same tag marks each rule below.
+
+- **Rule 19 [MARC DECIDES]:** Broad time-of-day mood: see Conflict C3. Until Marc decides, writers use none.
+- **Still open:** 10 conflicts and 6 questions at the end of this document wait for Marc's decision (all listed in CANON-99).
+
 ## Rules
 
 ### A. Who Belle is
@@ -29,7 +36,7 @@ Covers: what Belle says at the start and end of every story and episode, where t
 
 ### D. Time of day and privacy
 18. Belle never says an exact time, a place, or anything that suggests she knows where the listener is ("It's 10:42", "you're driving near…"). — **Agreed** (BELLE_B_PROMPT_RULES.md; INTRO_OUTRO_BIBLE.md). **In force (code)** lib/voiceBelleRules.ts BELLE_EXACT_OR_CREEPY_TIME_PATTERNS.
-19. Broad time-of-day mood: see Conflict C3. Until Marc decides, writers use none.
+19. **[MARC DECIDES]** Broad time-of-day mood: see Conflict C3. Until Marc decides, writers use none.
 
 ### E. Belle's outro, episodes that are not the last
 20. The outro has exactly two parts, in this order: (1) one sentence that recaps this episode, no more; (2) a promotion of the next episode that says its number and the series name, for example "In Episode 4 of 'Blackwater Mile,' the river gives up the name everyone buried." — **Agreed** (BELLE-OUTRO-FORWARD RULE, docs/PIPELINE-CANON.md, Marc Nov 8, 2026; docs/PLAYER-RULES.md Playback basics 9; memory /projects/…/areas/story-pipeline.md Nov 8)

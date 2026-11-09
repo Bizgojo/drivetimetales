@@ -2,15 +2,31 @@
 Status: DRAFT for Marc's approval · Nov 9, 2026 · Owner: Marc
 Covers: where sound effects come from, the licence, the sound catalog, Gemini screening, the replace loop, when a sound plays, spot vs background sounds, the [SFX:] cue in scripts, what happens when a sound is missing, locked sounds, and never touching published episodes. Does not cover: music, levels of music and the final mix (CANON-07 Music & Final Mix); how writers write scenes and Belle (script-writing canon); voices; publishing; the player.
 
+## Where Marc decides
+
+Every rule in this document that needs Marc. **[MARC DECIDES]** = Marc approves, chooses or gives his OK. **[MARC DOES]** = something only Marc does himself (tests on his phone, listens, enters a key). The same tag marks each rule below.
+
+- **Rule 4 [MARC DECIDES]:** Marc agreed to pay the one-time $500 API setup fee once Ron (Sound Ideas) confirms in writing that the key can search AND download, uses the…
+- **Rule 5 [MARC DOES]:** Soundsnap downloads are done by Marc by hand.
+- **Rule 6 [MARC DOES]:** API keys and logins are entered on the server by Marc himself. They are never pasted in chat or printed.
+- **Rule 14 [MARC DECIDES]:** A discarded take never comes back. Every discard runs as a dry run first and then needs Marc's explicit word.
+- **Rule 19 [MARC DOES]:** Gemini is a screen, not the final judge. Marc listens to the final test mix.
+- **Rule 23 [MARC DECIDES]:** The loop may not run until the library confirms in writing that automated search-download-check is allowed, and Marc approves the code on a branch.
+- **Rule 44 [MARC DECIDES]:** All sound effects stay off in every mix (SFX_OFF=on) until the professional library is in and Marc approves a test. Voices and music are not…
+- **Rule 53 [MARC DECIDES]:** A published episode is re-mixed for sound only on Marc's explicit word.
+- **Rule 54 [MARC DECIDES]:** The first test with the new library is one episode only (Rerouted EP1). Nothing else gets sounds until Marc approves that test.
+- **Rule 55 [MARC DOES]:** When sounds are added back to published episodes, it is done one series at a time: one test episode, Marc listens, then the rest.
+- **Still open:** 7 conflicts and 7 questions at the end of this document wait for Marc's decision (all listed in CANON-99).
+
 ## Rules
 
 ### A. Where sounds come from
 1. Only recorded sounds from a paid professional library may play in a story. Never ElevenLabs or other AI-made sounds. Never the old kept library (Sonniss, Soundly exports). — **Agreed** (SOUNDSNAP-ONLY-001, Marc Nov 3: "I do not want to use any old sounds or ElevenLabs sounds, only Soundsnap", quoted in lib/sfxSwitch.ts; widened to Sound Ideas Nov 5, memory /projects/…/areas/audio-pipeline.md)
 2. Sound Ideas (Complete Access, bought Nov 5, 2026) is the main library. Soundsnap (12-month plan, bought Nov 2, 2026) is the backup. — **Agreed** (chat "Apple App Store commission deals", Nov 5: "I want to use Sound Ideas API and we can use Soundsnap as a backup"; memory audio-pipeline.md)
 3. Sound Ideas sounds come in through the SourceAudio API only. No hand downloads from Sound Ideas while the API key is pending. — **Agreed** (same chat, Nov 5: "Wait for the API")
-4. Marc agreed to pay the one-time $500 API setup fee once Ron (Sound Ideas) confirms in writing that the key can search AND download, uses the 5,000-a-day limit, and has the same licence. Connecting it waits until after the Meta launch and the reliability fixes. — **Agreed** (chat "Cover story map pattern", Nov 7)
-5. Soundsnap downloads are done by Marc by hand. — **Agreed** (memory audio-pipeline.md, Nov 2)
-6. API keys and logins are entered on the server by Marc himself. They are never pasted in chat or printed. — **Agreed** (AGENTS.md "Agent rules (Marc, standing)"; Orion note Nov 5)
+4. **[MARC DECIDES]** Marc agreed to pay the one-time $500 API setup fee once Ron (Sound Ideas) confirms in writing that the key can search AND download, uses the 5,000-a-day limit, and has the same licence. Connecting it waits until after the Meta launch and the reliability fixes. — **Agreed** (chat "Cover story map pattern", Nov 7)
+5. **[MARC DOES]** Soundsnap downloads are done by Marc by hand. — **Agreed** (memory audio-pipeline.md, Nov 2)
+6. **[MARC DOES]** API keys and logins are entered on the server by Marc himself. They are never pasted in chat or printed. — **Agreed** (AGENTS.md "Agent rules (Marc, standing)"; Orion note Nov 5)
 7. Library downloads run one session at a time, at a normal human pace, never in bursts. — **Agreed** (SFX-REPLACE-LOOP-001 spec, Marc approved Nov 3; Sound Ideas terms: one user at a time)
 8. Library sounds are only ever mixed into finished episodes. They are never offered on their own and never used to train any AI model. — **Agreed** (Marc's licensing emails to Soundsnap and Sound Ideas, Nov 1–2; Ron's written reply Nov 2)
 
@@ -20,18 +36,18 @@ Covers: where sound effects come from, the licence, the sound catalog, Gemini sc
 11. Each name holds up to 3 takes. Different places in a story rotate takes. The same place gets the same take on every re-mix. — **Agreed** (Marc Oct 31, memory story-pipeline.md; SFX-ROTATE-001 Oct 30)
 12. A take is used in a published mix only if it is a licensed library sound and approved. A name goes live only when it has 3 approved takes. — **Agreed** (Marc Oct 31: "3 takes he approves by ear"); threshold **In force (code)** lib/sfxCatalog.ts `liveNames()`
 13. Test mixes use only licensed sounds (candidates are fine), never kept-library sounds. — **Agreed** (SFX-TEST-LICENSED-ONLY-001, Marc Nov 2; lib/sfxCatalog.ts)
-14. A discarded take never comes back. Every discard runs as a dry run first and then needs Marc's explicit word. — **Agreed** (SFX-REPLACE-001 Nov 2; replace-loop spec Nov 3; Orion discard run approved by Marc Nov 3 11:48)
+14. **[MARC DECIDES]** A discarded take never comes back. Every discard runs as a dry run first and then needs Marc's explicit word. — **Agreed** (SFX-REPLACE-001 Nov 2; replace-loop spec Nov 3; Orion discard run approved by Marc Nov 3 11:48)
 15. Downloaded files are filed in one folder per catalog ID (for example ALL-01/). The folder decides the name; no word guessing. — **In force (code)** (SFX-SOUNDSNAP-001, lib/sfxCatalog.ts `catalogIdFromLibraryId`)
 16. A background take is kept up to 60 seconds long at ingest, so a loop is not obvious. — **In force (code)** (scripts/sfx-library-ingest.ts)
 17. The catalog lives in storage as audio/sfx-library/catalog.json (library list: sfx-library/manifest.json). There are no sound tables in the database. Marc reviews sounds on the admin page /admin/sfx-library in large text. — **Agreed** (SFX-REVIEW-001, Marc Oct 30: "a list of sounds … that I can hear and approve"; app/api/admin/sfx-library/route.ts)
 
 ### C. Gemini screening and the replace loop
 18. Gemini listens to every new candidate sound before it enters the catalog and marks it OK or BAD. — **Agreed** (SFX-GEMINI-CHECK-001, Marc Nov 3; scripts/sfx-gemini-check.ts)
-19. Gemini is a screen, not the final judge. Marc listens to the final test mix. — **Agreed** (SFX-REPLACE-LOOP-001 spec, Nov 3) — see Q2
+19. **[MARC DOES]** Gemini is a screen, not the final judge. Marc listens to the final test mix. — **Agreed** (SFX-REPLACE-LOOP-001 spec, Nov 3) — see Q2
 20. When Gemini marks a sound BAD, the loop downloads the next search result not tried before, and Gemini checks it again. — **Agreed** (SFX-REPLACE-LOOP-001, Marc Nov 3 11:33 ET)
 21. The loop stops after 5 tries per catalog name. If nothing passes, that name gets no sound, and the cue stays silent in mixes. — **Agreed** (Marc Nov 3: "5 tries and if nothing passes do not use a SFX and move on")
 22. The loop writes one report line per name: tries used (x/5), result (passed id, or NO SFX), and Gemini's reason for each BAD try. — **Agreed** (SFX-REPLACE-LOOP-001 spec)
-23. The loop may not run until the library confirms in writing that automated search-download-check is allowed, and Marc approves the code on a branch. — **Agreed** (SFX-REPLACE-LOOP-001 spec "Not allowed to start until")
+23. **[MARC DECIDES]** The loop may not run until the library confirms in writing that automated search-download-check is allowed, and Marc approves the code on a branch. — **Agreed** (SFX-REPLACE-LOOP-001 spec "Not allowed to start until")
 24. The loop runs against Sound Ideas (API) first and Soundsnap second. — **Proposed** (the Nov 3 spec names only Soundsnap; the Nov 5 decision made Sound Ideas the main library)
 
 ### D. When a sound plays
@@ -60,7 +76,7 @@ Covers: where sound effects come from, the licence, the sound catalog, Gemini sc
 43. In catalog mode the script's own cue recordings (sfx_NNNN.mp3) are never used. Each script cue is filled from the catalog by ID, or left silent and listed as "wanted". It plays just before the next spoken line. — **In force (code)** (SFX-SOUNDSNAP-001, core.ts, lib/sfxSoundMap.ts)
 
 ### G. Sounds off, missing sounds, locked sounds
-44. All sound effects stay off in every mix (SFX_OFF=on) until the professional library is in and Marc approves a test. Voices and music are not affected. — **Agreed** (SFX-ALL-OFF-001, Marc Nov 1: "turn the sounds off until we have a professional library")
+44. **[MARC DECIDES]** All sound effects stay off in every mix (SFX_OFF=on) until the professional library is in and Marc approves a test. Voices and music are not affected. — **Agreed** (SFX-ALL-OFF-001, Marc Nov 1: "turn the sounds off until we have a professional library")
 45. An episode mixed while sounds are off keeps its [SFX:] cues, so sounds can be added later by re-running the final mix. Voices are not re-recorded. — **Agreed** (Marc Nov 1, chat "Clearing CEO series flag")
 46. A missing sound is never replaced by a near match, an old sound, or an AI sound. The moment stays silent and is listed in the report. — **Agreed** (SFX-CATALOG-001, Marc Oct 31: "he does not go to a backup, he just eliminates that sound request")
 47. If a catalog take fails to download during a mix, that one sound is skipped and the mix continues. — **In force (code)** (lib/sfxOverlayRunner.ts)
@@ -71,9 +87,9 @@ Covers: where sound effects come from, the licence, the sound catalog, Gemini sc
 
 ### H. Published episodes
 52. Sound tests, discards, catalog builds and the replace loop never touch a published episode. Test mixes go only to asc3/<id>/preview/<tag>/. — **Agreed** (SFX-REPLACE-LOOP-001 spec "Never touch a published episode"; SFX-PREVIEW-001)
-53. A published episode is re-mixed for sound only on Marc's explicit word. — **Agreed** (Marc Nov 1: "Quiet the stories with the bad sounds"; MIX_SPEC.md listen-approval rule, Aug 21)
-54. The first test with the new library is one episode only (Rerouted EP1). Nothing else gets sounds until Marc approves that test. — **Agreed** (Orion note, Marc Nov 5)
-55. When sounds are added back to published episodes, it is done one series at a time: one test episode, Marc listens, then the rest. — **Proposed** (Marc wants old stories reprocessed with sounds, Nov 7; no method agreed)
+53. **[MARC DECIDES]** A published episode is re-mixed for sound only on Marc's explicit word. — **Agreed** (Marc Nov 1: "Quiet the stories with the bad sounds"; MIX_SPEC.md listen-approval rule, Aug 21)
+54. **[MARC DECIDES]** The first test with the new library is one episode only (Rerouted EP1). Nothing else gets sounds until Marc approves that test. — **Agreed** (Orion note, Marc Nov 5)
+55. **[MARC DOES]** When sounds are added back to published episodes, it is done one series at a time: one test episode, Marc listens, then the rest. — **Proposed** (Marc wants old stories reprocessed with sounds, Nov 7; no method agreed)
 
 ## Conflicts found
 - C1. STAGE2_SCRIPT_PROMPT v2.3 and SCRIPT_VALIDATOR v1.2 (June 10) say 3–6 "anchor" sounds per story, fail above 8, "no continuous ambience beds", sounds only in a gap and never under speech. Marc's Oct 31 (no cap), Nov 1 (spot sounds under the voice, background track) and Nov 2 (short background scene-setters) decisions say otherwise. Recommendation: the Nov rules win; update STAGE2 and the validator in the script-writing canon. Marc decides.

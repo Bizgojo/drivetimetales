@@ -2,10 +2,19 @@
 Status: DRAFT for Marc's approval · Nov 9, 2026 · Owner: Marc
 Covers: Belle's voice, narrators, character casting, voice reuse, recasting, the checks at the voice step, ElevenLabs credits, and when audio must be re-made. Does not cover: what Belle says (CANON-04), how scripts are written (writer canon), voice loudness, EQ and mixing (sound/mixing canon), the gate order (CANON-08).
 
+## Where Marc decides
+
+Every rule in this document that needs Marc. **[MARC DECIDES]** = Marc approves, chooses or gives his OK. **[MARC DOES]** = something only Marc does himself (tests on his phone, listens, enters a key). The same tag marks each rule below.
+
+- **Rule 1 [MARC DECIDES]:** Belle's voice is ElevenLabs voice GMhgX8fCR9GUtd3kmlKC, settings: stability 0.49, similarity 0.51, style 0.0, speaker boost on, speed 1.0, model…
+- **Rule 10 [MARC DECIDES]:** After the first episode of each new series is voiced, Gemini listens. Only mismatches Gemini flags go to Marc.
+- **Rule 47 [MARC DECIDES]:** A published story is re-voiced only with Marc's approval, and the new version is delivered as a link first.
+- **Still open:** 4 conflicts and 5 questions at the end of this document wait for Marc's decision (all listed in CANON-99).
+
 ## Rules
 
 ### A. Belle's voice
-1. Belle's voice is ElevenLabs voice GMhgX8fCR9GUtd3kmlKC, settings: stability 0.49, similarity 0.51, style 0.0, speaker boost on, speed 1.0, model eleven_multilingual_v2. No one changes or tests a substitute without Marc's separate approval. — **Agreed** (BELLE-007, Bible/CANON_REGISTRY_STORY_RULES.md, Aug 29). **In force (code)**: lib/voiceConstants.ts CANONICAL_BELLE_B_VOICE_ID; liveGreetingService.ts settings.
+1. **[MARC DECIDES]** Belle's voice is ElevenLabs voice GMhgX8fCR9GUtd3kmlKC, settings: stability 0.49, similarity 0.51, style 0.0, speaker boost on, speed 1.0, model eleven_multilingual_v2. No one changes or tests a substitute without Marc's separate approval. — **Agreed** (BELLE-007, Bible/CANON_REGISTRY_STORY_RULES.md, Aug 29). **In force (code)**: lib/voiceConstants.ts CANONICAL_BELLE_B_VOICE_ID; liveGreetingService.ts settings.
 2. Old Belle voices wewocdDkjSLm9ZwjO7TD and KWDD3Wyq30ZF5NEL01EJ are retired and never used. — **Agreed** (PUBLISHED_STORY_SPEC.md v1.5; memory /areas/audio-pipeline.md). **In force (code)**: LEGACY_BELLE_B_VOICE_IDS (also blocks EXAVITQu4vr4xnSDxMaL).
 3. Belle's voice is never used for a narrator or a character. — **Agreed** (PUBLISHED_STORY_SPEC.md v1.5). **In force (code)**: lib/castCollision.ts CAST-COLLISION-001, checked before any spend.
 
@@ -18,7 +27,7 @@ Covers: Belle's voice, narrators, character casting, voice reuse, recasting, the
 
 ### C. Casting characters
 9. Marc does not approve casts. Casting is automatic, from the screened voice list, with hard checks. — **Agreed** (Marc Nov 4, replaces his Oct 29 cast-approval rule; memory story-pipeline.md and audio-pipeline.md)
-10. After the first episode of each new series is voiced, Gemini listens. Only mismatches Gemini flags go to Marc. — **Agreed** (chat "Gemini sound replacement loop", Nov 4–5)
+10. **[MARC DECIDES]** After the first episode of each new series is voiced, Gemini listens. Only mismatches Gemini flags go to Marc. — **Agreed** (chat "Gemini sound replacement loop", Nov 4–5)
 11. The voice list is one grid that scripts and casting both use: code/number, name, gender, age, accent, accent strength, tone/personality, best use, status, reserved-for, Gemini clarity and accent scores. — **Agreed** (Marc Nov 4, memory audio-pipeline.md; chat Nov 4–5)
 12. Only voices with clear English. Accents are fine but never too strong to understand. No squeaky voices. — **Agreed** (Marc Nov 4)
 13. The list holds hundreds of voices, not a few dozen. Keep adding more. — **Agreed** (Marc Nov 4 and Nov 7)
@@ -61,7 +70,7 @@ Covers: Belle's voice, narrators, character casting, voice reuse, recasting, the
 44. An episode that has passed and locked is never re-voiced because of a later episode's problem. — **Agreed** (PIPELINE-CANON Rule 3)
 45. Adding episodes to a series never re-voices the existing ones. — **Proposed** (SERIES-CONTINUATION RULE, PIPELINE-CANON, pending Marc sign-off)
 46. Author-written scripts (Sunset) are never regenerated. Only episodes missing audio are voiced. — **Agreed** (memory sunset-of-competition.md, Nov 3)
-47. A published story is re-voiced only with Marc's approval, and the new version is delivered as a link first. — **Agreed** (Episode Correction Loop, PIPELINE-CANON)
+47. **[MARC DECIDES]** A published story is re-voiced only with Marc's approval, and the new version is delivered as a link first. — **Agreed** (Episode Correction Loop, PIPELINE-CANON)
 
 ## Conflicts found
 - C1. Cast approval. CAST-REVIEW-001 (lib/castReview.ts, Marc Oct 29: "let me listen to the voices… and approve") vs Marc Nov 4 (no longer approves casts). Code keeps it behind CAST_REVIEW, off by default. Recommendation: Nov 4 wins; retire CAST-REVIEW-001 and say so in lib/castReview.ts.

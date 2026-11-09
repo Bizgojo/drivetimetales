@@ -2,27 +2,41 @@
 Status: DRAFT for Marc's approval · Nov 9, 2026 · Owner: Marc
 Covers: the publish switch, when and how stories go live, episode numbering, hidden episodes, unpublishing, cold storage, the publication hold, the needs_attention flag, approval records and story history. Does not cover: the quality checks that must pass before publishing (CANON-08), covers and eBooks (CANON-10), or what the player does with live episodes (docs/PLAYER-RULES.md).
 
+## Where Marc decides
+
+Every rule in this document that needs Marc. **[MARC DECIDES]** = Marc approves, chooses or gives his OK. **[MARC DOES]** = something only Marc does himself (tests on his phone, listens, enters a key). The same tag marks each rule below.
+
+- **Rule 3 [MARC DECIDES]:** Review: every story waits at Ready for Review until Marc listens and approves. Then it goes live.
+- **Rule 5 [MARC DECIDES]:** Only Marc changes the switch, with a one-line instruction or the Admin page switch. It stays until he changes it again.
+- **Rule 9 [MARC DECIDES]:** In Review, corrections follow the Episode Correction Loop: Marc listens → approves or sends fixes → the fixed version comes to him as a link, not…
+- **Rule 11 [MARC DECIDES]:** A story goes live complete, with all its episodes at once. A series stays hidden until every episode is finished and approved.
+- **Rule 16 [MARC DECIDES]:** Sunset of Competition goes live all 26 episodes at once. Marc's release of it counts as his approval of each episode.
+- **Rule 34 [MARC DECIDES]:** Only Marc releases the hold. Claude or Orion may turn it on to stop test content or a wrong publish, then must tell Marc at once.
+- **Rule 42 [MARC DECIDES]:** A live story with a problem stays live unless Marc says otherwise ("After the Last Train" stays up).
+- **Rule 45 [MARC DECIDES]:** A partly published series breaks rule 11. On finding one, do not publish more single episodes. Either finish all episodes and publish them…
+- **Still open:** 5 conflicts and 5 questions at the end of this document wait for Marc's decision (all listed in CANON-99).
+
 ## Rules
 
 ### A. The publish switch (Review or Direct)
 1. **There is one publish switch** with two settings: **Review** (`rfr`) and **Direct** (`direct`). There is no per-story setting and no per-story question. — **Agreed** (PIPELINE-CANON Rule 4, Marc Oct 4, 2026)
 2. **The switch is checked at the moment a story is ready to publish,** not when it was started. — **Agreed** (PIPELINE-CANON Rule 4; docs/PLAYER-RULES.md "What listeners can see" 4, Marc Nov 8)
-3. **Review:** every story waits at Ready for Review until Marc listens and approves. Then it goes live. — **Agreed** (docs/PLAYER-RULES.md, Marc Nov 8)
+3. **[MARC DECIDES]** **Review:** every story waits at Ready for Review until Marc listens and approves. Then it goes live. — **Agreed** (docs/PLAYER-RULES.md, Marc Nov 8)
 4. **Direct:** stories go live without Marc's review. There is no listen after going live either; nothing may assume Marc will catch bad audio. — **Agreed** (PIPELINE-CANON Rule 4, option A, Marc Oct 4 10:34 and 10:35 EDT)
-5. **Only Marc changes the switch,** with a one-line instruction or the Admin page switch. It stays until he changes it again. — **Agreed** (PIPELINE-CANON Rule 4; Admin Command Center switch, migration 20261031173118)
+5. **[MARC DECIDES]** **Only Marc changes the switch,** with a one-line instruction or the Admin page switch. It stays until he changes it again. — **Agreed** (PIPELINE-CANON Rule 4; Admin Command Center switch, migration 20261031173118)
 6. **The current setting is Direct** (set Oct 11; Marc Oct 27: "publish stories directly to the app, not to Ready for Review"). — **Agreed** (memory /projects/…/areas/story-pipeline.md Oct 27; atlas_settings row read Nov 9)
 7. **If the switch can't be read, hold at Review.** If no setting exists, use Direct. — **In force (code)** (lib/publishMode.ts getPublishMode)
 8. **No setting weakens a quality check.** All checks pass first; the switch only decides whether Marc reviews. — **Agreed** (PIPELINE-CANON Rules 2 and 4)
-9. **In Review, corrections follow the Episode Correction Loop:** Marc listens → approves or sends fixes → the fixed version comes to him as a link, not published → he approves → only then it replaces or publishes. — **Agreed** (Episode Correction Loop, Marc Aug 21, 2026, PERMANENT; PIPELINE-CANON Rule 4 scope)
+9. **[MARC DECIDES]** **In Review, corrections follow the Episode Correction Loop:** Marc listens → approves or sends fixes → the fixed version comes to him as a link, not published → he approves → only then it replaces or publishes. — **Agreed** (Episode Correction Loop, Marc Aug 21, 2026, PERMANENT; PIPELINE-CANON Rule 4 scope)
 10. **The first story ever published by Direct mode is marked** `PUBLISH-MODE-DIRECT-FIRST-PUBLISH` in the log so Marc can check it. — **In force (code)** (lib/publishMode.ts FIRST_PUBLISH_MARKER)
 
 ### B. All episodes publish together
-11. **A story goes live complete, with all its episodes at once.** A series stays hidden until every episode is finished and approved. — **Agreed** (EPISODE-ADDITION RULE, Oct 4; docs/PLAYER-RULES.md, Marc Nov 8)
+11. **[MARC DECIDES]** **A story goes live complete, with all its episodes at once.** A series stays hidden until every episode is finished and approved. — **Agreed** (EPISODE-ADDITION RULE, Oct 4; docs/PLAYER-RULES.md, Marc Nov 8)
 12. **No 1-episode series is ever live.** — **Agreed** (Marc Nov 8, 2026, memory story-pipeline.md and hook-series.md)
 13. **A series flips live once,** after the finale passes, under the switch setting at that moment. It is never split (some episodes Review, some live). — **Agreed** (PIPELINE-CANON Rule 3 and Rule 4 defaults)
 14. **"Every episode" means the planned total** (`series_total_episodes`). A series with fewer episode rows than planned does not publish. — **Proposed** (fills gap: publish code checks only rows that exist, see Enforcement)
 15. **Hook-first ad series launch as a 7-episode Season 1,** all 7 published together. — **Agreed** (PIPELINE-CANON HOOK-SERIES RULE, Marc Nov 5)
-16. **Sunset of Competition goes live all 26 episodes at once.** Marc's release of it counts as his approval of each episode. — **Agreed** (Marc Nov 3, memory sunset-of-competition.md; lib/story-gates.ts AUTHOR-WRITTEN-RELEASE-001, Nov 4)
+16. **[MARC DECIDES]** **Sunset of Competition goes live all 26 episodes at once.** Marc's release of it counts as his approval of each episode. — **Agreed** (Marc Nov 3, memory sunset-of-competition.md; lib/story-gates.ts AUTHOR-WRITTEN-RELEASE-001, Nov 4)
 17. **Adding episodes to a live series:** new episodes are produced, then published together as one batch, after the last live episode. Original episodes stay locked. — **Agreed** (EPISODE-ADDITION RULE part 2; docs/PLAYER-RULES.md 5)
 18. **One addition order = one batch.** No early release of single new episodes. — **Agreed** (EPISODE-ADDITION defaults)
 19. **If unclear whether an episode is part of the first release or an addition,** treat it as the first release (publish together). — **Agreed** (EPISODE-ADDITION defaults)
@@ -46,7 +60,7 @@ Covers: the publish switch, when and how stories go live, episode numbering, hid
 ### E. Publication hold (global stop)
 32. **The publication hold stops every publish** (Review or Direct) until released. Every publish path checks it right before writing. — **In force (code)** (lib/publicationHold.ts, PUBLICATION-HOLD-001, Marc Oct 23)
 33. **If the hold can't be read, nothing publishes.** — **In force (code)** (lib/publicationHold.ts)
-34. **Only Marc releases the hold.** Claude or Orion may turn it on to stop test content or a wrong publish, then must tell Marc at once. — **Proposed** (Claude set it Nov 2 to stop a test series and Marc was told; never written as a rule)
+34. **[MARC DECIDES]** **Only Marc releases the hold.** Claude or Orion may turn it on to stop test content or a wrong publish, then must tell Marc at once. — **Proposed** (Claude set it Nov 2 to stop a test series and Marc was told; never written as a rule)
 35. **Test content is never published.** — **Proposed** (cited as "your brief says not to publish test content", chat "Clearing CEO series flag"; no written rule found)
 
 ### F. Unpublish, rollback and cold storage
@@ -56,14 +70,14 @@ Covers: the publish switch, when and how stories go live, episode numbering, hid
 39. **Cold storage means retired.** A cold-storage story is never dispatched, produced or shown. Bringing it back goes only through the "recover from cold storage" action, which resets its review fields and sends it to Ready for Review. — **In force (code)** (lib/workflowTransitions.ts)
 40. **Retiring stalled or outdated work goes to cold storage, not deletion** (69 stalled stories, Oct 2026; early-October queue, Nov 1). — **Agreed** (Marc, memory /areas/story-pipeline.md; Nov 1 memory story-pipeline.md)
 41. **Improving an old published story is a separate "Remaster" job.** New production never touches a live episode. — **Proposed** (Marc Nov 7 asked for a way to pull and reprocess old stories; Story Production Spec §10 is a draft, "do not implement")
-42. **A live story with a problem stays live unless Marc says otherwise** ("After the Last Train" stays up). — **Agreed** (Marc Nov 8, PIPELINE-CANON STORY-CLARITY scope)
+42. **[MARC DECIDES]** **A live story with a problem stays live unless Marc says otherwise** ("After the Last Train" stays up). — **Agreed** (Marc Nov 8, PIPELINE-CANON STORY-CLARITY scope)
 
 ### G. needs_attention flag
 43. **`needs_attention` means a person must look.** While set, the story or its whole series is not dispatched. It always carries a plain reason. — **In force (code)** (dispatch-queue/route.ts Gate A)
 44. **Clearing `needs_attention` requires the cause to be fixed** and the fix named in the reason field. — **Proposed** (fills gap: who may clear the flag is not written)
 
 ### H. Partly published stories (rule breaks)
-45. **A partly published series breaks rule 11.** On finding one, do not publish more single episodes. Either finish all episodes and publish them together, or hide the live part. Marc chooses. — **Proposed** (Rerouted, Weekend Wife and other hook series had Episode 1 live alone, Nov 6–9; SERIES-CONTINUATION RULE rationale)
+45. **[MARC DECIDES]** **A partly published series breaks rule 11.** On finding one, do not publish more single episodes. Either finish all episodes and publish them together, or hide the live part. Marc chooses. — **Proposed** (Rerouted, Weekend Wife and other hook series had Episode 1 live alone, Nov 6–9; SERIES-CONTINUATION RULE rationale)
 46. **The single-episode publish path must refuse series episodes** unless it publishes the rest of the series in the same action. — **Proposed** (code today allows one episode once earlier ones are live: app/api/admin/publish-story/route.ts single path)
 
 ### I. Approval records and story history

@@ -2,21 +2,34 @@
 Status: DRAFT for Marc's approval · Nov 9, 2026 · Owner: Marc
 Covers: who the agents are and what each may do; approvals for merges, database changes and deploys; how Claude talks to Marc and to agents; Telegram; watchdogs and alerts; security of keys and routes; which documents are law. Does not cover: story production steps (PIPELINE-CANON and story rules); the player and listener app (PLAYER-RULES); ad approval (CANON-13); money and the statement (CANON-14).
 
+## Where Marc decides
+
+Every rule in this document that needs Marc. **[MARC DECIDES]** = Marc approves, chooses or gives his OK. **[MARC DOES]** = something only Marc does himself (tests on his phone, listens, enters a key). The same tag marks each rule below.
+
+- **Rule 1 [MARC DECIDES]:** Only the documents in the AGENTS.md "Canon index" are law. Everything else is history or reference. When two canon documents disagree, ask Marc.
+- **Rule 2 [MARC DECIDES]:** No agent declares canon. Canon changes only on Marc's explicit word.
+- **Rule 3 [MARC DECIDES]:** Never merge a pull request (PR) without Marc's explicit word.
+- **Rule 5 [MARC DECIDES]:** Never run a database migration or schema change without Marc's explicit OK.
+- **Rule 8 [MARC DECIDES]:** Stop and ask Marc when a step could overwrite or hide live content.
+- **Rule 10 [MARC DECIDES]:** No crontab hold line (#HOLD-…) or paused service is turned back on without Marc's word.
+- **Rule 54 [MARC DOES]:** Marc enters money-spending keys himself (for example Meta ads_management). Low-risk test keys may be passed through Orion.
+- **Still open:** 10 conflicts and 8 questions at the end of this document wait for Marc's decision (all listed in CANON-99).
+
 ## Rules
 
 ### A. What is law
-1. Only the documents in the AGENTS.md "Canon index" are law. Everything else is history or reference. When two canon documents disagree, ask Marc. — **Agreed** (AGENTS.md; commit 2683da9, Nov 9)
-2. No agent declares canon. Canon changes only on Marc's explicit word. — **Agreed** (memory bell-meta-marketing.md standing rules; governance/ACQUISITION-RETENTION-001.md change control)
+1. **[MARC DECIDES]** Only the documents in the AGENTS.md "Canon index" are law. Everything else is history or reference. When two canon documents disagree, ask Marc. — **Agreed** (AGENTS.md; commit 2683da9, Nov 9)
+2. **[MARC DECIDES]** No agent declares canon. Canon changes only on Marc's explicit word. — **Agreed** (memory bell-meta-marketing.md standing rules; governance/ACQUISITION-RETENTION-001.md change control)
 
 ### B. Approvals
-3. Never merge a pull request (PR) without Marc's explicit word. — **Agreed** (AGENTS.md agent rules) — see C1 for Claude's pipeline exception.
+3. **[MARC DECIDES]** Never merge a pull request (PR) without Marc's explicit word. — **Agreed** (AGENTS.md agent rules) — see C1 for Claude's pipeline exception.
 4. Marc's merge word is separate from any later step (deploy, publish). — **Agreed** (Oct 11, 2026, chat "AWS EC2 setup for Endless Tales")
-5. Never run a database migration or schema change without Marc's explicit OK. — **Agreed** (AGENTS.md) — see C2.
+5. **[MARC DECIDES]** Never run a database migration or schema change without Marc's explicit OK. — **Agreed** (AGENTS.md) — see C2.
 6. No agent approves its own merge, database write or production action. Orion, Atlas and Lyra are one agent with different names, so they cannot review each other. Claude is the independent reviewer. — **Agreed** (Oct 11, 2026, same chat)
 7. The builder never checks its own work. A separate fresh helper verifies. — **Agreed** (Oct 29–30, chat "Meta campaign testing plan")
-8. Stop and ask Marc when a step could overwrite or hide live content. — **Agreed** (AGENTS.md)
+8. **[MARC DECIDES]** Stop and ask Marc when a step could overwrite or hide live content. — **Agreed** (AGENTS.md)
 9. Never patch the live production path without a restore point first. Never replace a working path with a simpler fallback. Keep what works before improving it. — **Agreed** (AGENTS.md hard guardrails)
-10. No crontab hold line (#HOLD-…) or paused service is turned back on without Marc's word. — **Proposed** (holds are used, e.g. HOLD-C9, but no rule says who lifts them)
+10. **[MARC DECIDES]** No crontab hold line (#HOLD-…) or paused service is turned back on without Marc's word. — **Proposed** (holds are used, e.g. HOLD-C9, but no rule says who lifts them)
 
 ### C. Working rules for every agent
 11. One task at a time. One objective per work cycle. — **Agreed** (AGENTS.md)
@@ -74,7 +87,7 @@ Covers: who the agents are and what each may do; approvals for merges, database 
 
 ### I. Keys and security
 53. Never open, print, copy or paste private keys, .pem files or tokens. Report env variable NAMES only, never values. — **Agreed** (AGENTS.md; Amendment 1 §11.4)
-54. Marc enters money-spending keys himself (for example Meta ads_management). Low-risk test keys may be passed through Orion. — **Agreed** (Oct 29–30, chat "Meta campaign testing plan")
+54. **[MARC DOES]** Marc enters money-spending keys himself (for example Meta ads_management). Low-risk test keys may be passed through Orion. — **Agreed** (Oct 29–30, chat "Meta campaign testing plan")
 55. Admin and pipeline write routes (/api/admin, /api/asc3 writes) need an admin login or the internal key. — **In force (code)** (middleware.ts, ASC3-AUTH-001)
 56. The open /api/v2 routes (author-options, generate-script, load-story, produce-audio, save-revised-script, score-script, series-package, story-brief, validate-script) must get the same login gate. — **Proposed** (9 of 10 have no auth check; middleware lets /api/ through)
 57. Leaked or exposed keys are replaced, and the old ones revoked: Orion's Telegram bot (renamed by someone Oct 26), the "default" bot, and any key written in a repo document. Bot tokens move out of plain text in openclaw.json. — **Proposed** (todo list items 12–13; not yet decided or done)
