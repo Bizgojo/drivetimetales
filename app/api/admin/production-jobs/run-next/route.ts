@@ -7486,7 +7486,7 @@ function classifyDescriptionValidatorFailure(report: string): null | {
   // that gives away the payoff is card copy, not story content — rewrite it
   // from the validator's feedback (bounded by MAX_SERIES_DESCRIPTION_RETRIES)
   // and re-validate, instead of stopping the whole series for a human.
-  const protagonistMismatch = /protagonist.*mismatch|mismatch.*protagonist|role.*mismatch|description\s+does not match\s+(?:the\s+)?(?:protagonist|role)|centers? on .*(?:not|instead of) the protagonist/i
+  const protagonistMismatch = /protagonist.*mismatch|mismatch.*protagonist|role.*mismatch|description\s+does not match\s+(?:the\s+)?(?:protagonist|role)|centers? on .*(?:not|instead of) the protagonist|misrepresent|does not (?:accurately )?reflect|not accurately reflect|inaccurate/i
   if (failureLines.some((line) => protagonistMismatch.test(line))) {
     return { retryable: true, kind: 'mechanical', reason: failureLines.join('; '), failureLines }
   }
@@ -7534,6 +7534,15 @@ function seriesDescriptionFailureFromEpisodeResult(result: any) {
   }
 }
 
+/** DESC-REPAIR-CONTEXT-001: the opening and the close of the story body (header and Belle blocks left out),
+ * so the description repair writes about what really happens instead of guessing. */
+function storyBodyExcerpt(script: string): string {
+  const lines = script.split('\n')
+  const start = lines.findIndex(l => /^(NARRATOR|[A-Z][A-Z .'-]{1,30}):/.test(l.trim()) && !/^(ANNOUNCER|BELLE|SANDY|TITLE|SERIES|EPISODE|AUTHOR|GENRE|DESCRIPTION|NARRATOR_IS|NARRATIVE_VOICE|SUNO)/.test(l.trim()))
+  const body = (start >= 0 ? lines.slice(start) : lines).join('\n')
+  return body.length <= 5000 ? body : body.slice(0, 3500) + '\n[...]\n' + body.slice(-1500)
+}
+
 async function regenerateSeriesDescriptionFromEpisodeFeedback(episode: any, feedbackReport: string, model: string, job: ProductionJob) {
   const response = await anthropic.messages.create({
     model,
@@ -7565,7 +7574,10 @@ ${JSON.stringify({
   title: episode.title,
   protagonist: (parseCharacterGuide(episode.script || '').find((c) => c.isProtagonist) || parseCharacterGuide(episode.script || '')[0])?.description || null,
   currentDescription: extractHeader(episode.script || '', 'DESCRIPTION') || episode.description || '',
-}, null, 2)}`,
+}, null, 2)}
+
+WHAT HAPPENS IN THIS EPISODE (the DESCRIPTION must match this; never invent events):
+${storyBodyExcerpt(String(episode.script || ''))}`,
     }],
   })
 
@@ -9634,8 +9646,11 @@ export async function POST(req: NextRequest) {
           ? lockedJob.state_json.seriesValidation
           : {}
         const descriptionRetry = persistedSeriesValidation.descriptionRetry || {}
-        const descriptionRetryCount = Number(descriptionRetry.count || 0)
         const descriptionFailure = seriesDescriptionFailureFromEpisodeResult(result)
+        // DESC-REPAIR-PER-EPISODE-001: the retry budget is per episode, so one
+        // episode's repairs never use up another's (Rerouted 32ce90e6, Nov 9).
+        const descriptionRetryPerEpisode: Record<string, number> = { ...(descriptionRetry.perEpisode || {}) }
+        const descriptionRetryCount = Number(descriptionRetryPerEpisode[String(descriptionFailure?.storyId || '')] || 0)
 
         if (descriptionFailure?.classification?.retryable && descriptionRetryCount < MAX_SERIES_DESCRIPTION_RETRIES && !seriesAutoRepairExempt) {
           const targetEpisode = result.episodes.find((episode: any) =>
@@ -9721,6 +9736,7 @@ export async function POST(req: NextRequest) {
               packageReport: null,
               descriptionRetry: {
                 count: retryCount,
+                perEpisode: { ...descriptionRetryPerEpisode, [String(targetEpisode.id)]: retryCount },
                 max: MAX_SERIES_DESCRIPTION_RETRIES,
                 storyId: targetEpisode.id,
                 episodeNumber: episodeNumber(targetEpisode, 0),
