@@ -11,6 +11,10 @@ Build and preserve a stable end-to-end Endless Tales story production system.
 - library-new is the current verification surface
 - Hal must not edit code
 
+## Canon documents (read before working in these areas)
+- Player behavior (playback, auto-continue, progress saving, series navigation, review prompt, red Rate button, what listeners can see): **docs/PLAYER-RULES.md** is the single source of truth. Code that disagrees with it is a bug.
+- Story production pipeline: docs/PIPELINE-CANON.md
+
 ## Data rules
 - Exactly 3 ET authors per genre
 - Every ET author must have:

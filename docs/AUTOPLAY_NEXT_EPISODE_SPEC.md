@@ -1,3 +1,5 @@
+> **REPLACED (Nov 9, 2026).** The rules in [docs/PLAYER-RULES.md](PLAYER-RULES.md) are the single source of truth for the player. This file is kept as history and test detail only; where it disagrees with PLAYER-RULES.md, PLAYER-RULES.md wins.
+
 # AUTOPLAY NEXT EPISODE — BEHAVIORAL SPEC
 **Version 1.0 · June 10, 2026 · Endless Tales**
 **Status:** Approved by Marc. LAUNCH GATE — public launch does not happen without this feature live.
