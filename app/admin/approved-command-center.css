@@ -36,3 +36,5 @@
 
 .acc-root .metrics.metrics-pair{grid-template-columns:repeat(2,minmax(0,1fr))}
 @media(max-width:730px){.acc-root .metrics.metrics-pair{grid-template-columns:repeat(2,minmax(0,1fr))}}
+/* CANON-ADMIN-001: canon documents in Documentation */
+.acc-root .docs-article h2{font-size:21px;line-height:1.35;margin:28px 0 10px}.acc-root .docs-article h4{font-size:16px;margin:20px 0 8px}.acc-root .docs-article blockquote{margin:14px 0;padding:10px 16px;border-left:4px solid var(--green);background:#f3f6f1;border-radius:6px}.acc-root .docs-article pre{overflow-x:auto;background:#f4f4f1;padding:14px;border-radius:8px;font-size:13px;line-height:1.5}.acc-root .docs-article code{font-size:.92em;background:#f1f1ec;padding:1px 5px;border-radius:4px}.acc-root .docs-article pre code{background:none;padding:0}.acc-root .docs-article .table-wrap{overflow-x:auto;margin:12px 0}.acc-root .docs-article li.check{list-style:none;margin-left:-20px}.acc-root .docs-article hr{border:0;border-top:1px solid var(--line);margin:24px 0}.acc-root .docs-article strong{color:var(--ink)}

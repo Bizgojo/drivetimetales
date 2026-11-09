@@ -13,6 +13,7 @@ Build and preserve a stable end-to-end Endless Tales story production system.
 
 ## Canon index: the only documents that are law
 If a document is not on this list, it is history or reference, not a rule. When documents disagree, the one on this list wins; when two on this list disagree, ask Marc.
+- **docs/canon/** (start at CANON-00-index.md): the full canon set, one document per step, from story ideas to marketing. Drafts until Marc approves each one; rules marked Agreed are already law. Open decisions are in CANON-99.
 - **docs/PLAYER-RULES.md**: player behavior (playback, auto-continue, saving, series navigation, review prompt, red Rate button, what listeners can see). Master copy is Marc's Claude Doc; this file mirrors it.
 - **docs/PIPELINE-CANON.md**: story pipeline rules, including story clarity, Belle outro, hook series, Pocket FM style and series continuation.
 - **Story writing rules loaded by the script writer**: Bible/CANON_REGISTRY_STORY_RULES.md (highest), Bible/ET_Story_Rules_v3_2_CANONICAL.md, docs/STAGE2_SCRIPT_PROMPT.md.
