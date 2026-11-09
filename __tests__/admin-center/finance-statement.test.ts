@@ -110,15 +110,36 @@ describe('FINANCE-STATEMENT-001', () => {
     expect(st.memo[AVAILABLE_ITEM][1]).toBe(0)
   })
 
-  test('cashback has its own line, interest is Mercury interest only, unmatched money in lands in Other', () => {
+  test('decision 125: cashback, interest, uncategorized money in and owner money sit in Part B, never in revenue or profit', () => {
     const txns = [tx('c', '2026-09-10T00:00:00Z', 3.5, 'Mercury IO Cashback', 'other'), tx('i', '2026-09-11T00:00:00Z', 1.25, 'Mercury Interest', 'other'),
-      tx('x', '2026-09-12T00:00:00Z', 40, 'Unknown Co', 'externalTransfer'), tx('o', '2026-09-13T00:00:00Z', 5000, 'SouthState Bank x', 'externalTransfer')]
+      tx('x', '2026-09-12T00:00:00Z', 40, 'Unknown Co', 'externalTransfer'), tx('o', '2026-09-13T00:00:00Z', 5000, 'SouthState Bank x', 'externalTransfer'),
+      tx('o2', '2026-10-02T00:00:00Z', 1000, 'SouthState Bank x', 'externalTransfer'), tx('w', '2026-10-03T00:00:00Z', -200, 'SouthState Bank x', 'externalTransfer')]
     const st = buildStatement({ ...base, basis: 'cash', windows: SEP_OCT, txns })
-    expect(st.revenue[CASHBACK_ITEM][0]).toBeCloseTo(3.5)
-    expect(st.revenue[INTEREST_ITEM][0]).toBeCloseTo(1.25)
-    expect(st.revenue[OTHER_ITEM][0]).toBeCloseTo(40)
-    expect(st.totals.revenue[0]).toBeCloseTo(44.75) // owner capital excluded
+    expect(st.revenue[CASHBACK_ITEM]).toBeUndefined()
+    expect(st.outsideOps.lines[CASHBACK_ITEM][0]).toBeCloseTo(3.5)
+    expect(st.outsideOps.lines[INTEREST_ITEM][0]).toBeCloseTo(1.25)
+    expect(st.outsideOps.lines[OTHER_ITEM][0]).toBeCloseTo(40)
+    expect(st.totals.revenue[0]).toBeCloseTo(0)
+    expect(st.totals.result[0]).toBeCloseTo(0)
+    expect(st.outsideOps.investors).toEqual([{ name: 'Marc (owner)', values: [5000, 1000], toDate: [5000, 6000] }])
+    expect(st.outsideOps.withdrawals[1]).toBeCloseTo(-200)
+    expect(st.outsideOps.total[0]).toBeCloseTo(5044.75)
+    expect(st.totals.bothParts[1]).toBeCloseTo(800)
     expect(st.uncategorizedCount).toBe(1)
+  })
+
+  test('decision 125: hosting and Stripe fees are cost of revenue; gross profit and operating profit', () => {
+    const rules = [...RULES, rule(9, 30, 'AWS', 'Operating Exp', 'Server (AWS)'), rule(10, 31, 'GitHub', 'Operating Exp', 'Code hosting (GitHub)')]
+    const stripe = [sx('a', '2026-09-10T00:00:00Z', 'charge', 100, 3, 'month')]
+    const txns = [tx('1', '2026-09-03T00:00:00Z', -20, 'Anthropic'), tx('2', '2026-09-04T00:00:00Z', -10, 'AWS'), tx('3', '2026-09-05T00:00:00Z', -5, 'GitHub'), tx('4', '2026-09-06T00:00:00Z', -15, 'Facebook')]
+    const st = buildStatement({ ...base, rules, stripe, basis: 'cash', windows: SEP_OCT, txns })
+    expect(st.items.find(i => i.item === 'Server (AWS)')!.section).toBe('Delivery')
+    expect(st.items.find(i => i.item === STRIPE_FEE_ITEM)!.section).toBe('Payment fees')
+    expect(st.totals.costOfRevenue[0]).toBeCloseTo(33) // 20 production + 10 delivery + 3 fees
+    expect(st.totals.grossProfit[0]).toBeCloseTo(67)
+    expect(st.totals.grossMargin[0]).toBeCloseTo(0.67)
+    expect(st.totals.opex[0]).toBeCloseTo(20) // GitHub + Meta
+    expect(st.totals.result[0]).toBeCloseTo(47)
   })
 
   test('a story counts as published only when every episode is live; partial series are flagged; pipeline groups by stage', () => {

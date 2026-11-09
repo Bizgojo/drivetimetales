@@ -8,6 +8,7 @@ Every rule in this document that needs Marc. **[MARC DECIDES]** = Marc approves,
 
 - **Rule 52 [MARC DECIDES]:** Susan may use the marketing card only with Marc's approval.
 - **Rule 59 [MARC DECIDES]:** No automatic profit transfers. Any transfer needs Marc's explicit word.
+- **Decision 125 [MARC DECIDES]:** What Marc reinvests from Part B (money outside operations), and when, is his choice.
 - **Still open:** nothing. Every conflict and question below is RESOLVED (CANON-99 Parts 1 and 2, Nov 9, 2026).
 
 ## Rules
@@ -96,10 +97,11 @@ Marc answered CANON-99 on Nov 9, 2026. These decisions are **Agreed** and overri
 - **Decision 57:** **Plow back.** Marc's decision: the plow-back percentage is a setting that starts at 75%; only Marc changes it, each change is recorded with its date and applies from the next month on. Plow back = that percentage of the previous month's profit ($0 after a loss month), shown as one number ("Available for ads"). The Command Center reads the same setting. The rest stays as reserve. Minimum cash reserve: $5,000 or 90 days of spending, whichever is larger. (13 C8, 14 C3, C4, Q1, Q3) — **Agreed** (Marc, Nov 9, 2026, CANON-99)
 - **Decision 58:** **Revenue details.** Decided: Test-account payments count as revenue but not in subscriber counts, churn, LTV or CAC. Sound Ideas cost is 1/12 of what was paid for the current year. Refunds count on the day they leave Mercury. (14 C1, C7, Q6) — **Agreed** (Marc, Nov 9, 2026, CANON-99)
 - **Decision 111:** Retire the old LTV numbers and the old $59.99 price everywhere. (14 C2, C6) — **Agreed** (Marc, Nov 9, 2026, CANON-99 Part 2)
-- **Decision 112:** Five spending sections on the statement: Operations, Story Production, Ad Spend, Marketing Services, R&D. (14 C5) — **Agreed** (Marc, Nov 9, 2026, CANON-99 Part 2)
+- **Decision 112:** Five spending sections on the statement: Operations, Story Production, Ad Spend, Marketing Services, R&D. **Replaced by decision 125** (Marc, Nov 9, 2026) for how the statement is laid out. (14 C5) — **Agreed** (Marc, Nov 9, 2026, CANON-99 Part 2)
 - **Decision 113:** In a month with no finished episodes, the $125 Sound Ideas charge shows as unassigned production cost. (14 Q2) — **Agreed** (Marc, Nov 9, 2026, CANON-99 Part 2)
 - **Decision 114:** Bart closes each month (reconcile, clear "Other", report) by the 5th of the next month. (14 Q4) — **Agreed** (Marc, Nov 9, 2026, CANON-99 Part 2)
 - **Decision 115:** Show AI agent costs per agent once usage logging exists. (14 Q5) — **Agreed** (Marc, Nov 9, 2026, CANON-99 Part 2)
+- **Decision 125:** **Statement layout.** Part A, profit: (1) Revenue is sales only: monthly and annual subscriptions and one-time purchases, less refunds = net revenue. (2) Cost of revenue: story production (voices, the Claude story pipeline, Gemini screening, OpenAI voice checks and covers, music, sound effects), delivering audio to listeners (the AWS server and Supabase database and storage), and payment fees (Stripe, later Apple and Google). (3) Gross profit and gross margin %. (4) Operating expenses: Ad Spend, Marketing Services, R&D, Operations. (5) Operating profit. Plow back is the plow-back percentage of the previous month's **operating profit**. Part B, money outside operations, never profit and never in plow back: money put in by the owner or investors (one line per person with a running total), owner withdrawals, card cashback, Mercury interest, and money in with no category yet; total = "yours to keep or reinvest". **[MARC DECIDES]** What Marc reinvests from Part B, and when, is his choice. Replaces decision 112's five spending sections and rules 45–47 for how the statement is laid out; the Mercury cards stay as they are. (CANON-99 item 125) — **Agreed** (Marc, Nov 9, 2026, CANON-99 Part 3)
 
 ## Conflicts found
 - C1. **[RESOLVED by decision 58, Marc Nov 9, 2026]** Test-account payments. Commit 10e3e0c (Nov 8) put them on a memo line, not revenue. Commit 51fd5a2 (Nov 8, later) and memory say they count. Recommendation: they count as revenue (newer, Marc's words). They stay out of subscriber counts, churn, LTV and CAC. Marc decides.

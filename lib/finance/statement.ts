@@ -10,15 +10,27 @@
 //             every charge, refund and fee, test accounts included (they were real money).
 //             On accrual an annual charge is spread over 12 months, a monthly one over 1.
 //             Stripe payouts landing in Mercury are transfers, not revenue.
-// Plow back (Marc, Nov 8 2026, revised): 75% of a month's PROFIT (positive cash
-// flow) is set aside for ads and shows next month as "Available for ads". A loss
-// month plows back $0. It is not revenue and never enters totals.
+// Layout (CANON-14 decision 125, Marc Nov 9 2026):
+//   Part A — Profit: sales revenue → cost of revenue (story production, delivery,
+//            payment fees) → gross profit → operating expenses → operating profit.
+//   Part B — Money outside operations (never profit): owner/investor money in (one
+//            line per person, with a running total), owner withdrawals, card cashback,
+//            Mercury interest, uncategorized money in. Total = "yours to keep or reinvest".
+// Plow back (Marc, Nov 8/9 2026): 75% of a month's OPERATING PROFIT is set aside for
+// ads and shows next month as "Available for ads". A loss month plows back $0.
+// Part B never feeds plow back; it is not revenue and never enters Part A totals.
 
 export type Basis = 'cash' | 'accrual'
 export type Section =
-  | 'Revenue' | 'Operating Exp' | 'Production Exp' | 'Ad Spend' | 'Marketing Services' | 'R & D'
+  | 'Revenue' | 'Operating Exp' | 'Production Exp' | 'Delivery' | 'Payment fees' | 'Ad Spend' | 'Marketing Services' | 'R & D'
   | 'Excluded' | 'Uncategorized'
-export const EXPENSE_SECTIONS: Section[] = ['Operating Exp', 'Production Exp', 'Ad Spend', 'Marketing Services', 'R & D', 'Uncategorized']
+/** Cost of revenue: what it costs to make the stories and get them to paying listeners. */
+export const COST_SECTIONS: Section[] = ['Production Exp', 'Delivery', 'Payment fees']
+/** Operating expenses: everything else the business spends. */
+export const OPEX_SECTIONS: Section[] = ['Ad Spend', 'Marketing Services', 'R & D', 'Operating Exp', 'Uncategorized']
+export const EXPENSE_SECTIONS: Section[] = [...COST_SECTIONS, ...OPEX_SECTIONS]
+/** Hosting that serves the audio to listeners counts as cost of revenue (it grows with listeners). */
+export const DELIVERY_ITEMS = ['Server (AWS)', 'Database & storage (Supabase)']
 
 export interface Txn {
   id: string; posted_at: string; amount: number; status: string; kind: string
@@ -106,7 +118,7 @@ export const PAYOUT_TRANSFER_ITEM = 'Stripe payouts (transfer)'
 export const EL_ITEM = 'Voices (ElevenLabs)'
 export const PAYOUT_MEMO = 'Stripe payouts received in Mercury'
 const LEGACY_CASHBACK = ['Interest income (card cashback)', 'Other']
-export const AVAILABLE_ITEM = 'Available for ads this month (75% of last month\'s profit)'
+export const AVAILABLE_ITEM = 'Available for ads this month (75% of last month\'s operating profit)'
 export const CLAUDE_PIPELINE_ITEM = 'Claude API — story pipeline'
 export const CLAUDE_REST_ITEM = 'Orion, agents & dev tools — Claude'
 const DAY = 86400000
@@ -210,7 +222,18 @@ export interface Statement {
   recon: { mercury: Record<string, number[]>; stripe: Record<string, number[]>; outside: Record<string, number[]>; check: (number | null)[] }
   /** Click-through detail for V&P rows, one list per column. */
   vpDetail: { stories: StoryDetail[][]; finished: StoryDetail[][]; costPerEpisode: CostDetail[][] }
-  totals: { revenue: number[]; expenses: number[]; result: number[]; plowBack: number[]; retained: number[] }
+  /** Part B: money outside operations (never profit, never plow back). */
+  outsideOps: { investors: { name: string; values: number[]; toDate: number[] }[]; withdrawals: number[]; lines: Record<string, number[]>; total: number[] }
+  totals: {
+    revenue: number[]; costOfRevenue: number[]; grossProfit: number[]; grossMargin: (number | null)[]; opex: number[]
+    /** cost of revenue + operating expenses */
+    expenses: number[]
+    /** operating profit (Part A) */
+    result: number[]
+    /** operating profit + Part B: the change in the business's own money */
+    bothParts: number[]
+    plowBack: number[]; retained: number[]
+  }
   campaigns: CampaignDetail[]
   uncategorizedCount: number
   notes: string[]
@@ -245,6 +268,8 @@ export function buildStatement(input: {
     if (((x.c.section === 'Revenue' && x.c.item === STRIPE_ITEM) || (x.c.section === 'Uncategorized' && /^stripe\b/i.test(x.t.counterparty))) && x.t.amount > 0) x.c = { ...x.c, section: 'Excluded', item: PAYOUT_TRANSFER_ITEM }
     else if (x.c.section === 'Revenue' && /cashback/i.test(x.t.counterparty) && LEGACY_CASHBACK.includes(x.c.item)) x.c = { ...x.c, item: CASHBACK_ITEM }
     else if (x.c.section === 'Uncategorized' && x.t.amount > 0) x.c = { ...x.c, section: 'Revenue', item: OTHER_ITEM }
+    else if (x.c.section === 'Operating Exp' && DELIVERY_ITEMS.includes(x.c.item)) x.c = { ...x.c, section: 'Delivery' }
+    else if (x.c.section === 'Operating Exp' && x.c.item === STRIPE_FEE_ITEM) x.c = { ...x.c, section: 'Payment fees' }
   }
   // Stripe side, turned into the same shape so both bases share one path.
   const stripeCls: { t: Txn; c: Classified }[] = []
@@ -263,11 +288,11 @@ export function buildStatement(input: {
     } else if (['refund', 'dispute', 'dispute_reversal', 'partial_capture_reversal', 'charge_failure', 'refund_failure'].includes(cat)) {
       mk(st, st.amount, 'Revenue', REFUND_ITEM, months, spread) // spread like the charge it reverses
     } else if (cat === 'fee' || st.type === 'stripe_fee') {
-      mk(st, st.net, 'Operating Exp', STRIPE_FEE_ITEM); continue
+      mk(st, st.net, 'Payment fees', STRIPE_FEE_ITEM); continue
     } else {
       mk(st, st.amount, 'Revenue', OTHER_ITEM)
     }
-    if (st.fee) mk(st, -st.fee, 'Operating Exp', STRIPE_FEE_ITEM, months, spread)
+    if (st.fee) mk(st, -st.fee, 'Payment fees', STRIPE_FEE_ITEM, months, spread)
   }
   cls.push(...stripeCls)
   const n = windows.length, zero = () => Array(n).fill(0)
@@ -279,15 +304,22 @@ export function buildStatement(input: {
   }
 
   const itemMap = new Map<string, ItemCell>()
-  const REVENUE_LINES = [ANNUAL_ITEM, MONTHLY_ITEM, ONE_TIME_ITEM, REFUND_ITEM, INTEREST_ITEM, CASHBACK_ITEM, OTHER_ITEM]
+  // Part A revenue is sales only. Cashback, interest and uncategorized money in go to Part B.
+  const REVENUE_LINES = [ANNUAL_ITEM, MONTHLY_ITEM, ONE_TIME_ITEM, REFUND_ITEM]
+  const OUTSIDE_LINES = [CASHBACK_ITEM, INTEREST_ITEM, OTHER_ITEM]
   const revenue: Record<string, number[]> = Object.fromEntries(REVENUE_LINES.map(k => [k, zero()]))
+  const outsideOps: Record<string, number[]> = Object.fromEntries(OUTSIDE_LINES.map(k => [k, zero()]))
   for (const { t, c } of cls) {
     if (c.section === 'Excluded') continue
+    if (c.section === 'Revenue' && OUTSIDE_LINES.includes(c.item)) {
+      windows.forEach((w, i) => { outsideOps[c.item][i] += amountIn(t, c, w, basis) })
+      continue
+    }
     let item = c.item
     if (c.section === 'Ad Spend') item = campaignFor(t.posted_at)?.name || 'Ads outside any campaign'
     if (c.section === 'Revenue') {
-      const key = revenue[item] ? item : (/custom stor/i.test(item) ? ONE_TIME_ITEM : OTHER_ITEM)
-      windows.forEach((w, i) => { revenue[key][i] += amountIn(t, c, w, basis) })
+      const key = revenue[item] ? item : (/custom stor/i.test(item) ? ONE_TIME_ITEM : null)
+      windows.forEach((w, i) => { if (key) revenue[key][i] += amountIn(t, c, w, basis); else outsideOps[OTHER_ITEM][i] += amountIn(t, c, w, basis) })
       continue
     }
     const k = c.section + '|' + item
@@ -340,7 +372,10 @@ export function buildStatement(input: {
   for (const s of EXPENSE_SECTIONS) sections[s] = windows.map((_, i) => items.filter(it => it.section === s).reduce((a, it) => a + it.values[i], 0))
   const totalRevenue = windows.map((_, i) => Object.values(revenue).reduce((a, r) => a + r[i], 0))
   const totalExpenses = windows.map((_, i) => EXPENSE_SECTIONS.reduce((a, s) => a + sections[s][i], 0))
-  const result = totalRevenue.map((r, i) => r - totalExpenses[i])
+  const result = totalRevenue.map((r, i) => r - totalExpenses[i]) // operating profit
+  const costOfRevenue = windows.map((_, i) => COST_SECTIONS.reduce((a, s) => a + sections[s][i], 0))
+  const grossProfit = totalRevenue.map((r, i) => r - costOfRevenue[i])
+  const opex = windows.map((_, i) => OPEX_SECTIONS.reduce((a, s) => a + sections[s][i], 0))
 
   // Plow back: 75% of the PREVIOUS calendar month's profit (cash flow on cash basis), and only
   // when that month made money. A loss month plows back $0. It is money available for ads,
@@ -357,7 +392,7 @@ export function buildStatement(input: {
   const mercuryCls = cls.filter(x => x.t.kind !== 'stripe')
   const sumIn = (w: Window, f: (x: { t: Txn; c: Classified }) => boolean) => mercuryCls.filter(f).reduce((a, x) => a + amountIn(x.t, x.c, w, 'cash'), 0)
   const isExpense = (c: Classified) => EXPENSE_SECTIONS.includes(c.section)
-  const isOwner = (c: Classified) => c.section === 'Excluded' && /owner/i.test(c.item)
+  const isOwner = (c: Classified) => c.section === 'Excluded' && /owner|investor/i.test(c.item)
   const isPayoutIn = (x: { t: Txn; c: Classified }) => x.c.item === PAYOUT_TRANSFER_ITEM || x.c.item === STRIPE_ITEM
   const mercury: Record<string, number[]> = {
     'Owner money in (capital)': windows.map(w => sumIn(w, x => isOwner(x.c) && x.t.amount > 0)),
@@ -393,6 +428,22 @@ export function buildStatement(input: {
     return Math.round((statementMercury + mercury["Expenses paid from Mercury"][i] + mercury["Vendor refunds & credits"][i]) * 100) / 100 + 0 // + 0 turns -0 into 0
   })
   const recon = { mercury, stripe, outside, check }
+
+  // ---------- Part B: money outside operations ----------
+  // One line per owner/investor (the rule or override item names the person), with the running
+  // total each has put in since the first Mercury month. Withdrawals are one line.
+  const personName = (item: string) => /^owner capital$/i.test(item) ? 'Marc (owner)' : item.replace(/^(investor|owner) capital\s*[—–-]\s*/i, '')
+  const ownerIn = mercuryCls.filter(x => isOwner(x.c) && x.t.amount > 0)
+  const investors = Array.from(new Set(ownerIn.map(x => personName(x.c.item)))).sort().map(name => {
+    const mine = ownerIn.filter(x => personName(x.c.item) === name)
+    return {
+      name,
+      values: windows.map(w => mine.reduce((a, x) => a + amountIn(x.t, x.c, w, 'cash'), 0)),
+      toDate: windows.map(w => mine.filter(x => Date.parse(x.t.posted_at) < w.end.getTime()).reduce((a, x) => a + x.t.amount, 0)),
+    }
+  })
+  const withdrawals = windows.map(w => sumIn(w, x => isOwner(x.c) && x.t.amount < 0))
+  const outsideTotal = windows.map((_, i) => investors.reduce((a, p) => a + p.values[i], 0) + withdrawals[i] + OUTSIDE_LINES.reduce((a, k) => a + outsideOps[k][i], 0))
 
   // Volume & productivity
   const pub = windows.map(w => input.stories.filter(s => inWin(s.published_on, w)))
@@ -499,6 +550,7 @@ export function buildStatement(input: {
 
   return {
     basis, columns: windows.map(w => w.label), vp, revenue, items, sections,
+    outsideOps: { investors, withdrawals, lines: outsideOps, total: outsideTotal },
     vpDetail,
     recon,
     memo: {
@@ -506,7 +558,8 @@ export function buildStatement(input: {
       [PAYOUT_MEMO]: windows.map(w => payouts.reduce((a, x) => a + amountIn(x.t, x.c, w, 'cash'), 0)),
     },
     totals: {
-      revenue: totalRevenue, expenses: totalExpenses, result,
+      revenue: totalRevenue, costOfRevenue, grossProfit, grossMargin: totalRevenue.map((r, i) => r > 0 ? grossProfit[i] / r : null), opex, expenses: totalExpenses, result,
+      bothParts: result.map((r, i) => r + outsideTotal[i]),
       plowBack: result.map(r => Math.max(0, r) * PLOW_BACK), retained: result.map(r => Math.max(0, r) * (1 - PLOW_BACK)),
     },
     campaigns,
@@ -514,11 +567,13 @@ export function buildStatement(input: {
     notes: [
       basis === 'cash' ? 'Cash basis matches Mercury: money counted the day it moved.' : 'Accrual basis spreads annual plans and yearly purchases over the months they cover; Stripe charges, their refunds and fees follow the plan length (12 months annual, 1 month monthly).',
       'Prepaid AI credits (Anthropic, OpenAI, DeepSeek, Google) are counted when bought on both bases until vendor usage feeds are connected.',
-      'Owner deposits, card payments and transfers between Mercury accounts are excluded: they are not revenue or expense.',
+      'Revenue is sales only. Cost of revenue is what it takes to make the stories and deliver them: story production, the server and database that stream the audio, and Stripe fees. Gross profit = revenue − cost of revenue.',
+      'Money outside operations (Part B) is never profit: money the owner or investors put in, owner withdrawals, card cashback, Mercury interest, and money in with no category yet. It is yours to keep or reinvest. Interest is taxable income; cashback and money you put in generally are not. Your accountant handles the tax return.',
+      'Card payments and transfers between Mercury accounts are excluded: they are not revenue or expense.',
       'Subscription revenue comes straight from Stripe: every charge, refund and fee. Stripe payouts into Mercury are transfers, shown below for reconciliation (payouts ≈ charges − refunds − fees, a few days later).',
-      'Other (not yet categorized) is money that came in with no rule yet. Anything there needs a category.',
+      'Other (not yet categorized) is money that came in with no rule yet. It sits in Part B until it gets a category.',
       'LTV stays blank until it can be measured: it needs a real CAC (ad spend and real new subscribers) and real cancellations over the last 3 months. LTV = average monthly revenue per subscriber ÷ monthly churn. Test accounts never count.',
-      'Plow back is 75% of a month\'s profit and only when the month made money. It shows next month as money available for ads, not as revenue.',
+      'Plow back is 75% of a month\'s operating profit and only when the month made money. Part B does not count. It shows next month as money available for ads, not as revenue.',
     ],
   }
 }
