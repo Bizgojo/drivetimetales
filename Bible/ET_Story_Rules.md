@@ -1,3 +1,5 @@
+> **REPLACED. NOT CANON.** The script writer uses Bible/ET_Story_Rules_v3_2_CANONICAL.md. See the Canon index in AGENTS.md. Kept as history only.
+
 # ⛔ RETIRED — SUPERSEDED BY v3.0
 # This is the original Endless Tales Story Rules Bible (v1, April 2026).
 # It has been retired as the active authority effective 2026-06-08 19:59 EDT.

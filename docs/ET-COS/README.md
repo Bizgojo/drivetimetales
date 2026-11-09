@@ -1,3 +1,5 @@
+> **NOT CANON.** ET-COS is a June 2026 draft that Marc never approved. The rules that are law are listed in the Canon index in AGENTS.md.
+
 # ET-COS — Endless Tales Creative Operating System
 ## Founding Edition · v1.0 Draft
 

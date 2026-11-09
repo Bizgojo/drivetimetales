@@ -1,3 +1,5 @@
+> **REPLACED. NOT CANON.** The script writer uses Bible/ET_Story_Rules_v3_2_CANONICAL.md. See the Canon index in AGENTS.md. Kept as history only.
+
 # Endless Tales — Story Rules Bible
 *Reference for Claude when writing or converting audio drama scripts*
 *Last updated: April 2026*

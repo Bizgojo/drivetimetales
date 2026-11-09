@@ -39,6 +39,13 @@ Prior standing rules referenced throughout remain in force and are not contradic
 | EPISODE-NUMBERING RULE | Start at 1, Count Up, No Gaps, No Zero | APPROVED | 2026-10-04 |
 | EBOOK-COMPLETENESS RULE | Every Story Has a Complete eBook | APPROVED | 2026-10-04 |
 | EBOOK-STYLE RULE | eBooks Read as a Genuine Book, Not a Transcript | APPROVED | 2026-10-04 |
+| STORY-CLARITY RULE | Every Script Passes a First-Time-Listener Clarity Check Before Voicing | APPROVED (gate not built yet) | 2026-11-08 |
+| BELLE-OUTRO-FORWARD RULE | Non-Final Outros Recap Once and Promote the Next Episode by Number | APPROVED (writer + checks not updated yet) | 2026-11-08 |
+| HOOK-SERIES RULE | Hook-First Ad Series: 7-Episode Season 1, Published Together | APPROVED | 2026-11-05 |
+| POCKET-FM-STYLE RULE | Pocket FM–Style Writing, Only When Marc Asks | APPROVED (opt-in) | 2026-11-05 |
+| SERIES-CONTINUATION RULE | Adding Episodes Never Re-Plans or Rewrites Existing Episodes | PENDING Marc sign-off | — |
+
+**Retired:** governance/SERIES-RELEASE-RULE.md (v2, July 2026: early release with a rendered-episode buffer). It contradicts the EPISODE-ADDITION RULE and Marc's Nov 8 Player Rules (all episodes publish together). Retired 2026-11-09.
 
 ---
 
@@ -371,3 +378,114 @@ The product sells a readable companion that stands on its own as a book. A trans
 - **Rule 3 (strict ordering / series flips together):** the whole release's eBook must meet the style bar before the unit passes — no mixed transcript/book quality across a series.
 - **Rule 4 (publish-mode switch):** enforced under both modes; direct mode's declined post-live safety net (Rule 4, option A) makes the pre-publish style bar the last line of defense.
 - **EPISODE-ADDITION / EPISODE-NUMBERING:** appended batches' eBook text meets the same style bar; no direct numbering interaction.
+
+
+---
+
+# STORY-CLARITY RULE
+
+**Status: APPROVED 2026-11-08 (Marc). Enforcement gate not built yet; until it is, reviewers apply it by hand before voicing.**
+
+### Statement
+
+> Every episode of every story, standalone or series, passes a clarity check before any voicing spend. A reviewer model reads the script cold, as a first-time listener. Any failed check sends the script back to the pipeline writer with the reasons quoted; nothing is voiced.
+
+The seven checks:
+
+1. **Three-sentence test.** From the script alone, one sentence each: what the main character wants (concrete), what stops them, what happens if they fail. Vague, missing, or disagreeing with the series plan = FAIL.
+2. **Goal clear early.** Goal and obstacle are clear within the first 3 minutes (about 480 spoken words).
+3. **Cast limit.** Named speaking characters, not counting Belle: at most 4 for a standalone or a series of 3 episodes or fewer; at most 6 for longer series, and at most 2 new named characters per episode after Episode 1.
+4. **No unexplained insider words.** Acronyms, trade terms, local places and organizations a typical US driver wouldn't know are explained in plain words the first time, or removed.
+5. **Every scene has a purpose.** Each scene moves the goal, the obstacle or a relationship forward. Two or more scenes that don't = FAIL.
+6. **Recap line.** Episode 2 and later: within the first 30 seconds of the story (after Belle's intro), one line says where things stand.
+7. **Easy to follow by ear.** No stretch where the listener can't tell who is speaking, or where and when the scene is.
+
+### Rationale
+
+"After the Last Train" (Nov 2026) was convoluted: no clear goal, too many people, insider words, a late hook, no recaps. Drive-time listeners can't rewind while driving.
+
+### Scope
+
+All new scripts. Existing published stories stay up as they are unless Marc says otherwise ("After the Last Train" stays up, Marc, Nov 8).
+
+### Defaults
+
+Fail-closed. Output is PASS/FAIL per check with exact lines quoted, stored with the episode for Marc's review screen. No agent writes or edits scripts; the pipeline writer does the rewrite.
+
+### Interactions
+
+Rule 2 (gates block, not warn). Existing writing rules (hook within 15 words, Belle intro/outro, numbers as words, runtime floor, speaker labels) all still apply.
+
+---
+
+# BELLE-OUTRO-FORWARD RULE
+
+**Status: APPROVED 2026-11-08 (Marc). Not yet enforced: docs/BELLE_B_PROMPT_RULES.md, the writer prompt and the Belle checks (lib/voiceBelleRules.ts, the publish Belle gate) still carry the older wording and must be updated to match.**
+
+### Statement
+
+> **Non-final episodes:** Belle's outro is exactly two parts, in order: (1) one sentence recapping this episode, and no more; (2) a promotion of the next episode that says its number ("Episode 4") with the series name. Not allowed: more than one recap sentence, a tease that doesn't name the next episode's number, or ending on the recap.
+>
+> **Finale and standalone stories:** never point to another episode or story. Belle closes and credits the story ("You've been listening to … by …, an Endless Tales Original") and keeps the listener-name personalization statement exactly as it works today, with no gap between Belle's outro and the personalization.
+
+Example (non-final): "Lorne found the patrol car, and the dashcam was still recording. In Episode 4 of 'Blackwater Mile,' the river gives up the name everyone buried."
+
+### Rationale
+
+Outros must pull the listener forward into the next episode, not look back.
+
+### Scope
+
+All new episodes. Also recorded in docs/PLAYER-RULES.md ("Belle's outro points forward").
+
+### Interactions
+
+Replaces the non-final outro wording in docs/BELLE_B_PROMPT_RULES.md ("briefly recap the cliffhanger", "hook the next episode") and the older "emotional residue or reflection" requirement for non-final outros.
+
+---
+
+# HOOK-SERIES RULE
+
+**Status: APPROVED 2026-11-05 (Marc).**
+
+### Statement
+
+> Hook-first ad series start from a tested ad hook: the hook is the first spoken line of Episode 1, and the ad is the first 20–25 seconds of Episode 1 with real story images and the end card. Each hook series launches as a 7-episode "Season 1" with threads left open, all 7 episodes published together. Each ad lands on its exact story, never the app home page. Winners (by cost per trial and share of trial users reaching Episode 3 or later) are extended to 20–30 episodes.
+
+### Scope
+
+The five Nov 2026 hook series: The Widow Who Watched, Second Rise and Weekend Wife in Miami (written with the POCKET-FM-STYLE RULE), and Rerouted and Don't Go Home (standard drive-time rules). Future hook series follow the same rule.
+
+### Interactions
+
+EPISODE-ADDITION (publish together); Meta testing rules in docs/specs/amendment-1-ad-preview-and-testing-spec.md (Marc tests every ad before upload).
+
+---
+
+# POCKET-FM-STYLE RULE
+
+**Status: APPROVED 2026-11-05 (Marc), opt-in only.**
+
+### Statement
+
+> Pocket FM–style writing is used only when Marc says "use the rules for Pocket FM type stories" (currently: The Widow Who Watched, Second Rise, Weekend Wife in Miami). It sits on top of every normal pipeline rule; when they conflict, the pipeline rule wins.
+
+Core of the style: one named wish-fulfillment engine per series (not reused from the last 3 series); a lead who is wronged in Episode 1, a clear villain, a love interest with a secret; first spoken line is the hook in under 15 words; something big every 2–3 minutes; every episode 12–15 minutes, starting within one line of the last episode's end and ending at the moment that hurts most; plain, modern, heightened language; names not used in the last 10 series. The full rule set is in the project document "pocket-fm-style-rules".
+
+---
+
+# SERIES-CONTINUATION RULE
+
+**Status: PENDING Marc sign-off (proposed 2026-11-09).**
+
+### Statement
+
+> Adding episodes to an existing series never re-plans, rewrites, re-titles, re-hides or re-voices the episodes that already exist. New episodes are planned only for the missing numbers, from the full scripts of the existing ones, using scripts/series/continue-series.ts (dry run first, Marc approves the plan, then save). The series planner /api/v2/series-package re-plans a whole series and must never be run on a series that already has episodes.
+
+### Rationale
+
+On Nov 9, 2026 the only series planner would have overwritten all existing episodes of the hook series, including a live Episode 1.
+
+### Defaults
+
+The only change allowed on an existing episode is its total-episode count and finale flag. New rows are hidden and brief_complete. A real series bible (characters, timeline, central conflict, finale direction) is written before any new episode script.
