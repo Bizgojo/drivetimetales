@@ -1,7 +1,12 @@
 // SERIES-CONTINUE-001 — add the missing episodes to an existing series, safely.
 // Usage (EC2):
-//   npx tsx scripts/series/continue-series.ts --series <uuid> --total 7 --dry-run   (plan only, writes nothing)
-//   npx tsx scripts/series/continue-series.ts --series <uuid> --total 7             (plan + save)
+//   npx tsx scripts/series/continue-series.ts --series <uuid> --total 7 --dry-run
+//       plan only; writes nothing to the database; saves the plan to
+//       /tmp/continue-plan-<series>.json (or --plan-out <file>)
+//   npx tsx scripts/series/continue-series.ts --series <uuid> --total 7 --plan-in /tmp/continue-plan-<series>.json
+//       saves EXACTLY the plan Marc approved from the dry run (no new AI call)
+// SERIES-CONTINUE-002: saving without --plan-in is refused, because a fresh AI
+// call writes a different plan than the one Marc read (Rerouted, Nov 9).
 // Needs ANTHROPIC_API_KEY, NEXT_PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY (already on the server).
 //
 // What it writes (never with --dry-run):
@@ -11,6 +16,7 @@
 // After it saves, a normal series production job ({"mode":"series","seriesId":...}) writes and voices
 // only the new episodes: the script writer skips episodes that already have a script.
 import { createClient } from '@supabase/supabase-js'
+import { readFileSync, writeFileSync } from 'fs'
 import Anthropic from '@anthropic-ai/sdk'
 import {
   buildContinuePrompt, buildNewEpisodeRows, checkContinuable, existingEpisodePatch, parseContinuePlan,
@@ -32,7 +38,7 @@ async function main() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL
   const sk = process.env.SUPABASE_SERVICE_ROLE_KEY
   const ak = process.env.ANTHROPIC_API_KEY
-  if (!url || !sk || !ak) throw new Error('ANTHROPIC_API_KEY, SUPABASE URL and SUPABASE_SERVICE_ROLE_KEY are required')
+  if (!url || !sk || (!ak && !arg('--plan-in'))) throw new Error('ANTHROPIC_API_KEY, SUPABASE URL and SUPABASE_SERVICE_ROLE_KEY are required')
   const db = createClient(url, sk, { auth: { persistSession: false } })
 
   const { data: series, error: se } = await db.from('series').select('id,title,description,author').eq('id', seriesId).single()
@@ -55,20 +61,38 @@ async function main() {
   }
   if (!defaults.author || !defaults.genre) throw new Error('episode 1 has no author or genre')
 
-  console.log(`[continue-series] ${series.title}: has ${have} episodes, planning ${have + 1}..${total} with ${model}`)
-  const anthropic = new Anthropic({ apiKey: ak })
-  const res = await anthropic.messages.create({
-    model, max_tokens: 12000, temperature: 0.6,
-    messages: [{ role: 'user', content: buildContinuePrompt(series, defaults, existing, total) }],
-  })
-  const raw = res.content.map((c: any) => ('text' in c ? c.text : '')).join('')
-  const plan = parseContinuePlan(raw, have, total)
+  const planIn = arg('--plan-in')
+  if (!dryRun && !planIn) throw new Error('saving needs --plan-in <file> from the dry run Marc approved (SERIES-CONTINUE-002)')
+  let plan
+  if (planIn) {
+    const saved = JSON.parse(readFileSync(planIn, 'utf8'))
+    if (saved.seriesId !== seriesId || saved.total !== total || saved.have !== have) {
+      throw new Error(`plan file does not match: it was made for series ${saved.seriesId}, total ${saved.total}, ${saved.have} existing episodes`)
+    }
+    plan = parseContinuePlan(JSON.stringify(saved.plan), have, total)
+    console.log(`[continue-series] ${series.title}: using the approved plan from ${planIn} (made ${saved.madeAt})`)
+  } else {
+    console.log(`[continue-series] ${series.title}: has ${have} episodes, planning ${have + 1}..${total} with ${model}`)
+    const anthropic = new Anthropic({ apiKey: ak })
+    const res = await anthropic.messages.create({
+      model, max_tokens: 12000, temperature: 0.6,
+      messages: [{ role: 'user', content: buildContinuePrompt(series, defaults, existing, total) }],
+    })
+    const raw = res.content.map((c: any) => ('text' in c ? c.text : '')).join('')
+    plan = parseContinuePlan(raw, have, total)
+  }
 
   console.log(`\nSERIES BIBLE (${plan.series_bible.length} chars):\n${plan.series_bible}\n`)
   for (const e of plan.episodes) {
     console.log(`EP${e.episode_number} "${e.title}"${e.episode_number === total ? ' (FINALE)' : ''}\n  ${e.description}\n  Ends: ${e.cliffhanger_or_resolution}\n`)
   }
-  if (dryRun) { console.log('[continue-series] DRY RUN: nothing written'); return }
+  if (dryRun) {
+    const out = arg('--plan-out') || `/tmp/continue-plan-${seriesId}.json`
+    writeFileSync(out, JSON.stringify({ seriesId, total, have, madeAt: new Date().toISOString(), plan }, null, 2))
+    console.log(`[continue-series] DRY RUN: nothing written to the database. Plan saved to ${out}`)
+    console.log(`[continue-series] after Marc approves: npx tsx scripts/series/continue-series.ts --series ${seriesId} --total ${total} --plan-in ${out}`)
+    return
+  }
 
   const newRows = buildNewEpisodeRows(series, defaults, plan, total)
   const { error: ie } = await db.from('stories').insert(newRows)
