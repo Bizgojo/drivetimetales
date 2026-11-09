@@ -33,3 +33,6 @@
 
 /* Keep detailed-view return controls reachable on narrow screens. */
 .acc-root .breadcrumb{min-width:0;flex:1}.acc-root .breadcrumb b{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.acc-root .breadcrumb .menu,.acc-root .top-tools{flex-shrink:0}
+
+.acc-root .metrics.metrics-pair{grid-template-columns:repeat(2,minmax(0,1fr))}
+@media(max-width:730px){.acc-root .metrics.metrics-pair{grid-template-columns:repeat(2,minmax(0,1fr))}}
