@@ -2,6 +2,19 @@
 Status: DRAFT for Marc's approval · Nov 9, 2026 · Owner: Marc
 Covers: every automatic check from brief to publish, in order; what each checks; pass, fail and retry; how failures are classified and fixed; what Marc reviews and how. Does not cover: the writing rules a check enforces (writer canon), Belle wording (CANON-04), voice casting (CANON-05), sound and mix (sound/mixing canon), publishing mechanics and visibility (publishing canon), the player (docs/PLAYER-RULES.md).
 
+## Where Marc decides
+
+Every rule in this document that needs Marc. **[MARC DECIDES]** = Marc approves, chooses or gives his OK. **[MARC DOES]** = something only Marc does himself (tests on his phone, listens, enters a key). The same tag marks each rule below.
+
+- **Rule 14 [MARC DECIDES]:** Premise gate (PREMISE-UNIQUENESS-001), before writing → the premise is not a near-copy of another story → sent back for a new premise variant, up…
+- **Rule 17 [MARC DECIDES]:** validate_script → (a) story-card copy rules, (b) no duplicated passages (Gate 4), (c) AI validator. Failures go back to the writer, up to 2 times,…
+- **Rule 35 [MARC DECIDES]:** Final audio always needs Marc's ear before going live, except in "direct" mode, which waives it fully. Nothing may assume Marc catches bad audio…
+- **Rule 36 [MARC DECIDES]:** One publish switch, set only by Marc: "Review" (hold at ready for review) or "Direct" (go live without review). It is read at the moment a story…
+- **Rule 39 [MARC DECIDES]:** Episode Correction Loop: Marc listens → approves or sends corrections → the corrected version comes to him as a link, not published → Marc…
+- **Rule 41 [MARC DOES]:** Marc checks player changes on a real phone before they are accepted.
+- **Rule 44 [MARC DECIDES]:** A Gemini final read of the whole series decides publish / fix (2 rounds) / hold, and Marc gets one message only on hold.
+- **Still open:** 8 conflicts and 5 questions at the end of this document wait for Marc's decision (all listed in CANON-99).
+
 ## Rules
 
 ### A. Standing rules for every gate
@@ -21,10 +34,10 @@ Covers: every automatic check from brief to publish, in order; what each checks;
 ### B. The gates, in order (standalone story)
 Each line: step name → what it checks → on failure.
 13. Brief guard (ATL-BRIEF-GUARD-001) → a missing brief never wipes an existing script → job fails, story flagged needs_attention. — **In force (code)** run-next/route.ts
-14. Premise gate (PREMISE-UNIQUENESS-001), before writing → the premise is not a near-copy of another story → sent back for a new premise variant, up to 2 tries, then parked. Override only by Marc's recorded word in the brief. A "similar cluster" only warns. — **In force (code)** run-next enforcePremiseGateBeforeStage2; lib/unifiedGateEngine.ts. Warn on clusters is **Agreed** (Marc ruling Jul 18, 09:47 EDT).
+14. **[MARC DECIDES]** Premise gate (PREMISE-UNIQUENESS-001), before writing → the premise is not a near-copy of another story → sent back for a new premise variant, up to 2 tries, then parked. Override only by Marc's recorded word in the brief. A "similar cluster" only warns. — **In force (code)** run-next enforcePremiseGateBeforeStage2; lib/unifiedGateEngine.ts. Warn on clusters is **Agreed** (Marc ruling Jul 18, 09:47 EDT).
 15. generate_script (writer).
 16. validate_voice_conformance → the script matches the author's voice profile; skipped when the author has none. — **In force (code)**
-17. validate_script → (a) story-card copy rules, (b) no duplicated passages (Gate 4), (c) AI validator. Failures go back to the writer, up to 2 times, then parked. Author-written stories are never sent back; they fail to Marc. — **In force (code)** run-next validateStandaloneScript (MAX_RETRIES 2)
+17. **[MARC DECIDES]** validate_script → (a) story-card copy rules, (b) no duplicated passages (Gate 4), (c) AI validator. Failures go back to the writer, up to 2 times, then parked. Author-written stories are never sent back; they fail to Marc. — **In force (code)** run-next validateStandaloneScript (MAX_RETRIES 2)
 18. validate_story_resolution → the story answers its main question. Failure → writer rewrite. — **In force (code)**
 19. Story clarity gate (7 checks: three-sentence test, goal clear in about 480 words, cast limit, no unexplained insider words, every scene has a purpose, recap line in Episode 2+, easy to follow by ear) → before any voicing → any failure sends the script back to the writer with quoted lines; nothing is voiced. Fail-closed. Until built, a reviewer applies it by hand before voicing. — **Agreed** (STORY-CLARITY RULE, PIPELINE-CANON, Marc Nov 8). Not built.
 20. voice_preflight, the last stop before spending → narrator voice exists, numbers written as words (Gate 5, back to writer up to 3 tries), runtime floor 12.5 minutes, Belle intro/outro rules, no stage directions in spoken lines, required fields. — **In force (code)** run-next ~4250–4420; generate-voices preflight. Runtime floor **Agreed** (Marc Oct 26).
@@ -50,18 +63,18 @@ Each line: step name → what it checks → on failure.
 ### D. When a check fails
 33. Story defect → automatic send-back to the writer or a metadata fix, then automatic reprocessing. No standing human step. — **Agreed** (Rule 1)
 34. Each automatic fix has a cap (usually 2, numbers 3, quality 3). After the cap, the story is flagged needs_attention and the job stops. — **In force (code)** lib/unifiedGateEngine.ts
-35. Final audio always needs Marc's ear before going live, except in "direct" mode, which waives it fully. Nothing may assume Marc catches bad audio after a direct publish. — **Agreed** (Rule 1 and Rule 4 option A, Oct 4, 10:34–10:35 EDT)
+35. **[MARC DECIDES]** Final audio always needs Marc's ear before going live, except in "direct" mode, which waives it fully. Nothing may assume Marc catches bad audio after a direct publish. — **Agreed** (Rule 1 and Rule 4 option A, Oct 4, 10:34–10:35 EDT)
 
 ### E. Marc's review
-36. One publish switch, set only by Marc: "Review" (hold at ready for review) or "Direct" (go live without review). It is read at the moment a story is ready to publish and stays until Marc changes it. — **Agreed** (PIPELINE-CANON Rule 4; PLAYER-RULES "What listeners can see" 4, Nov 8)
+36. **[MARC DECIDES]** One publish switch, set only by Marc: "Review" (hold at ready for review) or "Direct" (go live without review). It is read at the moment a story is ready to publish and stays until Marc changes it. — **Agreed** (PIPELINE-CANON Rule 4; PLAYER-RULES "What listeners can see" 4, Nov 8)
 37. Marc's current choice: Direct. — **Agreed** (Rule 4 initial value; memory story-pipeline.md Oct 27). See Q1.
 38. A story waiting for review is hidden from listeners and shows in the admin Review tab. — **In force (code)** ATL-PIPE-014; Marc's M-1 rule (no manual visibility fixes).
-39. Episode Correction Loop: Marc listens → approves or sends corrections → the corrected version comes to him as a link, not published → Marc approves → only then it replaces or publishes. — **Agreed** (Marc Aug 21, PERMANENT, PIPELINE-CANON)
+39. **[MARC DECIDES]** Episode Correction Loop: Marc listens → approves or sends corrections → the corrected version comes to him as a link, not published → Marc approves → only then it replaces or publishes. — **Agreed** (Marc Aug 21, PERMANENT, PIPELINE-CANON)
 40. A series is reviewed and published as one unit. No per-episode review holds. — **Agreed** (Rule 3, Rule 4)
-41. Marc checks player changes on a real phone before they are accepted. — **Agreed** (PLAYER-RULES Design 5)
+41. **[MARC DOES]** Marc checks player changes on a real phone before they are accepted. — **Agreed** (PLAYER-RULES Design 5)
 42. Status reports count only what was checked directly (database row, file line, command output). Relayed claims are "unverified". — **Agreed** (memory pipeline-dispatch-recovery.md, Oct 16; profile: "verified results over reported ones")
 43. Marc wants production to run without him; he steps in when he chooses. — **Agreed** (Marc Nov 7, memory story-pipeline.md)
-44. A Gemini final read of the whole series decides publish / fix (2 rounds) / hold, and Marc gets one message only on hold. — **Proposed** (Marc asked for it Nov 7, but the Story Production Spec is a draft he has not approved to build)
+44. **[MARC DECIDES]** A Gemini final read of the whole series decides publish / fix (2 rounds) / hold, and Marc gets one message only on hold. — **Proposed** (Marc asked for it Nov 7, but the Story Production Spec is a draft he has not approved to build)
 
 ## Conflicts found
 - C1. Hook deadline. Canon says the hook lands within 15 spoken words (memory /areas/story-pipeline.md; Marc ruling Jul 24 "start at canon"; HOOK-001 note). lib/hookGate.ts passes up to 30 words (HOOK_PASS_WORD_LIMIT = 30), and its "warn" band is empty. Recommendation: 15 words, blocking. Marc decides.

@@ -2,36 +2,54 @@
 Status: DRAFT for Marc's approval · Nov 9, 2026 · Owner: Marc
 Covers: who may build, approve, launch and pause ads; ad testing (Amendment 1); ad budgets and CAC test rules; hook-first ad creative; landing; tracking; TikTok, influencers and other channels; ad accounts. Does not cover: how plow back and ad spend are counted on the books (CANON-14 Finance & Reporting); agent roster, merges and deploys (CANON-15 Agents & Operations); how hook-series stories are written and published (PIPELINE-CANON / story production canon); the listener app and player (PLAYER-RULES).
 
+## Where Marc decides
+
+Every rule in this document that needs Marc. **[MARC DECIDES]** = Marc approves, chooses or gives his OK. **[MARC DOES]** = something only Marc does himself (tests on his phone, listens, enters a key). The same tag marks each rule below.
+
+- **Rule 1 [MARC DECIDES]:** No ad spends money or goes live until Marc approves its creative and its budget.
+- **Rule 5 [MARC DECIDES]:** Susan writes ad copy with Claude through her own key, capped at $25 a month. Marc approves the final copy.
+- **Rule 8 [MARC DECIDES]:** Any new idea for an agent's role in ads (for example, Strategos sending his brief straight to Susan) needs Marc's word before it is used.
+- **Rule 12 [MARC DECIDES]:** If Meta's preview won't load, the card says "INTERNAL SIMULATION — NOT META'S PREVIEW" and Approve stays off. Only Marc can override, in writing.
+- **Rule 16 [MARC DOES]:** Marc tests every ad himself, on his phone, before it is uploaded or launched.
+- **Rule 19 [MARC DECIDES]:** Approval covers only the exact version tested. Any change to video, headline, text, button, link, claims or spend ceiling makes a new version that…
+- **Rule 22 [MARC DECIDES]:** LAUNCH appears only after Marc approves, and only for Susan and Orion. Each launch records who and when.
+- **Rule 25 [MARC DOES]:** The Meta write key (ads_management) lives only on the server. Marc enters it himself. Susan never holds it; she calls the gated route.
+- **Rule 34 [MARC DECIDES]:** Weekly spend never goes over the weekly plan without Marc's approval.
+- **Rule 41 [MARC DECIDES]:** After the test, monthly ad spend may not go over that month's "Available for ads" amount (plow back, defined in CANON-14) without Marc's approval.
+- **Rule 51 [MARC DECIDES]:** Low-cost video promo clips (one still image per scene, slow pan, story audio) are a future option only. No build until Marc approves a test, and…
+- **Rule 61 [MARC DOES]:** TikTok ads use the same approval card, 6 checks, Marc's phone test and playbook read as Meta before any spend.
+- **Still open:** 11 conflicts and 8 questions at the end of this document wait for Marc's decision (all listed in CANON-99).
+
 ## Rules
 
 ### A. Who decides
-1. No ad spends money or goes live until Marc approves its creative and its budget. — **Agreed** (memory agent-fleet.md; chat "CAC for self-funding", summary claude/chat-summary-meta-poc-cac-goals-2026-11-02.md)
+1. **[MARC DECIDES]** No ad spends money or goes live until Marc approves its creative and its budget. — **Agreed** (memory agent-fleet.md; chat "CAC for self-funding", summary claude/chat-summary-meta-poc-cac-goals-2026-11-02.md)
 2. Strategos picks the audience and the message. Susan builds and places the ads against Strategos's pick. Neither can spend or publish for Marc. — **Agreed** (memory agent-fleet.md, bell-meta-marketing.md, Nov 2)
 3. No campaign on any platform (Meta, TikTok or later) is built until both Strategos and Susan have read the full "Endless Tales — Susan Playbook (CANONICAL)" Drive folder. If the folder can't be read, the build stops until it can. — **Agreed** (Marc ruling Nov 1, 2026; chat "Audio story app CAC planning"; project doc claude/chat-summary-susan-strategos-playbook-gate-2026-11-02.md)
 4. Orion sends no ad-build task unless it cites the playbook read and Strategos's audience pick. — **Agreed** (Nov 1, 2026, Marc said "Yes" to the structural gate; same chat)
-5. Susan writes ad copy with Claude through her own key, capped at $25 a month. Marc approves the final copy. — **Agreed** (memory agent-fleet.md, Nov 8; chat "Apple App Store commission deals", Nov 5: Marc approved hook-ad copy)
+5. **[MARC DECIDES]** Susan writes ad copy with Claude through her own key, capped at $25 a month. Marc approves the final copy. — **Agreed** (memory agent-fleet.md, Nov 8; chat "Apple App Store commission deals", Nov 5: Marc approved hook-ad copy)
 6. Hal cuts the ad videos. — **Agreed** (Marc: "Confirm Hal", Nov 1, chat "Audio story app CAC planning")
 7. Earlier failed tests (GVL-TEST-001, Bell Arm 2) are ignored. New campaigns start fresh, without their data. — **Agreed** (memory bell-meta-marketing.md; chat "Meta ad test plan for Endless Tales")
-8. Any new idea for an agent's role in ads (for example, Strategos sending his brief straight to Susan) needs Marc's word before it is used. — **Proposed** (fills C6 below)
+8. **[MARC DECIDES]** Any new idea for an agent's role in ads (for example, Strategos sending his brief straight to Susan) needs Marc's word before it is used. — **Proposed** (fills C6 below)
 
 ### B. Testing and approving every ad (Amendment 1)
 9. Every Meta campaign gets a Campaign Approval Card in Admin → Marketing → Approvals. — **Agreed** (docs/specs/amendment-1-ad-preview-and-testing-spec.md, approved Oct 29, 2026; AGENTS.md canon index)
 10. The card shows Meta's real preview for each placement (Facebook and Instagram mobile, video with sound), the real headline, text and button, and the exact destination link. — **Agreed** (Amendment 1 §2–3)
 11. Meta's preview frames expire in 24 hours. The card fetches them fresh every time and never stores them. — **Agreed** (Amendment 1 §3.3)
-12. If Meta's preview won't load, the card says "INTERNAL SIMULATION — NOT META'S PREVIEW" and Approve stays off. Only Marc can override, in writing. — **Agreed** (Amendment 1 §3.7)
+12. **[MARC DECIDES]** If Meta's preview won't load, the card says "INTERNAL SIMULATION — NOT META'S PREVIEW" and Approve stays off. Only Marc can override, in writing. — **Agreed** (Amendment 1 §3.7)
 13. The card has 6 checks, each Pass / Fail / Not Tested: video and sound, destination link, signup, checkout, conversion tracking, phone. — **Agreed** (Amendment 1 §5)
 14. Checkout must show $9.99 a month, $79.99 a year, 14-day free trial, card required. Tests use Stripe test mode only. No real charge is possible from a test. — **Agreed** (Amendment 1 §5.4, §6.6)
 15. Test users are marked is_test_account. Test visits never reach real analytics or Meta's learning (pixel off, test event code on). — **Agreed** (Amendment 1 §6.4)
-16. Marc tests every ad himself, on his phone, before it is uploaded or launched. — **Agreed** (Nov 4, 2026, project doc claude/hook-first-ads-2026-11-04.md; PIPELINE-CANON HOOK-SERIES RULE; memory profile)
+16. **[MARC DOES]** Marc tests every ad himself, on his phone, before it is uploaded or launched. — **Agreed** (Nov 4, 2026, project doc claude/hook-first-ads-2026-11-04.md; PIPELINE-CANON HOOK-SERIES RULE; memory profile)
 17. The "Owner tested personally" box must be ticked before APPROVE works. — **Proposed** (rule 16 is not enforced by the card today)
 18. APPROVE stays off until all 6 checks Pass on the current version. — **Agreed** (Amendment 1 §7.1)
-19. Approval covers only the exact version tested. Any change to video, headline, text, button, link, claims or spend ceiling makes a new version that needs approval again. — **Agreed** (Amendment 1 §4; memory meta-campaign-approval.md)
+19. **[MARC DECIDES]** Approval covers only the exact version tested. Any change to video, headline, text, button, link, claims or spend ceiling makes a new version that needs approval again. — **Agreed** (Amendment 1 §4; memory meta-campaign-approval.md)
 20. Susan builds ads in Meta as PAUSED drafts only. — **Agreed** (Amendment 1 §3.1)
 21. Only the card's LAUNCH button turns an ad on. It re-checks the version against live Meta data and refuses if anything changed. No one launches from Meta Ads Manager. — **Agreed** (Amendment 1 §7.4, §10.2, §10.6)
-22. LAUNCH appears only after Marc approves, and only for Susan and Orion. Each launch records who and when. — **Agreed** (Amendment 1 §10.1, §10.3)
+22. **[MARC DECIDES]** LAUNCH appears only after Marc approves, and only for Susan and Orion. Each launch records who and when. — **Agreed** (Amendment 1 §10.1, §10.3)
 23. Marc, Susan or Orion may PAUSE at any time without approval. Resuming needs a new LAUNCH on an approved, unchanged version. — **Agreed** (Amendment 1 §10.5)
 24. Susan and Orion are told when Marc approves or declines. — **Agreed** (Amendment 1 §10.4)
-25. The Meta write key (ads_management) lives only on the server. Marc enters it himself. Susan never holds it; she calls the gated route. — **Agreed** (Amendment 1 §7.5; Marc's decision in chat "Meta campaign testing plan", Oct 30)
+25. **[MARC DOES]** The Meta write key (ads_management) lives only on the server. Marc enters it himself. Susan never holds it; she calls the gated route. — **Agreed** (Amendment 1 §7.5; Marc's decision in chat "Meta campaign testing plan", Oct 30)
 26. The Meta write key must be on the server that runs the app and Susan's tools (EC2), not only on Vercel. — **Proposed** (Nov 7 finding: the key was put in Vercel, so Susan could not use it; see C10)
 27. The builder of the approval system never checks its own work. A separate fresh helper verifies. — **Agreed** (Marc's decision, chat "Meta campaign testing plan", Oct 29–30)
 28. Claude builds the card into the Marketing dashboard. Orion verifies it before launches are turned on. Susan makes sure the card matches what is set up in Meta. — **Agreed** (memory meta-campaign-approval.md)
@@ -42,14 +60,14 @@ Covers: who may build, approve, launch and pause ads; ad testing (Amendment 1); 
 31. The first Meta test is "6+2": $4,000 of ads over 6 weeks, then 2 weeks for trials to turn into paid. — **Agreed** (memory bell-meta-marketing.md; chat "Meta campaign testing plan")
 32. The goal is a paid CAC (ad cost per paying subscriber) under $30 by week 8. — **Agreed** (chat "Meta campaign testing plan"; chat "Meta ad campaign for 6+2")
 33. Weekly plan: $500, $500, $700, $700, $800, $800, then $0, $0. Forecast: 270 trials, 135 paid, $29.63 CAC. — **Agreed** (owner-identified final workbook Oct 29; docs/ADMIN-MARKETING-WORKBOOK.md; lib/admin-center/meta-test-plan.ts)
-34. Weekly spend never goes over the weekly plan without Marc's approval. — **Proposed** (Strategos rule; still marked "awaiting approval", see Q1)
+34. **[MARC DECIDES]** Weekly spend never goes over the weekly plan without Marc's approval. — **Proposed** (Strategos rule; still marked "awaiting approval", see Q1)
 35. Stop rules: pause for revision if cost per trial is worse than $22.50 after $600 spent; stop if worse than $25.00; stop if blended CAC is worse than $45.00 once measurable. — **Proposed** (Strategos; lib/admin-center/meta-test-plan.ts; Marc had not approved as of Nov 7, chat "Sunset episode 8 artifact")
 36. Per-ad early signs: cost per page load $1.17 or better (worse than $1.75 after $75 spent is bad); cost per signup $9.33 or better (worse than $15 after $75–150 is bad). — **Proposed** (same source)
 37. Trial-to-paid is judged only after 30 trials are 14 days old. Under 35% means fix onboarding, not ads. — **Proposed** (same source; Claude's 30-trial advice, Oct 30)
 38. No changes to an ad in its first 3 days unless it breaks a stop rule. — **Proposed** (same source)
 39. The $400 reserve goes to the winning ad only after $600 spent, 10+ trials per ad set aged 14 days, cost per trial $15 or less, and early paid rate 40% or more. — **Proposed** (same source)
 40. The Meta test sells subscriptions only. A pay-per-week pass is tested afterward. — **Agreed** (Nov 4, memory business-model.md)
-41. After the test, monthly ad spend may not go over that month's "Available for ads" amount (plow back, defined in CANON-14) without Marc's approval. — **Proposed** (connects plow back to a spending cap; Marc decided the plow back amount, not the cap)
+41. **[MARC DECIDES]** After the test, monthly ad spend may not go over that month's "Available for ads" amount (plow back, defined in CANON-14) without Marc's approval. — **Proposed** (connects plow back to a spending cap; Marc decided the plow back amount, not the cap)
 
 ### D. Ad creative: hook-first
 42. Write ad hooks first, pick the strongest, then build new stories around the winning hooks. Hooks are not clipped from old stories. — **Agreed** (Nov 4, memory bell-meta-marketing.md; project doc claude/hook-first-ads-2026-11-04.md)
@@ -61,7 +79,7 @@ Covers: who may build, approve, launch and pause ads; ad testing (Amendment 1); 
 48. Ads are vertical 9:16 video with burned-in captions, because Meta plays feed video muted. — **Agreed** (governance/ACQUISITION-RETENTION-001.md E1; Susan handoff Marc sent Nov 2)
 49. Placements favor Reels and Stories, where people watch with sound. — **Agreed** (Nov 5, chat "Apple App Store commission deals")
 50. Skip hooks likely to draw Meta policy review (Marc skipped the visa-marriage hook). — **Proposed** (one past decision; no general rule yet)
-51. Low-cost video promo clips (one still image per scene, slow pan, story audio) are a future option only. No build until Marc approves a test, and only if data shows other creative is weak. Never in the main app. — **Agreed** (memory bell-meta-marketing.md)
+51. **[MARC DECIDES]** Low-cost video promo clips (one still image per scene, slow pan, story audio) are a future option only. No build until Marc approves a test, and only if data shows other creative is weak. Never in the main app. — **Agreed** (memory bell-meta-marketing.md)
 
 ### E. Landing and tracking
 52. The destination page must load with the story's hero image and its listen button above the fold on a phone. — **Agreed** (Amendment 1 §5.2)
@@ -77,7 +95,7 @@ Covers: who may build, approve, launch and pause ads; ad testing (Amendment 1); 
 60. No more than 3 campaigns run at once (soft limit). — **Agreed** (same spec §3)
 
 ### G. Other channels
-61. TikTok ads use the same approval card, 6 checks, Marc's phone test and playbook read as Meta before any spend. — **Proposed** (TikTok is planned as "eventually"; no TikTok approval rule exists)
+61. **[MARC DOES]** TikTok ads use the same approval card, 6 checks, Marc's phone test and playbook read as Meta before any spend. — **Proposed** (TikTok is planned as "eventually"; no TikTok approval rule exists)
 62. Influencer and PR outreach uses public, legal channels only (press databases, platform DMs, business emails). No scraping of private emails. Cold emails follow CAN-SPAM. — **Proposed** (chat "Reaching celebrities and influencers about AI"; purpose still undecided)
 63. Mail-in QR test at local stores waits until after the Meta test. — **Proposed** (chat "QR code marketing system", Nov 3; idea only)
 

@@ -8,6 +8,8 @@ export function inline(s: string): string {
   t = t.replace(/`([^`]+)`/g, '<code>$1</code>')
   t = t.replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+|[^)\s]+)\)/g, (_m, txt, href) => `<a href="${href.replace(/"/g, '%22')}" target="_blank" rel="noreferrer">${txt}</a>`)
   t = t.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+  t = t.replace(/<strong>\[(MARC (?:DECIDES|DOES))\]<\/strong>/g, '<strong class="marc-tag">$1</strong>')
+  t = t.replace(/\[(MARC (?:DECIDES|DOES))\]/g, '<span class="marc-tag">$1</span>')
   t = t.replace(/(^|[^*\w])\*([^*\n]+)\*(?!\w)/g, '$1<em>$2</em>')
   return t
 }

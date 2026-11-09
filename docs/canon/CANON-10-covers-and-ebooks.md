@@ -2,6 +2,16 @@
 Status: DRAFT for Marc's approval · Nov 9, 2026 · Owner: Marc
 Covers: how cover art is made, checked, remade and paid for; author and narrator photos; the eBook text (`prose_text`) that goes with every story. Does not cover: ad images and ad creative (marketing canon), when a story goes live (CANON-09), story writing (CANON-03).
 
+## Where Marc decides
+
+Every rule in this document that needs Marc. **[MARC DECIDES]** = Marc approves, chooses or gives his OK. **[MARC DOES]** = something only Marc does himself (tests on his phone, listens, enters a key). The same tag marks each rule below.
+
+- **Rule 13 [MARC DECIDES]:** A cover darker than 100 out of 255 is remade once brighter. If still too dark, it is flagged for Marc.
+- **Rule 20 [MARC DECIDES]:** Bulk remakes need Marc's OK on the list and the cost first.
+- **Rule 27 [MARC DOES]:** Marc tops up image credits himself. No key or card number is ever sent in chat. Image spend is charged to the ET-R&D card, or ET-Marketing for ad…
+- **Rule 33 [MARC DECIDES]:** Applies to new production only. Stories published before Oct 4, 2026 are not forced back. Backfill is a separate order from Marc.
+- **Still open:** 4 conflicts and 5 questions at the end of this document wait for Marc's decision (all listed in CANON-99).
+
 ## Rules
 
 ### A. When covers are made
@@ -19,7 +29,7 @@ Covers: how cover art is made, checked, remade and paid for; author and narrator
 10. **Keep the bottom-right corner clear** of faces, text and focal points. — **Agreed** (memory /areas/story-pipeline.md "Cover art prompts: keep bottom-right corner clear"); **In force (code)** (lib/coverPrompt.ts)
 11. **Readable as a phone thumbnail** (about 100 × 100 pixels): one clear subject, a visible face when there is a person, focal point in the center or upper half, square image. — **In force (code)** (lib/coverPrompt.ts ENDLESS_TALES_COVER_STANDARD)
 12. **Bright by default.** Only Horror may be darker, and even Horror keeps the subject lit and readable. — **In force (code)** (lib/coverPrompt.ts isDarkExceptionStory; docs/GENRE-ATTRIBUTES-SPEC-v1.0-DRAFT.md §3, a draft)
-13. **A cover darker than 100 out of 255 is remade once** brighter. If still too dark, it is flagged for Marc. — **In force (code)** (regenerate-cover/route.ts LUMINANCE_THRESHOLD)
+13. **[MARC DECIDES]** **A cover darker than 100 out of 255 is remade once** brighter. If still too dark, it is flagged for Marc. — **In force (code)** (regenerate-cover/route.ts LUMINANCE_THRESHOLD)
 14. **Genre styles:** thriller = bright close-ups; mystery = moody but readable; horror = gothic with lit subject; romance = warm, intimate; sci-fi = big scale, clear forms; western = golden dust, strong foreground figure; heartwarming = cozy and warm; and so on per lib/coverPrompt.ts genreStyle. — **In force (code)** (lib/coverPrompt.ts)
 15. **Sunset of Competition covers never show space suits or metal-looking robots.** Its "robots" look human. — **Agreed** (Marc canon Nov 6, memory sunset-of-competition.md)
 16. **Covers in one series should not all look alike,** and should not repeat a prop or setting used on recent covers. — **Proposed** (fills gap: Marc's Nov 4 report "stories feel alike" and claude/cover-and-theme-repetition-2026-11-04.md; no rule exists)
@@ -28,7 +38,7 @@ Covers: how cover art is made, checked, remade and paid for; author and narrator
 ### C. Remaking covers (regenerate-cover)
 18. **Covers are remade only through `/api/asc3/regenerate-cover`,** with plain feedback (for example "No maps, charts or diagrams"). The feedback becomes the top instruction. — **In force (code)** (regenerate-cover/route.ts; lib/coverPrompt.ts coverFeedback)
 19. **Keep every old cover file.** A remake saves a new file; nothing is overwritten. — **Agreed** (Marc's remake approvals Nov 5: "Keep every old file"); **In force (code)** (time-stamped storage path)
-20. **Bulk remakes need Marc's OK on the list and the cost first.** — **Agreed** (Marc approved the 45-cover remake, about $6.77, Nov 5 10:26; chat "Apple App Store commission deals")
+20. **[MARC DECIDES]** **Bulk remakes need Marc's OK on the list and the cost first.** — **Agreed** (Marc approved the 45-cover remake, about $6.77, Nov 5 10:26; chat "Apple App Store commission deals")
 21. **After a bulk remake, Gemini checks each new cover;** one more try if it still fails, then Marc is told. Send Marc before/after samples. — **Agreed** (Marc-approved cover cleanup handoff, chat "Cover story map pattern", Nov 5)
 22. **A remade cover on a live story replaces it at once.** Record the old cover link so it can be put back. — **Proposed** (code overwrites `cover_url` with no record of the old link)
 23. **Claude cannot see images from its sandbox;** any check of what a cover shows is done by Gemini vision and labeled as such. — **Proposed** (working practice Nov 4–5)
@@ -37,7 +47,7 @@ Covers: how cover art is made, checked, remade and paid for; author and narrator
 24. **The cover image model is `gpt-image-1.5`** through OpenAI. DALL·E 3 is retired. The model can be changed only by setting, not code. — **In force (code)** (lib/cover/imageRouter.ts COVER-GPT-IMAGE-DEFAULT-001, Oct 22)
 25. **Belle is voice only;** no image is ever made "by Belle". — **In force (code)** (lib/cover/imageRouter.ts assertNotBelleImageAgent)
 26. **Every image call logs its cost** for the finance report. — **In force (code)** (regenerate-cover/route.ts logDalleCall)
-27. **Marc tops up image credits himself.** No key or card number is ever sent in chat. Image spend is charged to the ET-R&D card, or ET-Marketing for ad images. — **Agreed** (Marc Nov 5, chat "Apple App Store commission deals"; AGENTS.md "Never open, print … tokens")
+27. **[MARC DOES]** **Marc tops up image credits himself.** No key or card number is ever sent in chat. Image spend is charged to the ET-R&D card, or ET-Marketing for ad images. — **Agreed** (Marc Nov 5, chat "Apple App Store commission deals"; AGENTS.md "Never open, print … tokens")
 28. **Report 101 flags any image service that is low** (under $10 or under 3 days left) with a link to add credits. — **Agreed** (Marc Nov 5, report-101 skill)
 29. **Each image service the pipeline uses is named in writing** (cover renderer, Hal's image tool), so credits can be found. — **Proposed** (Hal's image service was unknown on Nov 5)
 
@@ -47,7 +57,7 @@ Covers: how cover art is made, checked, remade and paid for; author and narrator
 ### F. eBooks (prose_text)
 31. **Every story has a complete eBook before it is finished.** It covers every episode in the release, not an excerpt. — **Agreed** (PIPELINE-CANON EBOOK-COMPLETENESS RULE, Marc Oct 4)
 32. **A missing or incomplete eBook blocks both Ready for Review and publishing.** In Direct mode the publish check is the last line of defense. — **Agreed** (EBOOK-COMPLETENESS)
-33. **Applies to new production only.** Stories published before Oct 4, 2026 are not forced back. Backfill is a separate order from Marc. — **Agreed** (EBOOK-COMPLETENESS scope)
+33. **[MARC DECIDES]** **Applies to new production only.** Stories published before Oct 4, 2026 are not forced back. Backfill is a separate order from Marc. — **Agreed** (EBOOK-COMPLETENESS scope)
 34. **Added episodes need their eBook text** before the batch can be reviewed or published. — **Agreed** (EBOOK-COMPLETENESS defaults)
 35. **If it is unclear whether the eBook is complete, treat it as incomplete.** — **Agreed** (EBOOK-COMPLETENESS defaults)
 36. **The eBook reads as a real book,** never a transcript: no speaker labels, episode markers, "[NARRATOR]" or "[LISTENER_NAME]" tokens, sound or music cues, or "previously on" recaps. The reader must never be able to tell the audio came first. — **Agreed** (PIPELINE-CANON EBOOK-STYLE RULE, Marc Oct 4)

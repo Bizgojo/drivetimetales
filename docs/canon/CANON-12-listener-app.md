@@ -2,6 +2,16 @@
 Status: DRAFT for Marc's approval · Nov 9, 2026 · Owner: Marc
 Covers: everything a listener sees outside the player: sign-up and sign-in, free trial, prices and plans, Stripe billing, cancel and refunds, the paywall, guests, Home, Library and story cards, the red Rate button, reviews, playlists, genres and search, account and settings, name personalization settings, referrals, story suggestions, ad landing pages, emails, accessibility, and privacy and legal pages. Does not cover: what happens inside the player (CANON-11 The Player); how stories are made and published (story pipeline canon); ad campaigns, budgets and CAC (marketing canon); revenue reports (finance canon).
 
+## Where Marc decides
+
+Every rule in this document that needs Marc. **[MARC DECIDES]** = Marc approves, chooses or gives his OK. **[MARC DOES]** = something only Marc does himself (tests on his phone, listens, enters a key). The same tag marks each rule below.
+
+- **Rule 10 [MARC DECIDES]:** The Founding Member plan is retired. No page may offer it without a new pricing decision from Marc.
+- **Rule 60 [MARC DECIDES]:** A new landing story serves only after Marc adds it to the live list.
+- **Rule 68 [MARC DECIDES]:** Push notifications are off until Marc approves what they say and when.
+- **Rule 73 [MARC DOES]:** Marc checks every listener-facing change on a real phone before it is accepted.
+- **Still open:** 9 conflicts and 9 questions at the end of this document wait for Marc's decision (all listed in CANON-99).
+
 ## Rules
 
 ### A. Sign-up and sign-in
@@ -16,7 +26,7 @@ Covers: everything a listener sees outside the player: sign-up and sign-in, free
 7. Free trial: 14 days on every sign-up path. — **Agreed** (same sources; PRICING-TRIAL-001, lib/pricing.ts)
 8. A card is required to start the trial. — **Agreed** (chat "CAC for self-funding" Oct 2026: "Card-required, 14-day trial" approved for the Meta test; memory meta-campaign plan). See Conflict C2.
 9. lib/pricing.ts is the one place the app gets prices and trial length. It must match Stripe. — **In force (code)** (lib/pricing.ts)
-10. The Founding Member plan is retired. No page may offer it without a new pricing decision from Marc. — **Agreed** (ATL-FM-RETIRE-001, Marc Jul 10, app/api/checkout/route.ts)
+10. **[MARC DECIDES]** The Founding Member plan is retired. No page may offer it without a new pricing decision from Marc. — **Agreed** (ATL-FM-RETIRE-001, Marc Jul 10, app/api/checkout/route.ts)
 11. The trial length is decided by the server, never by the web page. Allowed values: 7, 14, 21 or 30 days. — **In force (code)** (app/api/checkout/route.ts)
 12. Customer-facing pages never show a raw promo code. They say "Special offer applied". — **Agreed** (ORION-GO-OFFER-COPY-001, Marc Jul 12)
 13. The Meta test sells subscriptions only. Pay-per-story or a week pass is tested later, as its own test. — **Agreed** (memory business-model.md, Nov 4)
@@ -86,7 +96,7 @@ Covers: everything a listener sees outside the player: sign-up and sign-in, free
 57. Each Meta ad lands on its own story: /go?v=widow, rise, miami, rerouted or home. The page plays that story's real Episode 1, so the spot carries into the app after sign-up. — **Agreed** (HOOK-LANDING-001 and AD-LINKS-001, Nov 6, chat "Cover story map pattern"; lib/landing.ts)
 58. Ad links are copied only from the official list, never typed. Before approval, someone opens each ad's link on a phone and confirms the story title matches the ad. — **Agreed** (AD-LINKS-001, Nov 6)
 59. A landing link with an unknown code shows a clear error, never a different story. — **Proposed** (today it silently plays The Grave He Dug Himself; this caused 2 wrong ad links on Nov 6)
-60. A new landing story serves only after Marc adds it to the live list. — **Agreed** (approval gate, lib/landing.ts GO_LIVE_VARIANTS)
+60. **[MARC DECIDES]** A new landing story serves only after Marc adds it to the live list. — **Agreed** (approval gate, lib/landing.ts GO_LIVE_VARIANTS)
 61. The trial button is hidden at first and slides up after 45 seconds of real listening (each story can set its own time). — **Agreed** (SUS/ATL-LANDING-002 rev C, "Marc final spec"; Falls Park ~100 seconds, Marc)
 62. Trial button copy: "Card required — you won't be charged before your N-day free trial ends. Then just $X/month. Cancel anytime." Days and price come from lib/pricing.ts. — **Agreed** (Marc verbatim, msg 3015, Jul 19, lib/landing.ts)
 63. Footnote under the button: "After you sign up, we'll pick up right where you left off." — **Agreed** (GO-FOOTNOTE-001, Marc Nov 6)
@@ -96,14 +106,14 @@ Covers: everything a listener sees outside the player: sign-up and sign-in, free
 65. Emails during a trial: welcome at trial start; a day-1 "add to Home Screen" email; reminders on days 2, 12 and 13 (no-card trials only); and Stripe's billing reminder before a card trial is charged. — **Agreed** (Marc approved the card-trial email fix, chat "Gemini sound replacement loop", Nov 5; app/api/cron/trial-emails, app/api/webhook)
 66. A card-trial listener never gets copy that says "no card", "nothing to cancel" or "nothing will be charged". — **Agreed** (same, Nov 5; enforced by stripe_subscription_id filter)
 67. Every marketing or reminder email has a one-click unsubscribe. — **In force (code)** (lib/emails/unsubscribe.ts)
-68. Push notifications are off until Marc approves what they say and when. — **Proposed** (Settings shows notification toggles that do nothing)
+68. **[MARC DECIDES]** Push notifications are off until Marc approves what they say and when. — **Proposed** (Settings shows notification toggles that do nothing)
 
 ### N. Accessibility and look
 69. Dark background, white text only. Never grey text on dark. Orange for emphasis. — **Agreed** (memory /areas/endless-tales-platform.md "DTT website = dark background + WHITE text only"; MASTER_RULES.md; docs/PLAYER-RULES.md)
 70. Every button a listener taps is at least 44 pixels tall. — **Proposed** for the whole app (Agreed for the player only, docs/PLAYER-RULES.md). See Conflict C5.
 71. Body text is at least 16 pixels; small labels at least 14 pixels. — **Proposed** (large readable text; many labels today are 11–12 pixels)
 72. Nothing spills sideways on phones, tablets or computers. — **Proposed** for the whole app (Agreed for the player)
-73. Marc checks every listener-facing change on a real phone before it is accepted. — **Agreed** (memory profile: tests every step on his phone; docs/PLAYER-RULES.md)
+73. **[MARC DOES]** Marc checks every listener-facing change on a real phone before it is accepted. — **Agreed** (memory profile: tests every step on his phone; docs/PLAYER-RULES.md)
 
 ### O. Privacy and legal
 74. The app has Terms, Privacy and Content License pages. Prices in them come from lib/pricing.ts. — **In force (code)** (app/terms, app/privacy, app/license)

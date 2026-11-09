@@ -27,6 +27,15 @@ TIME ->            INTRO           | STORY BODY                                 
 | 5 SFX spot | — | On the word, under the voice (CANON-06) | — |
 | 6 SFX background | — | ~10 s soft scene-setters (CANON-06) | — |
 
+## Where Marc decides
+
+Every rule in this document that needs Marc. **[MARC DECIDES]** = Marc approves, chooses or gives his OK. **[MARC DOES]** = something only Marc does himself (tests on his phone, listens, enters a key). The same tag marks each rule below.
+
+- **Rule 32 [MARC DECIDES]:** Music is made at most 3 times per story or episode. After that the story is flagged for attention; only Marc can re-queue it.
+- **Rule 39 [MARC DOES]:** Every mix change goes behind an on/off switch. A test copy goes to a preview folder. Marc listens before it goes live. If it goes wrong, the…
+- **Rule 43 [MARC DECIDES]:** No corrected episode replaces a published final_mix.mp3 until Marc listens and approves.
+- **Still open:** 7 conflicts and 6 questions at the end of this document wait for Marc's decision (all listed in CANON-99).
+
 ## Rules
 
 ### A. Order and the sting
@@ -71,7 +80,7 @@ TIME ->            INTRO           | STORY BODY                                 
 ### F. Music source
 30. Every story has its own music file (background_music.mp3), made from the script's SUNO PROMPT (2–3 sentences: genre, instruments, tempo, mood) through Kie.ai (Suno). — **Agreed** (STAGE2 v2.3, Marc approved June 10; Marc understands music comes from Kie, memory audio-pipeline.md)
 31. If a story has no music file, the final mix stops. It never mixes without music. — **In force (code)** (core.ts "Missing story-specific background_music.mp3")
-32. Music is made at most 3 times per story or episode. After that the story is flagged for attention; only Marc can re-queue it. — **In force (code)** (MUSIC-CAP-001, run-next/route.ts)
+32. **[MARC DECIDES]** Music is made at most 3 times per story or episode. After that the story is flagged for attention; only Marc can re-queue it. — **In force (code)** (MUSIC-CAP-001, run-next/route.ts)
 33. The music starts at a strong point in the track, not always at 0:00. — **In force (code)** (core.ts `findStrongMusicOffset`)
 34. audio/intro_outro_music.mp3 never plays under Belle's intro or outro. — **Agreed** (MIX_SPEC.md, Marc canon Aug 24)
 35. Only music Endless Tales has commercial rights to may be used, and its source is recorded for each story. — **Proposed** (no licence record found for Kie/Suno output or the shared music library in lib/music-library.json)
@@ -82,11 +91,11 @@ TIME ->            INTRO           | STORY BODY                                 
 38. After every re-mix, the stored links get a new version (?v=<render time>), so phones fetch the new mix and personalized mixes rebuild. — **Agreed** (MIX-VERSION-001, Marc Nov 7, Rerouted EP1)
 
 ### H. Testing and changing the mix
-39. Every mix change goes behind an on/off switch. A test copy goes to a preview folder. Marc listens before it goes live. If it goes wrong, the switch goes off. — **Agreed** (two-stage mix plan Marc approved Nov 1; MIX_SPEC.md listen-approval rule, Aug 21)
+39. **[MARC DOES]** Every mix change goes behind an on/off switch. A test copy goes to a preview folder. Marc listens before it goes live. If it goes wrong, the switch goes off. — **Agreed** (two-stage mix plan Marc approved Nov 1; MIX_SPEC.md listen-approval rule, Aug 21)
 40. MIX_V3=on and MIX_V4=on stay on in production. — **Agreed** (Marc approved Stage 1 and "Proceed with stage 2", Nov 1)
 41. A mix-only test reuses the published sound plan, so only the mix changes. — **In force (code)** (core.ts `mixOnly`)
 42. If a mix problem happens once, fix that mix. If it happens in 2 or more stories, change the rule. — **Agreed** (docs/MIX_NOTE_PROTOCOL.md v1.0, owner Marc)
-43. No corrected episode replaces a published final_mix.mp3 until Marc listens and approves. — **Agreed** (MIX_SPEC.md, Marc Aug 21) — see Q5
+43. **[MARC DECIDES]** No corrected episode replaces a published final_mix.mp3 until Marc listens and approves. — **Agreed** (MIX_SPEC.md, Marc Aug 21) — see Q5
 
 ## Conflicts found
 - C1. Bible/MIX_SPEC.md (Aug 24–25) and the MUSIC-002 header in core.ts give older outro numbers: music down to 0.019, then "rises to 0.50", a 2-second fade (Aug 25), and the code value set to 0 (Belle with no music). Marc's Nov 1 drawing rule is 0.13 under Belle and a 3-second fade. Recommendation: Nov 1 wins; rewrite MIX_SPEC.md and the core.ts header. Marc decides.

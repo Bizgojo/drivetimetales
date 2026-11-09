@@ -2,6 +2,22 @@
 Status: DRAFT for Marc's approval · Nov 9, 2026 · Owner: Marc
 Covers: everything decided before a script is written — genres, authors, premise, hook, series type and length, series bible, cast and fact sheet, hook-first series, Pocket FM opt-in, series continuation, runtime targets in the brief, the brief itself. Does not cover: writing the script (CANON-03 The Writer); Belle intro/outro wording; sound, mixing, voices, covers, publishing and the player (their own CANON docs).
 
+## Where Marc decides
+
+Every rule in this document that needs Marc. **[MARC DECIDES]** = Marc approves, chooses or gives his OK. **[MARC DOES]** = something only Marc does himself (tests on his phone, listens, enters a key). The same tag marks each rule below.
+
+- **Rule 8 [MARC DECIDES]:** No story is written for an author who lacks a style model or a complete style sheet. The job stops and asks Marc.
+- **Rule 19 [MARC DECIDES]:** A colliding brief is bounced for rework, never retried automatically. Only Marc can let it through, by a recorded override with his name and…
+- **Rule 20 [MARC DECIDES]:** A premise near a known-adjacent cluster gets a warning but proceeds. Only Marc adds or retires a cluster.
+- **Rule 28 [MARC DECIDES]:** Preferred series lengths are 3, 5, 7 or 13 episodes. Any other length needs Marc's explicit approval.
+- **Rule 30 [MARC DECIDES]:** Long Pocket FM series (e.g. 30 episodes) are allowed when Marc orders them, planned in arcs of 10, with one big turn every 10 episodes.
+- **Rule 31 [MARC DECIDES]:** When Marc or Maya sets an episode count, the story has exactly that many episodes.
+- **Rule 39 [MARC DECIDES]:** Pocket FM–style writing is used only when Marc says "use the rules for Pocket FM type stories."
+- **Rule 53 [MARC DECIDES]:** After a series finale, the series is scored for character attachment (0–8); 5+ = recommend a new season to Marc. New seasons must raise stakes,…
+- **Rule 54 [MARC DECIDES]:** Adding episodes never re-plans, rewrites, re-titles, re-hides or re-voices episodes that already exist. New episodes are planned only for the…
+- **Rule 63 [MARC DECIDES]:** When Marc or Maya sets a per-episode length, each episode lands within ±20% of it.
+- **Still open:** 7 conflicts and 7 questions at the end of this document wait for Marc's decision (all listed in CANON-99).
+
 ## Rules
 
 ### A. How a story starts
@@ -14,7 +30,7 @@ Covers: everything decided before a script is written — genres, authors, premi
 5. The genre comes from the genres table. — **Agreed** (Story Production Spec §3 input table)
 6. Each genre has exactly 3 ET pen-name authors. — **Agreed** (AGENTS.md "Data rules", canon index merged Nov 9)
 7. Every ET author has: one assigned narrator, one real author as a style model (style_reference), and a complete style sheet (authors.style_sheet) that includes an ending type. — **Agreed** (CANON_REGISTRY STYLE-001, Marc Nov 1, 2026; AGENTS.md data rules; memory story-pipeline.md Nov 1)
-8. No story is written for an author who lacks a style model or a complete style sheet. The job stops and asks Marc. — **Agreed** (STYLE-001)
+8. **[MARC DECIDES]** No story is written for an author who lacks a style model or a complete style sheet. The job stops and asks Marc. — **Agreed** (STYLE-001)
 9. Each series is assigned one ET author. The writer follows that author's style sheet for every episode in the series. — **Agreed** (Story Production Spec §3.5)
 10. The style model governs voice only (rhythm, tone, word choice). Never copy the real author's text, plots, characters, settings or titles. — **Agreed** (STYLE-001 copyright note)
 11. Each author's narrator is fixed. The brief names the author; the narrator follows from the author, never chosen per story. — **Agreed** (STAGE2_SCRIPT_PROMPT v2.4 "Narrator lookup table"; STORY_BRIEF_TEMPLATE v2.2 Part 2)
@@ -29,8 +45,8 @@ Covers: everything decided before a script is written — genres, authors, premi
 16. The brief's premise is 2–5 sentences and leads with the inciting situation (the first sentence is the hook). — **Agreed** (STORY_BRIEF_TEMPLATE v2.2 Part 3; PREMISE-UNIQUENESS-001 core-hook rule)
 17. No new brief goes to script writing if its premise is substantially similar to any story that is published, ready_for_review, repair_queue or approved_ready. "Substantially similar" = same core hook (≥0.6 overlap) AND same central situation (≥0.5 overlap). Same genre or setting alone is fine. — **Agreed** (governance/PREMISE-UNIQUENESS-001.md, Marc ruling Jul 18, 2026)
 18. Cold-storage premises are free to reuse. — **Agreed** (PREMISE-UNIQUENESS-001)
-19. A colliding brief is bounced for rework, never retried automatically. Only Marc can let it through, by a recorded override with his name and reason. Agents never self-approve. — **Agreed** (PREMISE-UNIQUENESS-001 "Override procedure")
-20. A premise near a known-adjacent cluster gets a warning but proceeds. Only Marc adds or retires a cluster. — **Agreed** (PREMISE-UNIQUENESS-001 amendment, Jul 18)
+19. **[MARC DECIDES]** A colliding brief is bounced for rework, never retried automatically. Only Marc can let it through, by a recorded override with his name and reason. Agents never self-approve. — **Agreed** (PREMISE-UNIQUENESS-001 "Override procedure")
+20. **[MARC DECIDES]** A premise near a known-adjacent cluster gets a warning but proceeds. Only Marc adds or retires a cluster. — **Agreed** (PREMISE-UNIQUENESS-001 amendment, Jul 18)
 21. Episodes of the same series never collide with each other. — **Agreed** (PREMISE-UNIQUENESS-001 "Sibling exclusion")
 22. Episodes in a series never reuse the same central object, discovery or secret device (no second hidden clock, no second note inside something). — **Agreed** (Marc Oct 28, memory story-pipeline.md; EPISODE-VARIETY-001 in writer prompt)
 23. Character names are not reused from the last 10 series, and no two main characters have names that sound alike. — **Agreed** (Story Production Spec §4.1; Pocket FM rules Nov 4)
@@ -40,10 +56,10 @@ Covers: everything decided before a script is written — genres, authors, premi
 ### E. Series types and lengths
 26. Endless Tales is series-first. A standalone needs a stated purpose: discovery, onboarding, testing, or variety. — **Agreed** (ET_Story_Rules_v3_2 Part V)
 27. A series is either Closed (a real ending in the last episode) or Ongoing (built in seasons). — **Agreed** (Story Production Spec §3)
-28. Preferred series lengths are 3, 5, 7 or 13 episodes. Any other length needs Marc's explicit approval. — **Agreed** (ET_Story_Rules_v3_2 Part V; code SERIES_EPISODE_COUNTS in lib/series/continue-plan.ts)
+28. **[MARC DECIDES]** Preferred series lengths are 3, 5, 7 or 13 episodes. Any other length needs Marc's explicit approval. — **Agreed** (ET_Story_Rules_v3_2 Part V; code SERIES_EPISODE_COUNTS in lib/series/continue-plan.ts)
 29. New standard series are 5 or 7 episodes (romance, heartwarming, western, thriller, sci-fi). The old 3-episode queue is retired. — **Agreed** (Marc Nov 1, memory story-pipeline.md) — see Q1
-30. Long Pocket FM series (e.g. 30 episodes) are allowed when Marc orders them, planned in arcs of 10, with one big turn every 10 episodes. — **Agreed** (Marc Nov 3 and Nov 5, memory altar-romance-series.md; Pocket FM rules; Story Production Spec §7)
-31. When Marc or Maya sets an episode count, the story has exactly that many episodes. — **Agreed** (CANON_REGISTRY LENGTH-001)
+30. **[MARC DECIDES]** Long Pocket FM series (e.g. 30 episodes) are allowed when Marc orders them, planned in arcs of 10, with one big turn every 10 episodes. — **Agreed** (Marc Nov 3 and Nov 5, memory altar-romance-series.md; Pocket FM rules; Story Production Spec §7)
+31. **[MARC DECIDES]** When Marc or Maya sets an episode count, the story has exactly that many episodes. — **Agreed** (CANON_REGISTRY LENGTH-001)
 32. Every episode header carries the same planned total for the season in production. A mismatch (Rerouted EP1 "5", EP2–3 "7") is a failure. — **Agreed** (Story Production Spec §7)
 33. A closed series leaves at most one open thread at its end (one named villain may escape for a sequel when the brief asks). "The Man I Left at the Altar" may leave three. — **Agreed** (SERIES-NEMESIS-001, Marc Oct 30; Altar exception Nov 3, lib/seriesSequel.ts; Story Production Spec §5)
 34. An ongoing series: each season closes its own arc and leaves exactly one bigger question open. — **Agreed** (Story Production Spec §3.3, §7)
@@ -55,7 +71,7 @@ Covers: everything decided before a script is written — genres, authors, premi
 38. The five Nov 2026 hook series: The Widow Who Watched, Second Rise, Weekend Wife in Miami (Pocket FM rules); Rerouted, Don't Go Home (standard rules). Though made for ads, they are real library stories. — **Agreed** (HOOK-SERIES RULE; memory hook-series.md Nov 8)
 
 ### G. Pocket FM style (opt-in)
-39. Pocket FM–style writing is used only when Marc says "use the rules for Pocket FM type stories." — **Agreed** (PIPELINE-CANON POCKET-FM-STYLE RULE, Nov 5; memory story-pipeline.md Nov 4)
+39. **[MARC DECIDES]** Pocket FM–style writing is used only when Marc says "use the rules for Pocket FM type stories." — **Agreed** (PIPELINE-CANON POCKET-FM-STYLE RULE, Nov 5; memory story-pipeline.md Nov 4)
 40. It sits on top of every normal pipeline rule. When they conflict, the pipeline rule wins. — **Agreed** (POCKET-FM-STYLE RULE)
 41. A Pocket FM series names one engine in its plan (secret fortune, revenge, contract marriage, secret child, enemies to lovers, the cold one thaws, rags to riches, forbidden love), not the engine of any of the last 3 series. — **Agreed** (POCKET-FM-STYLE RULE; project doc claude/pocket-fm-style-rules.md)
 42. Pocket FM cast: a lead wronged in Episode 1, a clear villain, a love interest with a secret, names not used in the last 10 series. — **Agreed** (POCKET-FM-STYLE RULE)
@@ -71,10 +87,10 @@ Covers: everything decided before a script is written — genres, authors, premi
 50. A recurring hero keeps his exact name, speaker label and voice across series (Nick Brennan, label NICK). — **Agreed** (Marc Oct 27–28, memory story-pipeline.md)
 51. In a short series (6 episodes or fewer), every episode after Episode 1 shares at least one speaking character with Episode 1 and with the episode before it. — **In force (code)** (SERIES-CAST-CONTINUITY-001, lib/scriptReadiness.ts)
 52. The planned brief gets a Next Episode Desire Score (NEDS). Below 7 = revise the brief before writing. — **Agreed** (ET_Story_Rules_v3_2 Part VII; STAGE2 r37) — see Q5
-53. After a series finale, the series is scored for character attachment (0–8); 5+ = recommend a new season to Marc. New seasons must raise stakes, grow the lead and add one major new element. — **Agreed** (ET_Story_Rules_v3_2 Part IX) — see Q6
+53. **[MARC DECIDES]** After a series finale, the series is scored for character attachment (0–8); 5+ = recommend a new season to Marc. New seasons must raise stakes, grow the lead and add one major new element. — **Agreed** (ET_Story_Rules_v3_2 Part IX) — see Q6
 
 ### I. Adding episodes and new seasons
-54. Adding episodes never re-plans, rewrites, re-titles, re-hides or re-voices episodes that already exist. New episodes are planned only for the missing numbers, from the full scripts of the existing ones, with scripts/series/continue-series.ts: dry run first, Marc approves the plan, then save. — **Proposed** (PIPELINE-CANON SERIES-CONTINUATION RULE is PENDING Marc sign-off; code SERIES-CONTINUE-001 exists)
+54. **[MARC DECIDES]** Adding episodes never re-plans, rewrites, re-titles, re-hides or re-voices episodes that already exist. New episodes are planned only for the missing numbers, from the full scripts of the existing ones, with scripts/series/continue-series.ts: dry run first, Marc approves the plan, then save. — **Proposed** (PIPELINE-CANON SERIES-CONTINUATION RULE is PENDING Marc sign-off; code SERIES-CONTINUE-001 exists)
 55. The whole-series planner (/api/v2/series-package) must never run on a series that already has episodes. — **Proposed** (same pending rule; Nov 9 near-overwrite of a live Episode 1)
 56. Published episodes are frozen. A new season never rewrites, re-voices or re-renders them. — **Agreed** (PHASED-SERIES-001, Marc Nov 6; Story Production Spec §7)
 57. Before writing a new season, the writer reads the master premise, the fact sheet, all season outlines so far, and the full text of the last 3 published episodes. — **Agreed** (Story Production Spec §7)
@@ -85,7 +101,7 @@ Covers: everything decided before a script is written — genres, authors, premi
 60. Series episodes target 12–18 minutes. 20–25 minutes is only for standalones, finales and episodes that earn it. — **Agreed** (STAGE2 v2.3; PUBLISHED_STORY_SPEC v1.5; Marc Oct 26 option 2, memory story-pipeline.md)
 61. Every episode of a series is about the same length. — **Agreed** (Story Production Spec §3.3)
 62. A brief may not ask for less than 12 minutes. Code refuses briefs of 10.8 minutes or less because they can never pass both the floor and the ±10% check. — **In force (code)** (briefRuntimeImpossible, lib/scriptReadiness.ts)
-63. When Marc or Maya sets a per-episode length, each episode lands within ±20% of it. — **Agreed** (CANON_REGISTRY LENGTH-002) — see Conflict C5
+63. **[MARC DECIDES]** When Marc or Maya sets a per-episode length, each episode lands within ±20% of it. — **Agreed** (CANON_REGISTRY LENGTH-002) — see Conflict C5
 64. Author-written series (Sunset of Competition) are exempt from the runtime floor; the finale stays at its written length. — **Agreed** (Marc Nov 3, memory sunset-of-competition.md)
 
 ### K. The brief

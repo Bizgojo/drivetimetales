@@ -4,6 +4,15 @@ Covers: everything that happens inside the player: playback, sting and Belle, pa
 
 Note: docs/PLAYER-RULES.md is approved canon (Marc, Nov 9). Sections A to F copy it with the same meaning. Section G adds what it misses.
 
+## Where Marc decides
+
+Every rule in this document that needs Marc. **[MARC DECIDES]** = Marc approves, chooses or gives his OK. **[MARC DOES]** = something only Marc does himself (tests on his phone, listens, enters a key). The same tag marks each rule below.
+
+- **Rule 37 [MARC DECIDES]:** All episodes publish together. A series stays hidden until every episode is finished and approved, then they all go live at the same time.
+- **Rule 40 [MARC DECIDES]:** The publish switch on the Admin page decides who approves. It is checked when a story is ready to publish. On "Review", every story waits for Marc…
+- **Rule 46 [MARC DOES]:** Marc checks it on a real phone before any player change is accepted.
+- **Still open:** 6 conflicts and 7 questions at the end of this document wait for Marc's decision (all listed in CANON-99).
+
 ## Rules
 
 ### A. Playback basics — Agreed (docs/PLAYER-RULES.md)
@@ -54,10 +63,10 @@ Listening never stops between episodes. Each episode flows into the next until t
 36. The finished episode is marked complete, and the next one is recorded as if the listener pressed Play. Advanced and cancelled events are logged. — **Agreed** (docs/PLAYER-RULES.md)
 
 ### E. What listeners can see — Agreed (docs/PLAYER-RULES.md)
-37. All episodes publish together. A series stays hidden until every episode is finished and approved, then they all go live at the same time. — **Agreed** (docs/PLAYER-RULES.md; Marc, Nov 8)
+37. **[MARC DECIDES]** All episodes publish together. A series stays hidden until every episode is finished and approved, then they all go live at the same time. — **Agreed** (docs/PLAYER-RULES.md; Marc, Nov 8)
 38. Episodes are numbered from 1 and count up with no gaps. — **Agreed** (docs/PLAYER-RULES.md)
 39. Hidden episodes never show up in lists, navigation or autoplay. — **Agreed** (docs/PLAYER-RULES.md)
-40. The publish switch on the Admin page decides who approves. It is checked when a story is ready to publish. On "Review", every story waits for Marc to listen and approve. On "Direct", stories go live without Marc's review. — **Agreed** (docs/PLAYER-RULES.md)
+40. **[MARC DECIDES]** The publish switch on the Admin page decides who approves. It is checked when a story is ready to publish. On "Review", every story waits for Marc to listen and approve. On "Direct", stories go live without Marc's review. — **Agreed** (docs/PLAYER-RULES.md)
 41. New episodes added to an existing series go live as one batch. — **Agreed** (docs/PLAYER-RULES.md)
 
 ### F. Design and readability — Agreed (docs/PLAYER-RULES.md)
@@ -65,7 +74,7 @@ Listening never stops between episodes. Each episode flows into the next until t
 43. Orange for emphasis, such as the "Up next" label. — **Agreed** (docs/PLAYER-RULES.md)
 44. Buttons are at least 44 pixels tall. Cancel on the "Up next" screen is at least a quarter of the screen. — **Agreed** (docs/PLAYER-RULES.md)
 45. Nothing spills sideways on phones, tablets or computers. — **Agreed** (docs/PLAYER-RULES.md)
-46. Marc checks it on a real phone before any player change is accepted. — **Agreed** (docs/PLAYER-RULES.md)
+46. **[MARC DOES]** Marc checks it on a real phone before any player change is accepted. — **Agreed** (docs/PLAYER-RULES.md)
 
 ### G. Added rules (not in docs/PLAYER-RULES.md)
 

@@ -2,6 +2,18 @@
 Status: DRAFT for Marc's approval · Nov 9, 2026 · Owner: Marc
 Covers: every step from idea to live story, in order; who runs each step; job states; retries; stuck and failed jobs; restore points and recovery. Does not cover: the detailed rules inside each step. Those live in CANON-02 (ideas and briefs), CANON-03 (writer), CANON-04 (Belle), CANON-05 (voices), CANON-06 (sound effects), CANON-07 (music and mix), CANON-08 (quality gates), CANON-09 (publishing), CANON-10 (covers and eBooks).
 
+## Where Marc decides
+
+Every rule in this document that needs Marc. **[MARC DECIDES]** = Marc approves, chooses or gives his OK. **[MARC DOES]** = something only Marc does himself (tests on his phone, listens, enters a key). The same tag marks each rule below.
+
+- **Rule 14 [MARC DECIDES]:** Publish switch. The switch is read at this moment. Review: Marc listens and approves. Direct: the story goes live with no review. Owner: CANON-09.
+- **Rule 20 [MARC DECIDES]:** Marc decides: merges outside Claude's own pipeline PRs, every database migration, the publish switch, the release of the publication hold, and…
+- **Rule 32 [MARC DECIDES]:** Adding episodes never re-plans or rewrites existing episodes. Use scripts/series/continue-series.ts (dry run, Marc approves the plan). Never run…
+- **Rule 35 [MARC DECIDES]:** Never merge a PR without Marc's word (except rule 18), and never run a migration without Marc's OK.
+- **Rule 56 [MARC DECIDES]:** Stop and ask Marc when any step could overwrite or hide live content.
+- **Rule 57 [MARC DECIDES]:** Author-written series (Sunset of Competition) are never rewritten by the pipeline. On a failed check it stops and reports; only approved…
+- **Still open:** 5 conflicts and 4 questions at the end of this document wait for Marc's decision (all listed in CANON-99).
+
 ## Rules
 
 ### A. The steps, in order
@@ -20,7 +32,7 @@ Each line gives: step name, what runs it, and which canon doc owns the rules for
 11. **Music and final mix.** `generate_music` / `series_generate_music`, then `render_final_mix` / `series_render_final_mix`. Owner: CANON-07. — **In force (code)** (run-next/route.ts)
 12. **Package.** `complete_story_package` fills author, narrator, cover, description and eBook text (`prose_text`), then sets the story hidden at `status = audio_ready`. Owner: CANON-10 for cover and eBook. — **In force (code)** (app/api/admin/complete-story-package/route.ts)
 13. **Ready for review.** Job ends at step `ready_for_review`; story `workflow_state = ready_for_review`. — **In force (code)** (run-next/route.ts NEXT_STEP_AFTER_STANDALONE_PACKAGE)
-14. **Publish switch.** The switch is read at this moment. Review: Marc listens and approves. Direct: the story goes live with no review. Owner: CANON-09. — **Agreed** (PIPELINE-CANON Rule 4; docs/PLAYER-RULES.md "What listeners can see" 4, Marc Nov 8)
+14. **[MARC DECIDES]** **Publish switch.** The switch is read at this moment. Review: Marc listens and approves. Direct: the story goes live with no review. Owner: CANON-09. — **Agreed** (PIPELINE-CANON Rule 4; docs/PLAYER-RULES.md "What listeners can see" 4, Marc Nov 8)
 15. **Live.** The story is live only when `status = published`, `is_hidden = false` and `published_on` is set, and it shows in library-new. Owner: CANON-09. — **Agreed** (AGENTS.md production success criteria; lib/directPublish.ts isListenerVisible)
 16. **A story is done only when** the correct script was used, Belle intro and outro are correct, the sting and music are present when expected, the final mix is exported and imported, the story publishes, and it appears in library-new. — **Agreed** (AGENTS.md "Production success criteria"; DONE_CHECKLIST.md)
 
@@ -28,7 +40,7 @@ Each line gives: step name, what runs it, and which canon doc owns the rules for
 17. **Claude (the pipeline writer) writes every script.** No agent, including Hal and Orion, writes or edits scripts. — **Agreed** (AGENTS.md agent rules; Marc Nov 8, 2026, memory agent-fleet.md)
 18. **Claude delivers code changes as PRs on `main`.** Claude may merge its own pipeline PRs only after tests, the Vercel build and mergeability pass. — **Agreed** (memory agent-fleet.md, Nov 6 rule)
 19. **Orion is the only EC2 deployer.** He deploys merged `main` from a handoff Marc pastes. — **Agreed** (memory agent-fleet.md)
-20. **Marc decides:** merges outside Claude's own pipeline PRs, every database migration, the publish switch, the release of the publication hold, and anything that could overwrite or hide live content. — **Agreed** (AGENTS.md agent rules; PIPELINE-CANON Rule 4)
+20. **[MARC DECIDES]** **Marc decides:** merges outside Claude's own pipeline PRs, every database migration, the publish switch, the release of the publication hold, and anything that could overwrite or hide live content. — **Agreed** (AGENTS.md agent rules; PIPELINE-CANON Rule 4)
 21. **Marc is left out of routine production.** He steps in only when he chooses or a rule requires it (for example Review mode). — **Agreed** (Marc Nov 7, 2026: "leave me out of the process", memory story-pipeline.md)
 22. **Marc no longer approves voice casts** for each story, once voices are screened into the voice database. — **Agreed** (Marc Nov 4, 2026, memory story-pipeline.md)
 23. **Every status claim is verified** by the one reporting it (a database query, file line, or command output in hand). Anything not checked is called "unverified". — **Agreed** (AGENTS.md "Verify results field by field"; Atlas/Orion reporting standard Oct 16, memory pipeline-dispatch-recovery.md)
@@ -54,12 +66,12 @@ Each line gives: step name, what runs it, and which canon doc owns the rules for
 29. **Episodes run strictly in order, one at a time.** Episode N starts only after Episode N−1 passes. — **Agreed** (PIPELINE-CANON Rule 3, Marc Oct 4, 2026)
 30. **A problem affects only the episode now running.** It never pulls back earlier episodes and never jumps ahead. — **Agreed** (PIPELINE-CANON Rule 3)
 31. **A passed episode is locked.** It is never re-checked or re-run because of a later episode. — **Agreed** (PIPELINE-CANON Rule 3 scope)
-32. **Adding episodes never re-plans or rewrites existing episodes.** Use scripts/series/continue-series.ts (dry run, Marc approves the plan). Never run /api/v2/series-package on a series that already has episodes. — **Proposed** (PIPELINE-CANON SERIES-CONTINUATION RULE, still PENDING Marc sign-off)
+32. **[MARC DECIDES]** **Adding episodes never re-plans or rewrites existing episodes.** Use scripts/series/continue-series.ts (dry run, Marc approves the plan). Never run /api/v2/series-package on a series that already has episodes. — **Proposed** (PIPELINE-CANON SERIES-CONTINUATION RULE, still PENDING Marc sign-off)
 
 ### E. Code changes and dispatch
 33. **No dispatch before PR merge.** A story that needs a code fix is not dispatched until that fix is merged and deployed. — **Agreed** (Sequencing Rule, Marc Jul 22, 2026, PERMANENT, cited in PIPELINE-CANON header)
 34. **Before merge, check any renamed or replaced component** with a diff. — **Agreed** (Pre-Merge Check, Marc Jul 23, 2026, PERMANENT)
-35. **Never merge a PR without Marc's word** (except rule 18), and never run a migration without Marc's OK. — **Agreed** (AGENTS.md)
+35. **[MARC DECIDES]** **Never merge a PR without Marc's word** (except rule 18), and never run a migration without Marc's OK. — **Agreed** (AGENTS.md)
 36. **One task at a time.** One change per deploy, so any break points to one change. — **Agreed** (AGENTS.md "One objective per cycle"; Story Production Spec §9.3, Nov 7 draft)
 37. **Never deploy during a mix or voice job.** Orion deploys at a safe gap between jobs. — **Proposed** (practice in deploy handoffs, Oct 27–Nov 5 chats; never stated as a rule by Marc)
 
@@ -84,10 +96,10 @@ Each line gives: step name, what runs it, and which canon doc owns the rules for
 53. **A restore point is:** the last good commit on `main` named in the PR, plus the previous build folder kept on EC2 (`.next.bak-<date>`). A failed deploy restores that copy and restarts. — **Proposed** (matches Orion deploy handoffs Oct 27; .restore/ folder exists but has no rule)
 54. **Recovery of a broken file is from git,** never by patching on top of a broken file. — **In force (doc)** (MASTER_RULES.md "Restore from Git") — **Proposed** to confirm as canon.
 55. **Production jobs are history.** Old failed job rows are never deleted or rewritten when a story is recovered. — **Proposed** (docs/CONTENT_APPROVAL_PROVENANCE.md, planning doc only)
-56. **Stop and ask Marc** when any step could overwrite or hide live content. — **Agreed** (AGENTS.md)
+56. **[MARC DECIDES]** **Stop and ask Marc** when any step could overwrite or hide live content. — **Agreed** (AGENTS.md)
 
 ### H. Author-written stories
-57. **Author-written series (Sunset of Competition) are never rewritten by the pipeline.** On a failed check it stops and reports; only approved mechanical edits are made. It skips Belle style checks and the runtime floor; all technical checks still apply. — **Agreed** (Marc Nov 3, 2026, memory sunset-of-competition.md)
+57. **[MARC DECIDES]** **Author-written series (Sunset of Competition) are never rewritten by the pipeline.** On a failed check it stops and reports; only approved mechanical edits are made. It skips Belle style checks and the runtime floor; all technical checks still apply. — **Agreed** (Marc Nov 3, 2026, memory sunset-of-competition.md)
 
 ## Conflicts found
 - C1. docs/STORY_PRODUCTION_PROCESS.md v1.2 (June 10) describes a manual flow: Marc fills the brief, pastes prompts into Claude chats, sends scripts to Hal on Telegram, grades every story out of 30 before publishing, and uses the Series Release Rule. Today's flow is automatic (dispatch → run-next → publish switch), Hal writes nothing, and the Series Release Rule is retired. Recommendation: this canon wins; mark v1.2 as history. Marc decides.
