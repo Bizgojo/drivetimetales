@@ -7,13 +7,21 @@ interface Item { section: string; item: string; ai_service: string | null; purpo
 interface Camp { name: string; platform: string; dates: string; days: number; trials: number; subs: number; cost: number; costPerTrial: Num; cac: Num; status: string }
 interface Data {
   basis: string; columns: string[]; vp: Record<string, Num[]>; revenue: Record<string, number[]>; items: Item[]
-  sections: Record<string, number[]>; memo: Record<string, number[]>; totals: { revenue: number[]; expenses: number[]; result: number[]; plowBack: number[]; retained: number[] }
+  sections: Record<string, number[]>; memo: Record<string, number[]>
+  totals: { revenue: number[]; costOfRevenue: number[]; grossProfit: number[]; grossMargin: Num[]; opex: number[]; expenses: number[]; result: number[]; bothParts: number[]; plowBack: number[]; retained: number[] }
+  outsideOps: { investors: { name: string; values: number[]; toDate: number[] }[]; withdrawals: number[]; lines: Record<string, number[]>; total: number[] }
   pipeline?: { stages: { stage: string; episodes: number; series: { title: string; episodes: number; live: number; total: number }[] }[]; coldStorage: number }
   vpDetail: { stories: { title: string; episodes: number; voiceCost: Num; complete?: boolean }[][]; finished: { title: string; episodes: number; voiceCost: Num; live?: number }[][]; costPerEpisode: { item: string; ai_service: string | null; total: number; perEpisode: Num }[][] }
   recon?: { mercury: Record<string, number[]>; stripe: Record<string, number[]>; outside: Record<string, number[]>; check: Num[] }
   campaigns: Camp[]; uncategorizedCount: number; notes: string[]; lastSynced: string | null; error?: string
 }
-const SECTIONS = ['Operating Exp', 'Production Exp', 'Ad Spend', 'Marketing Services', 'R & D', 'Uncategorized']
+// CANON-14 decision 125 (Marc, Nov 9 2026): revenue → cost of revenue → gross profit → operating
+// expenses → operating profit; then money outside operations, which is never profit.
+const COST_SECTIONS = ['Production Exp', 'Delivery', 'Payment fees']
+const OPEX_SECTIONS = ['Ad Spend', 'Marketing Services', 'R & D', 'Operating Exp', 'Uncategorized']
+const SECTION_NAME: Record<string, string> = { 'Production Exp': 'Story production', 'Delivery': 'Delivering audio to listeners (hosting)', 'Payment fees': 'Payment fees', 'Operating Exp': 'Operations' }
+const PART_B_NAME: Record<string, string> = { 'Card cashback rewards': 'Card cashback', 'Interest income (Mercury)': 'Mercury interest (taxable)', 'Other (not yet categorized)': 'Other money in (needs a category)' }
+const pct = (v: Num) => v == null || !isFinite(v) ? '—' : Math.round(v * 100) + '%'
 const MONEY_ROWS = new Set(['Production cost per finished episode', 'Ad spend', 'Blended cost per trial', 'Blended CAC', 'LTV (measured)', 'Net LTV-CAC $', 'Run rate (yearly)'])
 const PCT_ROWS = new Set(['Net LTV-CAC %', 'Monthly churn (measured)'])
 const DRILL_ROWS = new Set(['Stories published', 'Partly published (rule break)', 'Episodes finished (voiced)', 'Production cost per finished episode'])
@@ -68,6 +76,25 @@ export default function StatementPage() {
   const row = (label: string, vals: Num[], f: (v: Num) => string, cls = '', extra: any = {}) =>
     <tr className={cls} key={label + cls} {...extra}><td>{label}</td>{vals.map((v, i) => <td key={i} className={'n' + ((v ?? 0) < 0 ? ' neg' : '')}>{f(v)}</td>)}</tr>
 
+  const renderSection = (s: string) => {
+    if (!data) return null
+    const items = data.items.filter(it => it.section === s), o = !!open[s], name = SECTION_NAME[s] || s
+    return [
+      <tr key={s} className="cat" tabIndex={0} role="button" aria-expanded={o} onClick={() => setOpen({ ...open, [s]: !o })} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setOpen({ ...open, [s]: !o }) } }}>
+        <td colSpan={cols.length + 1}><span className="car">{o ? '▾' : '▸'}</span><b>{name}</b> <span className="fs-muted">{items.length} items</span></td></tr>,
+      ...(o ? items.flatMap(it => {
+        const k = s + '|' + it.item, oi = !!openItem[k], camp = s === 'Ad Spend' ? data.campaigns.find(c => c.name === it.item) : undefined
+        return [
+          <tr key={k} className="item click" tabIndex={0} role="button" aria-expanded={oi} onClick={() => setOpenItem({ ...openItem, [k]: !oi })} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setOpenItem({ ...openItem, [k]: !oi }) } }}>
+            <td><span className="car">{oi ? '▾' : '▸'}</span>{it.item}</td>{it.values.map((v, i) => <td key={i} className="n">{money(v)}</td>)}</tr>,
+          ...(oi ? [<tr key={k + '-d'} className="detail"><td colSpan={cols.length + 1}>{camp
+            ? <>{camp.dates} ({camp.days} days) · <b>{camp.status}</b> · Total cost <b>{money(camp.cost)}</b> · Trials <b>{camp.trials}</b> · Cost per trial <b>{money(camp.costPerTrial)}</b> · Paid subs <b>{camp.subs}</b> · CAC <b>{camp.cac == null ? '— (no paid subs yet)' : money(camp.cac)}</b></>
+            : <>{it.ai_service && <>AI / service: <b>{it.ai_service}</b> · </>}{it.purpose || 'No description yet'}{it.cards.length ? <> · Card {it.cards.join(', ')}</> : null}</>}</td></tr>] : [])]
+      }) : []),
+      row('Subtotal ' + name, data.sections[s], money, 'sub'),
+    ]
+  }
+
   return <main className="fs">
     <style>{CSS}</style>
     <p className="fs-crumb"><a href="/admin/finance">Finance</a> › Statement</p>
@@ -110,34 +137,33 @@ export default function StatementPage() {
             }
             return out
           })}
-          <tr className="sec"><td colSpan={cols.length + 1}>Revenues</td></tr>
+          <tr className="sec"><td colSpan={cols.length + 1}>Part A — Profit from selling stories</td></tr>
+          <tr className="sec2"><td colSpan={cols.length + 1}>Revenue (sales)</td></tr>
           {Object.entries(data.revenue).map(([k, v]) => row(k, v, money, 'item'))}
-          {row('Total revenue (net)', data.totals.revenue, money, 'total')}
-          <tr className="sec"><td colSpan={cols.length + 1}>Expenses</td></tr>
-          {SECTIONS.filter(s => data.items.some(it => it.section === s)).map(s => {
-            const items = data.items.filter(it => it.section === s), o = !!open[s]
-            return [
-              <tr key={s} className="cat" tabIndex={0} role="button" aria-expanded={o} onClick={() => setOpen({ ...open, [s]: !o })} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setOpen({ ...open, [s]: !o }) } }}>
-                <td colSpan={cols.length + 1}><span className="car">{o ? '▾' : '▸'}</span><b>{s}</b> <span className="fs-muted">{items.length} items</span></td></tr>,
-              ...(o ? items.flatMap(it => {
-                const k = s + '|' + it.item, oi = !!openItem[k], camp = s === 'Ad Spend' ? data.campaigns.find(c => c.name === it.item) : undefined
-                return [
-                  <tr key={k} className="item click" tabIndex={0} role="button" aria-expanded={oi} onClick={() => setOpenItem({ ...openItem, [k]: !oi })} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setOpenItem({ ...openItem, [k]: !oi }) } }}>
-                    <td><span className="car">{oi ? '▾' : '▸'}</span>{it.item}</td>{it.values.map((v, i) => <td key={i} className="n">{money(v)}</td>)}</tr>,
-                  ...(oi ? [<tr key={k + '-d'} className="detail"><td colSpan={cols.length + 1}>{camp
-                    ? <>{camp.dates} ({camp.days} days) · <b>{camp.status}</b> · Total cost <b>{money(camp.cost)}</b> · Trials <b>{camp.trials}</b> · Cost per trial <b>{money(camp.costPerTrial)}</b> · Paid subs <b>{camp.subs}</b> · CAC <b>{camp.cac == null ? '— (no paid subs yet)' : money(camp.cac)}</b></>
-                    : <>{it.ai_service && <>AI / service: <b>{it.ai_service}</b> · </>}{it.purpose || 'No description yet'}{it.cards.length ? <> · Card {it.cards.join(', ')}</> : null}</>}</td></tr>] : [])]
-              }) : []),
-              row('Subtotal ' + s, data.sections[s], money, 'sub'),
-            ]
-          })}
-          {row('Total expenses', data.totals.expenses, money, 'total')}
-          {row(data.basis === 'cash' ? 'Cash flow' : 'Profit before tax', data.totals.result, money, 'grand')}
+          {row('Net revenue', data.totals.revenue, money, 'total')}
+          <tr className="sec2"><td colSpan={cols.length + 1}>Cost of revenue</td></tr>
+          {COST_SECTIONS.filter(s => data.items.some(it => it.section === s)).map(renderSection)}
+          {row('Total cost of revenue', data.totals.costOfRevenue, money, 'total')}
+          {row('Gross profit', data.totals.grossProfit, money, 'grand')}
+          {row('Gross margin', data.totals.grossMargin, pct, 'item')}
+          <tr className="sec2"><td colSpan={cols.length + 1}>Operating expenses</td></tr>
+          {OPEX_SECTIONS.filter(s => data.items.some(it => it.section === s)).map(renderSection)}
+          {row('Total operating expenses', data.totals.opex, money, 'total')}
+          {row(data.basis === 'cash' ? 'Operating profit (cash)' : 'Operating profit', data.totals.result, money, 'grand')}
           {row('Plow back % ', cols.map(() => 0.75), v => Math.round((v || 0) * 100) + '%')}
           {row('Plow back $ (to next month, profit months only)', data.totals.plowBack, money)}
           {row('Retained %', cols.map(() => 0.25), v => Math.round((v || 0) * 100) + '%')}
           {row('Retained $', data.totals.retained, money)}
-          <tr className="sec"><td colSpan={cols.length + 1}>Memo (not counted in revenue or cash flow)</td></tr>
+          <tr className="sec"><td colSpan={cols.length + 1}>Part B — Money outside operations (not profit)</td></tr>
+          {data.outsideOps.investors.flatMap(p => [
+            row('Put in by ' + p.name, p.values, money, 'item'),
+            row(p.name + ': total put in to date', p.toDate, money, 'item sub2'),
+          ])}
+          {data.outsideOps.withdrawals.some(v => v) && row('Owner withdrawals', data.outsideOps.withdrawals, money, 'item')}
+          {Object.entries(data.outsideOps.lines).map(([k, v]) => row(PART_B_NAME[k] || k, v, money, 'item'))}
+          {row('Yours to keep or reinvest', data.outsideOps.total, money, 'grand')}
+          {row('Operating profit + Part B (change in the business\'s money)', data.totals.bothParts, money, 'total')}
+          <tr className="sec"><td colSpan={cols.length + 1}>Memo (not counted in revenue or profit)</td></tr>
           {Object.entries(data.memo || {}).map(([k, v]) => row(k, v, money, 'item'))}
         </tbody></table></div>
       {data.recon && <section className="fs-pipe" aria-label="Mercury reconciliation">
@@ -209,6 +235,8 @@ const CSS = `
 .fs tr.click{cursor:pointer}.fs tr.click:hover td,.fs tr.cat:hover td{background:#f0f3f6}
 .fs tr.item td:first-child{padding-left:38px}
 .fs tr.sub td{font-weight:700;border-top:1px solid #3b4552}.fs tr.sub td:first-child{padding-left:38px}
+.fs tr.sec2 td{font-weight:700;font-size:17px;color:#0b3a66;padding-top:14px;text-align:left}
+.fs tr.sub2 td{color:#3b4552;font-size:16px}.fs tr.sub2 td:first-child{padding-left:56px}
 .fs tr.total td{font-weight:700;border-top:2px solid currentColor}
 .fs tr.grand td{font-weight:700;font-size:18px;background:#e9edf2}
 .fs tr.detail td{text-align:left;white-space:normal;font-size:17px;color:#1f2933;padding-left:56px}

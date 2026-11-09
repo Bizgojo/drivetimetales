@@ -2,7 +2,7 @@
 Status: DRAFT for Marc's approval · Nov 9, 2026 · Owner: Marc
 Covers: one list of every place in the canon where Marc must decide or act himself, document by document. Does not cover: the rules themselves (each is in its own document) or the open decisions (CANON-99).
 
-92 decision points across 15 documents (84 from the audit plus 8 added by CANON-99 Part 2, Nov 9, 2026). Every audit item in CANON-99 is answered; new requests appear in CANON-99 Part 3.
+93 decision points across 15 documents (84 from the audit, 8 added by CANON-99 Part 2 and 1 by item 125, Nov 9, 2026). Every audit item in CANON-99 is answered; new requests appear in CANON-99 Part 3.
 
 **[MARC DECIDES]** = Marc approves, chooses or gives his OK. **[MARC DOES]** = something only Marc does himself (tests on his phone, listens, enters a key). Agents never act in Marc's place on these.
 
@@ -144,6 +144,7 @@ Covers: one list of every place in the canon where Marc must decide or act himse
 
 - **CANON-14 rule 52 [MARC DECIDES]:** Susan may use the marketing card only with Marc's approval.
 - **CANON-14 rule 59 [MARC DECIDES]:** No automatic profit transfers. Any transfer needs Marc's explicit word.
+- **CANON-14 decision 125 [MARC DECIDES]:** What Marc reinvests from Part B (money outside operations), and when, is his choice.
 - Open in this document: Nothing open in this document (CANON-99 answered Nov 9, 2026).
 
 ## CANON-15 — Agents, Code & Operations
