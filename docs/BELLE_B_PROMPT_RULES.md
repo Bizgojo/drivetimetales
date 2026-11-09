@@ -82,14 +82,10 @@ Every Belle line must:
 - Avoid over-explaining the plot
 - Avoid exact local time or location references
 
-Time-of-day awareness may be used only as broad atmosphere:
-
-Allowed:
-- "on this late drive"
-- "as the day winds down"
-- "wherever the road has you right now"
+Never mention time of day (Marc, Nov 9, 2026: audio is made once and heard at any hour). Broad place-free warmth is fine ("wherever the road has you right now").
 
 Forbidden:
+- "on this late drive", "tonight", "as the day winds down", or any other time of day
 - "It is 10:42 PM where you are"
 - "You're driving near..."
 - "I know you're listening from..."
@@ -125,25 +121,21 @@ Target length:
 
 ## NON-FINAL OUTRO PROMPT RULES
 
-Use non-final outro rules when another episode follows.
+BELLE-OUTRO-FORWARD-001 (Marc, Nov 8, 2026). Code: lib/belleOutroForward.ts. Canon: docs/canon/CANON-04.
 
-Belle should:
-- Enter after the story ending and music swell
-- Briefly recap the cliffhanger or changed state
-- Hook the next episode
-- Avoid resolving the series
-- Avoid credit/tag language that sounds final
+Use non-final outro rules when another episode follows. Belle's outro is EXACTLY TWO SENTENCES, in this order:
+1. One sentence recapping this episode. One only.
+2. One sentence promoting the next episode that says its number (in words) and the series name.
 
-Target length:
-- 1-2 sentences
+Not allowed: more than one recap sentence; a tease that doesn't name the next episode's number; ending on the recap; author or narrator credit; "an Endless Tales original"; time of day; anything that sounds like the series is over. At most 42 words.
 
 ### Non-final outro example
 
-> Belle B: Lorne has found the patrol car, but the dashcam is still recording from inside an empty grave. Next time on "Blackwater Mile," the river gives up the name everyone buried.
+> Belle B: Lorne found the patrol car, and the dashcam was still recording. In Episode Four of "Blackwater Mile," the river gives up the name everyone buried.
 
 ### Non-final outro example — restrained
 
-> Belle B: The bridge is open again, but only because something crossed first. In the next episode of "Blackwater Mile," Lorne follows the wet footprints home.
+> Belle B: The bridge is open again, but only because something crossed first. In Episode Five of "Blackwater Mile," Lorne follows the wet footprints home.
 
 ---
 
@@ -156,18 +148,19 @@ Belle should:
 - Give emotional closure
 - Credit title and author
 - Include "an Endless Tales Original"
-- Avoid next-episode language
+- Never point to another episode or story
+- Keep the listener-name personalization statement as it works today (the name sign-off plays before Belle's credits, with no gap)
 
 Target length:
-- 1-3 sentences
+- 1-2 sentences, at most 42 words
 
 ### Finale outro example
 
-> Belle B: The river has gone quiet, but Blackwater will never mistake quiet for peace again. You've been listening to "Blackwater Mile" by Caroline Drake, an Endless Tales Original.
+> Belle B: The river has gone quiet, but Blackwater will never mistake quiet for peace again. You've been listening to "Blackwater Mile" by Caroline Drake, read by Evelyn Bales, an Endless Tales Original.
 
 ### Finale outro example — softer closure
 
-> Belle B: Some crossings take a lifetime to come back from. This was "Blackwater Mile" by Caroline Drake, an Endless Tales Original.
+> Belle B: Some crossings take a lifetime to come back from. You've been listening to "Blackwater Mile" by Caroline Drake, read by Evelyn Bales, an Endless Tales Original.
 
 ---
 
@@ -176,10 +169,10 @@ Target length:
 | Episode state | Intro behavior | Outro behavior |
 | --- | --- | --- |
 | Standalone exception | Introduce title and tone | Close cleanly, no next-episode hook |
-| First episode | Invite into the series | Hook episode two if not finale |
-| Middle episode | Reconnect to prior state | Recap cliffhanger and hook next episode |
-| Non-final episode | Assume continuity | Must point to next episode |
-| Finale | Carry final momentum | Emotional closure plus title/author/Endless Tales Original |
+| First episode | Invite into the series | One recap sentence, then Episode Two by number |
+| Middle episode | Reconnect to prior state | One recap sentence, then the next episode by number |
+| Non-final episode | Assume continuity | Must promote the next episode by number with the series name |
+| Finale | Carry final momentum | Emotional closure plus title/author/narrator/Endless Tales Original; never points onward |
 
 ---
 

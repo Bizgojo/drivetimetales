@@ -32,6 +32,7 @@ import {
 } from './belleValidation'
 import { detectNarrativeHookCategory } from './narrativeHook'
 import { episodeNumberNamedIn, normalizeNumberWords } from './numberWords'
+import { checkNonFinaleOutro } from './belleOutroForward'
 
 export type BellePublishEpisodeType = 'standalone' | 'series_non_finale' | 'series_finale'
 
@@ -232,14 +233,19 @@ export function evaluateBelleCopyForPublish(story: BellePublishStory): BellePubl
     if (hasSeriesClosureLanguage(outro)) {
       blockers.push('non-finale outro must not present final-series closure language')
     }
-    if (!hasEmotionalResidueOrReflection(outro)) {
-      blockers.push('non-finale outro must include emotional residue or reflection (not plot summary only)')
-    }
-    if (!hasCompanionPresence(outro)) {
-      blockers.push('non-finale outro must acknowledge companion presence (Belle or listener, not clinical recap)')
-    }
-    if (!hasNextEpisodeTeaseLang(outro)) {
-      blockers.push('non-finale outro must tease or point toward the next episode')
+    // BELLE-OUTRO-FORWARD-001 (Marc, Nov 8, 2026): new outros are one recap
+    // sentence, then the next episode by number with the series name. The
+    // writer and voice steps enforce that. This publish gate is the last
+    // safety net for audio that already exists, so an outro voiced under the
+    // previous rule (reflection + companion + next-episode tease, e.g. Rerouted
+    // EP2-3, approved by Marc Nov 8) still publishes.
+    const forwardIssues = checkNonFinaleOutro(outro, {
+      seriesName,
+      nextEpisodeNumber: episodeNumOrNull !== null ? episodeNumOrNull + 1 : null,
+    })
+    const passesPreviousRule = hasEmotionalResidueOrReflection(outro) && hasCompanionPresence(outro) && hasNextEpisodeTeaseLang(outro)
+    if (forwardIssues.length > 0 && !passesPreviousRule) {
+      blockers.push(...forwardIssues)
     }
   }
 

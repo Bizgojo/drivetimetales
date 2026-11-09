@@ -486,7 +486,7 @@ Use the CURRENT published rules:
 - Belle B intro must never mention the author, narrator, or "an Endless Tales original"; those credits belong only in the Belle B outro.
 - BELLE-004: The FIRST episode of a series must name the series title and author in the intro.
 - BELLE-006: Interior and final episodes must NOT name the series title or author in the intro or outro. The old requirement to name the series title in every episode's Belle B intro was wrong — it directly contradicted BELLE-006 and has been dropped (Marc ruling, 2026-08-29).
-- Series non-finale episodes: Belle B outro must NOT credit the author or narrator — save those credits for the finale only. Non-finale outros must tease what comes next AND include emotional residue or reflection (not plot summary only) — end on the cliffhanger emotion with a reflective beat, not a bare tease (see the reflection rule in the BELLE B OUTRO template below).
+- Series non-finale episodes: Belle B outro must NOT credit the author or narrator — save those credits for the finale only. Non-finale outros follow BELLE-OUTRO-FORWARD-001 (Marc, Nov 8): EXACTLY two sentences — one sentence recapping this episode, then In Episode <next number in words> of "<Series Name>," <what the listener will find out>.
 - Series finale episodes: Belle B outro is 1–2 sentences, ≤42 words total. No "That was" opener. Open with an emotional beat that references the story's resolution or the character left in the listener's mind. Then: title + author + narrator name + "an Endless Tales original." No spoken rating CTA — rating is handled by the review screen.
 - Standalone episodes: Belle B outro is 1–2 sentences, ≤42 words total. No "That was" opener. Open with an emotional beat that references the story's resolution or the character left in the listener's mind. Then: title + author + narrator name + "an Endless Tales original." No spoken rating CTA — rating is handled by the review screen.
 - SFX (SFX-001, Marc 2026-10-31): no fixed number. Write a [SFX: short description] cue wherever the story makes a sound the listener should hear: action, arrivals, doors, phones, weather, a change of place. Every cue must come from something that happens in the story; never decorate quiet dialogue.${sfxSoundAgreementRule()}
@@ -532,8 +532,8 @@ CHARACTER NAME: ...
 
 BELLE B OUTRO
 ---
-BELLE B: [For series non-finales: do NOT credit the author or narrator — tease the next episode AND include emotional residue or reflection (not plot summary only); hold the cliffhanger emotion with a reflective beat instead of a bare tease.
-${REFLECTION_RULE_PROMPT_FRAGMENT} For series finales and standalone episodes: 1–2 sentences, ≤42 words total, no "That was" opener; open with an emotional beat referencing the story's resolution or the character left in the listener's mind; then title + author + narrator name + "an Endless Tales original." No spoken rating CTA — rating is handled by the review screen.]
+BELLE B: [For series non-finales: do NOT credit the author or narrator; exactly two sentences: one recap sentence, then In Episode <next number in words> of "<Series Name>," <what the listener will find out>. No time-of-day reference, at most 42 words. For standalone episodes (reflection rule applies):
+${REFLECTION_RULE_PROMPT_FRAGMENT} For series finales and standalone episodes: 1–2 sentences, ≤42 words total, no "That was" opener; open with an emotional beat referencing the story's resolution or the character left in the listener's mind; then the credit: You've been listening to "<title>" by <author>, read by <narrator>, an Endless Tales Original. Never mention time of day. No spoken rating CTA — rating is handled by the review screen.]
 
 Production-format hard rules:
 - Speaker labels are for spoken words only.

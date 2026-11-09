@@ -103,11 +103,11 @@ function validateVariant(variant: BelleVariant, story: any) {
   if (variant.kind === 'intro' && /\bbegins now\b/i.test(text)) errors.push('generic/canned wording detected')
   if (variant.kind === 'intro' && text.split(/\s+/).filter(Boolean).length > 35) errors.push('intro must be short and conversational')
   if (variant.kind === 'outro' && text.split(/\s+/).filter(Boolean).length < 12) errors.push('outro must leave emotional warmth, not a hard stop')
-  if (variant.kind === 'outro' && text.split(/\s+/).filter(Boolean).length > 55) errors.push('outro must be short and leave a feeling, not resolve the whole plot')
+  if (variant.kind === 'outro' && text.split(/\s+/).filter(Boolean).length > 42) errors.push('outro must be short and leave a feeling, not resolve the whole plot')
   if (variant.kind === 'outro' && (text.match(/[.!?]+/g) || []).length > 3) errors.push('outro must be concise')
   if (variant.kind === 'outro' && /^\s*that was\b/i.test(text)) errors.push('outro must not use a flat "That was..." structure')
   if (/\b(summary|summarize|plot|synopsis)\b/i.test(text)) errors.push('must not mechanically summarize the plot')
-  if (variant.kind === 'outro' && position && position !== 'finale' && variant.variant_key === 'series_continue' && !/\b(next time|next episode|in the next episode|continues|will have to|will need to)\b/i.test(text)) {
+  if (variant.kind === 'outro' && position && position !== 'finale' && variant.variant_key === 'series_continue' && !/\b(next time|next episode|in the next episode|in episode \w+|continues|will have to|will need to)\b/i.test(text)) {
     errors.push('non-final series outro must pull toward the next episode')
   }
   if (variant.kind === 'outro' && position === 'finale' && /\b(next time|next episode|continues|to be continued)\b/i.test(text)) {
@@ -233,11 +233,11 @@ Canonical rules:
 - Outros should feel reflective, human, host-like, and emotionally lingering.
 - Belle should bridge the listener from the story ending into either the next episode or closure.
 - Outros may be slightly longer than intros, but still concise.
-- Non-final series outros must briefly recap the current stakes and strongly pull the listener toward the next episode.
-- Finale outros must give emotional closure and may say the title, author, and "an Endless Tales Original."
+- Non-final series outros (BELLE-OUTRO-FORWARD-001, Marc Nov 8): exactly two sentences: one sentence recapping this episode, then In Episode <next number in words> of "<Series Name>," <what the listener will find out>.
+- Finale outros give emotional closure, never point to another episode, and end: You've been listening to "<title>" by <author>, read by <narrator>, an Endless Tales Original.
 - Standalone outros should feel complete but not emotionally closed-off.
 - Series outros should create a natural emotional pull toward the next episode.
-- Subtle time-of-day atmosphere is allowed, but never exact time, location, or creepy listener surveillance.
+- Never mention time of day ("tonight", "late drive"), exact time, location, or anything that sounds like listener surveillance.
 - No speaker labels.
 - Do not write: "Welcome", "begins now", "only on Endless Tales", "come with me", "come back", "come down", "you should", "get ready", "sit back", "relax and enjoy".
 - Avoid rhetorical questions unless the line sounds like real speech.
@@ -266,7 +266,7 @@ Outro rules:
 - Avoid "That was..." as the dominant structure.
 - Finale outros may include title, author, and "an Endless Tales Original." Non-final outros should not sound like final credits.
 - For standalone stories, close with a resonant image or consequence.
-- For series non-finales, name one specific unresolved consequence and create a next-episode pull.
+- For series non-finales, recap this episode in one sentence, then promote the next episode by number with the series name.
 - For finales, do not tease another episode.
 - The variant_key values are fixed API keys. Return exactly these seven keys and do not rename them, even for finales: session_first, session_continue, returning_listener, simple, simple, reflective, series_continue.
 

@@ -96,10 +96,11 @@ describe('REFLECTION-RULE-UNIFICATION-001: repair path uses the shared fragment'
     expect(start).toBeGreaterThanOrEqual(0)
     expect(end).toBeGreaterThan(start)
     const span = runNextRoute.slice(start, end)
-    const anchor = span.indexOf('Non-finale outro must tease or point toward the next episode.')
-    expect(anchor).toBeGreaterThanOrEqual(0)
-    expect(span.indexOf(INTERP)).toBeGreaterThan(anchor)
-    expect(countInterps(span)).toBe(1)
+    // BELLE-OUTRO-FORWARD-001 (Marc, Nov 8, 2026) replaced the reflection
+    // rule for non-finale outros: this series repair prompt states the
+    // forward rule and no longer interpolates the reflection fragment.
+    expect(span).toMatch(/BELLE-OUTRO-FORWARD-001/)
+    expect(countInterps(span)).toBe(0)
   })
 
   test('quality validator prompt interpolates the fragment after its outro anchor', () => {
@@ -108,7 +109,8 @@ describe('REFLECTION-RULE-UNIFICATION-001: repair path uses the shared fragment'
     expect(start).toBeGreaterThanOrEqual(0)
     expect(end).toBeGreaterThan(start)
     const span = runNextRoute.slice(start, end)
-    const anchor = span.indexOf('Only fail a series non-finale outro')
+    expect(span).toMatch(/BELLE-OUTRO-FORWARD-001/)
+    const anchor = span.indexOf('Standalone outros: apply the reflection rule below.')
     expect(anchor).toBeGreaterThanOrEqual(0)
     expect(span.indexOf(INTERP)).toBeGreaterThan(anchor)
     expect(countInterps(span)).toBe(1)
@@ -135,11 +137,10 @@ describe('REFLECTION-RULE-UNIFICATION-001: generation path uses the shared fragm
     expect(start).toBeGreaterThanOrEqual(0)
     expect(end).toBeGreaterThan(start)
     const span = seriesPackageRoute.slice(start, end)
-    const anchor = span.indexOf('reflective cliffhanger tease')
-    expect(anchor).toBeGreaterThanOrEqual(0)
-    expect(span.indexOf(INTERP)).toBeGreaterThan(anchor)
-    // Exactly one interpolation in the template block (duplication guard).
-    expect(span.split(INTERP).length - 1).toBe(1)
+    // BELLE-OUTRO-FORWARD-001: non-finale = one recap sentence, then the next
+    // episode by number; the reflection fragment no longer applies here.
+    expect(span).toMatch(/Sentence 2: In Episode/)
+    expect(span.split(INTERP).length - 1).toBe(0)
   })
 
   test('standalone/series script generation interpolates the fragment in the outro template', () => {
@@ -149,7 +150,7 @@ describe('REFLECTION-RULE-UNIFICATION-001: generation path uses the shared fragm
     expect(start).toBeGreaterThanOrEqual(0)
     expect(end).toBeGreaterThan(start)
     const span = generateScriptRoute.slice(start, end)
-    const anchor = span.indexOf('hold the cliffhanger emotion with a reflective beat')
+    const anchor = span.indexOf('For standalone episodes (reflection rule applies):')
     expect(anchor).toBeGreaterThanOrEqual(0)
     expect(span.indexOf(INTERP)).toBeGreaterThan(anchor)
     // Exactly one interpolation in the template block (duplication guard).
