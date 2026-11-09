@@ -1,3 +1,5 @@
+> **REPLACED (Nov 9, 2026).** The rules in [docs/PLAYER-RULES.md](PLAYER-RULES.md) are the single source of truth for the player. This file is kept as history and test detail only; where it disagrees with PLAYER-RULES.md, PLAYER-RULES.md wins.
+
 # Mobile interruption and resume audit — 2026-10-31
 
 ## Release status

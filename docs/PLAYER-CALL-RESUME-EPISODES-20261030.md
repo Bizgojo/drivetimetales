@@ -1,3 +1,5 @@
+> **REPLACED (Nov 9, 2026).** The rules in [docs/PLAYER-RULES.md](PLAYER-RULES.md) are the single source of truth for the player. This file is kept as history and test detail only; where it disagrees with PLAYER-RULES.md, PLAYER-RULES.md wins.
+
 # Phone interruption recovery and series navigation
 
 Prepared on a separate branch from main `407f118d01e4b2c4f1d4c867cc0e7f6a7b2f6439`. No Admin, production pipeline, spending, publication, database schema, or deployment changes.
