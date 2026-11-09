@@ -12,6 +12,7 @@ Covers: the list of canon documents, which one wins when they disagree, and how 
    - **Proposed:** a rule the audit thinks is needed. It is not in force until Marc approves it.
 4. Every canon document starts with a **"Where Marc decides"** list, and each of those rules carries a tag: **[MARC DECIDES]** (Marc approves, chooses or gives his OK) or **[MARC DOES]** (something only Marc does himself, such as testing on his phone, listening, or entering a key). Agents never act in Marc's place on a tagged rule. CANON-98 lists every one of them in one place.
 5. A document marked **DRAFT** is not law yet, except the rules in it already marked Agreed. When Marc approves a document, its status changes to **APPROVED** with the date.
+   - **Nov 9, 2026: Marc approved CANON-01 to CANON-15.** Every rule in them is law, including rules marked In force (code) or Proposed that a decision did not change; a Proposed rule that Marc wants changed goes through CANON-99.
 
 ## The canon documents
 
@@ -56,6 +57,6 @@ Covers: the list of canon documents, which one wins when they disagree, and how 
 
 ## Earlier canon this set brings together
 
-- docs/PLAYER-RULES.md (approved Nov 9) is copied into CANON-11 word for word. Once CANON-11 is approved, PLAYER-RULES.md becomes a pointer to it.
-- docs/PIPELINE-CANON.md's rules are placed in the documents for their steps: production (01), writer (03), Belle (04), quality checks (08), publishing (09) and covers and eBooks (10). Once those are approved, PIPELINE-CANON.md becomes a pointer.
+- docs/PLAYER-RULES.md: copied into CANON-11 word for word. CANON-11 was approved Nov 9, 2026, so CANON-11 is now the rule; PLAYER-RULES.md carries a banner pointing to it.
+- docs/PIPELINE-CANON.md: its rules are in CANON-01, 03, 04, 08, 09 and 10, approved Nov 9, 2026. Those documents are now the rule; PIPELINE-CANON.md carries a banner pointing to them.
 - AGENTS.md keeps a short Canon index that points here.

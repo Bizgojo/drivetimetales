@@ -1,5 +1,5 @@
 # CANON-02 — Story Ideas, Series Planning & Briefs
-Status: DRAFT for Marc's approval · Nov 9, 2026 · Owner: Marc
+Status: **APPROVED** (Marc, Nov 9, 2026: "approve canon 01–15") · Owner: Marc · Changes only through CANON-99 (CANON-00 rules 10–16)
 Covers: everything decided before a script is written — genres, authors, premise, hook, series type and length, series bible, cast and fact sheet, hook-first series, Pocket FM opt-in, series continuation, runtime targets in the brief, the brief itself. Does not cover: writing the script (CANON-03 The Writer); Belle intro/outro wording; sound, mixing, voices, covers, publishing and the player (their own CANON docs).
 
 ## Where Marc decides

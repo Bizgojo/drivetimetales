@@ -1,5 +1,5 @@
 # CANON-10 — Covers, Images & eBooks
-Status: DRAFT for Marc's approval · Nov 9, 2026 · Owner: Marc
+Status: **APPROVED** (Marc, Nov 9, 2026: "approve canon 01–15") · Owner: Marc · Changes only through CANON-99 (CANON-00 rules 10–16)
 Covers: how cover art is made, checked, remade and paid for; author and narrator photos; the eBook text (`prose_text`) that goes with every story. Does not cover: ad images and ad creative (marketing canon), when a story goes live (CANON-09), story writing (CANON-03).
 
 ## Where Marc decides

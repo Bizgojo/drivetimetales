@@ -1,5 +1,5 @@
 # CANON-01 — Story Production Process (the end-to-end map)
-Status: DRAFT for Marc's approval · Nov 9, 2026 · Owner: Marc
+Status: **APPROVED** (Marc, Nov 9, 2026: "approve canon 01–15") · Owner: Marc · Changes only through CANON-99 (CANON-00 rules 10–16)
 Covers: every step from idea to live story, in order; who runs each step; job states; retries; stuck and failed jobs; restore points and recovery. Does not cover: the detailed rules inside each step. Those live in CANON-02 (ideas and briefs), CANON-03 (writer), CANON-04 (Belle), CANON-05 (voices), CANON-06 (sound effects), CANON-07 (music and mix), CANON-08 (quality gates), CANON-09 (publishing), CANON-10 (covers and eBooks).
 
 ## Where Marc decides

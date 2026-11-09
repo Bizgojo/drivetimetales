@@ -1,5 +1,5 @@
 # CANON-11 — The Player
-Status: DRAFT for Marc's approval · Nov 9, 2026 · Owner: Marc
+Status: **APPROVED** (Marc, Nov 9, 2026: "approve canon 01–15") · Owner: Marc · Changes only through CANON-99 (CANON-00 rules 10–16)
 Covers: everything that happens inside the player: playback, sting and Belle, pause and resume, saving progress, series buttons, auto-continue, the "Up next" gap, the review pop-up at story end, lock-screen and car controls, skip buttons, the offline player, the eBook reader inside the player, and play logging. Does not cover: the Library, story cards, Rate button look, playlists as a list, sign-up, trial and paywall (CANON-12 The Listener App); how stories, Belle intros/outros and name clips are written and voiced (story pipeline canon, docs/PIPELINE-CANON.md).
 
 Note: docs/PLAYER-RULES.md is approved canon (Marc, Nov 9). Sections A to F copy it with the same meaning. Section G adds what it misses.

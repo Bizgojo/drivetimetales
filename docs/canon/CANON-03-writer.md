@@ -1,5 +1,5 @@
 # CANON-03 — The Writer (Script Rules)
-Status: DRAFT for Marc's approval · Nov 9, 2026 · Owner: Marc
+Status: **APPROVED** (Marc, Nov 9, 2026: "approve canon 01–15") · Owner: Marc · Changes only through CANON-99 (CANON-00 rules 10–16)
 Covers: everything the pipeline script writer must do — who may write, maps before drafting, hook and opening, structure, cliffhangers and endings, clarity, script format, speaker labels, text the voices will speak, length, and the writer's own checks. Does not cover: planning and briefs (CANON-02); Belle intro/outro wording (Belle CANON doc); sound effects, mixing, voices, covers, publishing and the player (their own CANON docs).
 
 ## Where Marc decides

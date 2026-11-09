@@ -1,3 +1,5 @@
+> **REPLACED BY THE CANON SET (approved by Marc, Nov 9, 2026).** Every rule below now lives in its step's document under docs/canon/ (CANON-01 production, 03 writer, 04 Belle, 08 quality checks, 09 publishing, 10 covers and eBooks), which is the rule. This file is kept for history. Rule changes go through CANON-99 only.
+
 # PIPELINE CANON
 
 **The single home for all standing pipeline governance rules.**

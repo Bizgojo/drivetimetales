@@ -1,5 +1,5 @@
 # CANON-06 — Sound Effects
-Status: DRAFT for Marc's approval · Nov 9, 2026 · Owner: Marc
+Status: **APPROVED** (Marc, Nov 9, 2026: "approve canon 01–15") · Owner: Marc · Changes only through CANON-99 (CANON-00 rules 10–16)
 Covers: where sound effects come from, the licence, the sound catalog, Gemini screening, the replace loop, when a sound plays, spot vs background sounds, the [SFX:] cue in scripts, what happens when a sound is missing, locked sounds, and never touching published episodes. Does not cover: music, levels of music and the final mix (CANON-07 Music & Final Mix); how writers write scenes and Belle (script-writing canon); voices; publishing; the player.
 
 ## Where Marc decides

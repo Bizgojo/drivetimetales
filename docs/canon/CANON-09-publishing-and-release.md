@@ -1,5 +1,5 @@
 # CANON-09 — Publishing & Release
-Status: DRAFT for Marc's approval · Nov 9, 2026 · Owner: Marc
+Status: **APPROVED** (Marc, Nov 9, 2026: "approve canon 01–15") · Owner: Marc · Changes only through CANON-99 (CANON-00 rules 10–16)
 Covers: the publish switch, when and how stories go live, episode numbering, hidden episodes, unpublishing, cold storage, the publication hold, the needs_attention flag, approval records and story history. Does not cover: the quality checks that must pass before publishing (CANON-08), covers and eBooks (CANON-10), or what the player does with live episodes (docs/PLAYER-RULES.md).
 
 ## Where Marc decides
