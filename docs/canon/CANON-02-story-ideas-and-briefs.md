@@ -16,7 +16,7 @@ Every rule in this document that needs Marc. **[MARC DECIDES]** = Marc approves,
 - **Rule 53 [MARC DECIDES]:** After a series finale, the series is scored for character attachment (0–8); 5+ = recommend a new season to Marc. New seasons must raise stakes,…
 - **Rule 54 [MARC DECIDES]:** Adding episodes never re-plans, rewrites, re-titles, re-hides or re-voices episodes that already exist. New episodes are planned only for the…
 - **Rule 63 [MARC DECIDES]:** When Marc or Maya sets a per-episode length, each episode lands within ±20% of it.
-- **Still open:** 3 conflicts or questions below, each with a recommendation in CANON-99 Part 2.
+- **Still open:** nothing. Every conflict and question below is RESOLVED (CANON-99 Parts 1 and 2, Nov 9, 2026).
 
 ## Rules
 
@@ -120,6 +120,9 @@ Marc answered CANON-99 on Nov 9, 2026. These decisions are **Agreed** and overri
 - **Decision 13:** **Author roster.** Decided: the database authors table is the only roster; remove the lists in the Bible and the writer prompt. (02 C1) — **Agreed** (Marc, Nov 9, 2026, CANON-99)
 - **Decision 16:** **Avoid-list of recent premises, places and names.** Decided: build it now, as a warning. (02 Q4) — **Agreed** (Marc, Nov 9, 2026, CANON-99)
 - **Decision 17:** **Series bible for a continued series.** Decided: the pipeline writes it; you approve it only for series running in ads. (02 Q7) — **Agreed** (Marc, Nov 9, 2026, CANON-99)
+- **Decision 63:** Each series carries its own "style" setting (standard or Pocket FM). The canon list of Pocket FM series is examples only. (02 C7) — **Agreed** (Marc, Nov 9, 2026, CANON-99 Part 2)
+- **Decision 64:** Standalone single stories stay allowed. "No 1-episode stories live" means no series showing only some of its episodes. (02 Q2) — **Agreed** (Marc, Nov 9, 2026, CANON-99 Part 2)
+- **Decision 65:** A hook series is a "winner" when its cost per trial is at or under the $26–31 target and at least 40% of its trial users reach Episode 3. (02 Q3) — **Agreed** (Marc, Nov 9, 2026, CANON-99 Part 2)
 
 ## Conflicts found
 - C1. **[RESOLVED by decision 13, Marc Nov 9, 2026]** Author roster: ET_Story_Rules_v3_2 lists 10 authors; STAGE2 v2.4 lists 31; STYLE-001 (Nov 1) says 50 active authors; AGENTS.md says exactly 3 per genre. Recommendation: the database authors table is the roster; delete the static tables from the Bible and STAGE2 prompt. Marc decides.
@@ -128,12 +131,12 @@ Marc answered CANON-99 on Nov 9, 2026. These decisions are **Agreed** and overri
 - C4. **[RESOLVED by decision 12, Marc Nov 9, 2026]** STORY_BRIEF_TEMPLATE v2.2 is stale: it still cites the retired Series Release Rule, 3–6 anchor SFX (Marc removed the cap Oct 31), a 24-word description (Marc Nov 5: fills two card lines), "Belle never mentions the author" (BELLE-004 says Episode 1 names the author), a 10-minute runtime option (below the 12.5-minute floor), and PIPELINE_MODE transition/full. Recommendation: retire the template and replace it per rule 66.
 - C5. **[RESOLVED by decision 4, Marc Nov 9, 2026]** Length tolerance: LENGTH-002 says ±20% of target; RUNTIME-GATE-001 (code) says ±10% on the final mix; the series ceiling is brief × 1.35. Recommendation: one rule — standalone ±10%, series between the 12.5-minute floor and brief × 1.35. Marc decides.
 - C6. **[RESOLVED by decision 9, Marc Nov 9, 2026]** Open threads: ENDING-001 and Bible Part XVII say a finale resolves all major threads and never teases a sequel; SERIES-NEMESIS-001 (Oct 30) allows one escaped villain, Altar three. Recommendation: newer rule 33 wins; the sequel thread is never teased by Belle.
-- C7. Pocket FM list: PIPELINE-CANON names only Widow, Second Rise and Weekend Wife as Pocket FM; Marc also chose Pocket FM for "The Man I Left at the Altar" (Nov 3) and a second 30-episode series (Nov 5). Recommendation: keep a per-series style_mode field; the canon list is examples only.
+- C7. **[RESOLVED by decision 63, Marc Nov 9, 2026]** Pocket FM list: PIPELINE-CANON names only Widow, Second Rise and Weekend Wife as Pocket FM; Marc also chose Pocket FM for "The Man I Left at the Altar" (Nov 3) and a second 30-episode series (Nov 5). Recommendation: keep a per-series style_mode field; the canon list is examples only.
 
 ## Open questions for Marc
 - Q1. **[RESOLVED by decision 5, Marc Nov 9, 2026]** Are 3-episode series still allowed for new work? Suggested answer: only when you ask for one.
-- Q2. Does "no 1-episode stories live" (Nov 8) also ban standalone single stories, or only a series showing one episode? Suggested answer: only the series case; standalones stay allowed for discovery and tests.
-- Q3. What numbers make a hook series a "winner" to extend to 20–30 episodes? Suggested answer: cost per trial at or under the $26–31 CAC target band and at least 40% of trial users reaching Episode 3.
+- Q2. **[RESOLVED by decision 64, Marc Nov 9, 2026]** Does "no 1-episode stories live" (Nov 8) also ban standalone single stories, or only a series showing one episode? Suggested answer: only the series case; standalones stay allowed for discovery and tests.
+- Q3. **[RESOLVED by decision 65, Marc Nov 9, 2026]** What numbers make a hook series a "winner" to extend to 20–30 episodes? Suggested answer: cost per trial at or under the $26–31 CAC target band and at least 40% of trial users reaching Episode 3.
 - Q4. **[RESOLVED by decision 16, Marc Nov 9, 2026]** Should the avoid-list of recent premises, settings and names (rule 25) be built now? Suggested answer: yes, now that Stabilization Week is over; warning only, like known-adjacent clusters.
 - Q5. **[RESOLVED by decision 12, Marc Nov 9, 2026]** NEDS (rule 52): the scorers named in the Bible (Hal, Vega) no longer do this job, and no code checks it. Keep it? Suggested answer: drop NEDS; the Story Clarity check and Gemini's script read replace it.
 - Q6. **[RESOLVED by decision 12, Marc Nov 9, 2026]** Character-attachment scoring after each finale (rule 53): keep? Suggested answer: replace with listener data (completion rate, Episode 3 reach) in the weekly report.

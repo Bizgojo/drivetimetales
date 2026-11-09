@@ -14,7 +14,7 @@ Every rule in this document that needs Marc. **[MARC DECIDES]** = Marc approves,
 - **Rule 34 [MARC DECIDES]:** Only Marc releases the hold. Claude or Orion may turn it on to stop test content or a wrong publish, then must tell Marc at once.
 - **Rule 42 [MARC DECIDES]:** A live story with a problem stays live unless Marc says otherwise ("After the Last Train" stays up).
 - **Rule 45 [MARC DECIDES]:** A partly published series breaks rule 11. On finding one, do not publish more single episodes. Either finish all episodes and publish them…
-- **Still open:** 3 conflicts or questions below, each with a recommendation in CANON-99 Part 2.
+- **Still open:** nothing. Every conflict and question below is RESOLVED (CANON-99 Parts 1 and 2, Nov 9, 2026).
 
 ## Rules
 
@@ -100,19 +100,21 @@ Marc answered CANON-99 on Nov 9, 2026. These decisions are **Agreed** and overri
 - **Decision 24:** **Gemini's final read.** Decided: report-only until it agrees with you on 9 of 10 series, then it must pass before a Direct publish. (01 Q2, 09 C2, Q3) — **Agreed** (Marc, Nov 9, 2026, CANON-99)
 - **Decision 44:** **No episode goes live alone.** Decided: every publish path refuses to publish part of a series (today the manual publish can). (09 conflict 1) — **Agreed** (Marc, Nov 9, 2026, CANON-99)
 - **Decision 45:** **Who may unpublish.** Decided: only you, except that Claude may hide a story with broken audio at once and tell you. (09 Q2) — **Agreed** (Marc, Nov 9, 2026, CANON-99)
+- **Decision 88:** The old production process and Series Release Rule become history; PIPELINE-CANON's rule titles get corrected. (09 C3, C5) — **Agreed** (Marc, Nov 9, 2026, CANON-99 Part 2)
+- **Decision 89:** Test stories carry a "test" mark, and every publish path refuses them. (09 Q4) — **Agreed** (Marc, Nov 9, 2026, CANON-99 Part 2)
 
 ## Conflicts found
 - C1. **[RESOLVED by decision 1, Marc Nov 9, 2026]** Marc Nov 6: launch each hook series' ads "as soon as its own EP2 and EP3 are live" (memory hook-series.md). Marc Nov 5 HOOK-SERIES RULE and Nov 8: all 7 episodes publish together, no 1-episode stories live. Recommendation: Nov 8 wins; ads start only after all 7 are live. Marc decides.
 - C2. **[RESOLVED by decision 24, Marc Nov 9, 2026]** Marc Oct 27 (Direct, no review) and Nov 7 ("leave me out") vs Nov 7 request that Gemini give a final read "and approve it to be published". Gemini's read is built report-only (lib/geminiStoryRead.ts) and runs only on scripts, not on the final mix. Recommendation: Direct stays; Gemini final read becomes a blocking pre-publish check only after the trial in the Story Production Spec. Marc decides.
-- C3. docs/STORY_PRODUCTION_PROCESS.md v1.2 and SERIES-RELEASE-RULE v1/v2 say Marc grades every story (22+/30) and Episode 1 needs Episode 2 live. Both replaced by rules 3–4 and 11. Recommendation: mark as history.
+- C3. **[RESOLVED by decision 88, Marc Nov 9, 2026]** docs/STORY_PRODUCTION_PROCESS.md v1.2 and SERIES-RELEASE-RULE v1/v2 say Marc grades every story (22+/30) and Episode 1 needs Episode 2 live. Both replaced by rules 3–4 and 11. Recommendation: mark as history.
 - C4. **[RESOLVED by decision 4, Marc Nov 9, 2026]** lib/storyQueue/directPublish.ts allows operator direct-publish only for episodes 15–20 minutes. Marc Oct 26 chose series episodes 12–18 minutes, and Pocket FM-style episodes are 12–15 minutes. Recommendation: the length rule belongs to CANON-03/08; publish code should read it from there. Marc decides the numbers.
-- C5. PIPELINE-CANON Rule 2's cross-reference in EPISODE-ADDITION calls Rule 2 "no silent /tmp QC" and Rule 1 "no partial passes"; the real titles are "Quality Gates Block" and "Block Classification". Recommendation: fix the wording in PIPELINE-CANON.
+- C5. **[RESOLVED by decision 88, Marc Nov 9, 2026]** PIPELINE-CANON Rule 2's cross-reference in EPISODE-ADDITION calls Rule 2 "no silent /tmp QC" and Rule 1 "no partial passes"; the real titles are "Quality Gates Block" and "Block Classification". Recommendation: fix the wording in PIPELINE-CANON.
 
 ## Open questions for Marc
 - Q1. **[RESOLVED by decision 2, Marc Nov 9, 2026]** Rerouted EP1 (and other hook EP1s) are live alone today. Hide them until all 7 are ready, or leave them up? Suggested answer: leave them up (ads point to them) but publish no more single episodes; publish EP2–EP7 together.
 - Q2. **[RESOLVED by decision 45, Marc Nov 9, 2026]** Who may unpublish a live story? Suggested answer: only Marc, except a story with broken audio, which Claude may hide at once and report.
 - Q3. **[RESOLVED by decision 24, Marc Nov 9, 2026]** Should Direct mode require the Gemini final read to pass? Suggested answer: yes, after the 1-week shadow trial agrees with Marc.
-- Q4. What is a "test" story, and how is it kept from publishing? Suggested answer: a `is_test` mark that every publish path refuses.
+- Q4. **[RESOLVED by decision 89, Marc Nov 9, 2026]** What is a "test" story, and how is it kept from publishing? Suggested answer: a `is_test` mark that every publish path refuses.
 - Q5. **[RESOLVED by decision 20, Marc Nov 9, 2026]** When a story in the series fails after others pass, can Marc publish the passed ones? Suggested answer: no; the series holds (rule 11).
 
 ## Enforcement status

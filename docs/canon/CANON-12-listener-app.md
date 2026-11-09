@@ -10,7 +10,7 @@ Every rule in this document that needs Marc. **[MARC DECIDES]** = Marc approves,
 - **Rule 60 [MARC DECIDES]:** A new landing story serves only after Marc adds it to the live list.
 - **Rule 68 [MARC DECIDES]:** Push notifications are off until Marc approves what they say and when.
 - **Rule 73 [MARC DOES]:** Marc checks every listener-facing change on a real phone before it is accepted.
-- **Still open:** 4 conflicts or questions below, each with a recommendation in CANON-99 Part 2.
+- **Still open:** nothing. Every conflict and question below is RESOLVED (CANON-99 Parts 1 and 2, Nov 9, 2026).
 
 ## Rules
 
@@ -132,6 +132,10 @@ Marc answered CANON-99 on Nov 9, 2026. These decisions are **Agreed** and overri
 - **Decision 53:** **Old models.** Decided: retire credits and Founding Member everywhere. (12 C4, C8) — **Agreed** (Marc, Nov 9, 2026, CANON-99)
 - **Decision 54:** **Readability and legal name.** Decided: 44-pixel buttons app-wide; legal pages name Endless Tales, LLC. (12 C5, C7) — **Agreed** (Marc, Nov 9, 2026, CANON-99)
 - **Decision 55:** **Settings page.** Decided: remove the controls that don't work; no speed control or sleep timer for now. (11 Q2, 12 Q7) — **Agreed** (Marc, Nov 9, 2026, CANON-99)
+- **Decision 99:** An unknown ad link shows a clear error, never a different story. (12 C9) — **Agreed** (Marc, Nov 9, 2026, CANON-99 Part 2)
+- **Decision 100:** No custom stories until after the Meta test. (12 Q6) — **Agreed** (Marc, Nov 9, 2026, CANON-99 Part 2)
+- **Decision 101:** Offer the annual plan at the end of the trial. (12 Q8) — **Agreed** (Marc, Nov 9, 2026, CANON-99 Part 2)
+- **Decision 102:** Keep the free guest stories (2 stories / 30 minutes). (12 Q9) — **Agreed** (Marc, Nov 9, 2026, CANON-99 Part 2)
 
 ## Conflicts found
 - C1. **[RESOLVED by decision 52, Marc Nov 9, 2026]** Prices. Code and Oct–Nov chats: $9.99/month, $79.99/year (lib/pricing.ts, Sep 19). Older: $7.99/$59.99 "confirmed by Marc 2026-06-05" (app/api/admin/org-status/route.ts) and memory /areas/endless-tales-platform.md; app/api/admin/launch-report/route.ts still computes revenue at $7.99/$59.99. Recommendation: $9.99/$79.99 wins (newer); fix the report. Marc decides.
@@ -142,7 +146,7 @@ Marc answered CANON-99 on Nov 9, 2026. These decisions are **Agreed** and overri
 - C6. **[RESOLVED by decision 8, Marc Nov 9, 2026]** Card description. Marc Nov 5: fills two lines, never a third. Code: cut at 70 characters (LibraryStoryCard.tsx). Recommendation: Marc's two-line rule wins. Marc decides.
 - C7. **[RESOLVED by decision 54, Marc Nov 9, 2026]** Company name. Terms, Privacy and License say "operated by Wonder Books Press". The subscriber company is Endless Tales, LLC (D-U-N-S legal name, Nov 5). Recommendation: Endless Tales, LLC; confirm with legal. Marc decides.
 - C8. **[RESOLVED by decision 53, Marc Nov 9, 2026]** Founding Member retired (Marc Jul 10) but app/api/webhook/route.ts still labels "$29.99/year" Founding Member, and Admin org-status still lists it. Recommendation: remove. Marc decides.
-- C9. Landing fallback. Rule 57 says each ad lands on its own story. lib/landing.ts silently serves the default story for any unknown code. Recommendation: show an error instead (rule 59). Marc decides.
+- C9. **[RESOLVED by decision 99, Marc Nov 9, 2026]** Landing fallback. Rule 57 says each ad lands on its own story. lib/landing.ts silently serves the default story for any unknown code. Recommendation: show an error instead (rule 59). Marc decides.
 
 ## Open questions for Marc
 - Q1. **[RESOLVED by decision 50, Marc Nov 9, 2026]** What is a playlist? Suggested answer: the listener's own "Add to Playlist" list (as built), saved to their account so it follows them; no genre queue for now.
@@ -150,10 +154,10 @@ Marc answered CANON-99 on Nov 9, 2026. These decisions are **Agreed** and overri
 - Q3. **[RESOLVED by decision 51, Marc Nov 9, 2026]** After a trial ends, what may a non-paying listener still hear? Suggested answer: Episode 1 of every series, free forever (your earlier rule), and 60 seconds of a standalone.
 - Q4. **[RESOLVED by decision 52, Marc Nov 9, 2026]** Refunds: keep "no refunds except where law requires", or allow a refund within 7 days of the first charge? Suggested answer: one refund within 7 days of the first charge, to limit card disputes.
 - Q5. **[RESOLVED by decision 51, Marc Nov 9, 2026]** Can the paywall ever stop audio mid-story? Suggested answer: no; the wall shows when the next story starts.
-- Q6. Custom stories (a listener orders a story made for them): offer it, and at what price? Suggested answer: not until after the Meta test.
+- Q6. **[RESOLVED by decision 100, Marc Nov 9, 2026]** Custom stories (a listener orders a story made for them): offer it, and at what price? Suggested answer: not until after the Meta test.
 - Q7. **[RESOLVED by decision 55, Marc Nov 9, 2026]** What should the Settings page keep? Suggested answer: only working items (account, Travel Insights, eBook text size); remove the rest until built.
-- Q8. Annual plan push: offer annual at the end of the trial? Suggested answer: yes, it is the main money lever (Bart, Nov 3).
-- Q9. Should guests get any free story without signing up, now that ads land on /go samples? Suggested answer: keep the free guest stories, same 2-story / 30-minute limit.
+- Q8. **[RESOLVED by decision 101, Marc Nov 9, 2026]** Annual plan push: offer annual at the end of the trial? Suggested answer: yes, it is the main money lever (Bart, Nov 3).
+- Q9. **[RESOLVED by decision 102, Marc Nov 9, 2026]** Should guests get any free story without signing up, now that ads land on /go samples? Suggested answer: keep the free guest stories, same 2-story / 30-minute limit.
 
 ## Enforcement status
 - Rules 1, 2, 4, 5, 9–12, 15, 17–20, 22–24, 27, 29, 30, 32, 34, 36, 38, 41–44, 48, 52–55, 57, 60–67, 74–76: enforced in code.

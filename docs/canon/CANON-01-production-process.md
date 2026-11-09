@@ -12,7 +12,7 @@ Every rule in this document that needs Marc. **[MARC DECIDES]** = Marc approves,
 - **Rule 35 [MARC DECIDES]:** Never merge a PR without Marc's word (except rule 18), and never run a migration without Marc's OK.
 - **Rule 56 [MARC DECIDES]:** Stop and ask Marc when any step could overwrite or hide live content.
 - **Rule 57 [MARC DECIDES]:** Author-written series (Sunset of Competition) are never rewritten by the pipeline. On a failed check it stops and reports; only approved…
-- **Still open:** 2 conflicts or questions below, each with a recommendation in CANON-99 Part 2.
+- **Still open:** nothing. Every conflict and question below is RESOLVED (CANON-99 Parts 1 and 2, Nov 9, 2026).
 
 ## Rules
 
@@ -110,18 +110,20 @@ Marc answered CANON-99 on Nov 9, 2026. These decisions are **Agreed** and overri
 - **Decision 19:** **Restarting failed jobs.** Decided: Claude or Orion may restart a job once with a written reason; a second restart needs you. (01 Q1) — **Agreed** (Marc, Nov 9, 2026, CANON-99)
 - **Decision 20:** **One episode fails mid-series.** Decided: the whole series holds and you're told; nothing in it publishes. (01 Q4, 09 Q5) — **Agreed** (Marc, Nov 9, 2026, CANON-99)
 - **Decision 24:** **Gemini's final read.** Decided: report-only until it agrees with you on 9 of 10 series, then it must pass before a Direct publish. (01 Q2, 09 C2, Q3) — **Agreed** (Marc, Nov 9, 2026, CANON-99)
+- **Decision 61:** Series checks run per episode once built (decision 21); until then, record it as not fully enforced. (01 C4) — **Agreed** (Marc, Nov 9, 2026, CANON-99 Part 2)
+- **Decision 62:** The Nov 7 Story Production Spec: only the Gemini read (report-only) is approved; the rest is replaced by this canon. (01 Q3) — **Agreed** (Marc, Nov 9, 2026, CANON-99 Part 2)
 
 ## Conflicts found
 - C1. **[RESOLVED by decision 12, Marc Nov 9, 2026]** docs/STORY_PRODUCTION_PROCESS.md v1.2 (June 10) describes a manual flow: Marc fills the brief, pastes prompts into Claude chats, sends scripts to Hal on Telegram, grades every story out of 30 before publishing, and uses the Series Release Rule. Today's flow is automatic (dispatch → run-next → publish switch), Hal writes nothing, and the Series Release Rule is retired. Recommendation: this canon wins; mark v1.2 as history. Marc decides.
 - C2. **[RESOLVED by decision 18, Marc Nov 9, 2026]** Repairs: Marc Ruling 1 (Jul 8) said failed stories go to cold storage with no repairs (app/api/cron/repair-queue/route.ts). Marc ruling Jul 9 allows one repair pass. PIPELINE-CANON Rule 1 (Oct 4) requires automatic send-back and retry with no human step. Recommendation: Rule 1 governs content fixes (automatic rewrite, retry limits in rule 45); the one-repair-pass rule still applies to whole production failures. Marc decides.
 - C3. **[RESOLVED by decision 18, Marc Nov 9, 2026]** PIPELINE-CANON Rule 1 says Class B text fixes go to "Hal rewrite". Marc Nov 8 and AGENTS.md: no agent writes scripts; the pipeline writer does. Recommendation: replace "Hal rewrite" with "pipeline writer rewrite" in PIPELINE-CANON. Marc decides.
-- C4. Rule 3 says per-episode gates are the "intended shape … implementation is a separate track". Code still runs one `production_jobs` row per series (shared fate). Recommendation: record as not fully enforced (below), not a rule change.
+- C4. **[RESOLVED by decision 61, Marc Nov 9, 2026]** Rule 3 says per-episode gates are the "intended shape … implementation is a separate track". Code still runs one `production_jobs` row per series (shared fate). Recommendation: record as not fully enforced (below), not a rule change.
 - C5. **[RESOLVED: fact checked or done, Nov 9, 2026; see CANON-99 Part 2]** Memory (Oct 16) says no cron drove run-next; vercel.json now has 4 runner crons, but production runs on EC2 (Caddy → PM2), not Vercel (chat "AWS EC2 setup"). Which scheduler is live is unverified. Recommendation: Orion confirms which runner is live and canon names it.
 
 ## Open questions for Marc
 - Q1. **[RESOLVED by decision 19, Marc Nov 9, 2026]** Who may restart a failed job by hand (Claude, Orion, or only after Marc's word)? Suggested answer: Claude or Orion may re-queue once with a logged reason; a second re-queue needs Marc.
 - Q2. **[RESOLVED by decision 24, Marc Nov 9, 2026]** Should the Gemini read move from "report only" to a gate? Suggested answer: keep report-only until it agrees with Marc on 9 of 10 series (Story Production Spec §9.2, still a draft).
-- Q3. Is the Story Production Spec (Nov 7 Claude Doc) approved or still a draft? Code cites "approved by Marc Nov 7" for the Gemini read only. Suggested answer: only the Gemini read (report-only) is approved; the rest stays draft.
+- Q3. **[RESOLVED by decision 62, Marc Nov 9, 2026]** Is the Story Production Spec (Nov 7 Claude Doc) approved or still a draft? Code cites "approved by Marc Nov 7" for the Gemini read only. Suggested answer: only the Gemini read (report-only) is approved; the rest stays draft.
 - Q4. **[RESOLVED by decision 20, Marc Nov 9, 2026]** What happens to a series when one episode lands in cold storage mid-production? Suggested answer: the whole series holds and Marc is told; no later episode starts.
 
 ## Enforcement status
