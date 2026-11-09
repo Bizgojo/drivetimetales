@@ -1,3 +1,4 @@
+import { checkNonFinaleOutro, checkClosingOutroExtras, BELLE_OUTRO_MAX_WORDS } from './belleOutroForward'
 /**
  * VOICE-BELLE-RULES-001 — the voice step's own Belle line rules, moved
  * verbatim from app/api/admin/generate-voices/route.ts so the series writer
@@ -105,15 +106,20 @@ export function validateBelleLine(kind: 'intro' | 'outro', text: string, ctx: Be
   if (BELLE_EXACT_OR_CREEPY_TIME_PATTERNS.some(pattern => pattern.test(cleaned))) errors.push(`${kind} uses exact or creepy listener context`)
   if (/\b(spoiler|reveals?|revealed|killer is|turns out|will die|dies in the next)\b/i.test(cleaned)) errors.push(`${kind} risks spoiler language`)
   if (kind === 'intro' && words > 38) errors.push(`announcement is too long for a clean handoff (${words} words; max 38 — cut at least ${words - 38})`)
-  if (kind === 'outro' && words > 55) errors.push(`outro is too long for Belle (${words} words; max 55 — cut at least ${words - 55})`)
+  if (kind === 'outro' && words > BELLE_OUTRO_MAX_WORDS) errors.push(`outro is too long for Belle (${words} words; max ${BELLE_OUTRO_MAX_WORDS} — cut at least ${words - BELLE_OUTRO_MAX_WORDS})`)
   // [LISTENER_NAME] is a valid personalization placeholder in the script — do not reject it
   // ATL-BELLE-QC-BUG-002: strip quoted substrings before greeting check to allow series names like "The Welcome Committee".
   const cleanedForGreetingCheck = cleaned.replace(/"[^"]*"/g, ' ');
   if (kind === 'intro' && /\b(welcome|settle in|let['\u2019]?s begin)\b/i.test(cleanedForGreetingCheck)) errors.push('announcement must not include greeting/opener language')
 
   if (kind === 'outro' && ctx.episodeState === 'series_non_final') {
-    if (!/\b(next time|next episode|in the next episode|when episode|episode \d+|continues|will have to|will need to|pulls? us)\b/i.test(cleaned)) {
-      errors.push('non-final series outro must pull the listener toward the next episode')
+    // BELLE-OUTRO-FORWARD-001 (Marc, Nov 8): one recap sentence, then the next
+    // episode by number with the series name.
+    for (const issue of checkNonFinaleOutro(cleaned, {
+      seriesName: ctx.seriesName || ctx.title,
+      nextEpisodeNumber: ctx.episodeNumber ? ctx.episodeNumber + 1 : null,
+    })) {
+      if (!/too long/.test(issue)) errors.push(issue)
     }
     if (/\b(end|ended|final|concludes|conclusion|complete)\b/i.test(cleaned)) {
       errors.push('non-final series outro sounds final')
@@ -125,6 +131,7 @@ export function validateBelleLine(kind: 'intro' | 'outro', text: string, ctx: Be
       errors.push('finale outro must not tease another episode')
     }
     if (ctx.title && lower.includes('untitled')) errors.push('finale outro has missing title')
+    if (checkClosingOutroExtras(cleaned).some(i => /time of day/.test(i))) errors.push('outro must not mention time of day')
   }
 
   // ──────────────────────────────────────────────────────────────────────────

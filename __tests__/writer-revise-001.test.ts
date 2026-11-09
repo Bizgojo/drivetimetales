@@ -66,12 +66,11 @@ describe('WRITER-PROMPT-GATES-001: series prompt states the gates', () => {
     expect(fn).toMatch(/MUST contain, word for word: the series title "\$\{belleSeriesName\}", the words "Episode \$\{currentEpisodeNumber\}", and \$\{belleEpisodeTitleRef\} in quotes/)
   })
 
-  test('non-finale outro states reflection, companion and next-episode words that the matchers accept', () => {
-    expect(fn).toMatch(/truth, secret, choice, question, cost, moment, revelation/)
-    expect(fn).toMatch(/using "you" or "we"/)
-    expect(fn).toMatch(/using the words "next episode"/)
-    expect(fn).toMatch(/must NOT name the author/)
-    // the contradicting old instruction is gone
+  test('non-finale outro uses BELLE-OUTRO-FORWARD-001 (one recap sentence, next episode by number)', () => {
+    expect(fn).toMatch(/nonFinaleOutroPrompt\(\{ seriesName: belleSeriesName, nextEpisodeNumber: currentEpisodeNumber \+ 1/)
+    expect(fn).toMatch(/exactly two sentences/)
+    // the replaced instructions are gone
+    expect(fn).not.toMatch(/truth, secret, choice, question, cost, moment, revelation/)
     expect(fn).not.toMatch(/must restate the episode cliffhanger/)
   })
 

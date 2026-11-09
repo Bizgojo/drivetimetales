@@ -4,7 +4,7 @@ import Anthropic from '@anthropic-ai/sdk'
 import { logAnthropicCall } from '@/app/lib/anthropic-logger'
 import { buildNamePalettePromptBlock } from '@/lib/story/namePalette'
 import { runPremiseGate, formatPremiseCollisionMessage, formatPremiseAdjacentWarning, type PremiseAdjacency } from '@/lib/premiseGate'
-import { REFLECTION_RULE_PROMPT_FRAGMENT } from '@/lib/belleValidation'
+import { nonFinaleOutroPrompt, closingOutroPrompt, episodeNumberWords, BELLE_OUTRO_MAX_WORDS } from '@/lib/belleOutroForward'
 
 export const runtime = 'nodejs'
 
@@ -138,19 +138,15 @@ function buildPrompt(series: any, episode: any, allEpisodes: any[], continuityBu
   const episodeNumber = Number(episode.episode_number || brief.series_episode_number || 1)
   const totalEpisodes = Number(episode.series_total_episodes || brief.series_total_episodes || allEpisodes.length)
   const isFinale = Boolean(episode.series_is_finale ?? brief.series_is_finale ?? episodeNumber === totalEpisodes)
+  // BELLE-OUTRO-FORWARD-001 (Marc, Nov 8, 2026): replaces the reflection-rule
+  // framing for non-finale outros (lib/belleOutroForward.ts is the one source).
+  const seriesNameForBelle = String(episode.series_name || series.title || '').trim()
   const belleOutroRule = isFinale
-    ? 'Belle B outro must resolve/close the series, must not encourage the next episode, and may include the author/narrator credit and "an Endless Tales original".'
-    : 'Belle B outro must restate the episode cliffhanger, invite the listener to continue to the next episode, AND include emotional residue or reflection (per the reflection rule in the outro template below), must not say "an Endless Tales original", and must not sound like a full-series ending.'
-  // REFLECTION-RULE-UNIFICATION-001: non-finale outros must carry emotional
-  // residue or reflection per the single shared rule (same acceptance as the
-  // package validator) — generation previously framed them as pure tease.
-  // The fragment is interpolated INSIDE the non-finale template literal so
-  // the rule text textually follows the tease requirement; the finale
-  // branch carries no fragment.
+    ? closingOutroPrompt({ title: seriesNameForBelle, author: String(episode.author || brief.author || series.author || '').trim() })
+    : nonFinaleOutroPrompt({ seriesName: seriesNameForBelle, nextEpisodeNumber: episodeNumber + 1, author: String(episode.author || brief.author || '').trim() })
   const belleOutroTemplate = isFinale
-    ? '[one or two short sentences, reflective series closure, no time-of-day reference, no next-episode invitation, may credit the author/narrator and say "an Endless Tales original"]'
-    : `[one or two short sentences, reflective cliffhanger tease, no time-of-day reference, invites the next episode, no author/narrator credit, no "Endless Tales original", not a full-series ending]
-${REFLECTION_RULE_PROMPT_FRAGMENT}`
+    ? `[one short closing sentence, then the credit: You've been listening to "${seriesNameForBelle}" by <author>, read by <narrator>, an Endless Tales Original. No time-of-day reference, no next-episode invitation, at most ${BELLE_OUTRO_MAX_WORDS} words]`
+    : `[sentence 1: one sentence recapping this episode. Sentence 2: In Episode ${episodeNumberWords(episodeNumber + 1)} of "${seriesNameForBelle}," <what the listener will find out>. No time-of-day reference, no credits, at most ${BELLE_OUTRO_MAX_WORDS} words]`
 
   return `You are the Endless Tales Stage 2 series script writer.
 

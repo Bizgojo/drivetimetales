@@ -19,6 +19,7 @@ import { createHash } from 'crypto'
 import { isStandaloneOutroRecording } from '@/lib/belleOutroRecording'
 import { CANONICAL_BELLE_B_VOICE_ID, RESERVED_BELLE_B_VOICE_IDS, isBelleBVoiceId } from '@/lib/voiceConstants'
 import { evaluateBelleCopyForPublish } from '@/lib/publicationBelleGate'
+import { episodeNumberWords } from '@/lib/belleOutroForward'
 import { AUTHOR_WRITTEN_EXEMPT_ID, resolveAuthorWrittenExempt } from '@/lib/authorWrittenExempt'
 // ATL-PARSER-001: shared script line-index parser — both GV and render-final-mix
 // delegate all counting to this function so [PAUSE] drift can never recur.
@@ -1478,11 +1479,14 @@ function repairedBelleLine(kind: 'intro' | 'outro', ctx: BelleValidationContext)
   }
 
   if (ctx.episodeState === 'series_non_final') {
-    return `The danger is still moving, and the choice at the end of this episode changes what comes next. Next time on "${title}," the consequences get closer.`
+    // BELLE-OUTRO-FORWARD-001: last-resort repair keeps Marc's two-part shape
+    // (one recap sentence, then the next episode by number with the series name).
+    const promo = ctx.episodeNumber ? `In Episode ${episodeNumberWords(ctx.episodeNumber + 1)} of "${title},"` : `In the next episode of "${title},"`
+    return `The danger is still moving, and the choice at the end of this episode changes everything. ${promo} the consequences get closer.`
   }
 
   if (ctx.episodeState === 'series_finale') {
-    return `The last page closes, but the echo of "${title}" stays on the road a little longer. You've been listening to "${title}" by ${author}, an Endless Tales Original.`
+    return `The last page closes on "${title}." You've been listening to "${title}" by ${author}, an Endless Tales Original.`
   }
 
   return `The story closes, but its echo stays with the road a little longer. You've been listening to "${title}" by ${author}, an Endless Tales Original.`

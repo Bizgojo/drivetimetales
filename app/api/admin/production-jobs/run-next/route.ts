@@ -1,3 +1,4 @@
+import { checkNonFinaleOutro, checkClosingOutroExtras, nonFinaleOutroPrompt, closingOutroPrompt, BELLE_OUTRO_MAX_WORDS } from '@/lib/belleOutroForward'
 import {enforceAdminReview} from '@/lib/admin-center/production-review'
 import { authorImitationLines, authorStyleGaps, type AuthorStyleRow } from '@/lib/authorStyle'
 import { openEndingAllowed, styleSheetForAuthor, styleSheetPromptLines } from '@/lib/authorStyleSheet'
@@ -1225,6 +1226,7 @@ async function validateIntroOutroPositionRules(
     if (hasNextEpisodeTeaseLang(outro)) {
       issues.push('standalone outro must not tease a next episode')
     }
+    issues.push(...checkClosingOutroExtras(outro))
     // TODO(llm): verify outro caps the conclusion rather than just ending atmospherically
     requireLlmJudgment = true
   }
@@ -1241,20 +1243,13 @@ async function validateIntroOutroPositionRules(
     if (hasSeriesClosureLanguage(outro)) {
       issues.push('non-finale outro must not present final-series closure language')
     }
-    // FIX-BELLE-SERIES-TEMPLATE-001: Check for emotional residue + companion presence
-    if (!hasEmotionalResidueOrReflection(outro)) {
-      issues.push('non-finale outro must include emotional residue or reflection (not plot summary only)')
-      requireLlmJudgment = true
-    }
-    if (!hasCompanionPresence(outro)) {
-      issues.push('non-finale outro must acknowledge companion presence (Belle or listener, not clinical recap)')
-      requireLlmJudgment = true
-    }
-    if (!hasNextEpisodeTeaseLang(outro)) {
-      issues.push('non-finale outro must tease or point toward the next episode')
-      // TODO(llm): verify the tease names the specific unresolved moment rather than vague tension
-      requireLlmJudgment = true
-    }
+    // BELLE-OUTRO-FORWARD-001 (Marc, Nov 8, 2026): exactly one recap sentence,
+    // then the next episode by number with the series name. Replaces the
+    // reflection / companion / "next episode" wording checks.
+    issues.push(...checkNonFinaleOutro(outro, {
+      seriesName,
+      nextEpisodeNumber: episodeNum !== null ? episodeNum + 1 : null,
+    }))
   }
 
   // ── Outro: finale series episode ──────────────────────────────────────────
@@ -1275,6 +1270,7 @@ async function validateIntroOutroPositionRules(
     if (hasNextEpisodeTeaseLang(outro)) {
       issues.push('finale outro must not tease a next episode')
     }
+    issues.push(...checkClosingOutroExtras(outro))
     // TODO(llm): verify finale outro caps the series conclusion and lands the emotional payoff
     requireLlmJudgment = true
   }
@@ -1365,12 +1361,10 @@ Hard rules:
 - Announcement must name the exact series title, episode number, and episode title.
 - Announcement must include a concrete narrative hook: event, danger, secret, conflict, mystery, or story mechanism.
 - Outro must not include [LISTENER_NAME].
-- Non-finale outro must tease or point toward the next episode.
-- Non-finale outro must include emotional residue or reflection (not plot summary only).
-${REFLECTION_RULE_PROMPT_FRAGMENT}
+- BELLE-OUTRO-FORWARD-001 (Marc, Nov 8): a non-finale outro is EXACTLY two sentences: (1) one sentence recapping this episode; (2) one sentence promoting the next episode by number with the series name, e.g. In Episode Four of "Series Name," <what the listener will find out>. Never more than one recap sentence; never end on the recap.
 - Non-finale outro must not include author/narrator credits or "Endless Tales original".
-- Finale outro may close the series and include credits.
-- Intros must be one or two short sentences. Series outros (especially non-finale with next-ep tease) may be longer — up to five sentences for emotional landing plus tease structure.
+- Finale outro closes the series, never points to another episode, and ends: You've been listening to "<series>" by <author>, read by <narrator>, an Endless Tales Original.
+- Intros must be one or two short sentences. Every outro is at most ${BELLE_OUTRO_MAX_WORDS} words.
 
 VALIDATION ISSUES TO FIX:
 ${target.issues.map(issue => `- ${stripEpisodeIssuePrefix(issue)}`).join('\n')}
@@ -1840,9 +1834,11 @@ Outro requirements:
 - Standalone outros must leave emotional residue or reflection; do not pass outros that are only title/author credits or plot summary.
 - Standalone outros must tie the emotional closure to the actual resolution, choice, reveal, or final consequence of the story.
 - Standalone outros must not tease a fake episode 2, "next time", "what happens next", or unresolved continuation.
-- Series non-finale outros may create intentional next-episode desire. A forward-tease construction (e.g. "Continue to the next episode to find out...") is ALLOWED for series non-finale outros — do NOT flag this as a violation. Only fail a series non-finale outro if it has zero emotional residue AND is purely a plot-summary recap with no companion presence. Apply the reflection rule below as an INDEPENDENT sub-check (this matches the deterministic gate, which raises a separate issue for missing reflection regardless of companion presence): companion presence alone never satisfies it — an outro that addresses the listener but only recaps plot still fails for zero emotional residue/reflection.
+- Series non-finale outros follow BELLE-OUTRO-FORWARD-001 (Marc, Nov 8): EXACTLY two sentences — one sentence recapping this episode, then one sentence promoting the next episode by number with the series name (e.g. In Episode Four of "Series Name," <what the listener will find out>). Fail it if it has more than one recap sentence, ends on the recap, or does not name the next episode's number. Do NOT require reflection or companion wording for non-finale outros.
+- Standalone outros: apply the reflection rule below.
 ${REFLECTION_RULE_PROMPT_FRAGMENT}
-- Finale outros should feel complete.
+- Finale outros should feel complete, never point to another episode, and end with the credit (title, author, narrator, "an Endless Tales Original").
+- No outro mentions time of day. Every outro is at most ${BELLE_OUTRO_MAX_WORDS} words.
 - Credits language is only acceptable if brief and not the emotional center.
 - Must not use flat "That was..." credits-style structure as the dominant move.
 
@@ -1862,10 +1858,10 @@ Required JSON shape:
 
 Hard format rules:
 - Return valid JSON only. Do not include markdown, comments, explanation, or extra keys.
-- Before returning, self-check sentence count: standalone outros must not exceed two sentences. Series outros (non-finale or finale) may be longer for tease or emotional landing structures.
+- Before returning, self-check sentence count: standalone and finale outros at most two short sentences; series non-finale outros EXACTLY two sentences (one recap sentence, then the next episode by number with the series name).
 - Each requested value must be one line of spoken text.
 - Intro: one line, maximum two short sentences.
-- Outro: one line. Standalone: maximum two short sentences. Series non-finale or finale: up to five sentences allowed for next-episode tease or emotional landing.
+- Outro: one line, at most ${BELLE_OUTRO_MAX_WORDS} words. Standalone or finale: maximum two short sentences. Series non-finale: exactly two sentences (BELLE-OUTRO-FORWARD-001).
 - Do not use semicolons.
 - Do not use stacked clauses that read like three or more thoughts joined together.
 
@@ -1887,13 +1883,14 @@ MANDATORY FIELD REQUIREMENTS - you will be rejected if these are missing:
 
 Additional content rules:
 - Standalone intro must lightly ground the listener in the story world, then add a specific emotional or sensory hook that creates anticipation.
-- Outro should emotionally land and feel companion-like.
+- Standalone and finale outros should emotionally land and feel companion-like.
 ${REFLECTION_RULE_PROMPT_FRAGMENT}
+- Series non-finale outros follow BELLE-OUTRO-FORWARD-001 (Marc, Nov 8): EXACTLY two sentences — one sentence recapping this episode, then one sentence promoting the next episode by number with the series name (e.g. In Episode Four of "Series Name," <what the listener will find out>). Fail it if it has more than one recap sentence, ends on the recap, or does not name the next episode's number. Do NOT require reflection or companion wording for non-finale outros.
 - Standalone outro must feel complete and must not tease a next episode or deferred resolution.
 - Standalone outro must include the story title, author name, narrator name (if provided), and the exact phrase "Endless Tales original".
 - Standalone outro must emotionally close around the actual resolution, choice, reveal, or final consequence of the story.
 - Outro may include brief credits only if the emotional landing remains the main point.
-- Keep standalone outro under 42 words. Series outros may be longer for tease structure.
+- Keep every outro at or under ${BELLE_OUTRO_MAX_WORDS} words.
 `
 
 function parseJsonObject(text: string): any {
@@ -6162,15 +6159,17 @@ function buildSeriesEpisodePrompt(series: any, episode: any, allEpisodes: any[],
   const belleEpisodeTitleRef = belleEpisodeTitle ? `the episode title "${belleEpisodeTitle}"` : 'the episode title you write on the TITLE: line (never "Episode N")'
   const belleAuthorName = String(episode.author || brief.author || '').trim()
   const belleIntroRequirement = `The Belle B announcement MUST contain, word for word: the series title "${belleSeriesName}", the words "Episode ${currentEpisodeNumber}", and ${belleEpisodeTitleRef} in quotes. It MUST state the episode's concrete danger, secret, mystery, or impossible event in plain words (mood or setting alone does not count), and MUST use at least one of these exact words: secret, hidden, missing, impossible, stolen, betrayed, conspiracy, warning. At most 38 words in total. Never use the words reveal, reveals, revealed, spoiler, or "turns out" in either Belle B line.`
+  // BELLE-OUTRO-FORWARD-001 (Marc, Nov 8, 2026): one recap sentence, then the
+  // next episode by number with the series name; finale credits and closes.
   const belleOutroRequirement = isFinale
-    ? `The Belle B outro MUST name the series title "${belleSeriesName}", the author "${belleAuthorName}", and the narrator "${assignedNarratorName}", and MUST include the words "an Endless Tales original". It must not invite a next episode. At most 55 words.`
-    : `The Belle B outro MUST do all three: (1) reflect on the emotional cost or meaning using at least one of these words: truth, secret, choice, question, cost, moment, revelation; (2) speak warmly to the listener using "you" or "we"; (3) point to what comes next using the words "next episode". It must NOT name the author "${belleAuthorName}" or the narrator "${assignedNarratorName}", must not say "an Endless Tales original", and must not sound like the series is over: never use the words end, ended, final, concludes, conclusion, or complete. At most 55 words.`
+    ? closingOutroPrompt({ title: belleSeriesName, author: belleAuthorName, narrator: assignedNarratorName }) + ` It must name the series title "${belleSeriesName}" and must not invite a next episode.`
+    : nonFinaleOutroPrompt({ seriesName: belleSeriesName, nextEpisodeNumber: currentEpisodeNumber + 1, author: belleAuthorName, narrator: assignedNarratorName })
   const belleOutroRule = isFinale
-    ? 'Belle B outro must resolve/close the series, must not encourage the next episode, must name the series and credit the author and narrator, and may say "an Endless Tales original".'
-    : 'Belle B outro must reflect on what the cliffhanger means (not retell the plot), speak to the listener, point to the next episode, must not say "an Endless Tales original", and must not sound like a full-series ending.'
+    ? 'Belle B outro must close the series, must not point to another episode, must name the series and credit the author and narrator, and ends with "an Endless Tales Original".'
+    : `Belle B outro is exactly two sentences: one recap sentence, then "In Episode ${currentEpisodeNumber + 1} (in words) of \"${belleSeriesName}\", ...". No author/narrator credit, no "Endless Tales original", must not sound like a full-series ending.`
   const belleOutroTemplate = isFinale
-    ? '[one or two short sentences, reflective series closure, no time-of-day reference, no next-episode invitation, names the series, credits the author and narrator, may say "an Endless Tales original"]'
-    : '[one or two short sentences, reflective cliffhanger tease, no time-of-day reference, invites the next episode, no author/narrator credit, no "Endless Tales original", not a full-series ending]'
+    ? `[one short closing sentence, then: You've been listening to "${belleSeriesName}" by ${belleAuthorName}, read by ${assignedNarratorName}, an Endless Tales Original. No time-of-day reference, no next-episode invitation, at most ${BELLE_OUTRO_MAX_WORDS} words]`
+    : `[sentence 1: one sentence recapping this episode. Sentence 2: In Episode <next number in words> of "${belleSeriesName}," <what the listener will find out>. No time-of-day reference, no credits, at most ${BELLE_OUTRO_MAX_WORDS} words]`
 
   return `You are the Endless Tales Stage 2 series script writer.
 
