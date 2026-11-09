@@ -1,5 +1,5 @@
 # CANON-04 — Belle Intro/Outro & Listener-Name Personalization
-Status: DRAFT for Marc's approval · Nov 9, 2026 · Owner: Marc
+Status: **APPROVED** (Marc, Nov 9, 2026: "approve canon 01–15") · Owner: Marc · Changes only through CANON-99 (CANON-00 rules 10–16)
 Covers: what Belle says at the start and end of every story and episode, where the sting sits, credits, time-of-day words, and how the listener's name is added (or left out). Does not cover: Belle's voice settings and casting (CANON-05 Voices), story-body writing (writer canon), music under Belle and mix levels (sound/mixing canon), player behavior beyond the sting and the name (Player Rules, docs/PLAYER-RULES.md).
 
 ## Where Marc decides

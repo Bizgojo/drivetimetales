@@ -1,5 +1,5 @@
 # CANON-05 — Voices & Voice Generation
-Status: DRAFT for Marc's approval · Nov 9, 2026 · Owner: Marc
+Status: **APPROVED** (Marc, Nov 9, 2026: "approve canon 01–15") · Owner: Marc · Changes only through CANON-99 (CANON-00 rules 10–16)
 Covers: Belle's voice, narrators, character casting, voice reuse, recasting, the checks at the voice step, ElevenLabs credits, and when audio must be re-made. Does not cover: what Belle says (CANON-04), how scripts are written (writer canon), voice loudness, EQ and mixing (sound/mixing canon), the gate order (CANON-08).
 
 ## Where Marc decides

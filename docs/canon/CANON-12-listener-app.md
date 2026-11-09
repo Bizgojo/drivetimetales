@@ -1,5 +1,5 @@
 # CANON-12 — The Listener App
-Status: DRAFT for Marc's approval · Nov 9, 2026 · Owner: Marc
+Status: **APPROVED** (Marc, Nov 9, 2026: "approve canon 01–15") · Owner: Marc · Changes only through CANON-99 (CANON-00 rules 10–16)
 Covers: everything a listener sees outside the player: sign-up and sign-in, free trial, prices and plans, Stripe billing, cancel and refunds, the paywall, guests, Home, Library and story cards, the red Rate button, reviews, playlists, genres and search, account and settings, name personalization settings, referrals, story suggestions, ad landing pages, emails, accessibility, and privacy and legal pages. Does not cover: what happens inside the player (CANON-11 The Player); how stories are made and published (story pipeline canon); ad campaigns, budgets and CAC (marketing canon); revenue reports (finance canon).
 
 ## Where Marc decides

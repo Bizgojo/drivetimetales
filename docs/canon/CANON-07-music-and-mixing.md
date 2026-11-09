@@ -1,5 +1,5 @@
 # CANON-07 — Music & Final Mix
-Status: DRAFT for Marc's approval · Nov 9, 2026 · Owner: Marc
+Status: **APPROVED** (Marc, Nov 9, 2026: "approve canon 01–15") · Owner: Marc · Changes only through CANON-99 (CANON-00 rules 10–16)
 Covers: the six mix channels from Marc's drawing, the sting, music levels, fades and timing, music under backgrounds and under Belle's outro, voice levels inside the mix, the music source, the final export, and how mix changes are tested. Does not cover: which sounds play and when (CANON-06 Sound Effects); what Belle says (Belle writing canon); script writing; voices and casting; publishing; the player (docs/PLAYER-RULES.md).
 
 ## Marc's channel drawing (Nov 1, 2026)

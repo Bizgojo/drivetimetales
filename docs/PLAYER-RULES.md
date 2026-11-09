@@ -1,3 +1,5 @@
+> **REPLACED BY CANON-11 (approved by Marc, Nov 9, 2026).** docs/canon/CANON-11-player.md holds these same rules and is now the rule. This file is kept for history. Rule changes go through CANON-99 only.
+
 # Endless Tales — Player Rules (CANON)
 
 > **CANON — single source of truth for player behavior.** Read this before any change to the player, autoplay, progress saving, series navigation, review prompts or publishing visibility. If code or any other document disagrees with this file, this file wins and the code is fixed to match.

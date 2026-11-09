@@ -1,5 +1,5 @@
 # CANON-08 — Quality Gates & Marc's Review
-Status: DRAFT for Marc's approval · Nov 9, 2026 · Owner: Marc
+Status: **APPROVED** (Marc, Nov 9, 2026: "approve canon 01–15") · Owner: Marc · Changes only through CANON-99 (CANON-00 rules 10–16)
 Covers: every automatic check from brief to publish, in order; what each checks; pass, fail and retry; how failures are classified and fixed; what Marc reviews and how. Does not cover: the writing rules a check enforces (writer canon), Belle wording (CANON-04), voice casting (CANON-05), sound and mix (sound/mixing canon), publishing mechanics and visibility (publishing canon), the player (docs/PLAYER-RULES.md).
 
 ## Where Marc decides

@@ -1,5 +1,5 @@
 # CANON-14 — Finance & Reporting
-Status: DRAFT for Marc's approval · Nov 9, 2026 · Owner: Marc
+Status: **APPROVED** (Marc, Nov 9, 2026: "approve canon 01–15") · Owner: Marc · Changes only through CANON-99 (CANON-00 rules 10–16)
 Covers: the Admin → Finance statement (revenue, expenses, plow back, cost per episode, LTV, Mercury reconciliation, profit suggestions, overview tiles); expense categories; Mercury cards; spending limits. Does not cover: ad approval, CAC test rules and ad creative (CANON-13 Marketing & Ads); agent roles and AI-credit alerts (CANON-15 Agents & Operations); story production (PIPELINE-CANON).
 
 ## Where Marc decides

@@ -1,5 +1,5 @@
 # CANON-15 — Agents, Code & Operations
-Status: DRAFT for Marc's approval · Nov 9, 2026 · Owner: Marc
+Status: **APPROVED** (Marc, Nov 9, 2026: "approve canon 01–15") · Owner: Marc · Changes only through CANON-99 (CANON-00 rules 10–16)
 Covers: who the agents are and what each may do; approvals for merges, database changes and deploys; how Claude talks to Marc and to agents; Telegram; watchdogs and alerts; security of keys and routes; which documents are law. Does not cover: story production steps (PIPELINE-CANON and story rules); the player and listener app (PLAYER-RULES); ad approval (CANON-13); money and the statement (CANON-14).
 
 ## Where Marc decides
