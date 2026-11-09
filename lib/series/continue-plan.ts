@@ -32,10 +32,13 @@ export type SeriesRow = {
 
 export type EpisodeDefaults = {
   author: string
+  /** SERIES-CONTINUE-AUTHOR-001: the voice step refuses an episode with no author_id. */
+  author_id?: string | null
   author_style: string | null
   genre: string
   narrative_voice: string | null
   narrator_voice_name: string | null
+  narrator_voice_id?: string | null
   duration_label: string | null
   duration_mins: number | null
 }
@@ -174,10 +177,12 @@ export function buildNewEpisodeRows(series: SeriesRow, defaults: EpisodeDefaults
     return {
       title: ep.title,
       author: defaults.author,
+      author_id: defaults.author_id ?? null,
       author_style: defaults.author_style,
       genre: defaults.genre,
       narrative_voice: defaults.narrative_voice,
       narrator_voice_name: defaults.narrator_voice_name,
+      narrator_voice_id: defaults.narrator_voice_id ?? null,
       description: ep.description,
       brief_json,
       is_v2: true,
