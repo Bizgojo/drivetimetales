@@ -3018,7 +3018,21 @@ async function createStoryRow(job: ProductionJob) {
 export function isFrozenSeriesEpisode(episode: any): boolean {
   const wf = String(episode?.workflow_state || '').trim()
   const st = String(episode?.status || '').trim()
-  return wf === 'published' || st === 'published'
+  return wf === 'published' || st === 'published' || isFinishedUnchangedEpisode(episode)
+}
+/**
+ * SERIES-FINISHED-FROZEN-001 (Rerouted 32ce90e6, Nov 9 2026): an episode whose audio is already
+ * finished (status audio_ready with an audio_url) and whose script has not changed since its
+ * voices were made is frozen like a published one: a job that adds episodes never re-checks,
+ * re-voices or re-mixes it. Without this, continuing Rerouted to EP4-7 re-checked EP2's
+ * approved outro against the newer outro rule and would have re-voiced EP2-3.
+ */
+export function isFinishedUnchangedEpisode(episode: any): boolean {
+  if (String(episode?.status || '').trim() !== 'audio_ready') return false
+  if (!String(episode?.audio_url || '').trim()) return false
+  const seg = Date.parse(String(episode?.segments_generated_at || ''))
+  const scr = Date.parse(String(episode?.script_updated_at || ''))
+  return Number.isFinite(seg) && Number.isFinite(scr) && seg >= scr
 }
 export function withoutFrozenEpisodes<T>(episodes: T[]): T[] {
   return (episodes || []).filter((episode) => !isFrozenSeriesEpisode(episode))
@@ -3030,7 +3044,7 @@ async function loadSeriesWorkEpisodes(seriesId: string) {
 async function loadSeriesEpisodes(seriesId: string) {
   const { data, error } = await supabase
     .from('stories')
-    .select('id,title,author,author_style,genre,narrative_voice,description,brief_json,status,workflow_state,script,script_json,script_version,series_id,series_name,episode_number,series_episode_number,series_total_episodes,series_is_finale,story_type,validator_result,validator_report,validator_passed_at,narrator_voice_id,narrator_voice_name,audio_url,story_audio_url,duration_mins,dispatch_failure_reset_at')
+    .select('id,title,author,author_style,genre,narrative_voice,description,brief_json,status,workflow_state,script,script_json,script_version,series_id,series_name,episode_number,series_episode_number,series_total_episodes,series_is_finale,story_type,validator_result,validator_report,validator_passed_at,narrator_voice_id,narrator_voice_name,audio_url,story_audio_url,duration_mins,dispatch_failure_reset_at,script_updated_at,segments_generated_at')
     .eq('series_id', seriesId)
     // Rule-1 doctrine (Marc 2026-07-09): cold_storage episodes are retired from
     // production and must not contaminate series validation/production - a
