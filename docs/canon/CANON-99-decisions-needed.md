@@ -209,3 +209,11 @@ These smaller conflicts and questions were not on the Part 1 list. Each has a re
 122. **(15 Q6)** Orion runs on Marc's Mac only, until the CAC test passes.
 123. **(15 Q7)** The app runs on EC2; Vercel only builds preview copies.
 124. **(15 Q8)** An agent reports BLOCKED after 30 minutes without progress.
+
+---
+
+# Part 3 — New rule requests (rolling list)
+
+New rules and rule changes wait here for Marc (CANON-00 rules 10–16). Each item names its canon document, the proposed rule, why it is needed, any conflict it settles, the code it would change, and Claude's recommendation. Marc replies "approve N", "change N: …" or "reject N".
+
+_No new requests yet._

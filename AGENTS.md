@@ -24,6 +24,7 @@ If a document is not on this list, it is history or reference, not a rule. When 
 - Never merge a PR without Marc's explicit word. Never run a database migration or schema change without Marc's explicit OK.
 - Never open, print, copy or paste private keys, .pem files or tokens.
 - All story writing goes through the pipeline; no agent writes or edits scripts.
+- **RULE NEEDED:** when a step meets a situation no canon rule answers, or two rules disagree, stop that step and report "RULE NEEDED:" with the situation in one or two sentences. Never guess or invent a rule. Claude drafts it for CANON-99; only Marc approves (CANON-00 rules 10-16).
 - One task at a time. Verify results field by field; say "unverified" when unsure. Stop and ask when a step could overwrite or hide live content.
 
 ## Data rules
