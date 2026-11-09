@@ -8,7 +8,7 @@ Every rule in this document that needs Marc. **[MARC DECIDES]** = Marc approves,
 
 - **Rule 52 [MARC DECIDES]:** Susan may use the marketing card only with Marc's approval.
 - **Rule 59 [MARC DECIDES]:** No automatic profit transfers. Any transfer needs Marc's explicit word.
-- **Still open:** 7 conflicts and 6 questions at the end of this document wait for Marc's decision (all listed in CANON-99).
+- **Still open:** 6 conflicts or questions below, each with a recommendation in CANON-99 Part 2.
 
 ## Rules
 
@@ -89,22 +89,29 @@ Every rule in this document that needs Marc. **[MARC DECIDES]** = Marc approves,
 58. No agent holds a tool that can send money. Bart's Mercury access is read-only. — **Agreed** for Bart read-only (memory /areas/endless-tales-platform.md); **Proposed** for all agents (Nov 5 Marc removed Mercury from Orion on Claude's advice)
 59. **[MARC DECIDES]** No automatic profit transfers. Any transfer needs Marc's explicit word. — **In force (code)** (app/admin/CommandCenter.tsx: transfer buttons locked)
 
+## Marc's decisions (Nov 9, 2026)
+
+Marc answered CANON-99 on Nov 9, 2026. These decisions are **Agreed** and override any rule above that says otherwise. Each conflict or question below that they settle is marked RESOLVED.
+
+- **Decision 57:** **Plow back.** Marc's decision: the plow-back percentage is a setting that starts at 75%; only Marc changes it, each change is recorded with its date and applies from the next month on. Plow back = that percentage of the previous month's profit ($0 after a loss month), shown as one number ("Available for ads"). The Command Center reads the same setting. The rest stays as reserve. Minimum cash reserve: $5,000 or 90 days of spending, whichever is larger. (13 C8, 14 C3, C4, Q1, Q3) — **Agreed** (Marc, Nov 9, 2026, CANON-99)
+- **Decision 58:** **Revenue details.** Decided: Test-account payments count as revenue but not in subscriber counts, churn, LTV or CAC. Sound Ideas cost is 1/12 of what was paid for the current year. Refunds count on the day they leave Mercury. (14 C1, C7, Q6) — **Agreed** (Marc, Nov 9, 2026, CANON-99)
+
 ## Conflicts found
-- C1. Test-account payments. Commit 10e3e0c (Nov 8) put them on a memo line, not revenue. Commit 51fd5a2 (Nov 8, later) and memory say they count. Recommendation: they count as revenue (newer, Marc's words). They stay out of subscriber counts, churn, LTV and CAC. Marc decides.
+- C1. **[RESOLVED by decision 58, Marc Nov 9, 2026]** Test-account payments. Commit 10e3e0c (Nov 8) put them on a memo line, not revenue. Commit 51fd5a2 (Nov 8, later) and memory say they count. Recommendation: they count as revenue (newer, Marc's words). They stay out of subscriber counts, churn, LTV and CAC. Marc decides.
 - C2. LTV. docs/CODEX_CAMPAIGN_SYSTEM_SPEC.md (May): 7% churn, 6 months, LTV ~$47.94. CAC chat (Nov 2): 10% churn, LTV ~$92. Nov 8: no assumed LTV. Recommendation: Nov 8 wins; retire the old constants. Marc decides.
-- C3. Plow back base. Nov 2 pro forma and Admin Command Center "Marketing target %" (default 75) apply 75% to revenue/Stripe collections (app/admin/CommandCenter.tsx allocation()). Nov 8: 75% of the previous month's profit, $0 after a loss. Recommendation: Nov 8 wins; change the Command Center. Marc decides.
-- C4. Two "plow back" numbers in code. lib/finance/statement.ts shows "Available for ads" from the previous month, but totals.plowBack is 75% of the same column's result. Recommendation: show only "Available for ads". Marc decides.
+- C3. **[RESOLVED by decision 57, Marc Nov 9, 2026]** Plow back base. Nov 2 pro forma and Admin Command Center "Marketing target %" (default 75) apply 75% to revenue/Stripe collections (app/admin/CommandCenter.tsx allocation()). Nov 8: 75% of the previous month's profit, $0 after a loss. Recommendation: Nov 8 wins; change the Command Center. Marc decides.
+- C4. **[RESOLVED by decision 57, Marc Nov 9, 2026]** Two "plow back" numbers in code. lib/finance/statement.ts shows "Available for ads" from the previous month, but totals.plowBack is 75% of the same column's result. Recommendation: show only "Available for ads". Marc decides.
 - C5. Category count. Nov 2: four groups (memory; Admin evidence ledger uses Operations, Story Production, Marketing, R&D). Nov 8: Marketing split into Ad Spend and Marketing Services, two marketing cards. Recommendation: five statement sections and five cards; the Admin ledger adds the split. Marc decides.
 - C6. Prices in code and docs. lib/finance/statement.ts uses $79.99/year; CODEX spec and Aug memory use $59.99. Recommendation: $79.99 (see CANON-13 C1). Marc decides.
-- C7. Sound Ideas price. Bought for $1,500; it likely renews at $3,000 (todo list, Nov 5). Rule 32 is fixed at $125/month. Recommendation: charge 1/12 of whatever was paid for the current year. Marc decides.
+- C7. **[RESOLVED by decision 58, Marc Nov 9, 2026]** Sound Ideas price. Bought for $1,500; it likely renews at $3,000 (todo list, Nov 5). Rule 32 is fixed at $125/month. Recommendation: charge 1/12 of whatever was paid for the current year. Marc decides.
 
 ## Open questions for Marc
-- Q1. What happens to the 25% of profit not plowed back? Suggested answer: it stays as cash reserve until you move it by hand.
+- Q1. **[RESOLVED by decision 57, Marc Nov 9, 2026]** What happens to the 25% of profit not plowed back? Suggested answer: it stays as cash reserve until you move it by hand.
 - Q2. In a month with no finished episodes, where does the $125 Sound Ideas charge go? Suggested answer: show it as unassigned production cost that month.
-- Q3. Is there a minimum cash reserve? The old Airtable rule was the larger of $5,000 or 90 days of spending. Suggested answer: keep it and show it on the statement.
+- Q3. **[RESOLVED by decision 57, Marc Nov 9, 2026]** Is there a minimum cash reserve? The old Airtable rule was the larger of $5,000 or 90 days of spending. Suggested answer: keep it and show it on the statement.
 - Q4. Should Bart close each month (reconcile, clear "Other", report)? Suggested answer: yes, by the 5th of the next month.
 - Q5. Should the AI agents' DeepSeek, Claude and ChatGPT costs show per agent? Suggested answer: yes, once usage logging exists (todo item 10d).
-- Q6. When does a refund count on cash basis: the day issued or the day it left Mercury? Suggested answer: the day it left Mercury.
+- Q6. **[RESOLVED by decision 58, Marc Nov 9, 2026]** When does a refund count on cash basis: the day issued or the day it left Mercury? Suggested answer: the day it left Mercury.
 
 ## Enforcement status
 - Rules 2–9, 12–26, 28–40, 42–44 → enforced in code: lib/finance/statement.ts, lib/finance/load-statement.ts, lib/finance/stripe-sync.ts, lib/finance/mercury-sync.ts, lib/finance/elevenlabs-sync.ts, lib/finance/suggestions.ts, app/admin/finance/statement/page.tsx, app/api/admin/finance/*.

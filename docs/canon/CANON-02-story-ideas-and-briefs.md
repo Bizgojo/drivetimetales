@@ -16,7 +16,7 @@ Every rule in this document that needs Marc. **[MARC DECIDES]** = Marc approves,
 - **Rule 53 [MARC DECIDES]:** After a series finale, the series is scored for character attachment (0–8); 5+ = recommend a new season to Marc. New seasons must raise stakes,…
 - **Rule 54 [MARC DECIDES]:** Adding episodes never re-plans, rewrites, re-titles, re-hides or re-voices episodes that already exist. New episodes are planned only for the…
 - **Rule 63 [MARC DECIDES]:** When Marc or Maya sets a per-episode length, each episode lands within ±20% of it.
-- **Still open:** 7 conflicts and 7 questions at the end of this document wait for Marc's decision (all listed in CANON-99).
+- **Still open:** 3 conflicts or questions below, each with a recommendation in CANON-99 Part 2.
 
 ## Rules
 
@@ -108,23 +108,36 @@ Every rule in this document that needs Marc. **[MARC DECIDES]** = Marc approves,
 65. A brief contains: type (standalone/series), series name, episode number, total episodes, finale yes/no, author, genre, premise, setting, runtime, and (Episode 2+) a summary of the previous episode and its cliffhanger. — **Agreed** (STORY_BRIEF_TEMPLATE v2.2, approved June 10)
 66. The brief template is rewritten to match today's rules: the four inputs (rule 1), hook, master premise, cast, fact sheet, outline; and the stale items in Conflict C4 are removed. — **Proposed** (template still carries retired rules)
 
+## Marc's decisions (Nov 9, 2026)
+
+Marc answered CANON-99 on Nov 9, 2026. These decisions are **Agreed** and override any rule above that says otherwise. Each conflict or question below that they settle is marked RESOLVED.
+
+- **Decision 3:** **Hook length.** The rules say 15 words; the code passes up to 30. Decided: 15 words, blocking, for every new Episode 1. The 5 live hooks keep their wording. (02 C2, 03 C2, 08 C1) — **Agreed** (Marc, Nov 9, 2026, CANON-99)
+- **Decision 4:** **Episode length.** Decided: standalones within ±10% of target; series episodes between the 12.5-minute floor and 1.35 × the brief; speaking rate 160 words per minute everywhere. Publish code uses the same numbers (today it only allows 15–20 minutes). (02 C5, 03 C3, 08 C2, 09 C4) — **Agreed** (Marc, Nov 9, 2026, CANON-99)
+- **Decision 5:** **Series lengths.** Decided: 5, 7 or 13 episodes, or any length you order (like Altar's 30). 3-episode series only when you ask. (02 C3, Q1) — **Agreed** (Marc, Nov 9, 2026, CANON-99)
+- **Decision 9:** **Endings.** Decided: about 1 in 5 standalones may end open; a series finale always answers its central question; one escaped villain is allowed; Belle never teases a sequel. (02 C6, 03 C8) — **Agreed** (Marc, Nov 9, 2026, CANON-99)
+- **Decision 12:** **Retire old manual documents** as history: STORY_PRODUCTION_PROCESS v1.2, SCRIPT_VALIDATOR.md, STORY_GRADING_RUBRIC.md, STORY_BRIEF_TEMPLATE v2.2, NEDS scoring, character-attachment scoring, MASTER_RULES.md, DEPLOY.md, DEPLOYMENT-RUNBOOK.md, HAL_SESSION_START_PROTOCOL.md, MIX_SPEC.md and MIX_NOTE_PROTOCOL.md level tables, et_mix_assembly.py, ACQUISITION-RETENTION-001 Parts A, D, E. Decided: yes, all. (01 C1, 02 C4, Q5, Q6, 03 Q7, 07 C4, C6, 13 C9, 15 C3–C5) — **Agreed** (Marc, Nov 9, 2026, CANON-99)
+- **Decision 13:** **Author roster.** Decided: the database authors table is the only roster; remove the lists in the Bible and the writer prompt. (02 C1) — **Agreed** (Marc, Nov 9, 2026, CANON-99)
+- **Decision 16:** **Avoid-list of recent premises, places and names.** Decided: build it now, as a warning. (02 Q4) — **Agreed** (Marc, Nov 9, 2026, CANON-99)
+- **Decision 17:** **Series bible for a continued series.** Decided: the pipeline writes it; you approve it only for series running in ads. (02 Q7) — **Agreed** (Marc, Nov 9, 2026, CANON-99)
+
 ## Conflicts found
-- C1. Author roster: ET_Story_Rules_v3_2 lists 10 authors; STAGE2 v2.4 lists 31; STYLE-001 (Nov 1) says 50 active authors; AGENTS.md says exactly 3 per genre. Recommendation: the database authors table is the roster; delete the static tables from the Bible and STAGE2 prompt. Marc decides.
-- C2. Hook length: Spec §3.1 and HOOK-FIRST-001 say under 15 words; the 5 approved ad hooks (Nov 4) run up to 21 words ("15–25 word hook" in the Nov 5 chat summary); lib/hookGate.ts passes a hook up to word 30 (comment still says 15). Recommendation: 15 words for all new Episode 1s (newest, Nov 7); leave the 5 live hooks as they are; fix the code to 15. Marc decides.
-- C3. Series lengths: Bible says 3/5/7/13; Marc Nov 1 chose 5 and 7 for new standard series; hook series are 7; Altar is 30. Recommendation: allowed lengths = 5, 7, 13, plus any length Marc orders; 3 only on Marc's word. Marc decides.
-- C4. STORY_BRIEF_TEMPLATE v2.2 is stale: it still cites the retired Series Release Rule, 3–6 anchor SFX (Marc removed the cap Oct 31), a 24-word description (Marc Nov 5: fills two card lines), "Belle never mentions the author" (BELLE-004 says Episode 1 names the author), a 10-minute runtime option (below the 12.5-minute floor), and PIPELINE_MODE transition/full. Recommendation: retire the template and replace it per rule 66.
-- C5. Length tolerance: LENGTH-002 says ±20% of target; RUNTIME-GATE-001 (code) says ±10% on the final mix; the series ceiling is brief × 1.35. Recommendation: one rule — standalone ±10%, series between the 12.5-minute floor and brief × 1.35. Marc decides.
-- C6. Open threads: ENDING-001 and Bible Part XVII say a finale resolves all major threads and never teases a sequel; SERIES-NEMESIS-001 (Oct 30) allows one escaped villain, Altar three. Recommendation: newer rule 33 wins; the sequel thread is never teased by Belle.
+- C1. **[RESOLVED by decision 13, Marc Nov 9, 2026]** Author roster: ET_Story_Rules_v3_2 lists 10 authors; STAGE2 v2.4 lists 31; STYLE-001 (Nov 1) says 50 active authors; AGENTS.md says exactly 3 per genre. Recommendation: the database authors table is the roster; delete the static tables from the Bible and STAGE2 prompt. Marc decides.
+- C2. **[RESOLVED by decision 3, Marc Nov 9, 2026]** Hook length: Spec §3.1 and HOOK-FIRST-001 say under 15 words; the 5 approved ad hooks (Nov 4) run up to 21 words ("15–25 word hook" in the Nov 5 chat summary); lib/hookGate.ts passes a hook up to word 30 (comment still says 15). Recommendation: 15 words for all new Episode 1s (newest, Nov 7); leave the 5 live hooks as they are; fix the code to 15. Marc decides.
+- C3. **[RESOLVED by decision 5, Marc Nov 9, 2026]** Series lengths: Bible says 3/5/7/13; Marc Nov 1 chose 5 and 7 for new standard series; hook series are 7; Altar is 30. Recommendation: allowed lengths = 5, 7, 13, plus any length Marc orders; 3 only on Marc's word. Marc decides.
+- C4. **[RESOLVED by decision 12, Marc Nov 9, 2026]** STORY_BRIEF_TEMPLATE v2.2 is stale: it still cites the retired Series Release Rule, 3–6 anchor SFX (Marc removed the cap Oct 31), a 24-word description (Marc Nov 5: fills two card lines), "Belle never mentions the author" (BELLE-004 says Episode 1 names the author), a 10-minute runtime option (below the 12.5-minute floor), and PIPELINE_MODE transition/full. Recommendation: retire the template and replace it per rule 66.
+- C5. **[RESOLVED by decision 4, Marc Nov 9, 2026]** Length tolerance: LENGTH-002 says ±20% of target; RUNTIME-GATE-001 (code) says ±10% on the final mix; the series ceiling is brief × 1.35. Recommendation: one rule — standalone ±10%, series between the 12.5-minute floor and brief × 1.35. Marc decides.
+- C6. **[RESOLVED by decision 9, Marc Nov 9, 2026]** Open threads: ENDING-001 and Bible Part XVII say a finale resolves all major threads and never teases a sequel; SERIES-NEMESIS-001 (Oct 30) allows one escaped villain, Altar three. Recommendation: newer rule 33 wins; the sequel thread is never teased by Belle.
 - C7. Pocket FM list: PIPELINE-CANON names only Widow, Second Rise and Weekend Wife as Pocket FM; Marc also chose Pocket FM for "The Man I Left at the Altar" (Nov 3) and a second 30-episode series (Nov 5). Recommendation: keep a per-series style_mode field; the canon list is examples only.
 
 ## Open questions for Marc
-- Q1. Are 3-episode series still allowed for new work? Suggested answer: only when you ask for one.
+- Q1. **[RESOLVED by decision 5, Marc Nov 9, 2026]** Are 3-episode series still allowed for new work? Suggested answer: only when you ask for one.
 - Q2. Does "no 1-episode stories live" (Nov 8) also ban standalone single stories, or only a series showing one episode? Suggested answer: only the series case; standalones stay allowed for discovery and tests.
 - Q3. What numbers make a hook series a "winner" to extend to 20–30 episodes? Suggested answer: cost per trial at or under the $26–31 CAC target band and at least 40% of trial users reaching Episode 3.
-- Q4. Should the avoid-list of recent premises, settings and names (rule 25) be built now? Suggested answer: yes, now that Stabilization Week is over; warning only, like known-adjacent clusters.
-- Q5. NEDS (rule 52): the scorers named in the Bible (Hal, Vega) no longer do this job, and no code checks it. Keep it? Suggested answer: drop NEDS; the Story Clarity check and Gemini's script read replace it.
-- Q6. Character-attachment scoring after each finale (rule 53): keep? Suggested answer: replace with listener data (completion rate, Episode 3 reach) in the weekly report.
-- Q7. Who writes the series bible for a continued series, and does Marc approve every one? Suggested answer: the pipeline writer drafts it; Marc approves only for series in active ads.
+- Q4. **[RESOLVED by decision 16, Marc Nov 9, 2026]** Should the avoid-list of recent premises, settings and names (rule 25) be built now? Suggested answer: yes, now that Stabilization Week is over; warning only, like known-adjacent clusters.
+- Q5. **[RESOLVED by decision 12, Marc Nov 9, 2026]** NEDS (rule 52): the scorers named in the Bible (Hal, Vega) no longer do this job, and no code checks it. Keep it? Suggested answer: drop NEDS; the Story Clarity check and Gemini's script read replace it.
+- Q6. **[RESOLVED by decision 12, Marc Nov 9, 2026]** Character-attachment scoring after each finale (rule 53): keep? Suggested answer: replace with listener data (completion rate, Episode 3 reach) in the weekly report.
+- Q7. **[RESOLVED by decision 17, Marc Nov 9, 2026]** Who writes the series bible for a continued series, and does Marc approve every one? Suggested answer: the pipeline writer drafts it; Marc approves only for series in active ads.
 
 ## Enforcement status
 - Rule 1–2, 12–15, 47, 57–58 → not enforced yet (Spec "planning package" is phase 3 of the rollout).

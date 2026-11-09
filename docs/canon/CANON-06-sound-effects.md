@@ -16,7 +16,7 @@ Every rule in this document that needs Marc. **[MARC DECIDES]** = Marc approves,
 - **Rule 53 [MARC DECIDES]:** A published episode is re-mixed for sound only on Marc's explicit word.
 - **Rule 54 [MARC DECIDES]:** The first test with the new library is one episode only (Rerouted EP1). Nothing else gets sounds until Marc approves that test.
 - **Rule 55 [MARC DOES]:** When sounds are added back to published episodes, it is done one series at a time: one test episode, Marc listens, then the rest.
-- **Still open:** 7 conflicts and 7 questions at the end of this document wait for Marc's decision (all listed in CANON-99).
+- **Still open:** 6 conflicts or questions below, each with a recommendation in CANON-99 Part 2.
 
 ## Rules
 
@@ -91,19 +91,29 @@ Every rule in this document that needs Marc. **[MARC DECIDES]** = Marc approves,
 54. **[MARC DECIDES]** The first test with the new library is one episode only (Rerouted EP1). Nothing else gets sounds until Marc approves that test. — **Agreed** (Orion note, Marc Nov 5)
 55. **[MARC DOES]** When sounds are added back to published episodes, it is done one series at a time: one test episode, Marc listens, then the rest. — **Proposed** (Marc wants old stories reprocessed with sounds, Nov 7; no method agreed)
 
+## Marc's decisions (Nov 9, 2026)
+
+Marc answered CANON-99 on Nov 9, 2026. These decisions are **Agreed** and override any rule above that says otherwise. Each conflict or question below that they settle is marked RESOLVED.
+
+- **Decision 35:** **Sound library.** Decided: Sound Ideas is the main library and Soundsnap the backup; the $169 Soundsnap upgrade is not bought; remove the old ElevenLabs sound-effect fallback. (06 C2, C3, C5) — **Agreed** (Marc, Nov 9, 2026, CANON-99)
+- **Decision 36:** **When sounds come back on** (off since Nov 1). Decided: after Sound Ideas is connected and screened and you approve one Rerouted test mix. (06 Q1) — **Agreed** (Marc, Nov 9, 2026, CANON-99)
+- **Decision 37:** **Who approves a sound.** Decided: a Gemini pass is enough; you listen to one test mix per new batch. (06 C6, Q2) — **Agreed** (Marc, Nov 9, 2026, CANON-99)
+- **Decision 38:** **Background sounds.** Decided: about 10-second scene-setters only; retire whole-scene beds. (06 C4) — **Agreed** (Marc, Nov 9, 2026, CANON-99)
+- **Decision 39:** **Rights in ads.** Decided: no library sounds or music in paid ads until the license is confirmed in writing; record each story's music source. (06 Q3, 07 Q2) — **Agreed** (Marc, Nov 9, 2026, CANON-99)
+
 ## Conflicts found
 - C1. STAGE2_SCRIPT_PROMPT v2.3 and SCRIPT_VALIDATOR v1.2 (June 10) say 3–6 "anchor" sounds per story, fail above 8, "no continuous ambience beds", sounds only in a gap and never under speech. Marc's Oct 31 (no cap), Nov 1 (spot sounds under the voice, background track) and Nov 2 (short background scene-setters) decisions say otherwise. Recommendation: the Nov rules win; update STAGE2 and the validator in the script-writing canon. Marc decides.
-- C2. Code rule SOUNDSNAP-ONLY-001 (Nov 3) and lib/sfxSwitch.ts say "only Soundsnap". Marc's Nov 5 decision makes Sound Ideas main and Soundsnap backup. The code has no Sound Ideas path yet. Recommendation: rename the rule to "licensed library only" and add Sound Ideas as a licensed source. Marc decides.
-- C3. Memory (Nov 3) says Marc said yes to Soundsnap's $169 multi-device upgrade. The Nov 5 chat summary says he declined it and Claude advised "let the Soundsnap upgrade go". The replace loop (Nov 3) needs that upgrade. Recommendation: treat the upgrade as not bought; the loop runs on Sound Ideas. Marc confirms.
-- C4. SFX-BED-SCENE-001 / SFX_V2 (Oct 31) let a background last its whole scene (up to 240 s). BG-SCENE-SETTER-001 (Nov 2) makes it about 10 s. Code applies 10 s only in catalog mode. Recommendation: Nov 2 wins everywhere; retire the whole-scene option. Marc decides.
-- C5. Old code paths still contain an ElevenLabs fallback (lib/sfxLibrary.ts, lib/sfxGenerate.ts, SFX-LIBRARY-001 Oct 29). They are blocked only by the switch SFX_SOUNDSNAP_ONLY (default on; "off" brings them back). Recommendation: remove the fallback so rule 1 cannot be switched off by accident. Marc decides.
-- C6. Marc wanted to approve each take by ear (Oct 31). Later he set up Gemini screening (Nov 3) and on Nov 7 asked to be left out of production. Recommendation: see Q2.
+- C2. **[RESOLVED by decision 35, Marc Nov 9, 2026]** Code rule SOUNDSNAP-ONLY-001 (Nov 3) and lib/sfxSwitch.ts say "only Soundsnap". Marc's Nov 5 decision makes Sound Ideas main and Soundsnap backup. The code has no Sound Ideas path yet. Recommendation: rename the rule to "licensed library only" and add Sound Ideas as a licensed source. Marc decides.
+- C3. **[RESOLVED by decision 35, Marc Nov 9, 2026]** Memory (Nov 3) says Marc said yes to Soundsnap's $169 multi-device upgrade. The Nov 5 chat summary says he declined it and Claude advised "let the Soundsnap upgrade go". The replace loop (Nov 3) needs that upgrade. Recommendation: treat the upgrade as not bought; the loop runs on Sound Ideas. Marc confirms.
+- C4. **[RESOLVED by decision 38, Marc Nov 9, 2026]** SFX-BED-SCENE-001 / SFX_V2 (Oct 31) let a background last its whole scene (up to 240 s). BG-SCENE-SETTER-001 (Nov 2) makes it about 10 s. Code applies 10 s only in catalog mode. Recommendation: Nov 2 wins everywhere; retire the whole-scene option. Marc decides.
+- C5. **[RESOLVED by decision 35, Marc Nov 9, 2026]** Old code paths still contain an ElevenLabs fallback (lib/sfxLibrary.ts, lib/sfxGenerate.ts, SFX-LIBRARY-001 Oct 29). They are blocked only by the switch SFX_SOUNDSNAP_ONLY (default on; "off" brings them back). Recommendation: remove the fallback so rule 1 cannot be switched off by accident. Marc decides.
+- C6. **[RESOLVED by decision 37, Marc Nov 9, 2026]** Marc wanted to approve each take by ear (Oct 31). Later he set up Gemini screening (Nov 3) and on Nov 7 asked to be left out of production. Recommendation: see Q2.
 - C7. MIX_NOTE_PROTOCOL v1.0 (April) says sound effects sit 6 dB under dialogue. SFX-LEVEL-001 sets spot sounds at about the same average level as voices (−19 dB vs about −20 dB). Recommendation: SFX-LEVEL-001 wins; update the protocol table (see CANON-07). Marc decides.
 
 ## Open questions for Marc
-- Q1. Sounds are off for every story since Nov 1. When do they come back on? Suggested answer: when the Sound Ideas API is connected, the catalog is filled and screened, and Marc approves the Rerouted EP1 test mix.
-- Q2. Who approves a take before it goes live: Marc by ear, or a Gemini pass? Suggested answer: Gemini pass is enough for a take; Marc listens to one test mix each time a new batch of names is filled.
-- Q3. Sound Ideas never said yes to its sounds in paid Facebook/Instagram ads. Suggested answer: no library sounds in ads until Ron confirms in writing.
+- Q1. **[RESOLVED by decision 36, Marc Nov 9, 2026]** Sounds are off for every story since Nov 1. When do they come back on? Suggested answer: when the Sound Ideas API is connected, the catalog is filled and screened, and Marc approves the Rerouted EP1 test mix.
+- Q2. **[RESOLVED by decision 37, Marc Nov 9, 2026]** Who approves a take before it goes live: Marc by ear, or a Gemini pass? Suggested answer: Gemini pass is enough for a take; Marc listens to one test mix each time a new batch of names is filled.
+- Q3. **[RESOLVED by decision 39, Marc Nov 9, 2026]** Sound Ideas never said yes to its sounds in paid Facebook/Instagram ads. Suggested answer: no library sounds in ads until Ron confirms in writing.
 - Q4. Names with only 1 or 2 good takes stay silent under the 3-take rule. Suggested answer: allow a name to go live with 1 approved take; rotate once 3 exist.
 - Q5. The "wanted" list shows sounds the catalog lacks. Who adds new names? Suggested answer: Claude proposes new names from repeated "wanted" entries once a week; Marc approves the list.
 - Q6. SFX-ASSET-LOCK-001 is still a draft, though part of it runs in code. Declare it canon? Suggested answer: yes for voice locking (Part B) and the manifest check; for sounds, the catalog already makes picks repeatable.

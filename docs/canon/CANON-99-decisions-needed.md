@@ -1,8 +1,12 @@
 # CANON-99 — Decisions Needed (Nov 9, 2026)
-Status: OPEN · 60 decisions for Marc · Owner: Marc
+Status: PART 1 ANSWERED (Marc, Nov 9, 2026: all 60 decided; 57 changed by Marc) · PART 2 OPEN (items 61–124) · Owner: Marc
 Covers: every conflict and unanswered question found in the canon audit, with a recommendation for each. Does not cover: rules already agreed (those are in CANON-01 to CANON-15).
 
-## How to answer
+## Marc's answer (Nov 9, 2026)
+
+Marc: "I approve your recommendations with the one exception you fixed above." Every recommendation below is now an Agreed decision, written into its canon document. The exception is decision 57: the plow-back percentage is a setting that starts at 75% and only Marc changes.
+
+## How this list was answered
 
 - Reply **"accept all"** to approve every recommendation below.
 - Or reply **"accept all except 4, 22, 43"** and give your answer for those numbers.
@@ -92,7 +96,7 @@ Each item names the canon document it belongs to, for example (03 C2) = CANON-03
     - Agents reach Meta only through the gated server routes.
     - Ads run from a new or renamed Endless Tales ad account.
     - (13 C3, C4, C7, Q1–Q3)
-57. **Plow back.** **Recommend:**
+57. **Plow back.** Marc's decision: the plow-back percentage is a setting that starts at 75%; only Marc changes it, each change is recorded with its date and applies from the next month on. Plow back = that percentage of the previous month's profit ($0 after a loss month), shown as one number ("Available for ads"). The Command Center reads the same setting. The rest stays as reserve. Minimum cash reserve: $5,000 or 90 days of spending, whichever is larger. (13 C8, 14 C3, C4, Q1, Q3) **[CHANGED BY MARC]**
     - 75% of the previous month's profit ($0 after a loss), shown as one number.
     - The Command Center is fixed to match.
     - The other 25% stays as reserve.
@@ -111,3 +115,97 @@ Each item names the canon document it belongs to, for example (03 C2) = CANON-03
     - Rotate the three exposed secrets (Susan's API key and a Telegram bot token in repository documents, an email-service key in memory) and remove them from the documents.
     - Put a login gate on the open /api/v2 production routes.
     - (15 C5, C6)
+
+---
+
+# Part 2 — Remaining items (added Nov 9, 2026, after Marc's answer to Part 1)
+
+These smaller conflicts and questions were not on the Part 1 list. Each has a recommendation. Reply **"accept part 2"** or **"accept part 2 except …"**.
+
+## Already settled (facts checked or done today; no decision needed)
+
+- **01 C5:** The pipeline runner lives on the EC2 server (`endlesstales-runnext`, confirmed running Nov 9). Vercel only builds preview copies.
+- **04 C2:** Settled by Marc's Nov 8 outro rule, now built into the writer and checks (PR #544).
+- **04 C10:** BELLE_B_PROMPT_RULES.md updated to the Nov 8 rule (PR #544); INTRO_OUTRO_BIBLE and INTRO_OUTRO_PRODUCTION_RULES become history.
+- **08 Q1:** Publish switch: Direct. Publication hold: ON since Nov 9 (to stop Rerouted publishing early). Every status report shows both.
+- **11 C6:** Already replaced by the Player Rules (Nov 9).
+- **15 C9:** run-next now requires admin login; the README note gets fixed.
+
+## Production, writing and voices
+
+61. **(01 C4)** Series checks run per episode once built (decision 21); until then, record it as not fully enforced.
+62. **(01 Q3)** The Nov 7 Story Production Spec: only the Gemini read (report-only) is approved; the rest is replaced by this canon.
+63. **(02 C7)** Each series carries its own "style" setting (standard or Pocket FM). The canon list of Pocket FM series is examples only.
+64. **(02 Q2)** Standalone single stories stay allowed. "No 1-episode stories live" means no series showing only some of its episodes.
+65. **(02 Q3)** A hook series is a "winner" when its cost per trial is at or under the $26–31 target and at least 40% of its trial users reach Episode 3.
+66. **(03 C9)** Story clarity: the goal is clear within about 480 spoken words (3 minutes at 160 words per minute).
+67. **(03 C11)** Drop the NEDS score header.
+68. **(03 C12, 06 C1, 06 C7)** The old sound rules in the writer documents (3–6 anchor sounds, no beds, sounds 6 dB under voices) are removed; the sound and mix canons own sound.
+69. **(03 Q6)** The Escalation Ceiling and the story-map acceptance checks become law.
+70. **(04 C5)** The listener's name comes from one field everywhere: the name they enter as "what friends call you".
+71. **(04 C8)** Belle names the author in Episode 1's intro (BELLE-004).
+72. **(04 Q3)** Turn the live name greeting on for everyone after Marc tests it on his phone.
+73. **(04 Q5, Q6)** Each added batch of episodes is a new season: its first episode gets the Episode 1 intro; the last episode of a season promotes the next season's first episode by number (it is not a finale).
+74. **(05 C3, C4)** The voice-reuse rule is 30 stories (old 20-story logic removed). Ongoing-series leads get their own custom voice, reserved forever.
+75. **(05 Q2)** The writer adds a pronunciation hint for unusual names in the character guide; the voice step uses it.
+76. **(05 Q3)** Build Gemini's listen of each new series' Episode 1 before the next new series is voiced.
+77. **(05 Q4)** The weekly report shows the count of screened voices.
+78. **(05 Q5)** Re-voicing a published story always waits for Marc's listen, even in Direct mode.
+
+## Sound and mixing
+
+79. **(06 Q4)** A sound name may go live with 1 approved take; takes rotate once 3 exist.
+80. **(06 Q5)** Once a week, Claude proposes new sound names from the "wanted" list; Marc approves the list.
+81. **(06 Q6)** SFX-ASSET-LOCK becomes canon for voice locking and the manifest check.
+82. **(06 Q7)** Each series' signature sound (like the Falls Park bell) is one catalog name, used by every episode.
+83. **(07 Q6)** Belle sits about 3 dB above the story voices (replaces the unbuilt "1.5x" rule).
+
+## Quality checks, publishing, covers and eBooks
+
+84. **(08 C5)** Every check that only warns gets a written reason in its canon document, or it becomes blocking.
+85. **(08 C8)** The story clarity check runs before voicing. The Gemini read of the whole series stays report-only until decision 24's trial.
+86. **(08 Q4)** In Review mode, Marc gets one Telegram message per series with a play link per episode, plus the Admin Review tab.
+87. **(08 Q5)** The Belle structure check runs in the writer's self-check and before voicing (same check both places).
+88. **(09 C3, C5)** The old production process and Series Release Rule become history; PIPELINE-CANON's rule titles get corrected.
+89. **(09 Q4)** Test stories carry a "test" mark, and every publish path refuses them.
+90. **(10 C3)** A missing cover blocks publishing, but not Ready for Review.
+91. **(10 Q2)** In Direct mode, Marc does not review covers; Gemini checks each one for maps, keys, text and darkness.
+92. **(10 Q3)** One eBook text per episode, shown as one book in the reader.
+93. **(10 Q4)** eBooks for stories published before Oct 4 are made only for stories that stay live, as a separate low-priority order.
+94. **(10 Q5)** Keep the old cover's link so Marc can switch back.
+
+## Player and listener app
+
+95. **(11 C3, C5)** No review screen in a playlist (the finished story's card gets the red Rate button). Outside a playlist, after the review screen the player always goes to the Library.
+96. **(11 C4)** The name greeting plays on the first episode a listener plays; replays get the normal intro.
+97. **(11 Q6)** The "Continue your story" mini-player stays on Home and Library only.
+98. **(11 Q7)** iPhone audio that gets quieter during calls is accepted for the web app and fixed in the future native app.
+99. **(12 C9)** An unknown ad link shows a clear error, never a different story.
+100. **(12 Q6)** No custom stories until after the Meta test.
+101. **(12 Q8)** Offer the annual plan at the end of the trial.
+102. **(12 Q9)** Keep the free guest stories (2 stories / 30 minutes).
+
+## Marketing, finance and agents
+
+103. **(13 C6)** Strategos sends his brief straight to Susan; Marc's gate is the approval card before launch.
+104. **(13 C10)** The Meta key lives in the EC2 server's settings (not Vercel).
+105. **(13 C11)** Meta's own phone preview never counts as approval, except as a written, dated, one-time override by Marc.
+106. **(13 Q4)** Retire the Airtable campaign system; keep its cash-floor test on the approval card.
+107. **(13 Q5)** After the $4,000 test, the monthly ad budget is "Available for ads"; more needs Marc's approval.
+108. **(13 Q6)** Decide what influencer/PR outreach is for after the Meta test.
+109. **(13 Q7)** "Owner tested personally" must be ticked before Approve works.
+110. **(13 Q8)** Amendment 1 is overridden only in writing on the approval card, with the date.
+111. **(14 C2, C6)** Retire the old LTV numbers and the old $59.99 price everywhere.
+112. **(14 C5)** Five spending sections on the statement: Operations, Story Production, Ad Spend, Marketing Services, R&D.
+113. **(14 Q2)** In a month with no finished episodes, the $125 Sound Ideas charge shows as unassigned production cost.
+114. **(14 Q4)** Bart closes each month (reconcile, clear "Other", report) by the 5th of the next month.
+115. **(14 Q5)** Show AI agent costs per agent once usage logging exists.
+116. **(15 C7)** All code goes through pull requests on GitHub; never written straight on the Mac.
+117. **(15 C8)** Orion's model setting follows the latest fleet decision (Nov 8: DeepSeek), switched to a faster model when a task needs it.
+118. **(15 C10)** Orion's INCIDENT-RULE-001 is Proposed until Marc approves it.
+119. **(15 Q3)** Codex has no job now; Claude does that work.
+120. **(15 Q4)** Keep a one-line roster of active agents; retire names with no work (Vega, Maya, Lex, Lyra, Holly, Scribe).
+121. **(15 Q5)** Claude re-reviews the six self-merged PRs (#333–#338) and reports.
+122. **(15 Q6)** Orion runs on Marc's Mac only, until the CAC test passes.
+123. **(15 Q7)** The app runs on EC2; Vercel only builds preview copies.
+124. **(15 Q8)** An agent reports BLOCKED after 30 minutes without progress.

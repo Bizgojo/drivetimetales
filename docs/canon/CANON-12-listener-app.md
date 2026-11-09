@@ -10,7 +10,7 @@ Every rule in this document that needs Marc. **[MARC DECIDES]** = Marc approves,
 - **Rule 60 [MARC DECIDES]:** A new landing story serves only after Marc adds it to the live list.
 - **Rule 68 [MARC DECIDES]:** Push notifications are off until Marc approves what they say and when.
 - **Rule 73 [MARC DOES]:** Marc checks every listener-facing change on a real phone before it is accepted.
-- **Still open:** 9 conflicts and 9 questions at the end of this document wait for Marc's decision (all listed in CANON-99).
+- **Still open:** 4 conflicts or questions below, each with a recommendation in CANON-99 Part 2.
 
 ## Rules
 
@@ -121,25 +121,37 @@ Every rule in this document that needs Marc. **[MARC DECIDES]** = Marc approves,
 76. Offline downloads are temporary licensed copies, not purchases. — **In force (code)** (app/terms)
 77. The legal pages name the company that runs Endless Tales. — **Proposed** wording: Endless Tales, LLC (see Conflict C7)
 
+## Marc's decisions (Nov 9, 2026)
+
+Marc answered CANON-99 on Nov 9, 2026. These decisions are **Agreed** and override any rule above that says otherwise. Each conflict or question below that they settle is marked RESOLVED.
+
+- **Decision 8:** **Story card description.** Decided: fills two lines, never a third (about 100 characters), checked in one place. The old 24-word and 70-character limits go. (03 C4, 12 C6) — **Agreed** (Marc, Nov 9, 2026, CANON-99)
+- **Decision 50:** **What a playlist is.** Decided: the listener's own "Add to Playlist" list, saved to their account; finished stories drop off. (12 Q1, Q2) — **Agreed** (Marc, Nov 9, 2026, CANON-99)
+- **Decision 51:** **Paywall.** Decided: the paywall never cuts audio mid-story; after a trial, Episode 1 of every series stays free. (11 Q5, 12 Q3, Q5) — **Agreed** (Marc, Nov 9, 2026, CANON-99)
+- **Decision 52:** **Prices and trial.** Decided: $9.99/month, $79.99/year; 14-day trial with a card required for ad traffic; refund once within 7 days of the first charge. Fix the old $7.99 numbers everywhere. (12 C1–C3, Q4, 13 C1, C2) — **Agreed** (Marc, Nov 9, 2026, CANON-99)
+- **Decision 53:** **Old models.** Decided: retire credits and Founding Member everywhere. (12 C4, C8) — **Agreed** (Marc, Nov 9, 2026, CANON-99)
+- **Decision 54:** **Readability and legal name.** Decided: 44-pixel buttons app-wide; legal pages name Endless Tales, LLC. (12 C5, C7) — **Agreed** (Marc, Nov 9, 2026, CANON-99)
+- **Decision 55:** **Settings page.** Decided: remove the controls that don't work; no speed control or sleep timer for now. (11 Q2, 12 Q7) — **Agreed** (Marc, Nov 9, 2026, CANON-99)
+
 ## Conflicts found
-- C1. Prices. Code and Oct–Nov chats: $9.99/month, $79.99/year (lib/pricing.ts, Sep 19). Older: $7.99/$59.99 "confirmed by Marc 2026-06-05" (app/api/admin/org-status/route.ts) and memory /areas/endless-tales-platform.md; app/api/admin/launch-report/route.ts still computes revenue at $7.99/$59.99. Recommendation: $9.99/$79.99 wins (newer); fix the report. Marc decides.
-- C2. Card at trial start. Oct 2026: card required (chat "CAC for self-funding"; /go copy says "Card required"). Code still runs no-card trials (/listen and /go invitation sign-ups, app/api/listen/signup, app/api/go/invite-signup) and the Oct 5 "card wall after Episode 2" for them. All 49 trials to Nov 5 were no-card. Recommendation: card required for all ad traffic; keep no-card only for referral invitations, or retire it. Marc decides.
-- C3. Trial length. Memory (older): "7-day no-card free trial". Code and Oct–Nov: 14 days everywhere. Recommendation: 14 days wins. Marc decides.
-- C4. Credits. The review route still awards "review credits", and mockups/MASTER-UI-BIBLE.md, FLAG_RULES.md and DTT-LAUNCH-PLAN.md describe a credits/"Owned" model. The app is subscription-only. Recommendation: retire credits everywhere. Marc decides.
-- C5. Button size. Card buttons were set to 38 pixels (CARD-COMPACT-001, Marc Nov 6). The 44-pixel rule (PLAYER-RULES, Nov 9) covers the player only. Recommendation: 44 pixels app-wide (newer, and Marc's own readability need). Marc decides.
-- C6. Card description. Marc Nov 5: fills two lines, never a third. Code: cut at 70 characters (LibraryStoryCard.tsx). Recommendation: Marc's two-line rule wins. Marc decides.
-- C7. Company name. Terms, Privacy and License say "operated by Wonder Books Press". The subscriber company is Endless Tales, LLC (D-U-N-S legal name, Nov 5). Recommendation: Endless Tales, LLC; confirm with legal. Marc decides.
-- C8. Founding Member retired (Marc Jul 10) but app/api/webhook/route.ts still labels "$29.99/year" Founding Member, and Admin org-status still lists it. Recommendation: remove. Marc decides.
+- C1. **[RESOLVED by decision 52, Marc Nov 9, 2026]** Prices. Code and Oct–Nov chats: $9.99/month, $79.99/year (lib/pricing.ts, Sep 19). Older: $7.99/$59.99 "confirmed by Marc 2026-06-05" (app/api/admin/org-status/route.ts) and memory /areas/endless-tales-platform.md; app/api/admin/launch-report/route.ts still computes revenue at $7.99/$59.99. Recommendation: $9.99/$79.99 wins (newer); fix the report. Marc decides.
+- C2. **[RESOLVED by decision 52, Marc Nov 9, 2026]** Card at trial start. Oct 2026: card required (chat "CAC for self-funding"; /go copy says "Card required"). Code still runs no-card trials (/listen and /go invitation sign-ups, app/api/listen/signup, app/api/go/invite-signup) and the Oct 5 "card wall after Episode 2" for them. All 49 trials to Nov 5 were no-card. Recommendation: card required for all ad traffic; keep no-card only for referral invitations, or retire it. Marc decides.
+- C3. **[RESOLVED by decision 52, Marc Nov 9, 2026]** Trial length. Memory (older): "7-day no-card free trial". Code and Oct–Nov: 14 days everywhere. Recommendation: 14 days wins. Marc decides.
+- C4. **[RESOLVED by decision 53, Marc Nov 9, 2026]** Credits. The review route still awards "review credits", and mockups/MASTER-UI-BIBLE.md, FLAG_RULES.md and DTT-LAUNCH-PLAN.md describe a credits/"Owned" model. The app is subscription-only. Recommendation: retire credits everywhere. Marc decides.
+- C5. **[RESOLVED by decision 54, Marc Nov 9, 2026]** Button size. Card buttons were set to 38 pixels (CARD-COMPACT-001, Marc Nov 6). The 44-pixel rule (PLAYER-RULES, Nov 9) covers the player only. Recommendation: 44 pixels app-wide (newer, and Marc's own readability need). Marc decides.
+- C6. **[RESOLVED by decision 8, Marc Nov 9, 2026]** Card description. Marc Nov 5: fills two lines, never a third. Code: cut at 70 characters (LibraryStoryCard.tsx). Recommendation: Marc's two-line rule wins. Marc decides.
+- C7. **[RESOLVED by decision 54, Marc Nov 9, 2026]** Company name. Terms, Privacy and License say "operated by Wonder Books Press". The subscriber company is Endless Tales, LLC (D-U-N-S legal name, Nov 5). Recommendation: Endless Tales, LLC; confirm with legal. Marc decides.
+- C8. **[RESOLVED by decision 53, Marc Nov 9, 2026]** Founding Member retired (Marc Jul 10) but app/api/webhook/route.ts still labels "$29.99/year" Founding Member, and Admin org-status still lists it. Recommendation: remove. Marc decides.
 - C9. Landing fallback. Rule 57 says each ad lands on its own story. lib/landing.ts silently serves the default story for any unknown code. Recommendation: show an error instead (rule 59). Marc decides.
 
 ## Open questions for Marc
-- Q1. What is a playlist? Suggested answer: the listener's own "Add to Playlist" list (as built), saved to their account so it follows them; no genre queue for now.
-- Q2. Should each listener keep their playlist after it finishes, or does it empty as it plays (today finished items drop off)? Suggested answer: drop finished items, as now.
-- Q3. After a trial ends, what may a non-paying listener still hear? Suggested answer: Episode 1 of every series, free forever (your earlier rule), and 60 seconds of a standalone.
-- Q4. Refunds: keep "no refunds except where law requires", or allow a refund within 7 days of the first charge? Suggested answer: one refund within 7 days of the first charge, to limit card disputes.
-- Q5. Can the paywall ever stop audio mid-story? Suggested answer: no; the wall shows when the next story starts.
+- Q1. **[RESOLVED by decision 50, Marc Nov 9, 2026]** What is a playlist? Suggested answer: the listener's own "Add to Playlist" list (as built), saved to their account so it follows them; no genre queue for now.
+- Q2. **[RESOLVED by decision 50, Marc Nov 9, 2026]** Should each listener keep their playlist after it finishes, or does it empty as it plays (today finished items drop off)? Suggested answer: drop finished items, as now.
+- Q3. **[RESOLVED by decision 51, Marc Nov 9, 2026]** After a trial ends, what may a non-paying listener still hear? Suggested answer: Episode 1 of every series, free forever (your earlier rule), and 60 seconds of a standalone.
+- Q4. **[RESOLVED by decision 52, Marc Nov 9, 2026]** Refunds: keep "no refunds except where law requires", or allow a refund within 7 days of the first charge? Suggested answer: one refund within 7 days of the first charge, to limit card disputes.
+- Q5. **[RESOLVED by decision 51, Marc Nov 9, 2026]** Can the paywall ever stop audio mid-story? Suggested answer: no; the wall shows when the next story starts.
 - Q6. Custom stories (a listener orders a story made for them): offer it, and at what price? Suggested answer: not until after the Meta test.
-- Q7. What should the Settings page keep? Suggested answer: only working items (account, Travel Insights, eBook text size); remove the rest until built.
+- Q7. **[RESOLVED by decision 55, Marc Nov 9, 2026]** What should the Settings page keep? Suggested answer: only working items (account, Travel Insights, eBook text size); remove the rest until built.
 - Q8. Annual plan push: offer annual at the end of the trial? Suggested answer: yes, it is the main money lever (Bart, Nov 3).
 - Q9. Should guests get any free story without signing up, now that ads land on /go samples? Suggested answer: keep the free guest stories, same 2-story / 30-minute limit.
 

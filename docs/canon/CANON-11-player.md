@@ -11,7 +11,7 @@ Every rule in this document that needs Marc. **[MARC DECIDES]** = Marc approves,
 - **Rule 37 [MARC DECIDES]:** All episodes publish together. A series stays hidden until every episode is finished and approved, then they all go live at the same time.
 - **Rule 40 [MARC DECIDES]:** The publish switch on the Admin page decides who approves. It is checked when a story is ready to publish. On "Review", every story waits for Marc…
 - **Rule 46 [MARC DOES]:** Marc checks it on a real phone before any player change is accepted.
-- **Still open:** 6 conflicts and 7 questions at the end of this document wait for Marc's decision (all listed in CANON-99).
+- **Still open:** 5 conflicts or questions below, each with a recommendation in CANON-99 Part 2.
 
 ## Rules
 
@@ -127,20 +127,29 @@ Play logging and listen time
 78. Logging never blocks or slows playback. — **In force (code)** (lib/analytics.ts header)
 79. Listening by test accounts is never counted in listener numbers. — **Proposed** (is_test_account exists for sales; same rule for listening)
 
+## Marc's decisions (Nov 9, 2026)
+
+Marc answered CANON-99 on Nov 9, 2026. These decisions are **Agreed** and override any rule above that says otherwise. Each conflict or question below that they settle is marked RESOLVED.
+
+- **Decision 48:** **Between episodes.** Decided: build the 2-to-3-second "Up next" screen; one button named **Cancel** (one time only, goes to the Library); lock-screen Stop acts as Pause; autoplay is always on (remove the unused toggle). (11 C1, C2, Q1, Q3) — **Agreed** (Marc, Nov 9, 2026, CANON-99)
+- **Decision 49:** **Next playlist story missing or hidden.** Decided: skip to the next live story; go to the Library only when none is left. This changes one Player Rule. (11 Q4) — **Agreed** (Marc, Nov 9, 2026, CANON-99)
+- **Decision 51:** **Paywall.** Decided: the paywall never cuts audio mid-story; after a trial, Episode 1 of every series stays free. (11 Q5, 12 Q3, Q5) — **Agreed** (Marc, Nov 9, 2026, CANON-99)
+- **Decision 55:** **Settings page.** Decided: remove the controls that don't work; no speed control or sleep timer for now. (11 Q2, 12 Q7) — **Agreed** (Marc, Nov 9, 2026, CANON-99)
+
 ## Conflicts found
-- C1. docs/PLAYER-RULES.md (Nov 9) says a 2-to-3-second gap with a large "Up next" screen and a Cancel button. Code: a series advances at once with no gap and no Up next screen (CanonicalPlayer.tsx startAutoAdvanceTo skips its 2.5-second timer for "next episode"); playlists and the offline player also advance at once. The June spec said 5 seconds. Recommendation: PLAYER-RULES wins (newest, Marc-approved); fix code. Marc decides.
-- C2. PLAYER-RULES: Cancel stops one advance only, then goes to the Library. Code: the Up next card has "Play now" and "Stop" (not "Cancel"); "Stop", and the lock-screen Stop action, turn auto-continue off for the rest of the session and stay on the player. Marc's Nov 7 rule allowed "an explicit STOP" to turn it off. Recommendation: one button named Cancel, one-time only, goes to Library; lock-screen Stop acts as Pause. Marc decides.
+- C1. **[RESOLVED by decision 48, Marc Nov 9, 2026]** docs/PLAYER-RULES.md (Nov 9) says a 2-to-3-second gap with a large "Up next" screen and a Cancel button. Code: a series advances at once with no gap and no Up next screen (CanonicalPlayer.tsx startAutoAdvanceTo skips its 2.5-second timer for "next episode"); playlists and the offline player also advance at once. The June spec said 5 seconds. Recommendation: PLAYER-RULES wins (newest, Marc-approved); fix code. Marc decides.
+- C2. **[RESOLVED by decision 48, Marc Nov 9, 2026]** PLAYER-RULES: Cancel stops one advance only, then goes to the Library. Code: the Up next card has "Play now" and "Stop" (not "Cancel"); "Stop", and the lock-screen Stop action, turn auto-continue off for the rest of the session and stay on the player. Marc's Nov 7 rule allowed "an explicit STOP" to turn it off. Recommendation: one button named Cancel, one-time only, goes to Library; lock-screen Stop acts as Pause. Marc decides.
 - C3. PLAYER-RULES: no review screen in a playlist. Code shows the review pop-up whenever a final episode finishes, in any mode (saveProgress → maybeShowCompletionReviewPrompt). Recommendation: PLAYER-RULES wins; skip the pop-up in playlist mode. Marc decides. (Not yet checked on a phone.)
 - C4. Name greeting timing. Memory (/projects/.../areas/personalization.md and story-pipeline.md, Oct 29): "play whenever a listener starts Episode 1 from the beginning; on a later listen, warmly acknowledge the return." Nov 1–2 change (PR #385): "first episode this listener plays; replays get the normal intro." Also Oct 27–29: personalize the finale outro, but PR #385 found no personal outro exists. Recommendation: the newer Nov 1–2 rule (74) wins; the "returning listener" greeting and finale name outro stay open. Marc decides.
 - C5. PLAYER-RULES: not in a playlist, the review screen pops up "then the Library". Code: after the listener closes review it goes to Library, but if they already reviewed, the player stays on a "Story complete" card. Recommendation: go to the Library in both cases, keeping "Browse more stories" (rule 52) only on the card shown while the review is open. Marc decides.
-- C6. AUTOPLAY_NEXT_EPISODE_SPEC (June) said standalones and finales never auto-advance. PLAYER-RULES (Nov 9) auto-continues to the next playlist story. PLAYER-RULES wins (already noted as replaced).
+- C6. **[RESOLVED: fact checked or done, Nov 9, 2026; see CANON-99 Part 2]** AUTOPLAY_NEXT_EPISODE_SPEC (June) said standalones and finales never auto-advance. PLAYER-RULES (Nov 9) auto-continues to the next playlist story. PLAYER-RULES wins (already noted as replaced).
 
 ## Open questions for Marc
-- Q1. Autoplay on/off setting for listeners, or always on with Cancel? (Open in PLAYER-RULES.) Suggested answer: always on, with Cancel. Remove the dead "Auto-Play Next" toggle in Settings.
-- Q2. Do listeners need a speed control (0.75x to 2x) or a sleep timer? Suggested answer: no speed control for now (drive-time); add a sleep timer later only if listeners ask, since it would stop playback by itself.
-- Q3. What does "Stop" on the lock screen or car do? Suggested answer: the same as Pause.
-- Q4. When the next playlist story is hidden or missing, should it skip to the one after, or go to the Library? PLAYER-RULES says Library. Suggested answer: skip to the next live story; go to the Library only when none is left.
-- Q5. A paid listener's trial ends mid-episode while driving. Does audio stop? Suggested answer: never stop mid-episode; finish the episode, then show the wall at the next start (see CANON-12 paywall).
+- Q1. **[RESOLVED by decision 48, Marc Nov 9, 2026]** Autoplay on/off setting for listeners, or always on with Cancel? (Open in PLAYER-RULES.) Suggested answer: always on, with Cancel. Remove the dead "Auto-Play Next" toggle in Settings.
+- Q2. **[RESOLVED by decision 55, Marc Nov 9, 2026]** Do listeners need a speed control (0.75x to 2x) or a sleep timer? Suggested answer: no speed control for now (drive-time); add a sleep timer later only if listeners ask, since it would stop playback by itself.
+- Q3. **[RESOLVED by decision 48, Marc Nov 9, 2026]** What does "Stop" on the lock screen or car do? Suggested answer: the same as Pause.
+- Q4. **[RESOLVED by decision 49, Marc Nov 9, 2026]** When the next playlist story is hidden or missing, should it skip to the one after, or go to the Library? PLAYER-RULES says Library. Suggested answer: skip to the next live story; go to the Library only when none is left.
+- Q5. **[RESOLVED by decision 51, Marc Nov 9, 2026]** A paid listener's trial ends mid-episode while driving. Does audio stop? Suggested answer: never stop mid-episode; finish the episode, then show the wall at the next start (see CANON-12 paywall).
 - Q6. Should the player show a sticky "Continue your story" mini-player on pages other than Home and Library? Today it shows only on those two. Suggested answer: keep as is.
 - Q7. iPhone audio "ducks" (gets quieter) instead of pausing when another app uses the microphone, and does not come back up (chat "QR code marketing system", Nov 3). A web app can't detect this. Suggested answer: accept for the web app; fix in the native app.
 
