@@ -14,8 +14,8 @@ describe('SPOKEN-TEXT-001', () => {
     const issues = findSpokenTextIssues(wrap('DANIEL: Where is she?\nRAE: Where is she?'))
     expect(issues.map(i => i.check)).toEqual(['REPEATED-LINE'])
   })
-  test('characters saying chapter or episode are flagged; Belle is exempt', () => {
-    const issues = findSpokenTextIssues(wrap('DANIEL: You fall asleep in chapter four every time.'))
-    expect(issues.map(i => i.check)).toEqual(['CHAPTER-EPISODE'])
+  test('a character pointing at the story as an episode is flagged; an in-story book chapter is not (item 128)', () => {
+    expect(findSpokenTextIssues(wrap('DANIEL: See you next episode.')).map(i => i.check)).toEqual(['CHAPTER-EPISODE'])
+    expect(findSpokenTextIssues(wrap('DANIEL: You fall asleep in chapter four every time.'))).toEqual([])
   })
 })
