@@ -402,6 +402,15 @@ export function buildWriterRewriteFeedback(report: ReadinessReport, briefMinutes
       if (/sounds final/i.test(b.detail)) lines.push('    (A non-finale outro must not use the words end, ended, final, concludes, conclusion, complete.)')
       if (/spoiler/i.test(b.detail)) lines.push('    (Do not use the words reveal, reveals, revealed, spoiler, or "turns out" in Belle B lines.)')
       for (const e of b.evidence ?? []) lines.push(`    ${e}`)
+    } else if (b.gate === 'SPOKEN-TEXT-001' && b.evidence?.length) {
+      // WRITER-SPOKEN-EVIDENCE-001 (Don't Go Home 137c9c28 EP6, Nov 10: 3 drafts
+      // failed when told only "a character says chapter or episode"): quote the lines.
+      const how = /chapter|episode/i.test(b.detail)
+        ? 'Characters must never say the words "chapter" or "episode" (only Belle B may). Reword each line with a different word that fits the story (for example a medical "episode" becomes "an attack", "a spell" or "a seizure"). Keep the speaker label; change nothing else:'
+        : /dash/i.test(b.detail)
+          ? 'Finish each sentence on one line instead of splitting it across two lines with a trailing dash. Fix these lines:'
+          : 'Do not say the same line twice in a row. Fix these lines:'
+      lines.push(`- SPOKEN-TEXT: ${how}`, ...b.evidence.map((e) => `    ${e}`))
     } else if (b.gate === 'STOCK-PHRASE' && b.evidence?.length) {
       lines.push(
         `- STOCK-PHRASE (author voice): these lines use stock AI phrasing. Rewrite each one in the assigned author's own voice, saying the same thing in plain, specific words. Keep the speaker label; change nothing else:`,
