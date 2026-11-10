@@ -66,6 +66,7 @@ import { checkNarrationPresence } from '@/lib/narrationPresence'
 import { normalizeScriptFormat } from '@/lib/scriptLabels'
 import { evaluateBelleCopyForPublish } from '@/lib/publicationBelleGate'
 import { buildBelleValidationContext, validateBelleLine } from '@/lib/voiceBelleRules'
+import { buildClarityPrompt, castCheck, clarityReportText, combineClarity, namedSpeakers, parseClarityReview, readingMetrics } from '@/lib/storyClarity'
 import {
   briefMinutesOf,
   briefRuntimeImpossible,
@@ -7204,7 +7205,7 @@ function validateSeriesMetadata(episodes: any[], seriesId: string) {
   return issues
 }
 
-async function validateSeriesEpisodeScript(episode: any, model: string, job: ProductionJob) {
+async function validateSeriesEpisodeScript(episode: any, model: string, job: ProductionJob, allEpisodes: any[] = []) {
   const storyId = String(episode.id)
   const number = episodeNumber(episode, 0)
   const script = String(episode.script || '')
@@ -7316,9 +7317,44 @@ ${script}`,
   const wordCountTruth = llmPassed
     ? { override: false, actual: 0 }
     : descriptionWordCountMiscount(extractValidatorFailureLines(report), normalizeHeaderValue(extractHeader(script, 'DESCRIPTION')))
-  const passed = llmPassed || wordCountTruth.override
+  let passed = llmPassed || wordCountTruth.override
   if (wordCountTruth.override) {
     report = `${report}\n\nDESC-WORDCOUNT-TRUTH-001: the only failure was the DESCRIPTION word count; actual count is ${wordCountTruth.actual} (limit ${DESCRIPTION_MAX_WORDS}). VALIDATOR RESULT: PASS (deterministic override)`
+  }
+
+  // STORY-CLARITY-001 (CANON-01 rule 7, CANON-03 rules 15-17/22/43-46, decisions 25/66/85):
+  // the first-time-listener check runs after the validator passes and before any voicing.
+  // A FAIL is reported in the validator's format, so SERIES-REWRITE-001 sends it back to the
+  // writer with the quoted reasons. Published episodes are never re-judged.
+  if (passed && String(episode.status) !== 'published' && process.env.STORY_CLARITY !== 'off') {
+    const totalEpisodes = Math.max(allEpisodes.length, Number((episode.brief_json as any)?.series_total_episodes || 0), number)
+    const priorSpeakers = allEpisodes
+      .filter((ep: any) => episodeNumber(ep, 0) < number && ep.script)
+      .flatMap((ep: any) => namedSpeakers(String(ep.script)))
+    const clarityModel = coerceValidationModelToClaude(model)
+    const clarityResponse = await anthropic.messages.create({
+      model: clarityModel,
+      max_tokens: 2000,
+      temperature: 0,
+      messages: [{ role: 'user', content: buildClarityPrompt(script, { episodeNumber: number, totalEpisodes, seriesTitle: String(episode.series_name || '') }) }],
+    })
+    logAnthropicCall({
+      route: '/api/admin/production-jobs/run-next',
+      purpose: 'series-episode-story-clarity',
+      model: clarityModel,
+      inputTokens: clarityResponse.usage?.input_tokens ?? 0,
+      outputTokens: clarityResponse.usage?.output_tokens ?? 0,
+      storyId,
+      storyTitle: episode.title,
+      metadata: { is_v2: true, production_job_id: job.id, series_id: episode.series_id, episode_number: number },
+    }).catch(() => {})
+    const clarity = combineClarity(
+      parseClarityReview(clarityResponse.content.map((c: any) => ('text' in c ? c.text : '')).join(''), number),
+      castCheck(script, { totalEpisodes, episodeNumber: number, priorSpeakers }),
+      readingMetrics(script),
+    )
+    report = `${report}\n\n${clarityReportText(clarity)}`
+    if (!clarity.passed) passed = false
   }
   const validatedDescription = passed ? normalizeHeaderValue(extractHeader(script, 'DESCRIPTION')) : ''
   const passedAt = passed ? nowIso() : null
@@ -7730,7 +7766,7 @@ async function scoreValidateSeriesPackage(job: ProductionJob, model: string) {
   }
 
   if (nextEpisode) {
-    const result = await validateSeriesEpisodeScript(nextEpisode, model, job)
+    const result = await validateSeriesEpisodeScript(nextEpisode, model, job, episodes)
     const episodeSummary = {
       storyId: result.storyId,
       title: result.story.title,

@@ -139,6 +139,9 @@ Marc answered CANON-99 on Nov 9, 2026. These decisions are **Agreed** and overri
 - **Decision 10:** **Spoken-text checks.** Decided: two new blocking writer checks: (a) no sentence split across lines with a trailing dash; (b) no line said twice in a row. Drop HAL-SCRIPT-006 and the 5-word minimum per line. (03 C10, Q1, Q2, Q4) — **Agreed** (Marc, Nov 9, 2026, CANON-99)
 - **Decision 11:** **"Chapter" and "episode" inside the story.** Decided: characters never say "chapter" or "episode" in dialogue. (03 Q3) — **Agreed** (Marc, Nov 9, 2026, CANON-99)
 - **Decision 128 (narrows decision 11):** Characters must not refer to the story itself as an episode or chapter ("next episode", "this chapter", "episode two"); ordinary uses are fine ("she had an episode", "chapter four" of a book). Same as rule 51. — **Agreed** (Marc, Nov 10, 2026)
+- **Decision 129:** Reading level: the spoken story averages under 15 words per sentence and reads at about grade 6; over grade 8 goes back to the writer. — **Agreed** (Marc, Nov 10, 2026)
+- **Decision 130:** Twist budget: at most one major twist or reveal per episode, each answering or sharpening the series' one main question; no twist opens a new mystery. Checked in the series plan and before voicing. — **Agreed** (Marc, Nov 10, 2026)
+- **Decision 131:** At most 3 story questions open at the end of any episode; a fourth opens only after one is answered. Checked in the series plan and before voicing. — **Agreed** (Marc, Nov 10, 2026)
 - **Decision 12:** **Retire old manual documents** as history: STORY_PRODUCTION_PROCESS v1.2, SCRIPT_VALIDATOR.md, STORY_GRADING_RUBRIC.md, STORY_BRIEF_TEMPLATE v2.2, NEDS scoring, character-attachment scoring, MASTER_RULES.md, DEPLOY.md, DEPLOYMENT-RUNBOOK.md, HAL_SESSION_START_PROTOCOL.md, MIX_SPEC.md and MIX_NOTE_PROTOCOL.md level tables, et_mix_assembly.py, ACQUISITION-RETENTION-001 Parts A, D, E. Decided: yes, all. (01 C1, 02 C4, Q5, Q6, 03 Q7, 07 C4, C6, 13 C9, 15 C3–C5) — **Agreed** (Marc, Nov 9, 2026, CANON-99)
 - **Decision 14:** **Script order.** Decided: header, character guide, then Belle's intro (the Nov 7 spec; what the code reads). (03 C1) — **Agreed** (Marc, Nov 9, 2026, CANON-99)
 - **Decision 15:** **Description load.** Decided: 2 sensory details per scene for standard stories; one short detail for action and Pocket FM stories. (03 C7) — **Agreed** (Marc, Nov 9, 2026, CANON-99)
@@ -177,7 +180,7 @@ Marc answered CANON-99 on Nov 9, 2026. These decisions are **Agreed** and overri
 - Rule 8 → prompt only; the LLM validator checks it; no code check.
 - Rule 13 → partial: lib/hookGate.ts passes at 30 words, NARRATOR lines only, standalones only (Spec gap 1).
 - Rules 14–42 (story craft) → prompt only, plus the LLM validator; Gemini script read is report-only.
-- Rule 43–46 → not enforced (clarity gate not built). Rule 45 → asked in Gemini read (report-only).
+- Rule 43–46 → enforced on every series episode before voicing by STORY-CLARITY-001 (lib/storyClarity.ts, Nov 10, 2026); standalone stories next. Rule 45 → asked in Gemini read (report-only).
 - Rule 55 → enforced (run-next title check). Rule 56 → enforced at 100 characters in lib/validateCardCopy.ts, but writer self-check still blocks at 24 words.
 - Rules 57, 60–62 → enforced (run-next narrator check, CAST-GUIDE-001, SCRIPT-LABELS-001, CHARACTER-NAMES-001 rewrites labels).
 - Rule 65 → not enforced in code (manual validator only).
