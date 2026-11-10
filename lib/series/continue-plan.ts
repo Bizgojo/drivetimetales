@@ -92,6 +92,10 @@ Rules:
   - At most 6 named speaking characters across the whole series, counting the existing ones. Add a new one only if the story truly needs it.
   - No insider words or jargon a listener would not know.
   - Every scene moves the main problem forward.
+  - One main question carries the whole series. State it in the bible.
+  - At most ONE major twist or reveal per episode, and it must answer or sharpen the main question. No twist opens a new mystery (canon decision 130).
+  - At most 3 story questions open at the end of any episode; answer one before opening another (canon decision 131).
+  - Plain, short sentences a listener follows at about a 6th-grade reading level (canon decision 129).
 - Each non-final episode ends on a specific forward hook that leads into the next one.
 - The finale resolves the central mystery or conflict and the main character's arc. It does not tease more episodes.
 - Do not write scripts.
@@ -100,7 +104,7 @@ Return JSON only, no markdown, in exactly this shape:
 {
   "series_bible": "A full series bible: every character with exact name, role and arc; the timeline of what happened in episodes 1-${have}; the central mystery or conflict and its true answer; recurring places; tone rules; how the finale resolves it.",
   "episodes": [
-    { "episode_number": ${first}, "title": "", "premise": "", "setting": "", "description": "present-tense story-card description, 1-2 sentences", "continuity_notes": "", "cliffhanger_or_resolution": "" }
+    { "episode_number": ${first}, "title": "", "premise": "", "setting": "", "description": "present-tense story-card description, 1-2 sentences", "continuity_notes": "", "twist": "the one major twist in this episode, or none", "open_questions_at_end": ["at most 3"], "cliffhanger_or_resolution": "" }
   ]
 }
 The episodes array must contain exactly ${remaining} items, numbered ${first} to ${total}.

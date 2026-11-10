@@ -53,3 +53,24 @@ describe('STORY-CLARITY-001', () => {
     expect(readingMetrics(script(['MAYA: I see the car. It is red. We go now.'])).grade).toBeLessThan(5)
   })
 })
+
+describe('decisions 129-131 (blocking)', () => {
+  const base = (extra: Record<string, unknown>) => JSON.stringify({ want: 'w', obstacle: 'o', stakes: 's', checks: ['THREE-SENTENCE','GOAL-EARLY','INSIDER-WORDS','SCENE-PURPOSE','RECAP-LINE','FOLLOW-BY-EAR'].map((id) => ({ id, pass: true, detail: 'ok' })), ...extra })
+  const s = script(['MAYA: I see the car. It is red. We go now.'])
+  const run = (extra: Record<string, unknown>) => combineClarity(parseClarityReview(base(extra), 2), castCheck(s, { totalEpisodes: 7, episodeNumber: 2, priorSpeakers: ['MAYA'] }), readingMetrics(s))
+  it('passes one twist and three open questions', () => {
+    expect(run({ twists: ['a'], open_questions: ['1', '2', '3'] }).passed).toBe(true)
+  })
+  it('fails two twists', () => {
+    const r = run({ twists: ['a', 'b'], open_questions: [] })
+    expect(r.checks.find((c) => c.id === 'TWIST-BUDGET')?.pass).toBe(false)
+  })
+  it('fails four open questions', () => {
+    expect(run({ twists: [], open_questions: ['1', '2', '3', '4'] }).checks.find((c) => c.id === 'OPEN-QUESTIONS')?.pass).toBe(false)
+  })
+  it('fails a reading grade over 8', () => {
+    const hard = script(['MAYA: Notwithstanding the extraordinarily complicated jurisdictional considerations surrounding municipal infrastructure administration, the investigating detective systematically reconstructed the circumstantial evidentiary chronology connecting the disappearance, the maintenance authorization documentation, and the unexplained telecommunications activity.'])
+    const r = combineClarity(parseClarityReview(base({}), 2), castCheck(hard, { totalEpisodes: 7, episodeNumber: 2, priorSpeakers: ['MAYA'] }), readingMetrics(hard))
+    expect(r.checks.find((c) => c.id === 'READING-LEVEL')?.pass).toBe(false)
+  })
+})

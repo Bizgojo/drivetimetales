@@ -19,6 +19,10 @@ export const CANON = {
   SERIES_FLOOR_MINS: 12.5,
   SERIES_CAP_FACTOR: 1.35,
   STANDALONE_TOLERANCE: 0.10,
+  /** CANON-03 / decisions 129-131 (Marc, Nov 10): reading level, twists, open questions. */
+  READING_GRADE_MAX: 8,
+  TWISTS_PER_EPISODE_MAX: 1,
+  OPEN_QUESTIONS_MAX: 3,
   /** CANON-12 / decision 52: prices. */
   PRICE_MONTHLY: 9.99,
   PRICE_ANNUAL: 79.99,

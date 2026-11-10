@@ -22,6 +22,7 @@ const NON_CHARACTER = /^(NARRATOR|ANNOUNCER|BELLE|BELLE B|SANDY)$/i
 export type ClarityCheckId =
   | 'THREE-SENTENCE' | 'GOAL-EARLY' | 'CAST-LIMIT' | 'INSIDER-WORDS'
   | 'SCENE-PURPOSE' | 'RECAP-LINE' | 'FOLLOW-BY-EAR'
+  | 'READING-LEVEL' | 'TWIST-BUDGET' | 'OPEN-QUESTIONS'
 
 export type ClarityCheck = { id: ClarityCheckId; pass: boolean; detail: string; quotes?: string[] }
 
@@ -104,7 +105,7 @@ Answer these checks:
 5. RECAP-LINE: ${isLaterEpisode ? 'within the first 30 seconds of the story (about 80 spoken words after Belle), does one line from a character or the narrator say where things stand? FAIL if not.' : 'not required for Episode 1 or a standalone: always pass.'}
 6. FOLLOW-BY-EAR: quote any stretch where a listener could not tell who is speaking, or where/when the scene is. FAIL if any.
 
-Also list, for the report only (not pass/fail): "twists" = each major twist or reveal in this episode; "open_questions" = the story questions still unanswered at the end of the episode.
+Also list: "twists" = each MAJOR twist or reveal in this episode (a turn that changes what the listener believes; not ordinary plot steps); "open_questions" = the main story questions still unanswered at the end of the episode (not minor details). Be strict but fair; list only real ones.
 
 Return ONLY JSON, no other text:
 {"want":"...","obstacle":"...","stakes":"...","twists":["..."],"open_questions":["..."],
@@ -139,7 +140,18 @@ export function parseClarityReview(raw: string, episodeNumber: number): { checks
 }
 
 export function combineClarity(llm: ReturnType<typeof parseClarityReview>, cast: ReturnType<typeof castCheck>, metrics: ReadingMetrics): ClarityResult {
-  const checks = [...llm.checks, { id: cast.id, pass: cast.pass, detail: cast.detail } as ClarityCheck]
+  // Decisions 129-131 (Marc, Nov 10, 2026): blocking.
+  const reading: ClarityCheck = metrics.grade <= CANON.READING_GRADE_MAX
+    ? { id: 'READING-LEVEL', pass: true, detail: `grade ${metrics.grade} (max ${CANON.READING_GRADE_MAX})` }
+    : { id: 'READING-LEVEL', pass: false, detail: `reads at grade ${metrics.grade}, ${metrics.avgSentenceWords} words per sentence (max grade ${CANON.READING_GRADE_MAX}; aim for about grade 6). Use shorter sentences and plainer words.` }
+  const unreadable = llm.checks.some((c) => /unreadable output/.test(c.detail))
+  const twists: ClarityCheck = unreadable || llm.twists.length <= CANON.TWISTS_PER_EPISODE_MAX
+    ? { id: 'TWIST-BUDGET', pass: true, detail: `${llm.twists.length} major twist(s)` }
+    : { id: 'TWIST-BUDGET', pass: false, detail: `${llm.twists.length} major twists in one episode (max ${CANON.TWISTS_PER_EPISODE_MAX}). Keep the one that answers or sharpens the series' main question; cut or fold the others.`, quotes: llm.twists }
+  const open: ClarityCheck = unreadable || llm.openQuestions.length <= CANON.OPEN_QUESTIONS_MAX
+    ? { id: 'OPEN-QUESTIONS', pass: true, detail: `${llm.openQuestions.length} open question(s)` }
+    : { id: 'OPEN-QUESTIONS', pass: false, detail: `${llm.openQuestions.length} story questions still open at the end (max ${CANON.OPEN_QUESTIONS_MAX}). Answer one before opening another.`, quotes: llm.openQuestions }
+  const checks = [...llm.checks, { id: cast.id, pass: cast.pass, detail: cast.detail } as ClarityCheck, reading, twists, open]
   return {
     passed: checks.every((c) => c.pass),
     checks,
@@ -156,9 +168,9 @@ export function clarityReportText(r: ClarityResult): string {
     '---',
     'STORY-CLARITY-001 (first-time listener check)',
     r.threeSentences ? `Wants: ${r.threeSentences.want}\nObstacle: ${r.threeSentences.obstacle}\nIf they fail: ${r.threeSentences.stakes}` : 'Three-sentence test: no answer',
-    `Reading level (report only): grade ${r.metrics.grade}, ${r.metrics.avgSentenceWords} words per sentence`,
-    `Twists this episode (report only): ${r.twists.length}${r.twists.length ? ' — ' + r.twists.join(' | ') : ''}`,
-    `Open questions at the end (report only): ${r.openQuestions.length}${r.openQuestions.length ? ' — ' + r.openQuestions.join(' | ') : ''}`,
+    `Reading level: grade ${r.metrics.grade}, ${r.metrics.avgSentenceWords} words per sentence`,
+    `Twists this episode: ${r.twists.length}${r.twists.length ? ' — ' + r.twists.join(' | ') : ''}`,
+    `Open questions at the end: ${r.openQuestions.length}${r.openQuestions.length ? ' — ' + r.openQuestions.join(' | ') : ''}`,
     ...r.checks.map((c) => `${c.pass ? '✅' : '❌'} ${c.id}: ${c.detail}`),
   ]
   if (r.passed) return [...head, 'STORY-CLARITY-001: PASS'].join('\n')
