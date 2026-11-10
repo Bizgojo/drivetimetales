@@ -177,7 +177,7 @@ Marc answered CANON-99 on Nov 9, 2026. These decisions are **Agreed** and overri
 - Rule 8 → prompt only; the LLM validator checks it; no code check.
 - Rule 13 → partial: lib/hookGate.ts passes at 30 words, NARRATOR lines only, standalones only (Spec gap 1).
 - Rules 14–42 (story craft) → prompt only, plus the LLM validator; Gemini script read is report-only.
-- Rule 43–46 → not enforced (clarity gate not built). Rule 45 → asked in Gemini read (report-only).
+- Rule 43–46 → enforced on every series episode before voicing by STORY-CLARITY-001 (lib/storyClarity.ts, Nov 10, 2026); standalone stories next. Rule 45 → asked in Gemini read (report-only).
 - Rule 55 → enforced (run-next title check). Rule 56 → enforced at 100 characters in lib/validateCardCopy.ts, but writer self-check still blocks at 24 words.
 - Rules 57, 60–62 → enforced (run-next narrator check, CAST-GUIDE-001, SCRIPT-LABELS-001, CHARACTER-NAMES-001 rewrites labels).
 - Rule 65 → not enforced in code (manual validator only).
