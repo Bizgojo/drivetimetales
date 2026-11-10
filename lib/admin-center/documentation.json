@@ -137,6 +137,13 @@
     "body": "<p>Review record: October 30, 2026. This summarizes the owner\u2019s instructions in the current design-review conversation, without claiming live activation.</p><ul><li>Initial recap includes new paid subscriptions, cancellations, CAC and subscriber churn for the period.</li><li>Agents includes data flow and external tools: ChatGPT, Claude, Mac Terminal and Telegram for Orion. Exact recipient / session links remain unverified.</li><li>Production has independent review choices for finished stories, voices and SFX; automatic handling remains the default.</li><li>Customers unifies inbox, subscriber history, suggestions, referrals and insights with substantive reply approval.</li><li>Marketing includes planned, existing and past campaigns; Facebook / Instagram / TikTok layout views; each campaign\u2019s funnel, stage costs, budget comparisons and benchmark scope.</li><li>The 6+2-week plan and spreadsheet format are visible. Missing original plan details, dates and audio-app benchmarks are explicitly pending.</li><li>Finance includes a visible four-tab Budget format with zero placeholders; the populated 12-month period starts after the complete test.</li><li>Full-width view hides the navigation for more room on the iPad.</li></ul><p>Earlier design sections are available, and Finance was explicitly approved to proceed to Documentation. Live wiring, end-to-end provider tests, deployment and final operational acceptance remain separate work.</p>"
   },
   {
+    "id": "legal-formation",
+    "category": "legal",
+    "title": "Company formation documents",
+    "summary": "Endless Tales, LLC \u2014 Articles of Organization and SC Certificate of Existence (formed April 5, 2026).",
+    "body": "<p><strong>Endless Tales, LLC</strong> \u2014 a South Carolina limited liability company, organized April 5, 2026, duration at will.</p><ul><li>Filing ID: 260407-0959190 (SC Secretary of State)</li><li>Designated office: 11 Hickory Landing Ct., Elloree, SC 29047</li><li>Agent for service of process: William Marc Postlewaite</li></ul><p>Open the documents (stored in Marc's Google Drive; sign in as Marc to view):</p><ul><li><a href=\"https://drive.google.com/file/d/1Eoax4A-mUiTNnTxuwdOu9ao8qyHP2tx6/view\" target=\"_blank\" rel=\"noreferrer\">Articles of Organization</a> \u2014 filed April 5, 2026</li><li><a href=\"https://drive.google.com/file/d/1AMlXIOOIENE5vILLiP-XKXqbty2P3I1i/view\" target=\"_blank\" rel=\"noreferrer\">Certificate of Existence</a> \u2014 issued April 7, 2026</li></ul><p>Not on file here yet: the IRS EIN letter (in Marc's email from May 13, 2026) and an Operating Agreement.</p>"
+  },
+  {
     "id": "legal-app",
     "category": "legal",
     "title": "App legal documents and policies",
