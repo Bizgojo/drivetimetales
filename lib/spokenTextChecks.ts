@@ -5,12 +5,22 @@
  *      ends in a dash and is followed by the SAME speaker's next line. (A dash before a
  *      different speaker is an interruption and is fine.)
  *   2. No line is said twice in a row (the same spoken text on two consecutive lines).
- *   3. Characters never say "chapter" or "episode" in the story (Belle's lines are exempt).
+ *   3. Characters never point at the story itself with "episode"/"chapter" ("next episode",
+ *      "this chapter", "episode two"); ordinary uses are fine (CANON-99 item 128). Belle is exempt.
  */
 import { parseScriptPositions } from './scriptLineIndex'
 
 const ANNOUNCER = /^(ANNOUNCER|BELLE B|BELLE|SANDY)$/i
 const TRAILING_DASH = /(?:[—–]|--|-)[\s"'”’*]*$/u
+// CANON-99 item 128 (Marc, Nov 10, 2026): "episode"/"chapter" is only banned when it
+// points at the story itself ("next episode", "this chapter", "episode two").
+// Ordinary uses are fine: "she had an episode", "a chapter of my life", "chapter four" of a book.
+const NUM = '(?:one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|\\d+)'
+const SELF_REFERENCE = new RegExp(
+  `\\b(?:this|next|last|previous|the\\s+(?:next|last|previous|final|first)|our|today'?s|tonight'?s)\\s+(?:episode|chapter)s?\\b` +
+  `|\\bepisodes?\\s+${NUM}\\b`,
+  'i',
+)
 const norm = (t: string) => t.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
 
 export interface SpokenTextIssue { check: 'SPLIT-DASH' | 'REPEATED-LINE' | 'CHAPTER-EPISODE'; line: string }
@@ -25,7 +35,7 @@ export function findSpokenTextIssues(script: string): SpokenTextIssue[] {
     const label = `${cur.speaker}: ${text}`.slice(0, 160)
     if (next && TRAILING_DASH.test(text) && next.speaker === cur.speaker) issues.push({ check: 'SPLIT-DASH', line: label })
     if (next && norm(text) && norm(text) === norm(String(next.text))) issues.push({ check: 'REPEATED-LINE', line: label })
-    if (/\b(chapters?|episodes?)\b/i.test(text)) issues.push({ check: 'CHAPTER-EPISODE', line: label })
+    if (SELF_REFERENCE.test(text)) issues.push({ check: 'CHAPTER-EPISODE', line: label })
   }
   return issues
 }

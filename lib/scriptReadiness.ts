@@ -141,7 +141,7 @@ export function checkScriptReadiness(input: ReadinessInput): ReadinessReport {
   const narrator = header(script, 'NARRATOR')
   // SPOKEN-TEXT-001 (CANON-99 decisions 10, 11): blocking spoken-text checks.
   const spoken = findSpokenTextIssues(script)
-  const spokenLabel = { 'SPLIT-DASH': 'sentence split across lines with a trailing dash (finish the sentence on one line)', 'REPEATED-LINE': 'the same line said twice in a row', 'CHAPTER-EPISODE': 'a character says "chapter" or "episode"' } as const
+  const spokenLabel = { 'SPLIT-DASH': 'sentence split across lines with a trailing dash (finish the sentence on one line)', 'REPEATED-LINE': 'the same line said twice in a row', 'CHAPTER-EPISODE': 'a character refers to the story itself as an episode or chapter' } as const
   for (const kind of ['SPLIT-DASH', 'REPEATED-LINE', 'CHAPTER-EPISODE'] as const) {
     const hits = spoken.filter((x) => x.check === kind)
     if (hits.length) blockers.push({ gate: 'SPOKEN-TEXT-001', detail: `${hits.length} line(s): ${spokenLabel[kind]}`, evidence: hits.slice(0, 10).map((h) => h.line) })
@@ -405,8 +405,8 @@ export function buildWriterRewriteFeedback(report: ReadinessReport, briefMinutes
     } else if (b.gate === 'SPOKEN-TEXT-001' && b.evidence?.length) {
       // WRITER-SPOKEN-EVIDENCE-001 (Don't Go Home 137c9c28 EP6, Nov 10: 3 drafts
       // failed when told only "a character says chapter or episode"): quote the lines.
-      const how = /chapter|episode/i.test(b.detail)
-        ? 'Characters must never say the words "chapter" or "episode" (only Belle B may). Reword each line with a different word that fits the story (for example a medical "episode" becomes "an attack", "a spell" or "a seizure"). Keep the speaker label; change nothing else:'
+      const how = /episode or chapter/i.test(b.detail)
+        ? 'Characters must not refer to the story itself as an episode or chapter ("next episode", "this chapter", "episode two"); only Belle B may. Point to events instead ("earlier", "that night at the lake", "soon"). Keep the speaker label; change nothing else:'
         : /dash/i.test(b.detail)
           ? 'Finish each sentence on one line instead of splitting it across two lines with a trailing dash. Fix these lines:'
           : 'Do not say the same line twice in a row. Fix these lines:'
