@@ -111,6 +111,7 @@ Marc answered CANON-99 on Nov 9, 2026. These decisions are **Agreed** and overri
 - **Decision 122:** Orion runs on Marc's Mac only, until the CAC test passes. (15 Q6) — **Agreed** (Marc, Nov 9, 2026, CANON-99 Part 2)
 - **Decision 123:** The app runs on EC2; Vercel only builds preview copies. (15 Q7) — **Agreed** (Marc, Nov 9, 2026, CANON-99 Part 2)
 - **Decision 124:** An agent reports BLOCKED after 30 minutes without progress. (15 Q8) — **Agreed** (Marc, Nov 9, 2026, CANON-99 Part 2)
+- **Decision 127:** No agent edits OpenClaw settings without Marc's OK; after any edit it runs `openclaw doctor`, restarts the gateway and confirms a clean start and a Telegram reply before reporting done, restoring the backup at once if anything fails. A Mac watchdog restores `openclaw.json.last-good` after 3 failed starts in a row. A check outside OpenClaw confirms every 10 minutes that Orion is alive and alerts Marc if not. (Cause: Nov 9 settings edit took Orion down 12 hours.) — **Agreed** (Marc, Nov 10, 2026: "approve 127")
 
 ## Conflicts found
 - C1. **[RESOLVED by decision 59, Marc Nov 9, 2026]** Merging. AGENTS.md (canon, Nov 9): never merge without Marc's explicit word. Oct 11: Claude may merge low-risk PRs after reading the diff, except billing, auth or data deletion. Nov 2 and memory agent-fleet.md: "Claude merges pipeline PRs" once tests, build and mergeability pass. Recommendation: AGENTS.md binds the OpenClaw agents; Claude keeps the pipeline-PR exception with the billing/auth/data-deletion carve-out. Write this into AGENTS.md. Marc decides.
