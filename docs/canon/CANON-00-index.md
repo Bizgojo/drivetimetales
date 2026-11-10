@@ -54,7 +54,7 @@ Covers: the list of canon documents, which one wins when they disagree, and how 
 15. **Changing or removing a rule** follows the same path: Claude proposes the change on CANON-99, Marc decides.
 16. **Only Marc adds, changes or removes a rule. Agents never edit canon.**
 17. **Every canon document can be read in Admin → Documentation → Canon (rules).** The files live in the code repository at docs/canon/. CANON-99 always shows what is waiting for Marc.
-18. **The canon's numbers live in one code file, lib/canon/numbers.ts,** and an automatic test (CANON-GUARD-001) fails whenever the code or a writer prompt file disagrees with them. When Marc approves a changed number, the canon document, that file and the code change together in one pull request. — **Agreed** (Marc, Nov 9, 2026)
+18. **The canon's numbers live in one code file, lib/canon/numbers.ts,** and an automatic test (CANON-GUARD-001) fails whenever the code or a writer prompt file disagrees with them. When Marc approves a changed number, the canon document, that file and the code change together in one pull request. — **Proposed** (CANON-99 item 126)
 
 ## Earlier canon this set brings together
 
