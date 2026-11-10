@@ -471,6 +471,14 @@ export function onlySoftBlockers(report: ReadinessReport): boolean {
   return report.blockers.length > 0 && report.blockers.every((b) => SOFT_WRITER_GATES.has(b.gate))
 }
 
+/**
+ * WRITER-DESC-SHORTEN-001: true when every remaining writer blocker is the
+ * DESCRIPTION being over the character limit (the line can be shortened alone).
+ */
+export function onlyDescriptionLengthBlockers(blockers: string[]): boolean {
+  return blockers.length > 0 && blockers.every((b) => /^CARD-COPY: DESCRIPTION \d+ characters \(max \d+\)$/.test(b))
+}
+
 export async function writeWithSelfCheck(opts: {
   generate: (feedback: string, previousDraft: string | null) => Promise<WriterDraft>
   check: (script: string) => ReadinessReport | Promise<ReadinessReport>

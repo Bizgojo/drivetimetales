@@ -70,6 +70,7 @@ import {
   briefMinutesOf,
   briefRuntimeImpossible,
   checkScriptReadiness,
+  onlyDescriptionLengthBlockers,
   checkSeriesCastContinuity,
   writeWithSelfCheck,
   writerClaimIsFresh,
@@ -6997,11 +6998,38 @@ async function generateOneSeriesEpisodeScript(job: ProductionJob, model: string)
     await markStoryNeedsAttention(String(targetEpisode.id), msg)
     throw new Error(msg)
   }
-  const script = selfCheck.script
-  const description = selfCheck.description
+  let script = selfCheck.script
+  let description = selfCheck.description
   const writerAttempts = selfCheck.attempts
+  let selfCheckOk = selfCheck.ok
 
-  if (!selfCheck.ok) {
+  // WRITER-DESC-SHORTEN-001 (Don't Go Home 137c9c28, Nov 10): when the ONLY thing
+  // still wrong after every draft is a DESCRIPTION over the limit, shorten that
+  // one line with a small call instead of failing the episode (each failure
+  // also uses up the episode's writer budget). Nothing else in the script changes.
+  const lastWriterBlockers = writerAttempts[writerAttempts.length - 1]?.blockers || []
+  if (!selfCheckOk && script && onlyDescriptionLengthBlockers(lastWriterBlockers)) {
+    const current = extractHeader(script, 'DESCRIPTION') || description
+    try {
+      const shorter = await shortenDescriptionToLimit(current, coerceValidationModelToClaude(model), {
+        jobId: job.id, storyId: String(targetEpisode.id), title: targetEpisode.title, seriesId: String(seriesId), episodeNumber: targetEpisodeNumber,
+      })
+      if (shorter && shorter.length <= DESCRIPTION_MAX_CHARS) {
+        const nextScript = replaceOrInsertHeader(script, 'DESCRIPTION', shorter)
+        const cardCopy = checkScriptReadiness({ script: nextScript, storyType: 'series_episode' }).blockers.filter((b) => b.gate === 'CARD-COPY')
+        if (cardCopy.length === 0) {
+          script = nextScript
+          description = shorter
+          selfCheckOk = true
+          writerAttempts.push({ attempt: writerAttempts.length + 1, blockers: [`WRITER-DESC-SHORTEN-001: description shortened ${current.length} -> ${shorter.length} characters (script unchanged)`], spokenWords: writerAttempts[writerAttempts.length - 1]?.spokenWords ?? 0 })
+        }
+      }
+    } catch (err) {
+      console.warn(`[WRITER-DESC-SHORTEN-001] episode ${targetEpisodeNumber} shorten failed: ${err instanceof Error ? err.message : String(err)}`)
+    }
+  }
+
+  if (!selfCheckOk) {
     const last = writerAttempts[writerAttempts.length - 1]
     const msg =
       `WRITER-SELF-CHECK-001: episode ${targetEpisodeNumber} still fails pre-save checks after ${writerAttempts.length} drafts ` +
@@ -7537,6 +7565,35 @@ function storyBodyExcerpt(script: string): string {
   return body.length <= 5000 ? body : body.slice(0, 3500) + '\n[...]\n' + body.slice(-1500)
 }
 
+/** DESC-100-REPAIR-001: ask (twice at most) for a shorter DESCRIPTION; returns the last answer. */
+async function shortenDescriptionLoop(description: string, model: string): Promise<string> {
+  for (let attempt = 0; attempt < 2 && description.length > DESCRIPTION_MAX_CHARS; attempt++) {
+    const shorter = await anthropic.messages.create({
+      model, max_tokens: 300, temperature: 0,
+      messages: [{ role: 'user', content: `This story-card DESCRIPTION is ${description.length} characters. It must be ${DESCRIPTION_MAX_CHARS} characters or fewer, counting spaces. Shorten it to one complete present-tense sentence about the same protagonist and situation; keep the question it teases; reveal nothing more. Return JSON only: {"description": "text"}\n\nDESCRIPTION: ${description}` }],
+    })
+    const next = sanitizeDescription(String(parseJsonObject(shorter.content.map((c: any) => ('text' in c ? c.text : '')).join('').trim()).description || ''))
+    if (next) description = next
+  }
+  return description
+}
+
+/** WRITER-DESC-SHORTEN-001: shorten only the DESCRIPTION of a writer draft (logged as its own call). */
+async function shortenDescriptionToLimit(description: string, model: string, ctx: { jobId: string; storyId: string; title?: string | null; seriesId: string; episodeNumber: number }): Promise<string> {
+  const result = await shortenDescriptionLoop(description, model)
+  logAnthropicCall({
+    route: '/api/admin/production-jobs/run-next',
+    purpose: 'writer-description-shorten',
+    model,
+    inputTokens: 0,
+    outputTokens: 0,
+    storyId: ctx.storyId,
+    storyTitle: ctx.title || 'Writer description shorten',
+    metadata: { is_v2: true, production_job_id: ctx.jobId, series_id: ctx.seriesId, episode_number: ctx.episodeNumber },
+  }).catch(() => {})
+  return result
+}
+
 async function regenerateSeriesDescriptionFromEpisodeFeedback(episode: any, feedbackReport: string, model: string, job: ProductionJob) {
   const response = await anthropic.messages.create({
     model,
@@ -7584,14 +7641,7 @@ ${storyBodyExcerpt(String(episode.script || ''))}`,
   if (!description) throw new Error('Description repair did not return description')
   // DESC-100-REPAIR-001: the validator rejects anything over 100 characters, so check
   // the length here and ask again (twice at most) instead of spending a package retry.
-  for (let attempt = 0; attempt < 2 && description.length > DESCRIPTION_MAX_CHARS; attempt++) {
-    const shorter = await anthropic.messages.create({
-      model, max_tokens: 300, temperature: 0,
-      messages: [{ role: 'user', content: `This story-card DESCRIPTION is ${description.length} characters. It must be ${DESCRIPTION_MAX_CHARS} characters or fewer, counting spaces. Shorten it to one complete present-tense sentence about the same protagonist and situation; keep the question it teases; reveal nothing more. Return JSON only: {"description": "text"}\n\nDESCRIPTION: ${description}` }],
-    })
-    const next = sanitizeDescription(String(parseJsonObject(shorter.content.map((c: any) => ('text' in c ? c.text : '')).join('').trim()).description || ''))
-    if (next) description = next
-  }
+  if (description.length > DESCRIPTION_MAX_CHARS) description = await shortenDescriptionLoop(description, model)
 
   logAnthropicCall({
     route: '/api/admin/production-jobs/run-next',
