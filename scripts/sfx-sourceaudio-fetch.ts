@@ -36,10 +36,10 @@ function slug(s: string) {
 }
 
 async function main() {
-  const { SourceAudioClient, sourceAudioConfigFromEnv, catalogSearchText, pickCandidates } = await import('../lib/sourceAudio')
+  const { SourceAudioClient, sourceAudioConfigFromEnv, catalogSearchText, catalogSearchFallbacks, pickCandidates } = await import('../lib/sourceAudio')
   const { SFX_CATALOG_NAMES } = await import('../lib/sfxCatalogNames')
   const out = arg('out')
-  if (!out) throw new Error('usage: sfx-sourceaudio-fetch.ts --out <folder> [--ids A,B] [--all] [--per 3] [--format wav] [--dry-run]')
+  if (!out) throw new Error('usage: sfx-sourceaudio-fetch.ts --out <folder> [--ids A,B] [--all] [--per 3] [--format wav] [--dry-run] [--search "words" with one --ids]')
   const cfg = sourceAudioConfigFromEnv()
   if (!cfg) throw new Error('SOURCEAUDIO_API_TOKEN and SOURCEAUDIO_HOST must be set in .env.local (Marc enters them; never printed)')
   const per = Math.max(1, Math.min(5, Number(arg('per') || 3)))
@@ -62,10 +62,16 @@ async function main() {
   const report: any[] = []
   mkdirSync(out, { recursive: true })
   for (const n of names) {
-    const text = catalogSearchText(n.name)
+    // SFX-SOURCEAUDIO-002: --search "<words>" replaces the search for a single --ids name.
+    const text = (ids.length === 1 && arg('search')) ? catalogSearchText(String(arg('search'))) : catalogSearchText(n.name)
     const row: any = { id: n.id, name: n.name, kind: n.kind, search: text, picked: [], errors: [] }
     try {
-      const tracks = await client.search(text, 25)
+      let tracks = await client.search(text, 25)
+      // SFX-SOURCEAUDIO-002: nothing found → up to 3 simpler searches.
+      for (const q of tracks.length ? [] : catalogSearchFallbacks(n.name)) {
+        tracks = await client.search(q, 25)
+        if (tracks.length) { row.search = q; break }
+      }
       row.found = tracks.length
       const picks = pickCandidates(tracks, n.kind, per)
       for (const t of picks) {
