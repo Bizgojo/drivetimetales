@@ -14,6 +14,7 @@
  *     for this name.
  * Production rule (later): a name is live only with 3 approved takes.
  */
+import { downloadFreshText } from './storage/freshText'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { SFX_CATALOG_NAMES, type CatalogKind, type CatalogName } from '@/lib/sfxCatalogNames'
 import { rankSfxCandidates, seedHash, type SfxLibraryEntry } from '@/lib/sfxLibrary'
@@ -43,9 +44,10 @@ export function emptyCatalog(): CatalogFile {
 }
 
 export async function loadCatalog(db: SupabaseClient): Promise<CatalogFile> {
-  const { data } = await db.storage.from('audio').download(SFX_CATALOG_FILE)
-  if (!data) return emptyCatalog()
-  try { return JSON.parse(await data.text()) as CatalogFile } catch { return emptyCatalog() }
+  // SFX-MANIFEST-FRESH-001: cache-busted read (the SDK read can be ~30 min stale).
+  const text = await downloadFreshText(db, SFX_CATALOG_FILE)
+  if (!text) return emptyCatalog()
+  try { return JSON.parse(text) as CatalogFile } catch { return emptyCatalog() }
 }
 
 function usable(t: CatalogTake, mode: 'test' | 'production'): boolean {
