@@ -57,8 +57,8 @@ const CAT_ICONS: Record<string,string> = { 'AI & Voice':'🤖', 'Infrastructure'
 // ─── REVENUE LINE ITEMS ───────────────────────────────────────────────────────
 interface RevenueItem { id: string; name: string; notes: string; defaults: number[] }
 const REVENUES: RevenueItem[] = [
-  { id:'founding_subs', name:'Founding Member Subscriptions ($2.99/mo locked)', notes:'First 500 subscribers at locked $2.99/month for life.', defaults:[0,0,0,0,0,0,0,0,0,0,0,0] },
-  { id:'standard_subs', name:'Standard Subscriptions ($9.99/mo or $79.99/yr)', notes:'After first 500 founding spots filled.', defaults:[0,0,0,0,0,0,0,0,0,0,0,0] },
+  { id:'founding_subs', name:'Founding Member Subscriptions (retired)', notes:'No founding-member tier (Marc, 2026-11-10). Kept so saved rows still load.', defaults:[0,0,0,0,0,0,0,0,0,0,0,0] },
+  { id:'standard_subs', name:'Standard Subscriptions ($9.99/mo or $79.99/yr)', notes:'Standard price for all subscribers.', defaults:[0,0,0,0,0,0,0,0,0,0,0,0] },
   { id:'other', name:'Other Revenue', notes:'Sponsorships, partnerships, or other income.', defaults:[0,0,0,0,0,0,0,0,0,0,0,0] },
 ]
 
