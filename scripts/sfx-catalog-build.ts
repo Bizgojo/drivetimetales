@@ -35,9 +35,10 @@ async function main() {
   if (discardWords.length) console.log(`discarded ${cleared.discarded.length} takes: ${cleared.discarded.join(' | ') || '(none matched)'}`)
   const proposed = proposeTakesFromKeptLibrary(cleared.catalog, kept)
   // SFX-SOUNDSNAP-001: licensed sounds (one folder per catalog name) go in first.
-  const licensed = (manifest.entries || []).filter((e: any) => e.source === 'soundsnap')
+  // SFX-SOURCEAUDIO-001: Sound Ideas (main library) and Soundsnap (backup) are both licensed sources.
+  const licensed = (manifest.entries || []).filter((e: any) => e.source === 'soundsnap' || e.source === 'soundideas')
   const lic = addLicensedTakes(proposed.catalog, licensed)
-  console.log(`licensed (Soundsnap) sounds: ${licensed.length}; ${lic.added} added as takes to ${Object.keys(lic.byName).length} names`)
+  console.log(`licensed (Sound Ideas + Soundsnap) sounds: ${licensed.length}; ${lic.added} added as takes to ${Object.keys(lic.byName).length} names`)
   const catalog = lic.catalog
   const filled = SFX_CATALOG_NAMES.filter((n) => (catalog.entries[n.id]?.takes || []).some((t: any) => t.status !== 'discarded')).length
   const empty = SFX_CATALOG_NAMES.filter((n) => !(catalog.entries[n.id]?.takes || []).some((t: any) => t.status !== 'discarded')).map((n) => n.id)
