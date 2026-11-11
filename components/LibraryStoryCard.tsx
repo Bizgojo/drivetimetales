@@ -131,11 +131,11 @@ export default function LibraryStoryCard({
   const inProgress = isSeries ? !!item.seriesInProgress : showProgress
   const showRate = state.completed && !state.reviewed
   const showPlayAgain = !isSeries && state.completed && state.reviewed
-  // Marc 2026-10-07: eBook progress with no audio progress — main button
-  // goes green "Continue Reading" and opens the reader instead of audio.
-  // Audio progress (inProgress) and the post-review Play Again state both
-  // take priority over this, same relative order as before.
-  const readingOnly = !inProgress && !showPlayAgain && state.readingInProgress
+  // CANON-12 rule 32 (Marc, Nov 9, 2026): the left button is always about
+  // listening (Listen / Continue Listening / Play Again). Reading progress shows
+  // only on the right button ("Continue Reading"). Marc saw two "Continue
+  // Reading" buttons on one card on Nov 10 (the Oct 7 readingOnly switch).
+  const readingOnly = false
 
   return (
     <div

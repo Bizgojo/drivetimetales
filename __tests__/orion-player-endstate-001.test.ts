@@ -19,7 +19,9 @@ describe('ORION-PLAYER-ENDSTATE-001: completed end-state (Play Again / Next epis
 
   test('end-state card renders with Play Again wired to a restart-from-0 (never resume-from-end)', () => {
     expect(PLAYER).toMatch(/data-testid="player-end-state"/)
-    expect(PLAYER).toMatch(/data-testid="end-state-play-again"[\s\S]{0,120}onClick=\{restartFromBeginning\}/)
+    // PLAYER-END-DUP-001: the card's Play Again shows only beside "Next episode";
+    // otherwise the big transport button is the one Play Again (rule 51).
+    expect(PLAYER).toMatch(/endStateCandidate && \(\s*<button\s+data-testid="end-state-play-again"[\s\S]{0,120}onClick=\{restartFromBeginning\}/)
     const restartIdx = PLAYER.indexOf('const restartFromBeginning')
     expect(restartIdx).toBeGreaterThan(-1)
     const restartBlock = PLAYER.slice(restartIdx, PLAYER.indexOf('const handlePlayPause'))
