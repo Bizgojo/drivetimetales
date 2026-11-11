@@ -9,9 +9,10 @@ const swipe = (pathname: string, dx: number, dy = 0, ms = 300, startX = 200) =>
 
 describe('PAGE-SWIPE-001', () => {
   // PAGE-SWIPE-002 (Marc, Nov 11, 2026): Marc's exact map. +dx = left to right.
-  it("Home: left to right goes to Library; right to left does nothing", () => {
-    expect(swipe('/home', 150)).toBe('/library')
-    expect(swipe('/home', -150)).toBeNull()
+  // PAGE-SWIPE-003 (Marc, Nov 11, 2026, after testing on his phone)
+  it("Home: right to left goes to Library; left to right does nothing", () => {
+    expect(swipe('/home', -150)).toBe('/library')
+    expect(swipe('/home', 150)).toBeNull()
   })
 
   it("Library: left to right goes to Home; right to left goes to Account", () => {
@@ -36,9 +37,9 @@ describe('PAGE-SWIPE-001', () => {
   })
 
   it('short, slanted, slow or edge-started swipes do nothing', () => {
-    expect(swipe('/home', 60)).toBeNull()              // under a quarter of the screen
-    expect(swipe('/home', 150, 100)).toBeNull()        // too much up/down
-    expect(swipe('/home', 150, 0, 1200)).toBeNull()    // slow drag
+    expect(swipe('/home', -60)).toBeNull()             // under a quarter of the screen
+    expect(swipe('/home', -150, 100)).toBeNull()       // too much up/down
+    expect(swipe('/home', -150, 0, 1200)).toBeNull()   // slow drag
     expect(swipe('/home', 150, 0, 300, 10)).toBeNull() // starts at the left edge (iPhone back)
     expect(swipe('/library', -150, 0, 300, 395)).toBeNull() // starts at the right edge
   })
