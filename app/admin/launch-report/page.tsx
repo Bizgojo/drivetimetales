@@ -8,6 +8,7 @@
 // "awaiting data" and the page renders normally (no crash).
 
 import { useEffect, useState } from 'react'
+import { MONTHLY_PRICE_DISPLAY, ANNUAL_PRICE_DISPLAY } from '@/lib/pricing'
 
 type WindowValues = { h4: number | null; h24: number | null; total: number | null }
 
@@ -174,8 +175,8 @@ export default function LaunchReportPage() {
         Clicks × 100, per column (&ldquo;—&rdquo; where an input is missing; Signup Rate shows a true 0.0% when clicks exist
         but signups are 0). Cost per Trial = (Meta + TikTok spend to date) ÷ trials to date;
         True CAC (paid) = (Meta + TikTok spend to date) ÷ paid conversions to date (same count as Total subs) —
-        both total column only. TikTok expenses default to $0 until TikTok launch. Sub Rev. Added = monthly conversions × $7.99 +
-        annual conversions × $59.99 (unknown billing cycle counted as monthly) &mdash; an approximation; Stripe is
+        both total column only. TikTok expenses default to $0 until TikTok launch. Sub Rev. Added = monthly conversions × {MONTHLY_PRICE_DISPLAY} +
+        annual conversions × {ANNUAL_PRICE_DISPLAY} (unknown billing cycle counted as monthly) &mdash; an approximation; Stripe is
         the source of truth for actual revenue. Total Expenses shows &ldquo;—&rdquo; until real expense rows exist in
         launch_metrics (the TikTok $0 default alone never counts as a total).
       </p>
