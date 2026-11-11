@@ -113,7 +113,7 @@ Answer these checks:
 
 ${planned.length ? `EMOTIONS (report only, canon decision 133): the plan wants the listener to feel: ${['liking the protagonist', ...planned].join(', ')}. For each, quote the line that sets it up and the line that triggers it, or say it is missing. Also list "announced": lines where a character or the narrator names a feeling instead of showing it ("I was terrified", "it was heartbreaking").
 
-` : ''}Also list: "twists" = each MAJOR twist or reveal in this episode (a turn that changes what the listener believes; not ordinary plot steps); "open_questions" = the main story questions still unanswered at the end of the episode (not minor details). Be strict but fair; list only real ones.
+` : ''}Also list: "twists" = each MAJOR twist or reveal in this episode (a turn that changes what the listener believes is TRUE about the story; not ordinary plot steps). NOT a twist: a character's decision, plan, condition, request or bargain; something the listener already knew from earlier episodes or the plan; a callback or symbolic detail. "open_questions" = the main story questions still unanswered at the end of the episode (not minor details). Count a question only if a listener would actively wonder about it now; background history about one relationship counts as ONE question, and a minor character's identity is not a question. Be strict but fair; list only real ones.
 
 Return ONLY JSON, no other text:
 {"want":"...","obstacle":"...","stakes":"...","twists":["..."],"open_questions":["..."],${planned.length ? '"emotions":[{"emotion":"...","setup":"quoted line or empty","trigger":"quoted line or empty","found":true}],"announced":["..."],' : ''}
@@ -191,4 +191,18 @@ export function clarityReportText(r: ClarityResult): string {
   if (r.passed) return [...head, 'STORY-CLARITY-001: PASS'].join('\n')
   const fixes = r.checks.filter((c) => !c.pass).map((c) => `- CLARITY ${c.id}: ${c.detail}${c.quotes?.length ? ` Lines: ${c.quotes.map((q) => `"${q}"`).join(' ')}` : ''}`)
   return [...head, '', '❌ VALIDATOR RESULT: FAIL', 'Do not send to production. Fix the following before resubmitting:', ...fixes].join('\n')
+}
+
+/**
+ * WRITER-TWIST-BUDGET-001 (canon decisions 130 and 131, Marc Nov 10, 2026):
+ * the episode writer is told the same limits the clarity gate enforces, so
+ * scripts stop failing TWIST-BUDGET / OPEN-QUESTIONS after they are written
+ * (Second Rise EP2, job 35788bd4, Nov 11).
+ */
+export function twistBudgetWriterBlock(): string {
+  return `TWIST AND QUESTION BUDGET (canon decisions 130 and 131; checked before voicing, a script over the limit is rejected):
+- At most ${CANON.TWISTS_PER_EPISODE_MAX} major twist or reveal in this episode: a turn that changes what the listener believes is true. It must answer or sharpen the series' main question. A twist never opens a new mystery.
+- A character's decision, plan or condition is not a twist; use those freely.
+- At the end of this episode, at most ${CANON.OPEN_QUESTIONS_MAX} story questions may be open. If you open a new one, answer an older one in this episode.
+- Do not add extra secrets, hidden pasts or teases beyond the episode plan. Belle's outro may point to a question that is already open; it must not open a new one.`
 }

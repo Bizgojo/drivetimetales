@@ -67,7 +67,7 @@ import { normalizeScriptFormat } from '@/lib/scriptLabels'
 import { evaluateBelleCopyForPublish } from '@/lib/publicationBelleGate'
 import { buildBelleValidationContext, validateBelleLine } from '@/lib/voiceBelleRules'
 import { emotionWriterBlock, genreStartingSet, normalizeEmotions } from '@/lib/canon/emotionPalette'
-import { buildClarityPrompt, castCheck, clarityReportText, combineClarity, namedSpeakers, parseClarityReview, readingMetrics } from '@/lib/storyClarity'
+import { buildClarityPrompt, castCheck, clarityReportText, combineClarity, namedSpeakers, parseClarityReview, readingMetrics, twistBudgetWriterBlock } from '@/lib/storyClarity'
 import {
   briefMinutesOf,
   briefRuntimeImpossible,
@@ -6335,6 +6335,8 @@ Maximum: ${spokenTarget.max.toLocaleString()} spoken words.
 Reach the length with real scenes and beats, not padding. Before you finish, estimate your spoken word count; if it is under ${spokenTarget.min.toLocaleString()}, add another full scene.
 
 ${emotionWriterBlock(normalizeEmotions(brief.emotions), brief.genre || series.genre)}
+
+${twistBudgetWriterBlock()}
 
 USER NOTES / CONSTRAINTS:
 ${String(brief.requirements || '').trim() || 'None'}
