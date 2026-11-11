@@ -74,3 +74,23 @@ describe('WRITER-OUTRO-FINAL-WORD-001', () => {
     expect(src).toMatch(/!\(!selfCheckIsFinale && NON_FINALE_FINAL_WORDS\.test\(shorter\)\)/)
   })
 })
+
+// WRITER-OUTRO-SHORTEN-002 (Widow EP4 job 0fc90ff2, Nov 11): quotes in the series
+// name broke the JSON reply, so the repair threw and never ran.
+import { parseOutroReply } from '@/lib/belleOutroForward'
+describe('WRITER-OUTRO-SHORTEN-002', () => {
+  const want = 'Nina sent the voicemail to Keller. In Episode Five of "THE WIDOW WHO WATCHED," Celia finds a second policy.'
+  it('reads the tag reply, valid JSON, and JSON with raw quotes', () => {
+    expect(parseOutroReply(`<outro>${want}</outro>`)).toBe(want)
+    expect(parseOutroReply(`Here it is:\n<outro>BELLE B: ${want}</outro>`)).toBe(want)
+    expect(parseOutroReply(JSON.stringify({ outro: want }))).toBe(want)
+    expect(parseOutroReply(`{"outro": "${want}"}`)).toBe(want)
+    expect(parseOutroReply('nothing useful')).toBe('')
+  })
+  it('run-next asks for tags and records a failed repair in the job error', () => {
+    const src = readFileSync(join(__dirname, '..', 'app/api/admin/production-jobs/run-next/route.ts'), 'utf8')
+    expect(src).toMatch(/between <outro> and <\/outro> tags/)
+    expect(src).toMatch(/const next = parseOutroReply\(/)
+    expect(src).toMatch(/WRITER-OUTRO-SHORTEN-002: outro repair failed/)
+  })
+})
