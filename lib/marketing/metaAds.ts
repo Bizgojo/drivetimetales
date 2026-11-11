@@ -7,6 +7,8 @@
 // creative fetch) prefer the management token too; the read-only token is
 // never used for launches.
 
+import { buildAdSetTargeting, buildPromotedObject } from './pausedBuildNov09'
+
 const META_GRAPH_BASE = 'https://graph.facebook.com/v21.0'
 
 function managementToken(): string | null {
@@ -141,6 +143,123 @@ export async function fetchAdPreviews(
 /** Spec Sec 10.2: gated status change. Only called after hash + approval checks pass. */
 export async function setAdStatus(adId: string, status: 'ACTIVE' | 'PAUSED'): Promise<void> {
   await graphPost(adId, { status })
+}
+
+// ---- Paused-build (campaign-6plus2-nov09-20261104) creation helpers ----
+// Every helper hard-codes status PAUSED. There is intentionally NO status
+// parameter and NO ACTIVE path: callers cannot enable anything through these.
+
+export async function createPausedCampaign(name: string, spendCapCents: number): Promise<string> {
+  const data = await graphPost(`act_${accountIdOrThrow()}/campaigns`, {
+    name,
+    objective: 'OUTCOME_SALES',
+    status: 'PAUSED',
+    special_ad_categories: '[]',
+    // Claude-review fix (endpoint-fixes-7): $4k ceiling enforced on the object.
+    spend_cap: String(spendCapCents),
+  })
+  if (!data?.id) throw new Error('Meta campaign create returned no id')
+  return String(data.id)
+}
+
+export interface PausedAdSetSpec {
+  name: string
+  campaignId: string
+  dailyBudgetCents: string
+  pixelId: string
+}
+
+export async function createPausedAdSet(spec: PausedAdSetSpec): Promise<string> {
+  const data = await graphPost(`act_${accountIdOrThrow()}/adsets`, {
+    name: spec.name,
+    campaign_id: spec.campaignId,
+    daily_budget: spec.dailyBudgetCents,
+    billing_event: 'IMPRESSIONS',
+    optimization_goal: 'OFFSITE_CONVERSIONS',
+    bid_strategy: 'LOWEST_COST_WITHOUT_CAP',
+    status: 'PAUSED',
+    targeting: JSON.stringify(buildAdSetTargeting()),
+    // Claude-review fix (endpoint-fixes-7): pixel START_TRIAL (app StartTrial),
+    // Adv+ audience targeting_automation + Adv+ placements (no fixed lists).
+    promoted_object: JSON.stringify(buildPromotedObject(spec.pixelId)),
+    attribution_spec: JSON.stringify([
+      { event_type: 'CLICK_THROUGH', window_days: 7 },
+      { event_type: 'VIEW_THROUGH', window_days: 1 },
+    ]),
+  })
+  if (!data?.id) throw new Error('Meta ad set create returned no id')
+  return String(data.id)
+}
+
+export interface PausedAdSpec {
+  name: string
+  adSetId: string
+  pageId: string
+  videoId: string
+  // Claude-review fix (endpoint-fixes-7): exactly one thumbnail per ad.
+  thumbnailHash?: string
+  thumbnailUrl?: string
+  linkUrl: string
+  message: string
+  title: string
+  linkDescription: string
+}
+
+export async function createPausedAd(spec: PausedAdSpec): Promise<{ adId: string; creativeId: string }> {
+  const data = await graphPost(`act_${accountIdOrThrow()}/ads`, {
+    name: spec.name,
+    adset_id: spec.adSetId,
+    status: 'PAUSED',
+    creative: JSON.stringify({
+      object_story_spec: {
+        page_id: spec.pageId,
+        video_data: {
+          video_id: spec.videoId,
+          // Claude-review fix (endpoint-fixes-7): per-hook thumbnail.
+          ...(spec.thumbnailHash
+            ? { image_hash: spec.thumbnailHash }
+            : spec.thumbnailUrl
+              ? { image_url: spec.thumbnailUrl }
+              : {}),
+          link_description: spec.linkDescription,
+          message: spec.message,
+          title: spec.title,
+          call_to_action: { type: 'LEARN_MORE', value: { link: spec.linkUrl } },
+        },
+      },
+    }),
+  })
+  if (!data?.id) throw new Error('Meta ad create returned no id')
+  return { adId: String(data.id), creativeId: data?.creative_id ? String(data.creative_id) : '' }
+}
+
+// Uploads a Hal-captioned mp4 to the ad account video library (inert: no ad,
+// no spend, unpublished). Returns the Meta video ID for wiring into paused ads.
+// No status involved — uploads cannot serve. Non-hook1..6 filenames refused by route.
+export async function uploadPausedVideo(bytes: ArrayBuffer, filename: string): Promise<string> {
+  const token = managementToken()
+  if (!token) throw new Error('META_ADS_MANAGEMENT_TOKEN not configured')
+  const form = new FormData()
+  form.append('access_token', token)
+  form.append('source', new Blob([bytes], { type: 'video/mp4' }), filename)
+  const res = await fetch(`${META_GRAPH_BASE}/act_${accountIdOrThrow()}/advideos`, {
+    method: 'POST',
+    headers: { 'User-Agent': 'EndlessTales-Amendment1/1.0' },
+    body: form,
+  })
+  if (!res.ok) {
+    const text = (await res.text().catch(() => '')).slice(0, 500)
+    throw new Error(`Meta Graph POST advideos ${res.status}: ${text}`)
+  }
+  const data = await res.json()
+  if (!data?.id) throw new Error('Meta advideos upload returned no id')
+  return String(data.id)
+}
+
+function accountIdOrThrow(): string {
+  const id = adAccountId()
+  if (!id) throw new Error('META_AD_ACCOUNT_ID not configured')
+  return id.startsWith('act_') ? id.slice(4) : id
 }
 
 export function getAdAccountId(): string | null {
