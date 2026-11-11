@@ -66,7 +66,7 @@ import { runVoiceMapGate } from '@/lib/voiceMapGate'
 import { checkNarrationPresence } from '@/lib/narrationPresence'
 import { normalizeScriptFormat } from '@/lib/scriptLabels'
 import { evaluateBelleCopyForPublish } from '@/lib/publicationBelleGate'
-import { buildBelleValidationContext, validateBelleLine } from '@/lib/voiceBelleRules'
+import { buildBelleValidationContext, validateBelleLine, softenBelleSpoilerWords } from '@/lib/voiceBelleRules'
 import { emotionWriterBlock, genreStartingSet, normalizeEmotions } from '@/lib/canon/emotionPalette'
 import { buildClarityPrompt, castCheck, clarityReportText, combineClarity, namedSpeakers, parseClarityReview, readingMetrics, twistBudgetWriterBlock, approvedEpisodePlanText } from '@/lib/storyClarity'
 import {
@@ -75,6 +75,7 @@ import {
   checkScriptReadiness,
   onlyDescriptionLengthBlockers,
   onlyOutroOrDescriptionLengthBlockers,
+  onlyBelleSpoilerOrLengthBlockers,
   SOFT_WRITER_GATES,
   checkSeriesCastContinuity,
   writeWithSelfCheck,
@@ -7050,6 +7051,39 @@ async function generateOneSeriesEpisodeScript(job: ProductionJob, model: string)
       }
     } catch (err) {
       console.warn(`[WRITER-DESC-SHORTEN-001] episode ${targetEpisodeNumber} shorten failed: ${err instanceof Error ? err.message : String(err)}`)
+    }
+  }
+
+  // BELLE-SPOILER-WORD-001 (Widow EP5, job c944a59e, Nov 11): the Belle intro
+  // said "reveals" on all 3 drafts. Swap the spoiler words in the Belle lines
+  // (no AI call), re-run the same self-check, and record what is left so the
+  // outro/description repair below can finish the job.
+  const spoilerOnly = onlyBelleSpoilerOrLengthBlockers(writerAttempts[writerAttempts.length - 1]?.blockers || [])
+  if (!selfCheckOk && script && writerSelfCheckFn && spoilerOnly.ok) {
+    try {
+      let nextScript = script
+      for (const kind of ['intro', 'outro'] as const) {
+        if (!(kind === 'intro' ? spoilerOnly.intro : spoilerOnly.outro)) continue
+        const current = extractBelleSection(nextScript, kind)
+        const softened = softenBelleSpoilerWords(current)
+        if (softened && softened !== current) nextScript = replaceBelleSection(nextScript, kind, softened)
+      }
+      if (nextScript !== script) {
+        const recheck = await writerSelfCheckFn(nextScript)
+        script = nextScript
+        const hard = recheck.blockers.filter((b) => !SOFT_WRITER_GATES.has(b.gate))
+        if (recheck.ready || hard.length === 0) selfCheckOk = true
+        writerAttempts.push({
+          attempt: writerAttempts.length + 1,
+          blockers: [
+            `BELLE-SPOILER-WORD-001: spoiler words swapped in the Belle ${[spoilerOnly.intro && 'intro', spoilerOnly.outro && 'outro'].filter(Boolean).join(' and ')} (script unchanged)`,
+            ...recheck.blockers.map((b: any) => `${b.gate}: ${b.detail}${b.gate === 'BELLE-CONTENT' && b.evidence?.length ? ` [${String(b.evidence[0]).slice(0, 300)}]` : ''}`),
+          ],
+          spokenWords: writerAttempts[writerAttempts.length - 1]?.spokenWords ?? 0,
+        })
+      }
+    } catch (err) {
+      console.warn(`[BELLE-SPOILER-WORD-001] episode ${targetEpisodeNumber} repair failed: ${err instanceof Error ? err.message : String(err)}`)
     }
   }
 
