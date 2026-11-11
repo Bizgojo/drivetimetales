@@ -8,20 +8,24 @@ const swipe = (pathname: string, dx: number, dy = 0, ms = 300, startX = 200) =>
   swipeTarget({ pathname, startX, startY: 300, endX: startX + dx, endY: 300 + dy, durationMs: ms, screenWidth: W })
 
 describe('PAGE-SWIPE-001', () => {
-  it('order is Library, Home, Account', () => {
-    expect([...SWIPE_PAGES]).toEqual(['/library', '/home', '/account'])
-  })
-
-  it('swiping left goes right along the order, swiping right goes back', () => {
-    expect(swipe('/home', -150)).toBe('/account')
+  // PAGE-SWIPE-002 (Marc, Nov 11, 2026): Marc's exact map. +dx = left to right.
+  it("Home: left to right goes to Library; right to left does nothing", () => {
     expect(swipe('/home', 150)).toBe('/library')
-    expect(swipe('/library', -150)).toBe('/home')
-    expect(swipe('/account', 150)).toBe('/home')
+    expect(swipe('/home', -150)).toBeNull()
   })
 
-  it('no wrap-around at either end', () => {
-    expect(swipe('/library', 150)).toBeNull()
+  it("Library: left to right goes to Home; right to left goes to Account", () => {
+    expect(swipe('/library', 150)).toBe('/home')
+    expect(swipe('/library', -150)).toBe('/account')
+  })
+
+  it("Account: left to right goes to Library; right to left does nothing", () => {
+    expect(swipe('/account', 150)).toBe('/library')
     expect(swipe('/account', -150)).toBeNull()
+  })
+
+  it('only the three pages swipe', () => {
+    expect([...SWIPE_PAGES].sort()).toEqual(['/account', '/home', '/library'])
   })
 
   it('never on the player or any other page', () => {
@@ -32,11 +36,11 @@ describe('PAGE-SWIPE-001', () => {
   })
 
   it('short, slanted, slow or edge-started swipes do nothing', () => {
-    expect(swipe('/home', -60)).toBeNull()             // under a quarter of the screen
-    expect(swipe('/home', -150, 100)).toBeNull()       // too much up/down
-    expect(swipe('/home', -150, 0, 1200)).toBeNull()   // slow drag
+    expect(swipe('/home', 60)).toBeNull()              // under a quarter of the screen
+    expect(swipe('/home', 150, 100)).toBeNull()        // too much up/down
+    expect(swipe('/home', 150, 0, 1200)).toBeNull()    // slow drag
     expect(swipe('/home', 150, 0, 300, 10)).toBeNull() // starts at the left edge (iPhone back)
-    expect(swipe('/home', -150, 0, 300, 395)).toBeNull() // starts at the right edge
+    expect(swipe('/library', -150, 0, 300, 395)).toBeNull() // starts at the right edge
   })
 
   it('is mounted in the app shell, and skips side-scrolling rows and fields', () => {
