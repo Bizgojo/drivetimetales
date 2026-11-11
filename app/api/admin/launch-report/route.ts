@@ -9,8 +9,8 @@
 //                     completes = trial begins)
 //   Total subs      = users.first_paid_date in window (webhook stamps this once,
 //                     on the first PAID invoice = trial→paid conversion)
-//   Sub Rev. Added  = (monthly conversions in window × $7.99)
-//                     + (annual conversions in window × $59.99).
+//   Sub Rev. Added  = (monthly conversions in window × $9.99)
+//                     + (annual conversions in window × $79.99).
 //                     billing_cycle is 'monthly' | 'annual' | null (webhook
 //                     derives it from the Stripe price interval and nulls it on
 //                     deactivation). null/unknown counts as MONTHLY: monthly is
@@ -78,6 +78,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { createServerClient } from '@supabase/ssr'
+import { MONTHLY_PRICE_USD, ANNUAL_PRICE_USD } from '@/lib/pricing'
 import { cookies } from 'next/headers'
 
 const ADMIN_EMAILS = new Set([
@@ -92,8 +93,9 @@ export const dynamic = 'force-dynamic'
 
 // Next.js route files only allow whitelisted exports — keep these module-local.
 const LAUNCH_ANCHOR_ISO = '2026-07-17T13:55:00.000Z'
-const STANDARD_MONTHLY_PRICE = 7.99
-const STANDARD_ANNUAL_PRICE = 59.99
+// PRICING-999-001 (Marc, Nov 10, 2026): from the app-wide single source (was 7.99 / 59.99).
+const STANDARD_MONTHLY_PRICE = MONTHLY_PRICE_USD
+const STANDARD_ANNUAL_PRICE = ANNUAL_PRICE_USD
 
 type WindowKey = 'h4' | 'h24' | 'total'
 type WindowValues = Record<WindowKey, number | null>
@@ -345,7 +347,7 @@ export async function GET(req: NextRequest) {
     const cancelations = countInWindows(customers, 'cancelled_at', starts)
     const trials = countInWindows(customers.filter(u => u.stripe_subscription_id), 'subscription_start', starts)
     const paidSubs = countInWindows(customers, 'first_paid_date', starts)
-    // Sub Rev. Added: monthly × $7.99 + annual × $59.99. null/unknown
+    // Sub Rev. Added: monthly × $9.99 + annual × $79.99. null/unknown
     // billing_cycle counts as monthly (default plan; conservative estimate —
     // see header). Approximation; Stripe is source of truth for real revenue.
     const paidAnnual = countInWindows(customers.filter(u => u.billing_cycle === 'annual'), 'first_paid_date', starts)
