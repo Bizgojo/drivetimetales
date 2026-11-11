@@ -7063,10 +7063,10 @@ async function generateOneSeriesEpisodeScript(job: ProductionJob, model: string)
       ? closingOutroPrompt({ title: outroSeriesName, author: String(targetEpisode.author || '').trim(), narrator: assignedNarratorName })
       : nonFinaleOutroPrompt({ seriesName: outroSeriesName, nextEpisodeNumber: targetEpisodeNumber + 1, author: String(targetEpisode.author || '').trim(), narrator: assignedNarratorName })
     try {
-      const shorter = await shortenBelleOutroToLimit(currentOutro, outroRule, coerceValidationModelToClaude(model), {
+      const shorter = await shortenBelleOutroToLimit(currentOutro, outroRule, coerceValidationModelToClaude(model), !selfCheckIsFinale, {
         jobId: job.id, storyId: String(targetEpisode.id), title: targetEpisode.title, seriesId: String(seriesId), episodeNumber: targetEpisodeNumber,
       })
-      if (shorter && countWords(shorter) <= BELLE_OUTRO_MAX_WORDS) {
+      if (shorter && countWords(shorter) <= BELLE_OUTRO_MAX_WORDS && !(!selfCheckIsFinale && NON_FINALE_FINAL_WORDS.test(shorter))) {
         let nextScript = replaceBelleSection(script, 'outro', shorter)
         let nextDescription = description
         if (lengthOnly.description) {
@@ -7678,16 +7678,20 @@ async function shortenDescriptionLoop(description: string, model: string): Promi
 }
 
 /** WRITER-OUTRO-SHORTEN-001: shorten only the Belle B outro of a writer draft (up to 2 small calls, logged). */
-async function shortenBelleOutroToLimit(outro: string, rule: string, model: string, ctx: { jobId: string; storyId: string; title?: string | null; seriesId: string; episodeNumber: number }): Promise<string> {
+const NON_FINALE_FINAL_WORDS = /\b(end|ended|final|concludes|conclusion|complete)\b/i
+
+async function shortenBelleOutroToLimit(outro: string, rule: string, model: string, nonFinale: boolean, ctx: { jobId: string; storyId: string; title?: string | null; seriesId: string; episodeNumber: number }): Promise<string> {
   let text = outro
   let inputTokens = 0
   let outputTokens = 0
-  for (let i = 0; i < 2 && countWords(text) > BELLE_OUTRO_MAX_WORDS - 2; i++) {
+  const needsFix = (t: string) => countWords(t) > BELLE_OUTRO_MAX_WORDS - 2 || (nonFinale && NON_FINALE_FINAL_WORDS.test(t))
+  const finalWordRule = nonFinale ? ' Never use the words end, ended, final, concludes, conclusion or complete (say "last move", "big move" or similar instead).' : ''
+  for (let i = 0; i < 2 && needsFix(text); i++) {
     const res = await anthropic.messages.create({
       model,
       max_tokens: 400,
       temperature: 0,
-      messages: [{ role: 'user', content: `This Belle B outro line is ${countWords(text)} words. It must be ${BELLE_OUTRO_MAX_WORDS - 4} words or fewer. Rewrite ONLY this line, keeping the same meaning and every required part of the rule below. COUNT THE WORDS before you answer. Return JSON only: {"outro": "text"} (no "BELLE B:" label).\n\nRULE: ${rule}\n\nCURRENT OUTRO: ${text}` }],
+      messages: [{ role: 'user', content: `This Belle B outro line is ${countWords(text)} words. It must be ${BELLE_OUTRO_MAX_WORDS - 4} words or fewer.${finalWordRule} Rewrite ONLY this line, keeping the same meaning and every required part of the rule below. COUNT THE WORDS before you answer. Return JSON only: {"outro": "text"} (no "BELLE B:" label).\n\nRULE: ${rule}\n\nCURRENT OUTRO: ${text}` }],
     })
     inputTokens += res.usage?.input_tokens ?? 0
     outputTokens += res.usage?.output_tokens ?? 0

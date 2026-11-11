@@ -506,7 +506,10 @@ export function onlyBelleOutroLengthBlockers(blockers: string[]): boolean {
   return hard.length > 0 && hard.every((b) => /^BELLE-CONTENT: (voice step \(outro\): )?outro is too long\b/.test(b))
 }
 
-const OUTRO_LENGTH_BLOCKER = /^BELLE-CONTENT: (voice step \(outro\): )?outro is too long\b/
+// WRITER-OUTRO-FINAL-WORD-001 (Weekend Wife EP5, Nov 11): "Marcus makes his final
+// move" tripped the non-finale "sounds final" word rule on all 3 drafts; the
+// outro line alone is rewritten, same as an over-long one.
+const OUTRO_LENGTH_BLOCKER = /^BELLE-CONTENT: ((voice step \(outro\): )?outro is too long\b|voice step \(outro\): non-final series outro sounds final\b)/
 const DESCRIPTION_LENGTH_BLOCKER = /^CARD-COPY: DESCRIPTION \d+ characters \(max \d+\)$/
 
 /**

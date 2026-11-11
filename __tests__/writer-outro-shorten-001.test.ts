@@ -59,3 +59,18 @@ describe('WRITER-SOFT-IGNORE-001', () => {
     expect(descOnly([...ww, 'HOOK-GATE: no hook'])).toBe(false)
   })
 })
+
+// WRITER-OUTRO-FINAL-WORD-001 (Weekend Wife EP5 job 43257c97, Nov 11)
+describe('WRITER-OUTRO-FINAL-WORD-001', () => {
+  const ww5 = 'BELLE-CONTENT: voice step (outro): non-final series outro sounds final [current outro: BELLE B: ... Marcus makes his final move at the closing dinner.]'
+  it('a final-sounding non-finale outro is repairable on its own and with length issues', () => {
+    expect(outroOrDesc([ww5]).ok).toBe(true)
+    expect(outroOrDesc([ww5, 'CARD-COPY: DESCRIPTION 104 characters (max 100)']).ok).toBe(true)
+    expect(outroOrDesc([ww5, 'HOOK-GATE: no hook']).ok).toBe(false)
+  })
+  it('the repair loop also fixes banned final words and rejects a result that still has them', () => {
+    const src = readFileSync(join(__dirname, '..', 'app/api/admin/production-jobs/run-next/route.ts'), 'utf8')
+    expect(src).toMatch(/needsFix = \(t: string\) => countWords\(t\) > BELLE_OUTRO_MAX_WORDS - 2 \|\| \(nonFinale && NON_FINALE_FINAL_WORDS\.test\(t\)\)/)
+    expect(src).toMatch(/!\(!selfCheckIsFinale && NON_FINALE_FINAL_WORDS\.test\(shorter\)\)/)
+  })
+})
