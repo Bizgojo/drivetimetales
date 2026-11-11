@@ -4,7 +4,7 @@
  * pages only — Home, Library, Account. No swipe on the player or any other page.
  *
  * Marc's exact map ("left to right" = the finger moves toward the right):
- *   Home:    left to right → Library;   right to left → nothing
+ *   Home:    left to right → nothing;   right to left → Library   (PAGE-SWIPE-003, Marc Nov 11 after testing)
  *   Library: left to right → Home;      right to left → Account
  *   Account: left to right → Library;   right to left → nothing
  */
@@ -14,7 +14,7 @@ export type SwipePage = (typeof SWIPE_PAGES)[number]
 
 /** Where each page goes for a left-to-right and a right-to-left swipe (null = nothing). */
 export const SWIPE_MAP: Record<SwipePage, { leftToRight: SwipePage | null; rightToLeft: SwipePage | null }> = {
-  '/home': { leftToRight: '/library', rightToLeft: null },
+  '/home': { leftToRight: null, rightToLeft: '/library' },
   '/library': { leftToRight: '/home', rightToLeft: '/account' },
   '/account': { leftToRight: '/library', rightToLeft: null },
 }
