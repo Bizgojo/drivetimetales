@@ -2,7 +2,7 @@
 Status: DRAFT for Marc's approval · Nov 9, 2026 · Owner: Marc
 Covers: one list of every place in the canon where Marc must decide or act himself, document by document. Does not cover: the rules themselves (each is in its own document) or the open decisions (CANON-99).
 
-94 decision points across 15 documents (84 from the audit, 8 added by CANON-99 Part 2, 1 by item 125 on Nov 9, 2026, and 1 by item 132 on Nov 10, 2026). Every audit item in CANON-99 is answered; new requests appear in CANON-99 Part 3.
+95 decision points across 15 documents (84 from the audit, 8 added by CANON-99 Part 2, 1 by item 125 on Nov 9, 2026, and items 132 and 133 on Nov 10, 2026). Every audit item in CANON-99 is answered; new requests appear in CANON-99 Part 3.
 
 **[MARC DECIDES]** = Marc approves, chooses or gives his OK. **[MARC DOES]** = something only Marc does himself (tests on his phone, listens, enters a key). Agents never act in Marc's place on these.
 
@@ -36,6 +36,7 @@ Covers: one list of every place in the canon where Marc must decide or act himse
 - **CANON-03 rule 58 [MARC DECIDES]:** NARRATIVE_VOICE is declared (first_person, third_limited, third_omniscient) and held on every narrator line. second_person needs Marc's approval.
 - **CANON-03 rule 59 [MARC DECIDES]:** NARRATOR_IS_CHARACTER: true needs Marc's approval and a non-platform voice.
 - **CANON-03 rule 90 [MARC DECIDES]:** Gemini reads the scripts before voicing (continuity, easy listening, logic, promise, credibility) and lists exact fixes. Report-only until Marc…
+- **CANON-03 decision 133 [MARC DECIDES]:** The emotion check is report-only until Marc reviews three stories with it; then Marc decides whether it blocks.
 - Open in this document: Nothing open in this document (CANON-99 answered Nov 9, 2026).
 
 ## CANON-04 — Belle Intro/Outro & Listener-Name Personalization
