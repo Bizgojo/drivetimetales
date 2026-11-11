@@ -41,6 +41,19 @@ export function catalogSearchText(name: string): string {
   return String(name || '').toLowerCase().replace(/\bor\b/g, ' ').replace(/[^a-z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim()
 }
 
+/**
+ * SFX-SOURCEAUDIO-002 (Don't Go Home EP1, Nov 11): "cell phone text alert" found
+ * nothing. Fallback searches, in order, when one finds nothing: the name's
+ * part after the comma alone, then each half of the name. Never more than 3.
+ */
+export function catalogSearchFallbacks(name: string): string[] {
+  const parts = String(name || '').split(',').map((p) => catalogSearchText(p)).filter(Boolean)
+  const full = catalogSearchText(name)
+  const out: string[] = []
+  for (const q of [parts.slice(1).join(' '), ...parts]) if (q && q !== full && !out.includes(q)) out.push(q)
+  return out.slice(0, 3)
+}
+
 export function parseSearchTracks(json: any): SourceAudioTrack[] {
   const rows: any[] = Array.isArray(json?.tracks) ? json.tracks : []
   return rows.map((r) => ({
@@ -64,8 +77,18 @@ export function pickCandidates(tracks: SourceAudioTrack[], kind: 'spot' | 'backg
   const fits = fresh.filter((t) => kind === 'background'
     ? t.durationSec >= 20
     : t.durationSec >= 0.3 && t.durationSec <= 15)
-  // Keep SourceAudio's relevance order; durations of 0 (unknown) go last.
-  return fits.slice(0, Math.max(0, count))
+  // Keep SourceAudio's relevance order. SFX-SOURCEAUDIO-002 (Orion, Nov 11): prefer
+  // different titles first ("Wood Doors" x3 were takes of one asset), then fill.
+  const n = Math.max(0, count)
+  const seen = new Set<string>()
+  const distinct: SourceAudioTrack[] = []
+  const rest: SourceAudioTrack[] = []
+  for (const t of fits) {
+    const key = String(t.title || '').trim().toLowerCase()
+    if (key && seen.has(key)) rest.push(t)
+    else { if (key) seen.add(key); distinct.push(t) }
+  }
+  return [...distinct, ...rest].slice(0, n)
 }
 
 /** One paced HTTP client: requests never overlap and are spaced out. */
