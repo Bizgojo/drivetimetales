@@ -84,7 +84,7 @@ async function main() {
   const folder = process.argv[2]
   if (!folder || folder.startsWith('--')) throw new Error('usage: sfx-library-ingest.ts <folder> [--source sonniss] [--license "..."] [--dry-run] [--max-sec 10]')
   const source = slugify(arg('source', 'sonniss')!)
-  const license = arg('license', source === 'sonniss' ? 'Sonniss GDC bundle — royalty-free, commercial use, no attribution' : source === 'soundsnap' ? 'Soundsnap subscription license — use in the Endless Tales subscription app approved by Soundsnap support (per Marc, 2026-11-02)' : '')
+  const license = arg('license', source === 'sonniss' ? 'Sonniss GDC bundle — royalty-free, commercial use, no attribution' : source === 'soundsnap' ? 'Soundsnap subscription license — use in the Endless Tales subscription app approved by Soundsnap support (per Marc, 2026-11-02)' : source === 'soundideas' ? 'Sound Ideas Complete Access license via SourceAudio API (bought Nov 5, 2026; API key Nov 11, 2026) — mixed into finished episodes only' : '')
   const maxSec = Number(arg('max-sec', '10'))
   const dryRun = process.argv.includes('--dry-run')
   const files = walk(folder)
