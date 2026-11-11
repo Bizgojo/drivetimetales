@@ -387,12 +387,12 @@ function SignUpContent() {
 
           <div style={{ textAlign: 'center', marginTop: '1.5rem' }}>
             <span style={{ color: '#e2e8f0', fontSize: '14px' }}>Already have an account? </span>
-            <a href="/signin" style={{ color: '#f97316', fontSize: '14px', textDecoration: 'none' }}>Sign In</a>
+            <a href="/signin" style={{ display: 'inline-block', padding: '12px 6px', minHeight: '44px', boxSizing: 'border-box', color: '#f97316', fontSize: '14px', textDecoration: 'none' }}>Sign In</a>
           </div>
         </form>
 
         <p style={{ color: '#e2e8f0', fontSize: '12px', textAlign: 'center', marginTop: '1rem', lineHeight: 1.5 }}>
-          By signing up you agree to our <a href="/terms" style={{ color: "#f0a030", textDecoration: "none" }}>Terms of Service</a> and <a href="/privacy" style={{ color: "#f0a030", textDecoration: "none" }}>Privacy Policy</a>.<br/>
+          By signing up you agree to our <a href="/terms" style={{ display: 'inline-block', padding: '12px 6px', minHeight: '44px', boxSizing: 'border-box', color: "#f0a030", textDecoration: "none" }}>Terms of Service</a> and <a href="/privacy" style={{ display: 'inline-block', padding: '12px 6px', minHeight: '44px', boxSizing: 'border-box', color: "#f0a030", textDecoration: "none" }}>Privacy Policy</a>.<br/>
           {MONTHLY_PRICE_DISPLAY}/mo or {ANNUAL_PRICE_DISPLAY}/yr after your {TRIAL_DAYS}-day free trial.
         </p>
       </div>

@@ -3099,14 +3099,14 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
           {/* Segment progress indicator removed — internal pipeline detail, not user-facing */}
           {/* Now Playing overlay — shown during playlist advance */}
           {nowPlayingLabel && (
-            <div style={{ position:'fixed', top:'50%', left:'50%', transform:'translate(-50%,-50%)', background:'rgba(0,0,0,0.85)', borderRadius:16, padding:'20px 32px', textAlign:'center', zIndex:999, backdropFilter:'blur(8px)', border:'1px solid rgba(249,115,22,0.3)' }}>
+            <div role="status" aria-live="polite" style={{ position:'fixed', top:'50%', left:'50%', transform:'translate(-50%,-50%)', background:'rgba(0,0,0,0.85)', borderRadius:16, padding:'20px 32px', textAlign:'center', zIndex:999, backdropFilter:'blur(8px)', border:'1px solid rgba(249,115,22,0.3)' }}>
               <div style={{ color:'#f97316', fontSize:11, fontWeight:700, textTransform:'uppercase', letterSpacing:'0.1em', marginBottom:6 }}>Up Next</div>
               <div style={{ color:'white', fontSize:18, fontWeight:800 }}>{nowPlayingLabel}</div>
             </div>
           )}
         </div>
         {autoAdvanceCandidate && !stillListeningPrompt && (
-          <div style={{ border:'1px solid rgba(34,197,94,0.28)', background:'rgba(34,197,94,0.08)', borderRadius:'14px', padding:'12px', textAlign:'center' }}>
+          <div role="status" aria-live="polite" style={{ border:'1px solid rgba(34,197,94,0.28)', background:'rgba(34,197,94,0.08)', borderRadius:'14px', padding:'12px', textAlign:'center' }}>
             <p style={{ color:'white', fontSize:'12px', fontWeight:700, margin:'0 0 4px' }}>Up Next</p>
             <p style={{ color:'rgba(255,255,255,0.86)', fontSize:'13px', margin:'0 0 10px' }}>{autoAdvanceCandidate.story.title}</p>
             <p style={{ color:'#86efac', fontSize:'12px', fontWeight:700, margin:'0 0 4px' }}>{autoAdvanceReasonCopy}</p>
@@ -3132,7 +3132,7 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
           </div>
         )}
         {stillListeningPrompt && autoAdvanceCandidate && (
-          <div style={{ border:'1px solid rgba(249,115,22,0.32)', background:'rgba(249,115,22,0.1)', borderRadius:'14px', padding:'12px', textAlign:'center' }}>
+          <div role="alertdialog" aria-label="Still listening?" style={{ border:'1px solid rgba(249,115,22,0.32)', background:'rgba(249,115,22,0.1)', borderRadius:'14px', padding:'12px', textAlign:'center' }}>
             <p style={{ color:'white', fontSize:'13px', fontWeight:800, margin:'0 0 4px' }}>Still listening?</p>
             <p style={{ color:'rgba(255,255,255,0.78)', fontSize:'12px', margin:'0 0 10px' }}>Continue with {autoAdvanceCandidate.story.title}?</p>
             <div style={{ display:'flex', gap:'8px' }}>
@@ -3245,6 +3245,9 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
           style={{ position:'fixed', top:56, bottom:0, left:0, right:0, background:'#000', zIndex:200, display:'flex', alignItems:'flex-end' }}
         >
           <div
+            role="dialog"
+            aria-modal="true"
+            aria-label={activeModal === 'author' ? 'About the author' : activeModal === 'narrator' ? 'About the narrator' : 'Read along'}
             onClick={e => e.stopPropagation()}
             style={{ width:'100%', height:'100%', maxHeight:'100%', background: activeModal === 'prose' ? (proseDark ? '#0f172a' : '#faf7f2') : '#020617', borderRadius:'0', border:'none', display:'flex', flexDirection:'column', overflow:'hidden', transition:'background 0.2s', position:'relative' }}
           >
@@ -3262,7 +3265,7 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
                   {activeModal === 'author'   && `✍️ About ${authorData?.name || story.author || 'the Author'}`}
                   {activeModal === 'narrator' && `🎙️ About ${narratorData?.name || (story as any).narrator_voice_name || 'the Narrator'}`}
                 </span>
-                <button onClick={() => setActiveModal(null)} style={{ background:'rgba(148,163,184,0.15)', border:'none', borderRadius:'50%', width:'32px', height:'32px', color:'#94a3b8', fontSize:'18px', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', lineHeight:1 }}>×</button>
+                <button type="button" aria-label="Close" onClick={() => setActiveModal(null)} style={{ background:'rgba(148,163,184,0.15)', border:'none', borderRadius:'50%', width:'44px', height:'44px', color:'#e2e8f0', fontSize:'20px', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', lineHeight:1 }}><span aria-hidden="true">×</span></button>
               </div>
             )}
 
