@@ -2,9 +2,9 @@
  * GEMINI-STORY-READ-001 (Story Production Spec §6.3, approved by Marc Nov 7, 2026).
  *
  * A different model (Gemini) reads the whole series as a listener and answers the spec's
- * questions with a pass or exact fixes. Phase 1 (report-only): it NEVER blocks, rewrites or
- * publishes. Its report is stored so its verdicts can be compared with Marc's ear before it
- * is given any power (spec §9.2).
+ * questions with a pass or exact fixes. It never publishes. Since Nov 11, 2026 the SCRIPT-stage
+ * read blocks voicing and sends its fixes to the pipeline writer (GEMINI-READ-BLOCK-001, below).
+ * The FINAL-stage read stays report-only until it agrees with Marc's ear (canon decision 24).
  *
  * Stage "script" runs before voicing (questions 1–4 and 6); stage "final" adds question 5.
  */
@@ -20,7 +20,7 @@ export const STORY_READ_QUESTIONS: Array<{ id: string; stages: StoryReadStage[];
   { id: 'logic', stages: ['script', 'final'], ask: 'Logic: does each episode follow from the last, with no gap a listener would trip on?' },
   { id: 'promise', stages: ['script', 'final'], ask: 'Promise: does Episode 1 deliver its hook, and does each episode end hard (a reveal, threat, arrival or choice), or close properly if it is the finale?' },
   { id: 'audio', stages: ['final'], ask: 'Audio: do the FLAGGED AUDIO LINES listed below match their script text, with no garble, cut-off or extra sound described?' },
-  { id: 'credibility', stages: ['script', 'final'], ask: 'Credibility: does every event and conclusion follow from what the story has established, or is it explained? Judge by the story\'s own rules, not the real world. FAIL any character who contradicts their own instruction or plan (including inside one conversation), any host outro (Belle B) that describes something the episode did not show, any character who knows something the story never told them, and any line that refers to the story\'s own events by episode or chapter number ("in chapter four", "next episode") instead of "earlier", "back then", "later" (the host Belle B may say "next episode"; a book or chapter a character mentions is not a self-reference). Only flag what a listener would notice.' },
+  { id: 'credibility', stages: ['script', 'final'], ask: 'Credibility: does every event and conclusion follow from what the story has established, or is it explained? Judge by the story\'s own rules, not the real world. FAIL any character who contradicts their own instruction or plan (including inside one conversation, e.g. "give the originals to someone you trust" followed by "give the originals to the men"), any object or device that does the very thing the story said it was put away to stop (e.g. a phone sealed in a shielded cooler so it cannot send a signal, which then sends a signal) unless the story explains how,any host outro (Belle B) that describes something the episode did not show, any character who knows something the story never told them, and any line that refers to the story\'s own events by episode or chapter number ("in chapter four", "next episode") instead of "earlier", "back then", "later" (the host Belle B may say "next episode"; a book or chapter a character mentions is not a self-reference). Only flag what a listener would notice.' },
 ]
 
 export function buildStoryReadPrompt(input: {
@@ -158,6 +158,54 @@ export type GeminiReadState = {
   questions?: StoryReadQuestion[]
   error?: string
   skipped?: string
+}
+
+/**
+ * GEMINI-READ-BLOCK-001 (Marc, Nov 11, 2026): the script-stage read now BLOCKS voicing.
+ * Reason: Rerouted (Nov 9) and Don't Go Home (Nov 10) were both read "fix" with real errors
+ * (pronoun swap, object changed, company renamed, Belle outro claiming what the episode never
+ * showed, clock contradiction) and were voiced and published anyway because the read was
+ * report-only. Set GEMINI_STORY_READ_BLOCK=off to return to report-only.
+ */
+export const MAX_GEMINI_SCRIPT_REWRITES = 2
+
+export function geminiReadBlocks(env: Record<string, string | undefined> = process.env): boolean {
+  return String(env.GEMINI_STORY_READ_BLOCK || '').toLowerCase() !== 'off'
+}
+
+/**
+ * Turn a stored script-stage read into a blocking verdict. Only problems in episodes that can
+ * still be rewritten block (published, frozen episodes are never rewritten; their problems stay
+ * in the report). A read that was skipped or errored does not block: our own continuity check
+ * already passed, and the error is stored for Report 101.
+ */
+export function geminiBlockingVerdict(
+  read: GeminiReadState | null | undefined,
+  frozenEpisodes: Set<number> = new Set(),
+): { pass: boolean; issues: Array<{ episode: number; problem: string; fix: string }>; frozenIssues: number } {
+  if (!read || read.skipped || read.error || read.verdict !== 'fix' || !read.questions) return { pass: true, issues: [], frozenIssues: 0 }
+  const all = read.questions.filter((q) => !q.pass).flatMap((q) => q.issues.map((i) => ({ ...i, question: q.id })))
+  const open = all.filter((i) => Number.isFinite(i.episode) && i.episode > 0 && !frozenEpisodes.has(i.episode))
+  const issues = open.map((i) => ({
+    episode: i.episode,
+    problem: `[${i.question}] ${i.line ? `"${i.line.slice(0, 220)}" — ` : ''}${i.problem}`,
+    fix: i.fix,
+  }))
+  return { pass: issues.length === 0, issues, frozenIssues: all.length - open.length }
+}
+
+/** The rewrite request sent to the pipeline writer for the earliest episode with a problem. */
+export function geminiRewriteTarget(verdict: ReturnType<typeof geminiBlockingVerdict>): { episodeNumber: number; report: string } | null {
+  if (verdict.pass || !verdict.issues.length) return null
+  const episodeNumber = Math.min(...verdict.issues.map((i) => i.episode))
+  const lines = verdict.issues
+    .slice()
+    .sort((a, b) => a.episode - b.episode)
+    .map((i) => `- Episode ${i.episode}: ${i.problem}${i.fix ? ` — Fix: ${i.fix}` : ''}`)
+  return {
+    episodeNumber,
+    report: `SERIES STORY READ (a second reader heard all episodes as a listener)\nVALIDATOR RESULT: FAIL\nFix these credibility, logic and continuity errors (the episodes after this one are rewritten too, so they will follow your new version):\n${lines.join('\n')}`,
+  }
 }
 
 /** Report-only switch. Off when GEMINI_STORY_READ=off or there is no key. */

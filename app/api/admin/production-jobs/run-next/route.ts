@@ -92,7 +92,7 @@ import { runVoiceConformanceGate, type VoiceProfile } from '@/lib/voiceConforman
 import { legacyStepModels, routeStep, resolveModelForStep, coerceValidationModelToClaude } from '@/lib/model-router'
 import { buildContinuityPins, hashScript, verifyContinuityPins } from '@/lib/continuityPin'
 import { checkSeriesFacts, formatFactSheet, castListsText } from '@/lib/seriesFacts'
-import { runGeminiStoryRead, listenerText } from '@/lib/geminiStoryRead'
+import { runGeminiStoryRead, listenerText, geminiReadBlocks, geminiBlockingVerdict, geminiRewriteTarget, MAX_GEMINI_SCRIPT_REWRITES, type GeminiReadState } from '@/lib/geminiStoryRead'
 import { planTimingPass, finishTimingPass, timedLinesFromSizes, sizesFromListing, type TimingCheckState } from '@/lib/timingPass'
 import {
   hasEarnedPackageEvidence,
@@ -8133,6 +8133,49 @@ async function scoreValidateSeriesPackage(job: ProductionJob, model: string) {
       ;(nextContinuityState as any).geminiScriptRead = geminiRead
     } else if (continuityState.geminiScriptRead) {
       ;(nextContinuityState as any).geminiScriptRead = continuityState.geminiScriptRead
+    }
+    // GEMINI-READ-BLOCK-001 (Marc, Nov 11, 2026): a "fix" verdict on episodes that can still be
+    // rewritten stops the series before voicing and goes back to the pipeline writer, like a
+    // continuity failure. At most MAX_GEMINI_SCRIPT_REWRITES rewrites; then fail closed (no
+    // voicing) for Marc. Problems in published episodes are reported, never block.
+    const storedRead = (nextContinuityState as any).geminiScriptRead as GeminiReadState | undefined
+    if (geminiReadBlocks() && storedRead && storedRead.fingerprint === continuityFingerprint) {
+      const geminiVerdict = geminiBlockingVerdict(storedRead, frozenNumbers)
+      const geminiTarget = geminiRewriteTarget(geminiVerdict)
+      if (geminiTarget) {
+        const geminiRuns = Number(continuityState.geminiRuns || 0) + 1
+        ;(nextContinuityState as any).geminiRuns = geminiRuns
+        // Not passed: keep the old fingerprint so this check runs again after the rewrite.
+        ;(nextContinuityState as any).passedFingerprint = continuityState.passedFingerprint || null
+        const targetEp = sortedEps.find((ep: any) => episodeNumber(ep, 0) === geminiTarget.episodeNumber)
+        const allowRewrite = geminiRuns <= MAX_GEMINI_SCRIPT_REWRITES && targetEp
+        console.log(`[GEMINI-READ-BLOCK-001] series ${seriesId}: ${geminiVerdict.issues.length} issue(s), rewrite ${geminiRuns}/${MAX_GEMINI_SCRIPT_REWRITES}${allowRewrite ? ` from episode ${geminiTarget.episodeNumber}` : ' — limit reached, stopping before voicing'}`)
+        const geminiReport = { pass: false, issues: geminiVerdict.issues.map((i) => `Episode ${i.episode}: ${i.problem}${i.fix ? ` — Fix: ${i.fix}` : ''}`), confidence: 1, summary: `series story read failed (rewrite ${geminiRuns})`, rawReport: null }
+        return {
+          passed: false,
+          failed: true,
+          complete: false,
+          episodeResult: allowRewrite
+            ? { storyId: String(targetEp.id), title: targetEp.title, episodeNumber: geminiTarget.episodeNumber, validatorResult: 'FAIL', skipped: false, report: geminiTarget.report, validatedAt: nowIso() }
+            : null,
+          seriesId: String(seriesId),
+          episodes: refreshedEpisodes,
+          nextStep: NEXT_STEP_AFTER_SERIES_SCRIPTS,
+          packageReport: geminiReport,
+          state: {
+            ...state,
+            seriesId: String(seriesId),
+            seriesContinuity: nextContinuityState,
+            seriesValidation: {
+              ...existingValidation,
+              episodeCount: refreshedEpisodes.length,
+              failedEpisodes,
+              metadataIssues,
+              packageReport: geminiReport,
+            },
+          },
+        }
+      }
     }
     ;(state as any).seriesContinuity = nextContinuityState
   }
