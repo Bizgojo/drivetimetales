@@ -25,6 +25,7 @@ import { tmpdir } from 'node:os'
 import { basename, extname, join, relative } from 'node:path'
 import { catalogIdFromLibraryId, catalogKind } from '../lib/sfxCatalog'
 import { SFX_LIBRARY_MANIFEST, SFX_LIBRARY_PREFIX, sfxWords, type SfxLibraryEntry, type SfxLibraryManifest } from '../lib/sfxLibrary'
+import { downloadFreshText } from '../lib/storage/freshText'
 
 const BACKGROUND_MAX_SEC = 60
 
@@ -94,8 +95,8 @@ async function main() {
   const db = dryRun ? null : createClient(url!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
   let manifest: SfxLibraryManifest = { version: 1, updatedAt: '', entries: [] }
   if (db) {
-    const { data } = await db.storage.from('audio').download(SFX_LIBRARY_MANIFEST)
-    if (data) { try { manifest = JSON.parse(await data.text()) } catch {} }
+    const manText = await downloadFreshText(db, SFX_LIBRARY_MANIFEST) // SFX-MANIFEST-FRESH-001
+    if (manText) { try { manifest = JSON.parse(manText) } catch {} }
   }
   const byId = new Map(manifest.entries.map((e) => [e.id, e]))
   const tmp = mkdtempSync(join(tmpdir(), 'sfxlib-'))

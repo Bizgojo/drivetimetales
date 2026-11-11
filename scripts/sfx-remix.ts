@@ -35,12 +35,13 @@ async function main() {
   const { ensureOverlayPlan, loadOverlayPlan } = await import('../lib/sfxOverlayRunner')
   const { buildSfxReport } = await import('../lib/sfxReport')
   const { SFX_LIBRARY_MANIFEST } = await import('../lib/sfxLibrary')
+  const { downloadFreshText } = await import('../lib/storage/freshText')
 
   const db = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false } })
   const base = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/audio`
 
-  const { data: man } = await db.storage.from('audio').download(SFX_LIBRARY_MANIFEST)
-  const manifest = man ? JSON.parse(await man.text()) : { entries: [] }
+  const manText = await downloadFreshText(db, SFX_LIBRARY_MANIFEST) // SFX-MANIFEST-FRESH-001
+  const manifest = manText ? JSON.parse(manText) : { entries: [] }
   const approved = (manifest.entries || []).filter((e: any) => e.status === 'approved').length
   console.log(`library: ${approved} kept sounds`)
   if (!approved && !reportOnly) throw new Error('no kept sounds in the library — nothing to re-mix with')

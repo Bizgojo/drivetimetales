@@ -18,12 +18,13 @@ async function main() {
   const dryRun = process.argv.includes('--dry-run')
   const { createClient } = await import('@supabase/supabase-js')
   const { SFX_LIBRARY_MANIFEST } = await import('../lib/sfxLibrary')
+  const { downloadFreshText } = await import('../lib/storage/freshText')
   const { SFX_CATALOG_FILE, loadCatalog, proposeTakesFromKeptLibrary, addLicensedTakes, discardTakes } = await import('../lib/sfxCatalog')
   const { SFX_CATALOG_NAMES } = await import('../lib/sfxCatalogNames')
   const db = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false } })
 
-  const { data: man } = await db.storage.from('audio').download(SFX_LIBRARY_MANIFEST)
-  const manifest = man ? JSON.parse(await man.text()) : { entries: [] }
+  const manText = await downloadFreshText(db, SFX_LIBRARY_MANIFEST) // SFX-MANIFEST-FRESH-001
+  const manifest = manText ? JSON.parse(manText) : { entries: [] }
   const kept = (manifest.entries || []).filter((e: any) => e.status === 'approved')
   console.log(`kept library sounds: ${kept.length}`)
 

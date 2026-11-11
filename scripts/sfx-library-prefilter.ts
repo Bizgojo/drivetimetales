@@ -11,14 +11,15 @@
  */
 import { createClient } from '@supabase/supabase-js'
 import { SFX_LIBRARY_MANIFEST, type SfxLibraryManifest } from '../lib/sfxLibrary'
+import { downloadFreshText } from '../lib/storage/freshText'
 import { prefilterCurated, prefilterFirstBatch } from '../lib/sfxPrefilter'
 
 async function main() {
   const apply = process.argv.includes('--apply')
   const db = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false } })
-  const { data, error } = await db.storage.from('audio').download(SFX_LIBRARY_MANIFEST)
-  if (error || !data) throw new Error(`manifest download failed: ${error?.message}`)
-  const manifest = JSON.parse(await data.text()) as SfxLibraryManifest
+  const manText = await downloadFreshText(db, SFX_LIBRARY_MANIFEST) // SFX-MANIFEST-FRESH-001
+  if (!manText) throw new Error('manifest download failed')
+  const manifest = JSON.parse(manText) as SfxLibraryManifest
   const now = new Date().toISOString()
   const removed: string[] = []
   const kept: string[] = []
