@@ -488,6 +488,14 @@ export function onlyDescriptionLengthBlockers(blockers: string[]): boolean {
   return blockers.length > 0 && blockers.every((b) => /^CARD-COPY: DESCRIPTION \d+ characters \(max \d+\)$/.test(b))
 }
 
+/**
+ * WRITER-OUTRO-SHORTEN-001: true when every remaining writer blocker is the
+ * Belle B outro being over the word limit (the line can be shortened alone).
+ */
+export function onlyBelleOutroLengthBlockers(blockers: string[]): boolean {
+  return blockers.length > 0 && blockers.every((b) => /^BELLE-CONTENT: (voice step \(outro\): )?outro is too long\b/.test(b))
+}
+
 export async function writeWithSelfCheck(opts: {
   generate: (feedback: string, previousDraft: string | null) => Promise<WriterDraft>
   check: (script: string) => ReadinessReport | Promise<ReadinessReport>

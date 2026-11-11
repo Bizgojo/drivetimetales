@@ -442,7 +442,7 @@ describe('WRITER-BELLE-CONTENT-001: writer enforces the same Belle rules as seri
     expect(preflight).not.toMatch(/validateBelleText\(/)
   })
   test('the writer self-check calls the same shared function on every draft', () => {
-    const start = fn.indexOf('check: async (draftScript) => {')
+    const start = fn.indexOf('check: (writerSelfCheckFn = async (draftScript: string) => {')
     const check = fn.slice(start, fn.indexOf('} catch (err) {', start))
     expect(check).toMatch(/await seriesEpisodeBelleContentIssues\(/)
     expect(check).toMatch(/gate: 'BELLE-CONTENT'/)

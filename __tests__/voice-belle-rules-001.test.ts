@@ -38,7 +38,7 @@ describe('VOICE-BELLE-RULES-001', () => {
 
   test('series writer runs validateBelleLine on both Belle lines', () => {
     const src = readFileSync(join(__dirname, '..', 'app/api/admin/production-jobs/run-next/route.ts'), 'utf8')
-    const chk = src.slice(src.indexOf('check: async (draftScript) => {'), src.indexOf('} catch (err) {', src.indexOf('check: async (draftScript) => {')))
+    const chk = src.slice(src.indexOf('check: (writerSelfCheckFn = async (draftScript: string) => {'), src.indexOf('} catch (err) {', src.indexOf('check: (writerSelfCheckFn = async (draftScript: string) => {')))
     expect(chk).toMatch(/validateBelleLine\(kind, text, voiceBelleCtx\)/)
     expect(chk).toMatch(/voice step \(\$\{kind\}\): \$\{e\}/)
   })
