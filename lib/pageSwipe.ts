@@ -1,13 +1,23 @@
 /**
- * PAGE-SWIPE-001 (Marc, Nov 10, 2026; canon item 135)
+ * PAGE-SWIPE-001 (Marc, Nov 10, 2026; canon item 135), changed by
+ * PAGE-SWIPE-002 (Marc, Nov 11, 2026): side swipe works on the three main
+ * pages only — Home, Library, Account. No swipe on the player or any other page.
  *
- * Side swipe moves between the three main pages only: Library, Home, Account
- * (the same left-to-right order as the header: Library button, logo, Account
- * button). No swipe on the player or any other page. No wrap-around.
+ * Marc's exact map ("left to right" = the finger moves toward the right):
+ *   Home:    left to right → Library;   right to left → nothing
+ *   Library: left to right → Home;      right to left → Account
+ *   Account: left to right → Library;   right to left → nothing
  */
 
-export const SWIPE_PAGES = ['/library', '/home', '/account'] as const
+export const SWIPE_PAGES = ['/home', '/library', '/account'] as const
 export type SwipePage = (typeof SWIPE_PAGES)[number]
+
+/** Where each page goes for a left-to-right and a right-to-left swipe (null = nothing). */
+export const SWIPE_MAP: Record<SwipePage, { leftToRight: SwipePage | null; rightToLeft: SwipePage | null }> = {
+  '/home': { leftToRight: '/library', rightToLeft: null },
+  '/library': { leftToRight: '/home', rightToLeft: '/account' },
+  '/account': { leftToRight: '/library', rightToLeft: null },
+}
 
 /** Finger must travel at least this share of the screen width. */
 export const SWIPE_MIN_SHARE = 0.25
@@ -43,9 +53,6 @@ export function swipeTarget(input: SwipeInput): SwipePage | null {
   const dy = endY - startY
   if (Math.abs(dx) < screenWidth * SWIPE_MIN_SHARE) return null
   if (Math.abs(dx) < Math.abs(dy) * SWIPE_DIRECTION_RATIO) return null
-  const index = SWIPE_PAGES.indexOf(pathname)
-  // Finger moves left -> the page to the right comes in (like turning a page).
-  const nextIndex = dx < 0 ? index + 1 : index - 1
-  if (nextIndex < 0 || nextIndex >= SWIPE_PAGES.length) return null
-  return SWIPE_PAGES[nextIndex]
+  const move = SWIPE_MAP[pathname]
+  return dx > 0 ? move.leftToRight : move.rightToLeft
 }
