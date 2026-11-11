@@ -113,6 +113,9 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
   const finalMixRetryAutoplayRef = useRef(false)
   const seriesContinueAutoplayAttemptedRef = useRef(false)
   const reviewPromptHandledRef = useRef(false)
+  // STORY-END-LIBRARY-001: one shared answer to "did the review screen open?"
+  // so the end-of-story exit can wait for it instead of racing it.
+  const reviewPromptPromiseRef = useRef<Promise<boolean> | null>(null)
   const lastLocalProgressWriteRef = useRef(0)
 
   const [story, setStory]       = useState<any | null>(null)
@@ -173,7 +176,6 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
   const stillListeningTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const unrequestedAutoStartsRef = useRef(0)
   const [autoAdvanceCandidate, setAutoAdvanceCandidate] = useState<AutoAdvanceCandidate | null>(null)
-  const [catalogExhausted, setCatalogExhausted] = useState(false)
   // ORION-PLAYER-ENDSTATE-001 (2026-07-15): true only after a TRUSTED natural
   // end (the onEnded spurious-ended guards have already passed). Drives the
   // completed end-state card (Play Again / Next episode) and the CTA label —
@@ -184,8 +186,6 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
   // auto-advance is disarmed (e.g. after a manual pause). Fetched via the same
   // live-validated fetchDirectSeriesAutoAdvanceCandidate() query; navigation
   // from it is ALWAYS a user gesture — never a timer.
-  const [endStateCandidate, setEndStateCandidate] = useState<AutoAdvanceCandidate | null>(null)
-  const [stillListeningPrompt, setStillListeningPrompt] = useState(false)
   const [autoAdvanceDisabledReason, setAutoAdvanceDisabledReason] = useState<AutoAdvanceDisabledReason | null>(null)
   const [showReview, setShowReview] = useState(false)
 
@@ -530,7 +530,6 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
     autoAdvanceEnabledRef.current = false
     setAutoAdvanceDisabledReason(reason)
     setAutoAdvanceCandidate(null)
-    setStillListeningPrompt(false)
     if (autoAdvanceTimerRef.current) {
       clearTimeout(autoAdvanceTimerRef.current)
       autoAdvanceTimerRef.current = null
@@ -592,7 +591,12 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
     return !data || !canLoadStory(data)
   }
 
-  const maybeShowCompletionReviewPrompt = async () => {
+  const maybeShowCompletionReviewPrompt = (): Promise<boolean> => {
+    if (!reviewPromptPromiseRef.current) reviewPromptPromiseRef.current = showCompletionReviewPromptOnce()
+    return reviewPromptPromiseRef.current
+  }
+
+  const showCompletionReviewPromptOnce = async () => {
     if (reviewPromptHandledRef.current || !user?.id || !story) return false
     reviewPromptHandledRef.current = true
 
@@ -615,6 +619,22 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
 
     setShowReview(true)
     return true
+  }
+
+  // STORY-END-LIBRARY-001 (Marc, Nov 10, 2026): "There should be no play again
+  // when all of the episodes are finished and the story is over. If it is part
+  // of a playlist, it should go automatically to the next story on the playlist;
+  // if it is not on the playlist, it should end and go to the library."
+  // When the story is over: show the review screen if it is due (closing it goes
+  // to the Library, decision 95); otherwise go straight to the Library.
+  // This runs only from maybeAutoAdvanceFromNaturalEnd, i.e. after the
+  // spurious-'ended' guards have passed (ORION-PLAYER-QUIT-001).
+  const finishStoryAndLeave = async () => {
+    let reviewShown = false
+    try { reviewShown = await maybeShowCompletionReviewPrompt() } catch {}
+    if (!mountedRef.current) return
+    if (reviewShown) return
+    returnToSource('/library')
   }
 
   useEffect(() => {
@@ -831,7 +851,6 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
 
   const startAutoAdvanceTo = (candidate: AutoAdvanceCandidate) => {
     if (!mountedRef.current || !autoAdvanceEnabledRef.current) return
-    setCatalogExhausted(false)
 
     if (candidate.reason === 'next_series_episode') {
       setAutoAdvanceCandidate(null)
@@ -839,10 +858,9 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
       return
     }
 
-    setAutoAdvanceCandidate(candidate)
-    autoAdvanceTimerRef.current = setTimeout(() => {
-      void navigateToAutoAdvanceCandidate(candidate)
-    }, 2500)
+    // STORY-END-LIBRARY-001: no "Up next" countdown box — go straight on.
+    setAutoAdvanceCandidate(null)
+    void navigateToAutoAdvanceCandidate(candidate)
   }
 
   // P3: getSeriesPlaylistAutoAdvanceCandidate() removed.
@@ -976,21 +994,9 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
     if (!mountedRef.current) return
     if (isAdvancingRef.current) return
     if (!autoAdvanceEnabledRef.current) {
-      // ORION-PLAYER-QUIT-001 (2026-07-15): this used to setTimeout-navigate to
-      // /library 1.5s after a natural end whenever auto-advance had been disabled
-      // earlier in the session by an explicit Stop. Combined with any falsely
-      // trusted 'ended', that is an abrupt mid-play yank to the library with zero
-      // user action — Marc walk #2 failure class. Never navigate on the player's
-      // own initiative: stay on the finished player; the user owns navigation.
-      //
-      // ORION-PLAYER-ENDSTATE-001 (2026-07-15): staying put is correct, but the
-      // finished player then dead-ended (Marc looped the tail 3×). Fetch the
-      // next-episode candidate for DISPLAY ONLY — the end-state card renders a
-      // user-gesture "Next episode" button. No timer, no auto-navigation.
-      if (mode !== 'playlist' && (story as any)?.series_id) {
-        const displayCandidate = await fetchDirectSeriesAutoAdvanceCandidate()
-        if (mountedRef.current) setEndStateCandidate(displayCandidate)
-      }
+      // Continuation is off only when the listener chose another episode
+      // (leaveForEpisode), which already navigated. Never navigate on the player's
+      // own initiative here (ORION-PLAYER-QUIT-001).
       return
     }
 
@@ -1034,16 +1040,16 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
 
       localStorage.removeItem('dtt_playlist_index')
       isAdvancingRef.current = false
-      setCatalogExhausted(true)
-      // PLAYER-UX-001 (Bug 3): surface end-state card now that we know we're not navigating
-      if (mountedRef.current) setPlaybackEnded(true)
+      // STORY-END-LIBRARY-001 / decision 49: playlist finished — go to the Library.
+      await finishStoryAndLeave()
       return
     }
 
     if (!(story as any)?.series_id) {
-      // Standalone story — no series to advance into; surface the end-state card.
+      // Standalone story — no series to advance into. STORY-END-LIBRARY-001:
+      // review screen if due, then the Library. No Play Again card.
       isAdvancingRef.current = false
-      if (mountedRef.current) setPlaybackEnded(true)
+      await finishStoryAndLeave()
       return
     }
 
@@ -1059,10 +1065,9 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
       return
     }
 
-    setCatalogExhausted(true)
-    // PLAYER-UX-001 (Bug 3): series exhausted — surface end-state card
-    if (mountedRef.current) setPlaybackEnded(true)
+    // STORY-END-LIBRARY-001: series finished — review screen if due, then the Library.
     isAdvancingRef.current = false
+    await finishStoryAndLeave()
   }
 
   useEffect(() => {
@@ -1094,6 +1099,7 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
     pendingQueueSeekPlayRef.current = false
     resumePlayRequestedRef.current = false
     reviewPromptHandledRef.current = false
+    reviewPromptPromiseRef.current = null
     installReofferFiredRef.current = false
     lastLocalProgressWriteRef.current = 0
     segDursRef.current = []
@@ -1101,13 +1107,10 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
     setCumTime(0)
     setCurrentTime(0)
     setAutoAdvanceCandidate(null)
-    setCatalogExhausted(false)
-    setStillListeningPrompt(false)
     // In-place story changes start a fresh continuation session.
     autoAdvanceEnabledRef.current = true
     setAutoAdvanceDisabledReason(null)
     setPlaybackEnded(false)
-    setEndStateCandidate(null)
     setAutoplayBlocked(false)
     setShowSeriesContinueOverlay(false)
     setShowReview(false)
@@ -1996,8 +1999,6 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
     checkpointRef.current.clear()
     if (saveTimer.current) { clearTimeout(saveTimer.current); saveTimer.current = null }
     setPlaybackEnded(false)
-    setEndStateCandidate(null)
-    setCatalogExhausted(false)
     // Once Start Over is explicitly chosen, the old resume failure is obsolete.
     setAudioErrorMessage('')
     resumePlayRequestedRef.current = false
@@ -2129,7 +2130,6 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
     // resume semantics — the CTA must not restart from 0 after a user re-seeks.
     if (playbackEnded && nextTime < actualDuration - 2) {
       setPlaybackEnded(false)
-      setEndStateCandidate(null)
     }
     checkpointRef.current.clear()
     if (saveTimer.current) { clearTimeout(saveTimer.current); saveTimer.current = null }
@@ -2561,8 +2561,9 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
       if (!audioRef.current.paused) handlePlayPause()
       else void saveProgress(getProgressSeconds())
     },
+    // STORY-END-LIBRARY-001 (Marc, Nov 10, 2026): lock-screen / car Stop works
+    // exactly like Pause — pressing Play carries on and the series continues.
     stop: () => {
-      disableAutoAdvanceForSession('stop')
       if (!audioRef.current) return
       if (!audioRef.current.paused) handlePlayPause()
       else void saveProgress(getProgressSeconds())
@@ -2570,11 +2571,10 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
     seekbackward: (d) => seekToSeconds(getProgressSeconds() - (d.seekOffset || SEEK_BACKWARD_SECONDS)),
     seekforward: (d) => seekToSeconds(getProgressSeconds() + (d.seekOffset || SEEK_FORWARD_SECONDS)),
     seekto: (d) => { if (typeof d.seekTime === 'number') seekToSeconds(d.seekTime) },
-    // Series: real episode navigation (same route as the end-state "Next
-    // episode" button). Standalone: no neighbouring track, so skip ±.
+    // Series: real episode navigation. Standalone: no neighbouring track, so skip ±.
     nexttrack: () => {
       if (!mediaSeriesId) { seekToSeconds(getProgressSeconds() + SEEK_FORWARD_SECONDS); return }
-      const known = endStateCandidate || (autoAdvanceCandidate?.reason === 'next_series_episode' ? autoAdvanceCandidate : null)
+      const known = (autoAdvanceCandidate?.reason === 'next_series_episode' ? autoAdvanceCandidate : null)
       if (known) { leaveForEpisode(known.story.id); return }
       void fetchDirectSeriesAutoAdvanceCandidate().then(next => {
         if (next && mountedRef.current) leaveForEpisode(next.story.id)
@@ -3105,107 +3105,10 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
             </div>
           )}
         </div>
-        {autoAdvanceCandidate && !stillListeningPrompt && (
-          <div role="status" aria-live="polite" style={{ border:'1px solid rgba(34,197,94,0.28)', background:'rgba(34,197,94,0.08)', borderRadius:'14px', padding:'12px', textAlign:'center' }}>
-            <p style={{ color:'white', fontSize:'12px', fontWeight:700, margin:'0 0 4px' }}>Up Next</p>
-            <p style={{ color:'rgba(255,255,255,0.86)', fontSize:'13px', margin:'0 0 10px' }}>{autoAdvanceCandidate.story.title}</p>
-            <p style={{ color:'#86efac', fontSize:'12px', fontWeight:700, margin:'0 0 4px' }}>{autoAdvanceReasonCopy}</p>
-            <p style={{ color:'rgba(255,255,255,0.58)', fontSize:'11px', margin:'0 0 10px' }}>Starting in a moment...</p>
-            <div style={{ display:'flex', gap:'8px' }}>
-              <button
-                onClick={() => {
-                  if (autoAdvanceTimerRef.current) clearTimeout(autoAdvanceTimerRef.current)
-                  unrequestedAutoStartsRef.current += 1
-                  const isSeriesContinuation = autoAdvanceCandidate.reason === 'next_series_episode'
-                  router.push(`/player/${autoAdvanceCandidate.story.id}?autoplay=1&playNow=1&${isSeriesContinuation ? 'seriesContinue=1' : 'autoAdvance=1'}`)
-                }}
-                style={{ flex:1, padding:'10px 12px', borderRadius:'10px', border:'none', background:'#22c55e', color:'white', fontSize:'13px', fontWeight:800, cursor:'pointer' }}
-              >Play now</button>
-              <button
-                onClick={() => {
-                  disableAutoAdvanceForSession('stop')
-                  isAdvancingRef.current = false
-                }}
-                style={{ flex:1, padding:'10px 12px', borderRadius:'10px', border:'1px solid rgba(255,255,255,0.16)', background:'rgba(255,255,255,0.06)', color:'white', fontSize:'13px', fontWeight:700, cursor:'pointer' }}
-              >Stop</button>
-            </div>
-          </div>
-        )}
-        {stillListeningPrompt && autoAdvanceCandidate && (
-          <div role="alertdialog" aria-label="Still listening?" style={{ border:'1px solid rgba(249,115,22,0.32)', background:'rgba(249,115,22,0.1)', borderRadius:'14px', padding:'12px', textAlign:'center' }}>
-            <p style={{ color:'white', fontSize:'13px', fontWeight:800, margin:'0 0 4px' }}>Still listening?</p>
-            <p style={{ color:'rgba(255,255,255,0.78)', fontSize:'12px', margin:'0 0 10px' }}>Continue with {autoAdvanceCandidate.story.title}?</p>
-            <div style={{ display:'flex', gap:'8px' }}>
-              <button
-                onClick={() => {
-                  if (stillListeningTimerRef.current) clearTimeout(stillListeningTimerRef.current)
-                  setStillListeningPrompt(false)
-                  startAutoAdvanceTo(autoAdvanceCandidate)
-                }}
-                style={{ flex:1, padding:'10px 12px', borderRadius:'10px', border:'none', background:'#f97316', color:'white', fontSize:'13px', fontWeight:800, cursor:'pointer' }}
-              >Continue</button>
-              <button
-                onClick={() => {
-                  disableAutoAdvanceForSession('stop')
-                  isAdvancingRef.current = false
-                }}
-                style={{ flex:1, padding:'10px 12px', borderRadius:'10px', border:'1px solid rgba(255,255,255,0.16)', background:'rgba(255,255,255,0.06)', color:'white', fontSize:'13px', fontWeight:700, cursor:'pointer' }}
-              >Stop</button>
-            </div>
-          </div>
-        )}
-        {/* ORION-PLAYER-ENDSTATE-001 §1 (2026-07-15): completed end-state. After
-            ORION-PLAYER-QUIT-001 correctly removed the /library yank, a natural end
-            with auto-advance disarmed (e.g. manual pause earlier in the session)
-            dead-ended — no Play Again, no next-episode affordance (Marc looped the
-            tail 3×). Both buttons are explicit USER gestures: Next episode navigates
-            exactly like the auto-advance path and re-arms auto-advance via the fresh
-            mount's autoAdvanceDisabledReason reset; Play Again restarts from 0.
-            Nothing here ever fires on a timer. */}
-        {playbackEnded && !isPlaying && !autoAdvanceCandidate && !stillListeningPrompt && !audioErrorMessage && (
-          <div data-testid="player-end-state" style={{ border:'1px solid rgba(249,115,22,0.32)', background:'rgba(249,115,22,0.10)', borderRadius:'14px', padding:'12px', textAlign:'center' }}>
-            <p style={{ color:'white', fontSize:'13px', fontWeight:800, margin:'0 0 10px' }}>Story complete</p>
-            <div style={{ display:'flex', flexDirection:'column', gap:'8px' }}>
-              {endStateCandidate && (
-                <button
-                  data-testid="end-state-next-episode"
-                  onClick={() => {
-                    // Explicit user gesture (allowed under ORION-PLAYER-QUIT-001 —
-                    // this is not the player navigating on its own initiative).
-                    router.push(`/player/${endStateCandidate.story.id}?autoplay=1&playNow=1&seriesContinue=1`)
-                  }}
-                  style={{ padding:'12px', borderRadius:'10px', border:'none', background:'#22c55e', color:'white', fontSize:'14px', fontWeight:800, cursor:'pointer' }}
-                >Next episode: {endStateCandidate.story.title} →</button>
-              )}
-              <button
-                data-testid="end-state-play-again"
-                onClick={restartFromBeginning}
-                style={ endStateCandidate
-                  ? { padding:'12px', borderRadius:'10px', border:'1px solid rgba(255,255,255,0.16)', background:'rgba(255,255,255,0.06)', color:'white', fontSize:'13px', fontWeight:700, cursor:'pointer' }
-                  : { padding:'12px', borderRadius:'10px', border:'none', background:'#f97316', color:'white', fontSize:'14px', fontWeight:800, cursor:'pointer' } }
-              >↺ Play Again</button>
-              {/* PLAYER-HOME-NAV-001 (Marc, 2026-11-06): a way out for listeners
-                  who never noticed the Home button at the top. */}
-              <button
-                data-testid="end-state-browse"
-                onClick={() => { window.location.assign('/home') }}
-                style={{ padding:'12px', borderRadius:'10px', border:'1px solid rgba(249,115,22,0.5)', background:'transparent', color:'#f97316', fontSize:'14px', fontWeight:800, cursor:'pointer' }}
-              >🏠 Browse more stories</button>
-            </div>
-          </div>
-        )}
-        {catalogExhausted && (
-          <div style={{ border:'1px solid rgba(148,163,184,0.24)', background:'rgba(148,163,184,0.08)', borderRadius:'14px', padding:'12px', textAlign:'center' }}>
-            <p style={{ color:'white', fontSize:'13px', fontWeight:800, margin:'0 0 4px' }}>{(story as any)?.series_id ? 'Series complete' : 'Catalog exhausted'}</p>
-            <p style={{ color:'rgba(255,255,255,0.7)', fontSize:'12px', margin:0 }}>{(story as any)?.series_id ? 'You have reached the final episode.' : 'No untouched story is ready to play next.'}</p>
-            <button
-              onClick={() => { returnToSource('/library') }}
-              style={{ marginTop: 12, padding: '10px 20px', background: 'transparent', border: '1px solid rgba(249,115,22,0.5)', borderRadius: 10, color: '#f97316', fontSize: 14, fontWeight: 700, cursor: 'pointer', width: '100%' }}
-            >
-              Back to Library
-            </button>
-          </div>
-        )}
+        {/* STORY-END-LIBRARY-001 (Marc, Nov 10, 2026): the "Up next" countdown, the never-used
+            still-listening box, the "Story complete" card (Play Again / Next episode / Browse)
+            and the "Series complete" card are gone. A series goes on by itself, a playlist goes
+            on to its next story, and a finished story goes to the Library. */}
         {audioErrorMessage && (
           <div style={{ border:'1px solid rgba(249,115,22,0.28)', background:'rgba(249,115,22,0.08)', borderRadius:'14px', padding:'12px', textAlign:'center' }}>
             <p style={{ color:'white', fontSize:'13px', fontWeight:700, margin:'0 0 10px' }}>{audioErrorMessage}</p>
