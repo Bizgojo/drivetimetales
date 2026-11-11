@@ -517,6 +517,21 @@ const DESCRIPTION_LENGTH_BLOCKER = /^CARD-COPY: DESCRIPTION \d+ characters \(max
  * blocker is a length problem on the Belle outro and/or the DESCRIPTION, and
  * at least one is the outro. Both lines can then be shortened alone.
  */
+/** BELLE-SPOILER-WORD-001: a Belle intro/outro that tripped the spoiler word check. */
+const BELLE_SPOILER_BLOCKER = /^BELLE-CONTENT: (voice step \((intro|outro)\): )?(intro|outro) risks spoiler language\b/
+
+/**
+ * BELLE-SPOILER-WORD-001: true when every remaining hard blocker is a Belle
+ * spoiler-word line, an outro length/final-word line or a DESCRIPTION length
+ * line, and at least one is a spoiler-word line.
+ */
+export function onlyBelleSpoilerOrLengthBlockers(blockers: string[]): { ok: boolean; intro: boolean; outro: boolean } {
+  const hard = blockers.filter((b) => !isSoftBlockerLine(b))
+  const spoiler = hard.filter((b) => BELLE_SPOILER_BLOCKER.test(b))
+  const ok = spoiler.length > 0 && hard.every((b) => BELLE_SPOILER_BLOCKER.test(b) || OUTRO_LENGTH_BLOCKER.test(b) || DESCRIPTION_LENGTH_BLOCKER.test(b))
+  return { ok, intro: spoiler.some((b) => /\bintro risks\b/.test(b)), outro: spoiler.some((b) => /\boutro risks\b/.test(b)) }
+}
+
 export function onlyOutroOrDescriptionLengthBlockers(blockers: string[]): { ok: boolean; outro: boolean; description: boolean } {
   const hard = blockers.filter((b) => !isSoftBlockerLine(b))
   const outro = hard.some((b) => OUTRO_LENGTH_BLOCKER.test(b))

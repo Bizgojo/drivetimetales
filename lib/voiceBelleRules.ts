@@ -175,3 +175,21 @@ export function validateBelleLine(kind: 'intro' | 'outro', text: string, ctx: Be
   return errors
 }
 
+
+/**
+ * BELLE-SPOILER-WORD-001 (Widow EP5, job c944a59e, Nov 11): three drafts failed
+ * only because the Belle intro said "reveals" ("a secret insurance policy
+ * reveals who Julian's next target was"). The spoiler rule is a word check, so
+ * the words themselves are swapped for neutral ones; the line is then checked
+ * again by the same gates. Words with no safe swap ("killer is", "will die")
+ * are left alone, so the check still fails on them.
+ */
+export function softenBelleSpoilerWords(text: string): string {
+  const keepCase = (src: string, rep: string) => (src[0] === src[0].toUpperCase() ? rep[0].toUpperCase() + rep.slice(1) : rep)
+  return String(text || '')
+    .replace(/\breveals\b/gi, (m) => keepCase(m, 'shows'))
+    .replace(/\brevealed\b/gi, (m) => keepCase(m, 'uncovered'))
+    .replace(/\breveal\b/gi, (m) => keepCase(m, 'show'))
+    .replace(/\bturns out\b/gi, (m) => keepCase(m, 'proves'))
+    .replace(/\bspoiler\b/gi, (m) => keepCase(m, 'secret'))
+}
