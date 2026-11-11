@@ -74,6 +74,7 @@ import {
   checkScriptReadiness,
   onlyDescriptionLengthBlockers,
   onlyOutroOrDescriptionLengthBlockers,
+  SOFT_WRITER_GATES,
   checkSeriesCastContinuity,
   writeWithSelfCheck,
   writerClaimIsFresh,
@@ -7079,7 +7080,8 @@ async function generateOneSeriesEpisodeScript(job: ProductionJob, model: string)
           }
         }
         const recheck = await writerSelfCheckFn(nextScript)
-        if (recheck.ready) {
+        // Soft gates (stock phrasing) never block on their own (AUTHOR-STYLE-001).
+        if (recheck.ready || (recheck.blockers.length > 0 && recheck.blockers.every((b) => SOFT_WRITER_GATES.has(b.gate)))) {
           script = nextScript
           description = nextDescription
           selfCheckOk = true
