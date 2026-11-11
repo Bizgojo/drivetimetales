@@ -69,13 +69,14 @@ describe('series continuation survives interruptions', () => {
     await c.maybeAutoAdvanceFromNaturalEnd('natural_ended')
     expect(c.startAutoAdvanceTo).toHaveBeenCalledTimes(1)
   })
-  test.each([false, true])('explicit media Stop blocks advance even if already paused=%s', async paused => {
+  // STORY-END-LIBRARY-001 (Marc, Nov 10, 2026): lock-screen / car Stop works exactly like Pause.
+  test.each([false, true])('media Stop works like Pause: continuation survives (already paused=%s)', async paused => {
     const c = harness(); c.audioRef.current.paused = paused
     c.mediaHandlersRef.current.stop()
     c.handlePlayPause()
     await c.maybeAutoAdvanceFromNaturalEnd('natural_ended')
-    expect(c.autoAdvanceEnabledRef.current).toBe(false)
-    expect(c.startAutoAdvanceTo).not.toHaveBeenCalled()
+    expect(c.autoAdvanceEnabledRef.current).toBe(true)
+    expect(c.startAutoAdvanceTo).toHaveBeenCalledTimes(1)
   })
   test('choosing another episode cancels the old continuation', async () => {
     const c = harness(); c.leaveForEpisode('another-episode')
@@ -96,14 +97,14 @@ describe('series continuation survives interruptions', () => {
     await c.maybeAutoAdvanceFromNaturalEnd('natural_ended')
     expect(c.finishStoryAndLeave).toHaveBeenCalledTimes(1)
   })
-  test('after a Stop mid-series, the Next episode card stays (no auto-leave)', async () => {
+  test('after a Stop and Play mid-series, the next episode still starts by itself', async () => {
     const c = harness(); c.mediaHandlersRef.current.stop(); c.handlePlayPause()
     await c.maybeAutoAdvanceFromNaturalEnd('natural_ended')
     expect(c.finishStoryAndLeave).not.toHaveBeenCalled()
+    expect(c.startAutoAdvanceTo).toHaveBeenCalledTimes(1)
   })
-  test('only Stop and different-story call sites can disable continuation', () => {
+  test('only choosing a different episode can disable continuation (Stop no longer does)', () => {
     const reasons = [...source.matchAll(/disableAutoAdvanceForSession\('([^']+)'\)/g)].map(m => m[1])
-    expect(reasons.length).toBeGreaterThan(0)
-    expect(reasons.every(r => ['stop', 'different_story'].includes(r))).toBe(true)
+    expect(reasons).toEqual(['different_story'])
   })
 })

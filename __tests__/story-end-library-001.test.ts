@@ -23,8 +23,9 @@ describe('STORY-END-LIBRARY-001', () => {
   })
 
   it('standalone end, series end and playlist end all leave instead of showing the end card', () => {
-    const adv = body('maybeAutoAdvanceFromNaturalEnd').concat(src.slice(src.indexOf('const maybeAutoAdvanceFromNaturalEnd'), src.indexOf('const maybeAutoAdvanceFromNaturalEnd') + 7000))
-    expect((adv.match(/await finishStoryAndLeave\(\)/g) || []).length).toBeGreaterThanOrEqual(4)
+    const start = src.indexOf('const maybeAutoAdvanceFromNaturalEnd')
+    const adv = src.slice(start, src.indexOf('mountedRef.current = true', start))
+    expect((adv.match(/await finishStoryAndLeave\(\)/g) || []).length).toBe(3)
     expect(adv).not.toMatch(/setCatalogExhausted\(true\)/)
   })
 

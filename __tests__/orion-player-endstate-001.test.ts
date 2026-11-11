@@ -8,7 +8,7 @@ const PLAYER = fs.readFileSync(
   'utf8'
 )
 
-describe('ORION-PLAYER-ENDSTATE-001: completed end-state (Play Again / Next episode)', () => {
+describe('ORION-PLAYER-ENDSTATE-001: completed end-state', () => {
   test('trusted natural end sets playbackEnded on every completion path (final-mix + ASC3 queue)', () => {
     // Single-file path (onEnded, after the spurious-ended guards)
     expect(PLAYER).toMatch(/setIsPlaying\(false\); setPlaybackEnded\(true\); saveProgress\(duration, true\)/)
@@ -17,11 +17,7 @@ describe('ORION-PLAYER-ENDSTATE-001: completed end-state (Play Again / Next epis
     expect(asc3Matches.length).toBe(2)
   })
 
-  test('end-state card renders with Play Again wired to a restart-from-0 (never resume-from-end)', () => {
-    expect(PLAYER).toMatch(/data-testid="player-end-state"/)
-    // PLAYER-END-DUP-001: the card's Play Again shows only beside "Next episode";
-    // otherwise the big transport button is the one Play Again (rule 51).
-    expect(PLAYER).toMatch(/endStateCandidate && \(\s*<button\s+data-testid="end-state-play-again"[\s\S]{0,120}onClick=\{restartFromBeginning\}/)
+  test('Start Over / Play Again on the transport restarts from 0 (never resume-from-end)', () => {
     const restartIdx = PLAYER.indexOf('const restartFromBeginning')
     expect(restartIdx).toBeGreaterThan(-1)
     const restartBlock = PLAYER.slice(restartIdx, PLAYER.indexOf('const handlePlayPause'))
@@ -45,39 +41,22 @@ describe('ORION-PLAYER-ENDSTATE-001: completed end-state (Play Again / Next epis
     expect(playPauseBlock).toMatch(/if \(isAtNaturalEnd\(\)\) \{\s*restartFromBeginning\(\)\s*return\s*\}/)
   })
 
-  test('Next-episode affordance is wired to the validated candidate fetch (display-only when disarmed)', () => {
-    // Disarmed natural end fetches the candidate via the live-validated query for display
-    const disarmBlock = PLAYER.slice(
-      PLAYER.indexOf('const maybeAutoAdvanceFromNaturalEnd'),
-      PLAYER.indexOf('isAdvancingRef.current = true')
-    )
-    expect(disarmBlock).toMatch(/fetchDirectSeriesAutoAdvanceCandidate\(\)/)
-    expect(disarmBlock).toMatch(/setEndStateCandidate\(displayCandidate\)/)
-    // Button navigates exactly like the auto-advance path (fresh mount re-arms)
-    expect(PLAYER).toMatch(
-      /data-testid="end-state-next-episode"[\s\S]{0,500}\/player\/\$\{endStateCandidate\.story\.id\}\?autoplay=1&playNow=1&seriesContinue=1/
-    )
-  })
-
-  test('pause preserves continuation; explicit Stop still prevents navigation', () => {
+  // STORY-END-LIBRARY-001 (Marc, Nov 10, 2026): no "Story complete" card, no
+  // Play Again / Next episode / countdown boxes. The player still never navigates
+  // on a timer, and the disarmed branch (another episode chosen) never navigates.
+  test('no end card or countdown box; no timer navigation', () => {
+    expect(PLAYER).not.toMatch(/data-testid="player-end-state"/)
+    expect(PLAYER).not.toMatch(/data-testid="end-state-play-again"/)
+    expect(PLAYER).not.toMatch(/Still listening\?/)
+    expect(PLAYER).not.toMatch(/Starting in a moment/)
     const playPauseBlock = PLAYER.slice(PLAYER.indexOf('const handlePlayPause'), PLAYER.indexOf('const saveProgress'))
     expect(playPauseBlock).not.toMatch(/disableAutoAdvanceForSession/)
-    expect(PLAYER).not.toContain('REARM_AUTO_ADVANCE_ON_RESUME')
-    // The disarmed natural-end branch performs NO navigation (fetch is display-only)
     const disarmBlock = PLAYER.slice(
       PLAYER.indexOf('const maybeAutoAdvanceFromNaturalEnd'),
       PLAYER.indexOf('isAdvancingRef.current = true')
     )
     expect(disarmBlock).not.toMatch(/router\.push/)
     expect(disarmBlock).not.toMatch(/returnToSource/)
-    // No timer-based /library navigation reintroduced anywhere
     expect(PLAYER).not.toMatch(/setTimeout\(\(\) => returnToSource\('\/library'\), 1500\)/)
-    // The end-state card itself contains no timers — both buttons are user gestures
-    const endStateBlock = PLAYER.slice(
-      PLAYER.indexOf('data-testid="player-end-state"'),
-      PLAYER.indexOf('{catalogExhausted &&')
-    )
-    expect(endStateBlock).not.toMatch(/setTimeout/)
-    expect(endStateBlock).not.toMatch(/setInterval/)
   })
 })
