@@ -237,6 +237,7 @@ New rules and rule changes wait here for Marc (CANON-00 rules 10–16). Each ite
 Palette (emotion: setup, then trigger):
 - Liking: the hero does a kind or brave thing that costs them, wants something simple, has one flaw; then the listener sees them keep trying.
 - Worry: the listener learns of a danger before the hero does, and the cost of failure is said plainly once; then the hero walks toward it.
+- Fear: the threat is close and real right now (a footstep in the room, a voice behind the door), described through what the hero hears and feels in short lines, with no way out yet; then the threat moves. Worry is about what might happen; dread is a slow build; fear is the moment the danger is here.
 - Stress: a clock, a narrowing choice, or a short pause before the answer; then the hero must act before they are ready.
 - Grief: the listener spends time with the person, place or thing first, in a small specific moment (a joke, a habit, a promise); then it is lost, and the scene stays with the loss before moving on.
 - Love and warmth: a small act of care that costs the giver something, shown not described; then it is returned or remembered later.
@@ -254,9 +255,9 @@ Palette (emotion: setup, then trigger):
 - Amusement: a character's habit or way of talking is shown twice; then it pays off at the right moment, never at the cost of a serious beat.
 
 Starting sets by genre (the plan may vary them):
-- Thriller or mystery: worry, stress, glee.
+- Thriller or mystery: worry, fear, glee (stress as needed).
 - Romance (Pocket FM style): love and warmth, longing, jealousy, hope.
-- Horror: dread, stress, relief.
+- Horror: dread, fear, relief.
 - Family or grief drama: grief, love and warmth, hope.
 - Revenge: hate, bad feeling at a villain win, glee.
 - Betrayal or con story: betrayal, worry, glee.
