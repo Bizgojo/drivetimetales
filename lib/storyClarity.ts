@@ -26,8 +26,13 @@ export type ClarityCheckId =
 
 export type ClarityCheck = { id: ClarityCheckId; pass: boolean; detail: string; quotes?: string[] }
 
+export type EmotionFinding = { emotion: string; setup: string; trigger: string; found: boolean }
+
 export type ClarityResult = {
   passed: boolean
+  /** CANON decision 133: report-only. */
+  emotions?: EmotionFinding[]
+  announced?: string[]
   twists: string[]
   openQuestions: string[]
   checks: ClarityCheck[]
@@ -91,7 +96,8 @@ export function castCheck(script: string, opts: { totalEpisodes: number; episode
   return { id: 'CAST-LIMIT', pass: problems.length === 0, detail: problems.join('; ') || 'within the cast limit', speakers, newSpeakers }
 }
 
-export function buildClarityPrompt(script: string, opts: { episodeNumber: number; totalEpisodes: number; seriesTitle?: string }): string {
+export function buildClarityPrompt(script: string, opts: { episodeNumber: number; totalEpisodes: number; seriesTitle?: string; plannedEmotions?: string[] }): string {
+  const planned = opts.plannedEmotions && opts.plannedEmotions.length ? opts.plannedEmotions : []
   const isLaterEpisode = opts.episodeNumber > 1
   return `You are a first-time listener hearing this audio drama while driving. You cannot re-read anything. Judge ONLY whether it is easy to follow. Do not judge style or taste.
 
@@ -105,10 +111,12 @@ Answer these checks:
 5. RECAP-LINE: ${isLaterEpisode ? 'within the first 30 seconds of the story (about 80 spoken words after Belle), does one line from a character or the narrator say where things stand? FAIL if not.' : 'not required for Episode 1 or a standalone: always pass.'}
 6. FOLLOW-BY-EAR: quote any stretch where a listener could not tell who is speaking, or where/when the scene is. FAIL if any.
 
-Also list: "twists" = each MAJOR twist or reveal in this episode (a turn that changes what the listener believes; not ordinary plot steps); "open_questions" = the main story questions still unanswered at the end of the episode (not minor details). Be strict but fair; list only real ones.
+${planned.length ? `EMOTIONS (report only, canon decision 133): the plan wants the listener to feel: ${['liking the protagonist', ...planned].join(', ')}. For each, quote the line that sets it up and the line that triggers it, or say it is missing. Also list "announced": lines where a character or the narrator names a feeling instead of showing it ("I was terrified", "it was heartbreaking").
+
+` : ''}Also list: "twists" = each MAJOR twist or reveal in this episode (a turn that changes what the listener believes; not ordinary plot steps); "open_questions" = the main story questions still unanswered at the end of the episode (not minor details). Be strict but fair; list only real ones.
 
 Return ONLY JSON, no other text:
-{"want":"...","obstacle":"...","stakes":"...","twists":["..."],"open_questions":["..."],
+{"want":"...","obstacle":"...","stakes":"...","twists":["..."],"open_questions":["..."],${planned.length ? '"emotions":[{"emotion":"...","setup":"quoted line or empty","trigger":"quoted line or empty","found":true}],"announced":["..."],' : ''}
  "checks":[{"id":"THREE-SENTENCE","pass":true,"detail":"...","quotes":[]},{"id":"GOAL-EARLY","pass":true,"detail":"...","quotes":[]},{"id":"INSIDER-WORDS","pass":true,"detail":"...","quotes":[]},{"id":"SCENE-PURPOSE","pass":true,"detail":"...","quotes":[]},{"id":"RECAP-LINE","pass":true,"detail":"...","quotes":[]},{"id":"FOLLOW-BY-EAR","pass":true,"detail":"...","quotes":[]}]}
 
 SCRIPT:
@@ -118,7 +126,7 @@ ${script}`
 const LLM_IDS: ClarityCheckId[] = ['THREE-SENTENCE', 'GOAL-EARLY', 'INSIDER-WORDS', 'SCENE-PURPOSE', 'RECAP-LINE', 'FOLLOW-BY-EAR']
 
 /** Parse the reviewer's JSON. Unreadable output is a FAIL (fail closed), never a pass. */
-export function parseClarityReview(raw: string, episodeNumber: number): { checks: ClarityCheck[]; threeSentences: ClarityResult['threeSentences']; twists: string[]; openQuestions: string[] } {
+export function parseClarityReview(raw: string, episodeNumber: number): { checks: ClarityCheck[]; threeSentences: ClarityResult['threeSentences']; twists: string[]; openQuestions: string[]; emotions?: EmotionFinding[]; announced?: string[] } {
   const text = String(raw || '')
   const start = text.indexOf('{'), end = text.lastIndexOf('}')
   let obj: any = null
@@ -136,7 +144,10 @@ export function parseClarityReview(raw: string, episodeNumber: number): { checks
     ? { want: String(obj.want || ''), obstacle: String(obj.obstacle || ''), stakes: String(obj.stakes || '') }
     : null
   const list = (v: any) => (Array.isArray(v) ? v.map((x: any) => String(x).slice(0, 200)).slice(0, 10) : [])
-  return { checks, threeSentences: three, twists: list(obj.twists), openQuestions: list(obj.open_questions) }
+  const emotions: EmotionFinding[] = Array.isArray(obj.emotions)
+    ? obj.emotions.slice(0, 6).map((e: any) => ({ emotion: String(e?.emotion || '').slice(0, 60), setup: String(e?.setup || '').slice(0, 200), trigger: String(e?.trigger || '').slice(0, 200), found: e?.found === true }))
+    : []
+  return { checks, threeSentences: three, twists: list(obj.twists), openQuestions: list(obj.open_questions), emotions, announced: list(obj.announced) }
 }
 
 export function combineClarity(llm: ReturnType<typeof parseClarityReview>, cast: ReturnType<typeof castCheck>, metrics: ReadingMetrics): ClarityResult {
@@ -158,6 +169,8 @@ export function combineClarity(llm: ReturnType<typeof parseClarityReview>, cast:
     threeSentences: llm.threeSentences,
     twists: llm.twists,
     openQuestions: llm.openQuestions,
+    emotions: llm.emotions || [],
+    announced: llm.announced || [],
     metrics: { ...metrics, namedSpeakers: cast.speakers, newSpeakers: cast.newSpeakers },
   }
 }
@@ -172,6 +185,8 @@ export function clarityReportText(r: ClarityResult): string {
     `Twists this episode: ${r.twists.length}${r.twists.length ? ' — ' + r.twists.join(' | ') : ''}`,
     `Open questions at the end: ${r.openQuestions.length}${r.openQuestions.length ? ' — ' + r.openQuestions.join(' | ') : ''}`,
     ...r.checks.map((c) => `${c.pass ? '✅' : '❌'} ${c.id}: ${c.detail}`),
+    ...(r.emotions && r.emotions.length ? ['Emotions (report only, decision 133):', ...r.emotions.map((e) => `  ${e.found ? '✓' : '✗'} ${e.emotion}${e.found ? ` — setup: "${e.setup}" trigger: "${e.trigger}"` : ' — not built'}`)] : []),
+    ...(r.announced && r.announced.length ? [`Announced feelings (report only): ${r.announced.map((q) => `"${q}"`).join(' ')}`] : []),
   ]
   if (r.passed) return [...head, 'STORY-CLARITY-001: PASS'].join('\n')
   const fixes = r.checks.filter((c) => !c.pass).map((c) => `- CLARITY ${c.id}: ${c.detail}${c.quotes?.length ? ` Lines: ${c.quotes.map((q) => `"${q}"`).join(' ')}` : ''}`)

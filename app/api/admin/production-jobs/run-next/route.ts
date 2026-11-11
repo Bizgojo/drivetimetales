@@ -66,6 +66,7 @@ import { checkNarrationPresence } from '@/lib/narrationPresence'
 import { normalizeScriptFormat } from '@/lib/scriptLabels'
 import { evaluateBelleCopyForPublish } from '@/lib/publicationBelleGate'
 import { buildBelleValidationContext, validateBelleLine } from '@/lib/voiceBelleRules'
+import { emotionWriterBlock, genreStartingSet, normalizeEmotions } from '@/lib/canon/emotionPalette'
 import { buildClarityPrompt, castCheck, clarityReportText, combineClarity, namedSpeakers, parseClarityReview, readingMetrics } from '@/lib/storyClarity'
 import {
   briefMinutesOf,
@@ -6332,6 +6333,8 @@ Minimum: ${spokenTarget.min.toLocaleString()} spoken words. Scripts under this a
 Maximum: ${spokenTarget.max.toLocaleString()} spoken words.
 Reach the length with real scenes and beats, not padding. Before you finish, estimate your spoken word count; if it is under ${spokenTarget.min.toLocaleString()}, add another full scene.
 
+${emotionWriterBlock(normalizeEmotions(brief.emotions), brief.genre || series.genre)}
+
 USER NOTES / CONSTRAINTS:
 ${String(brief.requirements || '').trim() || 'None'}
 
@@ -7344,7 +7347,7 @@ ${script}`,
       model: clarityModel,
       max_tokens: 2000,
       temperature: 0,
-      messages: [{ role: 'user', content: buildClarityPrompt(script, { episodeNumber: number, totalEpisodes, seriesTitle: String(episode.series_name || '') }) }],
+      messages: [{ role: 'user', content: buildClarityPrompt(script, { episodeNumber: number, totalEpisodes, seriesTitle: String(episode.series_name || ''), plannedEmotions: (() => { const p = normalizeEmotions((episode.brief_json as any)?.emotions); return p.length ? p : genreStartingSet((episode.brief_json as any)?.genre || episode.genre) })() }) }],
     })
     logAnthropicCall({
       route: '/api/admin/production-jobs/run-next',

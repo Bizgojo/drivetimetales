@@ -10,6 +10,8 @@
 //
 // Pure: no I/O. scripts/series/continue-series.ts does the reads and writes.
 
+import { emotionPlannerRules, normalizeEmotions } from '../canon/emotionPalette'
+
 export const SERIES_EPISODE_COUNTS = [3, 5, 7, 13]
 
 export type ExistingEpisode = {
@@ -51,6 +53,8 @@ export type PlannedEpisode = {
   description: string
   continuity_notes: string
   cliffhanger_or_resolution: string
+  /** CANON decision 133: main emotion first, at most 3, palette names. */
+  emotions?: string[]
 }
 
 export type ContinuePlan = { series_bible: string; episodes: PlannedEpisode[] }
@@ -96,6 +100,7 @@ Rules:
   - At most ONE major twist or reveal per episode, and it must answer or sharpen the main question. No twist opens a new mystery (canon decision 130).
   - At most 3 story questions open at the end of any episode; answer one before opening another (canon decision 131).
   - Plain, short sentences a listener follows at about a 6th-grade reading level (canon decision 129).
+${emotionPlannerRules()}
 - Each non-final episode ends on a specific forward hook that leads into the next one.
 - The finale resolves the central mystery or conflict and the main character's arc. It does not tease more episodes.
 - Do not write scripts.
@@ -104,7 +109,7 @@ Return JSON only, no markdown, in exactly this shape:
 {
   "series_bible": "A full series bible: every character with exact name, role and arc; the timeline of what happened in episodes 1-${have}; the central mystery or conflict and its true answer; recurring places; tone rules; how the finale resolves it.",
   "episodes": [
-    { "episode_number": ${first}, "title": "", "premise": "", "setting": "", "description": "present-tense story-card description, 1-2 sentences", "continuity_notes": "", "twist": "the one major twist in this episode, or none", "open_questions_at_end": ["at most 3"], "cliffhanger_or_resolution": "" }
+    { "episode_number": ${first}, "title": "", "premise": "", "setting": "", "description": "present-tense story-card description, 1-2 sentences", "continuity_notes": "", "twist": "the one major twist in this episode, or none", "open_questions_at_end": ["at most 3"], "emotions": ["main emotion", "up to two supporting"], "cliffhanger_or_resolution": "" }
   ]
 }
 The episodes array must contain exactly ${remaining} items, numbered ${first} to ${total}.
@@ -138,6 +143,7 @@ export function parseContinuePlan(raw: string, have: number, total: number): Con
       description: String(e?.description || '').trim(),
       continuity_notes: String(e?.continuity_notes || '').trim(),
       cliffhanger_or_resolution: String(e?.cliffhanger_or_resolution || '').trim(),
+      emotions: normalizeEmotions(e?.emotions),
     }
     if (!out.title || !out.premise || !out.description) throw new Error(`episode ${n} is missing a title, premise or description`)
     return out
@@ -177,6 +183,7 @@ export function buildNewEpisodeRows(series: SeriesRow, defaults: EpisodeDefaults
       description: ep.description,
       continuity_notes: ep.continuity_notes,
       cliffhanger_or_resolution: ep.cliffhanger_or_resolution,
+      emotions: ep.emotions || [],
     }
     return {
       title: ep.title,
