@@ -104,6 +104,7 @@ import {
   REFLECTION_RULE_PROMPT_FRAGMENT,
   resyncContinuityPinsAfterRepair,
 } from '@/lib/belleValidation'
+import { belleStoryKind, belleStoryTypeInstruction, belleOutroNeedsNarratorCredit } from '@/lib/belleStoryType'
 import {
   detectNarrativeHookCategory,
   normalizeNarrativeHookText,
@@ -1828,7 +1829,7 @@ Intro requirements:
 
 Outro requirements:
 - ATL-BELLE-QC-BUG-003: [LISTENER_NAME] is NEVER required in outros — neither standalone nor series. Do not flag the absence of [LISTENER_NAME] in any outro as a violation. Outros are not personalized with listener names.
-- Emotionally lands and feels companion-like, as if Belle is still beside the listener after the story.
+- Standalone and finale outros: emotionally land and feel companion-like, as if Belle is still beside the listener after the story. (Series non-finale outros: see BELLE-OUTRO-FORWARD-001 below instead.)
 - Matches the declared story type.
 - Standalone outros must include the story title.
 - Standalone outros must include the author name.
@@ -4788,6 +4789,8 @@ async function validateStandaloneBelleQuality(job: ProductionJob, model: string)
 
   const validatorPrompt = `${BELLE_QUALITY_VALIDATOR_PROMPT}
 
+${belleStoryTypeInstruction(story)}
+
 DECLARED METADATA:
 ${declaredStoryType}
 
@@ -4961,6 +4964,9 @@ async function repairStandaloneBelleQuality(job: ProductionJob, model: string) {
 
   // ATL-PIPE-012: extract narrator name from script header for narrator-credit repair
   const narratorForRepair = extractHeader(String(story.script || ''), 'NARRATOR').trim() || null
+  // BELLE-SERIES-TYPE-001: a series episode run by a single-story job is still a series episode.
+  const repairStandalone = belleStoryKind(story) === 'standalone'
+  const repairNeedsNarrator = belleOutroNeedsNarratorCredit(story)
 
   const issueText = Array.isArray(failedReport.issues) ? failedReport.issues.join('\n') : ''
   const hasScores = typeof failedReport.introScore === 'number' || typeof failedReport.outroScore === 'number'
@@ -4999,7 +5005,9 @@ REPAIR REQUEST:
 Repair intro: ${shouldRepairIntro ? 'yes' : 'no'}
 Repair outro: ${shouldRepairOutro ? 'yes' : 'no'}
 Intro/announcement must include [LISTENER_NAME]: no (never; shared name opener handles personalization)
-${narratorForRepair ? `Outro must include narrator name: ${narratorForRepair} (required - e.g. "Narrated by ${narratorForRepair}.")` : ''}
+${narratorForRepair && repairNeedsNarrator ? `Outro must include narrator name: ${narratorForRepair} (required - e.g. "Narrated by ${narratorForRepair}.")` : ''}
+
+${belleStoryTypeInstruction(story)}
 
 DECLARED METADATA:
 ${declaredStoryType}
@@ -5010,7 +5018,7 @@ ${story.title || 'Untitled'}
 GENRE:
 ${story.genre || 'Unknown'}
 
-${narratorForRepair ? `NARRATOR (voice talent - must appear verbatim in outro credit):
+${narratorForRepair && repairNeedsNarrator ? `NARRATOR (voice talent - must appear verbatim in outro credit):
 ${narratorForRepair}
 
 ` : ''}CURRENT BELLE INTRO:
@@ -5046,8 +5054,8 @@ ${scriptTail(story.script, 2200)}`,
 
   // ATL-PIPE-012: pass narratorForRepair so the post-repair check also validates narrator credit
   const deterministicIssues = [
-    ...(shouldRepairIntro ? await validateBelleText('intro', repairedIntro, { standalone: true, title: story.title, author: story.author, narrator: narratorForRepair }) : []),
-    ...(shouldRepairOutro ? await validateBelleText('outro', repairedOutro, { standalone: true, title: story.title, author: story.author, narrator: narratorForRepair }) : []),
+    ...(shouldRepairIntro ? await validateBelleText('intro', repairedIntro, { standalone: repairStandalone, title: story.title, author: story.author, narrator: repairNeedsNarrator ? narratorForRepair : null }) : []),
+    ...(shouldRepairOutro ? await validateBelleText('outro', repairedOutro, { standalone: repairStandalone, title: story.title, author: story.author, narrator: repairNeedsNarrator ? narratorForRepair : null }) : []),
   ]
   if (deterministicIssues.length > 0) {
     throw new Error(`Repaired Belle text failed deterministic checks: ${deterministicIssues.join('; ')}`)
