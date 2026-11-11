@@ -139,6 +139,7 @@ Marc answered CANON-99 on Nov 9, 2026. These decisions are **Agreed** and overri
 - **Decision 96:** The name greeting plays on the first episode a listener plays; replays get the normal intro. (11 C4) — **Agreed** (Marc, Nov 9, 2026, CANON-99 Part 2)
 - **Decision 97:** The "Continue your story" mini-player stays on Home and Library only. (11 Q6) — **Agreed** (Marc, Nov 9, 2026, CANON-99 Part 2)
 - **Decision 98:** iPhone audio that gets quieter during calls is accepted for the web app and fixed in the future native app. (11 Q7) — **Agreed** (Marc, Nov 9, 2026, CANON-99 Part 2)
+- **Decision 132:** **Screen-reader access in the player.** The player announces what is playing and any "Up next" countdown; every pop-up is announced as a dialog with a named Close button; all of CANON-12 decision 132 applies to the player, web and native. — **Agreed** (Marc, Nov 10, 2026, CANON-99 item 132)
 
 ## Conflicts found
 - C1. **[RESOLVED by decision 48, Marc Nov 9, 2026]** docs/PLAYER-RULES.md (Nov 9) says a 2-to-3-second gap with a large "Up next" screen and a Cancel button. Code: a series advances at once with no gap and no Up next screen (CanonicalPlayer.tsx startAutoAdvanceTo skips its 2.5-second timer for "next episode"); playlists and the offline player also advance at once. The June spec said 5 seconds. Recommendation: PLAYER-RULES wins (newest, Marc-approved); fix code. Marc decides.
