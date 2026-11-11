@@ -67,7 +67,7 @@ import { normalizeScriptFormat } from '@/lib/scriptLabels'
 import { evaluateBelleCopyForPublish } from '@/lib/publicationBelleGate'
 import { buildBelleValidationContext, validateBelleLine } from '@/lib/voiceBelleRules'
 import { emotionWriterBlock, genreStartingSet, normalizeEmotions } from '@/lib/canon/emotionPalette'
-import { buildClarityPrompt, castCheck, clarityReportText, combineClarity, namedSpeakers, parseClarityReview, readingMetrics, twistBudgetWriterBlock } from '@/lib/storyClarity'
+import { buildClarityPrompt, castCheck, clarityReportText, combineClarity, namedSpeakers, parseClarityReview, readingMetrics, twistBudgetWriterBlock, approvedEpisodePlanText } from '@/lib/storyClarity'
 import {
   briefMinutesOf,
   briefRuntimeImpossible,
@@ -7399,7 +7399,7 @@ ${script}`,
       model: clarityModel,
       max_tokens: 2000,
       temperature: 0,
-      messages: [{ role: 'user', content: buildClarityPrompt(script, { episodeNumber: number, totalEpisodes, seriesTitle: String(episode.series_name || ''), plannedEmotions: (() => { const p = normalizeEmotions((episode.brief_json as any)?.emotions); return p.length ? p : genreStartingSet((episode.brief_json as any)?.genre || episode.genre) })() }) }],
+      messages: [{ role: 'user', content: buildClarityPrompt(script, { episodeNumber: number, totalEpisodes, seriesTitle: String(episode.series_name || ''), plannedEmotions: (() => { const p = normalizeEmotions((episode.brief_json as any)?.emotions); return p.length ? p : genreStartingSet((episode.brief_json as any)?.genre || episode.genre) })(), approvedPlan: approvedEpisodePlanText(episode.brief_json) }) }],
     })
     logAnthropicCall({
       route: '/api/admin/production-jobs/run-next',
