@@ -36,9 +36,26 @@ describe('WRITER-OUTRO-SHORTEN-001', () => {
     expect(src).toMatch(/check: \(writerSelfCheckFn = async \(draftScript: string\) =>/)
     expect(src).toMatch(/onlyOutroOrDescriptionLengthBlockers\(outroWriterBlockers\)/)
     expect(src).toMatch(/if \(lengthOnly\.description\) \{[\s\S]{0,300}shortenDescriptionToLimit/)
-    expect(src).toMatch(/replaceBelleSection\(script, 'outro', shorter\)[\s\S]{0,900}await writerSelfCheckFn\(nextScript\)[\s\S]{0,40}if \(recheck\.ready\)/)
+    expect(src).toMatch(/replaceBelleSection\(script, 'outro', shorter\)[\s\S]{0,900}await writerSelfCheckFn\(nextScript\)[\s\S]{0,200}if \(recheck\.ready/)
     expect(src).toMatch(/purpose: 'writer-outro-shorten'/)
     // the repair runs before the failure is recorded
     expect(src.indexOf('WRITER-OUTRO-SHORTEN-001 (Weekend Wife')).toBeLessThan(src.indexOf('still fails pre-save checks after'))
+  })
+})
+
+// WRITER-SOFT-IGNORE-001 (Weekend Wife EP3 job 664ec981, Nov 11): description 101
+// characters plus a soft STOCK-PHRASE note failed the episode.
+import { onlyDescriptionLengthBlockers as descOnly, onlyOutroOrDescriptionLengthBlockers as outroOrDesc, isSoftBlockerLine } from '@/lib/scriptReadiness'
+describe('WRITER-SOFT-IGNORE-001', () => {
+  const ww = ['CARD-COPY: DESCRIPTION 101 characters (max 100)', 'STOCK-PHRASE: 1 line(s) use stock AI phrasing instead of the author\'s own voice']
+  it('soft stock-phrase notes do not stop the one-line repairs', () => {
+    expect(isSoftBlockerLine(ww[1])).toBe(true)
+    expect(isSoftBlockerLine(ww[0])).toBe(false)
+    expect(descOnly(ww)).toBe(true)
+    expect(outroOrDesc(['BELLE-CONTENT: outro is too long (44 words; max 42)', ww[1]]).ok).toBe(true)
+  })
+  it('soft notes alone, or with a real problem, never trigger a repair', () => {
+    expect(descOnly([ww[1]])).toBe(false)
+    expect(descOnly([...ww, 'HOOK-GATE: no hook'])).toBe(false)
   })
 })

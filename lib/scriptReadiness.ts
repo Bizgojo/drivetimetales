@@ -485,7 +485,16 @@ export function onlySoftBlockers(report: ReadinessReport): boolean {
  * DESCRIPTION being over the character limit (the line can be shortened alone).
  */
 export function onlyDescriptionLengthBlockers(blockers: string[]): boolean {
-  return blockers.length > 0 && blockers.every((b) => /^CARD-COPY: DESCRIPTION \d+ characters \(max \d+\)$/.test(b))
+  // WRITER-SOFT-IGNORE-001 (Weekend Wife EP3, Nov 11): soft gates (stock phrasing)
+  // never block on their own, so they must not stop the one-line repair either.
+  const hard = blockers.filter((b) => !isSoftBlockerLine(b))
+  return hard.length > 0 && hard.every((b) => /^CARD-COPY: DESCRIPTION \d+ characters \(max \d+\)$/.test(b))
+}
+
+/** WRITER-SOFT-IGNORE-001: a recorded blocker line from a soft gate (e.g. "STOCK-PHRASE: ..."). */
+export function isSoftBlockerLine(line: string): boolean {
+  const gate = String(line).split(':', 1)[0].trim()
+  return SOFT_WRITER_GATES.has(gate)
 }
 
 /**
@@ -493,7 +502,8 @@ export function onlyDescriptionLengthBlockers(blockers: string[]): boolean {
  * Belle B outro being over the word limit (the line can be shortened alone).
  */
 export function onlyBelleOutroLengthBlockers(blockers: string[]): boolean {
-  return blockers.length > 0 && blockers.every((b) => /^BELLE-CONTENT: (voice step \(outro\): )?outro is too long\b/.test(b))
+  const hard = blockers.filter((b) => !isSoftBlockerLine(b))
+  return hard.length > 0 && hard.every((b) => /^BELLE-CONTENT: (voice step \(outro\): )?outro is too long\b/.test(b))
 }
 
 const OUTRO_LENGTH_BLOCKER = /^BELLE-CONTENT: (voice step \(outro\): )?outro is too long\b/
@@ -505,9 +515,10 @@ const DESCRIPTION_LENGTH_BLOCKER = /^CARD-COPY: DESCRIPTION \d+ characters \(max
  * at least one is the outro. Both lines can then be shortened alone.
  */
 export function onlyOutroOrDescriptionLengthBlockers(blockers: string[]): { ok: boolean; outro: boolean; description: boolean } {
-  const outro = blockers.some((b) => OUTRO_LENGTH_BLOCKER.test(b))
-  const description = blockers.some((b) => DESCRIPTION_LENGTH_BLOCKER.test(b))
-  const ok = blockers.length > 0 && outro && blockers.every((b) => OUTRO_LENGTH_BLOCKER.test(b) || DESCRIPTION_LENGTH_BLOCKER.test(b))
+  const hard = blockers.filter((b) => !isSoftBlockerLine(b))
+  const outro = hard.some((b) => OUTRO_LENGTH_BLOCKER.test(b))
+  const description = hard.some((b) => DESCRIPTION_LENGTH_BLOCKER.test(b))
+  const ok = hard.length > 0 && outro && hard.every((b) => OUTRO_LENGTH_BLOCKER.test(b) || DESCRIPTION_LENGTH_BLOCKER.test(b))
   return { ok, outro, description }
 }
 
