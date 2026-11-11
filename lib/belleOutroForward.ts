@@ -157,3 +157,25 @@ export function closingOutroPrompt(opts: { title: string; author: string; narrat
   const read = opts.narrator ? `, read by ${opts.narrator}` : ''
   return `The Belle B outro closes the story and never points to another episode or story. It ends with the credit: You've been listening to "${opts.title}" by ${opts.author}${read}, an Endless Tales Original. One short closing sentence (at most 12 words) may come before the credit. Never mention time of day. At most ${BELLE_OUTRO_MAX_WORDS} words in total; COUNT THE WORDS before you finish.`
 }
+
+/**
+ * WRITER-OUTRO-SHORTEN-002 (Widow EP4 job 0fc90ff2, Nov 11): the outro names the
+ * series in double quotes ("THE WIDOW WHO WATCHED"), so a JSON reply came back
+ * with unescaped quotes and JSON.parse threw — the repair silently never ran.
+ * The shorten call now asks for the line inside <outro> tags; this reads that,
+ * a valid JSON reply, or a JSON reply with raw quotes inside the value.
+ */
+export function parseOutroReply(reply: string): string {
+  const raw = String(reply || '').trim()
+  let text = ''
+  const tag = raw.match(/<outro>([\s\S]*?)<\/outro>/i)
+  if (tag) text = tag[1]
+  if (!text) {
+    try { text = String(JSON.parse(raw)?.outro || '') } catch { /* fall through */ }
+  }
+  if (!text) {
+    const loose = raw.match(/"outro"\s*:\s*"([\s\S]*)"\s*\}?\s*$/)
+    if (loose) text = loose[1].replace(/\\"/g, '"')
+  }
+  return text.replace(/^\s*BELLE B:\s*/i, '').replace(/\s+/g, ' ').trim()
+}

@@ -1,4 +1,4 @@
-import { checkNonFinaleOutro, checkClosingOutroExtras, nonFinaleOutroPrompt, closingOutroPrompt, BELLE_OUTRO_MAX_WORDS } from '@/lib/belleOutroForward'
+import { checkNonFinaleOutro, checkClosingOutroExtras, nonFinaleOutroPrompt, closingOutroPrompt, BELLE_OUTRO_MAX_WORDS, parseOutroReply } from '@/lib/belleOutroForward'
 import {enforceAdminReview} from '@/lib/admin-center/production-review'
 import { authorImitationLines, authorStyleGaps, type AuthorStyleRow } from '@/lib/authorStyle'
 import { openEndingAllowed, styleSheetForAuthor, styleSheetPromptLines } from '@/lib/authorStyleSheet'
@@ -7089,7 +7089,11 @@ async function generateOneSeriesEpisodeScript(job: ProductionJob, model: string)
         }
       }
     } catch (err) {
-      console.warn(`[WRITER-OUTRO-SHORTEN-001] episode ${targetEpisodeNumber} shorten failed: ${err instanceof Error ? err.message : String(err)}`)
+      const reason = err instanceof Error ? err.message : String(err)
+      console.warn(`[WRITER-OUTRO-SHORTEN-001] episode ${targetEpisodeNumber} shorten failed: ${reason}`)
+      // WRITER-OUTRO-SHORTEN-002: make a failed repair visible in the job error.
+      const lastAttempt = writerAttempts[writerAttempts.length - 1]
+      if (lastAttempt) lastAttempt.blockers = [...lastAttempt.blockers, `WRITER-OUTRO-SHORTEN-002: outro repair failed: ${reason.slice(0, 200)}`]
     }
   }
 
@@ -7691,11 +7695,12 @@ async function shortenBelleOutroToLimit(outro: string, rule: string, model: stri
       model,
       max_tokens: 400,
       temperature: 0,
-      messages: [{ role: 'user', content: `This Belle B outro line is ${countWords(text)} words. It must be ${BELLE_OUTRO_MAX_WORDS - 4} words or fewer.${finalWordRule} Rewrite ONLY this line, keeping the same meaning and every required part of the rule below. COUNT THE WORDS before you answer. Return JSON only: {"outro": "text"} (no "BELLE B:" label).\n\nRULE: ${rule}\n\nCURRENT OUTRO: ${text}` }],
+      messages: [{ role: 'user', content: `This Belle B outro line is ${countWords(text)} words. It must be ${BELLE_OUTRO_MAX_WORDS - 4} words or fewer.${finalWordRule} Rewrite ONLY this line, keeping the same meaning and every required part of the rule below. COUNT THE WORDS before you answer. Return ONLY the new line between <outro> and </outro> tags (no "BELLE B:" label, no JSON).\n\nRULE: ${rule}\n\nCURRENT OUTRO: ${text}` }],
     })
     inputTokens += res.usage?.input_tokens ?? 0
     outputTokens += res.usage?.output_tokens ?? 0
-    const next = String(parseJsonObject(res.content.map((c: any) => ('text' in c ? c.text : '')).join('').trim()).outro || '').replace(/^BELLE B:\s*/i, '').trim()
+    // WRITER-OUTRO-SHORTEN-002: tag reply, tolerant of quotes in the series name.
+    const next = parseOutroReply(res.content.map((c: any) => ('text' in c ? c.text : '')).join(''))
     if (next) text = next
   }
   logAnthropicCall({
