@@ -96,7 +96,23 @@ export function castCheck(script: string, opts: { totalEpisodes: number; episode
   return { id: 'CAST-LIMIT', pass: problems.length === 0, detail: problems.join('; ') || 'within the cast limit', speakers, newSpeakers }
 }
 
-export function buildClarityPrompt(script: string, opts: { episodeNumber: number; totalEpisodes: number; seriesTitle?: string; plannedEmotions?: string[] }): string {
+/**
+ * TWIST-BUDGET-PLANNED-001 (Marc, Nov 11, 2026, option 1; canon decision 130 changed):
+ * reveals written into the producer-approved episode plan do not count against
+ * the twist budget. Only twists the writer added count. The plan text comes from
+ * the episode brief (premise, description, cliffhanger) saved from the approved plan.
+ */
+export function approvedEpisodePlanText(brief: any): string {
+  if (!brief || typeof brief !== 'object') return ''
+  const parts = [
+    brief.premise && `Premise: ${brief.premise}`,
+    brief.description && `What happens: ${brief.description}`,
+    brief.cliffhanger_or_resolution && `Ending: ${brief.cliffhanger_or_resolution}`,
+  ].filter(Boolean).map((p) => String(p).trim())
+  return parts.join('\n').slice(0, 3000)
+}
+
+export function buildClarityPrompt(script: string, opts: { episodeNumber: number; totalEpisodes: number; seriesTitle?: string; plannedEmotions?: string[]; approvedPlan?: string }): string {
   const planned = opts.plannedEmotions && opts.plannedEmotions.length ? opts.plannedEmotions : []
   const isLaterEpisode = opts.episodeNumber > 1
   return `You are a first-time listener hearing this audio drama while driving. You cannot re-read anything. Judge ONLY whether it is easy to follow. Do not judge style or taste.
@@ -112,6 +128,9 @@ Answer these checks:
 6. FOLLOW-BY-EAR: quote any stretch where a listener could not tell who is speaking, or where/when the scene is. FAIL if any.
 
 ${planned.length ? `EMOTIONS (report only, canon decision 133): the plan wants the listener to feel: ${['liking the protagonist', ...planned].join(', ')}. For each, quote the line that sets it up and the line that triggers it, or say it is missing. Also list "announced": lines where a character or the narrator names a feeling instead of showing it ("I was terrified", "it was heartbreaking").
+
+` : ''}${opts.approvedPlan ? `APPROVED EPISODE PLAN (the producer approved this; canon decision 130): a twist or reveal that this plan calls for does NOT count. In "twists", list ONLY major twists that are NOT in this plan.
+${opts.approvedPlan}
 
 ` : ''}Also list: "twists" = each MAJOR twist or reveal in this episode (a turn that changes what the listener believes is TRUE about the story; not ordinary plot steps). NOT a twist: a character's decision, plan, condition, request or bargain; something the listener already knew from earlier episodes or the plan; a callback or symbolic detail. "open_questions" = the main story questions still unanswered at the end of the episode (not minor details). Count a question only if a listener would actively wonder about it now; background history about one relationship counts as ONE question, and a minor character's identity is not a question. Be strict but fair; list only real ones.
 
@@ -201,7 +220,7 @@ export function clarityReportText(r: ClarityResult): string {
  */
 export function twistBudgetWriterBlock(): string {
   return `TWIST AND QUESTION BUDGET (canon decisions 130 and 131; checked before voicing, a script over the limit is rejected):
-- At most ${CANON.TWISTS_PER_EPISODE_MAX} major twist or reveal in this episode: a turn that changes what the listener believes is true. It must answer or sharpen the series' main question. A twist never opens a new mystery.
+- The reveals written in this episode's plan are allowed. Beyond those, add at most ${CANON.TWISTS_PER_EPISODE_MAX} major twist or reveal: a turn that changes what the listener believes is true. It must answer or sharpen the series' main question. A twist never opens a new mystery.
 - A character's decision, plan or condition is not a twist; use those freely.
 - At the end of this episode, at most ${CANON.OPEN_QUESTIONS_MAX} story questions may be open. If you open a new one, answer an older one in this episode.
 - Do not add extra secrets, hidden pasts or teases beyond the episode plan. Belle's outro may point to a question that is already open; it must not open a new one.`
