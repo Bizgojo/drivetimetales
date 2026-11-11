@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { usePathname } from 'next/navigation'
 import AppHeader from '@/components/AppHeader'
+import PageSwipeNav from '@/components/PageSwipeNav'
 import { isAdFunnelArrival } from '@/lib/subscribeFunnel'
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
@@ -40,6 +41,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   return (
     <>
       <AppHeader />
+      <PageSwipeNav />
       <main className="pt-14">{children}</main>
     </>
   )
