@@ -113,6 +113,9 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
   const finalMixRetryAutoplayRef = useRef(false)
   const seriesContinueAutoplayAttemptedRef = useRef(false)
   const reviewPromptHandledRef = useRef(false)
+  // STORY-END-LIBRARY-001: one shared answer to "did the review screen open?"
+  // so the end-of-story exit can wait for it instead of racing it.
+  const reviewPromptPromiseRef = useRef<Promise<boolean> | null>(null)
   const lastLocalProgressWriteRef = useRef(0)
 
   const [story, setStory]       = useState<any | null>(null)
@@ -592,7 +595,12 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
     return !data || !canLoadStory(data)
   }
 
-  const maybeShowCompletionReviewPrompt = async () => {
+  const maybeShowCompletionReviewPrompt = (): Promise<boolean> => {
+    if (!reviewPromptPromiseRef.current) reviewPromptPromiseRef.current = showCompletionReviewPromptOnce()
+    return reviewPromptPromiseRef.current
+  }
+
+  const showCompletionReviewPromptOnce = async () => {
     if (reviewPromptHandledRef.current || !user?.id || !story) return false
     reviewPromptHandledRef.current = true
 
@@ -615,6 +623,22 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
 
     setShowReview(true)
     return true
+  }
+
+  // STORY-END-LIBRARY-001 (Marc, Nov 10, 2026): "There should be no play again
+  // when all of the episodes are finished and the story is over. If it is part
+  // of a playlist, it should go automatically to the next story on the playlist;
+  // if it is not on the playlist, it should end and go to the library."
+  // When the story is over: show the review screen if it is due (closing it goes
+  // to the Library, decision 95); otherwise go straight to the Library.
+  // This runs only from maybeAutoAdvanceFromNaturalEnd, i.e. after the
+  // spurious-'ended' guards have passed (ORION-PLAYER-QUIT-001).
+  const finishStoryAndLeave = async () => {
+    let reviewShown = false
+    try { reviewShown = await maybeShowCompletionReviewPrompt() } catch {}
+    if (!mountedRef.current) return
+    if (reviewShown) return
+    returnToSource('/library')
   }
 
   useEffect(() => {
@@ -989,8 +1013,12 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
       // user-gesture "Next episode" button. No timer, no auto-navigation.
       if (mode !== 'playlist' && (story as any)?.series_id) {
         const displayCandidate = await fetchDirectSeriesAutoAdvanceCandidate()
-        if (mountedRef.current) setEndStateCandidate(displayCandidate)
+        if (!mountedRef.current) return
+        if (displayCandidate) { setEndStateCandidate(displayCandidate); return }
       }
+      // STORY-END-LIBRARY-001: nothing left to play — the story is over.
+      if (mode === 'playlist') { try { localStorage.removeItem('dtt_playlist_index') } catch {} }
+      await finishStoryAndLeave()
       return
     }
 
@@ -1034,16 +1062,16 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
 
       localStorage.removeItem('dtt_playlist_index')
       isAdvancingRef.current = false
-      setCatalogExhausted(true)
-      // PLAYER-UX-001 (Bug 3): surface end-state card now that we know we're not navigating
-      if (mountedRef.current) setPlaybackEnded(true)
+      // STORY-END-LIBRARY-001 / decision 49: playlist finished — go to the Library.
+      await finishStoryAndLeave()
       return
     }
 
     if (!(story as any)?.series_id) {
-      // Standalone story — no series to advance into; surface the end-state card.
+      // Standalone story — no series to advance into. STORY-END-LIBRARY-001:
+      // review screen if due, then the Library. No Play Again card.
       isAdvancingRef.current = false
-      if (mountedRef.current) setPlaybackEnded(true)
+      await finishStoryAndLeave()
       return
     }
 
@@ -1059,10 +1087,9 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
       return
     }
 
-    setCatalogExhausted(true)
-    // PLAYER-UX-001 (Bug 3): series exhausted — surface end-state card
-    if (mountedRef.current) setPlaybackEnded(true)
+    // STORY-END-LIBRARY-001: series finished — review screen if due, then the Library.
     isAdvancingRef.current = false
+    await finishStoryAndLeave()
   }
 
   useEffect(() => {
@@ -1094,6 +1121,7 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
     pendingQueueSeekPlayRef.current = false
     resumePlayRequestedRef.current = false
     reviewPromptHandledRef.current = false
+    reviewPromptPromiseRef.current = null
     installReofferFiredRef.current = false
     lastLocalProgressWriteRef.current = 0
     segDursRef.current = []

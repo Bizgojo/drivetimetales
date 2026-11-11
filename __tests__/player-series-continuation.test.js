@@ -29,6 +29,7 @@ function harness(next = { story: { id: 'well-ep2' }, reason: 'next_series_episod
     setAutoAdvanceDisabledReason: noop, setAutoAdvanceCandidate: noop, setStillListeningPrompt: noop,
     setEndStateCandidate: noop, setPlaybackEnded: jest.fn(), setCatalogExhausted: noop,
     fetchDirectSeriesAutoAdvanceCandidate: jest.fn(async () => next), startAutoAdvanceTo: jest.fn(),
+    finishStoryAndLeave: jest.fn(async () => {}),
     waitForSegmentResume: () => false, isASC3: false, resumeRef: { current: 0 }, hasAllQueueDurations: () => true,
     removedFromContinueRef: { current: false }, saveProgress: noop, getProgressSeconds: () => audio.currentTime,
     endAnalyticsSession: noop, setIsPlaying: noop, isAtNaturalEnd: () => false,
@@ -82,11 +83,23 @@ describe('series continuation survives interruptions', () => {
     expect(c.startAutoAdvanceTo).not.toHaveBeenCalled()
     expect(c.router.push).toHaveBeenCalledTimes(1)
   })
-  test('finale shows the end card without advancing', async () => {
+  // STORY-END-LIBRARY-001 (Marc, Nov 10, 2026): the finished story ends and goes
+  // to the Library (after the review screen when due) — no Play Again card.
+  test('finale ends the story and leaves for the Library without advancing', async () => {
     const c = harness(null); c.handlePlayPause(); await c.audioRef.current.play()
     await c.maybeAutoAdvanceFromNaturalEnd('natural_ended')
     expect(c.startAutoAdvanceTo).not.toHaveBeenCalled()
-    expect(c.setPlaybackEnded).toHaveBeenCalledWith(true)
+    expect(c.finishStoryAndLeave).toHaveBeenCalledTimes(1)
+  })
+  test('after a Stop, a finished finale also leaves for the Library', async () => {
+    const c = harness(null); c.mediaHandlersRef.current.stop(); c.handlePlayPause()
+    await c.maybeAutoAdvanceFromNaturalEnd('natural_ended')
+    expect(c.finishStoryAndLeave).toHaveBeenCalledTimes(1)
+  })
+  test('after a Stop mid-series, the Next episode card stays (no auto-leave)', async () => {
+    const c = harness(); c.mediaHandlersRef.current.stop(); c.handlePlayPause()
+    await c.maybeAutoAdvanceFromNaturalEnd('natural_ended')
+    expect(c.finishStoryAndLeave).not.toHaveBeenCalled()
   })
   test('only Stop and different-story call sites can disable continuation', () => {
     const reasons = [...source.matchAll(/disableAutoAdvanceForSession\('([^']+)'\)/g)].map(m => m[1])
