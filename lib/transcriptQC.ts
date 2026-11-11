@@ -1087,6 +1087,12 @@ const HOMOPHONE_PAIRS: ReadonlyArray<readonly [string, string]> = [
   //                  "Aidan's" -> transcriptTokens -> "aidans".
   // Mirrors the ['noa','noah']/['noas','noahs'] pattern (ATL-QC-FP-007).
   ['aidens', 'aidans'],
+  // ATL-QC-FP-009 (Weekend Wife in Miami EP2, job 275b773b, segment_0057,
+  // Nov 11): "It's one suite." — "suite" is pronounced "sweet", and Whisper
+  // writes the common word (83.3% similarity on a 3-word line). Audio
+  // homophone; no script rewrite can fix it.
+  ['suite', 'sweet'],
+  ['suites', 'sweets'],
 ] as const
 
 export function knownHomophoneMatches(expected: string, detected: string): boolean {
