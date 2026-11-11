@@ -346,9 +346,9 @@ export default function GoLandingContent({ variantConfig }: GoLandingContentProp
 
         {/* Legal — small, bottom */}
         <div style={{ paddingTop: '1.6rem', fontSize: '0.75rem', color: '#ffffff' }}>
-          <Link href="/terms" style={{ color: '#ffffff', textDecoration: 'underline' }}>Terms</Link>
+          <Link href="/terms" style={{ display: 'inline-block', padding: '12px 6px', minHeight: '44px', boxSizing: 'border-box', color: '#ffffff', textDecoration: 'underline' }}>Terms</Link>
           <span style={{ margin: '0 0.6rem' }}>·</span>
-          <Link href="/privacy" style={{ color: '#ffffff', textDecoration: 'underline' }}>Privacy</Link>
+          <Link href="/privacy" style={{ display: 'inline-block', padding: '12px 6px', minHeight: '44px', boxSizing: 'border-box', color: '#ffffff', textDecoration: 'underline' }}>Privacy</Link>
         </div>
       </div>
 

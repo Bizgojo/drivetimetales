@@ -223,7 +223,7 @@ function SignInContent() {
 
         <p style={{ textAlign: 'center', color: '#e2e8f0', fontSize: '13px', marginTop: '20px' }}>
           Don't have an account?{' '}
-          <Link href="/signup" style={{ color: '#f97316', textDecoration: 'none', fontWeight: 600 }}>Sign up</Link>
+          <Link href="/signup" style={{ display: 'inline-block', padding: '12px 6px', minHeight: '44px', boxSizing: 'border-box', color: '#f97316', textDecoration: 'none', fontWeight: 600 }}>Sign up</Link>
         </p>
 
       </div>
