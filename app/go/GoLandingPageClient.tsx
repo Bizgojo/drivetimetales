@@ -315,7 +315,7 @@ function GoLandingContent() {
           </div>
           <div style={{
             fontSize: '12.5px',
-            color: '#9ca3af',
+            color: '#e2e8f0',
             marginTop: '0.5rem',
           }}>
             {story.genre} · Listen free
@@ -424,7 +424,7 @@ function GoLandingContent() {
               width: '100%',
               padding: '1rem 1.5rem',
               borderRadius: '12px',
-              backgroundColor: '#f97316',
+              backgroundColor: '#c2410c',
               color: '#ffffff',
               fontSize: '1.1rem',
               fontWeight: 800,
@@ -445,7 +445,7 @@ function GoLandingContent() {
           {/* TRUST-SIGNALS-001: trial reminder reassurance — always shown in
               the sheet (both pre-completion and completion states). Accurate
               to the actual email cadence (Day 3 / Day 10 / Day 13). */}
-          <p style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.45)', margin: '0.5rem 0 0', lineHeight: 1.4 }}>
+          <p style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.85)', margin: '0.5rem 0 0', lineHeight: 1.4 }}>
             {GO_TRIAL_REMINDER_LINE}
           </p>
         </div>
@@ -488,7 +488,7 @@ class GoErrorBoundary extends Component<{ children: React.ReactNode }, GoErrorBo
           <div style={{ marginBottom: '1rem', color: '#ff6b6b', fontSize: '14px', fontWeight: 700 }}>
             {error.message || '(no message)'}
           </div>
-          <div style={{ color: '#9ca3af', fontSize: '11px', lineHeight: 1.5 }}>
+          <div style={{ color: '#e2e8f0', fontSize: '11px', lineHeight: 1.5 }}>
             <pre style={{ whiteSpace: 'pre-wrap', margin: 0 }}>
               {error.stack || '(no stack)'}
             </pre>

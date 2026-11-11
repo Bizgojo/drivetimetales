@@ -89,8 +89,8 @@ export default function PlayerTransport({ currentTime, duration, seekEnabled, is
       .et-player-transport-buttons button:focus-visible{outline:3px solid #fdba74;outline-offset:3px}
       .et-player-skip{width:46px;flex:0 0 46px;padding:4px;background:#ffffff12;display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1}
       .et-player-skip>span{font-size:24px;line-height:24px}.et-player-skip small{font-size:10px;font-weight:700}
-      .et-player-toggle{flex:1;min-width:0;font-size:15px;font-weight:750;padding:12px 7px;background:#22c55e!important;border-color:transparent!important}
-      .et-player-toggle.is-playing{background:#f97316!important}
+      .et-player-toggle{flex:1;min-width:0;font-size:15px;font-weight:750;padding:12px 7px;background:#15803d!important;border-color:transparent!important}
+      .et-player-toggle.is-playing{background:#c2410c!important}
       .et-player-start-over{flex:0 0 78px;font-size:11px;font-weight:650;padding:8px 5px;background:#ffffff12}
       .et-player-transport-buttons button:disabled{opacity:.4;cursor:default}
       .et-player-autoplay-note{font-size:12px;color:#cbd5e1;text-align:center;margin:12px 0 0;line-height:1.5}

@@ -740,7 +740,7 @@ export default function GoInvitationContent({ arm: armProp }: GoInvitationConten
                 display: 'block',
                 width: '100%',
                 padding: '16px',
-                backgroundColor: '#f97316',
+                backgroundColor: '#c2410c',
                 color: '#ffffff',
                 textDecoration: 'none',
                 borderRadius: '12px',
@@ -752,7 +752,7 @@ export default function GoInvitationContent({ arm: armProp }: GoInvitationConten
             >
               Subscribe · {MONTHLY_PRICE_LABEL} →
             </a>
-            <p style={{ fontSize: '12px', color: 'rgba(255,255,255,0.35)', margin: '12px 0 0', lineHeight: 1.4 }}>
+            <p style={{ fontSize: '12px', color: 'rgba(255,255,255,0.85)', margin: '12px 0 0', lineHeight: 1.4 }}>
               Free trial is one-time only · Cancel anytime
             </p>
           </div>
@@ -870,6 +870,7 @@ export default function GoInvitationContent({ arm: armProp }: GoInvitationConten
             {/* Name field: friendly/first name — fills welcome greeting */}
             <input
               type="text"
+              aria-label="Your first name"
               placeholder="Your first name"
               value={name}
               onChange={e => setName(e.target.value)}
@@ -889,6 +890,7 @@ export default function GoInvitationContent({ arm: armProp }: GoInvitationConten
             />
             <input
               type="email"
+              aria-label="Your email"
               placeholder="Your email"
               value={email}
               onChange={e => setEmail(e.target.value)}
@@ -922,7 +924,7 @@ export default function GoInvitationContent({ arm: armProp }: GoInvitationConten
                 padding: '1rem 1.5rem',
                 borderRadius: '12px',
                 border: 'none',
-                backgroundColor: submitting ? '#7c3d12' : '#f97316',
+                backgroundColor: submitting ? '#7c3d12' : '#c2410c',
                 color: '#ffffff',
                 fontSize: '1.1rem',
                 fontWeight: 800,

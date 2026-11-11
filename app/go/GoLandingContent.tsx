@@ -317,7 +317,7 @@ export default function GoLandingContent({ variantConfig }: GoLandingContentProp
           </div>
           <div style={{
             fontSize: '12.5px',
-            color: '#9ca3af',
+            color: '#e2e8f0',
             marginTop: '0.5rem',
           }}>
             {story.genre} · Listen free
@@ -427,7 +427,7 @@ export default function GoLandingContent({ variantConfig }: GoLandingContentProp
               width: '100%',
               padding: '1rem 1.5rem',
               borderRadius: '12px',
-              backgroundColor: '#f97316',
+              backgroundColor: '#c2410c',
               color: '#ffffff',
               fontSize: '1.1rem',
               fontWeight: 800,
@@ -448,7 +448,7 @@ export default function GoLandingContent({ variantConfig }: GoLandingContentProp
           {/* TRUST-SIGNALS-001: trial reminder reassurance — always shown in
               the sheet (both pre-completion and completion states). Accurate
               to the actual email cadence (Day 3 / Day 10 / Day 13). */}
-          <p style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.45)', margin: '0.5rem 0 0', lineHeight: 1.4 }}>
+          <p style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.85)', margin: '0.5rem 0 0', lineHeight: 1.4 }}>
             {GO_TRIAL_REMINDER_LINE}
           </p>
         </div>

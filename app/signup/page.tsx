@@ -298,7 +298,7 @@ function SignUpContent() {
 
         {/* Referral banner */}
         {referralCode && referrerName && (
-          <div style={{ backgroundColor: '#22c55e', borderRadius: '12px', padding: '1rem', marginBottom: '1.5rem', textAlign: 'center' }}>
+          <div style={{ backgroundColor: '#15803d', borderRadius: '12px', padding: '1rem', marginBottom: '1.5rem', textAlign: 'center' }}>
             <div style={{ color: 'white', fontSize: '14px', fontWeight: 500 }}>🎉 {referrerName} invited you!</div>
             <div style={{ color: 'white', fontSize: '13px', marginTop: '0.25rem' }}>You both get <strong>{rewardText}</strong> when you subscribe</div>
           </div>
@@ -315,21 +315,21 @@ function SignUpContent() {
           )}
 
           <div style={{ marginBottom: '1rem' }}>
-            <label style={{ color: '#e2e8f0', fontSize: '14px', display: 'block', marginBottom: '0.5rem', fontWeight: 700 }}>What do your friends call you?</label>
-            <input type="text" name="firstName" value={firstName} onChange={e => setFirstName(e.target.value)} required autoComplete="given-name" style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', border: '1px solid #334155', backgroundColor: '#0f172a', color: 'white', fontSize: '16px', outline: 'none', boxSizing: 'border-box' }} placeholder="Enter the name you go by" />
+            <label htmlFor="signup-first-name" style={{ color: '#e2e8f0', fontSize: '14px', display: 'block', marginBottom: '0.5rem', fontWeight: 700 }}>What do your friends call you?</label>
+            <input type="text" id="signup-first-name" name="firstName" value={firstName} onChange={e => setFirstName(e.target.value)} required autoComplete="given-name" style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', border: '1px solid #334155', backgroundColor: '#0f172a', color: 'white', fontSize: '16px', outline: 'none', boxSizing: 'border-box' }} placeholder="Enter the name you go by" />
             <div style={{ color: '#cbd5e1', fontSize: '12.5px', lineHeight: 1.55, marginTop: '0.45rem' }}>Your storyteller will greet you by name between episodes.</div>
           </div>
 
           <div style={{ marginBottom: '1rem' }}>
-            <label style={{ color: '#e2e8f0', fontSize: '14px', display: 'block', marginBottom: '0.5rem', fontWeight: 700 }}>Email</label>
-            <input type="email" name="email" value={email} onChange={e => setEmail(e.target.value)} required autoComplete="email" inputMode="email" autoCapitalize="none" autoCorrect="off" spellCheck={false} style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', border: '1px solid #334155', backgroundColor: '#0f172a', color: 'white', fontSize: '16px', outline: 'none', boxSizing: 'border-box' }} placeholder="Enter your email" />
+            <label htmlFor="signup-email" style={{ color: '#e2e8f0', fontSize: '14px', display: 'block', marginBottom: '0.5rem', fontWeight: 700 }}>Email</label>
+            <input type="email" id="signup-email" name="email" value={email} onChange={e => setEmail(e.target.value)} required autoComplete="email" inputMode="email" autoCapitalize="none" autoCorrect="off" spellCheck={false} style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', border: '1px solid #334155', backgroundColor: '#0f172a', color: 'white', fontSize: '16px', outline: 'none', boxSizing: 'border-box' }} placeholder="Enter your email" />
           </div>
 
           <div style={{ marginBottom: '1.5rem' }}>
-            <label style={{ color: '#e2e8f0', fontSize: '14px', display: 'block', marginBottom: '0.5rem', fontWeight: 700 }}>Password</label>
+            <label htmlFor="signup-password" style={{ color: '#e2e8f0', fontSize: '14px', display: 'block', marginBottom: '0.5rem', fontWeight: 700 }}>Password</label>
             <div style={{ position: 'relative' }}>
-              <input type={showPassword ? 'text' : 'password'} name="password" value={password} onChange={e => setPassword(e.target.value)} required minLength={6} autoComplete="new-password" style={{ width: '100%', padding: '0.75rem', paddingRight: '3rem', borderRadius: '8px', border: '1px solid #334155', backgroundColor: '#0f172a', color: 'white', fontSize: '16px', outline: 'none', boxSizing: 'border-box' }} placeholder="Create a password (6+ characters)" />
-              <button type="button" onClick={() => setShowPassword(!showPassword)} style={{ position: 'absolute', right: '0.75rem', top: '50%', transform: 'translateY(-50%)', backgroundColor: 'transparent', border: 'none', color: '#94a3b8', cursor: 'pointer', fontSize: '14px' }}>{showPassword ? 'Hide' : 'Show'}</button>
+              <input type={showPassword ? 'text' : 'password'} id="signup-password" name="password" value={password} onChange={e => setPassword(e.target.value)} required minLength={6} autoComplete="new-password" style={{ width: '100%', padding: '0.75rem', paddingRight: '3rem', borderRadius: '8px', border: '1px solid #334155', backgroundColor: '#0f172a', color: 'white', fontSize: '16px', outline: 'none', boxSizing: 'border-box' }} placeholder="Create a password (6+ characters)" />
+              <button type="button" onClick={() => setShowPassword(!showPassword)} style={{ position: 'absolute', right: '0.75rem', top: '50%', transform: 'translateY(-50%)', backgroundColor: 'transparent', border: 'none', color: '#e2e8f0', cursor: 'pointer', fontSize: '14px', minHeight: '44px', minWidth: '44px' }} aria-label={showPassword ? 'Hide password' : 'Show password'}>{showPassword ? 'Hide' : 'Show'}</button>
             </div>
           </div>
 
@@ -341,14 +341,14 @@ function SignUpContent() {
               <button
                 type="button"
                 onClick={() => setBillingCycle('monthly')}
-                style={{ flex: 1, padding: '0.75rem', border: 'none', backgroundColor: billingCycle === 'monthly' ? '#f97316' : '#0f172a', color: billingCycle === 'monthly' ? 'white' : '#94a3b8', fontSize: '14px', fontWeight: 700, cursor: 'pointer' }}>
+                style={{ flex: 1, padding: '0.75rem', border: 'none', backgroundColor: billingCycle === 'monthly' ? '#c2410c' : '#0f172a', color: billingCycle === 'monthly' ? 'white' : '#e2e8f0', fontSize: '14px', fontWeight: 700, cursor: 'pointer' }}>
                 Monthly<br/>
                 <span style={{ fontSize: '12px', fontWeight: 400 }}>{MONTHLY_PRICE_DISPLAY}/mo</span>
               </button>
               <button
                 type="button"
                 onClick={() => setBillingCycle('annual')}
-                style={{ flex: 1, padding: '0.75rem', border: 'none', borderLeft: '1px solid #334155', backgroundColor: billingCycle === 'annual' ? '#f97316' : '#0f172a', color: billingCycle === 'annual' ? 'white' : '#94a3b8', fontSize: '14px', fontWeight: 700, cursor: 'pointer' }}>
+                style={{ flex: 1, padding: '0.75rem', border: 'none', borderLeft: '1px solid #334155', backgroundColor: billingCycle === 'annual' ? '#c2410c' : '#0f172a', color: billingCycle === 'annual' ? 'white' : '#e2e8f0', fontSize: '14px', fontWeight: 700, cursor: 'pointer' }}>
                 Annual 🏷️ Save {ANNUAL_SAVINGS_PERCENT}%<br/>
                 <span style={{ fontSize: '12px', fontWeight: 400 }}>{ANNUAL_PRICE_DISPLAY}/yr — just {ANNUAL_MONTHLY_EQUIVALENT_DISPLAY}/mo</span>
               </button>
@@ -363,7 +363,7 @@ function SignUpContent() {
             </div>
           )}
           {promoCode && promoStatus === 'invalid' && (
-            <div style={{ color: '#94a3b8', fontSize: '12.5px', textAlign: 'center', marginBottom: '0.75rem' }}>
+            <div style={{ color: '#e2e8f0', fontSize: '12.5px', textAlign: 'center', marginBottom: '0.75rem' }}>
               That offer link isn’t valid — standard trial applies
             </div>
           )}
@@ -372,7 +372,7 @@ function SignUpContent() {
             type={alreadyExists ? 'button' : 'submit'}
             onClick={alreadyExists ? () => window.location.href = '/signin' : undefined}
             disabled={loading}
-            style={{ width: '100%', padding: '0.875rem', borderRadius: '10px', border: 'none', backgroundColor: loading ? '#334155' : alreadyExists ? '#1d4ed8' : '#f97316', color: 'white', fontSize: '16px', fontWeight: 'bold', cursor: loading ? 'not-allowed' : 'pointer' }}>
+            style={{ width: '100%', padding: '0.875rem', borderRadius: '10px', border: 'none', backgroundColor: loading ? '#334155' : alreadyExists ? '#1d4ed8' : '#c2410c', color: 'white', fontSize: '16px', fontWeight: 'bold', cursor: loading ? 'not-allowed' : 'pointer' }}>
             {loading ? 'Creating Account...' : alreadyExists ? 'You Already Have an Account — Sign In →' : `Start ${trialDays}-Day Free Trial →`}
           </button>
 
@@ -386,12 +386,12 @@ function SignUpContent() {
           </div>
 
           <div style={{ textAlign: 'center', marginTop: '1.5rem' }}>
-            <span style={{ color: '#94a3b8', fontSize: '14px' }}>Already have an account? </span>
+            <span style={{ color: '#e2e8f0', fontSize: '14px' }}>Already have an account? </span>
             <a href="/signin" style={{ color: '#f97316', fontSize: '14px', textDecoration: 'none' }}>Sign In</a>
           </div>
         </form>
 
-        <p style={{ color: '#475569', fontSize: '12px', textAlign: 'center', marginTop: '1rem', lineHeight: 1.5 }}>
+        <p style={{ color: '#e2e8f0', fontSize: '12px', textAlign: 'center', marginTop: '1rem', lineHeight: 1.5 }}>
           By signing up you agree to our <a href="/terms" style={{ color: "#f0a030", textDecoration: "none" }}>Terms of Service</a> and <a href="/privacy" style={{ color: "#f0a030", textDecoration: "none" }}>Privacy Policy</a>.<br/>
           {MONTHLY_PRICE_DISPLAY}/mo or {ANNUAL_PRICE_DISPLAY}/yr after your {TRIAL_DAYS}-day free trial.
         </p>

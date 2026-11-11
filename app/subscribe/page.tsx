@@ -163,7 +163,7 @@ function SubscribeContent() {
 
         {/* ORION-RESUB-FUNNEL-001: trial copy is now promo-aware instead of a
             hardcoded trial pitch — a validated code shows its real length. */}
-        <p style={{ color: 'rgba(255,255,255,0.65)', fontSize: '15px', lineHeight: 1.7, margin: '0 0 28px' }}>
+        <p style={{ color: 'rgba(255,255,255,0.85)', fontSize: '15px', lineHeight: 1.7, margin: '0 0 28px' }}>
           {referralTrialUsed ? 'Your 14 free days have ended. Choose a subscription to keep enjoying every story.' : `Original audio dramas made for people on the move. Start your ${trialDays}-day free trial and get full access to every story.`}
         </p>
 
@@ -174,7 +174,7 @@ function SubscribeContent() {
           </div>
         )}
         {promoCode && promoStatus === 'invalid' && (
-          <div style={{ color: '#94a3b8', fontSize: '12.5px', textAlign: 'center', marginBottom: '0.75rem' }}>
+          <div style={{ color: '#e2e8f0', fontSize: '12.5px', textAlign: 'center', marginBottom: '0.75rem' }}>
             That offer link isn’t valid — standard trial applies
           </div>
         )}
@@ -187,7 +187,7 @@ function SubscribeContent() {
           marginBottom: '24px',
         }}>
           <div style={{ fontSize: '28px', fontWeight: 900, color: '#f97316' }}>{MONTHLY_PRICE_DISPLAY}</div>
-          <div style={{ fontSize: '13px', color: 'rgba(255,255,255,0.6)', marginTop: '2px' }}>per month · cancel anytime</div>
+          <div style={{ fontSize: '13px', color: 'rgba(255,255,255,0.85)', marginTop: '2px' }}>per month · cancel anytime</div>
           <div style={{ marginTop: '12px', fontSize: '13px', color: 'rgba(255,255,255,0.75)', lineHeight: 1.8 }}>
             ✓ Full access to all stories<br />
             ✓ New stories added weekly<br />
@@ -200,7 +200,7 @@ function SubscribeContent() {
           <button
             onClick={() => router.push(returnTo || '/home')}
             style={{
-              width: '100%', padding: '16px', background: '#f97316', color: 'white',
+              width: '100%', padding: '16px', background: '#c2410c', color: 'white',
               border: 'none', borderRadius: '12px', fontSize: '16px', fontWeight: 800,
               cursor: 'pointer', marginBottom: '12px',
             }}
@@ -215,7 +215,7 @@ function SubscribeContent() {
               onClick={handleStartTrial}
               disabled={checkingOut}
               style={{
-                width: '100%', padding: '16px', background: checkingOut ? '#334155' : '#f97316', color: 'white',
+                width: '100%', padding: '16px', background: checkingOut ? '#334155' : '#c2410c', color: 'white',
                 border: 'none', borderRadius: '12px', fontSize: '16px', fontWeight: 800,
                 cursor: checkingOut ? 'not-allowed' : 'pointer', marginBottom: '12px',
               }}
@@ -233,14 +233,14 @@ function SubscribeContent() {
 
         <button
           onClick={() => router.push('/account/promo')}
-          style={{ width: '100%', padding: '12px', background: 'transparent', color: 'rgba(255,255,255,0.3)', border: 'none', fontSize: '13px', fontWeight: 500, cursor: 'pointer', marginTop: '4px' }}
+          style={{ width: '100%', padding: '12px', background: 'transparent', color: 'rgba(255,255,255,0.85)', border: 'none', fontSize: '13px', fontWeight: 500, cursor: 'pointer', marginTop: '4px' }}
         >
           Have a promo code?
         </button>
         </div>
 
         {!user && (
-          <p style={{ marginTop: '24px', fontSize: '13px', color: 'rgba(255,255,255,0.35)', textAlign: 'center' }}>
+          <p style={{ marginTop: '24px', fontSize: '13px', color: 'rgba(255,255,255,0.85)', textAlign: 'center' }}>
             Already subscribed?{' '}
             <button
               onClick={() => router.push('/signin')}

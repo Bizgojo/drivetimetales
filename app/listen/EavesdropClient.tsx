@@ -542,7 +542,7 @@ export default function EavesdropClient({ episodes, arm, utmSource, utmCampaign 
             <button
               onClick={handleGoToApp}
               style={{
-                width: '100%', background: '#f97316', border: 'none',
+                width: '100%', background: '#c2410c', border: 'none',
                 borderRadius: 8, padding: '16px 24px',
                 color: '#fff', fontSize: 18, fontWeight: 700,
                 fontFamily: 'sans-serif', cursor: 'pointer',
@@ -612,7 +612,7 @@ export default function EavesdropClient({ episodes, arm, utmSource, utmCampaign 
               style={{
                 display: 'block',
                 width: '100%',
-                background: '#f97316',
+                background: '#c2410c',
                 borderRadius: 8,
                 padding: '16px 24px',
                 color: '#fff',
@@ -657,6 +657,7 @@ export default function EavesdropClient({ episodes, arm, utmSource, utmCampaign 
           <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             <input
               type="text"
+              aria-label="First name"
               placeholder="First name"
               value={firstName}
               onChange={e => { setFirstName(e.target.value); if (fieldErrors.name) setFieldErrors(p => ({ ...p, name: false })) }}
@@ -674,6 +675,7 @@ export default function EavesdropClient({ episodes, arm, utmSource, utmCampaign 
             {fieldErrors.name && <p style={{ color: '#ef4444', fontSize: 13, fontFamily: 'sans-serif', margin: '-4px 0 0' }}>Please enter your first name.</p>}
             <input
               type="email"
+              aria-label="Email address"
               placeholder="Email address"
               value={email}
               onChange={e => { setEmail(e.target.value); if (fieldErrors.email) setFieldErrors(p => ({ ...p, email: false })) }}
@@ -700,7 +702,7 @@ export default function EavesdropClient({ episodes, arm, utmSource, utmCampaign 
               type="submit"
               disabled={submitting}
               style={{
-                background: submitting ? '#4a3f60' : '#f97316',
+                background: submitting ? '#4a3f60' : '#c2410c',
                 border: 'none',
                 borderRadius: 8,
                 padding: '14px 24px',
