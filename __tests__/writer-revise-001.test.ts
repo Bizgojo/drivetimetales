@@ -51,7 +51,7 @@ describe('WRITER-REVISE-001: rewrites revise the previous draft', () => {
 
   test('route sends prompt / previous draft / feedback as three turns on a rewrite', () => {
     const src = readFileSync(join(__dirname, '..', 'app/api/admin/production-jobs/run-next/route.ts'), 'utf8')
-    const gen = src.slice(src.indexOf('generate: async (feedback, previousDraft) => {'), src.indexOf('check: async (draftScript)'))
+    const gen = src.slice(src.indexOf('generate: async (feedback, previousDraft) => {'), src.indexOf('check: (writerSelfCheckFn = async (draftScript'))
     expect(gen).toMatch(/\{ role: 'user', content: prompt \},\s*\{ role: 'assistant', content: previousDraft \},\s*\{ role: 'user', content: feedback \}/)
     expect(gen).toMatch(/messages: writerMessages/)
     expect(gen).toMatch(/raw: (spellOutSpokenNumerals\()?normalizeScriptFormat\(rawScript\)\.script/)
@@ -174,7 +174,7 @@ describe('WRITER-BELLE-EVIDENCE-001: Belle failures quote the current Belle line
 
 describe('WRITER-PUBLISH-BELLE-001: writer runs the deterministic publish Belle gate', () => {
   const src = readFileSync(join(__dirname, '..', 'app/api/admin/production-jobs/run-next/route.ts'), 'utf8')
-  const chk = src.slice(src.indexOf('check: async (draftScript) => {'), src.indexOf('} catch (err) {', src.indexOf('check: async (draftScript) => {')))
+  const chk = src.slice(src.indexOf('check: (writerSelfCheckFn = async (draftScript: string) => {'), src.indexOf('} catch (err) {', src.indexOf('check: (writerSelfCheckFn = async (draftScript: string) => {')))
 
   test('check closure calls evaluateBelleCopyForPublish and merges its blockers', () => {
     expect(chk).toMatch(/evaluateBelleCopyForPublish\(\{/)

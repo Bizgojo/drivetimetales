@@ -73,6 +73,7 @@ import {
   briefRuntimeImpossible,
   checkScriptReadiness,
   onlyDescriptionLengthBlockers,
+  onlyOutroOrDescriptionLengthBlockers,
   checkSeriesCastContinuity,
   writeWithSelfCheck,
   writerClaimIsFresh,
@@ -6863,6 +6864,9 @@ async function generateOneSeriesEpisodeScript(job: ProductionJob, model: string)
   let writerDraftIndex = 0
   const writerStepStartedAt = Date.now()
   let selfCheck: Awaited<ReturnType<typeof writeWithSelfCheck>>
+  // WRITER-OUTRO-SHORTEN-001: keep a handle on the exact self-check so a
+  // shortened outro is judged by the same gates as every draft.
+  let writerSelfCheckFn: ((draftScript: string) => Promise<{ ready: boolean; blockers: Array<{ gate: string; detail: string }> }>) | null = null
   try {
   selfCheck = await writeWithSelfCheck({
     briefMinutes: selfCheckBriefMinutes,
@@ -6917,7 +6921,7 @@ async function generateOneSeriesEpisodeScript(job: ProductionJob, model: string)
         outputTokens: response.usage?.output_tokens ?? 0,
       }
     },
-    check: async (draftScript) => {
+    check: (writerSelfCheckFn = async (draftScript: string) => {
       const report = checkScriptReadiness({
         script: draftScript,
         storyType: 'series_episode',
@@ -6997,7 +7001,7 @@ async function generateOneSeriesEpisodeScript(job: ProductionJob, model: string)
         }),
       ]
       return { ...report, blockers, ready: blockers.length === 0 }
-    },
+    }),
   })
   } catch (err) {
     const msg = `WRITER-SELF-CHECK-001: episode ${targetEpisodeNumber} writer call failed: ${err instanceof Error ? err.message : String(err)}`
@@ -7038,6 +7042,50 @@ async function generateOneSeriesEpisodeScript(job: ProductionJob, model: string)
       }
     } catch (err) {
       console.warn(`[WRITER-DESC-SHORTEN-001] episode ${targetEpisodeNumber} shorten failed: ${err instanceof Error ? err.message : String(err)}`)
+    }
+  }
+
+  // WRITER-OUTRO-SHORTEN-001 (Weekend Wife in Miami a1058f05, Nov 11): when the
+  // ONLY thing still wrong after every draft is the Belle B outro being over the
+  // word limit, shorten that one line with a small call and re-run the same
+  // self-check, instead of failing the episode. Nothing else in the script changes.
+  // Widow EP3 (job 7bf52d9b, Nov 11): outro 43 words AND description 110
+  // characters together — both lines are shortened, then the same check runs.
+  const outroWriterBlockers = writerAttempts[writerAttempts.length - 1]?.blockers || []
+  const lengthOnly = onlyOutroOrDescriptionLengthBlockers(outroWriterBlockers)
+  if (!selfCheckOk && script && writerSelfCheckFn && lengthOnly.ok) {
+    const currentOutro = extractBelleSection(script, 'outro')
+    const outroSeriesName = String(targetEpisode.series_name || series.title || '').trim()
+    const outroRule = selfCheckIsFinale
+      ? closingOutroPrompt({ title: outroSeriesName, author: String(targetEpisode.author || '').trim(), narrator: assignedNarratorName })
+      : nonFinaleOutroPrompt({ seriesName: outroSeriesName, nextEpisodeNumber: targetEpisodeNumber + 1, author: String(targetEpisode.author || '').trim(), narrator: assignedNarratorName })
+    try {
+      const shorter = await shortenBelleOutroToLimit(currentOutro, outroRule, coerceValidationModelToClaude(model), {
+        jobId: job.id, storyId: String(targetEpisode.id), title: targetEpisode.title, seriesId: String(seriesId), episodeNumber: targetEpisodeNumber,
+      })
+      if (shorter && countWords(shorter) <= BELLE_OUTRO_MAX_WORDS) {
+        let nextScript = replaceBelleSection(script, 'outro', shorter)
+        let nextDescription = description
+        if (lengthOnly.description) {
+          const currentDesc = extractHeader(nextScript, 'DESCRIPTION') || description
+          const shorterDesc = await shortenDescriptionToLimit(currentDesc, coerceValidationModelToClaude(model), {
+            jobId: job.id, storyId: String(targetEpisode.id), title: targetEpisode.title, seriesId: String(seriesId), episodeNumber: targetEpisodeNumber,
+          })
+          if (shorterDesc && shorterDesc.length <= DESCRIPTION_MAX_CHARS) {
+            nextScript = replaceOrInsertHeader(nextScript, 'DESCRIPTION', shorterDesc)
+            nextDescription = shorterDesc
+          }
+        }
+        const recheck = await writerSelfCheckFn(nextScript)
+        if (recheck.ready) {
+          script = nextScript
+          description = nextDescription
+          selfCheckOk = true
+          writerAttempts.push({ attempt: writerAttempts.length + 1, blockers: [`WRITER-OUTRO-SHORTEN-001: Belle outro shortened ${countWords(currentOutro)} -> ${countWords(shorter)} words (script unchanged)`], spokenWords: writerAttempts[writerAttempts.length - 1]?.spokenWords ?? 0 })
+        }
+      }
+    } catch (err) {
+      console.warn(`[WRITER-OUTRO-SHORTEN-001] episode ${targetEpisodeNumber} shorten failed: ${err instanceof Error ? err.message : String(err)}`)
     }
   }
 
@@ -7623,6 +7671,36 @@ async function shortenDescriptionLoop(description: string, model: string): Promi
     if (next) description = next
   }
   return description
+}
+
+/** WRITER-OUTRO-SHORTEN-001: shorten only the Belle B outro of a writer draft (up to 2 small calls, logged). */
+async function shortenBelleOutroToLimit(outro: string, rule: string, model: string, ctx: { jobId: string; storyId: string; title?: string | null; seriesId: string; episodeNumber: number }): Promise<string> {
+  let text = outro
+  let inputTokens = 0
+  let outputTokens = 0
+  for (let i = 0; i < 2 && countWords(text) > BELLE_OUTRO_MAX_WORDS - 2; i++) {
+    const res = await anthropic.messages.create({
+      model,
+      max_tokens: 400,
+      temperature: 0,
+      messages: [{ role: 'user', content: `This Belle B outro line is ${countWords(text)} words. It must be ${BELLE_OUTRO_MAX_WORDS - 4} words or fewer. Rewrite ONLY this line, keeping the same meaning and every required part of the rule below. COUNT THE WORDS before you answer. Return JSON only: {"outro": "text"} (no "BELLE B:" label).\n\nRULE: ${rule}\n\nCURRENT OUTRO: ${text}` }],
+    })
+    inputTokens += res.usage?.input_tokens ?? 0
+    outputTokens += res.usage?.output_tokens ?? 0
+    const next = String(parseJsonObject(res.content.map((c: any) => ('text' in c ? c.text : '')).join('').trim()).outro || '').replace(/^BELLE B:\s*/i, '').trim()
+    if (next) text = next
+  }
+  logAnthropicCall({
+    route: '/api/admin/production-jobs/run-next',
+    purpose: 'writer-outro-shorten',
+    model,
+    inputTokens,
+    outputTokens,
+    storyId: ctx.storyId,
+    storyTitle: ctx.title || 'Writer outro shorten',
+    metadata: { is_v2: true, production_job_id: ctx.jobId, series_id: ctx.seriesId, episode_number: ctx.episodeNumber },
+  }).catch(() => {})
+  return text
 }
 
 /** WRITER-DESC-SHORTEN-001: shorten only the DESCRIPTION of a writer draft (logged as its own call). */
