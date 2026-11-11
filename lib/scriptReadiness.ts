@@ -496,6 +496,21 @@ export function onlyBelleOutroLengthBlockers(blockers: string[]): boolean {
   return blockers.length > 0 && blockers.every((b) => /^BELLE-CONTENT: (voice step \(outro\): )?outro is too long\b/.test(b))
 }
 
+const OUTRO_LENGTH_BLOCKER = /^BELLE-CONTENT: (voice step \(outro\): )?outro is too long\b/
+const DESCRIPTION_LENGTH_BLOCKER = /^CARD-COPY: DESCRIPTION \d+ characters \(max \d+\)$/
+
+/**
+ * WRITER-OUTRO-SHORTEN-001 (Widow EP3, Nov 11): true when every remaining
+ * blocker is a length problem on the Belle outro and/or the DESCRIPTION, and
+ * at least one is the outro. Both lines can then be shortened alone.
+ */
+export function onlyOutroOrDescriptionLengthBlockers(blockers: string[]): { ok: boolean; outro: boolean; description: boolean } {
+  const outro = blockers.some((b) => OUTRO_LENGTH_BLOCKER.test(b))
+  const description = blockers.some((b) => DESCRIPTION_LENGTH_BLOCKER.test(b))
+  const ok = blockers.length > 0 && outro && blockers.every((b) => OUTRO_LENGTH_BLOCKER.test(b) || DESCRIPTION_LENGTH_BLOCKER.test(b))
+  return { ok, outro, description }
+}
+
 export async function writeWithSelfCheck(opts: {
   generate: (feedback: string, previousDraft: string | null) => Promise<WriterDraft>
   check: (script: string) => ReadinessReport | Promise<ReadinessReport>

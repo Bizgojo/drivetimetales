@@ -73,7 +73,7 @@ import {
   briefRuntimeImpossible,
   checkScriptReadiness,
   onlyDescriptionLengthBlockers,
-  onlyBelleOutroLengthBlockers,
+  onlyOutroOrDescriptionLengthBlockers,
   checkSeriesCastContinuity,
   writeWithSelfCheck,
   writerClaimIsFresh,
@@ -7049,8 +7049,11 @@ async function generateOneSeriesEpisodeScript(job: ProductionJob, model: string)
   // ONLY thing still wrong after every draft is the Belle B outro being over the
   // word limit, shorten that one line with a small call and re-run the same
   // self-check, instead of failing the episode. Nothing else in the script changes.
+  // Widow EP3 (job 7bf52d9b, Nov 11): outro 43 words AND description 110
+  // characters together — both lines are shortened, then the same check runs.
   const outroWriterBlockers = writerAttempts[writerAttempts.length - 1]?.blockers || []
-  if (!selfCheckOk && script && writerSelfCheckFn && onlyBelleOutroLengthBlockers(outroWriterBlockers)) {
+  const lengthOnly = onlyOutroOrDescriptionLengthBlockers(outroWriterBlockers)
+  if (!selfCheckOk && script && writerSelfCheckFn && lengthOnly.ok) {
     const currentOutro = extractBelleSection(script, 'outro')
     const outroSeriesName = String(targetEpisode.series_name || series.title || '').trim()
     const outroRule = selfCheckIsFinale
@@ -7061,10 +7064,22 @@ async function generateOneSeriesEpisodeScript(job: ProductionJob, model: string)
         jobId: job.id, storyId: String(targetEpisode.id), title: targetEpisode.title, seriesId: String(seriesId), episodeNumber: targetEpisodeNumber,
       })
       if (shorter && countWords(shorter) <= BELLE_OUTRO_MAX_WORDS) {
-        const nextScript = replaceBelleSection(script, 'outro', shorter)
+        let nextScript = replaceBelleSection(script, 'outro', shorter)
+        let nextDescription = description
+        if (lengthOnly.description) {
+          const currentDesc = extractHeader(nextScript, 'DESCRIPTION') || description
+          const shorterDesc = await shortenDescriptionToLimit(currentDesc, coerceValidationModelToClaude(model), {
+            jobId: job.id, storyId: String(targetEpisode.id), title: targetEpisode.title, seriesId: String(seriesId), episodeNumber: targetEpisodeNumber,
+          })
+          if (shorterDesc && shorterDesc.length <= DESCRIPTION_MAX_CHARS) {
+            nextScript = replaceOrInsertHeader(nextScript, 'DESCRIPTION', shorterDesc)
+            nextDescription = shorterDesc
+          }
+        }
         const recheck = await writerSelfCheckFn(nextScript)
         if (recheck.ready) {
           script = nextScript
+          description = nextDescription
           selfCheckOk = true
           writerAttempts.push({ attempt: writerAttempts.length + 1, blockers: [`WRITER-OUTRO-SHORTEN-001: Belle outro shortened ${countWords(currentOutro)} -> ${countWords(shorter)} words (script unchanged)`], spokenWords: writerAttempts[writerAttempts.length - 1]?.spokenWords ?? 0 })
         }
