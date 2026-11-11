@@ -38,6 +38,7 @@ import { buildCastReview, needsCastReview, CAST_REVIEW_STATE_KEY } from '@/lib/c
 import { extractValidatorFixList, planSeriesEpisodeRewrite, buildRewriteFeedbackBlock, MAX_SERIES_EPISODE_REWRITES } from '@/lib/seriesRewrite'
 import { styleProfileFrom, styleProfileOfBrief, buildStylePromptBlock, maxMainCharacters } from '@/lib/seriesStyle'
 import { sequelHookOf, buildSequelHookPromptBlock, sequelHookValidatorNote } from '@/lib/seriesSequel'
+import { seasonHookOf, seasonHookOfEpisodes, seasonHookValidatorNote, buildSeasonHookPromptBlock } from '@/lib/seasonHook'
 import { guideDescriptionNameCandidate, isDescriptorNotName } from '@/lib/rosterFullName'
 import { canonicalizeCharacterNames, characterNameConflictDetails, buildNameIndex, aliasesForLabel } from '@/lib/characterNames'
 import { seriesOutlineEnabled, buildSeriesOutlinePrompt, validateSeriesOutline, buildOutlinePromptBlock, type SeriesOutline } from '@/lib/seriesOutline'
@@ -6819,6 +6820,10 @@ async function generateOneSeriesEpisodeScript(job: ProductionJob, model: string)
       isFinale: Boolean(targetEpisode.series_is_finale ?? (brief as any).series_is_finale ?? targetEpisodeNumber === Number((brief as any).series_total_episodes || episodes.length)),
       seriesTitle: String(series.title || brief.series_name || ''),
     })
+    // SEASON-HOOK-001 (canon decision 136)
+    + buildSeasonHookPromptBlock(seasonHookOf(targetEpisode.brief_json) || seasonHookOfEpisodes(episodes), {
+      isFinale: Boolean(targetEpisode.series_is_finale ?? (brief as any).series_is_finale ?? targetEpisodeNumber === Number((brief as any).series_total_episodes || episodes.length)),
+    })
     // SERIES-REWRITE-001: a validator-ordered rewrite carries the reviewer's fix list.
     + buildRewriteFeedbackBlock((brief as any)?.validator_rewrite?.feedback, Number((brief as any)?.validator_rewrite?.attempt || 1))
 
@@ -7355,7 +7360,7 @@ ${cardCopyIssues.map((issue) => `- ${issue}`).join('\n')}`
     : `Series-specific validation:
 - This is Episode ${number} of ${episode.series_total_episodes}.
 - Non-final series episodes must end on a specific continuation hook.
-- Final series episodes must close the series arc and must not tease a next episode.${episode.series_is_finale && sequelHookOf(episode.brief_json) ? `\n- ${sequelHookValidatorNote(sequelHookOf(episode.brief_json), String((episode.brief_json as any)?.series_name || episode.series_name || ''))}` : ''}`
+- Final series episodes must close the series arc and must not tease a next episode.${episode.series_is_finale && sequelHookOf(episode.brief_json) ? `\n- ${sequelHookValidatorNote(sequelHookOf(episode.brief_json), String((episode.brief_json as any)?.series_name || episode.series_name || ''))}` : ''}${episode.series_is_finale && seasonHookOf(episode.brief_json) ? `\n- ${seasonHookValidatorNote(seasonHookOf(episode.brief_json))}` : ''}`
 
   const response = await anthropic.messages.create({
     model,
@@ -7530,7 +7535,7 @@ Validation rules:
 ${phasedBatch
   ? `- This is a phased batch: there is NO finale here. EVERY episode, including Episode ${episodeCount}, must end with an intentional continuation hook and may tease the next episode. Do NOT require arc closure or credits.\n- No episode should be treated as a standalone story.\n- Metadata must be consistent with episode order (all seriesIsFinale=false is correct).`
   : `- The finale episode must close the series arc and must not tease another episode.\n- No episode should be treated as a standalone story.\n- Metadata must be consistent with episode order and finale status.\n- Fail if the finale leaves the main series question unresolved.`}
-${sequelHookOf(episodes[0]?.brief_json) ? `- ${sequelHookValidatorNote(sequelHookOf(episodes[0]?.brief_json), String((episodes[0]?.brief_json as any)?.series_name || episodes[0]?.series_name || ''))}\n` : ''}
+${sequelHookOf(episodes[0]?.brief_json) ? `- ${sequelHookValidatorNote(sequelHookOf(episodes[0]?.brief_json), String((episodes[0]?.brief_json as any)?.series_name || episodes[0]?.series_name || ''))}\n` : ''}${seasonHookOfEpisodes(episodes) ? `- ${seasonHookValidatorNote(seasonHookOfEpisodes(episodes))}\n` : ''}
 SERIES PACKAGE:
 ${JSON.stringify(packageBrief, null, 2)}`,
     }],
@@ -8047,7 +8052,7 @@ async function scoreValidateSeriesPackage(job: ProductionJob, model: string) {
     const continuityPrompt = buildContinuityPrompt({
       seriesTitle: String(sortedEps[0]?.series_name || ''),
       outlineText,
-      exceptionNote: sequelHookValidatorNote(sequelHookOf(sortedEps[0]?.brief_json), String((sortedEps[0]?.brief_json as any)?.series_name || sortedEps[0]?.series_name || '')),
+      exceptionNote: [sequelHookValidatorNote(sequelHookOf(sortedEps[0]?.brief_json), String((sortedEps[0]?.brief_json as any)?.series_name || sortedEps[0]?.series_name || '')), seasonHookValidatorNote(seasonHookOfEpisodes(sortedEps))].filter(Boolean).join('\n'),
       episodes: sortedEps.map((ep: any) => ({ episodeNumber: episodeNumber(ep, 0), title: String(ep.title || ''), body: storyBodyText(String(ep.script || '')) })),
       castLists: castListsText(factEpisodes),
       factSheet: formatFactSheet(factCheck.facts),
