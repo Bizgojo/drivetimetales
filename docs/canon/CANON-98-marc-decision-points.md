@@ -2,7 +2,7 @@
 Status: DRAFT for Marc's approval · Nov 9, 2026 · Owner: Marc
 Covers: one list of every place in the canon where Marc must decide or act himself, document by document. Does not cover: the rules themselves (each is in its own document) or the open decisions (CANON-99).
 
-93 decision points across 15 documents (84 from the audit, 8 added by CANON-99 Part 2 and 1 by item 125, Nov 9, 2026). Every audit item in CANON-99 is answered; new requests appear in CANON-99 Part 3.
+94 decision points across 15 documents (84 from the audit, 8 added by CANON-99 Part 2, 1 by item 125 on Nov 9, 2026, and 1 by item 132 on Nov 10, 2026). Every audit item in CANON-99 is answered; new requests appear in CANON-99 Part 3.
 
 **[MARC DECIDES]** = Marc approves, chooses or gives his OK. **[MARC DOES]** = something only Marc does himself (tests on his phone, listens, enters a key). Agents never act in Marc's place on these.
 
@@ -118,6 +118,7 @@ Covers: one list of every place in the canon where Marc must decide or act himse
 - **CANON-12 rule 60 [MARC DECIDES]:** A new landing story serves only after Marc adds it to the live list.
 - **CANON-12 rule 68 [MARC DECIDES]:** Push notifications are off until Marc approves what they say and when.
 - **CANON-12 rule 73 [MARC DOES]:** Marc checks every listener-facing change on a real phone before it is accepted.
+- **CANON-12 decision 132 [MARC DOES]:** Marc or a blind tester runs the core path with VoiceOver on a real phone before any release or outreach to blind or low-vision listeners.
 - Open in this document: Nothing open in this document (CANON-99 answered Nov 9, 2026).
 
 ## CANON-13 — Marketing & Ads
