@@ -84,6 +84,7 @@ Every rule in this document that needs Marc. **[MARC DECIDES]** = Marc approves,
 54. Header fields: TITLE, SERIES, EPISODE, EPISODE_TITLE, SERIES_TOTAL_EPISODES, SERIES_IS_FINALE, AUTHOR, GENRE, DESCRIPTION, NARRATOR, ANNOUNCER: Belle B, NARRATIVE_VOICE, NARRATOR_IS_CHARACTER, SUNO PROMPT. — **Agreed** (Bible Part XII; STAGE2 header block)
 55. TITLE: 1–5 words, 28 characters or fewer, never "Episode N" or the series title. — **Agreed** (Story Production Spec §5)
 56. DESCRIPTION (story card): fits two card lines (at most 100 characters), present tense only, teases a question, never reveals the twist or outcome. — **Agreed** (Marc Nov 5 "fills two lines"; DESC-TENSE-001 Marc Oct 29; DESC-100-CHAR-001) — see Conflict C4
+   - The writer is told to aim for 85 to 95 characters; the checker accepts up to 100. — **Agreed** (Marc, Nov 12, 2026, LENGTH-TARGET-001)
 57. NARRATOR header is the assigned narrator's voice name from the author's pairing, never a story character. — **Agreed** (STAGE2 lookup table) and **In force (code)** (HAL-SCRIPT-001; run-next narrator check)
 58. **[MARC DECIDES]** NARRATIVE_VOICE is declared (first_person, third_limited, third_omniscient) and held on every narrator line. second_person needs Marc's approval. — **Agreed** (Bible r22, r27)
 59. **[MARC DECIDES]** NARRATOR_IS_CHARACTER: true needs Marc's approval and a non-platform voice. — **Agreed** (Bible Part XIII)

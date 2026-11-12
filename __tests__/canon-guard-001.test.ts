@@ -59,6 +59,6 @@ describe('CANON-GUARD-001: writer prompt files match the canon (CANON-00 rule 8)
   test('the series writer prompt asks for 100-character descriptions, not 24 words', () => {
     const src = read('app/api/admin/production-jobs/run-next/route.ts')
     expect(src).not.toMatch(/DESCRIPTION must be a (COMPLETE|complete) sentence, ≤24 words/)
-    expect(src).toMatch(/100 characters or fewer, counting spaces/)
+    expect(src).toMatch(/Aim for 85 to 95 characters, counting spaces .*the hard limit is 100/)
   })
 })

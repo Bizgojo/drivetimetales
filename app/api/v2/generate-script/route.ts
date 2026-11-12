@@ -394,7 +394,7 @@ Loaded from: docs/STAGE2_SCRIPT_PROMPT.md
 Note: Where this document conflicts with the Canon Registry above, Canon Registry wins (CANON-001).
 Note: Internal footer version mismatch (footer says v2.3, header says v2.4) — header is correct;
       the Early Investment Rule (r42) was added June 26 2026 as v2.4 and the footer was not updated.
-DESCRIPTION length: 100 characters or fewer (DESC-100-CHAR-001, Marc 2026-11-05; CANON-99 decision 8).
+DESCRIPTION length: aim for 85 to 95 characters; the hard limit is 100 (DESC-100-CHAR-001, Marc 2026-11-05; CANON-99 decision 8; LENGTH-TARGET-001, Marc 2026-11-12).
       This replaces the older 24-word rule wherever a document below still says 24 words.
 Known conflict: SFX frequency — this document (3–6 anchors) supersedes ET Story Rules r11
       (every 60–90s). SFX-001 (no fixed count, Marc 2026-10-31) supersedes both. Follow SFX-001.
@@ -487,8 +487,8 @@ Use the CURRENT published rules:
 - BELLE-004: The FIRST episode of a series must name the series title and author in the intro.
 - BELLE-006: Interior and final episodes must NOT name the series title or author in the intro or outro. The old requirement to name the series title in every episode's Belle B intro was wrong — it directly contradicted BELLE-006 and has been dropped (Marc ruling, 2026-08-29).
 - Series non-finale episodes: Belle B outro must NOT credit the author or narrator — save those credits for the finale only. Non-finale outros follow BELLE-OUTRO-FORWARD-001 (Marc, Nov 8): EXACTLY two sentences — one sentence recapping this episode, then In Episode <next number in words> of "<Series Name>," <what the listener will find out>.
-- Series finale episodes: Belle B outro is 1–2 sentences, ≤42 words total. No "That was" opener. Open with an emotional beat that references the story's resolution or the character left in the listener's mind. Then: title + author + narrator name + "an Endless Tales original." No spoken rating CTA — rating is handled by the review screen.
-- Standalone episodes: Belle B outro is 1–2 sentences, ≤42 words total. No "That was" opener. Open with an emotional beat that references the story's resolution or the character left in the listener's mind. Then: title + author + narrator name + "an Endless Tales original." No spoken rating CTA — rating is handled by the review screen.
+- Series finale episodes: Belle B outro is 1–2 sentences, aim for 32 to 38 words (hard limit 42). No "That was" opener. Open with an emotional beat that references the story's resolution or the character left in the listener's mind. Then: title + author + narrator name + "an Endless Tales original." No spoken rating CTA — rating is handled by the review screen.
+- Standalone episodes: Belle B outro is 1–2 sentences, aim for 32 to 38 words (hard limit 42). No "That was" opener. Open with an emotional beat that references the story's resolution or the character left in the listener's mind. Then: title + author + narrator name + "an Endless Tales original." No spoken rating CTA — rating is handled by the review screen.
 - SFX (SFX-001, Marc 2026-10-31): no fixed number. Write a [SFX: short description] cue wherever the story makes a sound the listener should hear: action, arrivals, doors, phones, weather, a change of place. Every cue must come from something that happens in the story; never decorate quiet dialogue.${sfxSoundAgreementRule()}
 - The title may be blank in the brief; if blank, choose the best title from the story.
 - Final title must be 1 to 5 words and 28 characters or fewer so it fits one line on story cards.
@@ -505,7 +505,7 @@ SERIES_TOTAL_EPISODES:
 SERIES_IS_FINALE:
 AUTHOR:
 GENRE:
-DESCRIPTION: [100 characters or fewer (about 15 words), present tense only — DESC-100-CHAR-001]
+DESCRIPTION: [aim for 85 to 95 characters (hard limit 100), present tense only — DESC-100-CHAR-001]
 NARRATOR: [assigned voice name from narrator_voices — ALWAYS the voice talent name (e.g. "Ray Dolan"), NEVER a story character name, even when NARRATOR_IS_CHARACTER is true]
 ANNOUNCER: Belle B
 NARRATIVE_VOICE:
@@ -532,8 +532,8 @@ CHARACTER NAME: ...
 
 BELLE B OUTRO
 ---
-BELLE B: [For series non-finales: do NOT credit the author or narrator; exactly two sentences: one recap sentence, then In Episode <next number in words> of "<Series Name>," <what the listener will find out>. No time-of-day reference, at most 42 words. For standalone episodes (reflection rule applies):
-${REFLECTION_RULE_PROMPT_FRAGMENT} For series finales and standalone episodes: 1–2 sentences, ≤42 words total, no "That was" opener; open with an emotional beat referencing the story's resolution or the character left in the listener's mind; then the credit: You've been listening to "<title>" by <author>, read by <narrator>, an Endless Tales Original. Never mention time of day. No spoken rating CTA — rating is handled by the review screen.]
+BELLE B: [For series non-finales: do NOT credit the author or narrator; exactly two sentences: one recap sentence, then In Episode <next number in words> of "<Series Name>," <what the listener will find out>. No time-of-day reference. Aim for 32 to 38 words; the hard limit is 42. For standalone episodes (reflection rule applies):
+${REFLECTION_RULE_PROMPT_FRAGMENT} For series finales and standalone episodes: 1–2 sentences, aim for 32 to 38 words (hard limit 42), no "That was" opener; open with an emotional beat referencing the story's resolution or the character left in the listener's mind; then the credit: You've been listening to "<title>" by <author>, read by <narrator>, an Endless Tales Original. Never mention time of day. No spoken rating CTA — rating is handled by the review screen.]
 
 Production-format hard rules:
 - Speaker labels are for spoken words only.
@@ -544,7 +544,7 @@ Production-format hard rules:
 - Right: NARRATOR: Pike's jaw tightened.
 
 Additional rules:
-- DESCRIPTION must be 100 characters or fewer, counting spaces (about 15 words), and present tense only (DESC-100-CHAR-001). If the brief-provided description is longer than 100 characters or uses past-tense constructions, rewrite it to comply. Reject past-tense story-card phrasing such as "vanished", "was", "were", "had", "found", "discovered", "left", "moved", "sealed", "signed", "forged", "buried", or "hidden".
+- DESCRIPTION: aim for 85 to 95 characters, counting spaces (about 13 to 14 words); the hard limit is 100. Present tense only (DESC-100-CHAR-001). If the brief-provided description is longer than 100 characters or uses past-tense constructions, rewrite it to comply. Reject past-tense story-card phrasing such as "vanished", "was", "were", "had", "found", "discovered", "left", "moved", "sealed", "signed", "forged", "buried", or "hidden".
 - NARRATOR header must ALWAYS be the assigned voice talent name (e.g. "Ray Dolan", "Samuel Cord"). Never a story character name. This rule has no exceptions. (HAL-SCRIPT-001)
 - If NARRATOR_IS_CHARACTER is false, the narrator is a detached third-person voice.
 - If NARRATOR_IS_CHARACTER is true, the narrator is a story character speaking in first person — but the NARRATOR header still uses the voice talent name, not the character name.

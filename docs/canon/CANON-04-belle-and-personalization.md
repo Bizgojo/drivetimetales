@@ -53,6 +53,7 @@ Every rule in this document that needs Marc. **[MARC DECIDES]** = Marc approves,
 28. The credit also names the narrator. — **Agreed** (BELLE-005, Sep 6: "Narrator credit (narrator name) is required"). **In force (code)**: publicationBelleGate.ts; ATL-PIPE-012. See Q1.
 29. No spoken "please rate" request. The review screen handles rating. — **Agreed** (BELLE-005)
 30. Length: at most 42 words. — **Agreed** (BELLE-005). Code allows 55: see Conflict C6.
+   - The writer is told to aim for 32 to 38 words; the checker accepts up to 42. — **Agreed** (Marc, Nov 12, 2026, LENGTH-TARGET-001)
 
 ### G. Listener-name personalization
 31. The listener's name never appears in Belle's outro text, on any episode. — **Agreed** (BELLE-003, Aug 13). **In force (code)**: lib/belleStructureGate.ts BELLE-003.

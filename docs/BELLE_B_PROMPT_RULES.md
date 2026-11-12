@@ -127,7 +127,7 @@ Use non-final outro rules when another episode follows. Belle's outro is EXACTLY
 1. One sentence recapping this episode. One only.
 2. One sentence promoting the next episode that says its number (in words) and the series name.
 
-Not allowed: more than one recap sentence; a tease that doesn't name the next episode's number; ending on the recap; author or narrator credit; "an Endless Tales original"; time of day; anything that sounds like the series is over. At most 42 words.
+Not allowed: more than one recap sentence; a tease that doesn't name the next episode's number; ending on the recap; author or narrator credit; "an Endless Tales original"; time of day; anything that sounds like the series is over. Aim for 32 to 38 words; the hard limit is 42.
 
 ### Non-final outro example
 
@@ -152,7 +152,7 @@ Belle should:
 - Keep the listener-name personalization statement as it works today (the name sign-off plays before Belle's credits, with no gap)
 
 Target length:
-- 1-2 sentences, at most 42 words
+- 1-2 sentences, aim for 32 to 38 words (hard limit 42)
 
 ### Finale outro example
 

@@ -32,8 +32,8 @@ Rule: These rules come from the approved canon and override anything below in th
 11. SCRIPT ORDER: header, character guide, then Belle's intro.
 12. ENDINGS: a series finale answers its central question; about 1 in 5 standalones may end open; Belle never teases a sequel.
 13. BELLE INTROS: Episode 1 names the title and the author. Every other series intro says the series title, "Episode N" and the episode title, and never the author. (BELLE-006 is retired.)
-14. BELLE NON-FINAL OUTRO: exactly two sentences, at most 42 words: one recap sentence (about 18 words), then the next episode by number and series name (about 20 words): In Episode Four of "Rerouted," ... Never "an Endless Tales original" here, never time of day.
-15. BELLE FINALE / STANDALONE OUTRO: at most one short closing sentence (12 words or fewer), then: You've been listening to "[title]" by [author], read by [narrator], an Endless Tales Original. At most 42 words. Never point to another episode or story.
+14. BELLE NON-FINAL OUTRO: exactly two sentences, aim for 32 to 38 words (hard limit 42): one recap sentence (about 18 words), then the next episode by number and series name (about 20 words): In Episode Four of "Rerouted," ... Never "an Endless Tales original" here, never time of day.
+15. BELLE FINALE / STANDALONE OUTRO: at most one short closing sentence (12 words or fewer), then: You've been listening to "[title]" by [author], read by [narrator], an Endless Tales Original. Aim for 32 to 38 words (hard limit 42). Never point to another episode or story.
 16. BELLE never mentions time of day ("late drive", "tonight").
 Conflict: None. Changes only through CANON-99 (Marc approves).
 
