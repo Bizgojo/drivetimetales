@@ -107,5 +107,7 @@ describe('WRITER-OUTRO-SHORTEN-003', () => {
     expect(src).toMatch(/WRITER-OUTRO-SHORTEN-003: shortened outro/)
     expect(src).toMatch(/WRITER-OUTRO-SHORTEN-003: outro repair returned/)
     expect(src).toMatch(/OUTRO-RECAP-NOT-SPOILER-001/)
+    expect(src).toMatch(/OUTRO-PROMO-NOT-SPOILER-002/)
+    expect(src).not.toMatch(/The outro may still fail for revealing what happens in a LATER episode/)
   })
 })
