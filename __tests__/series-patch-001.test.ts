@@ -136,3 +136,24 @@ describe('SERIES-PATCH-RETRY-001', () => {
     expect(block).toContain('(after 1 retry)')
   })
 })
+
+describe('SERIES-PATCH-QUOTES-001', () => {
+  const { applyPatchEdits: apply, matchKey } = require('@/lib/seriesPatch')
+  const curly = 'TITLE: X\nDIANE HOLLIS: There they are. I was starting to think you’d found a better dinner.\nNARRATOR: She smiled — too brightly.\n' + 'NARRATOR: Waves. '.repeat(30)
+  test('a straight apostrophe in the quote matches a curly one in the script', () => {
+    const r = apply(curly, [{ find: "DIANE HOLLIS: There they are. I was starting to think you'd found a better dinner.", replace: '' }])
+    expect(r.ok).toBe(true)
+    if (r.ok) expect(r.script).not.toContain('DIANE HOLLIS')
+  })
+  test('a hyphen in the quote matches an em dash in the script, and untouched text keeps its curly marks', () => {
+    const r = apply(curly, [{ find: 'NARRATOR: She smiled - too brightly.', replace: 'NARRATOR: She smiled — too politely.' }])
+    expect(r.ok).toBe(true)
+    if (r.ok) {
+      expect(r.script).toContain('too politely')
+      expect(r.script).toContain('you’d')
+    }
+  })
+  test('matching copy keeps the same length', () => {
+    expect(matchKey(curly).length).toBe(curly.length)
+  })
+})
