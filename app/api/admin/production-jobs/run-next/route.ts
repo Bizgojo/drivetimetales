@@ -52,6 +52,7 @@ import { checkRuntimeVsBrief, parseBriefRuntimeToSecs, RUNTIME_GATE_ID } from '@
 import { runGarbleGate } from '@/lib/garbleGate'
 import { checkScriptRuntimeMeetsMinimum, formatScriptRuntimeShortMessage, SCRIPT_RUNTIME_PREFLIGHT, SCRIPT_RUNTIME_PREFLIGHT_ID } from '@/lib/scriptRuntimeEstimate'
 import { onlyRuntimeMaxBlockers, buildTrimPrompt, parseTrimReply } from '@/lib/writerTrim'
+import { seriesFactsOf, backfilledFactsPromptBlock, factsLines, buildFactsBackfillPrompt, parseFactsBackfill } from '@/lib/seriesFactsBackfill'
 import { AUTHOR_WRITTEN_EXEMPT_ID, resolveAuthorWrittenExempt } from '@/lib/authorWrittenExempt'
 import { parseScriptPositions } from '@/lib/scriptLineIndex'
 // GATE 4 (GATE-GAPS-SPEC-20261004 §4): wire the existing deterministic duplicate-segment
@@ -6853,6 +6854,8 @@ async function generateOneSeriesEpisodeScript(job: ProductionJob, model: string)
     // SERIES-STYLE-ACTION-001 / SERIES-OUTLINE-001
     + buildStylePromptBlock(styleProfile, { episodeNumber: targetEpisodeNumber })
     + buildOutlinePromptBlock(seriesOutline, targetEpisodeNumber)
+    // SERIES-FACTS-BACKFILL-001: fixed facts for a series planned before SERIES-FACTS-002.
+    + backfilledFactsPromptBlock(seriesOutline, seriesFactsOf([brief]), targetEpisodeNumber)
     // SERIES-NEMESIS-001
     + buildSequelHookPromptBlock(sequelHookOf(brief), {
       episodeNumber: targetEpisodeNumber,
@@ -7833,6 +7836,48 @@ async function shortenDescriptionLoop(description: string, model: string): Promi
   return description
 }
 
+/**
+ * SERIES-FACTS-BACKFILL-001: one call writes down the fixed facts of a series that has none,
+ * saved as brief_json.series_facts on every open episode (published episodes are not touched).
+ * Never throws: on any failure the series reads run as before, without facts.
+ */
+async function backfillSeriesFacts(job: ProductionJob, model: string, seriesId: string, sortedEps: any[]): Promise<Array<{ fact: string; from_episode: number }>> {
+  try {
+    const prompt = buildFactsBackfillPrompt({
+      seriesTitle: String(sortedEps[0]?.series_name || ''),
+      episodes: sortedEps.map((ep: any) => ({ episodeNumber: episodeNumber(ep, 0), title: String(ep.title || ''), body: storyBodyText(String(ep.script || '')) })),
+    })
+    const res = await anthropic.messages.create({ model, max_tokens: 3000, temperature: 0, messages: [{ role: 'user', content: prompt }] })
+    logAnthropicCall({
+      route: '/api/admin/production-jobs/run-next',
+      purpose: 'series-facts-backfill',
+      model,
+      inputTokens: res.usage?.input_tokens ?? 0,
+      outputTokens: res.usage?.output_tokens ?? 0,
+      storyId: sortedEps[0]?.id || undefined,
+      storyTitle: String(sortedEps[0]?.series_name || 'Series facts'),
+      metadata: { is_v2: true, production_job_id: job.id, series_id: seriesId },
+    }).catch(() => {})
+    const facts = parseFactsBackfill(res.content.map((c: any) => ('text' in c ? c.text : '')).join(''), sortedEps.length)
+    if (!facts) {
+      console.warn(`[SERIES-FACTS-BACKFILL-001] series ${seriesId}: reply unusable; continuing without facts`)
+      return []
+    }
+    for (const ep of sortedEps) {
+      if (isFrozenSeriesEpisode(ep)) continue
+      const nextBrief = { ...((ep.brief_json && typeof ep.brief_json === 'object') ? ep.brief_json : {}), series_facts: facts }
+      const { error } = await supabase.from('stories').update({ brief_json: nextBrief }).eq('id', ep.id)
+      if (error) throw new Error(`save failed on episode ${episodeNumber(ep, 0)}: ${error.message}`)
+      ep.brief_json = nextBrief
+    }
+    console.log(`[SERIES-FACTS-BACKFILL-001] series ${seriesId}: ${facts.length} fixed facts saved`)
+    return facts
+  } catch (e) {
+    console.warn(`[SERIES-FACTS-BACKFILL-001] series ${seriesId}: failed (${e instanceof Error ? e.message : String(e)}); continuing without facts`)
+    return []
+  }
+}
+
 /** WRITER-TRIM-001: one cut-only call on an over-length series draft (logged). Returns the raw reply. */
 async function trimScriptToSeriesLength(prompt: string, model: string, timeoutMs: number, ctx: { jobId: string; storyId: string; title?: string | null; seriesId: string; episodeNumber: number }): Promise<string> {
   const res = await anthropic.messages.create({
@@ -8202,6 +8247,13 @@ async function scoreValidateSeriesPackage(job: ProductionJob, model: string) {
   const continuityState = (state as any).seriesContinuity && typeof (state as any).seriesContinuity === 'object' ? (state as any).seriesContinuity : {}
   const isLandingPackage = refreshedEpisodes.some((ep: any) => /LANDING-STORY-001|No Belle B/i.test(extractHeader(String(ep.script || ''), 'VARIANT')))
   const continuityFingerprint = scriptsFingerprint(refreshedEpisodes.map((ep: any) => String(ep.script || '')))
+  // SERIES-FACTS-BACKFILL-001: a series with no fixed facts gets them written down once, from
+  // the episodes already written (earliest mention wins), before the series reads and before
+  // any patch or rewrite. Runs even when the continuity read is skipped for unchanged scripts.
+  let seriesFacts = seriesFactsOf(refreshedEpisodes.map((ep: any) => ep.brief_json))
+  if (seriesContinuityEnabled() && !isLandingPackage && !seriesFacts.length && refreshedEpisodes.length > 1 && refreshedEpisodes.every((ep: any) => Boolean(ep.script))) {
+    seriesFacts = await backfillSeriesFacts(job, model, String(seriesId), [...refreshedEpisodes].sort((a: any, b: any) => episodeNumber(a, 0) - episodeNumber(b, 0)))
+  }
   if (seriesContinuityEnabled() && !isLandingPackage && continuityState.passedFingerprint !== continuityFingerprint) {
     const sortedEps = [...refreshedEpisodes].sort((a: any, b: any) => episodeNumber(a, 0) - episodeNumber(b, 0))
     // SERIES-FACTS-001: plain-text check of dialogue against the cast lists (no AI).
@@ -8212,14 +8264,13 @@ async function scoreValidateSeriesPackage(job: ProductionJob, model: string) {
     const blockingFactIssues = factCheck.issues.filter((i) => !frozenNumbers.has(i.episode))
     if (factCheck.issues.length) console.log(`[SERIES-FACTS-001] series ${seriesId}: ${blockingFactIssues.length} blocking, ${publishedFactIssues.length} in published episodes`)
     const outline = (sortedEps[0]?.brief_json as any)?.series_outline as SeriesOutline | undefined
-    const outlineText = outline?.episodes?.length
-      ? [
-          ...outline.characters.map((c) => `${c.label}: ${c.name} — ${c.role}`),
-          ...outline.threads.map((t) => `Thread ${t.id}: ${t.question} (resolved in episode ${t.resolved_in})`),
-          ...factsReferenceLines(outline),
-          ...outline.episodes.map((e) => `Episode ${e.episode}: ${e.goal}`),
-        ].join('\n')
-      : ''
+    const hasPlan = Boolean(outline?.episodes?.length)
+    const outlineText = [
+      ...(hasPlan ? outline!.characters.map((c) => `${c.label}: ${c.name} — ${c.role}`) : []),
+      ...(hasPlan ? outline!.threads.map((t) => `Thread ${t.id}: ${t.question} (resolved in episode ${t.resolved_in})`) : []),
+      ...factsLines(seriesFacts),
+      ...(hasPlan ? outline!.episodes.map((e) => `Episode ${e.episode}: ${e.goal}`) : []),
+    ].join('\n')
     const continuityPrompt = buildContinuityPrompt({
       seriesTitle: String(sortedEps[0]?.series_name || ''),
       outlineText,
@@ -10228,7 +10279,7 @@ export async function POST(req: NextRequest) {
                 // SERIES-PATCH-RETRY-001 (Weekend Wife, Nov 12): one retry when a quoted line does not
                 // match the script exactly (patch 2 misquoted one EP6 line and fell back to a full
                 // rewrite). The retry names the failing edit and asks for corrected JSON.
-                const patchPrompt = buildPatchPrompt({ seriesTitle, episodeNumber: epNum, title: String(ep.title || ''), script: String(ep.script), issues: epIssues })
+                const patchPrompt = buildPatchPrompt({ seriesTitle, episodeNumber: epNum, title: String(ep.title || ''), script: String(ep.script), issues: epIssues, facts: factsLines(seriesFactsOf(patchEpisodes.map((e: any) => e.brief_json))) })
                 const callPatchWriter = async (messages: Array<{ role: 'user' | 'assistant'; content: string }>, attempt: number) => {
                   const response = await anthropic.messages.create({
                     model,

@@ -51,7 +51,7 @@ export function planSeriesPatch(input: {
   return { action: 'patch', run: input.patchRuns + 1, byEpisode }
 }
 
-export function buildPatchPrompt(input: { seriesTitle: string; episodeNumber: number; title: string; script: string; issues: SeriesReadIssue[] }): string {
+export function buildPatchPrompt(input: { seriesTitle: string; episodeNumber: number; title: string; script: string; issues: SeriesReadIssue[]; facts?: string[] }): string {
   const list = input.issues.map((i, n) => `${n + 1}. ${i.problem}${i.fix ? `\n   Requested fix: ${i.fix}` : ''}`).join('\n')
   return `You are the script editor for the audio drama series "${input.seriesTitle}". A reviewer read the whole series and found the problems below in Episode ${input.episodeNumber}, "${input.title}". Fix ONLY these problems with the smallest edits that work. Do not rewrite, restyle or improve anything else.
 
@@ -67,7 +67,7 @@ RULES FOR EDITS:
 6. Change the character guide or cast list only when a problem is about it.
 7. Do not change the BELLE B lines unless a problem is about them.
 8. Fix every listed problem. If one cannot be fixed with small edits, still return the edits you can make and name it in "unfixed".
-
+${input.facts?.length ? `9. FIXED FACTS (SERIES-FACTS-BACKFILL-001): every edit must agree with these exactly. When a problem's requested fix disagrees with a fixed fact, follow the fixed fact.\n${input.facts.map((f) => `   - ${f}`).join('\n')}\n` : ''}
 Return JSON only, no markdown:
 {"edits": [{"find": "...", "replace": "..."}], "unfixed": ["..."]}
 

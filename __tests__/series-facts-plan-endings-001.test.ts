@@ -44,7 +44,7 @@ describe('SERIES-FACTS-002', () => {
     const outline = validateSeriesOutline(plan(facts), 3, 4).outline!
     expect(factsReferenceLines(outline)[0]).toBe("Fact (from episode 1): Connor's father died eight months ago.")
     const src = readFileSync(join(__dirname, '..', 'app/api/admin/production-jobs/run-next/route.ts'), 'utf8')
-    expect(src).toContain('...factsReferenceLines(outline),')
+    expect(src).toContain('...factsLines(seriesFacts),')
   })
   test('an old plan with no facts still works for the writer', () => {
     const old: any = plan([]); delete old.facts
