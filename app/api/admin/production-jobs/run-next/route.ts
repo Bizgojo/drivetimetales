@@ -98,6 +98,7 @@ import { legacyStepModels, routeStep, resolveModelForStep, coerceValidationModel
 import { buildContinuityPins, hashScript, verifyContinuityPins } from '@/lib/continuityPin'
 import { checkSeriesFacts, formatFactSheet, castListsText } from '@/lib/seriesFacts'
 import { runGeminiStoryRead, listenerText, geminiReadBlocks, geminiBlockingVerdict, geminiRewriteTarget, MAX_GEMINI_SCRIPT_REWRITES, type GeminiReadState } from '@/lib/geminiStoryRead'
+import { seriesPatchEnabled, planSeriesPatch, buildPatchPrompt, parsePatchReply, applyPatchEdits, repinAfterPatch, MAX_SERIES_PATCH_RUNS, type SeriesReadIssue } from '@/lib/seriesPatch'
 import { planTimingPass, finishTimingPass, timedLinesFromSizes, sizesFromListing, type TimingCheckState } from '@/lib/timingPass'
 import {
   hasEarnedPackageEvidence,
@@ -8184,6 +8185,8 @@ async function scoreValidateSeriesPackage(job: ProductionJob, model: string) {
         episodes: refreshedEpisodes,
         nextStep: NEXT_STEP_AFTER_SERIES_SCRIPTS,
         packageReport: continuityReport,
+        // SERIES-PATCH-001: structured issues so the writer can patch lines instead of rewriting.
+        seriesReadIssues: verdict.issues.filter((i) => !frozenNumbers.has(i.episode)),
         state: {
           ...state,
           seriesId: String(seriesId),
@@ -8248,6 +8251,8 @@ async function scoreValidateSeriesPackage(job: ProductionJob, model: string) {
         episodes: refreshedEpisodes,
         nextStep: NEXT_STEP_AFTER_SERIES_SCRIPTS,
         packageReport: geminiReport,
+        // SERIES-PATCH-001: structured issues so the writer can patch lines instead of rewriting.
+        seriesReadIssues: geminiVerdict.issues.map(({ episode, problem, fix }) => ({ episode, problem, fix })),
         state: {
           ...state,
           seriesId: String(seriesId),
@@ -9923,7 +9928,7 @@ export async function POST(req: NextRequest) {
 
     if (step === NEXT_STEP_AFTER_SERIES_SCRIPTS) {
       const result = await scoreValidateSeriesPackage(lockedJob, validationModel)
-      const logs = appendLog(lockedJob, result.failed
+      let logs = appendLog(lockedJob, result.failed
         ? 'Series package validation failed'
         : result.complete
           ? 'Series package validation passed'
@@ -10095,6 +10100,127 @@ export async function POST(req: NextRequest) {
             repairedDescription,
             logs: retryLogs,
           })
+        }
+
+        // SERIES-PATCH-001 (Weekend Wife in Miami, job fe4c8778, Nov 12): a whole-series read
+        // failure is patched in place by the pipeline writer (exact-line edits) before any
+        // whole-episode rewrite. Rewrites fixed the listed errors and invented new ones. Patched
+        // episodes go back through the per-episode validator and the series read. Any edit that
+        // does not apply cleanly falls back to SERIES-REWRITE-001 below. Bounded per job.
+        const readIssues: SeriesReadIssue[] = Array.isArray((result as any).seriesReadIssues) ? (result as any).seriesReadIssues : []
+        if (!(result as any).continuityPinError && !seriesAutoRepairExempt && seriesPatchEnabled() && readIssues.length) {
+          const priorPatchState: any = lockedJob.state_json && typeof lockedJob.state_json === 'object' ? lockedJob.state_json : {}
+          const patchRuns = Number(priorPatchState.seriesRewrite?.patchRuns || 0)
+          const patchEpisodes = (result.episodes || []) as any[]
+          const patchPlan = planSeriesPatch({
+            issues: readIssues,
+            patchRuns,
+            frozenEpisodes: new Set(patchEpisodes.filter((ep: any) => isFrozenSeriesEpisode(ep)).map((ep: any) => episodeNumber(ep, 0))),
+            episodesWithScript: new Set(patchEpisodes.filter((ep: any) => Boolean(ep.script)).map((ep: any) => episodeNumber(ep, 0))),
+          })
+          if (patchPlan.action === 'patch') {
+            const seriesTitle = String(patchEpisodes[0]?.series_name || '')
+            const targets = Array.from(patchPlan.byEpisode.entries()).sort((a, b) => a[0] - b[0])
+            const outcomes = await Promise.all(targets.map(async ([epNum, epIssues]) => {
+              const ep = patchEpisodes.find((e: any) => episodeNumber(e, 0) === epNum)
+              if (!ep?.script) return { epNum, error: 'no script' as string }
+              try {
+                const response = await anthropic.messages.create({
+                  model,
+                  max_tokens: 8000,
+                  temperature: 0.2,
+                  messages: [{ role: 'user', content: buildPatchPrompt({ seriesTitle, episodeNumber: epNum, title: String(ep.title || ''), script: String(ep.script), issues: epIssues }) }],
+                }, { timeout: 240_000, maxRetries: 0 })
+                logAnthropicCall({
+                  route: '/api/admin/production-jobs/run-next',
+                  purpose: 'series-episode-patch',
+                  model,
+                  inputTokens: response.usage?.input_tokens ?? 0,
+                  outputTokens: response.usage?.output_tokens ?? 0,
+                  storyId: String(ep.id),
+                  storyTitle: String(ep.title || ''),
+                  metadata: { is_v2: true, series_id: String(result.seriesId), episode_number: epNum, patch_run: patchPlan.run },
+                }).catch(() => {})
+                const raw = response.content.map((c: any) => ('text' in c ? c.text : '')).join('').trim()
+                const reply = parsePatchReply(raw)
+                if (!reply) return { epNum, error: 'writer returned no JSON edits' }
+                const applied = applyPatchEdits(String(ep.script), reply.edits)
+                if (applied.ok === false) return { epNum, error: applied.error }
+                // Same format-only repairs every writer draft gets.
+                const script = spellOutSpokenNumerals(normalizeScriptFormat(applied.script).script).script
+                return { epNum, ep, script, edits: reply.edits.length, unfixed: reply.unfixed }
+              } catch (e) {
+                return { epNum, error: e instanceof Error ? e.message.slice(0, 200) : String(e).slice(0, 200) }
+              }
+            }))
+            const patchFailure = outcomes.find((o: any) => o.error)
+            if (!patchFailure) {
+              const patchedScripts = new Map<string, string>(outcomes.map((o: any) => [String(o.ep.id), o.script]))
+              const repinned = repinAfterPatch(patchEpisodes, patchedScripts)
+              for (const o of outcomes as any[]) {
+                const sj = repinned.get(String(o.ep.id)) || (o.ep.script_json && typeof o.ep.script_json === 'object' ? o.ep.script_json : {})
+                const backups = Array.isArray(sj.rewrite_backups) ? sj.rewrite_backups.slice(-2) : []
+                const save = supabase
+                  .from('stories')
+                  .update({
+                    script: o.script,
+                    status: 'script_drafted',
+                    validator_result: null,
+                    validator_report: null,
+                    validator_passed_at: null,
+                    script_version: (o.ep.script_version || 1) + 1,
+                    script_json: {
+                      ...sj,
+                      rewrite_backups: [...backups, { at: nowIso(), reason: 'series_patch', script: o.ep.script }],
+                      series_patch: { run: patchPlan.run, at: nowIso(), edits: o.edits, unfixed: o.unfixed },
+                    },
+                  })
+                  .eq('id', o.ep.id)
+                const { data: saved, error: saveErr } = await (o.ep.script_version == null
+                  ? save.is('script_version', null)
+                  : save.eq('script_version', o.ep.script_version))
+                  .select('id')
+                  .single()
+                if (saveErr || !saved) throw new Error(`SERIES-PATCH-001: episode ${o.epNum} save failed: ${saveErr?.message || 'script changed underneath'}`)
+              }
+              // Episodes that were not patched but pinned a patched script.
+              for (const [storyId, sj] of Array.from(repinned.entries())) {
+                if (patchedScripts.has(storyId)) continue
+                const { error: pinErr } = await supabase.from('stories').update({ script_json: sj }).eq('id', storyId)
+                if (pinErr) throw new Error(`SERIES-PATCH-001: re-pin of ${storyId} failed: ${pinErr.message}`)
+              }
+              const patchSummary = (outcomes as any[]).map((o) => `EP${o.epNum}: ${o.edits} edit(s)${o.unfixed.length ? `, ${o.unfixed.length} not fixable by edit` : ''}`).join('; ')
+              const patchLogs = appendLog({ ...lockedJob, logs }, `Series patch ${patchPlan.run}/${MAX_SERIES_PATCH_RUNS}: ${readIssues.length} series-read issue(s) fixed in place — ${patchSummary}. Re-validating.`, {
+                seriesId: result.seriesId,
+                patchedEpisodes: (outcomes as any[]).map((o) => o.epNum),
+                unfixed: (outcomes as any[]).flatMap((o) => o.unfixed.map((u: string) => `EP${o.epNum}: ${u}`)).slice(0, 10),
+              })
+              const { data: patchJob, error: patchJobErr } = await supabase
+                .from('production_jobs')
+                .update({
+                  status: 'queued',
+                  current_step: NEXT_STEP_AFTER_SERIES_SCRIPTS,
+                  state_json: {
+                    ...result.state,
+                    seriesValidation: null,
+                    seriesRewrite: { ...(priorPatchState.seriesRewrite || {}), patchRuns: patchPlan.run, lastPatch: { run: patchPlan.run, at: nowIso(), episodes: (outcomes as any[]).map((o) => o.epNum) } },
+                  },
+                  error_json: null,
+                  logs: patchLogs,
+                  locked_at: null,
+                  locked_by: null,
+                })
+                .match(ownedJobFence(lockedJob, lockHolderId))
+                .select('*')
+                .single()
+              if (patchJobErr) throw new Error(`SERIES-PATCH-001: failed to queue re-validation: ${patchJobErr.message}`)
+              return NextResponse.json({ success: true, action: 'series_patch', jobId: patchJob.id, currentStep: step, nextStep: NEXT_STEP_AFTER_SERIES_SCRIPTS, patchRun: patchPlan.run, logs: patchLogs })
+            }
+            console.warn(`[SERIES-PATCH-001] series ${result.seriesId}: patch ${patchPlan.run} not applied (EP${(patchFailure as any).epNum}: ${(patchFailure as any).error}) — falling back to rewrite`)
+            logs = appendLog({ ...lockedJob, logs }, `Series patch not applied (EP${(patchFailure as any).epNum}: ${(patchFailure as any).error}) — falling back to whole-episode rewrite`, { seriesId: result.seriesId })
+          } else {
+            console.log(`[SERIES-PATCH-001] series ${result.seriesId}: skipped — ${patchPlan.reason}`)
+          }
         }
 
         // SERIES-REWRITE-001: a story-content failure re-writes the failed
