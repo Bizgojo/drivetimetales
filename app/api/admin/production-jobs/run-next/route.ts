@@ -41,7 +41,7 @@ import { sequelHookOf, buildSequelHookPromptBlock, sequelHookValidatorNote } fro
 import { seasonHookOf, seasonHookOfEpisodes, seasonHookValidatorNote, buildSeasonHookPromptBlock } from '@/lib/seasonHook'
 import { guideDescriptionNameCandidate, isDescriptorNotName } from '@/lib/rosterFullName'
 import { canonicalizeCharacterNames, characterNameConflictDetails, buildNameIndex, aliasesForLabel } from '@/lib/characterNames'
-import { seriesOutlineEnabled, buildSeriesOutlinePrompt, validateSeriesOutline, buildOutlinePromptBlock, type SeriesOutline } from '@/lib/seriesOutline'
+import { seriesOutlineEnabled, buildSeriesOutlinePrompt, validateSeriesOutline, buildOutlinePromptBlock, factsReferenceLines, buildOutlineEndingReviewPrompt, parseOutlineEndingReview, type SeriesOutline } from '@/lib/seriesOutline'
 import { seriesContinuityEnabled, buildContinuityPrompt, parseContinuityVerdict, continuityRewriteTarget, scriptsFingerprint, storyBodyText, MAX_SERIES_CONTINUITY_RUNS, CONTINUITY_MAX_TOKENS, CONTINUITY_JSON_ONLY_RETRY, hasJsonObject } from '@/lib/seriesContinuity'
 import { auditionClip, sendCastReview } from '@/lib/castReviewTelegram'
 import { castReviewClipPath } from '@/lib/castReview'
@@ -6631,7 +6631,9 @@ async function createSeriesOutline(job: ProductionJob, model: string, series: an
     seriesTitle: String(series.title || brief.series_name || ''),
   })
   let problems: string[] = []
-  for (let attempt = 1; attempt <= 2; attempt += 1) {
+  // PLAN-ENDINGS-001: one more attempt than before, used only when the ending review rejects a plan.
+  const OUTLINE_ATTEMPTS = 3
+  for (let attempt = 1; attempt <= OUTLINE_ATTEMPTS; attempt += 1) {
     const prompt = problems.length
       ? `${basePrompt}\n\nYOUR PREVIOUS PLAN WAS REJECTED FOR: ${problems.join('; ')}. Fix every point.`
       : basePrompt
@@ -6650,6 +6652,33 @@ async function createSeriesOutline(job: ProductionJob, model: string, series: an
     let parsed: unknown = null
     try { parsed = parseJsonObject(raw) } catch { parsed = null }
     const result = validateSeriesOutline(parsed, totalEpisodes, maxMain, { openThreadRequired: Boolean(sequelHookOf(brief)), seriesTitle: String(series.title || brief.series_name || '') })
+    // PLAN-ENDINGS-001: a structurally valid plan is also checked against the episode-ending
+    // rules before any episode is written. A rejected plan is re-planned with the reasons; on
+    // the last attempt the plan is kept (a plan is better than none) and the issues are logged.
+    if (result.outline && attempt < OUTLINE_ATTEMPTS) {
+      try {
+        const review = await anthropic.messages.create({ model, max_tokens: 1500, temperature: 0, messages: [{ role: 'user', content: buildOutlineEndingReviewPrompt(result.outline, String(series.title || brief.series_name || '')) }] })
+        logAnthropicCall({
+          route: '/api/admin/production-jobs/run-next',
+          purpose: 'series-outline-ending-review',
+          model,
+          inputTokens: review.usage?.input_tokens ?? 0,
+          outputTokens: review.usage?.output_tokens ?? 0,
+          storyId: episodes[0]?.id || undefined,
+          storyTitle: String(series.title || 'Series outline'),
+          metadata: { is_v2: true, production_job_id: job.id, series_id: series.id, attempt },
+        }).catch(() => {})
+        const verdict = parseOutlineEndingReview(review.content.map((c: any) => ('text' in c ? c.text : '')).join('').trim(), totalEpisodes)
+        if (verdict && verdict.issues.length) {
+          problems = verdict.issues.map((i) => `Episode ${i.episode} ending: ${i.problem}${i.fix ? ` Fix: ${i.fix}` : ''}`)
+          console.warn(`[PLAN-ENDINGS-001] series ${series.id}: plan attempt ${attempt} endings rejected: ${problems.join('; ')}`)
+          continue
+        }
+        if (!verdict) console.warn(`[PLAN-ENDINGS-001] series ${series.id}: ending review unreadable; keeping the plan`)
+      } catch (e) {
+        console.warn(`[PLAN-ENDINGS-001] series ${series.id}: ending review failed (${e instanceof Error ? e.message : String(e)}); keeping the plan`)
+      }
+    }
     if (result.outline) {
       for (const ep of episodes) {
         const { error } = await supabase
@@ -8119,6 +8148,7 @@ async function scoreValidateSeriesPackage(job: ProductionJob, model: string) {
       ? [
           ...outline.characters.map((c) => `${c.label}: ${c.name} — ${c.role}`),
           ...outline.threads.map((t) => `Thread ${t.id}: ${t.question} (resolved in episode ${t.resolved_in})`),
+          ...factsReferenceLines(outline),
           ...outline.episodes.map((e) => `Episode ${e.episode}: ${e.goal}`),
         ].join('\n')
       : ''

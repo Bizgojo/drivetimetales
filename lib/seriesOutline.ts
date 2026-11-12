@@ -15,7 +15,15 @@ export type OutlineThread = { id: string; question: string; resolved_in: number 
 export type OutlineEpisode = { episode: number; goal: string; beats: string[]; resolves: string[]; ends_on: string }
 import { nemesisOpenThreadLimit } from './seriesSequel'
 
-export type SeriesOutline = { characters: OutlineCharacter[]; threads: OutlineThread[]; episodes: OutlineEpisode[] }
+/**
+ * SERIES-FACTS-002 (Weekend Wife in Miami, Nov 12, 2026): episodes are written one at a time,
+ * so concrete facts drifted between them ("eight months" vs "two years", October vs November,
+ * weekly pay vs monthly salary) and every repair risked new drift. The plan now fixes these
+ * facts once; every episode writer gets them and the series checks read them.
+ */
+export type OutlineFact = { fact: string; from_episode: number }
+export type SeriesOutline = { characters: OutlineCharacter[]; threads: OutlineThread[]; episodes: OutlineEpisode[]; facts?: OutlineFact[] }
+export const MIN_OUTLINE_FACTS = 5
 
 export function seriesOutlineEnabled(env: Record<string, string | undefined> = process.env): boolean {
   // Marc 2026-10-29 23:44 EDT: permanent for all future stories. Default ON; only an explicit SERIES_OUTLINE=off disables it.
@@ -58,11 +66,13 @@ Rules for the plan:
 ${nemesisBlock}- Each episode has ONE clear goal, written as a single sentence a listener could repeat.
 - Each non-finale episode ends on a specific cliffhanger; the finale closes the series.
 - Beats are 3 to 6 short, concrete events per episode, in order. No two episodes use the same kind of climax.
+- FIXED FACTS: list 8 to 15 concrete facts every episode must agree on: days and dates of key events, times of day, ages, how long ago past events happened, money amounts and pay terms, where people live and work, and which character learns which secret in which episode. Each fact is one short sentence with the exact value, plus "from_episode" = the first episode where the listener hears it.
 
 Return JSON only, no markdown:
 {"characters":[{"name":"...","label":"...","role":"...","gender":"male|female","aliases":["..."]}],
  "threads":[{"id":"T1","question":"...","resolved_in":<episode number>}],
- "episodes":[{"episode":1,"goal":"...","beats":["..."],"resolves":["T2"],"ends_on":"..."}]}`
+ "episodes":[{"episode":1,"goal":"...","beats":["..."],"resolves":["T2"],"ends_on":"..."}],
+ "facts":[{"fact":"...","from_episode":1}]}`
 }
 
 /** Parse and check the plan. Returns problems (empty = usable). */
@@ -91,8 +101,13 @@ export function validateSeriesOutline(raw: unknown, totalEpisodes: number, maxMa
       ends_on: String(e?.ends_on || '').trim(),
     }))
     .sort((a: OutlineEpisode, b: OutlineEpisode) => a.episode - b.episode)
+  const facts: OutlineFact[] = (Array.isArray(o.facts) ? o.facts : [])
+    .map((f: any) => ({ fact: String(f?.fact || '').trim(), from_episode: Math.round(Number(f?.from_episode)) }))
+    .filter((f: OutlineFact) => f.fact && f.from_episode >= 1 && f.from_episode <= totalEpisodes)
+    .slice(0, 20)
 
   if (!characters.length) problems.push('no characters')
+  if (facts.length < MIN_OUTLINE_FACTS) problems.push(`${facts.length} fixed facts (need at least ${MIN_OUTLINE_FACTS}: dates, times, ages, how long ago, money, who learns what when)`)
   if (characters.length > maxMain) problems.push(`${characters.length} main characters (max ${maxMain})`)
   const labels = characters.map((c) => c.label)
   if (new Set(labels).size !== labels.length) problems.push('two characters share a speaker label')
@@ -121,7 +136,7 @@ export function validateSeriesOutline(raw: unknown, totalEpisodes: number, maxMa
     else if (resolvers.length === 1 && resolvers[0] !== t.resolved_in) problems.push(`thread ${t.id} says episode ${t.resolved_in} but episode ${resolvers[0]} resolves it`)
   }
   if (threads.length && !threads.some((t) => t.resolved_in === totalEpisodes)) problems.push('the finale resolves no thread')
-  return { outline: problems.length ? null : { characters, threads, episodes }, problems }
+  return { outline: problems.length ? null : { characters, threads, episodes, facts }, problems }
 }
 
 /** The plan as the episode writer sees it. */
@@ -146,9 +161,67 @@ export function buildOutlinePromptBlock(outline: SeriesOutline | null | undefine
     leftOpen.length ? `NEVER RESOLVED in this series (the nemesis escapes; carried into a future series): ${leftOpen.map((t) => t.question).join('; ')}` : '',
     resolvedEarlier.length ? `ALREADY RESOLVED in earlier episodes — keep them resolved, never undo or repeat them: ${resolvedEarlier.map((t) => `${t.question} (episode ${t.resolved_in})`).join('; ')}` : '',
     resolvedLater.length ? `NOT YET — must stay open in this episode (resolved later): ${resolvedLater.map((t) => `${t.question} (episode ${t.resolved_in})`).join('; ')}` : '',
+    ...factsPromptLines(outline, episodeNumber),
     'Whole-series plan, for reference:',
     ...outline.episodes.map((e) => `  Episode ${e.episode}: ${e.goal}`),
     '',
   ]
   return lines.filter((l) => l !== '').join('\n') + '\n'
+}
+
+/** SERIES-FACTS-002: the fixed facts as the episode writer sees them. */
+export function factsPromptLines(outline: SeriesOutline | null | undefined, episodeNumber: number): string[] {
+  const facts = Array.isArray(outline?.facts) ? outline!.facts : []
+  if (!facts.length) return []
+  const known = facts.filter((f) => f.from_episode <= episodeNumber)
+  const later = facts.filter((f) => f.from_episode > episodeNumber)
+  return [
+    'FIXED FACTS (SERIES-FACTS-002): every episode must agree with these exactly. Never change a date, day, time, age, length of time, amount of money or who-knows-what. Speak numbers as words.',
+    ...known.map((f) => `- ${f.fact}`),
+    later.length ? 'Not yet known to the listener (do not reveal in this episode; never contradict):' : '',
+    ...later.map((f) => `- (episode ${f.from_episode}) ${f.fact}`),
+  ].filter(Boolean)
+}
+
+/** SERIES-FACTS-002: the facts as plain lines for the series continuity check and story read. */
+export function factsReferenceLines(outline: SeriesOutline | null | undefined): string[] {
+  const facts = Array.isArray(outline?.facts) ? outline!.facts : []
+  return facts.map((f) => `Fact (from episode ${f.from_episode}): ${f.fact}`)
+}
+
+/**
+ * PLAN-ENDINGS-001 (Widow Who Watched EP6, Nov 12, 2026): the approved plan put the
+ * series climax in Episode 6 and ended it settled, so the episode checker (non-finale
+ * episodes must end on a specific cliffhanger) failed every draft until a person stepped
+ * in. The plan's endings are now reviewed against the same rules before any episode is
+ * written, so a plan that cannot pass is fixed in one cheap step, not after six drafts.
+ */
+export function buildOutlineEndingReviewPrompt(outline: SeriesOutline, seriesTitle: string): string {
+  const total = outline.episodes.length
+  const main = outline.threads.find((t) => t.resolved_in === total)
+  return `You review the plan for the ${total}-episode audio drama series "${seriesTitle}" BEFORE any episode is written. Judge ONLY the episode endings.
+
+Rules the finished episodes will be checked against:
+1. Every episode except the last must END on a specific cliffhanger: an open danger, a reversal, a new threat or a hard choice that names a character or situation and that the next episode must answer. An ending where the danger is over, the villain is caught, or the narrator sums up what will happen tomorrow is NOT a cliffhanger.
+2. The series' biggest confrontation and the main question are resolved ONLY in the last episode (Episode ${total}). An earlier episode may resolve a smaller thread, but it must still end on something open.
+
+THE PLAN:
+${outline.episodes.map((e) => `Episode ${e.episode}: goal: ${e.goal}\n  beats: ${e.beats.join(' | ')}\n  ends on: ${e.ends_on || '(not given)'}`).join('\n')}
+Main thread (resolved in Episode ${total}): ${main ? main.question : '(none marked)'}
+
+Return JSON only, no other text:
+{"issues":[{"episode":<number>,"problem":"...","fix":"..."}]}
+Use an empty list when every ending follows the rules. Report only clear breaks of rule 1 or 2.`
+}
+
+export function parseOutlineEndingReview(raw: string, totalEpisodes: number): { issues: Array<{ episode: number; problem: string; fix: string }> } | null {
+  const text = String(raw || '')
+  const start = text.indexOf('{'), end = text.lastIndexOf('}')
+  let obj: any = null
+  try { obj = start >= 0 && end > start ? JSON.parse(text.slice(start, end + 1)) : null } catch { obj = null }
+  if (!obj || !Array.isArray(obj.issues)) return null
+  const issues = obj.issues
+    .map((i: any) => ({ episode: Math.round(Number(i?.episode)), problem: String(i?.problem || '').trim(), fix: String(i?.fix || '').trim() }))
+    .filter((i: { episode: number; problem: string }) => i.problem && i.episode >= 1 && i.episode <= totalEpisodes)
+  return { issues }
 }
