@@ -7,8 +7,13 @@
  * through, the dark outside, the night before. Only words that cannot end a
  * finished sentence are kept: conjunctions, articles, and prepositions that
  * always need an object.
+ *
+ * OUTRO-ENDING-002 (Nov 12 2026: Second Rise EP5 job ad16a70e, Weekend Wife EP4 job
+ * fe4c8778): "what the cake still means to her." and "what came before her." failed
+ * 3 drafts each. "her" and "his" are also object/standalone words ("to her",
+ * "the choice was his"), so they no longer count as cut off.
  */
-export const BELLE_OUTRO_DANGLING_END = /\b(and|or|but|nor|with|to|of|for|from|by|into|onto|upon|toward|towards|among|between|against|beneath|under|while|when|where|whose|the|a|an|my|your|our|their|his|her|its)$/i
+export const BELLE_OUTRO_DANGLING_END = /\b(and|or|but|nor|with|to|of|for|from|by|into|onto|upon|toward|towards|among|between|against|beneath|under|while|when|where|whose|the|a|an|my|your|our|their|its)$/i
 
 export function belleOutroLooksCutOff(withoutFinalPunctuation: string): boolean {
   return BELLE_OUTRO_DANGLING_END.test(String(withoutFinalPunctuation || '').trim())
