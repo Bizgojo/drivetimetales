@@ -116,6 +116,42 @@ function countOccurrences(haystack: string, needle: string): number {
 }
 
 /**
+ * Where a quoted block sits in the script. First an exact match (quote-insensitive,
+ * SERIES-PATCH-QUOTES-001). If that finds nothing, SERIES-PATCH-LINES-001 (Weekend Wife EP6,
+ * Nov 12, 2:07 PM): scripts put a blank line between spoken lines, and the writer quotes
+ * several lines back without the blank lines, so the block is matched line by line, ignoring
+ * blank lines and trailing spaces. Either way the block must occur exactly once.
+ */
+export function locatePatchSpan(script: string, find: string): { at: number; endAt: number } | { error: string } {
+  const outKey = matchKey(script)
+  const findKey = matchKey(find)
+  const n = countOccurrences(outKey, findKey)
+  if (n === 1) {
+    const at = outKey.indexOf(findKey)
+    return { at, endAt: at + find.length }
+  }
+  if (n > 1) return { error: `text found ${n} times` }
+  const want = find.split('\n').map((l) => matchKey(l).trimEnd()).filter((l) => l.trim().length > 0)
+  if (!want.length) return { error: 'text not found' }
+  const lines: Array<{ key: string; start: number; end: number }> = []
+  let pos = 0
+  for (const line of script.split('\n')) {
+    if (line.trim().length > 0) lines.push({ key: matchKey(line).trimEnd(), start: pos, end: pos + line.length })
+    pos += line.length + 1
+  }
+  const hits: Array<{ at: number; endAt: number }> = []
+  for (let i = 0; i + want.length <= lines.length; i += 1) {
+    let ok = true
+    for (let j = 0; j < want.length; j += 1) {
+      if (lines[i + j].key !== want[j]) { ok = false; break }
+    }
+    if (ok) hits.push({ at: lines[i].start, endAt: lines[i + want.length - 1].end })
+  }
+  if (hits.length === 1) return hits[0]
+  return { error: hits.length ? `text found ${hits.length} times` : 'text not found' }
+}
+
+/**
  * Apply edits in order. Every "find" must appear exactly once at the moment it is applied.
  * Fails as a whole (script unchanged) on any bad edit or an over-large change.
  */
@@ -128,14 +164,11 @@ export function applyPatchEdits(script: string, edits: PatchEdit[]): { ok: true;
     // Tolerate trailing whitespace/newline differences at the ends of a quoted block.
     const find = edit.find.replace(/^\n+|\s+$/g, '')
     if (!find) return { ok: false, error: `edit ${i + 1}: empty find` }
-    // SERIES-PATCH-QUOTES-001: match on the quote-insensitive copy; same length, same positions.
-    const outKey = matchKey(out)
-    const findKey = matchKey(find)
-    const n = countOccurrences(outKey, findKey)
-    if (n !== 1) return { ok: false, error: `edit ${i + 1}: text ${n === 0 ? 'not found' : `found ${n} times`}: "${find.slice(0, 80)}"` }
-    const at = outKey.indexOf(findKey)
+    const span = locatePatchSpan(out, find)
+    if ('error' in span) return { ok: false, error: `edit ${i + 1}: ${span.error}: "${find.slice(0, 80)}"` }
+    const at = span.at
     const startsLine = at === 0 || out[at - 1] === '\n'
-    const endAt = at + find.length
+    const endAt = span.endAt
     const endsLine = endAt === out.length || out[endAt] === '\n'
     if (!startsLine || !endsLine) return { ok: false, error: `edit ${i + 1}: must cover whole lines: "${find.slice(0, 80)}"` }
     const replace = edit.replace.replace(/\s+$/g, '')
