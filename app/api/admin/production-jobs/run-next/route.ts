@@ -51,6 +51,7 @@ import { runStoryQualityGate } from '@/lib/storyQualityGate'
 import { checkRuntimeVsBrief, parseBriefRuntimeToSecs, RUNTIME_GATE_ID } from '@/lib/runtimeGate'
 import { runGarbleGate } from '@/lib/garbleGate'
 import { checkScriptRuntimeMeetsMinimum, formatScriptRuntimeShortMessage, SCRIPT_RUNTIME_PREFLIGHT, SCRIPT_RUNTIME_PREFLIGHT_ID } from '@/lib/scriptRuntimeEstimate'
+import { onlyRuntimeMaxBlockers, buildTrimPrompt, parseTrimReply } from '@/lib/writerTrim'
 import { AUTHOR_WRITTEN_EXEMPT_ID, resolveAuthorWrittenExempt } from '@/lib/authorWrittenExempt'
 import { parseScriptPositions } from '@/lib/scriptLineIndex'
 // GATE 4 (GATE-GAPS-SPEC-20261004 §4): wire the existing deterministic duplicate-segment
@@ -88,6 +89,7 @@ import {
   WRITER_MAX_FAILED_INVOCATIONS,
   WRITER_SELF_CHECK_BUDGET_MS,
   seriesSpokenWordTarget,
+  seriesMaxSpokenWords,
 } from '@/lib/scriptReadiness'
 import { shouldContinueSeriesVoiceBatch } from '@/lib/voiceBatch'
 import { runVoiceConformanceGate, type VoiceProfile } from '@/lib/voiceConformanceGate'
@@ -7111,6 +7113,51 @@ async function generateOneSeriesEpisodeScript(job: ProductionJob, model: string)
     }
   }
 
+  // WRITER-TRIM-001 (Second Rise EP7, job ad16a70e, Nov 12): every draft was a few words over
+  // the series ceiling and nothing else was wrong. When the only hard blocker left is
+  // RUNTIME-SERIES-MAX, one cut-only call trims the last draft toward the brief target and the
+  // same self-check runs again. The ceiling itself is unchanged.
+  const trimHard = (writerAttempts[writerAttempts.length - 1]?.blockers || []).filter((b) => !isSoftBlockerLine(b))
+  if (!selfCheckOk && script && writerSelfCheckFn && onlyRuntimeMaxBlockers(trimHard)) {
+    const lastAttempt = writerAttempts[writerAttempts.length - 1]
+    try {
+      const beforeWords = checkScriptRuntimeMeetsMinimum(script).spokenWords
+      const band = seriesSpokenWordTarget(String(selfCheckBriefMinutes))
+      const maxWords = seriesMaxSpokenWords(band.minutes)
+      const reply = await trimScriptToSeriesLength(
+        buildTrimPrompt({ script, spokenWords: beforeWords, targetWords: band.target, minWords: band.min, maxWords: Math.min(band.max, maxWords), isFinale: selfCheckIsFinale }),
+        coerceValidationModelToClaude(model),
+        writerDraftTimeoutMs(Date.now() - writerStepStartedAt),
+        { jobId: job.id, storyId: String(targetEpisode.id), title: targetEpisode.title, seriesId: String(seriesId), episodeNumber: targetEpisodeNumber },
+      )
+      const parsed = parseTrimReply(reply, script)
+      if (!parsed) {
+        if (lastAttempt) lastAttempt.blockers = [...lastAttempt.blockers, 'WRITER-TRIM-001: trim reply was not a usable script']
+      } else {
+        // Same format repairs every draft gets.
+        const trimmed = spellOutSpokenNumerals(normalizeScriptFormat(parsed).script)
+        if (seriesOutline?.characters?.length) trimmed.script = canonicalizeCharacterNames(trimmed.script, seriesOutline.characters).script
+        const afterWords = checkScriptRuntimeMeetsMinimum(trimmed.script).spokenWords
+        const recheck = await writerSelfCheckFn(trimmed.script)
+        const hard = recheck.blockers.filter((b) => !SOFT_WRITER_GATES.has(b.gate))
+        if (afterWords >= band.min && (recheck.ready || hard.length === 0)) {
+          script = trimmed.script
+          selfCheckOk = true
+          writerAttempts.push({ attempt: writerAttempts.length + 1, blockers: [`WRITER-TRIM-001: trimmed ${beforeWords} -> ${afterWords} spoken words`], spokenWords: afterWords })
+        } else if (lastAttempt) {
+          const why = afterWords < band.min
+            ? `cut too far (${afterWords} spoken words, min ${band.min})`
+            : `still blocked by: ${hard.map((b) => `${b.gate}: ${b.detail}`).join('; ').slice(0, 300)}`
+          lastAttempt.blockers = [...lastAttempt.blockers, `WRITER-TRIM-001: trimmed ${beforeWords} -> ${afterWords} spoken words, not accepted: ${why}`]
+        }
+      }
+    } catch (err) {
+      const reason = err instanceof Error ? err.message : String(err)
+      console.warn(`[WRITER-TRIM-001] episode ${targetEpisodeNumber} trim failed: ${reason}`)
+      if (lastAttempt) lastAttempt.blockers = [...lastAttempt.blockers, `WRITER-TRIM-001: trim failed: ${reason.slice(0, 200)}`]
+    }
+  }
+
   // BELLE-SPOILER-WORD-001 (Widow EP5, job c944a59e, Nov 11): the Belle intro
   // said "reveals" on all 3 drafts. Swap the spoiler words in the Belle lines
   // (no AI call), re-run the same self-check, and record what is left so the
@@ -7784,6 +7831,27 @@ async function shortenDescriptionLoop(description: string, model: string): Promi
     if (next) description = next
   }
   return description
+}
+
+/** WRITER-TRIM-001: one cut-only call on an over-length series draft (logged). Returns the raw reply. */
+async function trimScriptToSeriesLength(prompt: string, model: string, timeoutMs: number, ctx: { jobId: string; storyId: string; title?: string | null; seriesId: string; episodeNumber: number }): Promise<string> {
+  const res = await anthropic.messages.create({
+    model,
+    max_tokens: 12000,
+    temperature: 0,
+    messages: [{ role: 'user', content: prompt }],
+  }, { timeout: timeoutMs, maxRetries: 0 })
+  logAnthropicCall({
+    route: '/api/admin/production-jobs/run-next',
+    purpose: 'writer-trim',
+    model,
+    inputTokens: res.usage?.input_tokens ?? 0,
+    outputTokens: res.usage?.output_tokens ?? 0,
+    storyId: ctx.storyId,
+    storyTitle: ctx.title || 'Writer trim',
+    metadata: { is_v2: true, production_job_id: ctx.jobId, series_id: ctx.seriesId, episode_number: ctx.episodeNumber },
+  }).catch(() => {})
+  return res.content.map((c: any) => ('text' in c ? c.text : '')).join('')
 }
 
 /** WRITER-OUTRO-SHORTEN-001: shorten only the Belle B outro of a writer draft (up to 2 small calls, logged). */
