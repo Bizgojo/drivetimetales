@@ -10312,7 +10312,9 @@ export async function POST(req: NextRequest) {
                 state_json: {
                   ...result.state,
                   seriesValidation: null,
-                  seriesRewrite: { counts: rewriteCounts, last: { episode: plan.failedEpisodeNumber, attempt: plan.attempt, at: nowIso() } },
+                  // SERIES-PATCH-001 fix (job fe4c8778, Nov 12): keep patchRuns/lastPatch, or the patch
+                  // budget resets after every whole-episode rewrite.
+                  seriesRewrite: { ...((priorState as any).seriesRewrite || {}), counts: rewriteCounts, last: { episode: plan.failedEpisodeNumber, attempt: plan.attempt, at: nowIso() } },
                 },
                 error_json: null,
                 logs: rewriteLogs,
