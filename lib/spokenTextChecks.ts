@@ -4,7 +4,7 @@
  *   1. A sentence is never split across two lines with a trailing dash: a spoken line that
  *      ends in a dash and is followed by the SAME speaker's next line. (A dash before a
  *      different speaker is an interruption and is fine.)
- *   2. No line is said twice in a row (the same spoken text on two consecutive lines).
+ *   2. No line is said twice in a row by the same speaker (an echo by another speaker is allowed, canon 137).
  *   3. Characters never point at the story itself with "episode"/"chapter" ("next episode",
  *      "this chapter", "episode two"); ordinary uses are fine (CANON-99 item 128). Belle is exempt.
  */
@@ -34,7 +34,10 @@ export function findSpokenTextIssues(script: string): SpokenTextIssue[] {
     const text = String(cur.text).trim()
     const label = `${cur.speaker}: ${text}`.slice(0, 160)
     if (next && TRAILING_DASH.test(text) && next.speaker === cur.speaker) issues.push({ check: 'SPLIT-DASH', line: label })
-    if (next && norm(text) && norm(text) === norm(String(next.text))) issues.push({ check: 'REPEATED-LINE', line: label })
+    // ECHO-ALLOWED-001 (Marc, Nov 11 2026, canon 137): a line repeated by ANOTHER speaker is an
+    // echo and is allowed (rule 78: the repeat is the point). Only the same speaker saying the
+    // same line twice in a row is flagged (the Sunset "double lines" defect).
+    if (next && next.speaker === cur.speaker && norm(text) && norm(text) === norm(String(next.text))) issues.push({ check: 'REPEATED-LINE', line: label })
     if (SELF_REFERENCE.test(text)) issues.push({ check: 'CHAPTER-EPISODE', line: label })
   }
   return issues
