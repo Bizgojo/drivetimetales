@@ -67,6 +67,7 @@ import { checkNarrationPresence } from '@/lib/narrationPresence'
 import { normalizeScriptFormat } from '@/lib/scriptLabels'
 import { evaluateBelleCopyForPublish } from '@/lib/publicationBelleGate'
 import { buildBelleValidationContext, validateBelleLine, softenBelleSpoilerWords } from '@/lib/voiceBelleRules'
+import { removeSameSpeakerRepeats } from '@/lib/spokenTextChecks'
 import { emotionWriterBlock, genreStartingSet, normalizeEmotions } from '@/lib/canon/emotionPalette'
 import { buildClarityPrompt, castCheck, clarityReportText, combineClarity, namedSpeakers, parseClarityReview, readingMetrics, twistBudgetWriterBlock, approvedEpisodePlanText } from '@/lib/storyClarity'
 import {
@@ -76,6 +77,7 @@ import {
   onlyDescriptionLengthBlockers,
   onlyOutroOrDescriptionLengthBlockers,
   onlyBelleSpoilerOrLengthBlockers,
+  isSoftBlockerLine,
   SOFT_WRITER_GATES,
   checkSeriesCastContinuity,
   writeWithSelfCheck,
@@ -7051,6 +7053,27 @@ async function generateOneSeriesEpisodeScript(job: ProductionJob, model: string)
       }
     } catch (err) {
       console.warn(`[WRITER-DESC-SHORTEN-001] episode ${targetEpisodeNumber} shorten failed: ${err instanceof Error ? err.message : String(err)}`)
+    }
+  }
+
+  // SPOKEN-REPEAT-REPAIR-001 (Second Rise EP6, job 23d10ad9, Nov 11): when the only
+  // hard blocker left is a same-speaker duplicate line, drop the second copy and
+  // re-run the same self-check.
+  const repeatHard = (writerAttempts[writerAttempts.length - 1]?.blockers || []).filter((b) => !isSoftBlockerLine(b))
+  if (!selfCheckOk && script && writerSelfCheckFn && repeatHard.length > 0 && repeatHard.every((b) => /^SPOKEN-TEXT-001: \d+ line\(s\): the same line said twice in a row/.test(b))) {
+    try {
+      const fixed = removeSameSpeakerRepeats(script)
+      if (fixed.removed > 0) {
+        const recheck = await writerSelfCheckFn(fixed.script)
+        const hard = recheck.blockers.filter((b) => !SOFT_WRITER_GATES.has(b.gate))
+        if (recheck.ready || hard.length === 0) {
+          script = fixed.script
+          selfCheckOk = true
+          writerAttempts.push({ attempt: writerAttempts.length + 1, blockers: [`SPOKEN-REPEAT-REPAIR-001: removed ${fixed.removed} duplicate line(s) said twice in a row by the same speaker`], spokenWords: writerAttempts[writerAttempts.length - 1]?.spokenWords ?? 0 })
+        }
+      }
+    } catch (err) {
+      console.warn(`[SPOKEN-REPEAT-REPAIR-001] episode ${targetEpisodeNumber} repair failed: ${err instanceof Error ? err.message : String(err)}`)
     }
   }
 

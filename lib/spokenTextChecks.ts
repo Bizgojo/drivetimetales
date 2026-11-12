@@ -39,3 +39,24 @@ export function findSpokenTextIssues(script: string): SpokenTextIssue[] {
   }
   return issues
 }
+
+/**
+ * SPOKEN-REPEAT-REPAIR-001 (Second Rise EP6, job 23d10ad9, Nov 11): three drafts
+ * failed only on "the same line said twice in a row". When the SAME speaker says
+ * the identical line twice in a row (a pure duplicate, the Sunset "double lines"
+ * defect), the second copy is removed. An echo by a different speaker is left
+ * alone and still fails the check (rule 78: only the writer can say if the repeat
+ * is the point of the scene).
+ */
+export function removeSameSpeakerRepeats(script: string): { script: string; removed: number } {
+  const raw = String(script || '').split('\n')
+  const voice = parseScriptPositions(String(script || ''))
+    .filter(p => p.kind === 'voice' && p.speaker && p.text && !ANNOUNCER.test(p.speaker))
+  const drop = new Set<number>()
+  for (let i = 1; i < voice.length; i++) {
+    const prev = voice[i - 1], cur = voice[i]
+    if (prev.speaker === cur.speaker && norm(String(cur.text)) && norm(String(cur.text)) === norm(String(prev.text))) drop.add(cur.rawLineNumber - 1)
+  }
+  if (!drop.size) return { script, removed: 0 }
+  return { script: raw.filter((_, i) => !drop.has(i)).join('\n'), removed: drop.size }
+}
