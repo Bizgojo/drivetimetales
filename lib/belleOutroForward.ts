@@ -7,7 +7,7 @@
 //      name: In Episode Four of "Rerouted", ...
 // Finale and standalone outros never point to another episode, credit the
 // story ("You've been listening to ... by ..., read by ..., an Endless Tales
-// Original"), never mention time of day, and stay at 42 words or fewer.
+// Original"), never mention time of day, and aim for 32 to 38 words (hard limit 42).
 //
 // This module is the ONE place the rule lives: the writer prompts, the writer
 // self-check, the pre-review check, the publish gate and the voice-stage check
@@ -149,13 +149,13 @@ export function nonFinaleOutroPrompt(opts: { seriesName: string; nextEpisodeNumb
   const next = episodeNumberWords(opts.nextEpisodeNumber)
   const series = opts.seriesName || 'the series'
   const credits = [opts.author && `the author "${opts.author}"`, opts.narrator && `the narrator "${opts.narrator}"`].filter(Boolean).join(' or ')
-  return `The Belle B outro is EXACTLY TWO SENTENCES (Marc's BELLE-OUTRO-FORWARD rule): (1) ONE sentence recapping what happened in THIS episode; (2) ONE sentence promoting the next episode that says "Episode ${next}" and the series name "${series}", for example: In Episode ${next} of "${series}", <what the listener will find out>. Never more than one recap sentence, never end on the recap, never look back instead of forward. LENGTH: sentence 1 at most 18 words, sentence 2 at most 20 words, about 35 words in total; COUNT THE WORDS before you finish, because 42 is a hard limit and anything longer is rejected. Example (26 words): Daniel heard his own name on the tape, and so did the men outside. In Episode Four of "Rerouted," the voice finally says who killed Sarah. ${credits ? `Do NOT name ${credits}. ` : ''}Do not say "an Endless Tales original", never mention time of day, never sound like the series is over (no end, ended, final, concludes, conclusion, complete). At most ${BELLE_OUTRO_MAX_WORDS} words.`
+  return `The Belle B outro is EXACTLY TWO SENTENCES (Marc's BELLE-OUTRO-FORWARD rule): (1) ONE sentence recapping what happened in THIS episode; (2) ONE sentence promoting the next episode that says "Episode ${next}" and the series name "${series}", for example: In Episode ${next} of "${series}", <what the listener will find out>. Never more than one recap sentence, never end on the recap, never look back instead of forward. LENGTH: sentence 1 at most 18 words, sentence 2 at most 20 words; aim for 32 to 38 words in total (LENGTH-TARGET-001); COUNT THE WORDS before you finish, because 42 is a hard limit and anything longer is rejected. Example (26 words): Daniel heard his own name on the tape, and so did the men outside. In Episode Four of "Rerouted," the voice finally says who killed Sarah. ${credits ? `Do NOT name ${credits}. ` : ''}Do not say "an Endless Tales original", never mention time of day, never sound like the series is over (no end, ended, final, concludes, conclusion, complete). Aim for 32 to 38 words; ${BELLE_OUTRO_MAX_WORDS} is the hard limit.`
 }
 
 /** Writer-prompt wording for a finale or standalone outro. */
 export function closingOutroPrompt(opts: { title: string; author: string; narrator?: string }): string {
   const read = opts.narrator ? `, read by ${opts.narrator}` : ''
-  return `The Belle B outro closes the story and never points to another episode or story. It ends with the credit: You've been listening to "${opts.title}" by ${opts.author}${read}, an Endless Tales Original. One short closing sentence (at most 12 words) may come before the credit. Never mention time of day. At most ${BELLE_OUTRO_MAX_WORDS} words in total; COUNT THE WORDS before you finish.`
+  return `The Belle B outro closes the story and never points to another episode or story. It ends with the credit: You've been listening to "${opts.title}" by ${opts.author}${read}, an Endless Tales Original. One short closing sentence (at most 12 words) may come before the credit. Never mention time of day. Aim for 38 words or fewer in total; ${BELLE_OUTRO_MAX_WORDS} is the hard limit. COUNT THE WORDS before you finish.`
 }
 
 /**
