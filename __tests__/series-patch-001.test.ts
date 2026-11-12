@@ -111,3 +111,11 @@ describe('SERIES-PATCH-001 wiring', () => {
     expect(block).toContain('seriesAutoRepairExempt')
   })
 })
+
+describe('SERIES-PATCH-001 budget survives a rewrite', () => {
+  test('the whole-episode rewrite keeps patchRuns in seriesRewrite', () => {
+    const src = readFileSync(join(__dirname, '..', 'app/api/admin/production-jobs/run-next/route.ts'), 'utf8')
+    expect(src).toContain("seriesRewrite: { ...((priorState as any).seriesRewrite || {}), counts: rewriteCounts,")
+    expect(src).not.toMatch(/seriesRewrite: \{ counts: rewriteCounts/)
+  })
+})
