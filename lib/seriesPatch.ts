@@ -66,6 +66,7 @@ RULES FOR EDITS:
 5. A scene with too many speakers: remove or reassign lines (or have characters leave) so that at most three characters speak in that scene. Keep the story events the same.
 6. Change the character guide or cast list only when a problem is about it.
 7. Do not change the BELLE B lines unless a problem is about them.
+7b. A sound cue that does not match what happens in the story (EPISODE-PATCH-001): delete that [SFX: ...] line. Never invent a new sound name; you may only reuse a cue name already in this script when it matches.
 8. Fix every listed problem. If one cannot be fixed with small edits, still return the edits you can make and name it in "unfixed".
 ${input.facts?.length ? `9. FIXED FACTS (SERIES-FACTS-BACKFILL-001): every edit must agree with these exactly. When a problem's requested fix disagrees with a fixed fact, follow the fixed fact.\n${input.facts.map((f) => `   - ${f}`).join('\n')}\n` : ''}
 Return JSON only, no markdown:
@@ -219,4 +220,29 @@ export function buildPatchRetryMessage(why: string): string {
   return `Those edits could not be applied: ${String(why || '').trim()}
 Every "find" must be copied character for character from the script, including punctuation, quote marks and dashes, and must cover whole lines. Copy the lines directly from the script above; do not retype them from memory.
 Return the complete corrected JSON for ALL edits (not only the one that failed), in the same format.`
+}
+
+/**
+ * EPISODE-PATCH-001 (Second Rise EP7 and Widow EP3, Nov 12, 2026): a single-episode validator
+ * failure on a few lines ("[SFX: Door, wood, closes]" with no door, "[SFX: Clock, ticking]"
+ * with no clock) used to re-write that episode and every later one, and each new draft brought
+ * new wrong cues. The validator's fix list now goes to the same in-place patcher first. Returns
+ * no issues when the report is not a FAIL, so a pass or an unreadable report never patches.
+ */
+export function validatorIssuesForPatch(report: unknown, episodeNumber: number): SeriesReadIssue[] {
+  const text = String(report || '')
+  const m = text.match(/VALIDATOR RESULT:\s*FAIL\**\s*([\s\S]*)$/i)
+  if (!m || !(episodeNumber >= 1)) return []
+  const body = m[1].replace(/^\s*Do not send to production\.?[^\n]*\n?/i, '').trim()
+  const items: string[] = []
+  for (const raw of body.split('\n')) {
+    const line = raw.trim()
+    if (!line) continue
+    const bullet = line.match(/^(?:[-*•]|\d+[.)])\s+(.*)$/)
+    if (bullet) items.push(bullet[1])
+    else if (items.length) items[items.length - 1] += ` ${line}`
+  }
+  const clean = (s: string) => s.replace(/\*\*/g, '').replace(/\s+/g, ' ').trim()
+  const list = (items.length ? items : body ? [body.slice(0, 1500)] : []).map(clean).filter(Boolean)
+  return list.slice(0, MAX_SERIES_PATCH_ISSUES).map((problem) => ({ episode: episodeNumber, problem, fix: '' }))
 }

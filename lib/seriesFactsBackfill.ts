@@ -48,26 +48,44 @@ export function buildFactsBackfillPrompt(input: { seriesTitle: string; episodes:
 Rules:
 1. List 8 to 15 concrete facts: days and dates of key events, times of day, ages, how long ago past events happened, money amounts and pay terms, where people live and work, how a character got an injury or object, and which character learns which secret in which episode.
 2. Each fact is one short sentence with the exact value, written as words (no digits).
-3. When episodes disagree, the EARLIEST episode that states the fact is correct. Use its value, never a later one.
+3. When episodes disagree, the EARLIEST episode that states the fact is correct. Use its value, never a later one. Before you write each fact, check every earlier episode for the same subject (the same date, age, injury, amount or secret); if an earlier episode says something different, use the earlier episode's version.
 4. "from_episode" = the first episode where the listener hears the fact.
-5. Only facts the episodes actually state. Do not invent anything.
+5. "quote" = a short exact phrase (four to twelve words) copied from that first episode that states the fact.
+6. Only facts the episodes actually state. Do not invent anything.
 
 Return JSON only, no other text:
-{"facts":[{"fact":"...","from_episode":1}]}
+{"facts":[{"fact":"...","from_episode":1,"quote":"..."}]}
 
 ${input.episodes.map((e) => `===== EPISODE ${e.episodeNumber}: ${e.title} =====\n${e.body}`).join('\n\n')}`
 }
 
-export function parseFactsBackfill(raw: string, totalEpisodes: number): OutlineFact[] | null {
+const quoteKey = (s: string) => String(s || '').toLowerCase().replace(/[‘’]/g, "'").replace(/[“”]/g, '"').replace(/[^a-z0-9']+/g, ' ').trim()
+
+/**
+ * SERIES-FACTS-BACKFILL-002 (Second Rise, Nov 12): the first list took Caleb's scar story from
+ * Episode 6 although Episode 4 told it first. Each fact now carries a quote from its first
+ * episode; when episode texts are given, a fact whose quote is not in that episode is dropped,
+ * and a fact whose quote also appears in an EARLIER episode is moved back to that episode.
+ */
+export function parseFactsBackfill(raw: string, totalEpisodes: number, episodeTexts?: Map<number, string>): OutlineFact[] | null {
   const text = String(raw || '')
   const start = text.indexOf('{')
   const end = text.lastIndexOf('}')
   let obj: any = null
   try { obj = start >= 0 && end > start ? JSON.parse(text.slice(start, end + 1)) : null } catch { obj = null }
   if (!obj || !Array.isArray(obj.facts)) return null
+  const keyed = episodeTexts ? new Map(Array.from(episodeTexts.entries()).map(([n, t]) => [n, ` ${quoteKey(t)} `])) : null
   const facts: OutlineFact[] = obj.facts
-    .map((f: any) => ({ fact: String(f?.fact || '').trim(), from_episode: Math.round(Number(f?.from_episode)) }))
-    .filter((f: OutlineFact) => f.fact && f.from_episode >= 1 && f.from_episode <= totalEpisodes)
-    .slice(0, MAX_BACKFILL_FACTS)
+    .map((f: any) => ({ fact: String(f?.fact || '').trim(), from_episode: Math.round(Number(f?.from_episode)), quote: quoteKey(f?.quote) }))
+    .filter((f: OutlineFact & { quote: string }) => f.fact && f.from_episode >= 1 && f.from_episode <= totalEpisodes)
+    .map((f: OutlineFact & { quote: string }) => {
+      if (!keyed) return { fact: f.fact, from_episode: f.from_episode }
+      if (!f.quote || !(keyed.get(f.from_episode) || '').includes(` ${f.quote} `)) return null
+      let first = f.from_episode
+      for (let n = 1; n < f.from_episode; n += 1) if ((keyed.get(n) || '').includes(` ${f.quote} `)) { first = n; break }
+      return { fact: f.fact, from_episode: first }
+    })
+    .filter(Boolean)
+    .slice(0, MAX_BACKFILL_FACTS) as OutlineFact[]
   return facts.length >= MIN_BACKFILL_FACTS ? facts : null
 }
