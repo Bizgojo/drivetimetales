@@ -55,7 +55,7 @@ describe('STORY-CLARITY-001', () => {
 })
 
 describe('decisions 129-131 (blocking)', () => {
-  const base = (extra: Record<string, unknown>) => JSON.stringify({ want: 'w', obstacle: 'o', stakes: 's', checks: ['THREE-SENTENCE','GOAL-EARLY','INSIDER-WORDS','SCENE-PURPOSE','RECAP-LINE','FOLLOW-BY-EAR'].map((id) => ({ id, pass: true, detail: 'ok' })), ...extra })
+  const base = (extra: Record<string, unknown>) => JSON.stringify({ want: 'w', obstacle: 'o', stakes: 's', checks: ['THREE-SENTENCE','GOAL-EARLY','INSIDER-WORDS','SCENE-PURPOSE','RECAP-LINE','FOLLOW-BY-EAR','SCENE-VOICES'].map((id) => ({ id, pass: true, detail: 'ok' })), ...extra })
   const s = script(['MAYA: I see the car. It is red. We go now.'])
   const run = (extra: Record<string, unknown>) => combineClarity(parseClarityReview(base(extra), 2), castCheck(s, { totalEpisodes: 7, episodeNumber: 2, priorSpeakers: ['MAYA'] }), readingMetrics(s))
   it('passes one twist and three open questions', () => {

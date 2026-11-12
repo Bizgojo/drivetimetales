@@ -15,7 +15,8 @@ describe('WRITER-TWIST-BUDGET-001', () => {
 
   it('series episode writer prompt includes the block', () => {
     const src = readFileSync(join(__dirname, '..', 'app/api/admin/production-jobs/run-next/route.ts'), 'utf8')
-    expect(src).toMatch(/\$\{twistBudgetWriterBlock\(\)\}\n\nUSER NOTES \/ CONSTRAINTS:/)
+    // SCENE-VOICES-001 sits between the twist budget and the user notes.
+    expect(src).toMatch(/\$\{twistBudgetWriterBlock\(\)\}\n\n\$\{sceneVoicesWriterBlock\(\)\}\n\nUSER NOTES \/ CONSTRAINTS:/)
   })
 
   it('clarity reviewer is told what is NOT a twist', () => {

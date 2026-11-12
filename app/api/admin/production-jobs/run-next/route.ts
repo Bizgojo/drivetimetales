@@ -69,7 +69,7 @@ import { evaluateBelleCopyForPublish } from '@/lib/publicationBelleGate'
 import { buildBelleValidationContext, validateBelleLine, softenBelleSpoilerWords } from '@/lib/voiceBelleRules'
 import { removeSameSpeakerRepeats } from '@/lib/spokenTextChecks'
 import { emotionWriterBlock, genreStartingSet, normalizeEmotions } from '@/lib/canon/emotionPalette'
-import { buildClarityPrompt, castCheck, clarityReportText, combineClarity, namedSpeakers, parseClarityReview, readingMetrics, twistBudgetWriterBlock, approvedEpisodePlanText } from '@/lib/storyClarity'
+import { buildClarityPrompt, castCheck, clarityReportText, combineClarity, namedSpeakers, parseClarityReview, readingMetrics, twistBudgetWriterBlock, sceneVoicesWriterBlock, approvedEpisodePlanText } from '@/lib/storyClarity'
 import { CANON } from '@/lib/canon/numbers'
 import {
   briefMinutesOf,
@@ -98,7 +98,7 @@ import { legacyStepModels, routeStep, resolveModelForStep, coerceValidationModel
 import { buildContinuityPins, hashScript, verifyContinuityPins } from '@/lib/continuityPin'
 import { checkSeriesFacts, formatFactSheet, castListsText } from '@/lib/seriesFacts'
 import { runGeminiStoryRead, listenerText, geminiReadBlocks, geminiBlockingVerdict, geminiRewriteTarget, MAX_GEMINI_SCRIPT_REWRITES, type GeminiReadState } from '@/lib/geminiStoryRead'
-import { seriesPatchEnabled, planSeriesPatch, buildPatchPrompt, parsePatchReply, applyPatchEdits, repinAfterPatch, MAX_SERIES_PATCH_RUNS, type SeriesReadIssue } from '@/lib/seriesPatch'
+import { seriesPatchEnabled, planSeriesPatch, buildPatchPrompt, buildPatchRetryMessage, parsePatchReply, applyPatchEdits, repinAfterPatch, MAX_SERIES_PATCH_RUNS, type SeriesReadIssue } from '@/lib/seriesPatch'
 import { planTimingPass, finishTimingPass, timedLinesFromSizes, sizesFromListing, type TimingCheckState } from '@/lib/timingPass'
 import {
   hasEarnedPackageEvidence,
@@ -6346,6 +6346,8 @@ ${emotionWriterBlock(normalizeEmotions(brief.emotions), brief.genre || series.ge
 
 ${twistBudgetWriterBlock()}
 
+${sceneVoicesWriterBlock()}
+
 USER NOTES / CONSTRAINTS:
 ${String(brief.requirements || '').trim() || 'None'}
 
@@ -10125,27 +10127,44 @@ export async function POST(req: NextRequest) {
               const ep = patchEpisodes.find((e: any) => episodeNumber(e, 0) === epNum)
               if (!ep?.script) return { epNum, error: 'no script' as string }
               try {
-                const response = await anthropic.messages.create({
-                  model,
-                  max_tokens: 8000,
-                  temperature: 0.2,
-                  messages: [{ role: 'user', content: buildPatchPrompt({ seriesTitle, episodeNumber: epNum, title: String(ep.title || ''), script: String(ep.script), issues: epIssues }) }],
-                }, { timeout: 240_000, maxRetries: 0 })
-                logAnthropicCall({
-                  route: '/api/admin/production-jobs/run-next',
-                  purpose: 'series-episode-patch',
-                  model,
-                  inputTokens: response.usage?.input_tokens ?? 0,
-                  outputTokens: response.usage?.output_tokens ?? 0,
-                  storyId: String(ep.id),
-                  storyTitle: String(ep.title || ''),
-                  metadata: { is_v2: true, series_id: String(result.seriesId), episode_number: epNum, patch_run: patchPlan.run },
-                }).catch(() => {})
-                const raw = response.content.map((c: any) => ('text' in c ? c.text : '')).join('').trim()
-                const reply = parsePatchReply(raw)
-                if (!reply) return { epNum, error: 'writer returned no JSON edits' }
-                const applied = applyPatchEdits(String(ep.script), reply.edits)
-                if (applied.ok === false) return { epNum, error: applied.error }
+                // SERIES-PATCH-RETRY-001 (Weekend Wife, Nov 12): one retry when a quoted line does not
+                // match the script exactly (patch 2 misquoted one EP6 line and fell back to a full
+                // rewrite). The retry names the failing edit and asks for corrected JSON.
+                const patchPrompt = buildPatchPrompt({ seriesTitle, episodeNumber: epNum, title: String(ep.title || ''), script: String(ep.script), issues: epIssues })
+                const callPatchWriter = async (messages: Array<{ role: 'user' | 'assistant'; content: string }>, attempt: number) => {
+                  const response = await anthropic.messages.create({
+                    model,
+                    max_tokens: 8000,
+                    temperature: 0.2,
+                    messages,
+                  }, { timeout: 240_000, maxRetries: 0 })
+                  logAnthropicCall({
+                    route: '/api/admin/production-jobs/run-next',
+                    purpose: 'series-episode-patch',
+                    model,
+                    inputTokens: response.usage?.input_tokens ?? 0,
+                    outputTokens: response.usage?.output_tokens ?? 0,
+                    storyId: String(ep.id),
+                    storyTitle: String(ep.title || ''),
+                    metadata: { is_v2: true, series_id: String(result.seriesId), episode_number: epNum, patch_run: patchPlan.run, patch_attempt: attempt },
+                  }).catch(() => {})
+                  return response.content.map((c: any) => ('text' in c ? c.text : '')).join('').trim()
+                }
+                let raw = await callPatchWriter([{ role: 'user', content: patchPrompt }], 1)
+                let reply = parsePatchReply(raw)
+                let applied = reply ? applyPatchEdits(String(ep.script), reply.edits) : null
+                if (!reply || applied?.ok === false) {
+                  const why = !reply ? 'Your reply had no readable JSON.' : `${(applied as any).error}.`
+                  raw = await callPatchWriter([
+                    { role: 'user', content: patchPrompt },
+                    { role: 'assistant', content: raw || '{}' },
+                    { role: 'user', content: buildPatchRetryMessage(why) },
+                  ], 2)
+                  reply = parsePatchReply(raw)
+                  applied = reply ? applyPatchEdits(String(ep.script), reply.edits) : null
+                }
+                if (!reply) return { epNum, error: 'writer returned no JSON edits (after 1 retry)' }
+                if (!applied || applied.ok === false) return { epNum, error: `${(applied as any)?.error || 'edits not applied'} (after 1 retry)` }
                 // Same format-only repairs every writer draft gets.
                 const script = spellOutSpokenNumerals(normalizeScriptFormat(applied.script).script).script
                 return { epNum, ep, script, edits: reply.edits.length, unfixed: reply.unfixed }
