@@ -225,6 +225,12 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
 
   // ── Pills state ────────────────────────────────────────────────────────────
   const [activeModal, setActiveModal] = useState<'author' | 'narrator' | 'prose' | null>(null)
+  // EBOOK-AUTHOR-LINK-001 (Marc, Nov 11 2026): the author link in the ebook opens About the Author; closing it returns to the book.
+  const [authorReturnsToProse, setAuthorReturnsToProse] = useState(false)
+  const closeInfoModal = () => {
+    if (activeModal === 'author' && authorReturnsToProse) { setAuthorReturnsToProse(false); setActiveModal('prose'); return }
+    setActiveModal(null)
+  }
   const [proseDark, setProseDark] = useState(false)
   // MARC-EBOOK-FONTSIZE-001 (2026-10-07): text size is a per-user default that
   // carries across every story (until the user changes it again), not a
@@ -3144,7 +3150,7 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
       {/* ── Info Modal Sheet ─────────────────────────────────────────────────── */}
       {activeModal && createPortal(
         <div
-          onClick={() => activeModal === 'prose' ? closeProseReader() : setActiveModal(null)}
+          onClick={() => activeModal === 'prose' ? closeProseReader() : closeInfoModal()}
           style={{ position:'fixed', top:56, bottom:0, left:0, right:0, background:'#000', zIndex:200, display:'flex', alignItems:'flex-end' }}
         >
           <div
@@ -3168,7 +3174,7 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
                   {activeModal === 'author'   && `✍️ About ${authorData?.name || story.author || 'the Author'}`}
                   {activeModal === 'narrator' && `🎙️ About ${narratorData?.name || (story as any).narrator_voice_name || 'the Narrator'}`}
                 </span>
-                <button type="button" aria-label="Close" onClick={() => setActiveModal(null)} style={{ background:'rgba(148,163,184,0.15)', border:'none', borderRadius:'50%', width:'44px', height:'44px', color:'#e2e8f0', fontSize:'20px', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', lineHeight:1 }}><span aria-hidden="true">×</span></button>
+                <button type="button" aria-label="Close" onClick={closeInfoModal} style={{ background:'rgba(148,163,184,0.15)', border:'none', borderRadius:'50%', width:'44px', height:'44px', color:'#e2e8f0', fontSize:'20px', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', lineHeight:1 }}><span aria-hidden="true">×</span></button>
               </div>
             )}
 
@@ -3305,7 +3311,22 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
                           as the ebook's front "page", like a real book cover — shown once,
                           before any chapter/paragraph text. */}
                       <h1 style={{ fontSize: proseFontSize + 9, lineHeight: 1.2, textAlign: 'center', color: proseDark ? 'white' : '#1a1a1a', margin: '0 0 8px', fontWeight: 700 }}>{proseBookTitle}</h1>
-                      <p style={{ textAlign: 'center', color: proseDark ? 'white' : '#1a1a1a', margin: '0 0 24px', fontSize: proseFontSize }}>by {story.author || 'Endless Tales'}</p>
+                      {/* EBOOK-AUTHOR-LINK-001 (Marc, Nov 11 2026): title, then the author with a small
+                          button beside the name that opens About the Author (closing it returns here). */}
+                      <p data-testid="ebook-author-line" style={{ textAlign: 'center', color: proseDark ? 'white' : '#1a1a1a', margin: '0 0 24px', fontSize: proseFontSize, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, flexWrap: 'wrap' }}>
+                        <span>by {story.author || 'Endless Tales'}</span>
+                        {story.author && (
+                          <button
+                            type="button"
+                            data-testid="ebook-author-info"
+                            aria-label={`About the author, ${story.author}`}
+                            onClick={() => { try { flushCurrentReadingProgress() } catch {} ; setAuthorReturnsToProse(true); setActiveModal('author') }}
+                            style={{ width: 44, height: 44, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', border: 'none', background: 'transparent', padding: 0, cursor: 'pointer' }}
+                          >
+                            <span aria-hidden="true" style={{ width: 28, height: 28, borderRadius: '50%', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'Inter, system-ui, sans-serif', fontWeight: 800, fontSize: 17, color: proseDark ? '#0f172a' : '#ffffff', background: proseDark ? '#fb923c' : '#9a3412' }}>i</span>
+                          </button>
+                        )}
+                      </p>
                       {story.cover_url && (
                         <div style={{ display:'flex', justifyContent:'center', margin:'4px 0 36px' }}>
                           <img
