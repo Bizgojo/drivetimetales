@@ -31,7 +31,7 @@ export default function FunFactsPage() {
   }, [open])
   const button = 'inline-block mt-4 px-4 py-3 rounded-xl bg-orange-500 text-black font-bold'
   const sections = [
-    { id: 'preferences', icon: '🎧', title: 'Find your next favorite story', text: 'Tell us what you enjoy, and we’ll recommend stories picked for you on your Home page.', label: 'Tell Us What You Like' },
+    { id: 'preferences', icon: '🎧', title: 'Find your next favorite story', text: 'Tell us what you enjoy, and we’ll recommend stories picked for you on your Home page. Have a favorite author? Type their last name in the search bar at the bottom of the Home page to see all of their stories.', label: 'Tell Us What You Like' },
     { id: 'install', icon: '📱', title: 'Keep Endless Tales close', text: 'Add Endless Tales to your phone’s Home Screen so your next story is always a tap away.', label: 'Add to Home Screen' },
     { id: 'invite', icon: '🎁', title: 'Stories are better with friends', text: 'Give a friend 14 days free without a card. Show them your QR code or send your personal invitation. After their first paid payment, you both earn 14 bonus days.', label: 'Invite a Friend' },
     { id: 'idea', icon: '💡', title: 'Your idea could become a story', text: 'Have an idea you’d love to hear? Send it to us. If we use it, we’ll notify you and credit you as a contributing author.', label: 'Suggest a Story' },
@@ -50,7 +50,7 @@ export default function FunFactsPage() {
     </>}
   </div></main>
   return <main className="min-h-screen bg-gray-950 text-white px-4 py-6 pb-24"><div className="max-w-2xl mx-auto">
-    <header className="text-center mb-7"><span className="text-5xl block mb-3" aria-hidden="true">😊</span><h1 className="text-2xl font-bold">Fun Facts and Things to Do</h1><p className="mt-2">A few ways to make Endless Tales your own.</p></header>
+    <header className="text-center mb-7"><span className="text-5xl block mb-3" aria-hidden="true">😊</span><h1 className="text-2xl font-bold">Fun Facts and Things You Can Do</h1><p className="mt-2">A few ways to make Endless Tales your own.</p></header>
     <div className="space-y-4">{sections.map(section => <section key={section.id} className="rounded-xl bg-slate-900 border border-slate-700 p-5">
       <h2 className="text-lg font-bold"><span aria-hidden="true">{section.icon}</span> {section.title}</h2><p className="mt-2 leading-relaxed">{section.text}</p>
       {section.id === 'idea' ? <a href="/account/suggest-story" className={button}>{section.label}</a> : <button id={`fun-facts-${section.id}`} className={button} onClick={() => showForm(section.id)}>{section.label}</button>}

@@ -116,11 +116,18 @@ function HomeSearchResults({ query }: { query: string }) {
     ;(async () => {
       setLoading(true)
       try {
+        // HOME-SEARCH-ALL-001 (Marc, Nov 12, 2026): search every live story. The database
+        // does the matching on title, author and series name, so no story is missed
+        // however large the library grows (the old code fetched 200 rows, then filtered).
+        const term = normalizedQuery.replace(/[,()%*\\]/g, ' ').trim()
+        const pattern = `%${term}%`
         const { data: publicRows, error: publicError } = await supabase
           .from('stories')
           .select('id')
           .eq('status', 'published')
           .eq('is_hidden', false)
+          .or(`title.ilike.${pattern},author.ilike.${pattern},series_name.ilike.${pattern}`)
+          .range(0, 999)
 
         if (publicError) throw publicError
         const publicIds = (publicRows || []).map((row) => row.id)
@@ -135,7 +142,7 @@ function HomeSearchResults({ query }: { query: string }) {
           .not('cover_url', 'is', null)
           .eq('is_hidden', false)
           .in('id', publicIds)
-          .limit(200)
+          .range(0, 999)
 
         if (error) throw error
 
@@ -206,7 +213,7 @@ function HomeSearchResults({ query }: { query: string }) {
           return aName.localeCompare(bName)
         })
 
-        if (!cancelled) setItems(searchItems.slice(0, 20))
+        if (!cancelled) setItems(searchItems) // HOME-SEARCH-ALL-001: show every match, not just 20
       } catch (err) {
         console.error('[HomeSearch] failed:', err)
         if (!cancelled) setItems([])
