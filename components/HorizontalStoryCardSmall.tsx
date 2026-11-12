@@ -1,4 +1,5 @@
 'use client'
+import { formatListenTime } from '@/lib/formatListenTime'
 
 import Link from 'next/link'
 
@@ -88,7 +89,7 @@ export default function HorizontalStoryCard({ id, title, genre, author, duration
   finalFlags = finalFlags.filter(f => f !== 'continue')
 
   const displayFlags = getDisplayFlags(finalFlags)
-  const durationLabel = duration_mins ? `${duration_mins} min` : series_total ? `~${series_total} min avg` : null
+  const durationLabel = duration_mins ? formatListenTime(duration_mins) : series_total ? `~${series_total} min avg` : null
   const showReviewPrompt = is_completed && !has_reviewed && !not_for_me
 
   let playLabel = 'Play'

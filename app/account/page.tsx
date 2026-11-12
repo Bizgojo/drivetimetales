@@ -196,7 +196,7 @@ export default function AccountPage() {
   const memberSince = new Date(user.created_at).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
 
   const menuItems = [
-    { href: '/account/faqs', icon: '😊', label: 'Fun Facts and Things to Do', desc: 'Make Endless Tales your own' },
+    { href: '/account/faqs', icon: '😊', label: 'Fun Facts and Things You Can Do', desc: 'Make Endless Tales your own' },
     { href: '/account/billing', icon: '💎', label: 'Billing & Subscription', desc: 'Manage your plan' },
     { href: '/account/help', icon: '💬', label: 'Help & Support', desc: 'Contact us' },
   ];
