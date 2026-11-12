@@ -42,6 +42,11 @@ import {
   triageByActivity,
   countSegments,
   sumSeriesSegments,
+  failureAlertDue,
+  failureAlertKey,
+  failureReason,
+  buildFailureMessage,
+  FAILURE_LOOKBACK_MS,
   type SavedProgress,
 } from '@/lib/progressAlarm'
 import {
@@ -277,15 +282,55 @@ export async function GET(_req: NextRequest) {
       })
     }
 
+    // FAILURE-ALERT-001: failed jobs alert once, within one scan of failing (lib/progressAlarm.ts).
+    const failedSince = new Date(nowMs - FAILURE_LOOKBACK_MS).toISOString()
+    const { data: failedJobs, error: failedError } = await supabase
+      .from('production_jobs')
+      .select('id,status,current_step,updated_at,error_json')
+      .eq('status', 'failed')
+      .gte('updated_at', failedSince)
+      .order('updated_at', { ascending: false })
+      .limit(SCAN_LIMIT)
+    if (failedError) console.error('[progress-alarm] Failed to load failed jobs:', failedError)
+    let failedAlerts = 0
+    for (const job of ((failedJobs || []) as JobRow[])) {
+      const { progress: prev } = await loadAlarmState(alarmDb, job.id)
+      if (!failureAlertDue(prev?.fingerprint, job.updated_at, nowMs)) continue
+      const step = job.current_step ?? null
+      const marcRequired = Boolean(job.error_json?.marc_required)
+      const message = buildFailureMessage({ jobId: job.id, step, failedAt: job.updated_at, reason: failureReason(job.error_json), marcRequired })
+      const event: RunnerEvent = {
+        at: new Date(nowMs).toISOString(),
+        source: 'progress-alarm',
+        event: 'failure',
+        jobId: job.id,
+        step,
+        needs_marc: true,
+        message,
+      }
+      // OWN-STATE-001: webhook only — no production_jobs writes.
+      await sendWebhookAlert(event)
+      await saveAlarmState(alarmDb, job.id, {
+        fingerprint: failureAlertKey(job.updated_at),
+        lastSavedAt: String(job.updated_at),
+        lastAlertAt: new Date(nowMs).toISOString(),
+        stuck: false,
+      }, null, nowMs)
+      failedAlerts += 1
+      alertsSent += 1
+      report.push({ jobId: job.id, status: job.status, step, healthy: false, stuck: false, decision: 'failed_alert_sent', alertSent: 'failed', failedAt: job.updated_at })
+    }
+
     const stuck = report.filter((r) => r.stuck)
     return NextResponse.json({
       success: true,
       checkedAt: new Date(nowMs).toISOString(),
       scanned: report.length,
       stuckCount: stuck.length,
+      failedAlerts,
       alertsSent,
       // Health rule: healthy ONLY if SAVED in the last 30min.
-      healthy: stuck.length === 0,
+      healthy: stuck.length === 0 && failedAlerts === 0,
       jobs: report,
     })
   } catch (err: any) {
