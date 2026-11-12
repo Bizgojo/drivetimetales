@@ -5,6 +5,7 @@ import { cookies } from 'next/headers'
 import { sendServerEvent } from '@/lib/tracking/capi'
 import { playStartEventId } from '@/lib/tracking/events'
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { lookupPlaySeriesFields } from '@/lib/playEventSeries'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -128,9 +129,12 @@ export async function POST(req: NextRequest) {
         startSource && startSource !== 'gesture' && VALID_START_SOURCES.has(startSource)
           ? startSource
           : stringOrNull(body?.origin) || 'direct'
+      // PLAY-EVENTS-SERIES-001: series and episode come from the stories table, not the client.
+      const seriesFields = await lookupPlaySeriesFields(supabase as any, storyId)
       const row = {
         user_id: user.id,
         story_id: storyId,
+        ...seriesFields,
         session_id: sessionId,
         started_at: isoOrNow(body?.startedAt),
         device_type: stringOrNull(device.device_type) || 'unknown',
@@ -227,9 +231,11 @@ export async function POST(req: NextRequest) {
 
       const startedAt = isoOrNow(body?.startedAt || new Date(Date.now() - secondsPlayed * 1000).toISOString())
       const device = body?.device || {}
+      const endSeriesFields = await lookupPlaySeriesFields(supabase as any, storyId)
       const { error: insertError } = await supabase.from('play_events').insert({
         user_id: user.id,
         story_id: storyId,
+        ...endSeriesFields,
         session_id: sessionId,
         started_at: startedAt,
         ended_at: endedAt,
