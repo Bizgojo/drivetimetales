@@ -19,6 +19,14 @@ const goodOutline = {
     { episode: 2, goal: 'Nick finds who killed the witness.', beats: ['garage', 'confession'], resolves: ['T2'], ends_on: 'Kessler pulls him off the case' },
     { episode: 3, goal: 'Nick rescues the girl and exposes Kessler.', beats: ['warehouse', 'rescue'], resolves: ['T1'], ends_on: 'justice' },
   ],
+  // SERIES-FACTS-002: a plan now carries at least five fixed facts.
+  facts: [
+    { fact: 'The girl, Maya, is nine years old.', from_episode: 1 },
+    { fact: 'The shootout happens on a Friday night in November.', from_episode: 1 },
+    { fact: 'The ransom is two hundred thousand dollars.', from_episode: 1 },
+    { fact: 'Nick has been a detective for twelve years.', from_episode: 1 },
+    { fact: 'Kessler ordered the witness killed.', from_episode: 3 },
+  ],
 }
 
 describe('SERIES-OUTLINE-001', () => {
