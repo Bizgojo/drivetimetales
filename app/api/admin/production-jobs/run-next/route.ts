@@ -70,6 +70,7 @@ import { buildBelleValidationContext, validateBelleLine, softenBelleSpoilerWords
 import { removeSameSpeakerRepeats } from '@/lib/spokenTextChecks'
 import { emotionWriterBlock, genreStartingSet, normalizeEmotions } from '@/lib/canon/emotionPalette'
 import { buildClarityPrompt, castCheck, clarityReportText, combineClarity, namedSpeakers, parseClarityReview, readingMetrics, twistBudgetWriterBlock, approvedEpisodePlanText } from '@/lib/storyClarity'
+import { CANON } from '@/lib/canon/numbers'
 import {
   briefMinutesOf,
   briefRuntimeImpossible,
@@ -7489,6 +7490,8 @@ ${script}`,
       parseClarityReview(clarityResponse.content.map((c: any) => ('text' in c ? c.text : '')).join(''), number),
       castCheck(script, { totalEpisodes, episodeNumber: number, priorSpeakers }),
       readingMetrics(script),
+      // TWIST-BUDGET-SERIES-002 (Marc, Nov 12, 2026, option A): series episodes allow 2 major twists.
+      { twistMax: totalEpisodes > 1 ? CANON.TWISTS_PER_SERIES_EPISODE_MAX : CANON.TWISTS_PER_EPISODE_MAX },
     )
     report = `${report}\n\n${clarityReportText(clarity)}`
     if (!clarity.passed) passed = false

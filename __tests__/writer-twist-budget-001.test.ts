@@ -6,7 +6,8 @@ import { twistBudgetWriterBlock, buildClarityPrompt } from '@/lib/storyClarity'
 describe('WRITER-TWIST-BUDGET-001', () => {
   it('writer block states both canon limits', () => {
     const b = twistBudgetWriterBlock()
-    expect(b).toMatch(/add at most 1 major twist/)
+    expect(b).toMatch(/aim for ONE major twist or reveal/)
+    expect(b).toMatch(/2 is the hard limit \(TWIST-BUDGET-SERIES-002\)/)
     expect(b).toMatch(/reveals written in this episode's plan are allowed/)
     expect(b).toMatch(/at most 3 story questions/)
     expect(b).toMatch(/decision, plan or condition is not a twist/)
@@ -45,5 +46,21 @@ describe('TWIST-BUDGET-PLANNED-001', () => {
   it('run-next passes the approved plan to the clarity reviewer', () => {
     const src = readFileSync(join(__dirname, '..', 'app/api/admin/production-jobs/run-next/route.ts'), 'utf8')
     expect(src).toMatch(/approvedPlan: approvedEpisodePlanText\(episode\.brief_json\)/)
+  })
+})
+
+describe('TWIST-BUDGET-SERIES-002 (Marc, Nov 12, 2026, option A)', () => {
+  const { combineClarity } = require('@/lib/storyClarity')
+  const llm = (n: number) => ({ checks: [], threeSentences: null, twists: Array.from({ length: n }, (_, i) => `twist ${i + 1}`), openQuestions: [], emotions: [], announced: [] })
+  const cast = { id: 'CAST', pass: true, detail: 'ok', speakers: [], newSpeakers: [] }
+  const metrics = { grade: 5, avgSentenceWords: 10 }
+  const twistCheck = (r: any) => r.checks.find((c: any) => c.id === 'TWIST-BUDGET')
+  it('a series episode with 2 twists passes; 3 fails', () => {
+    expect(twistCheck(combineClarity(llm(2), cast, metrics, { twistMax: 2 })).pass).toBe(true)
+    expect(twistCheck(combineClarity(llm(3), cast, metrics, { twistMax: 2 })).pass).toBe(false)
+  })
+  it('default (standalone) still allows only 1', () => {
+    expect(twistCheck(combineClarity(llm(2), cast, metrics)).pass).toBe(false)
+    expect(twistCheck(combineClarity(llm(1), cast, metrics)).pass).toBe(true)
   })
 })
