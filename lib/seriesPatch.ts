@@ -156,3 +156,14 @@ export function repinAfterPatch(episodes: any[], patchedScripts: Map<string, str
   }
   return out
 }
+
+/**
+ * SERIES-PATCH-RETRY-001: the one retry message when the first reply's edits do not apply.
+ * It names what failed and repeats the copy rule; the whole edit list is redone so edits
+ * that did apply are not lost.
+ */
+export function buildPatchRetryMessage(why: string): string {
+  return `Those edits could not be applied: ${String(why || '').trim()}
+Every "find" must be copied character for character from the script, including punctuation, quote marks and dashes, and must cover whole lines. Copy the lines directly from the script above; do not retype them from memory.
+Return the complete corrected JSON for ALL edits (not only the one that failed), in the same format.`
+}

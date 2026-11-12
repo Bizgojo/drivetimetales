@@ -16,12 +16,20 @@ import { CANON } from './canon/numbers'
 export const CLARITY_GOAL_BY_WORDS = 480 // decision 66: ~3 minutes at 160 wpm
 export const CLARITY_MAX_NEW_CHARACTERS_PER_EPISODE = 2
 export const CLARITY_MAX_PURPOSELESS_SCENES = 1 // 2 or more = fail (rule 22)
+/**
+ * SCENE-VOICES-001 (Weekend Wife in Miami, job fe4c8778, Nov 12, 2026): the whole-series
+ * Gemini read blocks any scene with more than 3 speaking voices (easy_listening), but the
+ * writer was never told and the per-episode check never looked, so every rewrite put five
+ * characters back at the same dinner table. Now the writer is told, and this per-episode
+ * check fails it first, so the episode is rewritten alone instead of failing the series read.
+ */
+export const SCENE_VOICES_MAX = 3
 
 const NON_CHARACTER = /^(NARRATOR|ANNOUNCER|BELLE|BELLE B|SANDY)$/i
 
 export type ClarityCheckId =
   | 'THREE-SENTENCE' | 'GOAL-EARLY' | 'CAST-LIMIT' | 'INSIDER-WORDS'
-  | 'SCENE-PURPOSE' | 'RECAP-LINE' | 'FOLLOW-BY-EAR'
+  | 'SCENE-PURPOSE' | 'RECAP-LINE' | 'FOLLOW-BY-EAR' | 'SCENE-VOICES'
   | 'READING-LEVEL' | 'TWIST-BUDGET' | 'OPEN-QUESTIONS'
 
 export type ClarityCheck = { id: ClarityCheckId; pass: boolean; detail: string; quotes?: string[] }
@@ -126,6 +134,7 @@ Answer these checks:
 4. SCENE-PURPOSE: name any scene that moves neither the goal, the obstacle nor a relationship forward. FAIL if 2 or more such scenes.
 5. RECAP-LINE: ${isLaterEpisode ? 'within the first 30 seconds of the story (about 80 spoken words after Belle), does one line from a character or the narrator say where things stand? FAIL if not.' : 'not required for Episode 1 or a standalone: always pass.'}
 6. FOLLOW-BY-EAR: quote any stretch where a listener could not tell who is speaking, or where/when the scene is. FAIL if any.
+7. SCENE-VOICES: in every scene, count the characters who SPEAK (the narrator and Belle B do not count; a character who is present but silent does not count). FAIL if any scene has more than ${SCENE_VOICES_MAX} speaking characters; name the scene and quote one line from each speaker in it.
 
 ${planned.length ? `EMOTIONS (report only, canon decision 133): the plan wants the listener to feel: ${['liking the protagonist', ...planned].join(', ')}. For each, quote the line that sets it up and the line that triggers it, or say it is missing. Also list "announced": lines where a character or the narrator names a feeling instead of showing it ("I was terrified", "it was heartbreaking").
 
@@ -136,13 +145,13 @@ ${opts.approvedPlan}
 
 Return ONLY JSON, no other text:
 {"want":"...","obstacle":"...","stakes":"...","twists":[${opts.approvedPlan ? '{"quote":"...","in_plan":false}' : '"..."'}],"open_questions":["..."],${planned.length ? '"emotions":[{"emotion":"...","setup":"quoted line or empty","trigger":"quoted line or empty","found":true}],"announced":["..."],' : ''}
- "checks":[{"id":"THREE-SENTENCE","pass":true,"detail":"...","quotes":[]},{"id":"GOAL-EARLY","pass":true,"detail":"...","quotes":[]},{"id":"INSIDER-WORDS","pass":true,"detail":"...","quotes":[]},{"id":"SCENE-PURPOSE","pass":true,"detail":"...","quotes":[]},{"id":"RECAP-LINE","pass":true,"detail":"...","quotes":[]},{"id":"FOLLOW-BY-EAR","pass":true,"detail":"...","quotes":[]}]}
+ "checks":[{"id":"THREE-SENTENCE","pass":true,"detail":"...","quotes":[]},{"id":"GOAL-EARLY","pass":true,"detail":"...","quotes":[]},{"id":"INSIDER-WORDS","pass":true,"detail":"...","quotes":[]},{"id":"SCENE-PURPOSE","pass":true,"detail":"...","quotes":[]},{"id":"RECAP-LINE","pass":true,"detail":"...","quotes":[]},{"id":"FOLLOW-BY-EAR","pass":true,"detail":"...","quotes":[]},{"id":"SCENE-VOICES","pass":true,"detail":"...","quotes":[]}]}
 
 SCRIPT:
 ${script}`
 }
 
-const LLM_IDS: ClarityCheckId[] = ['THREE-SENTENCE', 'GOAL-EARLY', 'INSIDER-WORDS', 'SCENE-PURPOSE', 'RECAP-LINE', 'FOLLOW-BY-EAR']
+const LLM_IDS: ClarityCheckId[] = ['THREE-SENTENCE', 'GOAL-EARLY', 'INSIDER-WORDS', 'SCENE-PURPOSE', 'RECAP-LINE', 'FOLLOW-BY-EAR', 'SCENE-VOICES']
 
 /** Parse the reviewer's JSON. Unreadable output is a FAIL (fail closed), never a pass. */
 export function parseClarityReview(raw: string, episodeNumber: number): { checks: ClarityCheck[]; threeSentences: ClarityResult['threeSentences']; twists: string[]; openQuestions: string[]; emotions?: EmotionFinding[]; announced?: string[] } {
@@ -232,4 +241,12 @@ export function twistBudgetWriterBlock(): string {
 - A character's decision, plan or condition is not a twist; use those freely.
 - At the end of this episode, at most ${CANON.OPEN_QUESTIONS_MAX} story questions may be open. If you open a new one, answer an older one in this episode.
 - Do not add extra secrets, hidden pasts or teases beyond the episode plan. Belle's outro may point to a question that is already open; it must not open a new one.`
+}
+
+/** SCENE-VOICES-001: the writer is told the same limit the clarity gate and the series read enforce. */
+export function sceneVoicesWriterBlock(): string {
+  return `SPEAKERS PER SCENE (checked before voicing; a script that breaks it is rejected):
+- At most ${SCENE_VOICES_MAX} characters SPEAK in any one scene. The narrator and Belle B do not count.
+- When more people are present (a dinner, a meeting, a party), the others stay silent: show what they do through the narrator, or have them leave before the main exchange. Do not give them lines.
+- Name the speaker in or near the first line each time a scene starts, so a driver knows who is talking.`
 }

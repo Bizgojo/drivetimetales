@@ -119,3 +119,20 @@ describe('SERIES-PATCH-001 budget survives a rewrite', () => {
     expect(src).not.toMatch(/seriesRewrite: \{ counts: rewriteCounts/)
   })
 })
+
+describe('SERIES-PATCH-RETRY-001', () => {
+  const { buildPatchRetryMessage } = require('@/lib/seriesPatch')
+  test('retry message names the failure and asks for all edits again', () => {
+    const m = buildPatchRetryMessage('edit 1: text not found: "ROBERT HOLLIS: Sit down."')
+    expect(m).toContain('text not found')
+    expect(m).toMatch(/character for character/)
+    expect(m).toMatch(/ALL edits/)
+  })
+  test('run-next retries once before falling back to a rewrite', () => {
+    const src = readFileSync(join(__dirname, '..', 'app/api/admin/production-jobs/run-next/route.ts'), 'utf8')
+    const block = src.slice(src.indexOf('SERIES-PATCH-RETRY-001'), src.indexOf('SERIES-REWRITE-001: a story-content failure'))
+    expect(block.match(/callPatchWriter\(/g)?.length).toBe(2)
+    expect(block).toContain('buildPatchRetryMessage(why)')
+    expect(block).toContain('(after 1 retry)')
+  })
+})
