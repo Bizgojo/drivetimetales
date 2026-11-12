@@ -157,3 +157,24 @@ describe('SERIES-PATCH-QUOTES-001', () => {
     expect(matchKey(curly).length).toBe(curly.length)
   })
 })
+
+describe('SERIES-PATCH-LINES-001', () => {
+  const { applyPatchEdits: apply, locatePatchSpan } = require('@/lib/seriesPatch')
+  const spaced = 'TITLE: X\n\nNARRATOR: Then we walked to the table.\n\n[SFX: Footsteps, walking, tile or hallway]\n\nDIANE HOLLIS: There they are. I was starting to think you’d found a better dinner somewhere on the island.\n\nJESS MARLOWE: Never. Your taste is impossible to compete with, Diane.\n\nNARRATOR: Diane laughed.\n' + 'NARRATOR: Waves. '.repeat(40)
+  test('a multi-line quote without the blank lines still matches', () => {
+    const find = "DIANE HOLLIS: There they are. I was starting to think you'd found a better dinner somewhere on the island.\nJESS MARLOWE: Never. Your taste is impossible to compete with, Diane."
+    const r = apply(spaced, [{ find, replace: 'NARRATOR: Diane waved us over.' }])
+    expect(r.ok).toBe(true)
+    if (r.ok) {
+      expect(r.script).not.toContain('DIANE HOLLIS')
+      expect(r.script).not.toContain('JESS MARLOWE: Never.')
+      expect(r.script).toContain('NARRATOR: Diane waved us over.\n\nNARRATOR: Diane laughed.')
+      expect(r.script).toContain('NARRATOR: Then we walked to the table.')
+    }
+  })
+  test('a partial line still never matches, and a repeated block is refused', () => {
+    expect(apply(spaced, [{ find: 'Your taste is impossible', replace: 'x' }]).ok).toBe(false)
+    const twice = 'A: hi\n\nB: yo\n\nA: hi\n\nB: yo\n'
+    expect(locatePatchSpan(twice, 'A: hi\nB: yo').error).toMatch(/2 times/)
+  })
+})
