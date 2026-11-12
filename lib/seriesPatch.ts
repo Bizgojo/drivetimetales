@@ -91,6 +91,23 @@ export function parsePatchReply(raw: string): { edits: PatchEdit[]; unfixed: str
   return { edits, unfixed }
 }
 
+/**
+ * SERIES-PATCH-QUOTES-001 (Weekend Wife EP6, Nov 12): both patch runs failed with "text not
+ * found" on lines that differed only in quote marks: scripts use curly apostrophes (’) and the
+ * writer quotes them back as straight ones ('). Matching ignores that difference. Every mapping
+ * is one character to one character, so positions found in the matching copy are the same
+ * positions in the real script, and only the matched span is replaced.
+ */
+const MATCH_CHAR_MAP: Record<string, string> = {
+  '\u2018': "'", '\u2019': "'", '\u201B': "'", '\u2032': "'",
+  '\u201C': '"', '\u201D': '"', '\u201E': '"', '\u2033': '"',
+  '\u2013': '-', '\u2014': '-', '\u2212': '-',
+  '\u00A0': ' ', '\u2009': ' ', '\u202F': ' ',
+}
+export function matchKey(text: string): string {
+  return String(text || '').replace(/[\u2018\u2019\u201B\u2032\u201C\u201D\u201E\u2033\u2013\u2014\u2212\u00A0\u2009\u202F]/g, (c) => MATCH_CHAR_MAP[c] || c)
+}
+
 function countOccurrences(haystack: string, needle: string): number {
   let count = 0
   let at = haystack.indexOf(needle)
@@ -111,9 +128,12 @@ export function applyPatchEdits(script: string, edits: PatchEdit[]): { ok: true;
     // Tolerate trailing whitespace/newline differences at the ends of a quoted block.
     const find = edit.find.replace(/^\n+|\s+$/g, '')
     if (!find) return { ok: false, error: `edit ${i + 1}: empty find` }
-    const n = countOccurrences(out, find)
+    // SERIES-PATCH-QUOTES-001: match on the quote-insensitive copy; same length, same positions.
+    const outKey = matchKey(out)
+    const findKey = matchKey(find)
+    const n = countOccurrences(outKey, findKey)
     if (n !== 1) return { ok: false, error: `edit ${i + 1}: text ${n === 0 ? 'not found' : `found ${n} times`}: "${find.slice(0, 80)}"` }
-    const at = out.indexOf(find)
+    const at = outKey.indexOf(findKey)
     const startsLine = at === 0 || out[at - 1] === '\n'
     const endAt = at + find.length
     const endsLine = endAt === out.length || out[endAt] === '\n'
