@@ -1738,6 +1738,7 @@ Use the CURRENT rules:
 - DESCRIPTION fails if it uses past-tense constructions or past-tense story-card phrasing such as "vanished", "was", "were", "had", "found", "discovered", "left", "moved", "sealed", "signed", "forged", "buried", "hidden", or "lost".
 - DESCRIPTION PROTAGONIST RULE: the DESCRIPTION must accurately reflect who the protagonist actually is and what they are trying to do. If the script's protagonist is a security guard, DESCRIPTION must not say "driver". If the protagonist is a nurse, DESCRIPTION must not say "teacher". Mismatches between DESCRIPTION and actual protagonist role are a hard fail.
 - DESCRIPTION SPOILER RULE: DESCRIPTION is a story-card teaser, not a plot summary. It must raise a question, not answer it. HARD FAIL if DESCRIPTION reveals: the survivor, the culprit, the missing person's status, a hidden person alive or dead, the final discovery, or the resolution payoff. Examples of failing DESCRIPTION phrases: "to a survivor", "to the killer", "reveals who did it", "the missing child is alive".
+- OUTRO-RECAP-NOT-SPOILER-001 (CANON-04 rule 20; Weekend Wife EP5, Nov 12 2026): the BELLE B OUTRO plays AFTER the episode. Its one-sentence recap of what just happened in this episode is REQUIRED and is NOT a spoiler. Never fail the outro for recapping this episode's events or choices. The spoiler rule applies to DESCRIPTION and the BELLE B ANNOUNCEMENT (intro) only. The outro may still fail for revealing what happens in a LATER episode.
 - The script must include the required header fields.
 - The script must include a CHARACTER GUIDE.
 - The script must include a BELLE B ANNOUNCEMENT block. BELLE B OUTRO is pipeline-generated at a later production step and must not be required to be present in the script at this validation stage — do not fail a script for a missing BELLE B OUTRO. A BELLE B OUTRO block that IS present is allowed and expected (the episode writer is instructed to write one) — never fail a script for including a BELLE B OUTRO block.
@@ -7148,7 +7149,14 @@ async function generateOneSeriesEpisodeScript(job: ProductionJob, model: string)
           description = nextDescription
           selfCheckOk = true
           writerAttempts.push({ attempt: writerAttempts.length + 1, blockers: [`WRITER-OUTRO-SHORTEN-001: Belle outro shortened ${countWords(currentOutro)} -> ${countWords(shorter)} words (script unchanged)`], spokenWords: writerAttempts[writerAttempts.length - 1]?.spokenWords ?? 0 })
+        } else {
+          // WRITER-OUTRO-SHORTEN-003: say why the shortened line was not accepted.
+          const lastAttempt = writerAttempts[writerAttempts.length - 1]
+          if (lastAttempt) lastAttempt.blockers = [...lastAttempt.blockers, `WRITER-OUTRO-SHORTEN-003: shortened outro (${countWords(shorter)} words) still blocked by: ${recheck.blockers.filter((b) => !SOFT_WRITER_GATES.has(b.gate)).map((b) => `${b.gate}: ${b.detail}`).join('; ').slice(0, 300)}`]
         }
+      } else {
+        const lastAttempt = writerAttempts[writerAttempts.length - 1]
+        if (lastAttempt) lastAttempt.blockers = [...lastAttempt.blockers, `WRITER-OUTRO-SHORTEN-003: outro repair returned ${shorter ? countWords(shorter) : 0} words (max ${BELLE_OUTRO_MAX_WORDS}${!selfCheckIsFinale && shorter && NON_FINALE_FINAL_WORDS.test(shorter) ? '; has a final-sounding word' : ''})`]
       }
     } catch (err) {
       const reason = err instanceof Error ? err.message : String(err)
@@ -7755,9 +7763,11 @@ async function shortenBelleOutroToLimit(outro: string, rule: string, model: stri
   for (let i = 0; i < 2 && needsFix(text); i++) {
     const res = await anthropic.messages.create({
       model,
-      max_tokens: 400,
+      // WRITER-OUTRO-SHORTEN-003 (Second Rise EP5, job 073bbba5, Nov 12): both calls hit
+      // 400 tokens (counting words aloud) and never closed the tag, so nothing changed.
+      max_tokens: 1200,
       temperature: 0,
-      messages: [{ role: 'user', content: `This Belle B outro line is ${countWords(text)} words. It must be ${BELLE_OUTRO_MAX_WORDS - 4} words or fewer.${finalWordRule} Rewrite ONLY this line, keeping the same meaning and every required part of the rule below. COUNT THE WORDS before you answer. Return ONLY the new line between <outro> and </outro> tags (no "BELLE B:" label, no JSON).\n\nRULE: ${rule}\n\nCURRENT OUTRO: ${text}` }],
+      messages: [{ role: 'user', content: `This Belle B outro line is ${countWords(text)} words. It must be ${BELLE_OUTRO_MAX_WORDS - 4} words or fewer.${finalWordRule} Rewrite ONLY this line, keeping the same meaning and every required part of the rule below. Count the words silently. Reply with NOTHING except the new line between <outro> and </outro> tags (no "BELLE B:" label, no JSON, no word count, no explanation).\n\nRULE: ${rule}\n\nCURRENT OUTRO: ${text}` }],
     })
     inputTokens += res.usage?.input_tokens ?? 0
     outputTokens += res.usage?.output_tokens ?? 0

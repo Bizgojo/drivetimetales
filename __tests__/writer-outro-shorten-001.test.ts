@@ -94,3 +94,18 @@ describe('WRITER-OUTRO-SHORTEN-002', () => {
     expect(src).toMatch(/WRITER-OUTRO-SHORTEN-002: outro repair failed/)
   })
 })
+
+// WRITER-OUTRO-SHORTEN-003 (Second Rise EP5, job 073bbba5, Nov 12): replies cut off at 400 tokens.
+describe('WRITER-OUTRO-SHORTEN-003', () => {
+  it('reads a line after an unclosed <outro> tag', () => {
+    expect(parseOutroReply('<outro>Emma told Caleb the truth. In Episode Six of "Second Rise," Sadie decides.\n(38 words')).toBe('Emma told Caleb the truth. In Episode Six of "Second Rise," Sadie decides.')
+  })
+  it('run-next gives the call room, asks for no counting aloud, and says why a repair was not accepted', () => {
+    const src = readFileSync(join(__dirname, '..', 'app/api/admin/production-jobs/run-next/route.ts'), 'utf8')
+    expect(src).toMatch(/max_tokens: 1200,\s*temperature: 0,\s*messages: \[\{ role: 'user', content: `This Belle B outro line/)
+    expect(src).toMatch(/Count the words silently/)
+    expect(src).toMatch(/WRITER-OUTRO-SHORTEN-003: shortened outro/)
+    expect(src).toMatch(/WRITER-OUTRO-SHORTEN-003: outro repair returned/)
+    expect(src).toMatch(/OUTRO-RECAP-NOT-SPOILER-001/)
+  })
+})

@@ -170,6 +170,12 @@ export function parseOutroReply(reply: string): string {
   let text = ''
   const tag = raw.match(/<outro>([\s\S]*?)<\/outro>/i)
   if (tag) text = tag[1]
+  // WRITER-OUTRO-SHORTEN-003: an opening tag with no closing tag (reply cut off) → take
+  // the first line after the tag.
+  if (!text) {
+    const open = raw.match(/<outro>\s*([^\n<]+)/i)
+    if (open) text = open[1]
+  }
   if (!text) {
     try { text = String(JSON.parse(raw)?.outro || '') } catch { /* fall through */ }
   }
