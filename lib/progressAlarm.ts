@@ -321,3 +321,62 @@ export function buildWaitingMessage(input: {
     `Daily reminder only; no action unless the wait itself is wrong.`
   )
 }
+
+/**
+ * FAILURE-ALERT-001 (Weekend Wife in Miami, job fe4c8778, Nov 12, 2026): the job failed at
+ * 15:23Z and sat failed ~2 h with no alert, because this alarm scanned only queued / running /
+ * waiting jobs. A failed job is now alerted once, within one scan (5 min) of failing.
+ *
+ * Dedupe without a new table or column: the job's progress_alarm_state row stores the key
+ * "failed:<updated_at>". A failed job is not progress-scanned, so the row is free; if the job
+ * is resumed, the progress scan sees a new fingerprint and starts a fresh baseline. A job that
+ * fails AGAIN gets a new updated_at, so a new alert.
+ * Only failures in the last 24 h alert, so the first scan after deploy does not page every
+ * old failure.
+ */
+export const FAILURE_LOOKBACK_MS = 24 * 60 * 60 * 1000
+
+export function failureAlertKey(failedAt: string | null | undefined): string {
+  return `failed:${String(failedAt || '')}`
+}
+
+export function failureAlertDue(
+  prevFingerprint: string | null | undefined,
+  failedAt: string | null | undefined,
+  nowMs: number = Date.now(),
+): boolean {
+  const t = parseMs(failedAt, NaN)
+  if (!Number.isFinite(t) || nowMs - t > FAILURE_LOOKBACK_MS) return false
+  return prevFingerprint !== failureAlertKey(failedAt)
+}
+
+/** Best one-line reason from a job's error_json. */
+export function failureReason(errorJson: any): string {
+  const e = errorJson && typeof errorJson === 'object' ? errorJson : {}
+  const parts = [
+    e.kind,
+    e.packageReport?.summary,
+    e.message,
+    e.reason,
+    e.classification?.reason,
+    e.episodeResult?.episodeNumber ? `episode ${e.episodeResult.episodeNumber}` : null,
+  ].filter((p) => typeof p === 'string' ? p.trim() : p != null)
+  const text = parts.map(String).join(' — ').replace(/\s+/g, ' ').trim()
+  return (text || 'no reason recorded (treat as a bug)').slice(0, 240)
+}
+
+export function buildFailureMessage(input: {
+  jobId: string
+  step: string | null
+  failedAt: string | null
+  reason: string
+  marcRequired: boolean
+}): string {
+  const when = input.failedAt ? input.failedAt.replace('T', ' ').slice(0, 16) + 'Z' : 'unknown time'
+  return (
+    `[progress-alarm] FAILED job ${input.jobId.slice(0, 8)} at step "${input.step ?? 'unknown'}" ` +
+    `(${when}): ${input.reason}. ` +
+    (input.marcRequired ? 'Marked as needing Marc. ' : '') +
+    `Nothing restarts it on its own.`
+  )
+}
