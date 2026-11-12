@@ -109,3 +109,13 @@ describe('WRITER-OUTRO-SHORTEN-003', () => {
     expect(src).toMatch(/OUTRO-RECAP-NOT-SPOILER-001/)
   })
 })
+
+describe('OUTRO-TEASE-NOT-SPOILER-001 (Marc, Nov 12, 2026)', () => {
+  it('the validator prompt passes a next-episode tease and fails only a give-away', () => {
+    const src = require('fs').readFileSync(require('path').join(process.cwd(), 'app/api/admin/production-jobs/run-next/route.ts'), 'utf8')
+    expect(src).toMatch(/OUTRO-TEASE-NOT-SPOILER-001/)
+    expect(src).toMatch(/PASS: "Connor tells Jess the truth about what came before her"/)
+    expect(src).toMatch(/Fail it ONLY if it GIVES AWAY a later episode's answer or outcome/)
+    expect(src).not.toMatch(/The outro may still fail for revealing what happens in a LATER episode\./)
+  })
+})
