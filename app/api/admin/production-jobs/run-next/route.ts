@@ -101,7 +101,7 @@ import { legacyStepModels, routeStep, resolveModelForStep, coerceValidationModel
 import { buildContinuityPins, hashScript, verifyContinuityPins } from '@/lib/continuityPin'
 import { checkSeriesFacts, formatFactSheet, castListsText } from '@/lib/seriesFacts'
 import { runGeminiStoryRead, listenerText, geminiReadBlocks, geminiBlockingVerdict, geminiRewriteTarget, MAX_GEMINI_SCRIPT_REWRITES, type GeminiReadState } from '@/lib/geminiStoryRead'
-import { seriesPatchEnabled, planSeriesPatch, buildPatchPrompt, buildPatchRetryMessage, parsePatchReply, applyPatchEdits, repinAfterPatch, MAX_SERIES_PATCH_RUNS, type SeriesReadIssue } from '@/lib/seriesPatch'
+import { seriesPatchEnabled, planSeriesPatch, buildPatchPrompt, buildPatchRetryMessage, parsePatchReply, applyPatchEdits, repinAfterPatch, validatorIssuesForPatch, MAX_SERIES_PATCH_RUNS, type SeriesReadIssue } from '@/lib/seriesPatch'
 import { planTimingPass, finishTimingPass, timedLinesFromSizes, sizesFromListing, type TimingCheckState } from '@/lib/timingPass'
 import {
   hasEarnedPackageEvidence,
@@ -7858,7 +7858,8 @@ async function backfillSeriesFacts(job: ProductionJob, model: string, seriesId: 
       storyTitle: String(sortedEps[0]?.series_name || 'Series facts'),
       metadata: { is_v2: true, production_job_id: job.id, series_id: seriesId },
     }).catch(() => {})
-    const facts = parseFactsBackfill(res.content.map((c: any) => ('text' in c ? c.text : '')).join(''), sortedEps.length)
+    const episodeTexts = new Map<number, string>(sortedEps.map((ep: any) => [episodeNumber(ep, 0), storyBodyText(String(ep.script || ''))]))
+    const facts = parseFactsBackfill(res.content.map((c: any) => ('text' in c ? c.text : '')).join(''), sortedEps.length, episodeTexts)
     if (!facts) {
       console.warn(`[SERIES-FACTS-BACKFILL-001] series ${seriesId}: reply unusable; continuing without facts`)
       return []
@@ -10258,7 +10259,12 @@ export async function POST(req: NextRequest) {
         // whole-episode rewrite. Rewrites fixed the listed errors and invented new ones. Patched
         // episodes go back through the per-episode validator and the series read. Any edit that
         // does not apply cleanly falls back to SERIES-REWRITE-001 below. Bounded per job.
-        const readIssues: SeriesReadIssue[] = Array.isArray((result as any).seriesReadIssues) ? (result as any).seriesReadIssues : []
+        const seriesIssues: SeriesReadIssue[] = Array.isArray((result as any).seriesReadIssues) ? (result as any).seriesReadIssues : []
+        // EPISODE-PATCH-001: a single-episode validator FAIL goes to the same in-place patcher
+        // before any whole-episode rewrite (wrong SFX cues re-written into new wrong cues).
+        const episodeIssues: SeriesReadIssue[] = seriesIssues.length ? [] : validatorIssuesForPatch(result.episodeResult?.report, Number(result.episodeResult?.episodeNumber || 0))
+        const readIssues: SeriesReadIssue[] = seriesIssues.length ? seriesIssues : episodeIssues
+        const patchSourceLabel = seriesIssues.length ? 'series-read' : 'episode-check'
         if (!(result as any).continuityPinError && !seriesAutoRepairExempt && seriesPatchEnabled() && readIssues.length) {
           const priorPatchState: any = lockedJob.state_json && typeof lockedJob.state_json === 'object' ? lockedJob.state_json : {}
           const patchRuns = Number(priorPatchState.seriesRewrite?.patchRuns || 0)
@@ -10358,7 +10364,7 @@ export async function POST(req: NextRequest) {
                 if (pinErr) throw new Error(`SERIES-PATCH-001: re-pin of ${storyId} failed: ${pinErr.message}`)
               }
               const patchSummary = (outcomes as any[]).map((o) => `EP${o.epNum}: ${o.edits} edit(s)${o.unfixed.length ? `, ${o.unfixed.length} not fixable by edit` : ''}`).join('; ')
-              const patchLogs = appendLog({ ...lockedJob, logs }, `Series patch ${patchPlan.run}/${MAX_SERIES_PATCH_RUNS}: ${readIssues.length} series-read issue(s) fixed in place — ${patchSummary}. Re-validating.`, {
+              const patchLogs = appendLog({ ...lockedJob, logs }, `Series patch ${patchPlan.run}/${MAX_SERIES_PATCH_RUNS}: ${readIssues.length} ${patchSourceLabel} issue(s) fixed in place — ${patchSummary}. Re-validating.`, {
                 seriesId: result.seriesId,
                 patchedEpisodes: (outcomes as any[]).map((o) => o.epNum),
                 unfixed: (outcomes as any[]).flatMap((o) => o.unfixed.map((u: string) => `EP${o.epNum}: ${u}`)).slice(0, 10),
