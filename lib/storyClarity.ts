@@ -129,13 +129,13 @@ Answer these checks:
 
 ${planned.length ? `EMOTIONS (report only, canon decision 133): the plan wants the listener to feel: ${['liking the protagonist', ...planned].join(', ')}. For each, quote the line that sets it up and the line that triggers it, or say it is missing. Also list "announced": lines where a character or the narrator names a feeling instead of showing it ("I was terrified", "it was heartbreaking").
 
-` : ''}${opts.approvedPlan ? `APPROVED EPISODE PLAN (the producer approved this; canon decision 130): a twist or reveal that this plan calls for does NOT count. In "twists", list ONLY major twists that are NOT in this plan.
+` : ''}${opts.approvedPlan ? `APPROVED EPISODE PLAN (the producer approved this; canon decision 130): a twist or reveal that this plan calls for does NOT count. For each twist set "in_plan": true when the plan above calls for that reveal (even in other words, e.g. the plan says "what he tells her changes everything — about his father" and the script reveals his father's words), false only when the writer added it.
 ${opts.approvedPlan}
 
 ` : ''}Also list: "twists" = each MAJOR twist or reveal in this episode (a turn that changes what the listener believes is TRUE about the story; not ordinary plot steps). NOT a twist: a character's decision, plan, condition, request or bargain; something the listener already knew from earlier episodes or the plan; a callback or symbolic detail. "open_questions" = the main story questions still unanswered at the end of the episode (not minor details). Count a question only if a listener would actively wonder about it now; background history about one relationship counts as ONE question, and a minor character's identity is not a question. Be strict but fair; list only real ones.
 
 Return ONLY JSON, no other text:
-{"want":"...","obstacle":"...","stakes":"...","twists":["..."],"open_questions":["..."],${planned.length ? '"emotions":[{"emotion":"...","setup":"quoted line or empty","trigger":"quoted line or empty","found":true}],"announced":["..."],' : ''}
+{"want":"...","obstacle":"...","stakes":"...","twists":[${opts.approvedPlan ? '{"quote":"...","in_plan":false}' : '"..."'}],"open_questions":["..."],${planned.length ? '"emotions":[{"emotion":"...","setup":"quoted line or empty","trigger":"quoted line or empty","found":true}],"announced":["..."],' : ''}
  "checks":[{"id":"THREE-SENTENCE","pass":true,"detail":"...","quotes":[]},{"id":"GOAL-EARLY","pass":true,"detail":"...","quotes":[]},{"id":"INSIDER-WORDS","pass":true,"detail":"...","quotes":[]},{"id":"SCENE-PURPOSE","pass":true,"detail":"...","quotes":[]},{"id":"RECAP-LINE","pass":true,"detail":"...","quotes":[]},{"id":"FOLLOW-BY-EAR","pass":true,"detail":"...","quotes":[]}]}
 
 SCRIPT:
@@ -166,7 +166,14 @@ export function parseClarityReview(raw: string, episodeNumber: number): { checks
   const emotions: EmotionFinding[] = Array.isArray(obj.emotions)
     ? obj.emotions.slice(0, 6).map((e: any) => ({ emotion: String(e?.emotion || '').slice(0, 60), setup: String(e?.setup || '').slice(0, 200), trigger: String(e?.trigger || '').slice(0, 200), found: e?.found === true }))
     : []
-  return { checks, threeSentences: three, twists: list(obj.twists), openQuestions: list(obj.open_questions), emotions, announced: list(obj.announced) }
+  // TWIST-INPLAN-001 (Weekend Wife EP5, job 2dd15768, Nov 11): the reviewer marks each
+  // twist in_plan; reveals the approved plan calls for never count (canon decision 130).
+  const twists = (Array.isArray(obj.twists) ? obj.twists : [])
+    .filter((t: any) => !(t && typeof t === 'object' && t.in_plan === true))
+    .map((t: any) => String(t && typeof t === 'object' ? (t.quote ?? t.twist ?? '') : t).slice(0, 200))
+    .filter(Boolean)
+    .slice(0, 10)
+  return { checks, threeSentences: three, twists, openQuestions: list(obj.open_questions), emotions, announced: list(obj.announced) }
 }
 
 export function combineClarity(llm: ReturnType<typeof parseClarityReview>, cast: ReturnType<typeof castCheck>, metrics: ReadingMetrics): ClarityResult {
