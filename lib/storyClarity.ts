@@ -176,15 +176,16 @@ export function parseClarityReview(raw: string, episodeNumber: number): { checks
   return { checks, threeSentences: three, twists, openQuestions: list(obj.open_questions), emotions, announced: list(obj.announced) }
 }
 
-export function combineClarity(llm: ReturnType<typeof parseClarityReview>, cast: ReturnType<typeof castCheck>, metrics: ReadingMetrics): ClarityResult {
+export function combineClarity(llm: ReturnType<typeof parseClarityReview>, cast: ReturnType<typeof castCheck>, metrics: ReadingMetrics, opts: { twistMax?: number } = {}): ClarityResult {
+  const twistMax = opts.twistMax ?? CANON.TWISTS_PER_EPISODE_MAX
   // Decisions 129-131 (Marc, Nov 10, 2026): blocking.
   const reading: ClarityCheck = metrics.grade <= CANON.READING_GRADE_MAX
     ? { id: 'READING-LEVEL', pass: true, detail: `grade ${metrics.grade} (max ${CANON.READING_GRADE_MAX})` }
     : { id: 'READING-LEVEL', pass: false, detail: `reads at grade ${metrics.grade}, ${metrics.avgSentenceWords} words per sentence (max grade ${CANON.READING_GRADE_MAX}; aim for about grade 6). Use shorter sentences and plainer words.` }
   const unreadable = llm.checks.some((c) => /unreadable output/.test(c.detail))
-  const twists: ClarityCheck = unreadable || llm.twists.length <= CANON.TWISTS_PER_EPISODE_MAX
+  const twists: ClarityCheck = unreadable || llm.twists.length <= twistMax
     ? { id: 'TWIST-BUDGET', pass: true, detail: `${llm.twists.length} major twist(s)` }
-    : { id: 'TWIST-BUDGET', pass: false, detail: `${llm.twists.length} major twists in one episode (max ${CANON.TWISTS_PER_EPISODE_MAX}). Keep the one that answers or sharpens the series' main question; cut or fold the others.`, quotes: llm.twists }
+    : { id: 'TWIST-BUDGET', pass: false, detail: `${llm.twists.length} major twists in one episode (max ${twistMax}). Keep the one that answers or sharpens the series' main question; cut or fold the others.`, quotes: llm.twists }
   const open: ClarityCheck = unreadable || llm.openQuestions.length <= CANON.OPEN_QUESTIONS_MAX
     ? { id: 'OPEN-QUESTIONS', pass: true, detail: `${llm.openQuestions.length} open question(s)` }
     : { id: 'OPEN-QUESTIONS', pass: false, detail: `${llm.openQuestions.length} story questions still open at the end (max ${CANON.OPEN_QUESTIONS_MAX}). Answer one before opening another.`, quotes: llm.openQuestions }
@@ -227,7 +228,7 @@ export function clarityReportText(r: ClarityResult): string {
  */
 export function twistBudgetWriterBlock(): string {
   return `TWIST AND QUESTION BUDGET (canon decisions 130 and 131; checked before voicing, a script over the limit is rejected):
-- The reveals written in this episode's plan are allowed. Beyond those, add at most ${CANON.TWISTS_PER_EPISODE_MAX} major twist or reveal: a turn that changes what the listener believes is true. It must answer or sharpen the series' main question. A twist never opens a new mystery.
+- The reveals written in this episode's plan are allowed. Beyond those, aim for ONE major twist or reveal (a turn that changes what the listener believes is true); ${CANON.TWISTS_PER_SERIES_EPISODE_MAX} is the hard limit (TWIST-BUDGET-SERIES-002). It must answer or sharpen the series' main question. A twist never opens a new mystery.
 - A character's decision, plan or condition is not a twist; use those freely.
 - At the end of this episode, at most ${CANON.OPEN_QUESTIONS_MAX} story questions may be open. If you open a new one, answer an older one in this episode.
 - Do not add extra secrets, hidden pasts or teases beyond the episode plan. Belle's outro may point to a question that is already open; it must not open a new one.`
