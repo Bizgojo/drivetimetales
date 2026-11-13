@@ -34,9 +34,9 @@ describe('WRITER-OUTRO-SHORTEN-001', () => {
   it('run-next shortens only the outro and re-runs the same self-check before saving', () => {
     const src = readFileSync(join(__dirname, '..', 'app/api/admin/production-jobs/run-next/route.ts'), 'utf8')
     expect(src).toMatch(/check: \(writerSelfCheckFn = async \(draftScript: string\) =>/)
-    expect(src).toMatch(/onlyOutroOrDescriptionLengthBlockers\(outroWriterBlockers\)/)
-    expect(src).toMatch(/if \(lengthOnly\.description\) \{[\s\S]{0,300}shortenDescriptionToLimit/)
-    expect(src).toMatch(/replaceBelleSection\(script, 'outro', shorter\)[\s\S]{0,900}await writerSelfCheckFn\(nextScript\)[\s\S]{0,200}if \(recheck\.ready/)
+    expect(src).toMatch(/onlyBelleOrDescriptionLengthBlockers\(outroWriterBlockers\)/)
+    expect(src).toMatch(/if \(repairable && lengthOnly\.description\) \{[\s\S]{0,300}shortenDescriptionToLimit/)
+    expect(src).toMatch(/replaceBelleSection\(nextScript, 'outro', shorter\)[\s\S]{0,4000}await writerSelfCheckFn\(nextScript\)[\s\S]{0,200}if \(recheck\.ready/)
     expect(src).toMatch(/purpose: 'writer-outro-shorten'/)
     // the repair runs before the failure is recorded
     expect(src.indexOf('WRITER-OUTRO-SHORTEN-001 (Weekend Wife')).toBeLessThan(src.indexOf('still fails pre-save checks after'))
@@ -91,7 +91,7 @@ describe('WRITER-OUTRO-SHORTEN-002', () => {
     const src = readFileSync(join(__dirname, '..', 'app/api/admin/production-jobs/run-next/route.ts'), 'utf8')
     expect(src).toMatch(/between <outro> and <\/outro> tags/)
     expect(src).toMatch(/const next = parseOutroReply\(/)
-    expect(src).toMatch(/WRITER-OUTRO-SHORTEN-002: outro repair failed/)
+    expect(src).toMatch(/WRITER-OUTRO-SHORTEN-002: length repair failed/)
   })
 })
 
@@ -104,7 +104,7 @@ describe('WRITER-OUTRO-SHORTEN-003', () => {
     const src = readFileSync(join(__dirname, '..', 'app/api/admin/production-jobs/run-next/route.ts'), 'utf8')
     expect(src).toMatch(/max_tokens: 1200,\s*temperature: 0,\s*messages: \[\{ role: 'user', content: `This Belle B outro line/)
     expect(src).toMatch(/Count the words silently/)
-    expect(src).toMatch(/WRITER-OUTRO-SHORTEN-003: shortened outro/)
+    expect(src).toMatch(/WRITER-OUTRO-SHORTEN-003: shortened \(/)
     expect(src).toMatch(/WRITER-OUTRO-SHORTEN-003: outro repair returned/)
     expect(src).toMatch(/OUTRO-RECAP-NOT-SPOILER-001/)
   })

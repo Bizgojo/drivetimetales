@@ -79,6 +79,7 @@ import {
   checkScriptReadiness,
   onlyDescriptionLengthBlockers,
   onlyOutroOrDescriptionLengthBlockers,
+  onlyBelleOrDescriptionLengthBlockers,
   onlyBelleSpoilerOrLengthBlockers,
   isSoftBlockerLine,
   SOFT_WRITER_GATES,
@@ -6638,6 +6639,7 @@ async function createSeriesOutline(job: ProductionJob, model: string, series: an
     sequelHook: sequelHookOf(brief),
     seriesTitle: String(series.title || brief.series_name || ''),
     publishedEpisodes,
+    episodeBriefs: episodes.map((ep: any) => ({ episodeNumber: episodeNumber(ep, 0), title: String(ep.brief_json?.title || ep.title || ''), premise: String(ep.brief_json?.premise || '') })),
   })
   const lastPublishedEpisode = publishedEpisodes.reduce((m, e) => Math.max(m, e.episodeNumber), 0)
   let problems: string[] = []
@@ -7243,52 +7245,72 @@ async function generateOneSeriesEpisodeScript(job: ProductionJob, model: string)
   // Widow EP3 (job 7bf52d9b, Nov 11): outro 43 words AND description 110
   // characters together — both lines are shortened, then the same check runs.
   const outroWriterBlockers = writerAttempts[writerAttempts.length - 1]?.blockers || []
-  const lengthOnly = onlyOutroOrDescriptionLengthBlockers(outroWriterBlockers)
+  // WRITER-LENGTH-REPAIR-001: intro, outro and description lengths are each repaired on their own.
+  const lengthOnly = onlyBelleOrDescriptionLengthBlockers(outroWriterBlockers)
   if (!selfCheckOk && script && writerSelfCheckFn && lengthOnly.ok) {
-    const currentOutro = extractBelleSection(script, 'outro')
-    const outroSeriesName = String(targetEpisode.series_name || series.title || '').trim()
-    const outroRule = selfCheckIsFinale
-      ? closingOutroPrompt({ title: outroSeriesName, author: String(targetEpisode.author || '').trim(), narrator: assignedNarratorName })
-      : nonFinaleOutroPrompt({ seriesName: outroSeriesName, nextEpisodeNumber: targetEpisodeNumber + 1, author: String(targetEpisode.author || '').trim(), narrator: assignedNarratorName })
+    const lengthCtx = { jobId: job.id, storyId: String(targetEpisode.id), title: targetEpisode.title, seriesId: String(seriesId), episodeNumber: targetEpisodeNumber }
+    const repairNotes: string[] = []
+    const lastAttemptForRepair = writerAttempts[writerAttempts.length - 1]
     try {
-      const shorter = await shortenBelleOutroToLimit(currentOutro, outroRule, coerceValidationModelToClaude(model), !selfCheckIsFinale, {
-        jobId: job.id, storyId: String(targetEpisode.id), title: targetEpisode.title, seriesId: String(seriesId), episodeNumber: targetEpisodeNumber,
-      })
-      if (shorter && countWords(shorter) <= BELLE_OUTRO_MAX_WORDS && !(!selfCheckIsFinale && NON_FINALE_FINAL_WORDS.test(shorter))) {
-        let nextScript = replaceBelleSection(script, 'outro', shorter)
-        let nextDescription = description
-        if (lengthOnly.description) {
-          const currentDesc = extractHeader(nextScript, 'DESCRIPTION') || description
-          const shorterDesc = await shortenDescriptionToLimit(currentDesc, coerceValidationModelToClaude(model), {
-            jobId: job.id, storyId: String(targetEpisode.id), title: targetEpisode.title, seriesId: String(seriesId), episodeNumber: targetEpisodeNumber,
-          })
-          if (shorterDesc && shorterDesc.length <= DESCRIPTION_MAX_CHARS) {
-            nextScript = replaceOrInsertHeader(nextScript, 'DESCRIPTION', shorterDesc)
-            nextDescription = shorterDesc
-          }
+      let nextScript = script
+      let nextDescription = description
+      let repairable = true
+      if (lengthOnly.outro) {
+        const currentOutro = extractBelleSection(nextScript, 'outro')
+        const outroSeriesName = String(targetEpisode.series_name || series.title || '').trim()
+        const outroRule = selfCheckIsFinale
+          ? closingOutroPrompt({ title: outroSeriesName, author: String(targetEpisode.author || '').trim(), narrator: assignedNarratorName })
+          : nonFinaleOutroPrompt({ seriesName: outroSeriesName, nextEpisodeNumber: targetEpisodeNumber + 1, author: String(targetEpisode.author || '').trim(), narrator: assignedNarratorName })
+        const shorter = await shortenBelleOutroToLimit(currentOutro, outroRule, coerceValidationModelToClaude(model), !selfCheckIsFinale, lengthCtx)
+        if (shorter && countWords(shorter) <= BELLE_OUTRO_MAX_WORDS && !(!selfCheckIsFinale && NON_FINALE_FINAL_WORDS.test(shorter))) {
+          nextScript = replaceBelleSection(nextScript, 'outro', shorter)
+          repairNotes.push(`outro ${countWords(currentOutro)} -> ${countWords(shorter)} words`)
+        } else {
+          repairable = false
+          if (lastAttemptForRepair) lastAttemptForRepair.blockers = [...lastAttemptForRepair.blockers, `WRITER-OUTRO-SHORTEN-003: outro repair returned ${shorter ? countWords(shorter) : 0} words (max ${BELLE_OUTRO_MAX_WORDS}${!selfCheckIsFinale && shorter && NON_FINALE_FINAL_WORDS.test(shorter) ? '; has a final-sounding word' : ''})`]
         }
+      }
+      if (repairable && lengthOnly.intro) {
+        const currentIntro = extractBelleSection(nextScript, 'intro')
+        const shorterIntro = await shortenBelleIntroToLimit(currentIntro, coerceValidationModelToClaude(model), lengthCtx)
+        if (shorterIntro && countWords(shorterIntro) <= BELLE_INTRO_MAX_WORDS) {
+          nextScript = replaceBelleSection(nextScript, 'intro', shorterIntro)
+          repairNotes.push(`intro ${countWords(currentIntro)} -> ${countWords(shorterIntro)} words`)
+        } else {
+          repairable = false
+          if (lastAttemptForRepair) lastAttemptForRepair.blockers = [...lastAttemptForRepair.blockers, `WRITER-LENGTH-REPAIR-001: intro repair returned ${shorterIntro ? countWords(shorterIntro) : 0} words (max ${BELLE_INTRO_MAX_WORDS})`]
+        }
+      }
+      if (repairable && lengthOnly.description) {
+        const currentDesc = extractHeader(nextScript, 'DESCRIPTION') || description
+        const shorterDesc = await shortenDescriptionToLimit(currentDesc, coerceValidationModelToClaude(model), lengthCtx)
+        if (shorterDesc && shorterDesc.length <= DESCRIPTION_MAX_CHARS) {
+          nextScript = replaceOrInsertHeader(nextScript, 'DESCRIPTION', shorterDesc)
+          nextDescription = shorterDesc
+          repairNotes.push(`description ${currentDesc.length} -> ${shorterDesc.length} characters`)
+        } else {
+          repairable = false
+          if (lastAttemptForRepair) lastAttemptForRepair.blockers = [...lastAttemptForRepair.blockers, `WRITER-LENGTH-REPAIR-001: description repair returned ${shorterDesc ? shorterDesc.length : 0} characters (max ${DESCRIPTION_MAX_CHARS})`]
+        }
+      }
+      if (repairable) {
         const recheck = await writerSelfCheckFn(nextScript)
         // Soft gates (stock phrasing) never block on their own (AUTHOR-STYLE-001).
         if (recheck.ready || (recheck.blockers.length > 0 && recheck.blockers.every((b) => SOFT_WRITER_GATES.has(b.gate)))) {
           script = nextScript
           description = nextDescription
           selfCheckOk = true
-          writerAttempts.push({ attempt: writerAttempts.length + 1, blockers: [`WRITER-OUTRO-SHORTEN-001: Belle outro shortened ${countWords(currentOutro)} -> ${countWords(shorter)} words (script unchanged)`], spokenWords: writerAttempts[writerAttempts.length - 1]?.spokenWords ?? 0 })
-        } else {
-          // WRITER-OUTRO-SHORTEN-003: say why the shortened line was not accepted.
-          const lastAttempt = writerAttempts[writerAttempts.length - 1]
-          if (lastAttempt) lastAttempt.blockers = [...lastAttempt.blockers, `WRITER-OUTRO-SHORTEN-003: shortened outro (${countWords(shorter)} words) still blocked by: ${recheck.blockers.filter((b) => !SOFT_WRITER_GATES.has(b.gate)).map((b) => `${b.gate}: ${b.detail}`).join('; ').slice(0, 300)}`]
+          writerAttempts.push({ attempt: writerAttempts.length + 1, blockers: [`WRITER-LENGTH-REPAIR-001: ${repairNotes.join('; ')} (story unchanged)`], spokenWords: writerAttempts[writerAttempts.length - 1]?.spokenWords ?? 0 })
+        } else if (lastAttemptForRepair) {
+          // WRITER-OUTRO-SHORTEN-003: say why the shortened lines were not accepted.
+          lastAttemptForRepair.blockers = [...lastAttemptForRepair.blockers, `WRITER-OUTRO-SHORTEN-003: shortened (${repairNotes.join('; ')}) still blocked by: ${recheck.blockers.filter((b) => !SOFT_WRITER_GATES.has(b.gate)).map((b) => `${b.gate}: ${b.detail}`).join('; ').slice(0, 300)}`]
         }
-      } else {
-        const lastAttempt = writerAttempts[writerAttempts.length - 1]
-        if (lastAttempt) lastAttempt.blockers = [...lastAttempt.blockers, `WRITER-OUTRO-SHORTEN-003: outro repair returned ${shorter ? countWords(shorter) : 0} words (max ${BELLE_OUTRO_MAX_WORDS}${!selfCheckIsFinale && shorter && NON_FINALE_FINAL_WORDS.test(shorter) ? '; has a final-sounding word' : ''})`]
       }
     } catch (err) {
       const reason = err instanceof Error ? err.message : String(err)
-      console.warn(`[WRITER-OUTRO-SHORTEN-001] episode ${targetEpisodeNumber} shorten failed: ${reason}`)
+      console.warn(`[WRITER-LENGTH-REPAIR-001] episode ${targetEpisodeNumber} repair failed: ${reason}`)
       // WRITER-OUTRO-SHORTEN-002: make a failed repair visible in the job error.
-      const lastAttempt = writerAttempts[writerAttempts.length - 1]
-      if (lastAttempt) lastAttempt.blockers = [...lastAttempt.blockers, `WRITER-OUTRO-SHORTEN-002: outro repair failed: ${reason.slice(0, 200)}`]
+      if (lastAttemptForRepair) lastAttemptForRepair.blockers = [...lastAttemptForRepair.blockers, `WRITER-OUTRO-SHORTEN-002: length repair failed: ${reason.slice(0, 200)}`]
     }
   }
 
@@ -7981,6 +8003,39 @@ async function shortenBelleOutroToLimit(outro: string, rule: string, model: stri
     outputTokens,
     storyId: ctx.storyId,
     storyTitle: ctx.title || 'Writer outro shorten',
+    metadata: { is_v2: true, production_job_id: ctx.jobId, series_id: ctx.seriesId, episode_number: ctx.episodeNumber },
+  }).catch(() => {})
+  return text
+}
+
+/** WRITER-LENGTH-REPAIR-001: Belle's intro limit (voice step handoff). */
+const BELLE_INTRO_MAX_WORDS = 38
+
+/** WRITER-LENGTH-REPAIR-001: shorten only the Belle B intro (up to 2 small calls, logged). */
+async function shortenBelleIntroToLimit(intro: string, model: string, ctx: { jobId: string; storyId: string; title?: string | null; seriesId: string; episodeNumber: number }): Promise<string> {
+  let text = intro
+  let inputTokens = 0
+  let outputTokens = 0
+  for (let i = 0; i < 2 && countWords(text) > BELLE_INTRO_MAX_WORDS - 2; i++) {
+    const res = await anthropic.messages.create({
+      model,
+      max_tokens: 1200,
+      temperature: 0,
+      messages: [{ role: 'user', content: `This Belle B intro line is ${countWords(text)} words. It must be ${BELLE_INTRO_MAX_WORDS - 6} words or fewer. Keep the opening that names the episode number, the series and the episode title exactly as written; shorten only the teaser after it, keeping its hook and revealing nothing more. Count the words silently. Reply with NOTHING except the new line between <outro> and </outro> tags (no "BELLE B:" label, no word count, no explanation).\n\nCURRENT INTRO: ${text}` }],
+    })
+    inputTokens += res.usage?.input_tokens ?? 0
+    outputTokens += res.usage?.output_tokens ?? 0
+    const next = parseOutroReply(res.content.map((c: any) => ('text' in c ? c.text : '')).join(''))
+    if (next) text = next
+  }
+  logAnthropicCall({
+    route: '/api/admin/production-jobs/run-next',
+    purpose: 'writer-intro-shorten',
+    model,
+    inputTokens,
+    outputTokens,
+    storyId: ctx.storyId,
+    storyTitle: ctx.title || 'Writer intro shorten',
     metadata: { is_v2: true, production_job_id: ctx.jobId, series_id: ctx.seriesId, episode_number: ctx.episodeNumber },
   }).catch(() => {})
   return text
