@@ -7866,11 +7866,18 @@ function storyBodyExcerpt(script: string): string {
 }
 
 /** DESC-100-REPAIR-001: ask (twice at most) for a shorter DESCRIPTION; returns the last answer. */
+/**
+ * WRITER-DESC-SHORTEN-002 (Second Rise EP2 re-plan, Nov 12): two "100 characters or fewer" calls
+ * both came back over 100 and the episode failed with only the description too long. Models
+ * count words better than characters, so the ask now aims well below the limit (Marc's rule:
+ * write below the limit, the checker accepts the limit) in words and characters, with a third
+ * try that names the length it got.
+ */
 async function shortenDescriptionLoop(description: string, model: string): Promise<string> {
-  for (let attempt = 0; attempt < 2 && description.length > DESCRIPTION_MAX_CHARS; attempt++) {
+  for (let attempt = 0; attempt < 3 && description.length > DESCRIPTION_MAX_CHARS; attempt++) {
     const shorter = await anthropic.messages.create({
       model, max_tokens: 300, temperature: 0,
-      messages: [{ role: 'user', content: `This story-card DESCRIPTION is ${description.length} characters. It must be ${DESCRIPTION_MAX_CHARS} characters or fewer, counting spaces. Shorten it to one complete present-tense sentence about the same protagonist and situation; keep the question it teases; reveal nothing more. Return JSON only: {"description": "text"}\n\nDESCRIPTION: ${description}` }],
+      messages: [{ role: 'user', content: `This story-card DESCRIPTION is ${description.length} characters${attempt > 0 ? ' (your last version was still too long)' : ''}. Rewrite it as one complete present-tense sentence of at most ${attempt > 1 ? 12 : 14} words and about 80 to 90 characters (hard limit ${DESCRIPTION_MAX_CHARS}, counting spaces). Same protagonist and situation; keep the question it teases; reveal nothing more. Return JSON only: {"description": "text"}\n\nDESCRIPTION: ${description}` }],
     })
     const next = sanitizeDescription(String(parseJsonObject(shorter.content.map((c: any) => ('text' in c ? c.text : '')).join('').trim()).description || ''))
     if (next) description = next
