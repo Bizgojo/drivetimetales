@@ -18,6 +18,8 @@ MAIN="${ET_MAIN_DIR:-/home/ubuntu/drivetimetales}"
 UPSTREAM_FILE="${ET_UPSTREAM_FILE:-/etc/caddy/et-upstream.caddy}"
 DRAIN_MAX_SECONDS="${DRAIN_MAX_SECONDS:-1200}"
 HEALTH_MAX_SECONDS="${HEALTH_MAX_SECONDS:-180}"
+# DEPLOY-WAIT-MIX-001: longest wait for a running audio mix (ffmpeg) before workers restart.
+MIX_WAIT_MAX_SECONDS="${MIX_WAIT_MAX_SECONDS:-3600}"
 CURRENT_LINK="${ET_CURRENT_LINK:-/home/ubuntu/et-current}"
 # Long-running workers that read code from $CURRENT_LINK. The progress alarm is a
 # timer and reads the path fresh on every run, so it needs no restart.
@@ -101,6 +103,25 @@ log "Caddy now → localhost:$TARGET"
 # and by then no worker uses it.
 ln -sfn "$SLOT" "$CURRENT_LINK"
 log "workers' path $CURRENT_LINK → $SLOT"
+
+# DEPLOY-WAIT-MIX-001 (Marc, Nov 13, 2026): Weekend Wife's final mix was running (ffmpeg
+# loudnorm) while the render worker's log said "No local render jobs queued", so a log line
+# cannot tell whether audio work is in progress. Restarting workers or stopping the old slot
+# mid-mix strands the job. Wait until no ffmpeg process is running; if one is still running
+# after MIX_WAIT_MAX_SECONDS, leave workers and the old slot alone and say so.
+mix_wait_deadline=$(( $(date +%s) + MIX_WAIT_MAX_SECONDS ))
+MIX_BUSY=0
+while pgrep -x ffmpeg > /dev/null 2>&1; do
+  if [ "$(date +%s)" -ge "$mix_wait_deadline" ]; then MIX_BUSY=1; break; fi
+  log "audio mix running (ffmpeg pid(s) $(pgrep -x ffmpeg | tr '\n' ' ')) — waiting before restarting workers"
+  sleep 30
+done
+if [ "$MIX_BUSY" = "1" ]; then
+  log "NOT DONE — an audio mix is still running after ${MIX_WAIT_MAX_SECONDS}s. Workers NOT restarted and old slot $ACTIVE NOT stopped. After it finishes: run scripts/ec2-deploy/switch-workers-to-current.sh --apply, then stop the old slot."
+  log "live: slot $TARGET ($SHORT) for web requests; workers still on their previous code"
+  exit 3
+fi
+log "no audio mix running — restarting workers"
 for unit in $WORKER_UNITS; do
   if [ "$(systemctl show -p LoadState --value "$unit" 2>/dev/null)" = "loaded" ] && systemctl is-active --quiet "$unit"; then
     # The render worker holds a job lock while it renders; restarting it mid-render
