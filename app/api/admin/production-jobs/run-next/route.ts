@@ -102,7 +102,7 @@ import { legacyStepModels, routeStep, resolveModelForStep, coerceValidationModel
 import { buildContinuityPins, hashScript, verifyContinuityPins } from '@/lib/continuityPin'
 import { checkSeriesFacts, formatFactSheet, castListsText } from '@/lib/seriesFacts'
 import { runGeminiStoryRead, listenerText, geminiReadBlocks, geminiBlockingVerdict, geminiRewriteTarget, MAX_GEMINI_SCRIPT_REWRITES, type GeminiReadState } from '@/lib/geminiStoryRead'
-import { seriesPatchEnabled, planSeriesPatch, buildPatchPrompt, buildPatchRetryMessage, parsePatchReply, applyPatchEdits, repinAfterPatch, validatorIssuesForPatch, MAX_SERIES_PATCH_RUNS, type SeriesReadIssue } from '@/lib/seriesPatch'
+import { seriesPatchEnabled, planSeriesPatch, buildPatchPrompt, buildPatchRetryMessage, parsePatchReply, applyPatchEdits, repinAfterPatch, validatorIssuesForPatch, MAX_SERIES_PATCH_RUNS, isLineLevelIssue, planSfxDeletions, deleteSfxLines, MAX_SFX_DELETES_PER_JOB, type SeriesReadIssue } from '@/lib/seriesPatch'
 import { planTimingPass, finishTimingPass, timedLinesFromSizes, sizesFromListing, type TimingCheckState } from '@/lib/timingPass'
 import {
   hasEarnedPackageEvidence,
@@ -10377,6 +10377,62 @@ export async function POST(req: NextRequest) {
           const priorPatchState: any = lockedJob.state_json && typeof lockedJob.state_json === 'object' ? lockedJob.state_json : {}
           const patchRuns = Number(priorPatchState.seriesRewrite?.patchRuns || 0)
           const patchEpisodes = (result.episodes || []) as any[]
+          // SFX-DELETE-001 (canon item 146): a wrong or decorative sound cue is deleted with no
+          // AI call and no patch budget (Nov 13: three last-chance rewrites were spent on one cue).
+          const sfxDeletesSoFar = Number(priorPatchState.seriesRewrite?.sfxDeletes || 0)
+          const sfxFrozen = new Set<number>(patchEpisodes.filter((ep: any) => isFrozenSeriesEpisode(ep)).map((ep: any) => episodeNumber(ep, 0)))
+          const sfxScripts = new Map<number, string>(patchEpisodes.filter((ep: any) => Boolean(ep.script)).map((ep: any) => [episodeNumber(ep, 0), String(ep.script)]))
+          const sfxPlan = planSfxDeletions(readIssues, sfxScripts, sfxFrozen)
+          const sfxCount = sfxPlan ? Array.from(sfxPlan.values()).reduce((n, c) => n + c.length, 0) : 0
+          if (sfxPlan && sfxDeletesSoFar + sfxCount <= MAX_SFX_DELETES_PER_JOB) {
+            const sfxOutcomes = Array.from(sfxPlan.entries()).map(([epNum, cues]) => {
+              const ep = patchEpisodes.find((e: any) => episodeNumber(e, 0) === epNum)
+              return { epNum, ep, cues, script: deleteSfxLines(String(ep.script), cues) }
+            })
+            const sfxScriptsById = new Map<string, string>(sfxOutcomes.map((o) => [String(o.ep.id), o.script]))
+            const sfxRepinned = repinAfterPatch(patchEpisodes, sfxScriptsById)
+            for (const o of sfxOutcomes) {
+              const sj = sfxRepinned.get(String(o.ep.id)) || (o.ep.script_json && typeof o.ep.script_json === 'object' ? o.ep.script_json : {})
+              const backups = Array.isArray(sj.rewrite_backups) ? sj.rewrite_backups.slice(-2) : []
+              const save = supabase
+                .from('stories')
+                .update({
+                  script: o.script,
+                  status: 'script_drafted',
+                  validator_result: null,
+                  validator_report: null,
+                  validator_passed_at: null,
+                  script_version: (o.ep.script_version || 1) + 1,
+                  script_json: { ...sj, rewrite_backups: [...backups, { at: nowIso(), reason: 'sfx_delete', script: o.ep.script }], sfx_delete: { at: nowIso(), cues: o.cues } },
+                })
+                .eq('id', o.ep.id)
+              const { data: saved, error: saveErr } = await (o.ep.script_version == null ? save.is('script_version', null) : save.eq('script_version', o.ep.script_version)).select('id').single()
+              if (saveErr || !saved) throw new Error(`SFX-DELETE-001: episode ${o.epNum} save failed: ${saveErr?.message || 'script changed underneath'}`)
+            }
+            for (const [storyId, sj] of Array.from(sfxRepinned.entries())) {
+              if (sfxScriptsById.has(storyId)) continue
+              const { error: pinErr } = await supabase.from('stories').update({ script_json: sj }).eq('id', storyId)
+              if (pinErr) throw new Error(`SFX-DELETE-001: re-pin of ${storyId} failed: ${pinErr.message}`)
+            }
+            const sfxSummary = sfxOutcomes.map((o) => `EP${o.epNum}: ${o.cues.join(', ')}`).join('; ')
+            const sfxLogs = appendLog({ ...lockedJob, logs }, `SFX-DELETE-001: ${sfxCount} wrong sound cue(s) deleted (no AI) — ${sfxSummary}. Re-validating.`, { seriesId: result.seriesId, episodes: sfxOutcomes.map((o) => o.epNum) })
+            const { data: sfxJob, error: sfxJobErr } = await supabase
+              .from('production_jobs')
+              .update({
+                status: 'queued',
+                current_step: NEXT_STEP_AFTER_SERIES_SCRIPTS,
+                state_json: { ...result.state, seriesValidation: null, seriesRewrite: { ...(priorPatchState.seriesRewrite || {}), sfxDeletes: sfxDeletesSoFar + sfxCount } },
+                error_json: null,
+                logs: sfxLogs,
+                locked_at: null,
+                locked_by: null,
+              })
+              .match(ownedJobFence(lockedJob, lockHolderId))
+              .select('*')
+              .single()
+            if (sfxJobErr) throw new Error(`SFX-DELETE-001: failed to queue re-validation: ${sfxJobErr.message}`)
+            return NextResponse.json({ success: true, action: 'sfx_delete', jobId: sfxJob.id, currentStep: step, nextStep: NEXT_STEP_AFTER_SERIES_SCRIPTS, deleted: sfxCount, logs: sfxLogs })
+          }
           const patchPlan = planSeriesPatch({
             issues: readIssues,
             patchRuns,
@@ -10517,6 +10573,9 @@ export async function POST(req: NextRequest) {
             failedEpisodeNumber,
             episodes: (result.episodes || []).map((ep: any) => ({ id: String(ep.id), episodeNumber: episodeNumber(ep, 0), hasScript: Boolean(ep.script) })),
             rewriteCounts,
+            // LINE-FIX-FIRST-001 (canon item 146): an episode-check failure made only of one-line
+            // problems rewrites that episode alone; later episodes keep their checked scripts.
+            onlyFailedEpisode: !seriesIssues.length && episodeIssues.length > 0 && episodeIssues.every(isLineLevelIssue),
           })
           if (plan.action === 'rewrite' && !seriesAutoRepairExempt) {
             const feedback = extractValidatorFixList(String(result.episodeResult.report))

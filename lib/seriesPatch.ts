@@ -54,7 +54,9 @@ export function planSeriesPatch(input: {
   let capped = 0
   for (const issue of issues) {
     if (input.frozenEpisodes.has(issue.episode)) continue
-    if (Number(input.patchCounts?.[String(issue.episode)] || 0) >= MAX_PATCHES_PER_EPISODE) { capped += 1; continue }
+    // LINE-FIX-FIRST-001: a problem that quotes the exact text to fix is never sent to a
+    // whole-episode rewrite because of the per-episode count; only the job cap applies.
+    if (!isLineLevelIssue(issue) && Number(input.patchCounts?.[String(issue.episode)] || 0) >= MAX_PATCHES_PER_EPISODE) { capped += 1; continue }
     if (!input.episodesWithScript.has(issue.episode)) return { action: 'skip', reason: `episode ${issue.episode} has no script` }
     byEpisode.set(issue.episode, [...(byEpisode.get(issue.episode) || []), issue])
   }
@@ -256,4 +258,68 @@ export function validatorIssuesForPatch(report: unknown, episodeNumber: number):
   const clean = (s: string) => s.replace(/\*\*/g, '').replace(/\s+/g, ' ').trim()
   const list = (items.length ? items : body ? [body.slice(0, 1500)] : []).map(clean).filter(Boolean)
   return list.slice(0, MAX_SERIES_PATCH_ISSUES).map((problem) => ({ episode: episodeNumber, problem, fix: '' }))
+}
+
+
+/**
+ * LINE-FIX-FIRST-001 (canon item 146, Nov 13, 2026): on Nov 13 all three re-planned hook
+ * series used their last whole-episode rewrite on one-line problems (a decorative sound cue,
+ * one past-tense word, one paragraph printed twice), and each rewrite invented new mistakes.
+ * A problem is line-level when it quotes the exact script text it is about (a line in quotes
+ * or backticks, or an [SFX: ...] cue). Line-level problems are always fixed in place.
+ */
+export function isLineLevelIssue(issue: SeriesReadIssue): boolean {
+  const t = `${issue?.problem || ''} ${issue?.fix || ''}`
+  return /\[SFX:[^\]\n]+\]/i.test(t) || /["“][^"”\n]{8,}["”]/.test(t) || /`[^`\n]{4,}`/.test(t)
+}
+
+/** SFX-DELETE-001: at most this many cue lines deleted per job (loop guard). */
+export const MAX_SFX_DELETES_PER_JOB = 12
+
+const SFX_WORDS = /\b(SFX|sound cue|sound effect|cue)\b/i
+
+function sfxLineIndexes(script: string, cue: string): number[] {
+  const want = matchKey(cue).replace(/\s+/g, ' ').trim().toLowerCase()
+  const out: number[] = []
+  String(script || '').split('\n').forEach((line, i) => {
+    if (matchKey(line).replace(/\s+/g, ' ').trim().toLowerCase() === want) out.push(i)
+  })
+  return out
+}
+
+/**
+ * SFX-DELETE-001 (canon item 146): when every problem is a wrong or decorative sound cue that
+ * the problem quotes, and that cue is a whole line found exactly once in its episode, the cue
+ * line is deleted with no AI call. Deleting a sound line cannot change the story. Returns
+ * null when any problem is not such a cue (the AI patcher handles those as before).
+ */
+export function planSfxDeletions(issues: SeriesReadIssue[] | null | undefined, scripts: Map<number, string>, frozenEpisodes: Set<number> = new Set()): Map<number, string[]> | null {
+  const list = Array.isArray(issues) ? issues.filter((i) => i && i.episode > 0) : []
+  if (!list.length) return null
+  const out = new Map<number, string[]>()
+  for (const issue of list) {
+    if (frozenEpisodes.has(issue.episode)) return null
+    const script = scripts.get(issue.episode)
+    if (!script || !SFX_WORDS.test(issue.problem)) return null
+    const mentioned = Array.from(new Set(Array.from(String(issue.problem).matchAll(/\[SFX:[^\]\n]+\]/gi)).map((m) => m[0])))
+    const present = mentioned.filter((c) => sfxLineIndexes(script, c).length > 0)
+    if (present.length !== 1 || sfxLineIndexes(script, present[0]).length !== 1) return null
+    const cues = out.get(issue.episode) || []
+    if (!cues.includes(present[0])) cues.push(present[0])
+    out.set(issue.episode, cues)
+  }
+  return out.size ? out : null
+}
+
+/** Remove whole cue lines (each found exactly once) and the blank line left behind. */
+export function deleteSfxLines(script: string, cues: string[]): string {
+  let lines = String(script || '').split('\n')
+  for (const cue of cues) {
+    const idx = sfxLineIndexes(lines.join('\n'), cue)
+    if (idx.length !== 1) continue
+    const i = idx[0]
+    const blankAfter = i + 1 < lines.length && !lines[i + 1].trim() && (i === 0 || !lines[i - 1].trim())
+    lines.splice(i, blankAfter ? 2 : 1)
+  }
+  return lines.join('\n')
 }
