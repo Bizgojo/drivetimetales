@@ -44,13 +44,27 @@ export function buildSeriesOutlinePrompt(input: {
   sequelHook?: string
   /** ATLAS NEMESIS-001 3-THREAD EXCEPTION: series title selects the open-thread limit (default 1). */
   seriesTitle?: string
+  /** SERIES-REPLAN-001: episodes already published; the plan must match them exactly. */
+  publishedEpisodes?: Array<{ episodeNumber: number; title: string; body: string }>
 }): string {
   const threeOpenThreads = Boolean(input.sequelHook) && nemesisOpenThreadLimit(input.seriesTitle) === 3
   const nemesisBlock = !input.sequelHook ? ''
     : threeOpenThreads
       ? '- THE NEMESIS (producer request): ' + input.sequelHook + ' Include ONE nemesis among the main characters (role starts with "nemesis"). ATLAS NEMESIS-001 3-THREAD EXCEPTION for this series: leave exactly THREE threads with "resolved_in": 0 — the switched DNA result, Vivian, and Danny — carried into a future series. Every other thread is resolved.\n'
       : '- THE NEMESIS (producer request): ' + input.sequelHook + ' Include ONE nemesis among the main characters (role starts with "nemesis"). Add their thread (e.g. "Will Nick catch the nemesis?") with "resolved_in": 0 — it is the ONLY thread left open, carried into a future series. The nemesis escapes in the finale; every other thread is resolved.\n'
-  return `You are planning a ${input.totalEpisodes}-episode ${input.genre} audio drama series for drive-time listeners. Plan it BEFORE any episode is written, so the episodes fit together.
+  const published = (input.publishedEpisodes || []).slice().sort((a, b) => a.episodeNumber - b.episodeNumber)
+  const lastPublished = published.length ? published[published.length - 1].episodeNumber : 0
+  const publishedBlock = published.length ? `
+
+ALREADY PUBLISHED (SERIES-REPLAN-001): Episode${published.length > 1 ? 's' : ''} 1${lastPublished > 1 ? `-${lastPublished}` : ''} ${published.length > 1 ? 'are' : 'is'} already out and CANNOT change. Your plan must match ${published.length > 1 ? 'them' : 'it'} exactly:
+- Use the same characters, full names and upper-case speaker labels as in the published script${published.length > 1 ? 's' : ''}.
+- The plan entries for episode${published.length > 1 ? 's' : ''} 1${lastPublished > 1 ? `-${lastPublished}` : ''} describe what actually happens there, including how ${published.length > 1 ? 'each' : 'it'} ends.
+- FIXED FACTS must include every concrete fact the published episode${published.length > 1 ? 's' : ''} state${published.length > 1 ? '' : 's'} (ages, dates, how long ago, money, places), with those exact values.
+- Episodes ${lastPublished + 1} to ${input.totalEpisodes} continue directly from the end of episode ${lastPublished}, answer its cliffhanger first, and never contradict it.
+
+${published.map((e) => `===== PUBLISHED EPISODE ${e.episodeNumber}: ${e.title} =====\n${e.body}`).join('\n\n')}
+` : ''
+  return `You are planning a ${input.totalEpisodes}-episode ${input.genre} audio drama series for drive-time listeners. Plan it BEFORE any episode is written, so the episodes fit together.${publishedBlock}
 
 SERIES TITLE: ${input.title}
 PREMISE: ${input.premise}
