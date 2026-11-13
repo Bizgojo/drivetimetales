@@ -86,7 +86,7 @@ log "Caddy now → localhost:$TARGET"
 ln -sfn "$SLOT" "$CURRENT_LINK"
 log "workers' path $CURRENT_LINK → $SLOT"
 for unit in $WORKER_UNITS; do
-  if systemctl cat "$unit" > /dev/null 2>&1 && systemctl is-active --quiet "$unit"; then
+  if [ "$(systemctl show -p LoadState --value "$unit" 2>/dev/null)" = "loaded" ] && systemctl is-active --quiet "$unit"; then
     # The render worker holds a job lock while it renders; restarting it mid-render
     # would strand that job. Restart it only when its last log line says it is idle.
     if [ "$unit" = "endlesstales-renderworker.service" ] && ! sudo journalctl -u "$unit" -n 1 --no-pager -o cat 2>/dev/null | grep -q "No local render jobs queued"; then

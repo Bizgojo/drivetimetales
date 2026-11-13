@@ -33,10 +33,13 @@ run ln -sfn "$LIVE" "$CURRENT_LINK"
 
 for unit in $UNITS; do
   path="$(systemctl show -p FragmentPath --value "$unit" 2>/dev/null || true)"
-  [ -n "$path" ] && [ -f "$path" ] || { say "$unit: no unit file — skipped"; continue; }
-  if ! grep -q "$OLD/" "$path" && ! grep -q "^WorkingDirectory=$OLD\$" "$path"; then say "$unit: already off $OLD — skipped"; continue; fi
+  [ -n "$path" ] && sudo test -f "$path" || { say "$unit: no unit file — skipped"; continue; }
+  # Unit files can be root-only (runnext-worker2 is 0600): read with sudo, and stop
+  # rather than skip when a file cannot be read, so "unreadable" never looks like "done".
+  content="$(sudo cat "$path")" || { say "$unit: cannot read $path — stopping"; exit 1; }
+  if ! printf '%s\n' "$content" | grep -q "$OLD/" && ! printf '%s\n' "$content" | grep -q "^WorkingDirectory=$OLD\$"; then say "$unit: already off $OLD — skipped"; continue; fi
   say "$unit: $path"
-  grep -nE "^(WorkingDirectory|ExecStart)=" "$path" | sed 's/^/    before: /'
+  printf '%s\n' "$content" | grep -nE "^(WorkingDirectory|ExecStart)=" | sed 's/^/    before: /'
   run sudo cp -p "$path" "$path.bak-$STAMP"
   run sudo sed -i -E "s#^WorkingDirectory=$OLD\$#WorkingDirectory=$CURRENT_LINK#; s#^(ExecStart=.*)$OLD/#\\1$CURRENT_LINK/#" "$path"
 done
