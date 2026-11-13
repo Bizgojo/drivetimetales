@@ -6,6 +6,11 @@
 # own log file, named in its unit. Busy = its last line says it picked up a job or is calling
 # the render API (no finish line yet). Exit 0 = idle, 1 = busy, 2 = cannot tell (treated as busy).
 UNIT="${1:-endlesstales-renderworker.service}"
+# DEPLOY-WAIT-MIX-001: any running ffmpeg means audio work is in progress, whatever the log says.
+if pgrep -x ffmpeg > /dev/null 2>&1; then
+  echo "busy: ffmpeg running (pid(s) $(pgrep -x ffmpeg | tr '\n' ' '))"
+  exit 1
+fi
 LOGFILE="$(systemctl cat "$UNIT" 2>/dev/null | sed -n -E 's#^StandardOutput=(append|file):##p' | tail -1)"
 if [ -z "$LOGFILE" ] || ! LAST="$(sudo tail -n 20 "$LOGFILE" 2>/dev/null | grep -v '^[[:space:]]*$' | tail -1)" || [ -z "$LAST" ]; then
   echo "cannot read the render worker log (${LOGFILE:-no StandardOutput file in $UNIT})"
