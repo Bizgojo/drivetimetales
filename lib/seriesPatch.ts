@@ -330,3 +330,25 @@ export function deleteSfxLines(script: string, cues: string[]): string {
   }
   return lines.join('\n')
 }
+
+/**
+ * FIX-EPISODE-ROUTE-001 (The Widow Who Watched, Nov 13, 2026): the series read filed the
+ * EP2/EP3 receipt contradiction under Episode 3, but its fix said "In Episode 2, cut Nina's
+ * break-in". The patcher and the rewrite only touch the episode an issue is filed under, so
+ * EP3 was edited three times and the real fix (EP2's ending) never happened, until the hard
+ * stop. When the fix names one other, editable episode, the issue is moved to that episode.
+ */
+const ROUTE_WORDS = ['zero','one','two','three','four','five','six','seven','eight','nine','ten','eleven','twelve','thirteen','fourteen','fifteen','sixteen','seventeen','eighteen','nineteen','twenty','twenty-one','twenty-two','twenty-three','twenty-four','twenty-five','twenty-six','twenty-seven','twenty-eight','twenty-nine','thirty']
+function fixEpisodeNumber(fix: string): number | null {
+  const m = String(fix || '').match(/^\s*(?:Fix:\s*)?(?:In|At the end of|End|Cut [^.]*? from(?: the end of)?)\s+Episode\s+([0-9]+|[a-z-]+)\b/i)
+  if (!m) return null
+  const n = /^[0-9]+$/.test(m[1]) ? Number(m[1]) : ROUTE_WORDS.indexOf(m[1].toLowerCase())
+  return n >= 1 ? n : null
+}
+export function routeIssuesToFixEpisode<T extends { episode: number; problem: string; fix: string }>(issues: T[], editable: (episode: number) => boolean): T[] {
+  return (issues || []).map((i) => {
+    const n = fixEpisodeNumber(i.fix)
+    if (!n || n === i.episode || !editable(n)) return i
+    return { ...i, episode: n, problem: `${i.problem} (FIX-EPISODE-ROUTE-001: moved from episode ${i.episode}; the fix is in episode ${n})` }
+  })
+}
