@@ -107,6 +107,8 @@ Marc answered CANON-99 on Nov 9, 2026. These decisions are **Agreed** and overri
 - **Decision 81:** SFX-ASSET-LOCK becomes canon for voice locking and the manifest check. (06 Q6) — **Agreed** (Marc, Nov 9, 2026, CANON-99 Part 2)
 - **Decision 82:** Each series' signature sound (like the Falls Park bell) is one catalog name, used by every episode. (06 Q7) — **Agreed** (Marc, Nov 9, 2026, CANON-99 Part 2)
 
+- **Decision 144:** **A wrong sound cue is deleted, never invented.** When a check finds a sound cue that does not match what happens in the story, the repair deletes that cue line. It never invents a sound name; it may only reuse a cue name already in the same script when that cue matches. Applies decision 80 to repairs. Code: EPISODE-PATCH-001. — **Agreed** (Marc, Nov 13, 2026: "Approve items 138–144")
+
 ## Conflicts found
 - C1. **[RESOLVED by decision 68, Marc Nov 9, 2026]** STAGE2_SCRIPT_PROMPT v2.3 and SCRIPT_VALIDATOR v1.2 (June 10) say 3–6 "anchor" sounds per story, fail above 8, "no continuous ambience beds", sounds only in a gap and never under speech. Marc's Oct 31 (no cap), Nov 1 (spot sounds under the voice, background track) and Nov 2 (short background scene-setters) decisions say otherwise. Recommendation: the Nov rules win; update STAGE2 and the validator in the script-writing canon. Marc decides.
 - C2. **[RESOLVED by decision 35, Marc Nov 9, 2026]** Code rule SOUNDSNAP-ONLY-001 (Nov 3) and lib/sfxSwitch.ts say "only Soundsnap". Marc's Nov 5 decision makes Sound Ideas main and Soundsnap backup. The code has no Sound Ideas path yet. Recommendation: rename the rule to "licensed library only" and add Sound Ideas as a licensed source. Marc decides.

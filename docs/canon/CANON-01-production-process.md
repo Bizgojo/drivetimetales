@@ -12,6 +12,7 @@ Every rule in this document that needs Marc. **[MARC DECIDES]** = Marc approves,
 - **Rule 35 [MARC DECIDES]:** Never merge a PR without Marc's word (except rule 18), and never run a migration without Marc's OK.
 - **Rule 56 [MARC DECIDES]:** Stop and ask Marc when any step could overwrite or hide live content.
 - **Rule 57 [MARC DECIDES]:** Author-written series (Sunset of Competition) are never rewritten by the pipeline. On a failed check it stops and reports; only approved…
+- **Decision 142 [MARC DECIDES]:** A series written without a plan is re-planned only when Marc asks; published episodes never change.
 - **Still open:** nothing. Every conflict and question below is RESOLVED (CANON-99 Parts 1 and 2, Nov 9, 2026).
 
 ## Rules
@@ -112,6 +113,8 @@ Marc answered CANON-99 on Nov 9, 2026. These decisions are **Agreed** and overri
 - **Decision 24:** **Gemini's final read.** Decided: report-only until it agrees with you on 9 of 10 series, then it must pass before a Direct publish. (01 Q2, 09 C2, Q3) — **Agreed** (Marc, Nov 9, 2026, CANON-99)
 - **Decision 61:** Series checks run per episode once built (decision 21); until then, record it as not fully enforced. (01 C4) — **Agreed** (Marc, Nov 9, 2026, CANON-99 Part 2)
 - **Decision 62:** The Nov 7 Story Production Spec: only the Gemini read (report-only) is approved; the rest is replaced by this canon. (01 Q3) — **Agreed** (Marc, Nov 9, 2026, CANON-99 Part 2)
+
+- **Decision 142 [MARC DECIDES]:** **Re-planning a series written without a plan.** A series written before series plans existed is re-planned only when Marc asks. Every published episode stays exactly as it is and is fixed canon for the new plan (same characters and labels, its real ending, every fact it states). The unpublished episodes are cleared, their scripts kept as backups, and written again from the new plan. If no usable plan comes back, nothing is written and Marc is alerted. Not a conflict with rules 32 and 54: only unpublished episodes of an unfinished series are re-planned, on Marc's word. Code: SERIES-REPLAN-001, SERIES-OUTLINE-TOKENS-001. — **Agreed** (Marc, Nov 13, 2026: "Approve items 138–144")
 
 ## Conflicts found
 - C1. **[RESOLVED by decision 12, Marc Nov 9, 2026]** docs/STORY_PRODUCTION_PROCESS.md v1.2 (June 10) describes a manual flow: Marc fills the brief, pastes prompts into Claude chats, sends scripts to Hal on Telegram, grades every story out of 30 before publishing, and uses the Series Release Rule. Today's flow is automatic (dispatch → run-next → publish switch), Hal writes nothing, and the Series Release Rule is retired. Recommendation: this canon wins; mark v1.2 as history. Marc decides.

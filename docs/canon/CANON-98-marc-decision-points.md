@@ -14,6 +14,7 @@ Covers: one list of every place in the canon where Marc must decide or act himse
 - **CANON-01 rule 35 [MARC DECIDES]:** Never merge a PR without Marc's word (except rule 18), and never run a migration without Marc's OK.
 - **CANON-01 rule 56 [MARC DECIDES]:** Stop and ask Marc when any step could overwrite or hide live content.
 - **CANON-01 rule 57 [MARC DECIDES]:** Author-written series (Sunset of Competition) are never rewritten by the pipeline. On a failed check it stops and reports; only approved…
+- **CANON-01 decision 142 [MARC DECIDES]:** A series written without a plan is re-planned only when Marc asks; published episodes never change.
 - Open in this document: Nothing open in this document (CANON-99 answered Nov 9, 2026).
 
 ## CANON-02 — Story Ideas, Series Planning & Briefs
