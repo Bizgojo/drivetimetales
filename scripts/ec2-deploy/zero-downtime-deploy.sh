@@ -25,6 +25,22 @@ WORKER_UNITS="${ET_WORKER_UNITS:-endlesstales-runnext.service endlesstales-runne
 
 log() { echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] $*"; }
 
+# DEPLOY-SELF-CHECK-001 (Marc, Nov 13 2026): a stale copy of this script (e.g. in /tmp)
+# once skipped the worker step. Always run the newest script from origin/main:
+# if this file differs from it, switch to that copy before doing anything.
+if [ "${ET_DEPLOY_SELF_CHECKED:-}" != "1" ]; then
+  git -C "$MAIN" fetch -q origin main
+  FRESH="$(mktemp /tmp/zdd-origin-main.XXXXXX.sh)"
+  if ! git -C "$MAIN" show origin/main:scripts/ec2-deploy/zero-downtime-deploy.sh > "$FRESH"; then
+    log "STOP: could not read the deploy script from origin/main"; exit 1
+  fi
+  if ! cmp -s "$0" "$FRESH"; then
+    log "this copy ($0) differs from origin/main — running the origin/main copy instead"
+    ET_DEPLOY_SELF_CHECKED=1 exec bash "$FRESH" "$@"
+  fi
+  rm -f "$FRESH"
+fi
+
 active_port() {
   if [ -f "$UPSTREAM_FILE" ]; then grep -oE 'localhost:[0-9]+' "$UPSTREAM_FILE" | head -1 | cut -d: -f2; else echo 3000; fi
 }
