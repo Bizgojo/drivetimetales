@@ -8991,6 +8991,49 @@ async function runSeriesVoicePreflight(job: ProductionJob, origin: string) {
         series_total_episodes: (nextEpisode as any).series_total_episodes,
         series_is_finale: (nextEpisode as any).series_is_finale,
       }, epScript)
+      // BELLE-LENGTH-PREVOICE-001 (Weekend Wife EP4, Nov 13, 2026): an in-place fix made the outro
+      // 44 words after the episode passed, and the pre-voice gate failed the whole series with no
+      // repair. When the ONLY problems are Belle line lengths, shorten those lines with the same
+      // shorteners the writer uses, save, and check again.
+      if (epIssues.length > 0 && epIssues.every((i) => /\b(outro|intro|announcement)\b[^.]*\btoo long\b/i.test(i))) {
+        const epNum = episodeNumber(nextEpisode, 0)
+        const isFinale = Boolean((nextEpisode as any).series_is_finale)
+        const lenCtx = { jobId: job.id, storyId: String(storyId), title: (nextEpisode as any).title, seriesId: String(seriesId), episodeNumber: epNum }
+        const shortenModel = coerceValidationModelToClaude(STEP_MODELS.generate)
+        let fixed = epScript
+        const outroNow = extractBelleSection(fixed, 'outro')
+        if (outroNow && countWords(outroNow) > BELLE_OUTRO_MAX_WORDS) {
+          const seriesName = String((nextEpisode as any).series_name || '').trim()
+          const author = String((nextEpisode as any).author || '').trim()
+          const narrator = extractHeader(fixed, 'NARRATOR')
+          const rule = isFinale ? closingOutroPrompt({ title: seriesName, author, narrator }) : nonFinaleOutroPrompt({ seriesName, nextEpisodeNumber: epNum + 1, author, narrator })
+          const raw = await shortenBelleOutroToLimit(outroNow, rule, shortenModel, !isFinale, lenCtx)
+          const shorter = raw ? (softenBelleSpoilerWords(raw) || raw) : raw
+          if (shorter && countWords(shorter) <= BELLE_OUTRO_MAX_WORDS) fixed = replaceBelleSection(fixed, 'outro', shorter)
+        }
+        const introNow = extractBelleSection(fixed, 'intro')
+        if (introNow && countWords(introNow) > BELLE_INTRO_MAX_WORDS) {
+          const raw = await shortenBelleIntroToLimit(introNow, shortenModel, lenCtx)
+          const shorter = raw ? (softenBelleSpoilerWords(raw) || raw) : raw
+          if (shorter && countWords(shorter) <= BELLE_INTRO_MAX_WORDS) fixed = replaceBelleSection(fixed, 'intro', shorter)
+        }
+        if (fixed !== epScript) {
+          const { error: lenSaveErr } = await supabase.from('stories').update({ script: fixed }).eq('id', storyId).eq('script', epScript)
+          if (!lenSaveErr) {
+            ;(nextEpisode as any).script = fixed
+            console.log(`[BELLE-LENGTH-PREVOICE-001] series=${seriesId} EP${epNum}: Belle line(s) shortened before voicing`)
+            epIssues.splice(0, epIssues.length, ...(await seriesEpisodeBelleContentIssues({
+              title: (nextEpisode as any).title,
+              author: (nextEpisode as any).author,
+              series_id: (nextEpisode as any).series_id,
+              series_name: (nextEpisode as any).series_name,
+              episode_number: epNum,
+              series_total_episodes: (nextEpisode as any).series_total_episodes,
+              series_is_finale: (nextEpisode as any).series_is_finale,
+            }, fixed)))
+          }
+        }
+      }
       if (epIssues.length > 0) {
         const epKind = classifyBelleIssues(epIssues)
         const failedEpisodeEntry = {
