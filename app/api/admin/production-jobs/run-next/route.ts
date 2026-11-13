@@ -35,6 +35,7 @@ import { syncPremiseIndexForTransition } from '@/lib/premiseIndex'
 import { maybeDirectPublishStandalone, maybeDirectPublishSeries, type DirectAutoPublishReport } from '@/lib/directPublish'
 import { transientResumeDecision, errorTextOf, MAX_TRANSIENT_RESUMES } from '@/lib/transientResume'
 import { scriptStructureIssues, openingExcerpt, OPENING_EXCERPT_WORDS, NO_COUNTING_RULE } from '@/lib/countInCode'
+import { classifyIssueText, isPolishCardCopyIssue, isPolishOnlyReport, CLARITY_BLOCKER_IDS, POLISH_ONLY_MARK, POLISH_ACCEPTED_MARK, MAX_SERIES_BLOCKER_READS } from '@/lib/issueClass'
 import { buildCastReview, needsCastReview, CAST_REVIEW_STATE_KEY } from '@/lib/castReview'
 import { extractValidatorFixList, planSeriesEpisodeRewrite, buildRewriteFeedbackBlock, MAX_SERIES_EPISODE_REWRITES } from '@/lib/seriesRewrite'
 import { styleProfileFrom, styleProfileOfBrief, buildStylePromptBlock, maxMainCharacters } from '@/lib/seriesStyle'
@@ -1776,6 +1777,8 @@ or
 ❌ VALIDATOR RESULT: FAIL
 Do not send to production. Fix the following before resubmitting:
 - [specific issue]
+
+TAG EVERY FAIL BULLET (BLOCKERS-POLISH-001): start each bullet with exactly one tag: [CONTINUITY] a fact contradicts another episode; [PLOT] a gap or impossibility a listener would notice, or a climax/ending that breaks the rules above; [SPOILER] the DESCRIPTION or BELLE B ANNOUNCEMENT gives away an answer; [ENDING] a missing cliffhanger or a finale that does not close; [PROTAGONIST] the DESCRIPTION gets the protagonist wrong; [FOLLOW] a listener cannot tell who is speaking or where; [SFX] a sound cue; [TENSE] description tense; [OPENING] Section 8C; [OTHER] anything else.
 
 MANDATORY: For every issue listed in a FAIL, you must quote the exact sentence from the rules above that the script violates. Do not invent, paraphrase, or extend rule language. If you cannot quote the exact written rule that an element fails, the element passes. A FAIL that cites invented or inferred criteria — not present verbatim in this prompt — is invalid.
 `
@@ -7522,7 +7525,10 @@ Do not send to production. Fix the following before resubmitting:
 
   // COUNT-IN-CODE-001: required blocks are checked by code, not the AI checker.
   const structureBelleExempt = /LANDING-STORY-001|No Belle B/i.test(extractHeader(script, 'VARIANT'))
-  const cardCopyIssues = [...validateCardCopy(script), ...scriptStructureIssues(script, { belleExempt: structureBelleExempt })]
+  // BLOCKERS-POLISH-001: the past-tense word check is polish; lengths and missing blocks block.
+  const allCardCopyIssues = [...validateCardCopy(script), ...scriptStructureIssues(script, { belleExempt: structureBelleExempt })]
+  const cardCopyPolish = allCardCopyIssues.filter(isPolishCardCopyIssue)
+  const cardCopyIssues = allCardCopyIssues.filter((i) => !isPolishCardCopyIssue(i))
   if (cardCopyIssues.length > 0) {
     const report = `❌ VALIDATOR RESULT: FAIL
 Do not send to production. Fix the following before resubmitting:
@@ -7612,12 +7618,19 @@ ${script}`,
   if (wordCountTruth.override) {
     report = `${report}\n\nDESC-WORDCOUNT-TRUTH-001: the only failure was the DESCRIPTION word count; actual count is ${wordCountTruth.actual} (limit ${DESCRIPTION_MAX_WORDS}). VALIDATOR RESULT: PASS (deterministic override)`
   }
+  // BLOCKERS-POLISH-001 (canon item 149): sort the checker's findings into blockers and polish.
+  const llmBullets = passed ? [] : validatorIssuesForPatch(report, number).map((i) => i.problem)
+  const blockerItems: string[] = llmBullets.filter((b) => classifyIssueText(b) === 'blocker')
+  const polishItems: string[] = [...cardCopyPolish, ...llmBullets.filter((b) => classifyIssueText(b) === 'polish')]
+  // An unreadable FAIL (no bullets) stays a blocker.
+  if (!passed && llmBullets.length === 0) blockerItems.push('validator FAIL with no readable fix list')
+  const noLlmBlockers = blockerItems.length === 0
 
   // STORY-CLARITY-001 (CANON-01 rule 7, CANON-03 rules 15-17/22/43-46, decisions 25/66/85):
   // the first-time-listener check runs after the validator passes and before any voicing.
   // A FAIL is reported in the validator's format, so SERIES-REWRITE-001 sends it back to the
   // writer with the quoted reasons. Published episodes are never re-judged.
-  if (passed && String(episode.status) !== 'published' && process.env.STORY_CLARITY !== 'off') {
+  if (noLlmBlockers && String(episode.status) !== 'published' && process.env.STORY_CLARITY !== 'off') {
     const totalEpisodes = Math.max(allEpisodes.length, Number((episode.brief_json as any)?.series_total_episodes || 0), number)
     const priorSpeakers = allEpisodes
       .filter((ep: any) => episodeNumber(ep, 0) < number && ep.script)
@@ -7647,7 +7660,21 @@ ${script}`,
       { twistMax: totalEpisodes > 1 ? CANON.TWISTS_PER_SERIES_EPISODE_MAX : CANON.TWISTS_PER_EPISODE_MAX, script },
     )
     report = `${report}\n\n${clarityReportText(clarity)}`
-    if (!clarity.passed) passed = false
+    for (const c of clarity.checks.filter((x) => !x.pass)) {
+      ;(CLARITY_BLOCKER_IDS.has(c.id) ? blockerItems : polishItems).push(`CLARITY ${c.id}: ${c.detail}`)
+    }
+  }
+  // BLOCKERS-POLISH-001: only blockers fail an episode. Polish is fixed in place once
+  // (script_json.polish_fixed), then accepted and listed. It never causes a rewrite.
+  const polishAlreadyFixed = Boolean((episode.script_json as any)?.polish_fixed)
+  if (blockerItems.length) {
+    passed = false
+  } else if (polishItems.length && !polishAlreadyFixed) {
+    passed = false
+    report = `${report}\n\n${POLISH_ONLY_MARK} — fix these in place once; never rewrite:\n${polishItems.map((p) => `- ${p}`).join('\n')}`
+  } else {
+    passed = true
+    if (polishItems.length) report = `${report}\n\n${POLISH_ACCEPTED_MARK} (fixed once already):\n${polishItems.map((p) => `- ${p}`).join('\n')}\nVALIDATOR RESULT: PASS (BLOCKERS-POLISH-001)`
   }
   const validatedDescription = passed ? normalizeHeaderValue(extractHeader(script, 'DESCRIPTION')) : ''
   const passedAt = passed ? nowIso() : null
@@ -8430,13 +8457,17 @@ async function scoreValidateSeriesPackage(job: ProductionJob, model: string) {
       ? { pass: false, issues: [...blockingFactIssues.map(({ episode, problem, fix }) => ({ episode, problem: `${problem} (fact check)`, fix })), ...aiVerdict.issues] }
       : aiVerdict
     const runs = Number(continuityState.runs || 0) + 1
-    const nextContinuityState = { runs, lastAt: nowIso(), lastIssues: verdict.issues, passedFingerprint: verdict.pass ? continuityFingerprint : continuityState.passedFingerprint || null, factSheet: factCheck.facts, publishedFactIssues }
+    const nextContinuityState = { runs, lastAt: nowIso(), lastIssues: verdict.issues, passedFingerprint: verdict.pass ? continuityFingerprint : continuityState.passedFingerprint || null, factSheet: factCheck.facts, publishedFactIssues, blockerReads: Number((continuityState as any).blockerReads || 0) }
     console.log(`[SERIES-CONTINUITY-001] series ${seriesId} run ${runs}: ${verdict.pass ? 'PASS' : `FAIL (${verdict.issues.length} issue(s))`}`)
     const target = continuityRewriteTarget(verdict)
     if (target) {
       const targetEp = sortedEps.find((ep: any) => episodeNumber(ep, 0) === target.episodeNumber)
-      const continuityReport = { pass: false, issues: verdict.issues.map((i) => `Episode ${i.episode}: ${i.problem}${i.fix ? ` — Fix: ${i.fix}` : ''}`), confidence: 1, summary: `series-continuity-check failed (run ${runs})`, rawReport: rawVerdict }
-      const allowRewrite = runs <= MAX_SERIES_CONTINUITY_RUNS && targetEp
+      // SERIES-HARD-STOP-001 (canon item 149): after 3 series reads that still find blockers, stop and let Marc decide.
+      const blockerReads = Number((continuityState as any).blockerReads || 0) + 1
+      ;(nextContinuityState as any).blockerReads = blockerReads
+      const hardStop = blockerReads >= MAX_SERIES_BLOCKER_READS
+      const continuityReport = { pass: false, issues: verdict.issues.map((i) => `Episode ${i.episode}: ${i.problem}${i.fix ? ` — Fix: ${i.fix}` : ''}`), confidence: 1, summary: hardStop ? `SERIES-HARD-STOP-001: ${MAX_SERIES_BLOCKER_READS} series reads still found blockers — Marc decides: "ship" or "fix N"` : `series-continuity-check failed (run ${runs})`, rawReport: rawVerdict }
+      const allowRewrite = !hardStop && runs <= MAX_SERIES_CONTINUITY_RUNS && targetEp
       return {
         passed: false,
         failed: true,
@@ -8449,7 +8480,7 @@ async function scoreValidateSeriesPackage(job: ProductionJob, model: string) {
         nextStep: NEXT_STEP_AFTER_SERIES_SCRIPTS,
         packageReport: continuityReport,
         // SERIES-PATCH-001: structured issues so the writer can patch lines instead of rewriting.
-        seriesReadIssues: verdict.issues.filter((i) => !frozenNumbers.has(i.episode)),
+        seriesReadIssues: hardStop ? [] : verdict.issues.filter((i) => !frozenNumbers.has(i.episode)),
         state: {
           ...state,
           seriesId: String(seriesId),
@@ -8498,11 +8529,14 @@ async function scoreValidateSeriesPackage(job: ProductionJob, model: string) {
     const geminiTarget = geminiRewriteTarget(geminiVerdict)
     if (geminiTarget) {
       const geminiRuns = Number(blockState.geminiRuns || 0) + 1
-      const nextBlockState = { ...blockState, geminiRuns }
+      // SERIES-HARD-STOP-001: the same blocker-read count as the continuity check.
+      const blockerReads = Number(blockState.blockerReads || 0) + 1
+      const hardStop = blockerReads >= MAX_SERIES_BLOCKER_READS
+      const nextBlockState = { ...blockState, geminiRuns, blockerReads }
       const targetEp = refreshedEpisodes.find((ep: any) => episodeNumber(ep, 0) === geminiTarget.episodeNumber)
-      const allowRewrite = geminiRuns <= MAX_GEMINI_SCRIPT_REWRITES && targetEp
+      const allowRewrite = !hardStop && geminiRuns <= MAX_GEMINI_SCRIPT_REWRITES && targetEp
       console.log(`[GEMINI-READ-BLOCK-001] series ${seriesId}: ${geminiVerdict.issues.length} issue(s), rewrite ${geminiRuns}/${MAX_GEMINI_SCRIPT_REWRITES}${allowRewrite ? ` from episode ${geminiTarget.episodeNumber}` : ' — limit reached, stopping before voicing'}`)
-      const geminiReport = { pass: false, issues: geminiVerdict.issues.map((i) => `Episode ${i.episode}: ${i.problem}${i.fix ? ` — Fix: ${i.fix}` : ''}`), confidence: 1, summary: `series story read failed (rewrite ${geminiRuns})`, rawReport: null }
+      const geminiReport = { pass: false, issues: geminiVerdict.issues.map((i) => `Episode ${i.episode}: ${i.problem}${i.fix ? ` — Fix: ${i.fix}` : ''}`), confidence: 1, summary: hardStop ? `SERIES-HARD-STOP-001: ${MAX_SERIES_BLOCKER_READS} series reads still found blockers — Marc decides: "ship" or "fix N"` : `series story read failed (rewrite ${geminiRuns})`, rawReport: null }
       return {
         passed: false,
         failed: true,
@@ -8515,7 +8549,7 @@ async function scoreValidateSeriesPackage(job: ProductionJob, model: string) {
         nextStep: NEXT_STEP_AFTER_SERIES_SCRIPTS,
         packageReport: geminiReport,
         // SERIES-PATCH-001: structured issues so the writer can patch lines instead of rewriting.
-        seriesReadIssues: geminiVerdict.issues.map(({ episode, problem, fix }) => ({ episode, problem, fix })),
+        seriesReadIssues: hardStop ? [] : geminiVerdict.issues.map(({ episode, problem, fix }) => ({ episode, problem, fix })),
         state: {
           ...state,
           seriesId: String(seriesId),
@@ -10375,6 +10409,8 @@ export async function POST(req: NextRequest) {
         // before any whole-episode rewrite (wrong SFX cues re-written into new wrong cues).
         const episodeIssues: SeriesReadIssue[] = seriesIssues.length ? [] : validatorIssuesForPatch(result.episodeResult?.report, Number(result.episodeResult?.episodeNumber || 0))
         const readIssues: SeriesReadIssue[] = seriesIssues.length ? seriesIssues : episodeIssues
+        // BLOCKERS-POLISH-001: an episode failure made only of polish is fixed in place once, never rewritten.
+        const polishOnlyFailure = !seriesIssues.length && isPolishOnlyReport(result.episodeResult?.report)
         const patchSourceLabel = seriesIssues.length ? 'series-read' : 'episode-check'
         if (!(result as any).continuityPinError && !seriesAutoRepairExempt && seriesPatchEnabled() && readIssues.length) {
           const priorPatchState: any = lockedJob.state_json && typeof lockedJob.state_json === 'object' ? lockedJob.state_json : {}
@@ -10406,7 +10442,7 @@ export async function POST(req: NextRequest) {
                   validator_report: null,
                   validator_passed_at: null,
                   script_version: (o.ep.script_version || 1) + 1,
-                  script_json: { ...sj, rewrite_backups: [...backups, { at: nowIso(), reason: 'sfx_delete', script: o.ep.script }], sfx_delete: { at: nowIso(), cues: o.cues } },
+                  script_json: { ...sj, rewrite_backups: [...backups, { at: nowIso(), reason: 'sfx_delete', script: o.ep.script }], sfx_delete: { at: nowIso(), cues: o.cues }, ...(polishOnlyFailure ? { polish_fixed: true } : {}) },
                 })
                 .eq('id', o.ep.id)
               const { data: saved, error: saveErr } = await (o.ep.script_version == null ? save.is('script_version', null) : save.eq('script_version', o.ep.script_version)).select('id').single()
@@ -10522,6 +10558,7 @@ export async function POST(req: NextRequest) {
                       ...sj,
                       rewrite_backups: [...backups, { at: nowIso(), reason: 'series_patch', script: o.ep.script }],
                       series_patch: { run: patchPlan.run, at: nowIso(), edits: o.edits, unfixed: o.unfixed },
+                      ...(polishOnlyFailure ? { polish_fixed: true } : {}),
                     },
                   })
                   .eq('id', o.ep.id)
@@ -10570,6 +10607,28 @@ export async function POST(req: NextRequest) {
           } else {
             console.log(`[SERIES-PATCH-001] series ${result.seriesId}: skipped — ${patchPlan.reason}`)
           }
+        }
+
+        // BLOCKERS-POLISH-001: polish never causes a rewrite. If the in-place fix did not apply (or no
+        // budget was left), the polish is accepted: mark the episode and check it again, which passes.
+        if (polishOnlyFailure && result.episodeResult?.storyId) {
+          const polishStoryId = String(result.episodeResult.storyId)
+          const polishEp = ((result.episodes || []) as any[]).find((ep: any) => String(ep.id) === polishStoryId)
+          const polishSj = polishEp?.script_json && typeof polishEp.script_json === 'object' ? polishEp.script_json : {}
+          const { error: polishErr } = await supabase
+            .from('stories')
+            .update({ script_json: { ...polishSj, polish_fixed: true }, status: 'script_drafted', validator_result: null, validator_report: null, validator_passed_at: null })
+            .eq('id', polishStoryId)
+          if (polishErr) throw new Error(`BLOCKERS-POLISH-001: could not mark polish accepted: ${polishErr.message}`)
+          const polishLogs = appendLog({ ...lockedJob, logs }, `BLOCKERS-POLISH-001: episode ${result.episodeResult.episodeNumber} has only polish left — accepted without a rewrite. Re-checking.`, { seriesId: result.seriesId })
+          const { data: polishJob, error: polishJobErr } = await supabase
+            .from('production_jobs')
+            .update({ status: 'queued', current_step: NEXT_STEP_AFTER_SERIES_SCRIPTS, state_json: { ...result.state, seriesValidation: null }, error_json: null, logs: polishLogs, locked_at: null, locked_by: null })
+            .match(ownedJobFence(lockedJob, lockHolderId))
+            .select('*')
+            .single()
+          if (polishJobErr) throw new Error(`BLOCKERS-POLISH-001: failed to queue re-check: ${polishJobErr.message}`)
+          return NextResponse.json({ success: true, action: 'polish_accepted', jobId: polishJob.id, currentStep: step, nextStep: NEXT_STEP_AFTER_SERIES_SCRIPTS, logs: polishLogs })
         }
 
         // SERIES-REWRITE-001: a story-content failure re-writes the failed
@@ -10714,6 +10773,8 @@ export async function POST(req: NextRequest) {
                   packageReport: result.packageReport || null,
                 }
               : {
+              // SERIES-HARD-STOP-001: say plainly that Marc decides (ship or fix N).
+              ...(String((result as any).packageReport?.summary || '').startsWith('SERIES-HARD-STOP-001') ? { message: String((result as any).packageReport.summary), marc_required: true, autonomous_repair: false } : {}),
               step,
               seriesId: result.seriesId,
               episodeResult: result.episodeResult,
