@@ -511,6 +511,7 @@ export function onlyBelleOutroLengthBlockers(blockers: string[]): boolean {
 // outro line alone is rewritten, same as an over-long one.
 const OUTRO_LENGTH_BLOCKER = /^BELLE-CONTENT: ((voice step \(outro\): )?outro is too long\b|voice step \(outro\): non-final series outro sounds final\b)/
 const DESCRIPTION_LENGTH_BLOCKER = /^CARD-COPY: DESCRIPTION \d+ characters \(max \d+\)$/
+const INTRO_LENGTH_BLOCKER = /^BELLE-CONTENT: (voice step \(intro\): )?(announcement|intro) is too long\b/
 
 /**
  * WRITER-OUTRO-SHORTEN-001 (Widow EP3, Nov 11): true when every remaining
@@ -538,6 +539,20 @@ export function onlyOutroOrDescriptionLengthBlockers(blockers: string[]): { ok: 
   const description = hard.some((b) => DESCRIPTION_LENGTH_BLOCKER.test(b))
   const ok = hard.length > 0 && outro && hard.every((b) => OUTRO_LENGTH_BLOCKER.test(b) || DESCRIPTION_LENGTH_BLOCKER.test(b))
   return { ok, outro, description }
+}
+
+/**
+ * WRITER-LENGTH-REPAIR-001 (Second Rise EP6 re-plan, Nov 13): Belle's intro (40 words, max 38)
+ * and the description (119 characters) were the only problems, but the length repair ran only
+ * when the OUTRO was one of them. Any mix of intro, outro and description length now qualifies.
+ */
+export function onlyBelleOrDescriptionLengthBlockers(blockers: string[]): { ok: boolean; intro: boolean; outro: boolean; description: boolean } {
+  const hard = blockers.filter((b) => !isSoftBlockerLine(b))
+  const intro = hard.some((b) => INTRO_LENGTH_BLOCKER.test(b))
+  const outro = hard.some((b) => OUTRO_LENGTH_BLOCKER.test(b))
+  const description = hard.some((b) => DESCRIPTION_LENGTH_BLOCKER.test(b))
+  const ok = hard.length > 0 && hard.every((b) => INTRO_LENGTH_BLOCKER.test(b) || OUTRO_LENGTH_BLOCKER.test(b) || DESCRIPTION_LENGTH_BLOCKER.test(b))
+  return { ok, intro, outro, description }
 }
 
 export async function writeWithSelfCheck(opts: {

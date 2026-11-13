@@ -46,6 +46,8 @@ export function buildSeriesOutlinePrompt(input: {
   seriesTitle?: string
   /** SERIES-REPLAN-001: episodes already published; the plan must match them exactly. */
   publishedEpisodes?: Array<{ episodeNumber: number; title: string; body: string }>
+  /** PLAN-INPUTS-001: each episode's own brief (title + premise), so the plan covers every person and event they name. */
+  episodeBriefs?: Array<{ episodeNumber: number; title: string; premise: string }>
 }): string {
   const threeOpenThreads = Boolean(input.sequelHook) && nemesisOpenThreadLimit(input.seriesTitle) === 3
   const nemesisBlock = !input.sequelHook ? ''
@@ -64,7 +66,13 @@ ALREADY PUBLISHED (SERIES-REPLAN-001): Episode${published.length > 1 ? 's' : ''}
 
 ${published.map((e) => `===== PUBLISHED EPISODE ${e.episodeNumber}: ${e.title} =====\n${e.body}`).join('\n\n')}
 ` : ''
-  return `You are planning a ${input.totalEpisodes}-episode ${input.genre} audio drama series for drive-time listeners. Plan it BEFORE any episode is written, so the episodes fit together.${publishedBlock}
+  const briefs = (input.episodeBriefs || []).filter((b) => b.premise.trim()).sort((a, b) => a.episodeNumber - b.episodeNumber)
+  const briefsBlock = briefs.length > 1 ? `
+
+EPISODE BRIEFS (PLAN-INPUTS-001): each episode was commissioned with its own brief. Follow them. Every person they name must be a character in your plan (relatives may share a surname, but each needs a different first name and their own upper-case label); keep each episode's main event unless a published episode already contradicts it.
+${briefs.map((b) => `- Episode ${b.episodeNumber}${b.title ? ` "${b.title}"` : ''}: ${b.premise}`).join('\n')}
+` : ''
+  return `You are planning a ${input.totalEpisodes}-episode ${input.genre} audio drama series for drive-time listeners. Plan it BEFORE any episode is written, so the episodes fit together.${publishedBlock}${briefsBlock}
 
 SERIES TITLE: ${input.title}
 PREMISE: ${input.premise}
@@ -213,11 +221,12 @@ export function factsReferenceLines(outline: SeriesOutline | null | undefined): 
 export function buildOutlineEndingReviewPrompt(outline: SeriesOutline, seriesTitle: string): string {
   const total = outline.episodes.length
   const main = outline.threads.find((t) => t.resolved_in === total)
-  return `You review the plan for the ${total}-episode audio drama series "${seriesTitle}" BEFORE any episode is written. Judge ONLY the episode endings.
+  return `You review the plan for the ${total}-episode audio drama series "${seriesTitle}" BEFORE any episode is written. Judge the episode endings and how much each episode carries.
 
 Rules the finished episodes will be checked against:
 1. Every episode except the last must END on a specific cliffhanger: an open danger, a reversal, a new threat or a hard choice that names a character or situation and that the next episode must answer. An ending where the danger is over, the villain is caught, or the narrator sums up what will happen tomorrow is NOT a cliffhanger.
 2. The series' biggest confrontation and the main question are resolved ONLY in the last episode (Episode ${total}). An earlier episode may resolve a smaller thread, but it must still end on something open.
+3. PLAN-LOAD-001 (each episode is about 14 minutes, heard once in a car): at most 2 major twists or reveals per episode; at the end of each episode at most 3 story questions open (opening a new one means answering an older one); at most 2 new named characters per episode, and every named person is introduced by role (who they are to the hero) in the episode where they first appear. Report an episode whose plan breaks this, with a fix that moves a reveal to another episode or cuts it.
 
 THE PLAN:
 ${outline.episodes.map((e) => `Episode ${e.episode}: goal: ${e.goal}\n  beats: ${e.beats.join(' | ')}\n  ends on: ${e.ends_on || '(not given)'}`).join('\n')}
@@ -225,7 +234,7 @@ Main thread (resolved in Episode ${total}): ${main ? main.question : '(none mark
 
 Return JSON only, no other text:
 {"issues":[{"episode":<number>,"problem":"...","fix":"..."}]}
-Use an empty list when every ending follows the rules. Report only clear breaks of rule 1 or 2.`
+Use an empty list when every episode follows the rules. Report only clear breaks of rules 1 to 3.`
 }
 
 export function parseOutlineEndingReview(raw: string, totalEpisodes: number): { issues: Array<{ episode: number; problem: string; fix: string }> } | null {
