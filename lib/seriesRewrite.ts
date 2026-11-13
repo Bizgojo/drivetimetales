@@ -27,6 +27,8 @@ export type RewritePlanInput = {
   failedEpisodeNumber: number
   episodes: Array<{ id: string; episodeNumber: number; hasScript: boolean }>
   rewriteCounts: Record<string, number>
+  /** LINE-FIX-FIRST-001: the failure was one-line problems in this episode only — later episodes keep their scripts. */
+  onlyFailedEpisode?: boolean
 }
 
 export type RewritePlan =
@@ -41,7 +43,7 @@ export function planSeriesEpisodeRewrite(input: RewritePlanInput): RewritePlan {
   const done = Number(input.rewriteCounts[String(n)] || 0)
   if (done >= MAX_SERIES_EPISODE_REWRITES) return { action: 'exhausted', attempts: done }
   const clearStoryIds = input.episodes
-    .filter((ep) => ep.episodeNumber >= n && ep.hasScript)
+    .filter((ep) => (input.onlyFailedEpisode ? ep.episodeNumber === n : ep.episodeNumber >= n) && ep.hasScript)
     .sort((a, b) => a.episodeNumber - b.episodeNumber)
     .map((ep) => ep.id)
   if (!clearStoryIds.length) return { action: 'none', reason: 'no scripts to rewrite' }
