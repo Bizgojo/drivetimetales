@@ -1534,7 +1534,14 @@ export function evaluateTranscriptQC(expectedText: string, detectedText: string)
   // ATL-NUMERAL-NORM-002: suppress the numeric-sequence veto when the
   // WER-normalized forms agree at ≥ 0.95 — high werSimilarity means the
   // mismatch was a digit↔word surface difference, not a genuine content error.
-  const numericMismatchFinal = numericMismatch && werSimilarity < 0.95
+  // QC-TO-TOO-001 (Second Rise EP3 segment_0058, Nov 13, 2026): script "I have batter to —"
+  // (a cut-off line) was spoken and transcribed as "I have batter, too." The "too" fold above
+  // turned it into the digit 2, and the numeric veto failed a 93.5% match. "to"/"too"/"two"
+  // are one sound. When the numbers agree once "to" is folded the same way on both sides, the
+  // only difference was that homophone, so the veto is lifted. Real number changes still fail.
+  const foldTo = (tokens: string[]) => tokens.map((t) => (t === 'to' ? '2' : t))
+  const onlyToTooDifference = numericMismatch && !numericTokenSequenceMismatch(foldTo(expected), foldTo(detected))
+  const numericMismatchFinal = numericMismatch && werSimilarity < 0.95 && !onlyToTooDifference
   const shortLineMatches = expected.length <= 8
     ? expectedVariants.some(variant => containsOrderedTokenVariant(detected, variant)) || similarity >= 0.88
     : true
