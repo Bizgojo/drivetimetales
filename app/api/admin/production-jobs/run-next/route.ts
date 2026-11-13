@@ -34,6 +34,7 @@ import { syncPremiseIndexForTransition } from '@/lib/premiseIndex'
 // promotion. Manual admin paths untouched.
 import { maybeDirectPublishStandalone, maybeDirectPublishSeries, type DirectAutoPublishReport } from '@/lib/directPublish'
 import { transientResumeDecision, errorTextOf, MAX_TRANSIENT_RESUMES } from '@/lib/transientResume'
+import { scriptStructureIssues, openingExcerpt, OPENING_EXCERPT_WORDS, NO_COUNTING_RULE } from '@/lib/countInCode'
 import { buildCastReview, needsCastReview, CAST_REVIEW_STATE_KEY } from '@/lib/castReview'
 import { extractValidatorFixList, planSeriesEpisodeRewrite, buildRewriteFeedbackBlock, MAX_SERIES_EPISODE_REWRITES } from '@/lib/seriesRewrite'
 import { styleProfileFrom, styleProfileOfBrief, buildStylePromptBlock, maxMainCharacters } from '@/lib/seriesStyle'
@@ -1739,22 +1740,19 @@ Use the CURRENT rules:
 - Belle B is the announcer.
 - Belle B is never narrator or character.
 - SFX (SFX-001, Marc 2026-10-31): no fixed number. Write a [SFX: short description] cue wherever the story makes a sound the listener should hear: action, arrivals, doors, phones, weather, a change of place. Every cue must come from something that happens in the story; never decorate quiet dialogue.
-- The title must be 1 to 5 words and 28 characters or fewer.
-- Description: aim for 85 to 95 characters (hard limit 100), present tense (DESC-100-CHAR-001). No spoilers. No past tense.
-- DESCRIPTION fails if it uses past-tense constructions or past-tense story-card phrasing such as "vanished", "was", "were", "had", "found", "discovered", "left", "moved", "sealed", "signed", "forged", "buried", "hidden", or "lost".
+${NO_COUNTING_RULE}
+- DESCRIPTION TENSE (DESC-TENSE-001): the DESCRIPTION's main sentence must be in present tense ("Jess holds her breath as Marcus arrives"). Judge only the main verb. A past-tense word inside a describing phrase is fine ("hidden cameras record her", "the table where everything broke", "a choice no contract covered"). No spoilers.
 - DESCRIPTION PROTAGONIST RULE: the DESCRIPTION must accurately reflect who the protagonist actually is and what they are trying to do. If the script's protagonist is a security guard, DESCRIPTION must not say "driver". If the protagonist is a nurse, DESCRIPTION must not say "teacher". Mismatches between DESCRIPTION and actual protagonist role are a hard fail.
 - DESCRIPTION SPOILER RULE: DESCRIPTION is a story-card teaser, not a plot summary. It must raise a question, not answer it. HARD FAIL if DESCRIPTION reveals: the survivor, the culprit, the missing person's status, a hidden person alive or dead, the final discovery, or the resolution payoff. Examples of failing DESCRIPTION phrases: "to a survivor", "to the killer", "reveals who did it", "the missing child is alive".
 - OUTRO-RECAP-NOT-SPOILER-001 (CANON-04 rule 20; Weekend Wife EP5, Nov 12 2026): the BELLE B OUTRO plays AFTER the episode. Its one-sentence recap of what just happened in this episode is REQUIRED and is NOT a spoiler. Never fail the outro for recapping this episode's events or choices. The spoiler rule applies to DESCRIPTION and the BELLE B ANNOUNCEMENT (intro) only. OUTRO-TEASE-NOT-SPOILER-001 (Marc, Nov 12, 2026): in a non-final series episode the outro's SECOND sentence ("In Episode <N> of \"<Series>,\" <what the listener will find out>") is also REQUIRED (BELLE-OUTRO-FORWARD) and is NOT a spoiler when it PROMISES an event, question, confrontation or reveal without stating its answer (PASS: "Connor tells Jess the truth about what came before her"; PASS: "Marcus makes his move at the closing dinner"). Fail it ONLY if it GIVES AWAY a later episode's answer or outcome: who did it, what the secret or truth actually is, who survives, or how it ends (FAIL: "Connor admits he was married before").
-- The script must include the required header fields.
-- The script must include a CHARACTER GUIDE.
-- The script must include a BELLE B ANNOUNCEMENT block. BELLE B OUTRO is pipeline-generated at a later production step and must not be required to be present in the script at this validation stage — do not fail a script for a missing BELLE B OUTRO. A BELLE B OUTRO block that IS present is allowed and expected (the episode writer is instructed to write one) — never fail a script for including a BELLE B OUTRO block.
+- BELLE B OUTRO is pipeline-generated at a later production step and must not be required to be present in the script at this validation stage — do not fail a script for a missing BELLE B OUTRO. A BELLE B OUTRO block that IS present is allowed and expected (the episode writer is instructed to write one) — never fail a script for including a BELLE B OUTRO block.
 - Standalone stories must end conclusively.
 - Series non-finales must end on a specific cliffhanger. A question-form cliffhanger qualifies if it is specific and propelling — it must name a character, invert the situation, or open a precise dread that the next episode answers. A vague "what happens next" question does not qualify. Do not require an action beat when a sharp, specific question directly names the next episode's central mystery.
 - Difficult Solution Rule: the main problem must feel genuinely difficult at the beginning, the middle must reveal leverage and escalating consequences that make the solution possible, and the ending must feel emotionally and logically earned.
 - Fail endings where the climax happens offscreen, the protagonist does not affect the outcome, the ending resolves through exposition instead of dramatic action, the emotional arc is unresolved, or the final solution is passive, too easy, or a "villain already dead" anticlimax.
 
 SECTION 8C - EARLY INVESTMENT & ORIENTATION CHECK (v1.3):
-Read the first ~400 words of the script body (after the Belle B intro block, approximately 3 minutes at 130 wpm).
+Read the OPENING EXCERPT given after the rules (exactly the first 400 spoken words after the Belle B announcement, cut by code; about 3 minutes).
 Run the Five-Question Test. By minute 3, a first-time listener must be able to answer all five:
 1. Who am I emotionally following? (protagonist or emotional anchor clear within 60-90 seconds)
 2. What is happening right now? (immediate situation understandable within 2 minutes)
@@ -3973,7 +3971,7 @@ async function validateStandaloneScript(job: ProductionJob, model: string) {
     }
   }
 
-  const cardCopyIssues = validateCardCopy(story.script)
+  const cardCopyIssues = [...validateCardCopy(story.script), ...scriptStructureIssues(story.script, { belleExempt: /LANDING-STORY-001|No Belle B/i.test(extractHeader(story.script, 'VARIANT')) })]
   if (cardCopyIssues.length > 0) {
     const report = `❌ VALIDATOR RESULT: FAIL
 Do not send to production. Fix the following before resubmitting:
@@ -4079,7 +4077,7 @@ ${findingLines.join('\n')}`
     temperature: 0,
     messages: [{
       role: 'user',
-      content: `${VALIDATOR_PROMPT}\n\nSCRIPT:\n${story.script}`,
+      content: `${VALIDATOR_PROMPT}\n\nOPENING EXCERPT (first ${OPENING_EXCERPT_WORDS} spoken words, cut by code — use this for Section 8C):\n${openingExcerpt(story.script)}\n\nSCRIPT:\n${story.script}`,
     }],
   })
 
@@ -7522,7 +7520,9 @@ Do not send to production. Fix the following before resubmitting:
     }
   }
 
-  const cardCopyIssues = validateCardCopy(script)
+  // COUNT-IN-CODE-001: required blocks are checked by code, not the AI checker.
+  const structureBelleExempt = /LANDING-STORY-001|No Belle B/i.test(extractHeader(script, 'VARIANT'))
+  const cardCopyIssues = [...validateCardCopy(script), ...scriptStructureIssues(script, { belleExempt: structureBelleExempt })]
   if (cardCopyIssues.length > 0) {
     const report = `❌ VALIDATOR RESULT: FAIL
 Do not send to production. Fix the following before resubmitting:
@@ -7567,7 +7567,7 @@ ${cardCopyIssues.map((issue) => `- ${issue}`).join('\n')}`
         .replace(/^- Belle B is the announcer\.\n/m, '')
         .replace(/^- Belle B is never narrator or character\.\n/m, '')
         .replace(/^- The script must include BELLE B [^\n]+blocks\.\n/m, '')
-        .replace('after the Belle B intro block, approximately 3 minutes at 130 wpm', 'from the first line of the script body (approximately 3 minutes at 130 wpm)')
+        .replace('after the Belle B announcement, cut by code', 'from the first line of the script body, cut by code')
     : VALIDATOR_PROMPT
   const seriesSpecificRules = isBelleExempt
     ? `Series-specific validation:
@@ -7587,6 +7587,9 @@ ${cardCopyIssues.map((issue) => `- ${issue}`).join('\n')}`
       content: `${validatorPromptToUse}
 
 ${seriesSpecificRules}
+
+OPENING EXCERPT (first ${OPENING_EXCERPT_WORDS} spoken words, cut by code — use this for Section 8C):
+${openingExcerpt(script)}
 
 SCRIPT:
 ${script}`,
