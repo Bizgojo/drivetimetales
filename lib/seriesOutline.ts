@@ -1,3 +1,4 @@
+import { humanStoriesBlock } from './humanStories'
 /**
  * SERIES-OUTLINE-001 (Chicago "Wrong Side of the River", Oct 2026): episodes
  * were written one at a time with only the previous episodes' last lines as
@@ -85,7 +86,7 @@ Rules for the plan:
 - At most ${input.maxMainCharacters} main characters. Give each ONE full name and ONE upper-case speaker label used in every episode (e.g. "NICK"). Keep any names the producer notes fix exactly.
 - For each character also list "aliases": every other way people in the story will call them (first name, last name, title + last name, nickname), e.g. ["Nick", "Brennan", "Detective Brennan"]. No two characters may share a full name, and no alias may belong to two characters. Give "gender" (male/female).
 - List the story threads (questions the listener wants answered). The main thread is resolved ONLY in the finale (episode ${input.totalEpisodes}). Every thread is resolved in exactly ONE episode. Once resolved, it stays resolved: nobody is rescued, caught, killed, found or unmasked twice.
-${nemesisBlock}- Each episode has ONE clear goal, written as a single sentence a listener could repeat.
+${nemesisBlock}${humanStoriesBlock(input.genre) ? `- ${humanStoriesBlock(input.genre).split('\n').slice(1).map((l) => l.replace(/^- /, '')).join(' ')}\n` : ''}- Each episode has ONE clear goal, written as a single sentence a listener could repeat.
 - Each non-finale episode ends on a specific cliffhanger; the finale closes the series.
 - Beats are 3 to 6 short, concrete events per episode, in order. No two episodes use the same kind of climax.
 - FIXED FACTS: list 8 to 15 concrete facts every episode must agree on: days and dates of key events, times of day, ages, how long ago past events happened, money amounts and pay terms, where people live and work, and which character learns which secret in which episode. Each fact is one short sentence with the exact value, plus "from_episode" = the first episode where the listener hears it.
