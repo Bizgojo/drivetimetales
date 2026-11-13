@@ -60,8 +60,13 @@ function requireEnv() {
   if (missing.length) throw new Error(`Missing env: ${missing.join(', ')}`)
 }
 
+/**
+ * POOL-AMIX-001 (Nov 13): the ffmpeg version banner filled the first 2,000 characters, so the
+ * stored error never showed the real cause. Keep the start and the END of long errors.
+ */
 function cleanError(err) {
-  return String(err instanceof Error ? err.message : err).slice(0, 2000)
+  const text = String(err instanceof Error ? err.message : err)
+  return text.length <= 2000 ? text : `${text.slice(0, 600)}\n…\n${text.slice(-1300)}`
 }
 
 // PERS-FIX-002: upsert a workers_heartbeat row every cycle. This worker ran
@@ -252,11 +257,14 @@ async function renderClipForOpener({ pronunciationKey, nameForSpeech, opener }) 
     await renderOpenerVoice(text, openerVoice)
     await download(STING_URL, stingRaw)
 
+    // POOL-AMIX-001 (Nov 13): the bundled ffmpeg (2018, libavfilter 7.46) has no amix
+    // normalize option, so every greeting mix failed. amerge + pan sums the two tracks at full
+    // level (what normalize=0 meant); apad lets the voice decide the length.
     await execFileAsync(FFMPEG_PATH, [
       '-i', stingRaw,
       '-i', openerVoice,
       '-filter_complex',
-      `[0:a]afade=t=out:st=${BELLE_ENTER_SEC}:d=${STING_FADE_UNDER_BELLE_SEC},aformat=sample_rates=44100:channel_layouts=stereo[s];[1:a]adelay=${Math.round(BELLE_ENTER_SEC * 1000)}|${Math.round(BELLE_ENTER_SEC * 1000)},aformat=sample_rates=44100:channel_layouts=stereo[v];[s][v]amix=inputs=2:duration=longest:normalize=0[out]`,
+      `[0:a]afade=t=out:st=${BELLE_ENTER_SEC}:d=${STING_FADE_UNDER_BELLE_SEC},aformat=sample_rates=44100:channel_layouts=stereo,apad[s];[1:a]adelay=${Math.round(BELLE_ENTER_SEC * 1000)}|${Math.round(BELLE_ENTER_SEC * 1000)},aformat=sample_rates=44100:channel_layouts=stereo[v];[s][v]amerge=inputs=2,pan=stereo|c0=c0+c2|c1=c1+c3[out]`,
       '-map', '[out]',
       '-ar', '44100', '-ac', '2', '-b:a', '192k',
       '-y', introClip,
