@@ -34,6 +34,7 @@ import { syncPremiseIndexForTransition } from '@/lib/premiseIndex'
 // promotion. Manual admin paths untouched.
 import { maybeDirectPublishStandalone, maybeDirectPublishSeries, type DirectAutoPublishReport } from '@/lib/directPublish'
 import { transientResumeDecision, errorTextOf, MAX_TRANSIENT_RESUMES } from '@/lib/transientResume'
+import { humanStoriesBlock } from '@/lib/humanStories'
 import { scriptStructureIssues, openingExcerpt, OPENING_EXCERPT_WORDS, NO_COUNTING_RULE } from '@/lib/countInCode'
 import { classifyIssueText, isPolishCardCopyIssue, isPolishOnlyReport, CLARITY_BLOCKER_IDS, POLISH_ONLY_MARK, POLISH_ACCEPTED_MARK, MAX_SERIES_BLOCKER_READS } from '@/lib/issueClass'
 import { buildCastReview, needsCastReview, CAST_REVIEW_STATE_KEY } from '@/lib/castReview'
@@ -3524,6 +3525,8 @@ Use the CURRENT published rules:
 
 ${namePaletteBlock}
 
+${humanStoriesBlock(brief.genre || story.genre)}
+
 ${narratorPromptBlock}
 
 Required script structure:
@@ -6352,6 +6355,8 @@ ${emotionWriterBlock(normalizeEmotions(brief.emotions), brief.genre || series.ge
 ${twistBudgetWriterBlock()}
 
 ${sceneVoicesWriterBlock()}
+
+${humanStoriesBlock(brief.genre || series.genre)}
 
 USER NOTES / CONSTRAINTS:
 ${String(brief.requirements || '').trim() || 'None'}
