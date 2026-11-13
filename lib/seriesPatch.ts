@@ -17,7 +17,14 @@
 
 import { hashScript } from './continuityPin'
 
-export const MAX_SERIES_PATCH_RUNS = 2
+/**
+ * PATCH-BUDGET-002 (Nov 13, 2026): the budget was 2 patch runs per JOB, so a 7-episode
+ * series used it up on early episodes and later one-line problems (one decorative SFX cue
+ * in Weekend Wife EP4; "Saturday" for "Wednesday" in Widow EP2) went to whole rewrites that
+ * brought new problems. Now each episode gets up to 2 patches, with a job-wide safety cap.
+ */
+export const MAX_SERIES_PATCH_RUNS = 8
+export const MAX_PATCHES_PER_EPISODE = 2
 /** More issues than this is a story problem, not a patch job. */
 export const MAX_SERIES_PATCH_ISSUES = 12
 /** A patch that changes more than this share of an episode is a rewrite in disguise. */
@@ -36,18 +43,22 @@ export function planSeriesPatch(input: {
   patchRuns: number
   frozenEpisodes: Set<number>
   episodesWithScript: Set<number>
+  /** PATCH-BUDGET-002: patches already applied per episode number. */
+  patchCounts?: Record<string, number>
 }): { action: 'patch'; run: number; byEpisode: Map<number, SeriesReadIssue[]> } | { action: 'skip'; reason: string } {
   const issues = Array.isArray(input.issues) ? input.issues.filter((i) => i && Number.isFinite(i.episode) && i.episode > 0) : []
   if (!issues.length) return { action: 'skip', reason: 'no series-read issues' }
   if (input.patchRuns >= MAX_SERIES_PATCH_RUNS) return { action: 'skip', reason: `patch budget used (${input.patchRuns}/${MAX_SERIES_PATCH_RUNS})` }
   if (issues.length > MAX_SERIES_PATCH_ISSUES) return { action: 'skip', reason: `${issues.length} issues — too many to patch` }
   const byEpisode = new Map<number, SeriesReadIssue[]>()
+  let capped = 0
   for (const issue of issues) {
     if (input.frozenEpisodes.has(issue.episode)) continue
+    if (Number(input.patchCounts?.[String(issue.episode)] || 0) >= MAX_PATCHES_PER_EPISODE) { capped += 1; continue }
     if (!input.episodesWithScript.has(issue.episode)) return { action: 'skip', reason: `episode ${issue.episode} has no script` }
     byEpisode.set(issue.episode, [...(byEpisode.get(issue.episode) || []), issue])
   }
-  if (!byEpisode.size) return { action: 'skip', reason: 'every issue is in a published episode' }
+  if (!byEpisode.size) return { action: 'skip', reason: capped ? `per-episode patch budget used (${MAX_PATCHES_PER_EPISODE} each)` : 'every issue is in a published episode' }
   return { action: 'patch', run: input.patchRuns + 1, byEpisode }
 }
 

@@ -7261,7 +7261,10 @@ async function generateOneSeriesEpisodeScript(job: ProductionJob, model: string)
         const outroRule = selfCheckIsFinale
           ? closingOutroPrompt({ title: outroSeriesName, author: String(targetEpisode.author || '').trim(), narrator: assignedNarratorName })
           : nonFinaleOutroPrompt({ seriesName: outroSeriesName, nextEpisodeNumber: targetEpisodeNumber + 1, author: String(targetEpisode.author || '').trim(), narrator: assignedNarratorName })
-        const shorter = await shortenBelleOutroToLimit(currentOutro, outroRule, coerceValidationModelToClaude(model), !selfCheckIsFinale, lengthCtx)
+        // WRITER-LENGTH-REPAIR-002 (Second Rise EP5, Nov 13): the shortened outro used a spoiler
+        // word ("reveals" etc.) and failed on that instead; the same no-AI word swap runs on it.
+        const shorterRaw = await shortenBelleOutroToLimit(currentOutro, outroRule, coerceValidationModelToClaude(model), !selfCheckIsFinale, lengthCtx)
+        const shorter = shorterRaw ? (softenBelleSpoilerWords(shorterRaw) || shorterRaw) : shorterRaw
         if (shorter && countWords(shorter) <= BELLE_OUTRO_MAX_WORDS && !(!selfCheckIsFinale && NON_FINALE_FINAL_WORDS.test(shorter))) {
           nextScript = replaceBelleSection(nextScript, 'outro', shorter)
           repairNotes.push(`outro ${countWords(currentOutro)} -> ${countWords(shorter)} words`)
@@ -7272,7 +7275,8 @@ async function generateOneSeriesEpisodeScript(job: ProductionJob, model: string)
       }
       if (repairable && lengthOnly.intro) {
         const currentIntro = extractBelleSection(nextScript, 'intro')
-        const shorterIntro = await shortenBelleIntroToLimit(currentIntro, coerceValidationModelToClaude(model), lengthCtx)
+        const shorterIntroRaw = await shortenBelleIntroToLimit(currentIntro, coerceValidationModelToClaude(model), lengthCtx)
+        const shorterIntro = shorterIntroRaw ? (softenBelleSpoilerWords(shorterIntroRaw) || shorterIntroRaw) : shorterIntroRaw
         if (shorterIntro && countWords(shorterIntro) <= BELLE_INTRO_MAX_WORDS) {
           nextScript = replaceBelleSection(nextScript, 'intro', shorterIntro)
           repairNotes.push(`intro ${countWords(currentIntro)} -> ${countWords(shorterIntro)} words`)
@@ -10376,6 +10380,7 @@ export async function POST(req: NextRequest) {
           const patchPlan = planSeriesPatch({
             issues: readIssues,
             patchRuns,
+            patchCounts: (priorPatchState.seriesRewrite?.patchCounts && typeof priorPatchState.seriesRewrite.patchCounts === 'object') ? priorPatchState.seriesRewrite.patchCounts : {},
             frozenEpisodes: new Set(patchEpisodes.filter((ep: any) => isFrozenSeriesEpisode(ep)).map((ep: any) => episodeNumber(ep, 0))),
             episodesWithScript: new Set(patchEpisodes.filter((ep: any) => Boolean(ep.script)).map((ep: any) => episodeNumber(ep, 0))),
           })
@@ -10481,7 +10486,7 @@ export async function POST(req: NextRequest) {
                   state_json: {
                     ...result.state,
                     seriesValidation: null,
-                    seriesRewrite: { ...(priorPatchState.seriesRewrite || {}), patchRuns: patchPlan.run, lastPatch: { run: patchPlan.run, at: nowIso(), episodes: (outcomes as any[]).map((o) => o.epNum) } },
+                    seriesRewrite: { ...(priorPatchState.seriesRewrite || {}), patchRuns: patchPlan.run, patchCounts: (outcomes as any[]).reduce((acc: Record<string, number>, o: any) => ({ ...acc, [String(o.epNum)]: Number(acc[String(o.epNum)] || 0) + 1 }), { ...((priorPatchState.seriesRewrite?.patchCounts as Record<string, number>) || {}) }), lastPatch: { run: patchPlan.run, at: nowIso(), episodes: (outcomes as any[]).map((o) => o.epNum) } },
                   },
                   error_json: null,
                   logs: patchLogs,
