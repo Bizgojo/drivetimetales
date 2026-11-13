@@ -168,6 +168,8 @@ export type GeminiReadState = {
  * report-only. Set GEMINI_STORY_READ_BLOCK=off to return to report-only.
  */
 export const MAX_GEMINI_SCRIPT_REWRITES = 2
+/** BLOCKERS-POLISH-001: series-read questions whose findings are polish, never blockers. */
+export const GEMINI_POLISH_QUESTION_IDS = new Set(['easy_listening'])
 
 export function geminiReadBlocks(env: Record<string, string | undefined> = process.env): boolean {
   return String(env.GEMINI_STORY_READ_BLOCK || '').toLowerCase() !== 'off'
@@ -184,7 +186,8 @@ export function geminiBlockingVerdict(
   frozenEpisodes: Set<number> = new Set(),
 ): { pass: boolean; issues: Array<{ episode: number; problem: string; fix: string }>; frozenIssues: number } {
   if (!read || read.skipped || read.error || read.verdict !== 'fix' || !read.questions) return { pass: true, issues: [], frozenIssues: 0 }
-  const all = read.questions.filter((q) => !q.pass).flatMap((q) => q.issues.map((i) => ({ ...i, question: q.id })))
+  // BLOCKERS-POLISH-001 (canon item 149): easy_listening findings are polish — listed, never blocking.
+  const all = read.questions.filter((q) => !q.pass && !GEMINI_POLISH_QUESTION_IDS.has(q.id)).flatMap((q) => q.issues.map((i) => ({ ...i, question: q.id })))
   const open = all.filter((i) => Number.isFinite(i.episode) && i.episode > 0 && !frozenEpisodes.has(i.episode))
   const issues = open.map((i) => ({
     episode: i.episode,
