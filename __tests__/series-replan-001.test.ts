@@ -35,3 +35,27 @@ describe('SERIES-REPLAN-001 wiring', () => {
     expect(src).toContain('verdict.issues = verdict.issues.filter((i) => i.episode > lastPublishedEpisode)')
   })
 })
+
+describe('SERIES-OUTLINE-TOKENS-001', () => {
+  const src = readFileSync(join(__dirname, '..', 'app/api/admin/production-jobs/run-next/route.ts'), 'utf8')
+  test('plan calls have room for a full plan with facts, and a cut-off reply is named', () => {
+    expect(src).toContain('const OUTLINE_MAX_TOKENS = 12000')
+    expect(src).toContain('max_tokens: OUTLINE_MAX_TOKENS')
+    expect(src).not.toMatch(/max_tokens: 4000, temperature: 0\.4/)
+    expect(src).toContain("const cutOff = (response as any).stop_reason === 'max_tokens'")
+  })
+  test('a failed re-plan says why in the job error', () => {
+    expect(src).toContain("(lastOutlineProblems.get(String(seriesId)) || ['unknown']).join('; ')")
+  })
+})
+
+describe('SERIES-OUTLINE-TOKENS-001 time budget', () => {
+  const src = readFileSync(join(__dirname, '..', 'app/api/admin/production-jobs/run-next/route.ts'), 'utf8')
+  test('after a re-plan the run stops and the episode is written next run', () => {
+    const at = src.indexOf('plan made with episodes 1-')
+    const block = src.slice(at, at + 900)
+    expect(block).toContain('planned: true')
+    expect(block).toContain('nextStep: NEXT_STEP_AFTER_SERIES_CREATE')
+    expect(src).toContain("'Series plan made (SERIES-REPLAN-001); episodes are written next'")
+  })
+})
