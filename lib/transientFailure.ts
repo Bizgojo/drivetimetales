@@ -59,6 +59,11 @@ const RULES: Rule[] = [
 
   // Upstream gateway errors (any provider).
   { cause: 'provider_overloaded', pattern: /\b(502 Bad Gateway|503 Service Unavailable|504 Gateway Timeout)\b/i },
+  // RETRY-5XX-001 (Nov 13, 2026): the Anthropic SDK words a server-side 5xx as
+  // "503 status code (no body)" or "503 credential validation failed". All three
+  // series jobs failed twice that morning on these and needed a manual restart.
+  { cause: 'provider_overloaded', pattern: /\b(500|502|503|504|529) status code\b/ },
+  { cause: 'provider_overloaded', pattern: /\b(502|503|504|529) (credential validation failed|Service Unavailable|Overloaded)\b/i },
 
   // Network-level failures before any response arrived. Case-sensitive and
   // anchored to the runtime's exact error text so dialogue such as

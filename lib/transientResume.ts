@@ -30,6 +30,10 @@ const SELF_FETCH_PATTERNS: RegExp[] = [
   /\b(Non-JSON|Empty) response from \/api\//,
   /\bSeries voice segment fetch failed for Ep\d+ seg\d+: no response after \d+ retries\b/,
   /\b(502 Bad Gateway|503 Service Unavailable|504 Gateway Timeout)\b/,
+  // RETRY-5XX-001 (Nov 13, 2026): AI provider server errors as the SDK words them.
+  // The step is redone from its saved progress after a back-off (2, 4, 8 ... minutes).
+  /\b(500|502|503|504|529) status code\b/,
+  /\b(502|503|504|529) (credential validation failed|Service Unavailable|Overloaded)\b/i,
   // RETRY-NET-002 (2026-11-02, The Last Well): an upstream (storage, Cloudflare)
   // answered with an HTML error page where JSON was expected.
   /Unexpected token '<', "<(?:!DOCTYPE|html)/i,
