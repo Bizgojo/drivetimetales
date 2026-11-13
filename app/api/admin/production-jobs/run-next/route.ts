@@ -6616,6 +6616,11 @@ async function assertSeriesCastContinuity(seriesId: string, episodes: any[]) {
  * brief_json.series_outline. Two attempts; if both are unusable the series is
  * written without a plan (as before) and SERIES-CONTINUITY-001 still guards it.
  */
+/** SERIES-OUTLINE-TOKENS-001: room for a full plan with fixed facts. */
+const OUTLINE_MAX_TOKENS = 12000
+/** Why the last plan attempt for a series was rejected, for the job error. */
+const lastOutlineProblems = new Map<string, string[]>()
+
 async function createSeriesOutline(job: ProductionJob, model: string, series: any, episodes: any[], brief: any, namePaletteBlock: string, publishedEpisodes: Array<{ episodeNumber: number; title: string; body: string }> = []): Promise<SeriesOutline | null> {
   const totalEpisodes = Number(brief.series_total_episodes || episodes.length)
   const style = styleProfileOfBrief(brief)
@@ -6642,8 +6647,12 @@ async function createSeriesOutline(job: ProductionJob, model: string, series: an
     const prompt = problems.length
       ? `${basePrompt}\n\nYOUR PREVIOUS PLAN WAS REJECTED FOR: ${problems.join('; ')}. Fix every point.`
       : basePrompt
-    const response = await anthropic.messages.create({ model, max_tokens: 4000, temperature: 0.4, messages: [{ role: 'user', content: prompt }] })
+    // SERIES-OUTLINE-TOKENS-001 (re-plan of three series, Nov 12): with FIXED FACTS (SERIES-FACTS-002)
+    // a 7-episode plan runs past 4,000 output tokens; every reply was cut off mid-JSON and all
+    // three re-plans failed. More room, and a cut-off reply is named as the reason.
+    const response = await anthropic.messages.create({ model, max_tokens: OUTLINE_MAX_TOKENS, temperature: 0.4, messages: [{ role: 'user', content: prompt }] })
     const raw = response.content.map((c: any) => ('text' in c ? c.text : '')).join('').trim()
+    const cutOff = (response as any).stop_reason === 'max_tokens'
     logAnthropicCall({
       route: '/api/admin/production-jobs/run-next',
       purpose: 'series-outline',
@@ -6699,7 +6708,8 @@ async function createSeriesOutline(job: ProductionJob, model: string, series: an
       await seedRosterFromOutline(String(series.id), result.outline, episodes, totalEpisodes)
       return result.outline
     }
-    problems = result.problems
+    problems = cutOff ? ['the reply was cut off before the JSON ended: keep goals, beats and facts short', ...result.problems.slice(0, 3)] : result.problems
+    lastOutlineProblems.set(String(series.id), problems)
     console.warn(`[SERIES-OUTLINE-001] series ${series.id}: plan attempt ${attempt} rejected: ${problems.join('; ')}`)
   }
   return null
@@ -6863,8 +6873,20 @@ async function generateOneSeriesEpisodeScript(job: ProductionJob, model: string)
     if (earlier.length === targetEpisodeNumber - 1 && earlier.every((ep: any) => isFrozenSeriesEpisode(ep) && Boolean(ep.script))) {
       seriesOutline = await createSeriesOutline(job, model, series, episodes, brief, namePaletteBlock,
         earlier.map((ep: any) => ({ episodeNumber: episodeNumber(ep, 0), title: String(ep.title || ''), body: storyBodyText(String(ep.script || '')) })))
-      if (!seriesOutline) throw new Error(`SERIES-REPLAN-001: no usable plan for series ${seriesId} after 3 attempts (nothing written)`)
+      if (!seriesOutline) throw new Error(`SERIES-REPLAN-001: no usable plan for series ${seriesId} after 3 attempts (nothing written): ${(lastOutlineProblems.get(String(seriesId)) || ['unknown']).join('; ').slice(0, 400)}`)
       console.log(`[SERIES-REPLAN-001] series ${seriesId}: plan made with episodes 1-${targetEpisodeNumber - 1} as published canon`)
+      // SERIES-OUTLINE-TOKENS-001: a full plan can take several minutes; stop here so the episode
+      // is written in the next run with a fresh time budget (the plan is saved on every episode).
+      return {
+        generated: false,
+        planned: true,
+        seriesId: String(seriesId),
+        episode: null,
+        episodes,
+        nextStep: NEXT_STEP_AFTER_SERIES_CREATE,
+        coverPhaseTriggered: false,
+        state: { ...state, seriesId: String(seriesId) },
+      }
     } else {
       console.warn(`[SERIES-REPLAN-001] series ${seriesId}: re-plan requested but episodes before ${targetEpisodeNumber} are not all published; writing without a plan`)
     }
@@ -10055,7 +10077,7 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ success: false, error: 'writer_in_progress', jobId: lockedJob.id, currentStep: step }, { status: 409 })
       }
       const result = await generateOneSeriesEpisodeScript(lockedJob, model)
-      const logs = appendLog(lockedJob, result.generated ? 'Generated one series episode script' : 'All series episode scripts already exist', {
+      const logs = appendLog(lockedJob, result.generated ? 'Generated one series episode script' : (result as any).planned ? 'Series plan made (SERIES-REPLAN-001); episodes are written next' : 'All series episode scripts already exist', {
         seriesId: result.seriesId,
         episode: result.episode,
         nextStep: result.nextStep,
