@@ -6616,7 +6616,7 @@ async function assertSeriesCastContinuity(seriesId: string, episodes: any[]) {
  * brief_json.series_outline. Two attempts; if both are unusable the series is
  * written without a plan (as before) and SERIES-CONTINUITY-001 still guards it.
  */
-async function createSeriesOutline(job: ProductionJob, model: string, series: any, episodes: any[], brief: any, namePaletteBlock: string): Promise<SeriesOutline | null> {
+async function createSeriesOutline(job: ProductionJob, model: string, series: any, episodes: any[], brief: any, namePaletteBlock: string, publishedEpisodes: Array<{ episodeNumber: number; title: string; body: string }> = []): Promise<SeriesOutline | null> {
   const totalEpisodes = Number(brief.series_total_episodes || episodes.length)
   const style = styleProfileOfBrief(brief)
   const maxMain = maxMainCharacters(style, totalEpisodes)
@@ -6632,7 +6632,9 @@ async function createSeriesOutline(job: ProductionJob, model: string, series: an
     styleBlock: buildStylePromptBlock(style, { episodeNumber: 1 }),
     sequelHook: sequelHookOf(brief),
     seriesTitle: String(series.title || brief.series_name || ''),
+    publishedEpisodes,
   })
+  const lastPublishedEpisode = publishedEpisodes.reduce((m, e) => Math.max(m, e.episodeNumber), 0)
   let problems: string[] = []
   // PLAN-ENDINGS-001: one more attempt than before, used only when the ending review rejects a plan.
   const OUTLINE_ATTEMPTS = 3
@@ -6672,6 +6674,8 @@ async function createSeriesOutline(job: ProductionJob, model: string, series: an
           metadata: { is_v2: true, production_job_id: job.id, series_id: series.id, attempt },
         }).catch(() => {})
         const verdict = parseOutlineEndingReview(review.content.map((c: any) => ('text' in c ? c.text : '')).join('').trim(), totalEpisodes)
+        // SERIES-REPLAN-001: published episodes cannot change, so their endings are not re-planned.
+        if (verdict) verdict.issues = verdict.issues.filter((i) => i.episode > lastPublishedEpisode)
         if (verdict && verdict.issues.length) {
           problems = verdict.issues.map((i) => `Episode ${i.episode} ending: ${i.problem}${i.fix ? ` Fix: ${i.fix}` : ''}`)
           console.warn(`[PLAN-ENDINGS-001] series ${series.id}: plan attempt ${attempt} endings rejected: ${problems.join('; ')}`)
@@ -6848,6 +6852,22 @@ async function generateOneSeriesEpisodeScript(job: ProductionJob, model: string)
   let seriesOutline: SeriesOutline | null = ((brief as any)?.series_outline as SeriesOutline) || null
   if (!seriesOutline && seriesOutlineEnabled() && targetEpisodeNumber === 1) {
     seriesOutline = await createSeriesOutline(job, model, series, episodes, brief, namePaletteBlock)
+  } else if (!seriesOutline && seriesOutlineEnabled() && (brief as any)?.replan_requested === true) {
+    // SERIES-REPLAN-001 (Weekend Wife, Second Rise, Widow, Nov 12, 2026): series written before
+    // SERIES-OUTLINE-001 have no plan, so every repair improvised and the series never converged.
+    // When Marc asks for a re-plan (brief_json.replan_requested on the next episode) and every
+    // earlier episode is published, the plan is made now with those episodes as fixed canon.
+    const earlier = episodes
+      .filter((ep: any) => episodeNumber(ep, 0) < targetEpisodeNumber)
+      .sort((a: any, b: any) => episodeNumber(a, 0) - episodeNumber(b, 0))
+    if (earlier.length === targetEpisodeNumber - 1 && earlier.every((ep: any) => isFrozenSeriesEpisode(ep) && Boolean(ep.script))) {
+      seriesOutline = await createSeriesOutline(job, model, series, episodes, brief, namePaletteBlock,
+        earlier.map((ep: any) => ({ episodeNumber: episodeNumber(ep, 0), title: String(ep.title || ''), body: storyBodyText(String(ep.script || '')) })))
+      if (!seriesOutline) throw new Error(`SERIES-REPLAN-001: no usable plan for series ${seriesId} after 3 attempts (nothing written)`)
+      console.log(`[SERIES-REPLAN-001] series ${seriesId}: plan made with episodes 1-${targetEpisodeNumber - 1} as published canon`)
+    } else {
+      console.warn(`[SERIES-REPLAN-001] series ${seriesId}: re-plan requested but episodes before ${targetEpisodeNumber} are not all published; writing without a plan`)
+    }
   }
   const styleProfile = styleProfileOfBrief(brief)
   const prompt = buildSeriesEpisodePrompt(series, targetEpisode, episodes, continuityBundle, namePaletteBlock, authorVoiceBlock, assignedNarratorName, seriesCharacterRosterBlock)
