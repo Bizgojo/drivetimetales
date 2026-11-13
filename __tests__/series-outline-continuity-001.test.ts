@@ -26,6 +26,8 @@ const goodOutline = {
     { fact: 'The ransom is two hundred thousand dollars.', from_episode: 1 },
     { fact: 'Nick has been a detective for twelve years.', from_episode: 1 },
     { fact: 'Kessler ordered the witness killed.', from_episode: 3 },
+    // SERIES-TIMELINE-001
+    { fact: 'Episode 1 takes place on Friday, night, at the start.', from_episode: 1 }, { fact: 'Episode 2 takes place on Saturday, morning, one day after episode 1.', from_episode: 2 }, { fact: 'Episode 3 takes place on Sunday, evening, two days after episode 1.', from_episode: 3 },
   ],
 }
 

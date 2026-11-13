@@ -28,7 +28,8 @@ export function findUnlabeledStoryBodyLines(script: string) {
   // lib/scriptLineIndex.ts, which already skips all bare bracket lines.
   const structuralEndMarkerRe = /^\[END (AUDIO DRAMA SCRIPT|EPISODE \d+(?:\s*[\u2014\u2013-]\s*.+)?)\]$/i
   const speakerLabelRe = /^([A-Z][A-ZÀ-Ú0-9\s'.()/&-]+?):\s*(.+)$/
-  const bracketCueRe = /^\[(BEAT|PAUSE(?::\d+(?:\.\d+)?)?|SFX:\s*.+)\]$/i
+  // SCENE-MARKERS-001: [SCENE: place, time] is a silent scene marker (never voiced).
+  const bracketCueRe = /^\[(BEAT|PAUSE(?::\d+(?:\.\d+)?)?|SFX:\s*.+|SCENE:\s*.+)\]$/i
 
   return rawLines
     .slice(startIdx + 1)

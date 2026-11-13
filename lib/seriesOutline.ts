@@ -89,6 +89,7 @@ ${nemesisBlock}- Each episode has ONE clear goal, written as a single sentence a
 - Each non-finale episode ends on a specific cliffhanger; the finale closes the series.
 - Beats are 3 to 6 short, concrete events per episode, in order. No two episodes use the same kind of climax.
 - FIXED FACTS: list 8 to 15 concrete facts every episode must agree on: days and dates of key events, times of day, ages, how long ago past events happened, money amounts and pay terms, where people live and work, and which character learns which secret in which episode. Each fact is one short sentence with the exact value, plus "from_episode" = the first episode where the listener hears it.
+- TIMELINE (SERIES-TIMELINE-001): in addition, for EVERY episode write one fact in exactly this form: "Episode <number> takes place on <day>, <time of day>, <how long after episode 1 starts>." (for example "Episode 2 takes place on Wednesday, night, two days after episode 1."), with "from_episode" = that episode. Every "how long ago" a character says must agree with this timeline.
 
 Return JSON only, no markdown:
 {"characters":[{"name":"...","label":"...","role":"...","gender":"male|female","aliases":["..."]}],
@@ -126,10 +127,12 @@ export function validateSeriesOutline(raw: unknown, totalEpisodes: number, maxMa
   const facts: OutlineFact[] = (Array.isArray(o.facts) ? o.facts : [])
     .map((f: any) => ({ fact: String(f?.fact || '').trim(), from_episode: Math.round(Number(f?.from_episode)) }))
     .filter((f: OutlineFact) => f.fact && f.from_episode >= 1 && f.from_episode <= totalEpisodes)
-    .slice(0, 20)
+    .slice(0, 20 + totalEpisodes)
 
   if (!characters.length) problems.push('no characters')
-  if (facts.length < MIN_OUTLINE_FACTS) problems.push(`${facts.length} fixed facts (need at least ${MIN_OUTLINE_FACTS}: dates, times, ages, how long ago, money, who learns what when)`)
+  const missingTimeline = timelineGaps(facts, totalEpisodes)
+  if (missingTimeline.length) problems.push(`no timeline fact ("Episode N takes place on ...") for episode(s) ${missingTimeline.join(', ')} (SERIES-TIMELINE-001)`)
+  if (facts.filter((f) => !isTimelineFact(f)).length < MIN_OUTLINE_FACTS) problems.push(`${facts.length} fixed facts (need at least ${MIN_OUTLINE_FACTS}: dates, times, ages, how long ago, money, who learns what when)`)
   if (characters.length > maxMain) problems.push(`${characters.length} main characters (max ${maxMain})`)
   const labels = characters.map((c) => c.label)
   if (new Set(labels).size !== labels.length) problems.push('two characters share a speaker label')
@@ -195,11 +198,15 @@ export function buildOutlinePromptBlock(outline: SeriesOutline | null | undefine
 export function factsPromptLines(outline: SeriesOutline | null | undefined, episodeNumber: number): string[] {
   const facts = Array.isArray(outline?.facts) ? outline!.facts : []
   if (!facts.length) return []
-  const known = facts.filter((f) => f.from_episode <= episodeNumber)
-  const later = facts.filter((f) => f.from_episode > episodeNumber)
+  // SERIES-TIMELINE-001: the timeline is shown whole to every episode (when things happen is never a secret).
+  const timeline = facts.filter(isTimelineFact)
+  const known = facts.filter((f) => !isTimelineFact(f) && f.from_episode <= episodeNumber)
+  const later = facts.filter((f) => !isTimelineFact(f) && f.from_episode > episodeNumber)
   return [
     'FIXED FACTS (SERIES-FACTS-002): every episode must agree with these exactly. Never change a date, day, time, age, length of time, amount of money or who-knows-what. Speak numbers as words.',
     ...known.map((f) => `- ${f.fact}`),
+    timeline.length ? 'TIMELINE (SERIES-TIMELINE-001): when each episode happens. Every day, time and "how long ago" must agree with it:' : '',
+    ...timeline.map((f) => `- ${f.fact}`),
     later.length ? 'Not yet known to the listener (do not reveal in this episode; never contradict):' : '',
     ...later.map((f) => `- (episode ${f.from_episode}) ${f.fact}`),
   ].filter(Boolean)
@@ -247,4 +254,26 @@ export function parseOutlineEndingReview(raw: string, totalEpisodes: number): { 
     .map((i: any) => ({ episode: Math.round(Number(i?.episode)), problem: String(i?.problem || '').trim(), fix: String(i?.fix || '').trim() }))
     .filter((i: { episode: number; problem: string }) => i.problem && i.episode >= 1 && i.episode <= totalEpisodes)
   return { issues }
+}
+
+
+const NUMBER_WORDS = ['zero','one','two','three','four','five','six','seven','eight','nine','ten','eleven','twelve','thirteen','fourteen','fifteen','sixteen','seventeen','eighteen','nineteen','twenty','twenty-one','twenty-two','twenty-three','twenty-four','twenty-five','twenty-six','twenty-seven','twenty-eight','twenty-nine','thirty']
+
+const TIMELINE_FACT_RE = /^\s*Episode\s+([0-9]+|[a-z-]+)\s+takes place\b/i
+export function isTimelineFact(f: OutlineFact): boolean {
+  return TIMELINE_FACT_RE.test(String(f?.fact || ''))
+}
+
+/** SERIES-TIMELINE-001: episodes with no "Episode N takes place on ..." fact. Checked by code. */
+export function timelineGaps(facts: OutlineFact[], totalEpisodes: number): number[] {
+  const covered = new Set<number>()
+  for (const f of facts || []) {
+    const m = String(f?.fact || '').match(TIMELINE_FACT_RE)
+    if (!m) continue
+    const n = /^[0-9]+$/.test(m[1]) ? Number(m[1]) : NUMBER_WORDS.indexOf(m[1].toLowerCase())
+    if (n >= 1) covered.add(n)
+  }
+  const gaps: number[] = []
+  for (let e = 1; e <= totalEpisodes; e += 1) if (!covered.has(e)) gaps.push(e)
+  return gaps
 }

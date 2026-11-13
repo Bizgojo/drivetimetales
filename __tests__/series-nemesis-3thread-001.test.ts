@@ -26,7 +26,7 @@ function outlineWithOpenThreads(openCount: number, totalEpisodes = 3) {
       ends_on: 'hook',
     })),
     // SERIES-FACTS-002: a plan now carries at least five fixed facts.
-    facts: Array.from({ length: 5 }, (_, i) => ({ fact: `fixed fact ${i + 1}`, from_episode: 1 })),
+    facts: [...Array.from({ length: 5 }, (_, i) => ({ fact: `fixed fact ${i + 1}`, from_episode: 1 })), ...Array.from({ length: totalEpisodes }, (_, i) => ({ fact: `Episode ${i + 1} takes place on day ${i + 1}, night.`, from_episode: i + 1 }))],
   }
 }
 

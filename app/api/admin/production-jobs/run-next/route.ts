@@ -7644,7 +7644,7 @@ ${script}`,
       castCheck(script, { totalEpisodes, episodeNumber: number, priorSpeakers }),
       readingMetrics(script),
       // TWIST-BUDGET-SERIES-002 (Marc, Nov 12, 2026, option A): series episodes allow 2 major twists.
-      { twistMax: totalEpisodes > 1 ? CANON.TWISTS_PER_SERIES_EPISODE_MAX : CANON.TWISTS_PER_EPISODE_MAX },
+      { twistMax: totalEpisodes > 1 ? CANON.TWISTS_PER_SERIES_EPISODE_MAX : CANON.TWISTS_PER_EPISODE_MAX, script },
     )
     report = `${report}\n\n${clarityReportText(clarity)}`
     if (!clarity.passed) passed = false
