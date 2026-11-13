@@ -104,7 +104,7 @@ import { legacyStepModels, routeStep, resolveModelForStep, coerceValidationModel
 import { buildContinuityPins, hashScript, verifyContinuityPins } from '@/lib/continuityPin'
 import { checkSeriesFacts, formatFactSheet, castListsText } from '@/lib/seriesFacts'
 import { runGeminiStoryRead, listenerText, geminiReadBlocks, geminiBlockingVerdict, geminiRewriteTarget, MAX_GEMINI_SCRIPT_REWRITES, type GeminiReadState } from '@/lib/geminiStoryRead'
-import { seriesPatchEnabled, planSeriesPatch, buildPatchPrompt, buildPatchRetryMessage, parsePatchReply, applyPatchEdits, repinAfterPatch, validatorIssuesForPatch, MAX_SERIES_PATCH_RUNS, isLineLevelIssue, planSfxDeletions, deleteSfxLines, MAX_SFX_DELETES_PER_JOB, type SeriesReadIssue } from '@/lib/seriesPatch'
+import { seriesPatchEnabled, planSeriesPatch, buildPatchPrompt, buildPatchRetryMessage, parsePatchReply, applyPatchEdits, repinAfterPatch, validatorIssuesForPatch, routeIssuesToFixEpisode, MAX_SERIES_PATCH_RUNS, isLineLevelIssue, planSfxDeletions, deleteSfxLines, MAX_SFX_DELETES_PER_JOB, type SeriesReadIssue } from '@/lib/seriesPatch'
 import { planTimingPass, finishTimingPass, timedLinesFromSizes, sizesFromListing, type TimingCheckState } from '@/lib/timingPass'
 import {
   hasEarnedPackageEvidence,
@@ -8452,7 +8452,9 @@ async function scoreValidateSeriesPackage(job: ProductionJob, model: string) {
     let parsedVerdict: unknown = null
     try { parsedVerdict = parseJsonObject(rawVerdict) } catch { parsedVerdict = null }
     if (!parsedVerdict) throw new Error('SERIES-CONTINUITY-001: continuity check returned no JSON verdict')
-    const aiVerdict = parseContinuityVerdict(parsedVerdict, sortedEps.length)
+    const parsedContinuity = parseContinuityVerdict(parsedVerdict, sortedEps.length)
+    // FIX-EPISODE-ROUTE-001: an issue whose fix is in another (editable) episode goes to that episode.
+    const aiVerdict = { ...parsedContinuity, issues: routeIssuesToFixEpisode(parsedContinuity.issues, (n) => !frozenNumbers.has(n) && sortedEps.some((ep: any) => episodeNumber(ep, 0) === n)) }
     const verdict = blockingFactIssues.length
       ? { pass: false, issues: [...blockingFactIssues.map(({ episode, problem, fix }) => ({ episode, problem: `${problem} (fact check)`, fix })), ...aiVerdict.issues] }
       : aiVerdict
@@ -8525,7 +8527,9 @@ async function scoreValidateSeriesPackage(job: ProductionJob, model: string) {
   const storedRead = blockState.geminiScriptRead as GeminiReadState | undefined
   if (geminiReadBlocks() && !isLandingPackage && storedRead && storedRead.fingerprint === continuityFingerprint) {
     const frozenForRead = new Set<number>(refreshedEpisodes.filter((ep: any) => isFrozenSeriesEpisode(ep)).map((ep: any) => episodeNumber(ep, 0)))
-    const geminiVerdict = geminiBlockingVerdict(storedRead, frozenForRead)
+    const geminiVerdictRaw = geminiBlockingVerdict(storedRead, frozenForRead)
+    // FIX-EPISODE-ROUTE-001: same routing for the story read.
+    const geminiVerdict = { ...geminiVerdictRaw, issues: routeIssuesToFixEpisode(geminiVerdictRaw.issues, (n) => !frozenForRead.has(n) && refreshedEpisodes.some((ep: any) => episodeNumber(ep, 0) === n)) }
     const geminiTarget = geminiRewriteTarget(geminiVerdict)
     if (geminiTarget) {
       const geminiRuns = Number(blockState.geminiRuns || 0) + 1
