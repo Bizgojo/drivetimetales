@@ -104,10 +104,15 @@ log "workers' path $CURRENT_LINK → $SLOT"
 for unit in $WORKER_UNITS; do
   if [ "$(systemctl show -p LoadState --value "$unit" 2>/dev/null)" = "loaded" ] && systemctl is-active --quiet "$unit"; then
     # The render worker holds a job lock while it renders; restarting it mid-render
-    # would strand that job. Restart it only when its last log line says it is idle.
-    if [ "$unit" = "endlesstales-renderworker.service" ] && ! sudo journalctl -u "$unit" -n 1 --no-pager -o cat 2>/dev/null | grep -q "No local render jobs queued"; then
-      log "render worker is busy — NOT restarted; restart $unit after the render finishes"
-      continue
+    # would strand that job. RENDER-BUSY-CHECK-001: read its own log file (the journal is
+    # empty because the unit logs to a file), and restart it only when it is idle.
+    if [ "$unit" = "endlesstales-renderworker.service" ]; then
+      if state="$(bash "$SLOT/scripts/ec2-deploy/render-worker-idle.sh" "$unit")"; then
+        log "render worker $state"
+      else
+        log "render worker NOT restarted ($state); restart $unit after the render finishes"
+        continue
+      fi
     fi
     sudo systemctl restart "$unit" && log "restarted $unit" || log "warning: could not restart $unit"
   fi

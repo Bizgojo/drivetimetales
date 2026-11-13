@@ -19,7 +19,7 @@ describe('WORKER-CURRENT-001', () => {
     const link = s.indexOf('ln -sfn "$SLOT" "$CURRENT_LINK"')
     expect(link).toBeGreaterThan(flip)
     expect(s.indexOf('sudo systemctl restart "$unit"')).toBeGreaterThan(link)
-    expect(s).toContain('render worker is busy — NOT restarted')
+    expect(s).toContain('render worker NOT restarted (')
   })
   test('the one-time switch is a dry run unless --apply, and backs up unit files', () => {
     const s = read('switch-workers-to-current.sh')
