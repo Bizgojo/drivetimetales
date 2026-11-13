@@ -33,7 +33,13 @@ export function parseCharacterGuide(script: string): CharacterInfo[] {
     const lower = line.toLowerCase()
     // CAST-GENDER-002: whole words, kinship and pronouns.
     const gender: CharacterInfo['gender'] = inferGender(line) || 'unknown'
-    const isProtagonist = lower.includes('protagonist') || lower.includes('narrator') || chars.length === 0
+    // NARRATOR-GUIDE-ENTRY-001 (Second Rise EP3, Nov 13, 2026): a guide line for the NARRATOR
+    // voice itself ("NARRATOR — Sage Wilder, the storytelling voice …") is not a character. It was
+    // taken as the first-person protagonist (first entry), had no gender, and voice preflight
+    // failed. The narrator entry is never the protagonist; the first real character is the fallback.
+    const isNarratorEntry = /^NARRATOR$/i.test(name.trim())
+    const charactersSoFar = chars.filter((c) => !/^NARRATOR$/i.test(c.name.trim())).length
+    const isProtagonist = !isNarratorEntry && (lower.includes('protagonist') || lower.includes('narrator') || charactersSoFar === 0)
     chars.push({ name, gender, description: line, isProtagonist })
   }
   return chars
