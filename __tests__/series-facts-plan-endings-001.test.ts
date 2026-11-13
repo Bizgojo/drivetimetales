@@ -10,7 +10,8 @@ const plan = (facts: any[]) => ({
     { episode: 2, goal: 'g2', beats: ['a', 'b'], resolves: ['T2'], ends_on: 'Robert walks away undecided' },
     { episode: 3, goal: 'g3', beats: ['a', 'b'], resolves: ['T1'], ends_on: 'signed' },
   ],
-  facts,
+  // SERIES-TIMELINE-001: every plan has one timeline fact per episode.
+  facts: [...facts, { fact: 'Episode 1 takes place on Friday, night, at the start.', from_episode: 1 }, { fact: 'Episode 2 takes place on Saturday, morning, one day after episode 1.', from_episode: 2 }, { fact: 'Episode 3 takes place on Sunday, evening, two days after episode 1.', from_episode: 3 }],
 })
 const facts = [
   { fact: "Connor's father died eight months ago.", from_episode: 1 },
@@ -30,7 +31,7 @@ describe('SERIES-FACTS-002', () => {
     expect(validateSeriesOutline(plan(facts.slice(0, MIN_OUTLINE_FACTS - 1)), 3, 4).problems.join()).toMatch(/fixed facts/)
     const ok = validateSeriesOutline(plan(facts), 3, 4)
     expect(ok.problems).toEqual([])
-    expect(ok.outline!.facts!.length).toBe(5)
+    expect(ok.outline!.facts!.length).toBe(8)
   })
   test('the writer sees known facts, and later facts only as do-not-reveal', () => {
     const outline = validateSeriesOutline(plan(facts), 3, 4).outline!

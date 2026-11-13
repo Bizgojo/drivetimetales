@@ -10,6 +10,7 @@
  *  - one reviewer call that reads the script cold, as a first-time listener, and answers the
  *    seven checks as JSON.
  */
+import { scenesWithSpeakers, sceneVoiceIssues } from './countInCode'
 import { parseScriptPositions } from './scriptLineIndex'
 import { CANON } from './canon/numbers'
 
@@ -134,7 +135,7 @@ Answer these checks:
 4. SCENE-PURPOSE: name any scene that moves neither the goal, the obstacle nor a relationship forward. FAIL if 2 or more such scenes.
 5. RECAP-LINE: ${isLaterEpisode ? 'within the first 30 seconds of the story (about 80 spoken words after Belle), does one line from a character or the narrator say where things stand? FAIL if not.' : 'not required for Episode 1 or a standalone: always pass.'}
 6. FOLLOW-BY-EAR: quote any stretch where a listener could not tell who is speaking, or where/when the scene is. FAIL if any.
-7. SCENE-VOICES: in every scene, count the characters who SPEAK (the narrator and Belle B do not count; a character who is present but silent does not count). FAIL if any scene has more than ${SCENE_VOICES_MAX} speaking characters; name the scene and quote one line from each speaker in it.
+7. SCENE-VOICES: ${scenesWithSpeakers(script) ? 'checked by code from the [SCENE: ...] markers (SCENE-MARKERS-001). Do not count; always pass.' : `in every scene, count the characters who SPEAK (the narrator and Belle B do not count; a character who is present but silent does not count). FAIL if any scene has more than ${SCENE_VOICES_MAX} speaking characters; name the scene and quote one line from each speaker in it.`}
 
 ${planned.length ? `EMOTIONS (report only, canon decision 133): the plan wants the listener to feel: ${['liking the protagonist', ...planned].join(', ')}. For each, quote the line that sets it up and the line that triggers it, or say it is missing. Also list "announced": lines where a character or the narrator names a feeling instead of showing it ("I was terrified", "it was heartbreaking").
 
@@ -185,7 +186,7 @@ export function parseClarityReview(raw: string, episodeNumber: number): { checks
   return { checks, threeSentences: three, twists, openQuestions: list(obj.open_questions), emotions, announced: list(obj.announced) }
 }
 
-export function combineClarity(llm: ReturnType<typeof parseClarityReview>, cast: ReturnType<typeof castCheck>, metrics: ReadingMetrics, opts: { twistMax?: number } = {}): ClarityResult {
+export function combineClarity(llm: ReturnType<typeof parseClarityReview>, cast: ReturnType<typeof castCheck>, metrics: ReadingMetrics, opts: { twistMax?: number; script?: string } = {}): ClarityResult {
   const twistMax = opts.twistMax ?? CANON.TWISTS_PER_EPISODE_MAX
   // Decisions 129-131 (Marc, Nov 10, 2026): blocking.
   const reading: ClarityCheck = metrics.grade <= CANON.READING_GRADE_MAX
@@ -198,7 +199,12 @@ export function combineClarity(llm: ReturnType<typeof parseClarityReview>, cast:
   const open: ClarityCheck = unreadable || llm.openQuestions.length <= CANON.OPEN_QUESTIONS_MAX
     ? { id: 'OPEN-QUESTIONS', pass: true, detail: `${llm.openQuestions.length} open question(s)` }
     : { id: 'OPEN-QUESTIONS', pass: false, detail: `${llm.openQuestions.length} story questions still open at the end (max ${CANON.OPEN_QUESTIONS_MAX}). Answer one before opening another.`, quotes: llm.openQuestions }
-  const checks = [...llm.checks, { id: cast.id, pass: cast.pass, detail: cast.detail } as ClarityCheck, reading, twists, open]
+  // SCENE-MARKERS-001: when the script marks its scenes, code's speaker count replaces the AI's.
+  const sceneIssues = opts.script != null ? sceneVoiceIssues(opts.script, SCENE_VOICES_MAX) : null
+  const llmChecks = sceneIssues == null ? llm.checks : llm.checks.map((c) => c.id !== 'SCENE-VOICES' ? c : (sceneIssues.length
+    ? { id: c.id, pass: false, detail: sceneIssues.join(' ').slice(0, 1200) } as ClarityCheck
+    : { id: c.id, pass: true, detail: 'every scene has at most ' + SCENE_VOICES_MAX + ' speakers (counted by code)' } as ClarityCheck))
+  const checks = [...llmChecks, { id: cast.id, pass: cast.pass, detail: cast.detail } as ClarityCheck, reading, twists, open]
   return {
     passed: checks.every((c) => c.pass),
     checks,
@@ -248,5 +254,6 @@ export function sceneVoicesWriterBlock(): string {
   return `SPEAKERS PER SCENE (checked before voicing; a script that breaks it is rejected):
 - At most ${SCENE_VOICES_MAX} characters SPEAK in any one scene. The narrator and Belle B do not count.
 - When more people are present (a dinner, a meeting, a party), the others stay silent: show what they do through the narrator, or have them leave before the main exchange. Do not give them lines.
-- Name the speaker in or near the first line each time a scene starts, so a driver knows who is talking.`
+- Name the speaker in or near the first line each time a scene starts, so a driver knows who is talking.
+- SCENE MARKERS (SCENE-MARKERS-001): start EVERY scene, including the first, with one line in exactly this form: [SCENE: place, time] (for example "[SCENE: Resort lobby, Friday night]"). It is never read aloud; code uses it to count the speakers in each scene. Write a new marker whenever the place or time changes.`
 }

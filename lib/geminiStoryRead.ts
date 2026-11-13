@@ -16,7 +16,7 @@ export type StoryReadReport = { verdict: 'publish' | 'fix'; questions: StoryRead
 
 export const STORY_READ_QUESTIONS: Array<{ id: string; stages: StoryReadStage[]; ask: string }> = [
   { id: 'continuity', stages: ['script', 'final'], ask: 'Continuity: does every fact (who is related to whom, jobs, places, objects, who knows what) agree with the FACT SHEET, the CAST LISTS and earlier episodes?' },
-  { id: 'easy_listening', stages: ['script', 'final'], ask: 'Easy listening while driving: in every scene can a listener tell who is speaking and where we are? At most 3 voices per scene; nothing that only works visually; each episode opens with a reminder of where we are.' },
+  { id: 'easy_listening', stages: ['script', 'final'], ask: 'Easy listening while driving: in every scene can a listener tell who is speaking and where we are? Do not count voices per scene (code counts them, SCENE-MARKERS-001); nothing that only works visually; each episode opens with a reminder of where we are.' },
   { id: 'logic', stages: ['script', 'final'], ask: 'Logic: does each episode follow from the last, with no gap a listener would trip on?' },
   { id: 'promise', stages: ['script', 'final'], ask: 'Promise: does Episode 1 deliver its hook, and does each episode end hard (a reveal, threat, arrival or choice), or close properly if it is the finale?' },
   { id: 'audio', stages: ['final'], ask: 'Audio: do the FLAGGED AUDIO LINES listed below match their script text, with no garble, cut-off or extra sound described?' },

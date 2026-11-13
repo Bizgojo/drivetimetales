@@ -154,6 +154,7 @@ Marc answered CANON-99 on Nov 9, 2026. These decisions are **Agreed** and overri
 - **Decision 67:** Drop the NEDS score header. (03 C11) — **Agreed** (Marc, Nov 9, 2026, CANON-99 Part 2)
 - **Decision 68:** The old sound rules in the writer documents (3–6 anchor sounds, no beds, sounds 6 dB under voices) are removed; the sound and mix canons own sound. (03 C12, 06 C1, 06 C7) — **Agreed** (Marc, Nov 9, 2026, CANON-99 Part 2)
 - **Decision 69:** The Escalation Ceiling and the story-map acceptance checks become law. (03 Q6) — **Agreed** (Marc, Nov 9, 2026, CANON-99 Part 2)
+- **Decision 148:** **Scene markers and a series timeline.** The writer starts every scene with one silent line "[SCENE: place, time]" (never read aloud); code counts the speaking characters in each marked scene (at most 3; narrator and Belle do not count), and the AI no longer counts them. Every new series plan has one timeline fact per episode ("Episode N takes place on <day>, <time of day>, <how long after episode 1>."); code rejects a plan that misses an episode; every writer and check sees the whole timeline. Code: SCENE-MARKERS-001, SERIES-TIMELINE-001. — **Agreed** (Marc, Nov 13, 2026: "approve 148")
 
 ## Conflicts found
 - C1. **[RESOLVED by decision 14, Marc Nov 9, 2026]** Script order: STAGE2 v2.4 puts the Belle intro block BEFORE the header; the Story Production Spec (Nov 7) and the run-next writer template put header, guide, then Belle. Recommendation: the Spec order (newer, and what the code parses).

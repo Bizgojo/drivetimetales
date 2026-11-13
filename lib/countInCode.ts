@@ -58,3 +58,43 @@ export function openingExcerpt(script: string, maxWords = OPENING_EXCERPT_WORDS)
 }
 
 export const NO_COUNTING_RULE = `- COUNT-IN-CODE-001: code has already checked every count and length (title words and characters, description characters, Belle line lengths, required blocks). Never count words, characters, lines or minutes yourself, and never fail a script for a length, a count, or a missing block.`
+
+/**
+ * SCENE-MARKERS-001 (canon item 148, Marc Nov 13, 2026): the writer starts every scene with one
+ * silent line "[SCENE: place, time]". Audio never reads bracket lines (lib/scriptLineIndex.ts).
+ * Code then counts the speaking characters in each scene; the AI no longer counts them.
+ * Scripts without markers (written before this rule) keep the AI count as a fallback.
+ */
+export const SCENE_MARKER_RE = /^\[SCENE:\s*([^\]\n]*)\]\s*$/i
+const NON_CHARACTER_SPEAKERS = new Set(['NARRATOR', 'BELLE B', 'ANNOUNCER', 'SANDY'])
+
+export type SceneVoices = { scene: number; place: string; speakers: string[]; firstLines: Record<string, string> }
+
+/** null when the script has no scene markers (fallback to the AI count). */
+export function scenesWithSpeakers(script: string): SceneVoices[] | null {
+  const s = String(script || '').replace(/<!--[\s\S]*?-->/g, '')
+  const start = s.search(/\[START AUDIO DRAMA SCRIPT\]/i)
+  const lines = (start >= 0 ? s.slice(start) : s).split('\n').map((l) => l.trim())
+  if (!lines.some((l) => SCENE_MARKER_RE.test(l))) return null
+  const scenes: SceneVoices[] = []
+  let current: SceneVoices | null = null
+  for (const line of lines) {
+    const marker = line.match(SCENE_MARKER_RE)
+    if (marker) { current = { scene: scenes.length + 1, place: marker[1].trim(), speakers: [], firstLines: {} }; scenes.push(current); continue }
+    const m = line.match(/^([A-Z][A-Z .'\-]{1,40}):\s*(.+)$/)
+    if (!m || !current) continue
+    const who = m[1].trim()
+    if (NON_CHARACTER_SPEAKERS.has(who)) continue
+    if (!current.speakers.includes(who)) { current.speakers.push(who); current.firstLines[who] = `${who}: ${m[2].trim()}` }
+  }
+  return scenes
+}
+
+/** One problem per scene with too many speakers, quoting each speaker's first line so it can be fixed in place. */
+export function sceneVoiceIssues(script: string, max = 3): string[] | null {
+  const scenes = scenesWithSpeakers(script)
+  if (!scenes) return null
+  return scenes
+    .filter((sc) => sc.speakers.length > max)
+    .map((sc) => `Scene ${sc.scene} (${sc.place || 'no place given'}) has ${sc.speakers.length} speaking characters (limit ${max}): ${sc.speakers.map((w) => `"${sc.firstLines[w]}"`).join(' ')}. Keep at most ${max}; give the others' lines to a character already speaking, or have them stay silent.`)
+}
