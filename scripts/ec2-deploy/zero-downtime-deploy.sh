@@ -18,6 +18,10 @@ MAIN="${ET_MAIN_DIR:-/home/ubuntu/drivetimetales}"
 UPSTREAM_FILE="${ET_UPSTREAM_FILE:-/etc/caddy/et-upstream.caddy}"
 DRAIN_MAX_SECONDS="${DRAIN_MAX_SECONDS:-1200}"
 HEALTH_MAX_SECONDS="${HEALTH_MAX_SECONDS:-180}"
+CURRENT_LINK="${ET_CURRENT_LINK:-/home/ubuntu/et-current}"
+# Long-running workers that read code from $CURRENT_LINK. The progress alarm is a
+# timer and reads the path fresh on every run, so it needs no restart.
+WORKER_UNITS="${ET_WORKER_UNITS:-endlesstales-runnext.service endlesstales-runnext-worker2.service endlesstales-poolworker.service endlesstales-renderworker.service}"
 
 log() { echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] $*"; }
 
@@ -72,6 +76,26 @@ echo "reverse_proxy localhost:$TARGET" | sudo tee "$UPSTREAM_FILE" > /dev/null
 sudo systemctl reload caddy
 sleep 2
 log "Caddy now → localhost:$TARGET"
+
+# 3b. WORKER-CURRENT-001 (Marc 2026-11-13): background workers run the live slot's
+# code through one fixed path, so a deploy updates them too. Before this they ran
+# from $MAIN, which deploys never update (it was 15 commits behind), so worker
+# fixes never reached them. Point the path at the new slot, then restart the
+# workers so they load it. The old slot is not rebuilt until the NEXT deploy,
+# and by then no worker uses it.
+ln -sfn "$SLOT" "$CURRENT_LINK"
+log "workers' path $CURRENT_LINK → $SLOT"
+for unit in $WORKER_UNITS; do
+  if systemctl cat "$unit" > /dev/null 2>&1 && systemctl is-active --quiet "$unit"; then
+    # The render worker holds a job lock while it renders; restarting it mid-render
+    # would strand that job. Restart it only when its last log line says it is idle.
+    if [ "$unit" = "endlesstales-renderworker.service" ] && ! sudo journalctl -u "$unit" -n 1 --no-pager -o cat 2>/dev/null | grep -q "No local render jobs queued"; then
+      log "render worker is busy — NOT restarted; restart $unit after the render finishes"
+      continue
+    fi
+    sudo systemctl restart "$unit" && log "restarted $unit" || log "warning: could not restart $unit"
+  fi
+done
 
 # 4. Drain and stop the old slot.
 if [ "$ACTIVE" = "3000" ]; then OLD_UNIT="endlesstales-webapp.service"; else OLD_UNIT="endlesstales-webapp@$ACTIVE.service"; fi
