@@ -10487,19 +10487,26 @@ export async function POST(req: NextRequest) {
                   applied = reply ? applyPatchEdits(String(ep.script), reply.edits) : null
                 }
                 if (!reply) return { epNum, error: 'writer returned no JSON edits (after 1 retry)' }
+                // KEEP-GOOD-EDITS-001: after the retry, keep the edits that apply and skip the bad ones.
+                if (!applied || applied.ok === false) applied = applyPatchEdits(String(ep.script), reply.edits, { keepGood: true })
                 if (!applied || applied.ok === false) return { epNum, error: `${(applied as any)?.error || 'edits not applied'} (after 1 retry)` }
                 // Same format-only repairs every writer draft gets.
                 const script = spellOutSpokenNumerals(normalizeScriptFormat(applied.script).script).script
-                return { epNum, ep, script, edits: reply.edits.length, unfixed: reply.unfixed }
+                const skippedEdits = applied.skipped || []
+                return { epNum, ep, script, edits: reply.edits.length - skippedEdits.length, unfixed: [...reply.unfixed, ...skippedEdits.map((x: string) => `skipped ${x}`)] }
               } catch (e) {
                 return { epNum, error: e instanceof Error ? e.message.slice(0, 200) : String(e).slice(0, 200) }
               }
             }))
+            // KEEP-GOOD-EDITS-001: an episode whose patch failed is skipped (reported), not a reason
+            // to drop the episodes that patched cleanly. Only when none patched does the rewrite run.
             const patchFailure = outcomes.find((o: any) => o.error)
-            if (!patchFailure) {
-              const patchedScripts = new Map<string, string>(outcomes.map((o: any) => [String(o.ep.id), o.script]))
+            const goodOutcomes = outcomes.filter((o: any) => !o.error)
+            const failedOutcomeNotes = outcomes.filter((o: any) => o.error).map((o: any) => `EP${o.epNum}: patch not applied (${o.error}); will be re-checked`)
+            if (goodOutcomes.length) {
+              const patchedScripts = new Map<string, string>(goodOutcomes.map((o: any) => [String(o.ep.id), o.script]))
               const repinned = repinAfterPatch(patchEpisodes, patchedScripts)
-              for (const o of outcomes as any[]) {
+              for (const o of goodOutcomes as any[]) {
                 const sj = repinned.get(String(o.ep.id)) || (o.ep.script_json && typeof o.ep.script_json === 'object' ? o.ep.script_json : {})
                 const backups = Array.isArray(sj.rewrite_backups) ? sj.rewrite_backups.slice(-2) : []
                 const save = supabase
@@ -10531,11 +10538,11 @@ export async function POST(req: NextRequest) {
                 const { error: pinErr } = await supabase.from('stories').update({ script_json: sj }).eq('id', storyId)
                 if (pinErr) throw new Error(`SERIES-PATCH-001: re-pin of ${storyId} failed: ${pinErr.message}`)
               }
-              const patchSummary = (outcomes as any[]).map((o) => `EP${o.epNum}: ${o.edits} edit(s)${o.unfixed.length ? `, ${o.unfixed.length} not fixable by edit` : ''}`).join('; ')
+              const patchSummary = (goodOutcomes as any[]).map((o) => `EP${o.epNum}: ${o.edits} edit(s)${o.unfixed.length ? `, ${o.unfixed.length} not fixable by edit` : ''}`).join('; ')
               const patchLogs = appendLog({ ...lockedJob, logs }, `Series patch ${patchPlan.run}/${MAX_SERIES_PATCH_RUNS}: ${readIssues.length} ${patchSourceLabel} issue(s) fixed in place — ${patchSummary}. Re-validating.`, {
                 seriesId: result.seriesId,
-                patchedEpisodes: (outcomes as any[]).map((o) => o.epNum),
-                unfixed: (outcomes as any[]).flatMap((o) => o.unfixed.map((u: string) => `EP${o.epNum}: ${u}`)).slice(0, 10),
+                patchedEpisodes: (goodOutcomes as any[]).map((o) => o.epNum),
+                unfixed: [...failedOutcomeNotes, ...(goodOutcomes as any[]).flatMap((o) => o.unfixed.map((u: string) => `EP${o.epNum}: ${u}`))].slice(0, 10),
               })
               const { data: patchJob, error: patchJobErr } = await supabase
                 .from('production_jobs')
@@ -10545,7 +10552,7 @@ export async function POST(req: NextRequest) {
                   state_json: {
                     ...result.state,
                     seriesValidation: null,
-                    seriesRewrite: { ...(priorPatchState.seriesRewrite || {}), patchRuns: patchPlan.run, patchCounts: (outcomes as any[]).reduce((acc: Record<string, number>, o: any) => ({ ...acc, [String(o.epNum)]: Number(acc[String(o.epNum)] || 0) + 1 }), { ...((priorPatchState.seriesRewrite?.patchCounts as Record<string, number>) || {}) }), lastPatch: { run: patchPlan.run, at: nowIso(), episodes: (outcomes as any[]).map((o) => o.epNum) } },
+                    seriesRewrite: { ...(priorPatchState.seriesRewrite || {}), patchRuns: patchPlan.run, patchCounts: (goodOutcomes as any[]).reduce((acc: Record<string, number>, o: any) => ({ ...acc, [String(o.epNum)]: Number(acc[String(o.epNum)] || 0) + 1 }), { ...((priorPatchState.seriesRewrite?.patchCounts as Record<string, number>) || {}) }), lastPatch: { run: patchPlan.run, at: nowIso(), episodes: (goodOutcomes as any[]).map((o) => o.epNum) } },
                   },
                   error_json: null,
                   logs: patchLogs,

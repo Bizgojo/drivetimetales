@@ -169,22 +169,28 @@ export function locatePatchSpan(script: string, find: string): { at: number; end
  * Apply edits in order. Every "find" must appear exactly once at the moment it is applied.
  * Fails as a whole (script unchanged) on any bad edit or an over-large change.
  */
-export function applyPatchEdits(script: string, edits: PatchEdit[]): { ok: true; script: string; changedChars: number } | { ok: false; error: string } {
+export function applyPatchEdits(script: string, edits: PatchEdit[], opts: { keepGood?: boolean } = {}): { ok: true; script: string; changedChars: number; skipped: string[] } | { ok: false; error: string } {
   if (!edits.length) return { ok: false, error: 'no edits returned' }
   let out = String(script || '')
   let changedChars = 0
+  // KEEP-GOOD-EDITS-001 (Nov 13, 2026): one misquoted edit used to throw away every good
+  // edit and send the episode to a whole rewrite (Weekend Wife EP6, Widow EP7). With
+  // keepGood, a bad edit is skipped and reported; the good ones are kept. The episode is
+  // re-checked, so anything still wrong is found and fixed on the next round.
+  const skipped: string[] = []
   for (let i = 0; i < edits.length; i += 1) {
     const edit = edits[i]
     // Tolerate trailing whitespace/newline differences at the ends of a quoted block.
     const find = edit.find.replace(/^\n+|\s+$/g, '')
-    if (!find) return { ok: false, error: `edit ${i + 1}: empty find` }
+    const bad = (why: string) => { skipped.push(`edit ${i + 1}: ${why}`); return opts.keepGood }
+    if (!find) { if (bad('empty find')) continue; return { ok: false, error: `edit ${i + 1}: empty find` } }
     const span = locatePatchSpan(out, find)
-    if ('error' in span) return { ok: false, error: `edit ${i + 1}: ${span.error}: "${find.slice(0, 80)}"` }
+    if ('error' in span) { if (bad(`${span.error}: "${find.slice(0, 80)}"`)) continue; return { ok: false, error: `edit ${i + 1}: ${span.error}: "${find.slice(0, 80)}"` } }
     const at = span.at
     const startsLine = at === 0 || out[at - 1] === '\n'
     const endAt = span.endAt
     const endsLine = endAt === out.length || out[endAt] === '\n'
-    if (!startsLine || !endsLine) return { ok: false, error: `edit ${i + 1}: must cover whole lines: "${find.slice(0, 80)}"` }
+    if (!startsLine || !endsLine) { if (bad(`must cover whole lines: "${find.slice(0, 80)}"`)) continue; return { ok: false, error: `edit ${i + 1}: must cover whole lines: "${find.slice(0, 80)}"` } }
     const replace = edit.replace.replace(/\s+$/g, '')
     const before = out.slice(0, at)
     let after = out.slice(endAt)
@@ -195,7 +201,8 @@ export function applyPatchEdits(script: string, edits: PatchEdit[]): { ok: true;
   }
   const share = changedChars / Math.max(1, String(script || '').length)
   if (share > MAX_PATCH_CHANGE_SHARE) return { ok: false, error: `patch changes ${Math.round(share * 100)}% of the episode (limit ${Math.round(MAX_PATCH_CHANGE_SHARE * 100)}%)` }
-  return { ok: true, script: out, changedChars }
+  if (skipped.length === edits.length) return { ok: false, error: `no edit applied (${skipped[0]})` }
+  return { ok: true, script: out, changedChars, skipped }
 }
 
 /**
