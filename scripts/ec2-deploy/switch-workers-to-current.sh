@@ -47,8 +47,9 @@ done
 run sudo systemctl daemon-reload
 for unit in endlesstales-runnext.service endlesstales-runnext-worker2.service endlesstales-poolworker.service endlesstales-renderworker.service; do
   if systemctl is-active --quiet "$unit"; then
-    if [ "$unit" = "endlesstales-renderworker.service" ] && ! sudo journalctl -u "$unit" -n 1 --no-pager -o cat 2>/dev/null | grep -q "No local render jobs queued"; then
-      say "render worker busy — restart it later: sudo systemctl restart $unit"; continue
+    # RENDER-BUSY-CHECK-001: read the worker's own log file, not the (empty) journal.
+    if [ "$unit" = "endlesstales-renderworker.service" ] && ! state="$(bash "$(dirname "$0")/render-worker-idle.sh" "$unit")"; then
+      say "render worker not restarted ($state) — restart it later: sudo systemctl restart $unit"; continue
     fi
     run sudo systemctl restart "$unit"
   fi
