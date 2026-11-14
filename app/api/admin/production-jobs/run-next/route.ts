@@ -9065,6 +9065,20 @@ async function runSeriesVoicePreflight(job: ProductionJob, origin: string) {
           const { error: lenSaveErr } = await supabase.from('stories').update({ script: fixed }).eq('id', storyId).eq('script', epScript)
           if (!lenSaveErr) {
             ;(nextEpisode as any).script = fixed
+            // BELLE-PREVOICE-EVIDENCE-001 (Widow, Nov 14, 2026): shortening a Belle line changes
+            // stories.script, so (a) later episodes' continuity pins and (b) the package verdict's
+            // script hashes no longer matched; the next preflight step failed "must pass with earned
+            // evidence". Only Belle's intro/outro changed (no story text), so the verdict still holds:
+            // re-pin later episodes and re-stamp this episode's hash in the same job's evidence.
+            const repinned = repinAfterPatch(preflightEpisodes, new Map([[String(storyId), fixed]]))
+            for (const [pinnedId, sj] of Array.from(repinned.entries())) {
+              const { error: pinErr } = await supabase.from('stories').update({ script_json: sj }).eq('id', pinnedId)
+              if (pinErr) throw new Error(`BELLE-PREVOICE-EVIDENCE-001: re-pin of ${pinnedId} failed: ${pinErr.message}`)
+            }
+            const evidence = (state as any).seriesValidation?.packageReport?.evidence
+            if (evidence && evidence.jobId === String(job.id) && evidence.episodeHashes && typeof evidence.episodeHashes === 'object') {
+              evidence.episodeHashes[String(storyId)] = hashScript(fixed)
+            }
             console.log(`[BELLE-LENGTH-PREVOICE-001] series=${seriesId} EP${epNum}: Belle line(s) shortened before voicing`)
             epIssues.splice(0, epIssues.length, ...(await seriesEpisodeBelleContentIssues({
               title: (nextEpisode as any).title,
