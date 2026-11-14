@@ -162,4 +162,4 @@ Covers: one list of every place in the canon where Marc must decide or act himse
 - **CANON-15 rule 54 [MARC DOES]:** Marc enters money-spending keys himself (for example Meta ads_management). Low-risk test keys may be passed through Orion.
 - **CANON-15 decision 118 [MARC DECIDES]:** Orion's INCIDENT-RULE-001 is Proposed until Marc approves it.
 - Open in this document: Nothing open in this document (CANON-99 answered Nov 9, 2026).
-
+- **CANON-15 decision 153 [MARC DECIDES]:** Orion deploys merged main on his own every 15 minutes, except straight pushes, database migrations, a running build or an uncleared failed deploy (those go to Marc).
