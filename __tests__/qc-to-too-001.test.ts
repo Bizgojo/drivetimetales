@@ -5,7 +5,9 @@ describe('QC-TO-TOO-001', () => {
     expect(evaluateTranscriptQC('I have batter to —', 'I have batter, too.').passed).toBe(true)
   })
   test('real number changes still fail', () => {
-    expect(evaluateTranscriptQC('She paid two hundred dollars for it.', 'She paid three hundred dollars for it.').passed).toBe(false)
-    expect(evaluateTranscriptQC('We have two days left.', 'We have five days left.').passed).toBe(false)
+    // Fixed Nov 14: the old cases are long enough to pass on similarity alone (ATL-NUMERAL-NORM-002,
+    // older than this fix), so they never tested the veto. These short lines do.
+    expect(evaluateTranscriptQC('Room two.', 'Room five.').passed).toBe(false)
+    expect(evaluateTranscriptQC('Seven days.', 'Eleven days.').passed).toBe(false)
   })
 })
