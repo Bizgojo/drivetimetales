@@ -36,6 +36,7 @@ import { useState, useRef, useCallback, useEffect } from 'react'
 import { attachMediaSession, MEDIA_ALBUM } from '@/lib/mediaSession'
 import { useSearchParams } from 'next/navigation'
 import { MONTHLY_PRICE_LABEL } from '@/lib/pricing'
+import { adTagExtras } from '@/lib/utm'
 
 // ─── Bell promo audio URLs (Supabase public storage, status=audio_ready) ─────
 const BELL_BASE =
@@ -310,6 +311,7 @@ export default function GoInvitationContent({ arm: armProp }: GoInvitationConten
           sessionId: sessionIdRef.current,        // GATE-TRACK-001: Part C
           utmSource:   searchParams.get('utm_source'),
           utmCampaign: searchParams.get('utm_campaign'),
+          ...adTagExtras(searchParams),           // AD-REPORT-001: ad set + ad ids
           leadEventId,                             // DEDUP-001: shared ID for pixel + CAPI
         }),
       })

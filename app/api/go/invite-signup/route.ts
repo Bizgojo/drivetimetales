@@ -37,6 +37,7 @@ export const dynamic = 'force-dynamic'
 // PRICING-TRIAL-001: no-card trial length = the app-wide TRIAL_DAYS (14).
 import { TRIAL_DAYS } from '@/lib/pricing'
 import { resolveRequestOrigin } from '@/lib/requestOrigin'
+import { adTagFields } from '@/lib/adReport'
 import { requestMatchKeys } from '@/lib/tracking/matchKeys'
 
 // The arm determines which promo audio plays on the gate page — it does NOT
@@ -233,6 +234,7 @@ export async function POST(req: NextRequest) {
 
     const body = await req.json()
     const { email: rawEmail, name: rawName, arm, sessionId, utmSource, utmCampaign, leadEventId } = body
+    const { utmMedium, utmTerm, utmContent } = adTagFields(body) // AD-REPORT-001
     const firstName = (typeof rawName === 'string' && rawName.trim()) ? rawName.trim() : 'Listener'
 
     if (!rawEmail || typeof rawEmail !== 'string') {
@@ -302,7 +304,7 @@ export async function POST(req: NextRequest) {
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
                 session_id: sessionId, variant: `bell-arm${armNum}`,
-                utm_source: utmSource ?? null, utm_campaign: utmCampaign ?? null,
+                utm_source: utmSource ?? null, utm_campaign: utmCampaign ?? null, utm_medium: utmMedium ?? null, utm_term: utmTerm ?? null, utm_content: utmContent ?? null,
                 event: 'wall_submit', position_seconds: 0,
               }),
             }).catch(() => { /* silent — tracking never blocks signup */ })
@@ -350,6 +352,9 @@ export async function POST(req: NextRequest) {
           signup_source: 'bell-invitation',
           utm_source: utmSource ?? null,
           utm_campaign: utmCampaign ?? null,
+          utm_medium: utmMedium ?? null,
+          utm_term: utmTerm ?? null,
+          utm_content: utmContent ?? null,
           listen_arm: armNum,
           listen_arm_label: listenArmLabelA,
           is_test_account: isTestAccount,
@@ -413,6 +418,9 @@ export async function POST(req: NextRequest) {
           signup_source: 'bell-invitation',
           utm_source: utmSource ?? null,
           utm_campaign: utmCampaign ?? null,
+          utm_medium: utmMedium ?? null,
+          utm_term: utmTerm ?? null,
+          utm_content: utmContent ?? null,
           listen_arm: armNum,
           listen_arm_label: listenArmLabelCollision,
           is_test_account: isTestAccount,
@@ -444,6 +452,9 @@ export async function POST(req: NextRequest) {
         signup_source: 'bell-invitation',
         utm_source: utmSource ?? null,
         utm_campaign: utmCampaign ?? null,
+        utm_medium: utmMedium ?? null,
+        utm_term: utmTerm ?? null,
+        utm_content: utmContent ?? null,
         listen_arm: armNum,
         listen_arm_label: listenArmLabelNew,
         is_test_account: isTestAccount,
@@ -475,6 +486,9 @@ export async function POST(req: NextRequest) {
           variant: `bell-arm${armNum}`,
           utm_source: utmSource ?? null,
           utm_campaign: utmCampaign ?? null,
+          utm_medium: utmMedium ?? null,
+          utm_term: utmTerm ?? null,
+          utm_content: utmContent ?? null,
           event: 'wall_submit',
           position_seconds: 0,
         }),
