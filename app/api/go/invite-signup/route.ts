@@ -37,6 +37,7 @@ export const dynamic = 'force-dynamic'
 // PRICING-TRIAL-001: no-card trial length = the app-wide TRIAL_DAYS (14).
 import { TRIAL_DAYS } from '@/lib/pricing'
 import { resolveRequestOrigin } from '@/lib/requestOrigin'
+import { requestMatchKeys } from '@/lib/tracking/matchKeys'
 
 // The arm determines which promo audio plays on the gate page — it does NOT
 // determine what gets seeded post-signup. All three arms land on EP2.
@@ -311,7 +312,7 @@ export async function POST(req: NextRequest) {
           const capiEventId = (typeof leadEventId === 'string' && leadEventId.length > 0)
             ? leadEventId
             : randomEventId('lead')
-          await sendServerEvent({ name: 'Lead', eventId: capiEventId, email, customData: { arm: armNum, content_name: 'bell-arm-wall-submit' } }) // LEAD-CAPI-001: await so Vercel doesn't kill in-flight CAPI before return
+          await sendServerEvent({ name: 'Lead', eventId: capiEventId, email, customData: { arm: armNum, content_name: 'bell-arm-wall-submit' }, ...requestMatchKeys(req) }) // LEAD-CAPI-001: await so Vercel doesn't kill in-flight CAPI before return
         }
 
         if (isActive) {
@@ -496,6 +497,7 @@ export async function POST(req: NextRequest) {
       email,
       customData: { arm: armNum, content_name: 'bell-arm-wall-submit' },
       sourceUrl: `${appBase}/go?arm=${armNum}`,
+      ...requestMatchKeys(req), // CAPI-MATCH-001
     }) // LEAD-CAPI-001: await so Vercel doesn't kill in-flight CAPI before return
 
     // BELLE-SEG1-READER-003: Generate magic link SERVER-SIDE after all metadata writes.

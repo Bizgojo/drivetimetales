@@ -6,6 +6,7 @@ import { sendServerEvent } from '@/lib/tracking/capi'
 import { playStartEventId } from '@/lib/tracking/events'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { lookupPlaySeriesFields } from '@/lib/playEventSeries'
+import { requestMatchKeys } from '@/lib/tracking/matchKeys'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -172,6 +173,7 @@ export async function POST(req: NextRequest) {
           email: user.email || null,
           externalId: user.id,
           sourceUrl: `${new URL(req.url).origin}/player/${storyId}`,
+          ...requestMatchKeys(req), // CAPI-MATCH-001
           customData: {
             story_id: storyId,
             series_id: stringOrNull(body?.seriesId) || undefined,

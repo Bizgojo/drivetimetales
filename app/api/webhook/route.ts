@@ -10,6 +10,7 @@ import { payReferrerAfterFirstPayment } from '@/lib/referralPayout'
 import { ANNUAL_PRICE_LABEL, MONTHLY_PRICE_LABEL, TRIAL_DAYS } from '@/lib/pricing'
 import { resolveCancelledAt } from '@/lib/cancelState'
 import { renderTrialEndingReminderEmail } from '@/lib/emails/retentionTemplates'
+import { matchKeysFromMetadata } from '@/lib/tracking/matchKeys'
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, { apiVersion: '2023-10-16' })
 
@@ -167,6 +168,7 @@ export async function POST(request: NextRequest) {
               utm_campaign: session.metadata?.utm_campaign,
               promo_code: session.metadata?.promo_code,
             },
+            ...matchKeysFromMetadata(session.metadata), // CAPI-MATCH-001
           })
         }
       }
@@ -240,6 +242,7 @@ export async function POST(request: NextRequest) {
                 utm_campaign: subscription.metadata?.utm_campaign,
                 promo_code: subscription.metadata?.promo_code,
               },
+              ...matchKeysFromMetadata(subscription.metadata), // CAPI-MATCH-001
             })
           }
         }
