@@ -218,3 +218,19 @@ export function readSignupAttribution(promoCode?: string | null): SignupAttribut
     promo_code: normalizePromoCode(promoCode),
   }
 }
+
+// AD-REPORT-001: ad set and ad tags (utm_term / utm_content = Meta ad set and ad
+// ids) plus medium, for the signup routes that used to save only source and
+// campaign. URL first, then what UtmCapture stored on the landing page.
+export function adTagExtras(searchParams?: ParamsLike | null): { utmMedium: string | null; utmTerm: string | null; utmContent: string | null } {
+  const stored = readStoredUtm()
+  const pick = (key: string, fallback: string | null) => {
+    const v = searchParams?.get(key)
+    return (v && v.trim()) || fallback || null
+  }
+  return {
+    utmMedium: pick('utm_medium', stored.medium),
+    utmTerm: pick('utm_term', stored.term),
+    utmContent: pick('utm_content', stored.content),
+  }
+}

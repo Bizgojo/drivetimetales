@@ -16,6 +16,7 @@ export const dynamic = 'force-dynamic'
 // PRICING-TRIAL-001: no-card trial length = the app-wide TRIAL_DAYS (14).
 import { TRIAL_DAYS } from '@/lib/pricing'
 import { resolveRequestOrigin } from '@/lib/requestOrigin'
+import { adTagFields } from '@/lib/adReport'
 
 // Episode 4 — the first post-signup episode (GVL Wearing My Face series)
 const EP4_ID = 'eac2b1ef-6456-46b1-8c17-bbdf32d8ff5d'
@@ -57,6 +58,7 @@ export async function POST(req: NextRequest) {
 
     const body = await req.json()
     const { firstName, email: rawEmail, arm, sessionId, utmSource, utmCampaign } = body
+    const { utmMedium, utmTerm, utmContent } = adTagFields(body) // AD-REPORT-001
 
     // firstName is optional — LANDING-GATE-001 email-only capture does not send it.
     // EavesdropClient still sends it; both paths coexist.
@@ -121,6 +123,9 @@ export async function POST(req: NextRequest) {
           signup_source: 'gvl-listen',
           utm_source: utmSource ?? null,
           utm_campaign: utmCampaign ?? null,
+          utm_medium: utmMedium ?? null,
+          utm_term: utmTerm ?? null,
+          utm_content: utmContent ?? null,
           listen_arm: armNum,
           updated_at: new Date().toISOString(),
         }, { onConflict: 'id' })
@@ -182,6 +187,9 @@ export async function POST(req: NextRequest) {
           signup_source: 'gvl-listen',
           utm_source: utmSource ?? null,
           utm_campaign: utmCampaign ?? null,
+          utm_medium: utmMedium ?? null,
+          utm_term: utmTerm ?? null,
+          utm_content: utmContent ?? null,
           listen_arm: armNum,
           updated_at: new Date().toISOString(),
         })
@@ -205,6 +213,9 @@ export async function POST(req: NextRequest) {
         signup_source: 'gvl-listen',
         utm_source: utmSource ?? null,
         utm_campaign: utmCampaign ?? null,
+        utm_medium: utmMedium ?? null,
+        utm_term: utmTerm ?? null,
+        utm_content: utmContent ?? null,
         listen_arm: armNum,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
@@ -237,6 +248,9 @@ export async function POST(req: NextRequest) {
           variant,
           utm_source: utmSource ?? null,
           utm_campaign: utmCampaign ?? null,
+          utm_medium: utmMedium ?? null,
+          utm_term: utmTerm ?? null,
+          utm_content: utmContent ?? null,
           event: 'wall_submit',
           position_seconds: 0,
         }),

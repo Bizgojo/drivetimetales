@@ -16,6 +16,7 @@ import { attachMediaSession, MEDIA_ALBUM } from '@/lib/mediaSession'
 import { createGoListenTracker, GoListenTracker, newSessionId, readEtTestParam } from '@/lib/goListen'
 import type { EpisodeData } from './page'
 import { TRIAL_LABEL } from '@/lib/pricing'
+import { adTagExtras } from '@/lib/utm'
 
 type Phase =
   | 'hook'        // initial hook card, before button press
@@ -307,6 +308,7 @@ export default function EavesdropClient({ episodes, arm, utmSource, utmCampaign 
           sessionId: sessionIdRef.current,
           utmSource,
           utmCampaign,
+          ...adTagExtras(typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null), // AD-REPORT-001
         }),
       })
 
