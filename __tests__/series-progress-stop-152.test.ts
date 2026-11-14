@@ -44,3 +44,19 @@ describe('SERIES-PROGRESS-STOP-001 (decision 152)', () => {
     expect(src).toContain('progressStop({ blockerReads, issues: geminiVerdict.issues')
   })
 })
+
+describe('STOPPED-BLOCKERS-001', () => {
+  const src = fs.readFileSync(path.join(process.cwd(), 'app/api/admin/production-jobs/run-next/route.ts'), 'utf8')
+  test('a hard stop keeps its blockers, for both reads', () => {
+    expect(src).toContain('stoppedSeriesBlockers: hardStop ? verdict.issues.filter(')
+    expect(src).toContain('stoppedSeriesBlockers: hardStop ? geminiVerdict.issues.map(')
+  })
+  test('kept blockers go to the patcher before any new read, then are cleared', () => {
+    const keptAt = src.indexOf('if (stoppedBlockers.length && !isLandingPackage) {')
+    const readAt = src.indexOf('if (seriesContinuityEnabled() && !isLandingPackage && continuityState.passedFingerprint !== continuityFingerprint) {')
+    expect(keptAt).toBeGreaterThan(0)
+    expect(keptAt).toBeLessThan(readAt)
+    expect(src.slice(keptAt, readAt)).toContain('stoppedSeriesBlockers: [],')
+    expect(src.slice(keptAt, readAt)).toContain('seriesReadIssues: stoppedBlockers.map(')
+  })
+})

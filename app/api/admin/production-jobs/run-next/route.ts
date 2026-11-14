@@ -8399,6 +8399,32 @@ async function scoreValidateSeriesPackage(job: ProductionJob, model: string) {
   if (seriesContinuityEnabled() && !isLandingPackage && !seriesFacts.length && refreshedEpisodes.length > 1 && refreshedEpisodes.every((ep: any) => Boolean(ep.script))) {
     seriesFacts = await backfillSeriesFacts(job, model, String(seriesId), [...refreshedEpisodes].sort((a: any, b: any) => episodeNumber(a, 0) - episodeNumber(b, 0)))
   }
+  // STOPPED-BLOCKERS-001 (Widow, Nov 13, 2026): a hard stop keeps its remaining blockers in
+  // state_json.stoppedSeriesBlockers. When the job is re-queued ("fix N"), those exact
+  // blockers go to the in-place patcher first, before any new read. A fresh read may not
+  // report them again, so they used to be lost and come back later ("gallery safe", "5:19").
+  const stoppedBlockers: SeriesReadIssue[] = Array.isArray((state as any).stoppedSeriesBlockers) ? (state as any).stoppedSeriesBlockers.filter((i: any) => i && Number(i.episode) > 0 && i.problem) : []
+  if (stoppedBlockers.length && !isLandingPackage) {
+    const stoppedReport = { pass: false, issues: stoppedBlockers.map((i) => `Episode ${i.episode}: ${i.problem}${i.fix ? ` — Fix: ${i.fix}` : ''}`), confidence: 1, summary: `STOPPED-BLOCKERS-001: patching ${stoppedBlockers.length} blocker(s) kept from the stopped read`, rawReport: null }
+    console.log(`[STOPPED-BLOCKERS-001] series ${seriesId}: patching ${stoppedBlockers.length} kept blocker(s) before a new read`)
+    return {
+      passed: false,
+      failed: true,
+      complete: false,
+      episodeResult: null,
+      seriesId: String(seriesId),
+      episodes: refreshedEpisodes,
+      nextStep: NEXT_STEP_AFTER_SERIES_SCRIPTS,
+      packageReport: stoppedReport,
+      seriesReadIssues: stoppedBlockers.map(({ episode, problem, fix }) => ({ episode: Number(episode), problem: String(problem), fix: fix ? String(fix) : '' })),
+      state: {
+        ...state,
+        stoppedSeriesBlockers: [],
+        seriesId: String(seriesId),
+        seriesValidation: { ...existingValidation, episodeCount: refreshedEpisodes.length, failedEpisodes, metadataIssues, packageReport: stoppedReport },
+      },
+    }
+  }
   if (seriesContinuityEnabled() && !isLandingPackage && continuityState.passedFingerprint !== continuityFingerprint) {
     const sortedEps = [...refreshedEpisodes].sort((a: any, b: any) => episodeNumber(a, 0) - episodeNumber(b, 0))
     // SERIES-FACTS-001: plain-text check of dialogue against the cast lists (no AI).
@@ -8494,6 +8520,8 @@ async function scoreValidateSeriesPackage(job: ProductionJob, model: string) {
         seriesReadIssues: hardStop ? [] : verdict.issues.filter((i) => !frozenNumbers.has(i.episode)),
         state: {
           ...state,
+          // STOPPED-BLOCKERS-001: keep the blockers a hard stop leaves, for "fix N".
+          stoppedSeriesBlockers: hardStop ? verdict.issues.filter((i) => !frozenNumbers.has(i.episode)).map(({ episode, problem, fix }) => ({ episode, problem, fix })) : [],
           seriesId: String(seriesId),
           seriesContinuity: nextContinuityState,
           seriesValidation: {
@@ -8566,6 +8594,8 @@ async function scoreValidateSeriesPackage(job: ProductionJob, model: string) {
         seriesReadIssues: hardStop ? [] : geminiVerdict.issues.map(({ episode, problem, fix }) => ({ episode, problem, fix })),
         state: {
           ...state,
+          // STOPPED-BLOCKERS-001: keep the blockers a hard stop leaves, for "fix N".
+          stoppedSeriesBlockers: hardStop ? geminiVerdict.issues.map(({ episode, problem, fix }) => ({ episode, problem, fix })) : [],
           seriesId: String(seriesId),
           seriesContinuity: nextBlockState,
           seriesValidation: {
