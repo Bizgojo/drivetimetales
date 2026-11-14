@@ -55,9 +55,9 @@ describe('BLOCKERS-POLISH-001 wiring', () => {
     expect(polishAt).toBeGreaterThan(0)
     expect(polishAt).toBeLessThan(src.indexOf('SERIES-REWRITE-001: a story-content failure re-writes the failed'))
   })
-  test('hard stop after the third series read with blockers, for both reads', () => {
+  test('hard stop uses the progress test (decision 152), for both reads', () => {
     expect(MAX_SERIES_BLOCKER_READS).toBe(3)
-    expect(src.match(/const hardStop = blockerReads >= MAX_SERIES_BLOCKER_READS$/gm)?.length).toBe(2)
+    expect(src.match(/const hardStop = progressVerdict\.stop$/gm)?.length).toBe(2)
     expect(src).toContain('seriesReadIssues: hardStop ? [] :')
     expect(src).toContain("marc_required: true, autonomous_repair: false")
   })

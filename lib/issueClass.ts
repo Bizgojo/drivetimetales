@@ -46,7 +46,7 @@ export function isPolishOnlyReport(report: unknown): boolean {
   return String(report || '').includes(POLISH_ONLY_MARK)
 }
 
-/** SERIES-HARD-STOP-001: after this many series reads that still find blockers, Marc decides. */
+/** SERIES-HARD-STOP-001 (item 149): superseded by decision 152 — see lib/seriesProgress.ts (SERIES-PROGRESS-STOP-001). Kept for reference only. */
 export const MAX_SERIES_BLOCKER_READS = 3
 
 /** Card-copy issues from code: the past-tense word check is polish (DESC-TENSE-001); lengths and missing blocks are blockers. */

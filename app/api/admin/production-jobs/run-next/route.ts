@@ -36,7 +36,8 @@ import { maybeDirectPublishStandalone, maybeDirectPublishSeries, type DirectAuto
 import { transientResumeDecision, errorTextOf, MAX_TRANSIENT_RESUMES } from '@/lib/transientResume'
 import { humanStoriesBlock } from '@/lib/humanStories'
 import { scriptStructureIssues, openingExcerpt, OPENING_EXCERPT_WORDS, NO_COUNTING_RULE } from '@/lib/countInCode'
-import { classifyIssueText, isPolishCardCopyIssue, isPolishOnlyReport, CLARITY_BLOCKER_IDS, POLISH_ONLY_MARK, POLISH_ACCEPTED_MARK, MAX_SERIES_BLOCKER_READS } from '@/lib/issueClass'
+import { progressStop, progressStopSummary, readProgress, recordPatch, MAX_SERIES_READS } from '@/lib/seriesProgress'
+import { classifyIssueText, isPolishCardCopyIssue, isPolishOnlyReport, CLARITY_BLOCKER_IDS, POLISH_ONLY_MARK, POLISH_ACCEPTED_MARK } from '@/lib/issueClass'
 import { buildCastReview, needsCastReview, CAST_REVIEW_STATE_KEY } from '@/lib/castReview'
 import { extractValidatorFixList, planSeriesEpisodeRewrite, buildRewriteFeedbackBlock, MAX_SERIES_EPISODE_REWRITES } from '@/lib/seriesRewrite'
 import { styleProfileFrom, styleProfileOfBrief, buildStylePromptBlock, maxMainCharacters } from '@/lib/seriesStyle'
@@ -8464,16 +8465,19 @@ async function scoreValidateSeriesPackage(job: ProductionJob, model: string) {
       ? { pass: false, issues: [...blockingFactIssues.map(({ episode, problem, fix }) => ({ episode, problem: `${problem} (fact check)`, fix })), ...aiVerdict.issues] }
       : aiVerdict
     const runs = Number(continuityState.runs || 0) + 1
-    const nextContinuityState = { runs, lastAt: nowIso(), lastIssues: verdict.issues, passedFingerprint: verdict.pass ? continuityFingerprint : continuityState.passedFingerprint || null, factSheet: factCheck.facts, publishedFactIssues, blockerReads: Number((continuityState as any).blockerReads || 0) }
+    const nextContinuityState = { runs, lastAt: nowIso(), lastIssues: verdict.issues, passedFingerprint: verdict.pass ? continuityFingerprint : continuityState.passedFingerprint || null, factSheet: factCheck.facts, publishedFactIssues, blockerReads: Number((continuityState as any).blockerReads || 0), seriesProgress: readProgress((continuityState as any).seriesProgress) }
     console.log(`[SERIES-CONTINUITY-001] series ${seriesId} run ${runs}: ${verdict.pass ? 'PASS' : `FAIL (${verdict.issues.length} issue(s))`}`)
     const target = continuityRewriteTarget(verdict)
     if (target) {
       const targetEp = sortedEps.find((ep: any) => episodeNumber(ep, 0) === target.episodeNumber)
-      // SERIES-HARD-STOP-001 (canon item 149): after 3 series reads that still find blockers, stop and let Marc decide.
+      // SERIES-PROGRESS-STOP-001 (canon decision 152, replaces the 3-read stop of item 149):
+      // stop for Marc only when fixes stop working (a fixed blocker returns, a fix makes a
+      // blocker, or MAX_SERIES_READS reads with blockers).
       const blockerReads = Number((continuityState as any).blockerReads || 0) + 1
       ;(nextContinuityState as any).blockerReads = blockerReads
-      const hardStop = blockerReads >= MAX_SERIES_BLOCKER_READS
-      const continuityReport = { pass: false, issues: verdict.issues.map((i) => `Episode ${i.episode}: ${i.problem}${i.fix ? ` — Fix: ${i.fix}` : ''}`), confidence: 1, summary: hardStop ? `SERIES-HARD-STOP-001: ${MAX_SERIES_BLOCKER_READS} series reads still found blockers — Marc decides: "ship" or "fix N"` : `series-continuity-check failed (run ${runs})`, rawReport: rawVerdict }
+      const progressVerdict = progressStop({ blockerReads, issues: verdict.issues, progress: readProgress((continuityState as any).seriesProgress) })
+      const hardStop = progressVerdict.stop
+      const continuityReport = { pass: false, issues: verdict.issues.map((i) => `Episode ${i.episode}: ${i.problem}${i.fix ? ` — Fix: ${i.fix}` : ''}`), confidence: 1, summary: hardStop ? progressStopSummary(progressVerdict.reason) : `series-continuity-check failed (run ${runs}, read ${blockerReads}/${MAX_SERIES_READS})`, rawReport: rawVerdict }
       const allowRewrite = !hardStop && runs <= MAX_SERIES_CONTINUITY_RUNS && targetEp
       return {
         passed: false,
@@ -8538,14 +8542,15 @@ async function scoreValidateSeriesPackage(job: ProductionJob, model: string) {
     const geminiTarget = geminiRewriteTarget(geminiVerdict)
     if (geminiTarget) {
       const geminiRuns = Number(blockState.geminiRuns || 0) + 1
-      // SERIES-HARD-STOP-001: the same blocker-read count as the continuity check.
+      // SERIES-PROGRESS-STOP-001: the same progress test as the continuity check.
       const blockerReads = Number(blockState.blockerReads || 0) + 1
-      const hardStop = blockerReads >= MAX_SERIES_BLOCKER_READS
+      const progressVerdict = progressStop({ blockerReads, issues: geminiVerdict.issues, progress: readProgress(blockState.seriesProgress) })
+      const hardStop = progressVerdict.stop
       const nextBlockState = { ...blockState, geminiRuns, blockerReads }
       const targetEp = refreshedEpisodes.find((ep: any) => episodeNumber(ep, 0) === geminiTarget.episodeNumber)
       const allowRewrite = !hardStop && geminiRuns <= MAX_GEMINI_SCRIPT_REWRITES && targetEp
       console.log(`[GEMINI-READ-BLOCK-001] series ${seriesId}: ${geminiVerdict.issues.length} issue(s), rewrite ${geminiRuns}/${MAX_GEMINI_SCRIPT_REWRITES}${allowRewrite ? ` from episode ${geminiTarget.episodeNumber}` : ' — limit reached, stopping before voicing'}`)
-      const geminiReport = { pass: false, issues: geminiVerdict.issues.map((i) => `Episode ${i.episode}: ${i.problem}${i.fix ? ` — Fix: ${i.fix}` : ''}`), confidence: 1, summary: hardStop ? `SERIES-HARD-STOP-001: ${MAX_SERIES_BLOCKER_READS} series reads still found blockers — Marc decides: "ship" or "fix N"` : `series story read failed (rewrite ${geminiRuns})`, rawReport: null }
+      const geminiReport = { pass: false, issues: geminiVerdict.issues.map((i) => `Episode ${i.episode}: ${i.problem}${i.fix ? ` — Fix: ${i.fix}` : ''}`), confidence: 1, summary: hardStop ? progressStopSummary(progressVerdict.reason) : `series story read failed (rewrite ${geminiRuns}, read ${blockerReads}/${MAX_SERIES_READS})`, rawReport: null }
       return {
         passed: false,
         failed: true,
@@ -10581,7 +10586,7 @@ export async function POST(req: NextRequest) {
                 // Same format-only repairs every writer draft gets.
                 const script = spellOutSpokenNumerals(normalizeScriptFormat(applied.script).script).script
                 const skippedEdits = applied.skipped || []
-                return { epNum, ep, script, edits: reply.edits.length - skippedEdits.length, unfixed: [...reply.unfixed, ...skippedEdits.map((x: string) => `skipped ${x}`)] }
+                return { epNum, ep, script, replaced: reply.edits.map((e: any) => String(e?.replace || '')), edits: reply.edits.length - skippedEdits.length, unfixed: [...reply.unfixed, ...skippedEdits.map((x: string) => `skipped ${x}`)] }
               } catch (e) {
                 return { epNum, error: e instanceof Error ? e.message.slice(0, 200) : String(e).slice(0, 200) }
               }
@@ -10640,6 +10645,10 @@ export async function POST(req: NextRequest) {
                   current_step: NEXT_STEP_AFTER_SERIES_SCRIPTS,
                   state_json: {
                     ...result.state,
+                    // SERIES-PROGRESS-STOP-001: remember what was sent to be fixed and what the fix wrote.
+                    ...((result.state as any)?.seriesContinuity && typeof (result.state as any).seriesContinuity === 'object'
+                      ? { seriesContinuity: { ...(result.state as any).seriesContinuity, seriesProgress: recordPatch(readProgress((result.state as any).seriesContinuity.seriesProgress), { issues: readIssues.filter((i: any) => (goodOutcomes as any[]).some((o) => o.epNum === i.episode)), edits: (goodOutcomes as any[]).flatMap((o) => (o.replaced || []).map((r: string) => ({ episode: o.epNum, replace: r }))) }) } }
+                      : {}),
                     seriesValidation: null,
                     seriesRewrite: { ...(priorPatchState.seriesRewrite || {}), patchRuns: patchPlan.run, patchCounts: (goodOutcomes as any[]).reduce((acc: Record<string, number>, o: any) => ({ ...acc, [String(o.epNum)]: Number(acc[String(o.epNum)] || 0) + 1 }), { ...((priorPatchState.seriesRewrite?.patchCounts as Record<string, number>) || {}) }), lastPatch: { run: patchPlan.run, at: nowIso(), episodes: (goodOutcomes as any[]).map((o) => o.epNum) } },
                   },
