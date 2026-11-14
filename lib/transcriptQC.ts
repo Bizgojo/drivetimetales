@@ -1541,7 +1541,13 @@ export function evaluateTranscriptQC(expectedText: string, detectedText: string)
   // only difference was that homophone, so the veto is lifted. Real number changes still fail.
   const foldTo = (tokens: string[]) => tokens.map((t) => (t === 'to' ? '2' : t))
   const onlyToTooDifference = numericMismatch && !numericTokenSequenceMismatch(foldTo(expected), foldTo(detected))
-  const numericMismatchFinal = numericMismatch && werSimilarity < 0.95 && !onlyToTooDifference
+  // QC-SPACING-001 (Widow EP6 segment_0107, Nov 14, 2026): script "Back on the walls. Every one."
+  // was spoken correctly and transcribed "Back on the walls, everyone." The word "one" tripped the
+  // numeric veto on a 94.1% match. When both sides have exactly the same letters once spaces and
+  // punctuation are removed, the only difference is spacing, so the veto is lifted.
+  const lettersOnly = (text: string) => String(text || '').toLowerCase().replace(/[^a-z]/g, '')
+  const onlySpacingDifference = numericMismatch && lettersOnly(expectedText).length > 0 && lettersOnly(expectedText) === lettersOnly(detectedText)
+  const numericMismatchFinal = numericMismatch && werSimilarity < 0.95 && !onlyToTooDifference && !onlySpacingDifference
   const shortLineMatches = expected.length <= 8
     ? expectedVariants.some(variant => containsOrderedTokenVariant(detected, variant)) || similarity >= 0.88
     : true
