@@ -85,6 +85,7 @@ Covers: one list of every place in the canon where Marc must decide or act himse
 - **CANON-08 rule 39 [MARC DECIDES]:** Episode Correction Loop: Marc listens → approves or sends corrections → the corrected version comes to him as a link, not published → Marc…
 - **CANON-08 rule 41 [MARC DOES]:** Marc checks player changes on a real phone before they are accepted.
 - **CANON-08 rule 44 [MARC DECIDES]:** A Gemini final read of the whole series decides publish / fix (2 rounds) / hold, and Marc gets one message only on hold.
+- **CANON-08 decision 152 [MARC DECIDES]:** A series stops for Marc's "ship" or "fix N" only when its fixes stop working (a fixed blocker returns, a fix creates a blocker, or 6 series reads).
 - Open in this document: Nothing open in this document (CANON-99 answered Nov 9, 2026).
 
 ## CANON-09 — Publishing & Release
