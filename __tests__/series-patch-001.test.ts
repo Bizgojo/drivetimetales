@@ -101,7 +101,7 @@ describe('SERIES-PATCH-001 wiring', () => {
     expect(rewrite).toBeLessThan(giveUp)
   })
   test('both series reads hand over structured issues', () => {
-    expect(src.match(/seriesReadIssues: /g)?.length).toBe(2)
+    expect(src.match(/seriesReadIssues: /g)?.length).toBe(3) // both series reads + STOPPED-BLOCKERS-001
   })
   test('patched episodes are re-validated, never left as passed', () => {
     const block = src.slice(src.indexOf('SERIES-PATCH-001 (Weekend Wife in Miami'), src.indexOf('SERIES-REWRITE-001: a story-content failure'))
