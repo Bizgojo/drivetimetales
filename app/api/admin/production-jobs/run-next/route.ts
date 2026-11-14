@@ -106,7 +106,7 @@ import { legacyStepModels, routeStep, resolveModelForStep, coerceValidationModel
 import { buildContinuityPins, hashScript, verifyContinuityPins } from '@/lib/continuityPin'
 import { checkSeriesFacts, formatFactSheet, castListsText } from '@/lib/seriesFacts'
 import { runGeminiStoryRead, listenerText, geminiReadBlocks, geminiBlockingVerdict, geminiRewriteTarget, MAX_GEMINI_SCRIPT_REWRITES, type GeminiReadState } from '@/lib/geminiStoryRead'
-import { seriesPatchEnabled, planSeriesPatch, buildPatchPrompt, buildPatchRetryMessage, parsePatchReply, applyPatchEdits, repinAfterPatch, validatorIssuesForPatch, routeIssuesToFixEpisode, MAX_SERIES_PATCH_RUNS, isLineLevelIssue, planSfxDeletions, deleteSfxLines, MAX_SFX_DELETES_PER_JOB, type SeriesReadIssue } from '@/lib/seriesPatch'
+import { seriesPatchEnabled, planSeriesPatch, buildPatchPrompt, buildPatchRetryMessage, parsePatchReply, applyPatchEdits, repinAfterPatch, validatorIssuesForPatch, routeIssuesToFixEpisode, MAX_SERIES_PATCH_RUNS, isLineLevelIssue, planSfxDeletions, sfxIssuesOnly, deleteSfxLines, MAX_SFX_DELETES_PER_JOB, type SeriesReadIssue } from '@/lib/seriesPatch'
 import { planTimingPass, finishTimingPass, timedLinesFromSizes, sizesFromListing, type TimingCheckState } from '@/lib/timingPass'
 import {
   hasEarnedPackageEvidence,
@@ -10522,7 +10522,11 @@ export async function POST(req: NextRequest) {
           const sfxDeletesSoFar = Number(priorPatchState.seriesRewrite?.sfxDeletes || 0)
           const sfxFrozen = new Set<number>(patchEpisodes.filter((ep: any) => isFrozenSeriesEpisode(ep)).map((ep: any) => episodeNumber(ep, 0)))
           const sfxScripts = new Map<number, string>(patchEpisodes.filter((ep: any) => Boolean(ep.script)).map((ep: any) => [episodeNumber(ep, 0), String(ep.script)]))
+          // SFX-DELETE-MIXED-001: when the list also holds non-sound issues, still delete the
+          // sound cues (no AI) and re-validate; the rest go to their own repair next round.
+          const sfxSubset = sfxIssuesOnly(readIssues)
           const sfxPlan = planSfxDeletions(readIssues, sfxScripts, sfxFrozen)
+            || (sfxSubset.length && sfxSubset.length < readIssues.length ? planSfxDeletions(sfxSubset, sfxScripts, sfxFrozen) : null)
           const sfxCount = sfxPlan ? Array.from(sfxPlan.values()).reduce((n, c) => n + c.length, 0) : 0
           if (sfxPlan && sfxDeletesSoFar + sfxCount <= MAX_SFX_DELETES_PER_JOB) {
             const sfxOutcomes = Array.from(sfxPlan.entries()).map(([epNum, cues]) => {

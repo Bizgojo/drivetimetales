@@ -310,23 +310,53 @@ export function planSfxDeletions(issues: SeriesReadIssue[] | null | undefined, s
     if (!script || !SFX_WORDS.test(issue.problem)) return null
     const mentioned = Array.from(new Set(Array.from(String(issue.problem).matchAll(/\[SFX:[^\]\n]+\]/gi)).map((m) => m[0])))
     const present = mentioned.filter((c) => sfxLineIndexes(script, c).length > 0)
-    if (present.length !== 1 || sfxLineIndexes(script, present[0]).length !== 1) return null
+    if (present.length !== 1) return null
     const cues = out.get(issue.episode) || []
-    if (!cues.includes(present[0])) cues.push(present[0])
+    cues.push(present[0])
     out.set(issue.episode, cues)
   }
+  // SFX-DELETE-MIXED-001: a cue line is deleted once per problem that names it, and only when
+  // the episode has exactly that many copies (two "chair scrapes" flagged, two in the script).
+  // Otherwise we cannot tell which copy is wrong, and the AI patcher handles it as before.
+  for (const [ep, cues] of Array.from(out.entries())) {
+    const script = scripts.get(ep) || ''
+    const counts = new Map<string, number>()
+    for (const c of cues) counts.set(matchKey(c).replace(/\s+/g, ' ').trim().toLowerCase(), (counts.get(matchKey(c).replace(/\s+/g, ' ').trim().toLowerCase()) || 0) + 1)
+    const uniq: string[] = []
+    for (const c of cues) {
+      const k = matchKey(c).replace(/\s+/g, ' ').trim().toLowerCase()
+      if (sfxLineIndexes(script, c).length !== counts.get(k)) return null
+      if (!uniq.some((u) => matchKey(u).replace(/\s+/g, ' ').trim().toLowerCase() === k)) uniq.push(c)
+    }
+    out.set(ep, uniq)
+  }
   return out.size ? out : null
+}
+
+/**
+ * SFX-DELETE-MIXED-001 (The Nanny's Rule EP6, Nov 14, 2026): an episode failed on four wrong
+ * sound cues plus a DESCRIPTION spoiler. planSfxDeletions refuses a mixed list, the patch and
+ * rewrite budgets were spent, and the job failed on problems the pipeline fixes without AI.
+ * The sound-cue issues alone are planned here; the caller deletes them and re-validates, and the
+ * remaining issue (here the DESCRIPTION) then goes to its own repair (DESCRIPTION retry).
+ */
+export function sfxIssuesOnly(issues: SeriesReadIssue[] | null | undefined): SeriesReadIssue[] {
+  const list = Array.isArray(issues) ? issues : []
+  return list.filter((i) => i && i.episode > 0 && SFX_WORDS.test(String(i.problem || '')) && /\[SFX:[^\]\n]+\]/i.test(String(i.problem || '')))
 }
 
 /** Remove whole cue lines (each found exactly once) and the blank line left behind. */
 export function deleteSfxLines(script: string, cues: string[]): string {
   let lines = String(script || '').split('\n')
   for (const cue of cues) {
-    const idx = sfxLineIndexes(lines.join('\n'), cue)
-    if (idx.length !== 1) continue
-    const i = idx[0]
-    const blankAfter = i + 1 < lines.length && !lines[i + 1].trim() && (i === 0 || !lines[i - 1].trim())
-    lines.splice(i, blankAfter ? 2 : 1)
+    // Every copy of a planned cue goes (planSfxDeletions only plans a cue whose copies were all flagged).
+    let idx = sfxLineIndexes(lines.join('\n'), cue)
+    while (idx.length) {
+      const i = idx[idx.length - 1]
+      const blankAfter = i + 1 < lines.length && !lines[i + 1].trim() && (i === 0 || !lines[i - 1].trim())
+      lines.splice(i, blankAfter ? 2 : 1)
+      idx = sfxLineIndexes(lines.join('\n'), cue)
+    }
   }
   return lines.join('\n')
 }
