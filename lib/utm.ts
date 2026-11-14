@@ -7,6 +7,8 @@
 // readStoredUtm: called at signup. Returns whatever is in localStorage,
 //   or empty object if nothing stored.
 
+import { fbcFromFbclid } from './tracking/matchKeys'
+
 const STORAGE_KEY = 'et_utm'
 
 export interface StoredUtm {
@@ -82,10 +84,28 @@ export function buildCampaignSignupHref(searchParams: ParamsLike | null | undefi
   return parts.length ? `/signup?${parts.join('&')}` : '/signup'
 }
 
+/** CAPI-MATCH-001: write _fbc from a new fbclid (90 days, first-party). */
+export function captureFbclidCookie(fbclid: string | null): void {
+  if (typeof document === 'undefined' || !fbclid) return
+  try {
+    const value = fbcFromFbclid(fbclid)
+    if (!value) return
+    const existing = document.cookie.split(';').map((c) => c.trim()).find((c) => c.startsWith('_fbc='))
+    if (existing && existing.endsWith(`.${fbclid}`)) return
+    document.cookie = `_fbc=${value}; Max-Age=${90 * 24 * 60 * 60}; Path=/; SameSite=Lax`
+  } catch {
+    // Never let attribution break the page.
+  }
+}
+
 export function captureUtmFromUrl(): void {
   if (typeof window === 'undefined') return
   try {
     const urlParams = new URLSearchParams(window.location.search)
+    // CAPI-MATCH-001: Meta adds ?fbclid= to every ad click. Keep it as the _fbc
+    // cookie (Meta's format) so server events can name the click. The Meta pixel
+    // does the same when it loads; this covers pages where it is blocked or late.
+    captureFbclidCookie(urlParams.get('fbclid'))
     const source = urlParams.get('utm_source')
     const medium = urlParams.get('utm_medium')
     const campaign = urlParams.get('utm_campaign')
