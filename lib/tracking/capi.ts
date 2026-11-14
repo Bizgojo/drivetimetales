@@ -24,6 +24,7 @@ import {
   normalizeEmailForHash,
   normalizePhoneForHash,
 } from './events'
+import { sanitizeMatchKeys } from './matchKeys'
 
 const TRACKING_TIMEOUT_MS = 4000
 const META_API_VERSION = 'v21.0'
@@ -66,6 +67,12 @@ export interface ServerTrackingEvent {
   customData?: Record<string, string | number | undefined | null>
   /** Unix seconds; defaults to now. Exposed for tests. */
   eventTime?: number
+  // CAPI-MATCH-001: ad-click match keys (lib/tracking/matchKeys.ts). Sent to Meta
+  // only, unhashed as Meta requires; never logged.
+  fbc?: string | null
+  fbp?: string | null
+  clientIp?: string | null
+  userAgent?: string | null
 }
 
 function compactCustomData(customData?: ServerTrackingEvent['customData']): Record<string, string | number> {
@@ -83,10 +90,16 @@ export function buildMetaCapiPayload(evt: ServerTrackingEvent, testEventCode?: s
   const em = hashEmail(evt.email)
   const ph = hashPhone(evt.phone)
   const externalId = hashExternalId(evt.externalId)
-  const userData: Record<string, string[]> = {}
+  const userData: Record<string, string | string[]> = {}
   if (em) userData.em = [em]
   if (ph) userData.ph = [ph]
   if (externalId) userData.external_id = [externalId]
+  // CAPI-MATCH-001: click id, browser id, IP and user agent tie the event to the ad click.
+  const keys = sanitizeMatchKeys(evt)
+  if (keys.fbc) userData.fbc = keys.fbc
+  if (keys.fbp) userData.fbp = keys.fbp
+  if (keys.clientIp) userData.client_ip_address = keys.clientIp
+  if (keys.userAgent) userData.client_user_agent = keys.userAgent
 
   const customData: Record<string, string | number> = compactCustomData(evt.customData)
   if (typeof evt.value === 'number') customData.value = evt.value

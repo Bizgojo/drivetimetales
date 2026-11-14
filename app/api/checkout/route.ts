@@ -5,6 +5,7 @@ import { createClient } from '@supabase/supabase-js'
 import { normalizeEmail } from '@/lib/email'
 import { GO_BASE_TRIAL_DAYS } from '@/lib/landing'
 import { ANNUAL_PRICE_LABEL, MONTHLY_PRICE_LABEL, TRIAL_DAYS } from '@/lib/pricing'
+import { matchKeysMetadata, requestMatchKeys } from '@/lib/tracking/matchKeys'
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, { apiVersion: '2023-10-16' })
 
@@ -99,7 +100,10 @@ export async function POST(req: NextRequest) {
     if (!userId || !normalizedEmail) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
     }
+    // CAPI-MATCH-001: carry the ad-click match keys to the Stripe webhook (no browser there).
     const campaignMetadata = attributionMetadata(attribution, heardAbout)
+    // Session and subscription only (not the long-lived customer record).
+    const clickMetadata = compactMetadata(matchKeysMetadata(requestMatchKeys(req)))
 
     // Server-selected price (client-supplied priceId is ignored).
     // FM program retired — standard monthly or standard annual only.
@@ -235,6 +239,7 @@ export async function POST(req: NextRequest) {
           billingCycle: billingCycle || 'monthly',
           fmAnnualApplied: 'false',
           ...compactMetadata(campaignMetadata),
+          ...clickMetadata,
         },
         ...(userData?.signup_source === 'referral-invitation'
           ? referralCheckoutTrial(userData.subscription_ends_at)
@@ -245,7 +250,7 @@ export async function POST(req: NextRequest) {
       // the same id the webhook's server-side StartTrial uses (dedup pair).
       success_url: `${baseUrl}${safeSuccessPath}${safeSuccessPath.includes('?') ? '&' : '?'}cs={CHECKOUT_SESSION_ID}`,
       cancel_url: `${baseUrl}${cancelPath}`,
-      metadata: { userId, referralCode: referralCode || '', ...compactMetadata(campaignMetadata) }
+      metadata: { userId, referralCode: referralCode || '', ...compactMetadata(campaignMetadata), ...clickMetadata }
     })
 
     return NextResponse.json({ url: session.url })

@@ -6,6 +6,7 @@ import { planSignupNameEnsure } from '@/lib/personalization/signupEnsure';
 import { renderWelcomeEmail } from '@/lib/emails/retentionTemplates';
 import { sendServerEvent } from '@/lib/tracking/capi';
 import { registrationEventId } from '@/lib/tracking/events';
+import { requestMatchKeys } from '@/lib/tracking/matchKeys';
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -114,6 +115,7 @@ export async function POST(request: NextRequest) {
         externalId: id,
         sourceUrl: 'https://endless-tales.com/signup',
         customData: { content_name: 'Endless Tales Account' },
+        ...requestMatchKeys(request), // CAPI-MATCH-001
       });
     }
 
