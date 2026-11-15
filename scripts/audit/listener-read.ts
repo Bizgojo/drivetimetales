@@ -7,7 +7,7 @@
  */
 import { createClient } from '@supabase/supabase-js'
 import Anthropic from '@anthropic-ai/sdk'
-import { listenerScenes, predictPrompt, judgePrompt, parseJsonReply } from '../../lib/listenerRead'
+import { listenerScenes, predictPrompt, judgePrompt, parseJsonReply, intendedPlanText } from '../../lib/listenerRead'
 
 const db = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false } })
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
@@ -25,7 +25,7 @@ async function main() {
   const [from, to] = String(arg('--episodes') || '1-3').split('-').map(Number)
   const { data: series } = await db.from('series').select('id,title').eq('title', title).maybeSingle()
   if (!series) throw new Error(`series not found: ${title}`)
-  const { data: eps } = await db.from('stories').select('id,title,episode_number,script').eq('series_id', series.id).order('episode_number')
+  const { data: eps } = await db.from('stories').select('id,title,episode_number,script,brief_json').eq('series_id', series.id).order('episode_number')
   const key = `listener_read:${series.id}`
   const { data: prior } = await db.from('atlas_settings').select('value').eq('key', key).maybeSingle()
   const saved: Record<string, any> = prior?.value ? JSON.parse(prior.value) : {}
@@ -36,13 +36,17 @@ async function main() {
     const scenes = listenerScenes(ep.script || '')
     if (scenes.length < 2) { console.log(`EP${n}: fewer than 2 scenes — skipped`); continue }
     const predictions: any[] = []
-    for (let k = 1; k < scenes.length; k++) {
+    const retells: any[] = []
+    // RETELL-TEST-001: after each scene (including the last) the listener retells it; before each
+    // next scene it predicts what comes next.
+    for (let k = 1; k <= scenes.length; k++) {
       const reply = parseJsonReply<any>(await ask(predictPrompt({ seriesTitle: series.title, episodeNumber: n, episodeTitle: ep.title, earlier: earlierTitles.join('\n'), soFar: scenes.slice(0, k) })))
-      predictions.push({ beforeScene: k + 1, expect_next: String(reply?.expect_next || ''), confidence: Number(reply?.confidence || 0), want_to_keep_listening: Number(reply?.want_to_keep_listening || 0) })
+      retells.push({ scene: k, retell: String(reply?.retell_last_scene || ''), lost_track: String(reply?.lost_track || '') })
+      if (k < scenes.length) predictions.push({ beforeScene: k + 1, expect_next: String(reply?.expect_next || ''), confidence: Number(reply?.confidence || 0), want_to_keep_listening: Number(reply?.want_to_keep_listening || 0) })
     }
-    const verdict = parseJsonReply<any>(await ask(judgePrompt({ seriesTitle: series.title, episodeNumber: n, episodeTitle: ep.title, scenes, predictions }), 2500))
-    saved[String(n)] = { storyId: ep.id, title: ep.title, checkedAt: new Date().toISOString(), model: MODEL, scenes: scenes.map((s) => ({ n: s.n, heading: s.heading })), predictions, verdict }
-    console.log(`EP${n} "${ep.title}": ${scenes.length} scenes; want next ${JSON.stringify(verdict?.ending?.want_next || {})}; fixes: ${(verdict?.top_fixes || []).join(' | ')}`)
+    const verdict = parseJsonReply<any>(await ask(judgePrompt({ seriesTitle: series.title, episodeNumber: n, episodeTitle: ep.title, scenes, predictions, retells, intendedPlan: intendedPlanText(ep.brief_json, n) }), 4000))
+    saved[String(n)] = { storyId: ep.id, title: ep.title, checkedAt: new Date().toISOString(), model: MODEL, scenes: scenes.map((s) => ({ n: s.n, heading: s.heading })), predictions, retells, verdict }
+    console.log(`EP${n} "${ep.title}": ${scenes.length} scenes; advancing ${verdict?.scores?.lines_advancing_share ?? '?'}, followable ${verdict?.scores?.lines_followable_share ?? '?'}; want next ${JSON.stringify(verdict?.ending?.want_next || {})}; fixes: ${(verdict?.top_fixes || []).join(' | ')}`)
     earlierTitles.push(`Episode ${n}: ${ep.title}`)
   }
   await db.from('atlas_settings').upsert({ key, value: JSON.stringify(saved), updated_at: new Date().toISOString(), updated_by: 'listener-read' }, { onConflict: 'key' })

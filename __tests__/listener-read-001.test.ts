@@ -30,3 +30,18 @@ describe('LISTENER-READ-001', () => {
     expect(parseJsonReply('no json')).toBeNull()
   })
 })
+
+describe('RETELL-TEST-001', () => {
+  const { intendedPlanText, judgePrompt, listenerScenes: ls } = require('@/lib/listenerRead')
+  test('finds this episode in the series plan', () => {
+    expect(intendedPlanText({ full_episode_plan: [{ episode: 1, beats: 'A' }, { episode: 2, beats: 'B' }] }, 2)).toContain('"B"')
+    expect(intendedPlanText({ description: 'desc' }, 3)).toBe('desc')
+  })
+  test('the judge sees retellings and the plan, and asks for line checks', () => {
+    const p = judgePrompt({ seriesTitle: 'M', episodeNumber: 1, episodeTitle: 'T', scenes: ls(script), predictions: [], retells: [{ scene: 1, retell: 'She came home.', lost_track: '' }], intendedPlan: 'Nora returns.' })
+    expect(p).toContain('listener retold "She came home."')
+    expect(p).toContain('Nora returns.')
+    expect(p).toContain('"problem_lines"')
+    expect(p).toContain('lines_followable_share')
+  })
+})
