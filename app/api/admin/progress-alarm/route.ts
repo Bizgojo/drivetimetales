@@ -56,6 +56,7 @@ import {
   type AlarmStateDb,
 } from '@/lib/progressAlarmStore'
 import { sendWebhookAlert } from '@/lib/pipeline-runner/notify'
+import { runCreditsWatch } from '@/lib/creditsWatchRun'
 import type { RunnerEvent } from '@/lib/pipeline-runner/types'
 
 export const runtime = 'nodejs'
@@ -322,7 +323,11 @@ export async function GET(_req: NextRequest) {
     }
 
     const stuck = report.filter((r) => r.stuck)
+    // CREDITS-WATCH-001: at most once an hour, check every AI service's credits and alert when low.
+    const credits = await runCreditsWatch(supabase as any)
     return NextResponse.json({
+      creditsChecked: credits.ran,
+      creditsAlerted: credits.alerted,
       success: true,
       checkedAt: new Date(nowMs).toISOString(),
       scanned: report.length,
