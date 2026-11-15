@@ -25,6 +25,18 @@ import { hashScript } from './continuityPin'
  */
 export const MAX_SERIES_PATCH_RUNS = 8
 export const MAX_PATCHES_PER_EPISODE = 2
+
+/**
+ * PATCH-BUDGET-SCALE-001 (Mercy Island, job 2f68f4cb, Nov 15, 2026): the job caps (8 patch runs,
+ * 12 sound-cue deletes) were sized for a 7-episode series. A 30-episode series spent all 8 patch
+ * runs by Episode 6, so one-line problems in Episodes 7-30 would go to whole rewrites again (the
+ * PATCH-BUDGET-002 failure). The caps now scale with the number of episodes, at the same rate a
+ * 7-episode series gets. The per-episode limit (2 patches each) is unchanged.
+ */
+export function seriesPatchBudget(episodeCount: number): number {
+  const n = Number.isFinite(episodeCount) && episodeCount > 0 ? Math.floor(episodeCount) : 0
+  return Math.max(MAX_SERIES_PATCH_RUNS, Math.ceil((n * MAX_SERIES_PATCH_RUNS) / 7))
+}
 /** More issues than this is a story problem, not a patch job. */
 export const MAX_SERIES_PATCH_ISSUES = 12
 /** A patch that changes more than this share of an episode is a rewrite in disguise. */
@@ -45,10 +57,13 @@ export function planSeriesPatch(input: {
   episodesWithScript: Set<number>
   /** PATCH-BUDGET-002: patches already applied per episode number. */
   patchCounts?: Record<string, number>
+  /** PATCH-BUDGET-SCALE-001: job cap for this series (seriesPatchBudget). Default MAX_SERIES_PATCH_RUNS. */
+  maxRuns?: number
 }): { action: 'patch'; run: number; byEpisode: Map<number, SeriesReadIssue[]> } | { action: 'skip'; reason: string } {
   const issues = Array.isArray(input.issues) ? input.issues.filter((i) => i && Number.isFinite(i.episode) && i.episode > 0) : []
   if (!issues.length) return { action: 'skip', reason: 'no series-read issues' }
-  if (input.patchRuns >= MAX_SERIES_PATCH_RUNS) return { action: 'skip', reason: `patch budget used (${input.patchRuns}/${MAX_SERIES_PATCH_RUNS})` }
+  const maxRuns = Number.isFinite(input.maxRuns) && Number(input.maxRuns) > 0 ? Number(input.maxRuns) : MAX_SERIES_PATCH_RUNS
+  if (input.patchRuns >= maxRuns) return { action: 'skip', reason: `patch budget used (${input.patchRuns}/${maxRuns})` }
   if (issues.length > MAX_SERIES_PATCH_ISSUES) return { action: 'skip', reason: `${issues.length} issues — too many to patch` }
   const byEpisode = new Map<number, SeriesReadIssue[]>()
   let capped = 0
@@ -282,6 +297,12 @@ export function isLineLevelIssue(issue: SeriesReadIssue): boolean {
 
 /** SFX-DELETE-001: at most this many cue lines deleted per job (loop guard). */
 export const MAX_SFX_DELETES_PER_JOB = 12
+
+/** PATCH-BUDGET-SCALE-001: sound-cue delete cap scaled to the series length (12 per 7 episodes). */
+export function sfxDeleteBudget(episodeCount: number): number {
+  const n = Number.isFinite(episodeCount) && episodeCount > 0 ? Math.floor(episodeCount) : 0
+  return Math.max(MAX_SFX_DELETES_PER_JOB, Math.ceil((n * MAX_SFX_DELETES_PER_JOB) / 7))
+}
 
 const SFX_WORDS = /\b(SFX|sound cue|sound effect|cue)\b/i
 
