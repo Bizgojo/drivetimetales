@@ -9057,14 +9057,18 @@ async function runSeriesVoicePreflight(job: ProductionJob, origin: string) {
       // 44 words after the episode passed, and the pre-voice gate failed the whole series with no
       // repair. When the ONLY problems are Belle line lengths, shorten those lines with the same
       // shorteners the writer uses, save, and check again.
-      if (epIssues.length > 0 && epIssues.every((i) => /\b(outro|intro|announcement)\b[^.]*\btoo long\b/i.test(i))) {
+      // BELLE-OUTRO-SHAPE-PREVOICE-001 (Mercy Island EP14, Nov 15, 2026): an outro with the wrong
+      // number of sentences ("must be exactly two sentences ... found 3") is rewritten by the same
+      // outro rule, not left to fail the whole series before voicing.
+      const outroShapeIssue = (i: string) => /\boutro must be exactly two sentences\b/i.test(i)
+      if (epIssues.length > 0 && epIssues.every((i) => /\b(outro|intro|announcement)\b[^.]*\btoo long\b/i.test(i) || outroShapeIssue(i))) {
         const epNum = episodeNumber(nextEpisode, 0)
         const isFinale = Boolean((nextEpisode as any).series_is_finale)
         const lenCtx = { jobId: job.id, storyId: String(storyId), title: (nextEpisode as any).title, seriesId: String(seriesId), episodeNumber: epNum }
         const shortenModel = coerceValidationModelToClaude(STEP_MODELS.generate)
         let fixed = epScript
         const outroNow = extractBelleSection(fixed, 'outro')
-        if (outroNow && countWords(outroNow) > BELLE_OUTRO_MAX_WORDS) {
+        if (outroNow && (countWords(outroNow) > BELLE_OUTRO_MAX_WORDS || epIssues.some(outroShapeIssue))) {
           const seriesName = String((nextEpisode as any).series_name || '').trim()
           const author = String((nextEpisode as any).author || '').trim()
           const narrator = extractHeader(fixed, 'NARRATOR')

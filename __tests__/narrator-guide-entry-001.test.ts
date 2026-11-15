@@ -31,7 +31,7 @@ describe('BELLE-LENGTH-PREVOICE-001 (Weekend Wife EP4)', () => {
     const at = src.indexOf('BELLE-LENGTH-PREVOICE-001')
     expect(at).toBeGreaterThan(0)
     const block = src.slice(at, at + 4000)
-    expect(block).toContain("epIssues.every((i) => /\\b(outro|intro|announcement)\\b[^.]*\\btoo long\\b/i.test(i))")
+    expect(block).toContain("epIssues.every((i) => /\\b(outro|intro|announcement)\\b[^.]*\\btoo long\\b/i.test(i) || outroShapeIssue(i)))")
     expect(block).toContain('shortenBelleOutroToLimit(outroNow, rule, shortenModel, !isFinale, lenCtx)')
     expect(block).toContain(".update({ script: fixed }).eq('id', storyId).eq('script', epScript)")
     expect(/outro is too long \(44 words; max 42\)/.test('outro is too long (44 words; max 42)') && /\b(outro|intro|announcement)\b[^.]*\btoo long\b/i.test('outro is too long (44 words; max 42)')).toBe(true)
