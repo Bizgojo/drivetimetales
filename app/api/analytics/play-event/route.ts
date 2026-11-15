@@ -1,3 +1,4 @@
+import { quitPointFields } from '@/lib/quitPoint'
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { createServerClient } from '@supabase/ssr'
@@ -198,11 +199,16 @@ export async function POST(req: NextRequest) {
       const progressPct = Math.max(0, Math.min(100, Math.round(Number(body?.progressPct || 0))))
       const endedAt = isoOrNow(body?.endedAt)
       const eventId = stringOrNull(body?.eventId)
+      // QUIT-POINT-001 (Marc, Nov 15, 2026): keep WHERE in the episode the listener stopped
+      // (position_seconds / duration_seconds already exist on play_events but were never written),
+      // so drop-offs can be matched to the exact scene. The client already sends both values.
+      const quitPoint = quitPointFields(body?.currentTime, body?.totalDuration)
       const update = {
         ended_at: endedAt,
         seconds_played: secondsPlayed,
         progress_pct: progressPct,
         stop_reason: stopReason,
+        ...quitPoint,
       }
 
       if (eventId) {
@@ -254,6 +260,7 @@ export async function POST(req: NextRequest) {
         seconds_played: secondsPlayed,
         progress_pct: progressPct,
         stop_reason: stopReason,
+        ...quitPoint,
       })
 
       if (insertError) {
