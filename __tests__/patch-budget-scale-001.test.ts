@@ -8,7 +8,7 @@ describe('PATCH-BUDGET-SCALE-001', () => {
     expect(sfxDeleteBudget(NaN)).toBe(MAX_SFX_DELETES_PER_JOB)
   })
   test('30-episode series gets the same rate per episode', () => {
-    expect(seriesPatchBudget(30)).toBe(35)
+    expect(seriesPatchBudget(30)).toBe(68)
     expect(sfxDeleteBudget(30)).toBe(52)
   })
   test('planSeriesPatch uses the scaled cap', () => {
@@ -17,6 +17,6 @@ describe('PATCH-BUDGET-SCALE-001', () => {
     const plan = planSeriesPatch({ ...base, maxRuns: seriesPatchBudget(30) })
     expect(plan.action).toBe('patch')
     if (plan.action === 'patch') expect(plan.run).toBe(9)
-    expect(planSeriesPatch({ ...base, patchRuns: 35, maxRuns: 35 }).action).toBe('skip')
+    expect(planSeriesPatch({ ...base, patchRuns: 68, maxRuns: 68 }).action).toBe('skip')
   })
 })

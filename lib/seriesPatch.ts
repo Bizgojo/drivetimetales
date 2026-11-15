@@ -35,7 +35,11 @@ export const MAX_PATCHES_PER_EPISODE = 2
  */
 export function seriesPatchBudget(episodeCount: number): number {
   const n = Number.isFinite(episodeCount) && episodeCount > 0 ? Math.floor(episodeCount) : 0
-  return Math.max(MAX_SERIES_PATCH_RUNS, Math.ceil((n * MAX_SERIES_PATCH_RUNS) / 7))
+  // PATCH-BUDGET-SCALE-002 (Mercy Island, Nov 15): the 7-episode rate (35 for 30 episodes) was
+  // spent by the episode checks (one patch per episode), leaving almost none for the whole-series
+  // read. A long series gets the per-episode limit (2 each) plus 8 for the series read.
+  if (n > 7) return n * MAX_PATCHES_PER_EPISODE + MAX_SERIES_PATCH_RUNS
+  return MAX_SERIES_PATCH_RUNS
 }
 /** More issues than this is a story problem, not a patch job. */
 export const MAX_SERIES_PATCH_ISSUES = 12
