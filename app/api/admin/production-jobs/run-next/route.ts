@@ -8437,7 +8437,13 @@ async function scoreValidateSeriesPackage(job: ProductionJob, model: string) {
       },
     }
   }
-  if (seriesContinuityEnabled() && !isLandingPackage && continuityState.passedFingerprint !== continuityFingerprint) {
+  // SERIES-READ-ACCEPT-001 (Marc, Nov 15, 2026, Mercy Island: "fix 1 and 2, then voice"): when
+  // the whole-series read stops converging (the reader reverses its own fixes), the kept
+  // blockers are patched (above, STOPPED-BLOCKERS-001) and the series goes on to voicing without
+  // another whole-series read. Set state_json.seriesReadAccepted = { by, at, reason }.
+  const seriesReadAccepted = Boolean((state as any).seriesReadAccepted && typeof (state as any).seriesReadAccepted === 'object')
+  if (seriesReadAccepted) console.log(`[SERIES-READ-ACCEPT-001] series ${seriesId}: whole-series read accepted (${String((state as any).seriesReadAccepted.reason || '')}); skipping it`)
+  if (seriesContinuityEnabled() && !isLandingPackage && !seriesReadAccepted && continuityState.passedFingerprint !== continuityFingerprint) {
     const sortedEps = [...refreshedEpisodes].sort((a: any, b: any) => episodeNumber(a, 0) - episodeNumber(b, 0))
     // SERIES-FACTS-001: plain-text check of dialogue against the cast lists (no AI).
     const factEpisodes = sortedEps.map((ep: any) => ({ episodeNumber: episodeNumber(ep, 0), script: String(ep.script || '') }))

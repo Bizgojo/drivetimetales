@@ -53,7 +53,7 @@ describe('STOPPED-BLOCKERS-001', () => {
   })
   test('kept blockers go to the patcher before any new read, then are cleared', () => {
     const keptAt = src.indexOf('if (stoppedBlockers.length && !isLandingPackage) {')
-    const readAt = src.indexOf('if (seriesContinuityEnabled() && !isLandingPackage && continuityState.passedFingerprint !== continuityFingerprint) {')
+    const readAt = src.indexOf('if (seriesContinuityEnabled() && !isLandingPackage && !seriesReadAccepted && continuityState.passedFingerprint !== continuityFingerprint) {')
     expect(keptAt).toBeGreaterThan(0)
     expect(keptAt).toBeLessThan(readAt)
     expect(src.slice(keptAt, readAt)).toContain('stoppedSeriesBlockers: [],')
