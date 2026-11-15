@@ -9164,7 +9164,59 @@ async function runSeriesVoicePreflight(job: ProductionJob, origin: string) {
   }
 
   // ── Generate-voices preflight ──────────────────────────────────────────────
-  const { responseOk, report } = await runGenerateVoicesPreflightRequest(origin, storyId)
+  let { responseOk, report } = await runGenerateVoicesPreflightRequest(origin, storyId)
+  // BELLE-INTRO-HOOK-PREVOICE-001 (Mercy Island EP16, Nov 15, 2026): the voice step's publish
+  // check uses the word-based hook detector only, while the earlier checks also accept an AI
+  // judgment, so an intro like "needs answers that only one woman can give" passed every check
+  // and then failed right before voicing, twice. When the only blocker is the intro hook, rewrite
+  // the intro with the same Belle repair the pipeline uses, keep it only if the word-based
+  // detector now finds a hook, save, re-pin, and run the voice preflight again.
+  {
+    const blockers: string[] = Array.isArray((report as any)?.bellePostRepairBlockers) ? (report as any).bellePostRepairBlockers.map(String) : []
+    const hookOnly = !responseOk && (report as any)?.code === 'BELLE_POSTREPAIR_CONFORMANCE_FAILED'
+      && blockers.length > 0 && blockers.every((b) => /\bintro must include a concrete narrative hook\b/i.test(b))
+    if (hookOnly && !authorWrittenExempt) {
+      const epScript = String((nextEpisode as any).script || '')
+      const repairModel = coerceValidationModelToClaude(STEP_MODELS.generate)
+      const nextEp = episodes.find((e: any) => episodeNumber(e, 0) === number + 1) || null
+      let fixed: string | null = null
+      for (let attempt = 1; attempt <= 2 && !fixed; attempt++) {
+        try {
+          const { introText } = await regenerateSeriesBelleFromFeedback(
+            { ...(nextEpisode as any), script: epScript },
+            { issues: [
+              'intro must include a concrete narrative hook: name the specific event, secret, danger or discovery of THIS episode in plain words (for example "a diary", "a confession", "a body", "a lie", "a threat"), not a vague promise',
+              ...(attempt > 1 ? ['the previous attempt was still too vague — name the concrete thing'] : []),
+            ], repairIntro: true, repairOutro: false },
+            nextEp,
+            repairModel,
+          )
+          const check = String(introText || '').replace(/\[LISTENER_NAME\]/g, '').replace(/\s{2,}/g, ' ').trim()
+          if (introText && detectNarrativeHookCategory(check)) fixed = replaceBelleSection(epScript, 'intro', introText)
+        } catch (e) {
+          console.warn(`[BELLE-INTRO-HOOK-PREVOICE-001] EP${number} attempt ${attempt} failed: ${e instanceof Error ? e.message : String(e)}`)
+        }
+      }
+      if (fixed && fixed !== epScript) {
+        const { error: saveErr } = await supabase.from('stories').update({ script: fixed }).eq('id', storyId).eq('script', epScript)
+        if (!saveErr) {
+          ;(nextEpisode as any).script = fixed
+          // Same evidence handling as BELLE-LENGTH-PREVOICE-001: only Belle's intro changed.
+          const repinned = repinAfterPatch(preflightEpisodes, new Map([[String(storyId), fixed]]))
+          for (const [pinnedId, sj] of Array.from(repinned.entries())) {
+            const { error: pinErr } = await supabase.from('stories').update({ script_json: sj }).eq('id', pinnedId)
+            if (pinErr) throw new Error(`BELLE-INTRO-HOOK-PREVOICE-001: re-pin of ${pinnedId} failed: ${pinErr.message}`)
+          }
+          const evidence = (state as any).seriesValidation?.packageReport?.evidence
+          if (evidence && evidence.jobId === String(job.id) && evidence.episodeHashes && typeof evidence.episodeHashes === 'object') {
+            evidence.episodeHashes[String(storyId)] = hashScript(fixed)
+          }
+          console.log(`[BELLE-INTRO-HOOK-PREVOICE-001] series=${seriesId} EP${number}: Belle intro rewritten with a concrete hook; re-checking`)
+          ;({ responseOk, report } = await runGenerateVoicesPreflightRequest(origin, storyId))
+        }
+      }
+    }
+  }
   const passed = responseOk && report.success === true
 
   const episodeSummary: any = {
