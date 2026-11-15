@@ -106,7 +106,7 @@ import { legacyStepModels, routeStep, resolveModelForStep, coerceValidationModel
 import { buildContinuityPins, hashScript, verifyContinuityPins } from '@/lib/continuityPin'
 import { checkSeriesFacts, formatFactSheet, castListsText } from '@/lib/seriesFacts'
 import { runGeminiStoryRead, listenerText, geminiReadBlocks, geminiBlockingVerdict, geminiRewriteTarget, MAX_GEMINI_SCRIPT_REWRITES, type GeminiReadState } from '@/lib/geminiStoryRead'
-import { seriesPatchEnabled, planSeriesPatch, buildPatchPrompt, buildPatchRetryMessage, parsePatchReply, applyPatchEdits, repinAfterPatch, validatorIssuesForPatch, routeIssuesToFixEpisode, MAX_SERIES_PATCH_RUNS, isLineLevelIssue, planSfxDeletions, sfxIssuesOnly, deleteSfxLines, MAX_SFX_DELETES_PER_JOB, type SeriesReadIssue } from '@/lib/seriesPatch'
+import { seriesPatchEnabled, planSeriesPatch, buildPatchPrompt, buildPatchRetryMessage, parsePatchReply, applyPatchEdits, repinAfterPatch, validatorIssuesForPatch, routeIssuesToFixEpisode, MAX_SERIES_PATCH_RUNS, isLineLevelIssue, planSfxDeletions, sfxIssuesOnly, deleteSfxLines, MAX_SFX_DELETES_PER_JOB, seriesPatchBudget, sfxDeleteBudget, type SeriesReadIssue } from '@/lib/seriesPatch'
 import { planTimingPass, finishTimingPass, timedLinesFromSizes, sizesFromListing, type TimingCheckState } from '@/lib/timingPass'
 import {
   hasEarnedPackageEvidence,
@@ -10528,7 +10528,9 @@ export async function POST(req: NextRequest) {
           const sfxPlan = planSfxDeletions(readIssues, sfxScripts, sfxFrozen)
             || (sfxSubset.length && sfxSubset.length < readIssues.length ? planSfxDeletions(sfxSubset, sfxScripts, sfxFrozen) : null)
           const sfxCount = sfxPlan ? Array.from(sfxPlan.values()).reduce((n, c) => n + c.length, 0) : 0
-          if (sfxPlan && sfxDeletesSoFar + sfxCount <= MAX_SFX_DELETES_PER_JOB) {
+          // PATCH-BUDGET-SCALE-001: job caps scale with the series length (30-episode series).
+          const patchRunBudget = seriesPatchBudget(patchEpisodes.length)
+          if (sfxPlan && sfxDeletesSoFar + sfxCount <= sfxDeleteBudget(patchEpisodes.length)) {
             const sfxOutcomes = Array.from(sfxPlan.entries()).map(([epNum, cues]) => {
               const ep = patchEpisodes.find((e: any) => episodeNumber(e, 0) === epNum)
               return { epNum, ep, cues, script: deleteSfxLines(String(ep.script), cues) }
@@ -10580,6 +10582,7 @@ export async function POST(req: NextRequest) {
           const patchPlan = planSeriesPatch({
             issues: readIssues,
             patchRuns,
+            maxRuns: patchRunBudget,
             patchCounts: (priorPatchState.seriesRewrite?.patchCounts && typeof priorPatchState.seriesRewrite.patchCounts === 'object') ? priorPatchState.seriesRewrite.patchCounts : {},
             frozenEpisodes: new Set(patchEpisodes.filter((ep: any) => isFrozenSeriesEpisode(ep)).map((ep: any) => episodeNumber(ep, 0))),
             episodesWithScript: new Set(patchEpisodes.filter((ep: any) => Boolean(ep.script)).map((ep: any) => episodeNumber(ep, 0))),
@@ -10681,7 +10684,7 @@ export async function POST(req: NextRequest) {
                 if (pinErr) throw new Error(`SERIES-PATCH-001: re-pin of ${storyId} failed: ${pinErr.message}`)
               }
               const patchSummary = (goodOutcomes as any[]).map((o) => `EP${o.epNum}: ${o.edits} edit(s)${o.unfixed.length ? `, ${o.unfixed.length} not fixable by edit` : ''}`).join('; ')
-              const patchLogs = appendLog({ ...lockedJob, logs }, `Series patch ${patchPlan.run}/${MAX_SERIES_PATCH_RUNS}: ${readIssues.length} ${patchSourceLabel} issue(s) fixed in place — ${patchSummary}. Re-validating.`, {
+              const patchLogs = appendLog({ ...lockedJob, logs }, `Series patch ${patchPlan.run}/${patchRunBudget}: ${readIssues.length} ${patchSourceLabel} issue(s) fixed in place — ${patchSummary}. Re-validating.`, {
                 seriesId: result.seriesId,
                 patchedEpisodes: (goodOutcomes as any[]).map((o) => o.epNum),
                 unfixed: [...failedOutcomeNotes, ...(goodOutcomes as any[]).flatMap((o) => o.unfixed.map((u: string) => `EP${o.epNum}: ${u}`))].slice(0, 10),
