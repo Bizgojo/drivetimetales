@@ -38,6 +38,7 @@ function harness(next = { story: { id: 'well-ep2' }, reason: 'next_series_episod
     startAnalyticsSession: noop, noMusicRef: { current: true }, loading: false,
     audioStoryIdRef: { current: 'well-ep1' }, inWelcomeRef: { current: false }, saveTimer: { current: null },
     analyticsTrackedRef: { current: false }, router: { push: jest.fn() }, mediaHandlersRef: { current: {} },
+    naturalEndAtRef: { current: null }, prefetchedNextRef: { current: null }, prefetchingNextRef: { current: false },
   }
   const media = find(n => ts.isBinaryExpression(n) && n.left.getText(ast) === 'mediaHandlersRef.current').right.getText(ast)
   const code = ['disableAutoAdvanceForSession', 'handlePlayPause', 'maybeAutoAdvanceFromNaturalEnd', 'leaveForEpisode']
