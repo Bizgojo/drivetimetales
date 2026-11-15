@@ -23,7 +23,7 @@ describe('PATCH-BUDGET-002', () => {
   })
   test('run-next counts patches per episode', () => {
     const src = readFileSync(join(__dirname, '..', 'app/api/admin/production-jobs/run-next/route.ts'), 'utf8')
-    expect(src).toContain('patchCounts: (priorPatchState.seriesRewrite?.patchCounts')
+    expect(src).toContain("patchCounts: (result as any).stoppedBlockersPatch ? {} : (priorPatchState.seriesRewrite?.patchCounts")
     expect(src).toMatch(/patchCounts: \(goodOutcomes as any\[\]\)\.reduce/)
   })
 })

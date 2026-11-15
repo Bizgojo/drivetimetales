@@ -8426,6 +8426,9 @@ async function scoreValidateSeriesPackage(job: ProductionJob, model: string) {
       nextStep: NEXT_STEP_AFTER_SERIES_SCRIPTS,
       packageReport: stoppedReport,
       seriesReadIssues: stoppedBlockers.map(({ episode, problem, fix }) => ({ episode: Number(episode), problem: String(problem), fix: fix ? String(fix) : '' })),
+      // STOPPED-BLOCKERS-PATCH-001: these are the explicit "fix N" list; the per-episode patch
+      // limit does not apply to them (the job-wide limit still does).
+      stoppedBlockersPatch: true,
       state: {
         ...state,
         stoppedSeriesBlockers: [],
@@ -10592,7 +10595,10 @@ export async function POST(req: NextRequest) {
             issues: readIssues,
             patchRuns,
             maxRuns: patchRunBudget,
-            patchCounts: (priorPatchState.seriesRewrite?.patchCounts && typeof priorPatchState.seriesRewrite.patchCounts === 'object') ? priorPatchState.seriesRewrite.patchCounts : {},
+            // STOPPED-BLOCKERS-PATCH-001 (Mercy Island, Nov 15): the kept blockers were skipped because
+            // EP9/13/15 had used their 2 patches, and the job then failed with no reason. Kept
+            // blockers ignore the per-episode limit; the job-wide limit still applies.
+            patchCounts: (result as any).stoppedBlockersPatch ? {} : (priorPatchState.seriesRewrite?.patchCounts && typeof priorPatchState.seriesRewrite.patchCounts === 'object') ? priorPatchState.seriesRewrite.patchCounts : {},
             frozenEpisodes: new Set(patchEpisodes.filter((ep: any) => isFrozenSeriesEpisode(ep)).map((ep: any) => episodeNumber(ep, 0))),
             episodesWithScript: new Set(patchEpisodes.filter((ep: any) => Boolean(ep.script)).map((ep: any) => episodeNumber(ep, 0))),
           })
@@ -10727,6 +10733,8 @@ export async function POST(req: NextRequest) {
             logs = appendLog({ ...lockedJob, logs }, `Series patch not applied (EP${(patchFailure as any).epNum}: ${(patchFailure as any).error}) — falling back to whole-episode rewrite`, { seriesId: result.seriesId })
           } else {
             console.log(`[SERIES-PATCH-001] series ${result.seriesId}: skipped — ${patchPlan.reason}`)
+            // STOPPED-BLOCKERS-PATCH-001: say why in the job log instead of failing silently.
+            logs = appendLog({ ...lockedJob, logs }, `Series patch skipped — ${patchPlan.reason}`, { seriesId: result.seriesId })
           }
         }
 
