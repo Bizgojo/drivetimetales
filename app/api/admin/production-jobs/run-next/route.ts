@@ -39,7 +39,7 @@ import { scriptStructureIssues, openingExcerpt, OPENING_EXCERPT_WORDS, NO_COUNTI
 import { progressStop, progressStopSummary, readProgress, recordPatch, MAX_SERIES_READS } from '@/lib/seriesProgress'
 import { classifyIssueText, isPolishCardCopyIssue, isPolishOnlyReport, CLARITY_BLOCKER_IDS, POLISH_ONLY_MARK, POLISH_ACCEPTED_MARK } from '@/lib/issueClass'
 import { buildCastReview, needsCastReview, CAST_REVIEW_STATE_KEY } from '@/lib/castReview'
-import { extractValidatorFixList, planSeriesEpisodeRewrite, buildRewriteFeedbackBlock, MAX_SERIES_EPISODE_REWRITES } from '@/lib/seriesRewrite'
+import { extractValidatorFixList, planSeriesEpisodeRewrite, buildRewriteFeedbackBlock, MAX_SERIES_EPISODE_REWRITES, lineFixRewritePinRefreshes } from '@/lib/seriesRewrite'
 import { styleProfileFrom, styleProfileOfBrief, buildStylePromptBlock, maxMainCharacters } from '@/lib/seriesStyle'
 import { sequelHookOf, buildSequelHookPromptBlock, sequelHookValidatorNote } from '@/lib/seriesSequel'
 import { seasonHookOf, seasonHookOfEpisodes, seasonHookValidatorNote, buildSeasonHookPromptBlock } from '@/lib/seasonHook'
@@ -8166,7 +8166,7 @@ ${storyBodyExcerpt(String(episode.script || ''))}`,
  * hash. Pins that point at any other hash are left alone (they still fail
  * closed, as designed).
  */
-async function refreshPinsAfterHeaderOnlyRepair(episodes: any[], storyId: string, oldHash: string, newHash: string) {
+async function refreshPinsAfterHeaderOnlyRepair(episodes: any[], storyId: string, oldHash: string, newHash: string, reason = 'header-only DESCRIPTION repair') {
   if (oldHash === newHash) return
   for (const episode of episodes || []) {
     const sj = episode?.script_json && typeof episode.script_json === 'object' ? episode.script_json : null
@@ -8183,7 +8183,7 @@ async function refreshPinsAfterHeaderOnlyRepair(episodes: any[], storyId: string
             continuity_pins_used: { ...pins, [storyId]: newHash },
             continuity_pin_refreshes: [
               ...(Array.isArray(gen.continuity_pin_refreshes) ? gen.continuity_pin_refreshes : []),
-              { priorStoryId: storyId, from: oldHash, to: newHash, reason: 'header-only DESCRIPTION repair', at: nowIso() },
+              { priorStoryId: storyId, from: oldHash, to: newHash, reason, at: nowIso() },
             ],
           },
         },
@@ -8291,7 +8291,7 @@ async function scoreValidateSeriesPackage(job: ProductionJob, model: string) {
     }
   }
 
-  const refreshedEpisodes = await loadSeriesEpisodes(String(seriesId))
+  let refreshedEpisodes = await loadSeriesEpisodes(String(seriesId))
   const finalEpisodeNumber = refreshedEpisodes.reduce((max: number, episode: any) => Math.max(max, episodeNumber(episode, 0)), 0)
   if (finalEpisodeNumber > 0) {
     await ensureSeriesCharacterRosterThroughEpisode(String(seriesId), refreshedEpisodes, finalEpisodeNumber)
@@ -8311,6 +8311,15 @@ async function scoreValidateSeriesPackage(job: ProductionJob, model: string) {
   // Legacy/pre-landing eps with no pins log pins_absent (warn), never fail.
   // Belle text edits touch Belle asset rows, not stories.script, so they do not
   // trip pins. Spec §2, GATE-GAPS-SPEC-20261004.
+  // LINE-FIX-REWRITE-PIN-001: an episode rewritten alone (later episodes kept) moves the pins
+  // that pointed at its replaced script to its new script before the gate compares them.
+  const lineFixRefreshes = lineFixRewritePinRefreshes(refreshedEpisodes as any[], hashScript)
+  if (lineFixRefreshes.length) {
+    for (const r of lineFixRefreshes) {
+      await refreshPinsAfterHeaderOnlyRepair(refreshedEpisodes, r.storyId, r.oldHash, r.newHash, 'LINE-FIX-REWRITE-PIN-001: episode rewritten alone, later episodes kept')
+    }
+    refreshedEpisodes = await loadSeriesEpisodes(String(seriesId))
+  }
   const pinVerify = verifyContinuityPins(refreshedEpisodes)
   if (pinVerify.pins_absent) {
     console.warn('[continuity-pin] pins_absent for legacy episodes (warn, not fail)', {
@@ -10814,7 +10823,7 @@ export async function POST(req: NextRequest) {
                   },
                   script_json: {
                     ...sj,
-                    rewrite_backups: [...backups, { at: nowIso(), reason: isFailed ? 'validator_content_fail' : 'follows_rewritten_episode', script: ep.script }],
+                    rewrite_backups: [...backups, { at: nowIso(), reason: isFailed ? 'validator_content_fail' : 'follows_rewritten_episode', script: ep.script, ...(isFailed && plan.clearStoryIds.length === 1 ? { kept_later_episodes: true } : {}) }],
                   },
                 })
                 .eq('id', ep.id)
