@@ -41,6 +41,10 @@ import {
 } from '@/lib/readingProgress'
 
 interface QueueItem { url: string; type: 'intro' | 'story' | 'outro'; label: string }
+/** AUTOADVANCE-2S-001: gap between one episode's end and the next episode's sting (Player Rules, Marc Nov 15, 2026). */
+export const AUTO_ADVANCE_GAP_MS = 2000
+/** AUTOADVANCE-2S-001: look up the next episode this many seconds before the end. */
+const AUTO_ADVANCE_PREFETCH_SECONDS = 45
 
 // ── VOLUME LEVELS ─────────────────────────────────────────────────────────────
 // All values 0–1. Music stays BELOW these while voice is playing.
@@ -173,6 +177,13 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
   const mountedRef = useRef(false)
   const autoAdvanceEnabledRef = useRef(true)
   const autoAdvanceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // AUTOADVANCE-2S-001 (Marc, Nov 15, 2026, Weekend Wife on iPhone: "several times the next episode
+  // did not start in three seconds ... two seconds is enough"): the next series episode is looked up
+  // during the last 45 seconds (not after the end), and it starts exactly AUTO_ADVANCE_GAP_MS after
+  // the previous one ends, always from 0:00 so the sting plays.
+  const prefetchedNextRef = useRef<{ forStoryId: string; candidate: AutoAdvanceCandidate | null } | null>(null)
+  const prefetchingNextRef = useRef(false)
+  const naturalEndAtRef = useRef<number | null>(null)
   const stillListeningTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const unrequestedAutoStartsRef = useRef(0)
   const [autoAdvanceCandidate, setAutoAdvanceCandidate] = useState<AutoAdvanceCandidate | null>(null)
@@ -1064,7 +1075,11 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
     // episode_number and calls canLoadStory() to confirm it is published and
     // not hidden. If the episode is unavailable (unpublished, hidden, missing),
     // it returns null and no navigation or user_library pre-creation fires.
-    const directSeriesCandidate = await fetchDirectSeriesAutoAdvanceCandidate()
+    naturalEndAtRef.current = Date.now()
+    const prefetched = prefetchedNextRef.current
+    const directSeriesCandidate = prefetched && prefetched.forStoryId === storyId && prefetched.candidate
+      ? prefetched.candidate
+      : await fetchDirectSeriesAutoAdvanceCandidate()
     if (!mountedRef.current || !autoAdvanceEnabledRef.current) return
     if (directSeriesCandidate) {
       startAutoAdvanceTo(directSeriesCandidate)
@@ -1113,6 +1128,7 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
     setCumTime(0)
     setCurrentTime(0)
     setAutoAdvanceCandidate(null)
+    prefetchingNextRef.current = false
     // In-place story changes start a fresh continuation session.
     autoAdvanceEnabledRef.current = true
     setAutoAdvanceDisabledReason(null)
@@ -1798,8 +1814,13 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
     const audio = audioRef.current
     let cancelled = false
     let started = false
+    let gapTimer: ReturnType<typeof setTimeout> | null = null
     const attemptPlay = () => {
       seriesContinueAutoplayAttemptedRef.current = true
+      // AUTOADVANCE-2S-001: an auto-advanced episode always starts at 0:00 (sting first).
+      if (autoStartSource === 'auto_advance' && !isASC3 && resumeRef.current <= 0) {
+        try { if (audio.currentTime > 0.5) audio.currentTime = 0 } catch {}
+      }
       audio.play()
         .then(() => {
           if (cancelled) return
@@ -1826,12 +1847,39 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
     // play() queues playback until media is ready. Waiting for canplay moves
     // the request farther from the Continue gesture and its listener could be
     // removed by a duration update before it ever requested playback.
-    attemptPlay()
+    // AUTOADVANCE-2S-001: start the next episode AUTO_ADVANCE_GAP_MS after the last one ended.
+    const endedAt = autoStartSource === 'auto_advance' ? naturalEndAtRef.current : null
+    const waitMs = endedAt ? Math.max(0, endedAt + AUTO_ADVANCE_GAP_MS - Date.now()) : 0
+    if (waitMs > 0) {
+      seriesContinueAutoplayAttemptedRef.current = true
+      gapTimer = setTimeout(() => { if (!cancelled) { naturalEndAtRef.current = null; attemptPlay() } }, waitMs)
+    } else {
+      naturalEndAtRef.current = null
+      attemptPlay()
+    }
     return () => {
       cancelled = true
+      if (gapTimer) clearTimeout(gapTimer)
       if (!started) seriesContinueAutoplayAttemptedRef.current = false
     }
   }, [loading, isASC3, queue, audioSrc, storyId, totalDur])
+
+  // AUTOADVANCE-2S-001: look up the next series episode during the last 45 seconds, so the
+  // natural end does not wait on the database.
+  useEffect(() => {
+    if (loading || !(story as any)?.series_id || mode === 'playlist') return
+    const total = totalDur || duration
+    if (!total || total < AUTO_ADVANCE_PREFETCH_SECONDS * 2) return
+    if (cumTime < total - AUTO_ADVANCE_PREFETCH_SECONDS) return
+    if (prefetchingNextRef.current || prefetchedNextRef.current?.forStoryId === storyId) return
+    prefetchingNextRef.current = true
+    const forStoryId = storyId
+    void fetchDirectSeriesAutoAdvanceCandidate()
+      .then((candidate) => { if (mountedRef.current) prefetchedNextRef.current = { forStoryId, candidate } })
+      .catch(() => {})
+      .finally(() => { prefetchingNextRef.current = false })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cumTime, totalDur, duration, loading, storyId, mode])
 
   // Series and playlist handoffs share the autoplay effect above. Running
   // a second play effect here used to race the new source's load/seek.
