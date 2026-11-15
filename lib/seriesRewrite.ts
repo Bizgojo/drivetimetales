@@ -60,3 +60,29 @@ export function buildRewriteFeedbackBlock(feedback: string | null | undefined, a
     `--- REVIEWER FIX LIST ---\n${f}\n--- END FIX LIST ---\n`
   )
 }
+
+/**
+ * LINE-FIX-REWRITE-PIN-001 (Mercy Island EP8, job 2f68f4cb, Nov 15, 2026): LINE-FIX-FIRST-001
+ * rewrites only the failed episode and keeps later episodes' checked scripts. Those later
+ * episodes still pinned the OLD script's hash, so the package gate always failed with
+ * continuity_pin_mismatch (EP9-30 all pointing at EP8's pre-rewrite hash). Pins that point at
+ * exactly a script that was replaced by such a rewrite move to the current script; any other
+ * mismatch still fails closed. The whole-series read still checks the story continuity.
+ */
+export function lineFixRewritePinRefreshes(
+  episodes: Array<{ id: string; script?: string | null; script_json?: any }>,
+  hash: (script: string) => string,
+): Array<{ storyId: string; oldHash: string; newHash: string }> {
+  const out: Array<{ storyId: string; oldHash: string; newHash: string }> = []
+  for (const ep of episodes || []) {
+    if (!ep?.id || !ep.script) continue
+    const backups = Array.isArray(ep.script_json?.rewrite_backups) ? ep.script_json.rewrite_backups : []
+    const newHash = hash(String(ep.script))
+    for (const b of backups) {
+      if (!b || b.reason !== 'validator_content_fail' || b.kept_later_episodes !== true || !b.script) continue
+      const oldHash = hash(String(b.script))
+      if (oldHash !== newHash && !out.some((r) => r.storyId === String(ep.id) && r.oldHash === oldHash)) out.push({ storyId: String(ep.id), oldHash, newHash })
+    }
+  }
+  return out
+}
