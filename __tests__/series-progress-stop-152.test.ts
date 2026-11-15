@@ -60,3 +60,17 @@ describe('STOPPED-BLOCKERS-001', () => {
     expect(src.slice(keptAt, readAt)).toContain('seriesReadIssues: stoppedBlockers.map(')
   })
 })
+
+describe('SERIES-READS-SCALE-001', () => {
+  const { maxSeriesReads } = require('@/lib/seriesProgress')
+  test('7-episode series keep 6 reads; 30 episodes get 12', () => {
+    expect(maxSeriesReads(7)).toBe(6)
+    expect(maxSeriesReads(undefined)).toBe(6)
+    expect(maxSeriesReads(30)).toBe(12)
+  })
+  test('the read ceiling uses the series length', () => {
+    expect(progressStop({ blockerReads: 6, issues: [], progress: emptyProgress() }).stop).toBe(true)
+    expect(progressStop({ blockerReads: 6, issues: [], progress: emptyProgress(), episodeCount: 30 }).stop).toBe(false)
+    expect(progressStop({ blockerReads: 12, issues: [], progress: emptyProgress(), episodeCount: 30 }).reason).toBe('12 series reads')
+  })
+})

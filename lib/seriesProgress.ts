@@ -10,6 +10,18 @@
 
 export const MAX_SERIES_READS = 6
 
+/**
+ * SERIES-READS-SCALE-001 (Mercy Island, 30 episodes, Nov 15, 2026): each whole-series read
+ * reports a handful of problems, so a 30-episode series hit the 6-read ceiling while every
+ * read was still fixing new, different problems. A long series gets one more read per
+ * 4 episodes past 7 (30 episodes -> 12). The no-progress stops (a fixed blocker comes back,
+ * a fix makes a new blocker) are unchanged.
+ */
+export function maxSeriesReads(episodeCount?: number): number {
+  const n = Number.isFinite(episodeCount) ? Math.floor(Number(episodeCount)) : 0
+  return n > 7 ? MAX_SERIES_READS + Math.ceil((n - 7) / 4) : MAX_SERIES_READS
+}
+
 /** Stored in state_json.seriesContinuity.seriesProgress. */
 export type SeriesProgress = {
   /** Blockers already sent to a fix: "<episode>|<normalized quoted line>". */
@@ -66,8 +78,9 @@ function overlaps(a: string, b: string): boolean {
 }
 
 /** Decide whether this read (which found blockers) should stop the series. */
-export function progressStop(input: { blockerReads: number; issues: ProgressIssue[]; progress: SeriesProgress }): { stop: boolean; reason: string | null } {
+export function progressStop(input: { blockerReads: number; issues: ProgressIssue[]; progress: SeriesProgress; episodeCount?: number }): { stop: boolean; reason: string | null } {
   const { blockerReads, issues, progress } = input
+  const maxReads = maxSeriesReads(input.episodeCount)
   for (const issue of issues) {
     const line = quotedLine(issue.problem)
     if (!line) continue
@@ -75,7 +88,7 @@ export function progressStop(input: { blockerReads: number; issues: ProgressIssu
     if (progress.fixed.some((f) => overlaps(f, k))) return { stop: true, reason: `a fixed blocker came back (EP${issue.episode})` }
     if (progress.changed.some((c) => overlaps(c, k))) return { stop: true, reason: `a fix made a new blocker (EP${issue.episode})` }
   }
-  if (blockerReads >= MAX_SERIES_READS) return { stop: true, reason: `${MAX_SERIES_READS} series reads` }
+  if (blockerReads >= maxReads) return { stop: true, reason: `${maxReads} series reads` }
   return { stop: false, reason: null }
 }
 

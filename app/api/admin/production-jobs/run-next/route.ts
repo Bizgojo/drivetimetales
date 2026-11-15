@@ -36,7 +36,7 @@ import { maybeDirectPublishStandalone, maybeDirectPublishSeries, type DirectAuto
 import { transientResumeDecision, errorTextOf, MAX_TRANSIENT_RESUMES } from '@/lib/transientResume'
 import { humanStoriesBlock } from '@/lib/humanStories'
 import { scriptStructureIssues, openingExcerpt, OPENING_EXCERPT_WORDS, NO_COUNTING_RULE } from '@/lib/countInCode'
-import { progressStop, progressStopSummary, readProgress, recordPatch, MAX_SERIES_READS } from '@/lib/seriesProgress'
+import { progressStop, progressStopSummary, readProgress, recordPatch, maxSeriesReads } from '@/lib/seriesProgress'
 import { classifyIssueText, isPolishCardCopyIssue, isPolishOnlyReport, CLARITY_BLOCKER_IDS, POLISH_ONLY_MARK, POLISH_ACCEPTED_MARK } from '@/lib/issueClass'
 import { buildCastReview, needsCastReview, CAST_REVIEW_STATE_KEY } from '@/lib/castReview'
 import { extractValidatorFixList, planSeriesEpisodeRewrite, buildRewriteFeedbackBlock, MAX_SERIES_EPISODE_REWRITES, lineFixRewritePinRefreshes } from '@/lib/seriesRewrite'
@@ -8510,9 +8510,9 @@ async function scoreValidateSeriesPackage(job: ProductionJob, model: string) {
       // blocker, or MAX_SERIES_READS reads with blockers).
       const blockerReads = Number((continuityState as any).blockerReads || 0) + 1
       ;(nextContinuityState as any).blockerReads = blockerReads
-      const progressVerdict = progressStop({ blockerReads, issues: verdict.issues, progress: readProgress((continuityState as any).seriesProgress) })
+      const progressVerdict = progressStop({ blockerReads, issues: verdict.issues, progress: readProgress((continuityState as any).seriesProgress), episodeCount: refreshedEpisodes.length })
       const hardStop = progressVerdict.stop
-      const continuityReport = { pass: false, issues: verdict.issues.map((i) => `Episode ${i.episode}: ${i.problem}${i.fix ? ` — Fix: ${i.fix}` : ''}`), confidence: 1, summary: hardStop ? progressStopSummary(progressVerdict.reason) : `series-continuity-check failed (run ${runs}, read ${blockerReads}/${MAX_SERIES_READS})`, rawReport: rawVerdict }
+      const continuityReport = { pass: false, issues: verdict.issues.map((i) => `Episode ${i.episode}: ${i.problem}${i.fix ? ` — Fix: ${i.fix}` : ''}`), confidence: 1, summary: hardStop ? progressStopSummary(progressVerdict.reason) : `series-continuity-check failed (run ${runs}, read ${blockerReads}/${maxSeriesReads(refreshedEpisodes.length)})`, rawReport: rawVerdict }
       const allowRewrite = !hardStop && runs <= MAX_SERIES_CONTINUITY_RUNS && targetEp
       return {
         passed: false,
@@ -8581,13 +8581,13 @@ async function scoreValidateSeriesPackage(job: ProductionJob, model: string) {
       const geminiRuns = Number(blockState.geminiRuns || 0) + 1
       // SERIES-PROGRESS-STOP-001: the same progress test as the continuity check.
       const blockerReads = Number(blockState.blockerReads || 0) + 1
-      const progressVerdict = progressStop({ blockerReads, issues: geminiVerdict.issues, progress: readProgress(blockState.seriesProgress) })
+      const progressVerdict = progressStop({ blockerReads, issues: geminiVerdict.issues, progress: readProgress(blockState.seriesProgress), episodeCount: refreshedEpisodes.length })
       const hardStop = progressVerdict.stop
       const nextBlockState = { ...blockState, geminiRuns, blockerReads }
       const targetEp = refreshedEpisodes.find((ep: any) => episodeNumber(ep, 0) === geminiTarget.episodeNumber)
       const allowRewrite = !hardStop && geminiRuns <= MAX_GEMINI_SCRIPT_REWRITES && targetEp
       console.log(`[GEMINI-READ-BLOCK-001] series ${seriesId}: ${geminiVerdict.issues.length} issue(s), rewrite ${geminiRuns}/${MAX_GEMINI_SCRIPT_REWRITES}${allowRewrite ? ` from episode ${geminiTarget.episodeNumber}` : ' — limit reached, stopping before voicing'}`)
-      const geminiReport = { pass: false, issues: geminiVerdict.issues.map((i) => `Episode ${i.episode}: ${i.problem}${i.fix ? ` — Fix: ${i.fix}` : ''}`), confidence: 1, summary: hardStop ? progressStopSummary(progressVerdict.reason) : `series story read failed (rewrite ${geminiRuns}, read ${blockerReads}/${MAX_SERIES_READS})`, rawReport: null }
+      const geminiReport = { pass: false, issues: geminiVerdict.issues.map((i) => `Episode ${i.episode}: ${i.problem}${i.fix ? ` — Fix: ${i.fix}` : ''}`), confidence: 1, summary: hardStop ? progressStopSummary(progressVerdict.reason) : `series story read failed (rewrite ${geminiRuns}, read ${blockerReads}/${maxSeriesReads(refreshedEpisodes.length)})`, rawReport: null }
       return {
         passed: false,
         failed: true,
