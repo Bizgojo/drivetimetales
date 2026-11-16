@@ -64,6 +64,10 @@ const RULES: Rule[] = [
   // series jobs failed twice that morning on these and needed a manual restart.
   { cause: 'provider_overloaded', pattern: /\b(500|502|503|504|529) status code\b/ },
   { cause: 'provider_overloaded', pattern: /\b(502|503|504|529) (credential validation failed|Service Unavailable|Overloaded)\b/i },
+  // RETRY-ELEVENLABS-5XX-001 (Mercy Island EP3, Nov 15, 2026): "ElevenLabs error 500: ...
+  // service_unavailable ... You have not been charged" stopped a 30-episode voicing run for 26 min.
+  { cause: 'provider_overloaded', pattern: /elevenlabs[^\n]{0,30}?(error|failed)[^\n]{0,4}?[:(\s]\s*(500|502|503|504)\b/i },
+  { cause: 'provider_overloaded', pattern: /"(type|code)"\s*:\s*"service_unavailable"/ },
 
   // Network-level failures before any response arrived. Case-sensitive and
   // anchored to the runtime's exact error text so dialogue such as
