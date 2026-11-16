@@ -34,6 +34,13 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     return <>{children}</>
   }
 
+  // LANDING-PUBLIC-001: / is a standalone public landing page with its own
+  // header, matching the approved design. The global header/swipe chrome is
+  // suppressed here the same way it already is for /go and /signup.
+  if (pathname === '/') {
+    return <>{children}</>
+  }
+
   if (pathname === '/subscribe' && !subscribeOrganic) {
     return <>{children}</>
   }
