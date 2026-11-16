@@ -2504,6 +2504,52 @@ async function tryResumeTransientNetworkJob(explicitJobId?: string): Promise<{ r
 }
 
 /**
+ * Does the deployed commit provably contain the fix commit? Answered by git
+ * (`merge-base --is-ancestor`), because a string compare cannot tell: the
+ * deployed sha and the fix sha share no prefix, the fix is simply an ancestor.
+ * Returns null when git cannot answer, so the QC gate fails closed.
+ */
+function deployedContainsFix(fixSha: string, deployedSha: string): boolean | null {
+  try {
+    const { execFileSync } = require('child_process') as typeof import('child_process')
+    const cwd = process.env.ET_REPO_DIR || process.cwd()
+    execFileSync('git', ['cat-file', '-e', `${fixSha}^{commit}`], { cwd, stdio: 'ignore' })
+    execFileSync('git', ['merge-base', '--is-ancestor', fixSha, deployedSha], { cwd, stdio: 'ignore' })
+    return true
+  } catch (e) {
+    // git exits 1 for "not an ancestor" and non-zero for "unknown object".
+    const status = (e as { status?: number })?.status
+    if (status === 1) return false
+    return null
+  }
+}
+
+/**
+ * The commit currently serving production, from the app's own /api/version
+ * endpoint ("<sha12>-<buildid>"). Returns null when it cannot be read, so the
+ * QC resume gate fails closed rather than resuming against an unknown build.
+ */
+let deployedVersionCache: { at: number; value: string | null } | null = null
+async function readDeployedVersion(): Promise<string | null> {
+  const now = Date.now()
+  if (deployedVersionCache && now - deployedVersionCache.at < 60_000) return deployedVersionCache.value
+  let value: string | null = null
+  try {
+    const origin = process.env.NEXT_PUBLIC_SITE_URL || process.env.SITE_ORIGIN || 'https://app.endless-tales.com'
+    const res = await fetch(`${origin}/api/version`, { cache: 'no-store' })
+    if (res.ok) {
+      const body = (await res.json()) as { version?: unknown }
+      const v = typeof body?.version === 'string' ? body.version.trim() : ''
+      value = v || null
+    }
+  } catch {
+    value = null
+  }
+  deployedVersionCache = { at: now, value }
+  return value
+}
+
+/**
  * RETRY-QC-001 (Marc GO 2026-11-16): revive one job that stopped on a segment
  * transcript/loudness QC verdict. Same step, saved progress kept — segments
  * already on disk are skipped, so no audio is paid for twice.
@@ -2533,8 +2579,19 @@ async function tryResumeQcVerdictJob(explicitJobId?: string): Promise<{ resumedI
   }
   const now = Date.now()
   for (const job of rows) {
-    const decision = qcResumeDecision(job as never, now)
+    const deployedVersion = await readDeployedVersion()
+    const decision = qcResumeDecision(job as never, {
+      deployedVersion,
+      resolveAncestry: deployedContainsFix,
+      nowMs: now,
+    })
     if (!decision || decision.action === 'wait') continue
+    if (decision.action === 'blocked') {
+      // Marc's rule: only resume once the failing QC rule's fix is deployed.
+      // Log once (not per tick) and leave the job failed for a human.
+      console.log(`[run-next] RETRY-QC-001 held job ${job.id.slice(0, 8)}: ${decision.reason}`)
+      continue
+    }
     const state = job.state_json && typeof job.state_json === 'object' ? (job.state_json as Record<string, unknown>) : {}
     if (decision.action === 'exhausted') {
       // Mark once so the scan stops considering it; the job stays failed.
@@ -2547,8 +2604,10 @@ async function tryResumeQcVerdictJob(explicitJobId?: string): Promise<{ resumedI
         .eq('status', 'failed')
       return { resumedId: null, exhaustedId: job.id }
     }
-    const logs = appendLog(job, `RETRY-QC-001: auto-resumed after a segment QC rejection (${decision.attempt}/${MAX_QC_RESUMES}); retry from current step`, {
+    const logs = appendLog(job, `RETRY-QC-001: auto-resumed after a segment QC rejection (${decision.attempt}/${MAX_QC_RESUMES}) — ${decision.ruleId} is deployed in ${decision.deployed}; retry from current step`, {
       step: decision.step,
+      ruleId: decision.ruleId,
+      deployedVersion: decision.deployed,
       previousError: qcErrorTextOf(job.error_json).slice(0, 300),
     })
     const { data: resumed, error } = await supabase

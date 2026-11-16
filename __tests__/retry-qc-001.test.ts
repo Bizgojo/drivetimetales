@@ -1,21 +1,51 @@
 /**
- * RETRY-QC-001 — a QC-rejected voices job must retry itself instead of
- * sitting idle until a human notices.
+ * RETRY-QC-001 — a QC-rejected voices job retries itself ONLY when the rule
+ * that rejected it has since been fixed and deployed.
  *
- * Trigger: Mercy Island job 2f68f4cb sat failed for ~16h because
+ * Marc's rule (2026-11-16 15:40 EST): "Only allow it when the QC rule that
+ * failed has since been fixed and deployed."
+ *
+ * Trigger: Mercy Island job 2f68f4cb sat failed ~16h because
  * `Segment transcript QC failed ... expected "Nell.", detected "now."`
- * matched neither resume class (not a transport error, not a Belle block).
+ * matched neither resume class, and the fix (QC-ONE-WORD-NAME-001, #667)
+ * was merged but not yet deployed.
  */
 import {
   qcResumeDecision,
   isResumableQcFailure,
   qcErrorTextOf,
+  identifyQcRule,
+  parseQcMismatch,
+  fixIsDeployed,
+  shaOf,
   MAX_QC_RESUMES,
   QC_RESUME_BACKOFF_MS,
 } from '@/lib/qcVerdictResume'
 
 const T0 = Date.parse('2026-11-16T04:40:57.998Z')
-const LATER = T0 + QC_RESUME_BACKOFF_MS[0] + 1000
+
+/** Simulates git ancestry for the two real builds. */
+/**
+ * git says: is <fix> an ancestor of <dep>?
+ * Models only our two real builds. The DEPLOYED sha decides the answer — the
+ * fix sha is the same in both cases, so keying on it alone is a no-op.
+ */
+const FIX_FULL = '6cfbd7b033f64b9a81606eafa1357095b0d64a78'
+/** git: "is <fix> an ancestor of <dep>?" — true for the build that shipped the fix. */
+const ancestryWithFix = (fix: string, dep: string) => fix === FIX_FULL && dep === '2353ef695a3c'
+/** git: the build from BEFORE the fix — the fix is NOT in it. */
+const ancestryWithoutFix = (fix: string, dep: string) => {
+  if (dep === '1fe7c2502dd2') return false
+  return fix === FIX_FULL && dep === '2353ef695a3c'
+}
+const AFTER_BACKOFF = T0 + QC_RESUME_BACKOFF_MS[0] + 1000
+
+/** The commit that fixes QC-ONE-WORD-NAME-001 (PR #667). */
+const FIX_SHA = '6cfbd7b033f64b9a81606eafa1357095b0d64a78'
+/** Production build that CONTAINS the fix. */
+const DEPLOYED_WITH_FIX = '2353ef695a3c-mwjotfgw'
+/** Production build from BEFORE the fix (what was live while Mercy failed). */
+const DEPLOYED_WITHOUT_FIX = '1fe7c2502dd2-mwil5jw4'
 
 function job(errorJson: unknown, over: Record<string, unknown> = {}) {
   return {
@@ -45,20 +75,83 @@ const MERCY_ERROR = {
   },
 }
 
-describe('RETRY-QC-001 — qcVerdictResume', () => {
-  it('resumes the real Mercy Island failure after its back-off', () => {
-    const d = qcResumeDecision(job(MERCY_ERROR), LATER)
-    expect(d).toEqual({ action: 'resume', attempt: 1, step: 'series_generate_voices' })
+describe('RETRY-QC-001 — the deployed-fix gate (Marc rule)', () => {
+  it('resumes the real Mercy failure once the fix is deployed', () => {
+    const d = qcResumeDecision(job(MERCY_ERROR), {
+      deployedVersion: DEPLOYED_WITH_FIX,
+      resolveAncestry: ancestryWithFix,
+      nowMs: AFTER_BACKOFF,
+    })
+    expect(d).toEqual({
+      action: 'resume',
+      attempt: 1,
+      step: 'series_generate_voices',
+      ruleId: 'QC-ONE-WORD-NAME-001',
+      deployed: DEPLOYED_WITH_FIX,
+    })
+  })
+
+  it('REFUSES when the fix is merged but not deployed (the actual Mercy state)', () => {
+    const d = qcResumeDecision(job(MERCY_ERROR), {
+      deployedVersion: DEPLOYED_WITHOUT_FIX,
+      resolveAncestry: ancestryWithoutFix,
+      nowMs: AFTER_BACKOFF,
+    })
+    expect(d?.action).toBe('blocked')
+    expect(JSON.stringify(d)).toContain('not in deployed build')
+  })
+
+  it('REFUSES when the deployed version cannot be determined (fail closed)', () => {
+    const d = qcResumeDecision(job(MERCY_ERROR), { deployedVersion: null, resolveAncestry: ancestryWithFix, nowMs: AFTER_BACKOFF })
+    expect(d?.action).toBe('blocked')
+  })
+
+  it('REFUSES a QC verdict with no known fix', () => {
+    const unknown = { message: 'Segment transcript QC failed for segment_0003.mp3: expected "the long road home", detected "the long road" (similarity: 71.0%)' }
+    const d = qcResumeDecision(job(unknown), { deployedVersion: DEPLOYED_WITH_FIX, resolveAncestry: ancestryWithFix, nowMs: AFTER_BACKOFF })
+    expect(d?.action).toBe('blocked')
+  })
+
+  it('fixIsDeployed uses git ancestry, not string prefix', () => {
+    // the two real shas share NO prefix; ancestry is what decides
+    expect(shaOf(DEPLOYED_WITH_FIX)).toBe('2353ef695a3c')
+    expect(FIX_SHA.startsWith(shaOf(DEPLOYED_WITH_FIX))).toBe(false)
+    expect(fixIsDeployed(FIX_SHA, DEPLOYED_WITH_FIX, ancestryWithFix)).toBe(true)
+    expect(fixIsDeployed(FIX_SHA, DEPLOYED_WITHOUT_FIX, ancestryWithoutFix)).toBe(false)
+  })
+
+  it('fixIsDeployed fails closed when git cannot answer', () => {
+    expect(fixIsDeployed(FIX_SHA, DEPLOYED_WITH_FIX, () => null)).toBe(false)
+    expect(fixIsDeployed(FIX_SHA, '', ancestryWithFix)).toBe(false)
+  })
+})
+
+describe('RETRY-QC-001 — rule identification', () => {
+  it('parses expected/detected from the QC message', () => {
+    expect(parseQcMismatch(MERCY_ERROR.message)).toEqual({ expected: 'Nell.', detected: 'now.' })
+  })
+
+  it('identifies the one-word cast-name shape', () => {
+    expect(identifyQcRule(MERCY_ERROR.message)?.id).toBe('QC-ONE-WORD-NAME-001')
+  })
+
+  it('does not identify a multi-word mismatch as that rule', () => {
+    const multi = { message: 'Segment transcript QC failed for x.mp3: expected "and then she left", detected "and then she" (similarity: 60.0%)' }
+    expect(identifyQcRule(multi.message)).toBeNull()
+    expect(qcErrorTextOf(multi)).toContain('transcript QC failed')
   })
 
   it('finds the QC text nested under episodeResult (series wrapper)', () => {
-    const wrapped = { at: T0, step: 'series_generate_voices', episodeResult: { error: MERCY_ERROR.message } }
+    const wrapped = { episodeResult: { error: MERCY_ERROR.message } }
     expect(qcErrorTextOf(wrapped)).toContain('transcript QC failed')
-    expect(qcResumeDecision(job(wrapped), LATER)?.action).toBe('resume')
   })
+})
+
+describe('RETRY-QC-001 — timing and budget', () => {
+  const opts = { deployedVersion: DEPLOYED_WITH_FIX, resolveAncestry: ancestryWithFix }
 
   it('waits inside the back-off window', () => {
-    expect(qcResumeDecision(job(MERCY_ERROR), T0 + 1000)).toEqual({
+    expect(qcResumeDecision(job(MERCY_ERROR), { ...opts, nowMs: T0 + 1000 })).toEqual({
       action: 'wait',
       attempt: 1,
       retryAtMs: T0 + QC_RESUME_BACKOFF_MS[0],
@@ -70,72 +163,65 @@ describe('RETRY-QC-001 — qcVerdictResume', () => {
   })
 
   it('gives up after MAX_QC_RESUMES', () => {
-    const d = qcResumeDecision(job(MERCY_ERROR, { state_json: { qcResumeCount: MAX_QC_RESUMES } }), LATER)
+    const d = qcResumeDecision(job(MERCY_ERROR, { state_json: { qcResumeCount: MAX_QC_RESUMES } }), {
+      ...opts,
+      nowMs: AFTER_BACKOFF,
+    })
     expect(d).toEqual({ action: 'exhausted', attempt: MAX_QC_RESUMES })
   })
 
-  it('counts attempts across resumes, and the second wait is longer', () => {
+  it('counts attempts across resumes', () => {
     const second = job(MERCY_ERROR, { state_json: { qcResumeCount: 1 } })
-    // attempt 2 uses the 15-minute back-off, so the 5-minute mark is still 'wait'
-    expect(qcResumeDecision(second, LATER)).toEqual({
+    expect(qcResumeDecision(second, { ...opts, nowMs: AFTER_BACKOFF })).toEqual({
       action: 'wait',
       attempt: 2,
       retryAtMs: T0 + QC_RESUME_BACKOFF_MS[1],
     })
-    const afterSecond = T0 + QC_RESUME_BACKOFF_MS[1] + 1000
-    expect(qcResumeDecision(second, afterSecond)).toEqual({
-      action: 'resume',
-      attempt: 2,
-      step: 'series_generate_voices',
-    })
+    expect(
+      qcResumeDecision(second, { ...opts, nowMs: T0 + QC_RESUME_BACKOFF_MS[1] + 1000 })?.action
+    ).toBe('resume')
+  })
+})
+
+describe('RETRY-QC-001 — must never be auto-resumed', () => {
+  const opts = { deployedVersion: DEPLOYED_WITH_FIX, resolveAncestry: ancestryWithFix, nowMs: AFTER_BACKOFF }
+
+  it('REPEATED_IDENTICAL_TRUNCATION (code says retrying will not help)', () => {
+    const t = { message: 'Segment transcript QC failed for segment_0015.mp3 [REPEATED_IDENTICAL_TRUNCATION]: Whisper returned the same partial output "now." across all 3 retry candidates. Retrying will not help.' }
+    expect(qcResumeDecision(job(t), opts)).toBeNull()
   })
 
-  it('resumes a loudness QC verdict too', () => {
-    const loud = { message: 'Segment loudness QC failed for segment_0042.mp3: best candidate B 2.10 LUFS, -0.40 dBTP' }
-    expect(qcResumeDecision(job(loud), LATER)?.action).toBe('resume')
+  it('TRANSCRIPT_AMBIGUOUS', () => {
+    const t = { message: 'TRANSCRIPT_AMBIGUOUS: Segment segment_0007.mp3 - Whisper returned "?".' }
+    expect(qcResumeDecision(job(t), opts)).toBeNull()
   })
 
-  // ── must never be auto-resumed ──────────────────────────────────────────
-  it('does NOT resume REPEATED_IDENTICAL_TRUNCATION (code says retrying will not help)', () => {
-    const t = {
-      message:
-        'Segment transcript QC failed for segment_0015.mp3 [REPEATED_IDENTICAL_TRUNCATION]: Whisper returned the same partial output "now." across all 3 retry candidates. Retrying will not help. Split this segment into shorter sub-segments.',
-    }
-    expect(qcResumeDecision(job(t), LATER)).toBeNull()
+  it('account-wide causes (credits / keys)', () => {
+    expect(qcResumeDecision(job({ ...MERCY_ERROR, transient_cause: 'elevenlabs_auth_or_quota' }), opts)).toBeNull()
   })
 
-  it('does NOT resume ambiguous audio (TRANSCRIPT_AMBIGUOUS)', () => {
-    const t = { message: 'TRANSCRIPT_AMBIGUOUS: Segment segment_0007.mp3 - Whisper returned "?". This is not a QC normalisation case.' }
-    expect(qcResumeDecision(job(t), LATER)).toBeNull()
+  it('already-exhausted jobs', () => {
+    expect(qcResumeDecision(job({ ...MERCY_ERROR, exhausted: true }), opts)).toBeNull()
   })
 
-  it('does NOT resume account-wide causes (credits / keys)', () => {
-    expect(qcResumeDecision(job({ ...MERCY_ERROR, transient_cause: 'elevenlabs_auth_or_quota' }), LATER)).toBeNull()
+  it('network errors (RETRY-NET-001 territory)', () => {
+    expect(qcResumeDecision(job({ message: 'TypeError: fetch failed' }), opts)).toBeNull()
   })
 
-  it('does NOT resume an already-exhausted job', () => {
-    expect(qcResumeDecision(job({ ...MERCY_ERROR, exhausted: true }), LATER)).toBeNull()
+  it('writer/preflight defects', () => {
+    expect(qcResumeDecision(job({ message: 'WRITER-SELF-CHECK-001: episode 5 still fails pre-save checks' }), opts)).toBeNull()
   })
 
-  it('does NOT resume network errors (that is RETRY-NET-001 territory)', () => {
-    expect(qcResumeDecision(job({ message: 'TypeError: fetch failed' }), LATER)).toBeNull()
+  it('jobs that are not failed', () => {
+    expect(qcResumeDecision(job(MERCY_ERROR, { status: 'running' }), opts)).toBeNull()
+    expect(qcResumeDecision(job(MERCY_ERROR, { status: 'queued' }), opts)).toBeNull()
   })
 
-  it('does NOT resume writer/preflight defects (content, not QC verdict)', () => {
-    const t = { message: 'WRITER-SELF-CHECK-001: episode 5 still fails pre-save checks after 3 drafts' }
-    expect(qcResumeDecision(job(t), LATER)).toBeNull()
+  it('TEST_ jobs', () => {
+    expect(qcResumeDecision(job(MERCY_ERROR, { job_type: 'TEST_series_production' }), opts)).toBeNull()
   })
 
-  it('ignores jobs that are not failed', () => {
-    expect(qcResumeDecision(job(MERCY_ERROR, { status: 'running' }), LATER)).toBeNull()
-    expect(qcResumeDecision(job(MERCY_ERROR, { status: 'queued' }), LATER)).toBeNull()
-  })
-
-  it('ignores TEST_ jobs even when they look like the real thing', () => {
-    expect(qcResumeDecision(job(MERCY_ERROR, { job_type: 'TEST_series_production' }), LATER)).toBeNull()
-  })
-
-  it('isResumableQcFailure rejects empty input', () => {
+  it('empty input', () => {
     expect(isResumableQcFailure('')).toBe(false)
   })
 })
