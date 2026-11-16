@@ -141,19 +141,63 @@ function wordCount(s: string | null): number {
 }
 
 /**
- * Which known QC rule does this verdict correspond to? null = no known rule,
- * so we cannot prove a fix exists and must not resume.
+ * Which known QC rule does this verdict correspond to? null = no known rule, so
+ * we cannot prove a fix exists and must not resume.
  *
- * QC-ONE-WORD-NAME-001 shape: the script line was a SINGLE word (the cast
- * name "Nell.") and Whisper heard 1-2 words. That is exactly the case the
- * rule now accepts.
+ * QC-ONE-WORD-NAME-001 is NOT "any single-word mismatch". The deployed fix
+ * (oneWordCastNameLine in lib/transcriptQC.ts) accepts the take only when the
+ * expected line is itself a CAST NAME:
+ *
+ *   if (!names.has(words[0].toLowerCase())) return false
+ *
+ * Matching on word count alone would resume `expected "Yes." / detected "No."`
+ * — a genuinely wrong take the fix does not accept — burning three ElevenLabs
+ * retakes on a failure the deployed rule still rejects. So the cast-name test is
+ * duplicated here, and a mismatch we cannot tie to a cast name stays for a human.
  */
-export function identifyQcRule(text: string): QcRule | null {
+export function identifyQcRule(
+  text: string,
+  castNames?: Iterable<string> | null,
+): QcRule | null {
   if (!text) return null
   const { expected, detected } = parseQcMismatch(text)
-  if (wordCount(expected) === 1 && wordCount(detected) >= 1 && wordCount(detected) <= 2) {
-    const rule = QC_RULE_FIXES.find((r) => r.id === 'QC-ONE-WORD-NAME-001')
-    if (rule) return rule
+  if (wordCount(expected) !== 1 || wordCount(detected) < 1 || wordCount(detected) > 2) return null
+
+  // require the expected word to BE a cast name — mirrors the deployed fix
+  const names = new Set(
+    Array.from(castNames ?? [], (n) => String(n ?? '').trim().toLowerCase()).filter(Boolean),
+  )
+  const expectedWord = String(expected ?? '')
+    .replace(/[^A-Za-z'\s-]/g, ' ')
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)[0]
+  if (!expectedWord || !names.has(expectedWord.toLowerCase())) return null
+
+  return QC_RULE_FIXES.find((r) => r.id === 'QC-ONE-WORD-NAME-001') ?? null
+}
+
+/**
+ * Cast names for the job's series, read from the error envelope when present,
+ * else looked up by the caller. Present but empty = we could not learn them,
+ * which means no QC resume (fail closed).
+ */
+export function castNamesOf(errorJson: unknown): string[] | null {
+  if (!errorJson || typeof errorJson !== 'object') return null
+  const e = errorJson as Record<string, unknown>
+  for (const key of ['castNames', 'characterNames', 'cast']) {
+    const v = e[key]
+    if (Array.isArray(v)) {
+      const names = v
+        .map((x) => (typeof x === 'string' ? x : (x as Record<string, unknown>)?.name))
+        .filter((x): x is string => typeof x === 'string' && x.trim().length > 0)
+      if (names.length) return names
+    }
+  }
+  const report = e.voiceGenerationReport as Record<string, unknown> | undefined
+  if (report && Array.isArray(report.castNames)) {
+    const names = (report.castNames as unknown[]).filter((x): x is string => typeof x === 'string')
+    if (names.length) return names
   }
   return null
 }
@@ -200,6 +244,8 @@ export type QcResumeOptions = {
   deployedVersion?: string | null
   /** Answers "does deployedSha contain fixSha?" — null when it cannot tell. */
   resolveAncestry?: (fixSha: string, deployedSha: string) => boolean | null
+  /** Cast names for the job's series; required to identify the name rule. */
+  castNames?: string[] | null
   nowMs?: number
 }
 
@@ -223,9 +269,15 @@ export function qcResumeDecision(job: JobLike, opts: QcResumeOptions = {}): QcRe
   if (!isResumableQcFailure(text)) return null
 
   // ── the gate Marc asked for: only resume when the failing rule is fixed AND deployed
-  const rule = identifyQcRule(text)
+  const castNames = opts.castNames ?? castNamesOf(job.error_json)
+  const rule = identifyQcRule(text, castNames)
   if (!rule) {
-    return { action: 'blocked', reason: 'no known fix for this QC verdict — leaving it for a human' }
+    return {
+      action: 'blocked',
+      reason: castNames?.length
+        ? 'no known fix for this QC verdict — leaving it for a human'
+        : 'cast names unavailable, so the failing rule cannot be pinned to a fix',
+    }
   }
   const deployed = String(opts.deployedVersion || '').trim()
   if (!deployed) {

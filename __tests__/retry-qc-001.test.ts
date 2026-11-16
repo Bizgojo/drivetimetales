@@ -17,12 +17,16 @@ import {
   identifyQcRule,
   parseQcMismatch,
   fixIsDeployed,
+  castNamesOf,
   shaOf,
   MAX_QC_RESUMES,
   QC_RESUME_BACKOFF_MS,
 } from '@/lib/qcVerdictResume'
 
 const T0 = Date.parse('2026-11-16T04:40:57.998Z')
+
+/** Mercy Island cast — "Nell" is the speaker whose line was rejected. */
+const CAST = ['Nell', 'Ray', 'Ada']
 
 /** Simulates git ancestry for the two real builds. */
 /**
@@ -80,6 +84,7 @@ describe('RETRY-QC-001 — the deployed-fix gate (Marc rule)', () => {
     const d = qcResumeDecision(job(MERCY_ERROR), {
       deployedVersion: DEPLOYED_WITH_FIX,
       resolveAncestry: ancestryWithFix,
+      castNames: CAST,
       nowMs: AFTER_BACKOFF,
     })
     expect(d).toEqual({
@@ -95,6 +100,7 @@ describe('RETRY-QC-001 — the deployed-fix gate (Marc rule)', () => {
     const d = qcResumeDecision(job(MERCY_ERROR), {
       deployedVersion: DEPLOYED_WITHOUT_FIX,
       resolveAncestry: ancestryWithoutFix,
+      castNames: CAST,
       nowMs: AFTER_BACKOFF,
     })
     expect(d?.action).toBe('blocked')
@@ -102,13 +108,13 @@ describe('RETRY-QC-001 — the deployed-fix gate (Marc rule)', () => {
   })
 
   it('REFUSES when the deployed version cannot be determined (fail closed)', () => {
-    const d = qcResumeDecision(job(MERCY_ERROR), { deployedVersion: null, resolveAncestry: ancestryWithFix, nowMs: AFTER_BACKOFF })
+    const d = qcResumeDecision(job(MERCY_ERROR), { deployedVersion: null, resolveAncestry: ancestryWithFix, castNames: CAST, nowMs: AFTER_BACKOFF })
     expect(d?.action).toBe('blocked')
   })
 
   it('REFUSES a QC verdict with no known fix', () => {
     const unknown = { message: 'Segment transcript QC failed for segment_0003.mp3: expected "the long road home", detected "the long road" (similarity: 71.0%)' }
-    const d = qcResumeDecision(job(unknown), { deployedVersion: DEPLOYED_WITH_FIX, resolveAncestry: ancestryWithFix, nowMs: AFTER_BACKOFF })
+    const d = qcResumeDecision(job(unknown), { deployedVersion: DEPLOYED_WITH_FIX, resolveAncestry: ancestryWithFix, castNames: CAST, nowMs: AFTER_BACKOFF })
     expect(d?.action).toBe('blocked')
   })
 
@@ -132,12 +138,12 @@ describe('RETRY-QC-001 — rule identification', () => {
   })
 
   it('identifies the one-word cast-name shape', () => {
-    expect(identifyQcRule(MERCY_ERROR.message)?.id).toBe('QC-ONE-WORD-NAME-001')
+    expect(identifyQcRule(MERCY_ERROR.message, CAST)?.id).toBe('QC-ONE-WORD-NAME-001')
   })
 
   it('does not identify a multi-word mismatch as that rule', () => {
     const multi = { message: 'Segment transcript QC failed for x.mp3: expected "and then she left", detected "and then she" (similarity: 60.0%)' }
-    expect(identifyQcRule(multi.message)).toBeNull()
+    expect(identifyQcRule(multi.message, CAST)).toBeNull()
     expect(qcErrorTextOf(multi)).toContain('transcript QC failed')
   })
 
@@ -147,8 +153,55 @@ describe('RETRY-QC-001 — rule identification', () => {
   })
 })
 
+describe('RETRY-QC-001 — the rule must actually APPLY to this failure', () => {
+  /**
+   * Review round 2, blocking finding #1: identifyQcRule matched on word count
+   * alone, so `expected "Yes." / detected "No."` was labelled the name rule and
+   * resumed — even though the deployed fix (oneWordCastNameLine) requires the
+   * expected word to BE a cast name and rejects that take. Resuming it burns
+   * three ElevenLabs retakes on a failure the deployed rule still rejects.
+   */
+  const opts = { deployedVersion: DEPLOYED_WITH_FIX, resolveAncestry: ancestryWithFix, castNames: CAST, nowMs: AFTER_BACKOFF }
+  const qc = (expected: string, detected: string) => ({
+    message: `Segment transcript QC failed for segment_0015.mp3: expected "${expected}", detected "${detected}" (similarity: 0.0%)`,
+  })
+
+  it('REFUSES a one-word mismatch that is not a cast name (Yes./No.)', () => {
+    const d = qcResumeDecision(job(qc('Yes.', 'No.')), opts)
+    expect(d?.action).toBe('blocked')
+  })
+
+  it('REFUSES other non-cast single words (Go./no, Stop./top)', () => {
+    expect(qcResumeDecision(job(qc('Go.', 'no')), opts)?.action).toBe('blocked')
+    expect(qcResumeDecision(job(qc('Stop.', 'top')), opts)?.action).toBe('blocked')
+  })
+
+  it('REFUSES when cast names are unknown (cannot prove the rule applies)', () => {
+    const d = qcResumeDecision(job(MERCY_ERROR), { ...opts, castNames: null })
+    expect(d?.action).toBe('blocked')
+    expect(JSON.stringify(d)).toContain('cast names unavailable')
+  })
+
+  it('still RESUMES the real name case once cast names are known', () => {
+    expect(qcResumeDecision(job(MERCY_ERROR), opts)?.action).toBe('resume')
+  })
+
+  it('identifyQcRule requires the expected word to be a cast name', () => {
+    expect(identifyQcRule(qc('Nell.', 'Now.').message, CAST)?.id).toBe('QC-ONE-WORD-NAME-001')
+    expect(identifyQcRule(qc('Yes.', 'No.').message, CAST)).toBeNull()
+    expect(identifyQcRule(qc('Nell.', 'Now.').message, null)).toBeNull()
+    expect(identifyQcRule(qc('Nell.', 'Now.').message, [])).toBeNull()
+  })
+
+  it('castNamesOf reads cast names from the error envelope', () => {
+    expect(castNamesOf({ castNames: ['Nell', 'Ray'] })).toEqual(['Nell', 'Ray'])
+    expect(castNamesOf({ cast: [{ name: 'Nell' }] })).toEqual(['Nell'])
+    expect(castNamesOf({ message: 'x' })).toBeNull()
+  })
+})
+
 describe('RETRY-QC-001 — timing and budget', () => {
-  const opts = { deployedVersion: DEPLOYED_WITH_FIX, resolveAncestry: ancestryWithFix }
+  const opts = { deployedVersion: DEPLOYED_WITH_FIX, resolveAncestry: ancestryWithFix, castNames: CAST }
 
   it('waits inside the back-off window', () => {
     expect(qcResumeDecision(job(MERCY_ERROR), { ...opts, nowMs: T0 + 1000 })).toEqual({
@@ -184,7 +237,7 @@ describe('RETRY-QC-001 — timing and budget', () => {
 })
 
 describe('RETRY-QC-001 — must never be auto-resumed', () => {
-  const opts = { deployedVersion: DEPLOYED_WITH_FIX, resolveAncestry: ancestryWithFix, nowMs: AFTER_BACKOFF }
+  const opts = { deployedVersion: DEPLOYED_WITH_FIX, resolveAncestry: ancestryWithFix, castNames: CAST, nowMs: AFTER_BACKOFF }
 
   it('REPEATED_IDENTICAL_TRUNCATION (code says retrying will not help)', () => {
     const t = { message: 'Segment transcript QC failed for segment_0015.mp3 [REPEATED_IDENTICAL_TRUNCATION]: Whisper returned the same partial output "now." across all 3 retry candidates. Retrying will not help.' }

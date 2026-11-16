@@ -2504,6 +2504,56 @@ async function tryResumeTransientNetworkJob(explicitJobId?: string): Promise<{ r
 }
 
 /**
+ * Cast names for the job's story, parsed from the script the same way
+ * generate-voices does (QC-ONE-WORD-NAME-001). Needed because the name rule
+ * only applies when the expected line IS a cast name — without them we cannot
+ * tell a fixed near-miss ("Nell." -> "Now.") from a genuinely wrong take
+ * ("Yes." -> "No."), and must not resume.
+ *
+ * Returns null when we cannot learn them, so the gate fails closed.
+ */
+const jobCastNamesCache = new Map<string, { at: number; names: string[] | null }>()
+async function castNamesForJob(job: { story_id?: string | null; series_id?: string | null }): Promise<string[] | null> {
+  const storyId = job.story_id ? String(job.story_id) : null
+  const seriesId = job.series_id ? String(job.series_id) : null
+  const key = storyId ? `story:${storyId}` : seriesId ? `series:${seriesId}` : null
+  if (!key) return null
+  const hit = jobCastNamesCache.get(key)
+  if (hit && Date.now() - hit.at < 10 * 60 * 1000) return hit.names
+  try {
+    let script = ''
+    if (storyId) {
+      const { data } = await supabase.from('stories').select('script').eq('id', storyId).maybeSingle()
+      script = String((data as { script?: string } | null)?.script || '')
+    } else if (seriesId) {
+      // A series job has no story_id, so read every episode's script: a cast
+      // name introduced in EP1 can be the speaker in EP11.
+      const { data } = await supabase
+        .from('stories')
+        .select('script')
+        .eq('series_id', seriesId)
+        .not('script', 'is', null)
+      script = (Array.isArray(data) ? data : [])
+        .map((r) => String((r as { script?: string }).script || ''))
+        .join('\n')
+    }
+    const names = new Set<string>()
+    for (const line of script.split('\n')) {
+      const m = /^([A-Z][A-Z'’-]{1,30})(?:\s*\([^)]*\))?\s*:/.exec(line.trim())
+      if (m && !/^(NARRATOR|ANNOUNCER|BELLE|SFX|MUSIC|TITLE|AUTHOR|GENRE|DESCRIPTION|SERIES|EPISODE|NARRATOR_VOICE)$/.test(m[1])) {
+        names.add(m[1].toLowerCase())
+      }
+    }
+    const value = names.size ? Array.from(names) : null
+    jobCastNamesCache.set(key, { at: Date.now(), names: value })
+    return value
+  } catch {
+    jobCastNamesCache.set(key, { at: Date.now(), names: null })
+    return null
+  }
+}
+
+/**
  * Does the deployed commit provably contain the fix commit? Answered by git
  * (`merge-base --is-ancestor`), because a string compare cannot tell: the
  * deployed sha and the fix sha share no prefix, the fix is simply an ancestor.
@@ -2580,9 +2630,11 @@ async function tryResumeQcVerdictJob(explicitJobId?: string): Promise<{ resumedI
   const now = Date.now()
   for (const job of rows) {
     const deployedVersion = await readDeployedVersion()
+    const castNames = await castNamesForJob(job as never)
     const decision = qcResumeDecision(job as never, {
       deployedVersion,
       resolveAncestry: deployedContainsFix,
+      castNames,
       nowMs: now,
     })
     if (!decision || decision.action === 'wait') continue
