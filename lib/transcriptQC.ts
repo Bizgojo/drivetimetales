@@ -1498,7 +1498,23 @@ export type TranscriptQCResult = {
   normalizedSimilarity: number
 }
 
-export function evaluateTranscriptQC(expectedText: string, detectedText: string): TranscriptQCResult {
+/**
+ * QC-ONE-WORD-NAME-001 (Mercy Island EP11 segment_0015, Nov 15, 2026): the line "Nell." was
+ * transcribed "Now." then "Meow." — Whisper cannot read a lone name in a half-second clip, and
+ * the series stopped. A line that is ONLY a cast member's name passes when Whisper heard exactly
+ * one or two words (not silence). ElevenLabs reads names reliably; a blank clip still fails.
+ */
+export function oneWordCastNameLine(expectedText: string, detectedText: string, castNames?: Iterable<string> | null): boolean {
+  if (!castNames) return false
+  const words = String(expectedText || '').replace(/[^A-Za-z'\s-]/g, ' ').trim().split(/\s+/).filter(Boolean)
+  if (words.length !== 1) return false
+  const names = new Set(Array.from(castNames, (n) => String(n || '').trim().toLowerCase()).filter(Boolean))
+  if (!names.has(words[0].toLowerCase())) return false
+  const heard = String(detectedText || '').replace(/[^A-Za-z'\s-]/g, ' ').trim().split(/\s+/).filter(Boolean)
+  return heard.length >= 1 && heard.length <= 2
+}
+
+export function evaluateTranscriptQC(expectedText: string, detectedText: string, options?: { castNames?: Iterable<string> | null }): TranscriptQCResult {
   // ATL-NUMERAL-NORM-002: apply normalizeForWer (digit→word) to both sides so
   // that Whisper digit forms ("2000", "2006") and script word forms ("two
   // thousand", "two thousand and six") converge before similarity and
@@ -1570,10 +1586,11 @@ export function evaluateTranscriptQC(expectedText: string, detectedText: string)
     || weakVerbTrailingS
     || (tailMatches && shortLineMatches && coverage >= SEGMENT_TRANSCRIPT_MIN_COVERAGE)
   const normalizedQcPassed = normalizedExactMatch || normalizedSimilarity >= 0.85
-  const passed = !detectedBlank
+  const castNameLine = !detectedBlank && oneWordCastNameLine(expectedText, detectedText, options?.castNames)
+  const passed = castNameLine || (!detectedBlank
     && !radicalLengthMismatch
     && !numericMismatchFinal
-    && (tokenQcPassed || normalizedQcPassed)
+    && (tokenQcPassed || normalizedQcPassed))
 
   return {
     passed,
