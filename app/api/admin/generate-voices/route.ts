@@ -297,6 +297,24 @@ async function recordSegmentWhisperLedger(buf: Buffer, fileName: string, storyId
   }
 }
 
+// QC-ONE-WORD-NAME-001: the story's cast names (speaker labels), cached per story for this process.
+const castNamesCache = new Map<string, { at: number; names: Set<string> }>()
+async function castNamesForStory(storyId?: string): Promise<Set<string> | null> {
+  if (!storyId) return null
+  const hit = castNamesCache.get(storyId)
+  if (hit && Date.now() - hit.at < 10 * 60 * 1000) return hit.names
+  try {
+    const { data } = await supabase.from('stories').select('script').eq('id', storyId).maybeSingle()
+    const names = new Set<string>()
+    for (const line of String((data as any)?.script || '').split('\n')) {
+      const m = /^([A-Z][A-Z'’-]{1,30})(?:\s*\([^)]*\))?\s*:/.exec(line.trim())
+      if (m && !/^(NARRATOR|ANNOUNCER|BELLE|SFX|MUSIC|TITLE|AUTHOR|GENRE|DESCRIPTION|SERIES|EPISODE|NARRATOR_VOICE)$/.test(m[1])) names.add(m[1].toLowerCase())
+    }
+    castNamesCache.set(storyId, { at: Date.now(), names })
+    return names
+  } catch { return null }
+}
+
 async function validateSegmentTranscript(buf: Buffer, expectedText: string, fileName: string, storyId?: string) {
   let detectedText: string
   try {
@@ -338,7 +356,7 @@ async function validateSegmentTranscript(buf: Buffer, expectedText: string, file
   // ATL-FOLLOWUP-002: the pure comparison (shared normalization of BOTH sides
   // + coverage/similarity/tail decision) lives in lib/transcriptQC.ts so that
   // regression tests exercise the exact production logic.
-  const qc = evaluateTranscriptQC(expectedText, detectedText)
+  const qc = evaluateTranscriptQC(expectedText, detectedText, { castNames: await castNamesForStory(storyId) })
 
   if (qc.normalizedFallbackUsed) {
     console.warn(`[QC WARNING] Segment ${fileName}: similarity ${(qc.normalizedSimilarity * 100).toFixed(1)}% - expected "${expectedText}" detected "${detectedText}"`)
