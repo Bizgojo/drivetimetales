@@ -34,6 +34,7 @@ import { syncPremiseIndexForTransition } from '@/lib/premiseIndex'
 // promotion. Manual admin paths untouched.
 import { maybeDirectPublishStandalone, maybeDirectPublishSeries, type DirectAutoPublishReport } from '@/lib/directPublish'
 import { transientResumeDecision, errorTextOf, MAX_TRANSIENT_RESUMES } from '@/lib/transientResume'
+import { qcResumeDecision, qcErrorTextOf, MAX_QC_RESUMES } from '@/lib/qcVerdictResume'
 import { humanStoriesBlock } from '@/lib/humanStories'
 import { scriptStructureIssues, openingExcerpt, OPENING_EXCERPT_WORDS, NO_COUNTING_RULE } from '@/lib/countInCode'
 import { progressStop, progressStopSummary, readProgress, recordPatch, maxSeriesReads } from '@/lib/seriesProgress'
@@ -2487,6 +2488,74 @@ async function tryResumeTransientNetworkJob(explicitJobId?: string): Promise<{ r
       .update({
         status: 'queued',
         state_json: { ...state, transientResumeCount: decision.attempt, transientResumedAt: nowIso() },
+        error_json: null,
+        logs,
+        locked_at: null,
+        locked_by: null,
+      })
+      .eq('id', job.id)
+      .eq('status', 'failed')
+      .select('id')
+      .maybeSingle()
+    if (error || !resumed) continue
+    return { resumedId: job.id, exhaustedId: null }
+  }
+  return { resumedId: null, exhaustedId: null }
+}
+
+/**
+ * RETRY-QC-001 (Marc GO 2026-11-16): revive one job that stopped on a segment
+ * transcript/loudness QC verdict. Same step, saved progress kept — segments
+ * already on disk are skipped, so no audio is paid for twice.
+ *
+ * Trigger: Mercy Island job 2f68f4cb sat failed ~16h. Its error
+ * (`Segment transcript QC failed ... expected "Nell.", detected "now."`)
+ * matched neither existing resume class, so neither the cron scan nor an
+ * explicit jobId could revive it. Non-fixable QC verdicts (repeated identical
+ * truncation, ambiguous audio) and account-wide causes are still left for a
+ * human — see lib/qcVerdictResume.ts.
+ */
+async function tryResumeQcVerdictJob(explicitJobId?: string): Promise<{ resumedId: string | null; exhaustedId: string | null }> {
+  let rows: ProductionJob[] = []
+  if (explicitJobId) {
+    const { data } = await supabase.from('production_jobs').select('*').eq('id', explicitJobId).maybeSingle()
+    rows = data ? [data as ProductionJob] : []
+  } else {
+    const { data } = await supabase
+      .from('production_jobs')
+      .select('*')
+      .eq('status', 'failed')
+      .not('job_type', 'like', 'TEST_%')
+      .gte('updated_at', new Date(Date.now() - 24 * 60 * 60_000).toISOString())
+      .order('updated_at', { ascending: true })
+      .limit(25)
+    rows = (Array.isArray(data) ? data : []) as ProductionJob[]
+  }
+  const now = Date.now()
+  for (const job of rows) {
+    const decision = qcResumeDecision(job as never, now)
+    if (!decision || decision.action === 'wait') continue
+    const state = job.state_json && typeof job.state_json === 'object' ? (job.state_json as Record<string, unknown>) : {}
+    if (decision.action === 'exhausted') {
+      // Mark once so the scan stops considering it; the job stays failed.
+      await supabase
+        .from('production_jobs')
+        .update({
+          error_json: { ...(job.error_json as object), exhausted: true, fixRecommendation: `RETRY-QC-001: ${decision.attempt} automatic retries after a segment QC rejection did not clear it. Inspect the rejected segment, then restart the job.` },
+        })
+        .eq('id', job.id)
+        .eq('status', 'failed')
+      return { resumedId: null, exhaustedId: job.id }
+    }
+    const logs = appendLog(job, `RETRY-QC-001: auto-resumed after a segment QC rejection (${decision.attempt}/${MAX_QC_RESUMES}); retry from current step`, {
+      step: decision.step,
+      previousError: qcErrorTextOf(job.error_json).slice(0, 300),
+    })
+    const { data: resumed, error } = await supabase
+      .from('production_jobs')
+      .update({
+        status: 'queued',
+        state_json: { ...state, qcResumeCount: decision.attempt, qcResumedAt: nowIso() },
         error_json: null,
         logs,
         locked_at: null,
@@ -10211,6 +10280,20 @@ export async function POST(req: NextRequest) {
       }
     } catch (resumeErr) {
       console.warn('[run-next] RETRY-NET-001 auto-resume failed (non-fatal):', resumeErr instanceof Error ? resumeErr.message : String(resumeErr))
+    }
+
+    // RETRY-QC-001: revive one job that stopped on a segment QC verdict
+    // (a retry from saved progress, not a re-mix). Runs after the two existing
+    // classes so transport blips and Belle blocks keep priority.
+    try {
+      const qcResume = await tryResumeQcVerdictJob(requestedJobId || undefined)
+      if (qcResume.resumedId) {
+        console.log(`[run-next] RETRY-QC-001 auto-resumed job ${qcResume.resumedId.slice(0, 8)} after a segment QC rejection`)
+      } else if (qcResume.exhaustedId) {
+        console.warn(`[run-next] RETRY-QC-001 retry budget spent for job ${qcResume.exhaustedId.slice(0, 8)} — left failed for a human`)
+      }
+    } catch (resumeErr) {
+      console.warn('[run-next] RETRY-QC-001 auto-resume failed (non-fatal):', resumeErr instanceof Error ? resumeErr.message : String(resumeErr))
     }
 
     // ── ONE JOB PER WORKER GUARD ──────────────────────────────────────────
