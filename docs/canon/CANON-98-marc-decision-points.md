@@ -165,3 +165,4 @@ Covers: one list of every place in the canon where Marc must decide or act himse
 - **CANON-15 decision 153 [MARC DECIDES]:** Orion deploys merged main on his own every 15 minutes, except straight pushes, database migrations, a running build or an uncleared failed deploy (those go to Marc).
 - **CANON-08 decision 154 [MARC DECIDES]:** Claude restarts a stopped series himself when every remaining blocker is a one-line fix (once per series).
 - **CANON-15 decision 155 [MARC DECIDES]:** Claude goes ahead with his own recommendations and reports; money, security, migrations, deleting data and publishing still need Marc's word.
+- **CANON-15 decision 156 [MARC DECIDES]:** Claude answers Orion directly through Google Drive; money, going live, unrecoverable data, audio/story quality, legal and canon rules still go to Marc first.
