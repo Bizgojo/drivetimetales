@@ -74,6 +74,9 @@ const TMP_MIN_FREE_MB = 150
 
 // CORRECTION-PERSIST-001: correction audit log type — shared interface (also in generate-voices and run-next)
 // Corrections written here would be via appendCorrection() in generate-voices; core.ts reads them.
+/** MIX-LEVEL-001: peak guard after restoring amix levels (-1 dBTP, never raises the level). */
+export const MIX_PEAK_LIMITER = 'alimiter=limit=0.891:level=false'
+
 export interface CorrectionEntry {
   type: 'voice_recast' | 'pronoun_fix' | 'sfx_removal' | 'outro_fix' | 'segment_rebuild' | string
   applied_at: string
@@ -1114,7 +1117,12 @@ export async function runRenderFinalMix(storyId: string, opts: {
       '-af', 'adelay=2500|2500',
       '-ar', '44100', '-ac', '2', '-b:a', '192k', '-y', delayedStoryPath
     ])
-    const storyBodyMixFilter = '[0:a][1:a]amix=inputs=2:duration=longest[mixed]'
+    // MIX-LEVEL-001 (loudness audit, Nov 16, 2026): amix divides every input by the number of
+    // inputs, so the story body (voices leveled to -16 LUFS) came out ~6 dB quiet: final mixes
+    // measured -22.7 LUFS on every series since early November, and Belle's outro (which already
+    // restores with volume=2) played ~6 dB louder than the story. volume=2 undoes amix's halving,
+    // the same way the outro path does; the limiter only catches peaks (no auto-gain).
+    const storyBodyMixFilter = `[0:a][1:a]amix=inputs=2:duration=longest,volume=2,${MIX_PEAK_LIMITER}[mixed]`
     const storyBodyMixArgs = [
       '-i', delayedStoryPath, '-i', shapedMusicPath,
       '-filter_complex', storyBodyMixFilter,
@@ -1139,7 +1147,7 @@ export async function runRenderFinalMix(storyId: string, opts: {
         // MUSIC-002: sting gain 1.75.
         `[0:a]volume=1.75,afade=t=out:st=${BELLE_ENTER_SEC}:d=${STING_FADE_DUR},aformat=sample_rates=44100:channel_layouts=stereo[s];` +
         `[1:a]adelay=${belleDelayMs}|${belleDelayMs},aformat=sample_rates=44100:channel_layouts=stereo[v];` +
-        `[s][v]amix=inputs=2:duration=longest[out]`,
+        `[s][v]amix=inputs=2:duration=longest,volume=2,${MIX_PEAK_LIMITER}[out]`, // MIX-LEVEL-001
         '-map', '[out]',
         '-ar', '44100', '-ac', '2', '-b:a', '192k', '-y', stingIntroPath
       ])
