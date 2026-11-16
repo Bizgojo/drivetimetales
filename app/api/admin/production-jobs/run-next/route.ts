@@ -34,6 +34,7 @@ import { syncPremiseIndexForTransition } from '@/lib/premiseIndex'
 // promotion. Manual admin paths untouched.
 import { maybeDirectPublishStandalone, maybeDirectPublishSeries, type DirectAutoPublishReport } from '@/lib/directPublish'
 import { transientResumeDecision, errorTextOf, MAX_TRANSIENT_RESUMES } from '@/lib/transientResume'
+import { qcResumeDecision, qcErrorTextOf, MAX_QC_RESUMES } from '@/lib/qcVerdictResume'
 import { humanStoriesBlock } from '@/lib/humanStories'
 import { scriptStructureIssues, openingExcerpt, OPENING_EXCERPT_WORDS, NO_COUNTING_RULE } from '@/lib/countInCode'
 import { progressStop, progressStopSummary, readProgress, recordPatch, maxSeriesReads } from '@/lib/seriesProgress'
@@ -2487,6 +2488,185 @@ async function tryResumeTransientNetworkJob(explicitJobId?: string): Promise<{ r
       .update({
         status: 'queued',
         state_json: { ...state, transientResumeCount: decision.attempt, transientResumedAt: nowIso() },
+        error_json: null,
+        logs,
+        locked_at: null,
+        locked_by: null,
+      })
+      .eq('id', job.id)
+      .eq('status', 'failed')
+      .select('id')
+      .maybeSingle()
+    if (error || !resumed) continue
+    return { resumedId: job.id, exhaustedId: null }
+  }
+  return { resumedId: null, exhaustedId: null }
+}
+
+/**
+ * Cast names for the job's story, parsed from the script the same way
+ * generate-voices does (QC-ONE-WORD-NAME-001). Needed because the name rule
+ * only applies when the expected line IS a cast name — without them we cannot
+ * tell a fixed near-miss ("Nell." -> "Now.") from a genuinely wrong take
+ * ("Yes." -> "No."), and must not resume.
+ *
+ * Returns null when we cannot learn them, so the gate fails closed.
+ */
+const jobCastNamesCache = new Map<string, { at: number; names: string[] | null }>()
+async function castNamesForJob(job: { story_id?: string | null; series_id?: string | null }): Promise<string[] | null> {
+  const storyId = job.story_id ? String(job.story_id) : null
+  const seriesId = job.series_id ? String(job.series_id) : null
+  const key = storyId ? `story:${storyId}` : seriesId ? `series:${seriesId}` : null
+  if (!key) return null
+  const hit = jobCastNamesCache.get(key)
+  if (hit && Date.now() - hit.at < 10 * 60 * 1000) return hit.names
+  try {
+    let script = ''
+    if (storyId) {
+      const { data } = await supabase.from('stories').select('script').eq('id', storyId).maybeSingle()
+      script = String((data as { script?: string } | null)?.script || '')
+    } else if (seriesId) {
+      // A series job has no story_id, so read every episode's script: a cast
+      // name introduced in EP1 can be the speaker in EP11.
+      const { data } = await supabase
+        .from('stories')
+        .select('script')
+        .eq('series_id', seriesId)
+        .not('script', 'is', null)
+      script = (Array.isArray(data) ? data : [])
+        .map((r) => String((r as { script?: string }).script || ''))
+        .join('\n')
+    }
+    const names = new Set<string>()
+    for (const line of script.split('\n')) {
+      const m = /^([A-Z][A-Z'’-]{1,30})(?:\s*\([^)]*\))?\s*:/.exec(line.trim())
+      if (m && !/^(NARRATOR|ANNOUNCER|BELLE|SFX|MUSIC|TITLE|AUTHOR|GENRE|DESCRIPTION|SERIES|EPISODE|NARRATOR_VOICE)$/.test(m[1])) {
+        names.add(m[1].toLowerCase())
+      }
+    }
+    const value = names.size ? Array.from(names) : null
+    jobCastNamesCache.set(key, { at: Date.now(), names: value })
+    return value
+  } catch {
+    jobCastNamesCache.set(key, { at: Date.now(), names: null })
+    return null
+  }
+}
+
+/**
+ * Does the deployed commit provably contain the fix commit? Answered by git
+ * (`merge-base --is-ancestor`), because a string compare cannot tell: the
+ * deployed sha and the fix sha share no prefix, the fix is simply an ancestor.
+ * Returns null when git cannot answer, so the QC gate fails closed.
+ */
+function deployedContainsFix(fixSha: string, deployedSha: string): boolean | null {
+  try {
+    const { execFileSync } = require('child_process') as typeof import('child_process')
+    const cwd = process.env.ET_REPO_DIR || process.cwd()
+    execFileSync('git', ['cat-file', '-e', `${fixSha}^{commit}`], { cwd, stdio: 'ignore' })
+    execFileSync('git', ['merge-base', '--is-ancestor', fixSha, deployedSha], { cwd, stdio: 'ignore' })
+    return true
+  } catch (e) {
+    // git exits 1 for "not an ancestor" and non-zero for "unknown object".
+    const status = (e as { status?: number })?.status
+    if (status === 1) return false
+    return null
+  }
+}
+
+/**
+ * The commit currently serving production, from the app's own /api/version
+ * endpoint ("<sha12>-<buildid>"). Returns null when it cannot be read, so the
+ * QC resume gate fails closed rather than resuming against an unknown build.
+ */
+let deployedVersionCache: { at: number; value: string | null } | null = null
+async function readDeployedVersion(): Promise<string | null> {
+  const now = Date.now()
+  if (deployedVersionCache && now - deployedVersionCache.at < 60_000) return deployedVersionCache.value
+  let value: string | null = null
+  try {
+    const origin = process.env.NEXT_PUBLIC_SITE_URL || process.env.SITE_ORIGIN || 'https://app.endless-tales.com'
+    const res = await fetch(`${origin}/api/version`, { cache: 'no-store' })
+    if (res.ok) {
+      const body = (await res.json()) as { version?: unknown }
+      const v = typeof body?.version === 'string' ? body.version.trim() : ''
+      value = v || null
+    }
+  } catch {
+    value = null
+  }
+  deployedVersionCache = { at: now, value }
+  return value
+}
+
+/**
+ * RETRY-QC-001 (Marc GO 2026-11-16): revive one job that stopped on a segment
+ * transcript/loudness QC verdict. Same step, saved progress kept — segments
+ * already on disk are skipped, so no audio is paid for twice.
+ *
+ * Trigger: Mercy Island job 2f68f4cb sat failed ~16h. Its error
+ * (`Segment transcript QC failed ... expected "Nell.", detected "now."`)
+ * matched neither existing resume class, so neither the cron scan nor an
+ * explicit jobId could revive it. Non-fixable QC verdicts (repeated identical
+ * truncation, ambiguous audio) and account-wide causes are still left for a
+ * human — see lib/qcVerdictResume.ts.
+ */
+async function tryResumeQcVerdictJob(explicitJobId?: string): Promise<{ resumedId: string | null; exhaustedId: string | null }> {
+  let rows: ProductionJob[] = []
+  if (explicitJobId) {
+    const { data } = await supabase.from('production_jobs').select('*').eq('id', explicitJobId).maybeSingle()
+    rows = data ? [data as ProductionJob] : []
+  } else {
+    const { data } = await supabase
+      .from('production_jobs')
+      .select('*')
+      .eq('status', 'failed')
+      .not('job_type', 'like', 'TEST_%')
+      .gte('updated_at', new Date(Date.now() - 24 * 60 * 60_000).toISOString())
+      .order('updated_at', { ascending: true })
+      .limit(25)
+    rows = (Array.isArray(data) ? data : []) as ProductionJob[]
+  }
+  const now = Date.now()
+  for (const job of rows) {
+    const deployedVersion = await readDeployedVersion()
+    const castNames = await castNamesForJob(job as never)
+    const decision = qcResumeDecision(job as never, {
+      deployedVersion,
+      resolveAncestry: deployedContainsFix,
+      castNames,
+      nowMs: now,
+    })
+    if (!decision || decision.action === 'wait') continue
+    if (decision.action === 'blocked') {
+      // Marc's rule: only resume once the failing QC rule's fix is deployed.
+      // Log once (not per tick) and leave the job failed for a human.
+      console.log(`[run-next] RETRY-QC-001 held job ${job.id.slice(0, 8)}: ${decision.reason}`)
+      continue
+    }
+    const state = job.state_json && typeof job.state_json === 'object' ? (job.state_json as Record<string, unknown>) : {}
+    if (decision.action === 'exhausted') {
+      // Mark once so the scan stops considering it; the job stays failed.
+      await supabase
+        .from('production_jobs')
+        .update({
+          error_json: { ...(job.error_json as object), exhausted: true, fixRecommendation: `RETRY-QC-001: ${decision.attempt} automatic retries after a segment QC rejection did not clear it. Inspect the rejected segment, then restart the job.` },
+        })
+        .eq('id', job.id)
+        .eq('status', 'failed')
+      return { resumedId: null, exhaustedId: job.id }
+    }
+    const logs = appendLog(job, `RETRY-QC-001: auto-resumed after a segment QC rejection (${decision.attempt}/${MAX_QC_RESUMES}) — ${decision.ruleId} is deployed in ${decision.deployed}; retry from current step`, {
+      step: decision.step,
+      ruleId: decision.ruleId,
+      deployedVersion: decision.deployed,
+      previousError: qcErrorTextOf(job.error_json).slice(0, 300),
+    })
+    const { data: resumed, error } = await supabase
+      .from('production_jobs')
+      .update({
+        status: 'queued',
+        state_json: { ...state, qcResumeCount: decision.attempt, qcResumedAt: nowIso() },
         error_json: null,
         logs,
         locked_at: null,
@@ -10211,6 +10391,20 @@ export async function POST(req: NextRequest) {
       }
     } catch (resumeErr) {
       console.warn('[run-next] RETRY-NET-001 auto-resume failed (non-fatal):', resumeErr instanceof Error ? resumeErr.message : String(resumeErr))
+    }
+
+    // RETRY-QC-001: revive one job that stopped on a segment QC verdict
+    // (a retry from saved progress, not a re-mix). Runs after the two existing
+    // classes so transport blips and Belle blocks keep priority.
+    try {
+      const qcResume = await tryResumeQcVerdictJob(requestedJobId || undefined)
+      if (qcResume.resumedId) {
+        console.log(`[run-next] RETRY-QC-001 auto-resumed job ${qcResume.resumedId.slice(0, 8)} after a segment QC rejection`)
+      } else if (qcResume.exhaustedId) {
+        console.warn(`[run-next] RETRY-QC-001 retry budget spent for job ${qcResume.exhaustedId.slice(0, 8)} — left failed for a human`)
+      }
+    } catch (resumeErr) {
+      console.warn('[run-next] RETRY-QC-001 auto-resume failed (non-fatal):', resumeErr instanceof Error ? resumeErr.message : String(resumeErr))
     }
 
     // ── ONE JOB PER WORKER GUARD ──────────────────────────────────────────
