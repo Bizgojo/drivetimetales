@@ -14,15 +14,13 @@ export type SeriesCardData = {
 }
 
 const EMBER = '#e8520a'
-const EMBER2 = '#ff6820'
 const INK = '#09090e'
 const INK2 = '#111118'
 const INK3 = '#1a1a24'
 const BORDER = 'rgba(255,255,255,0.07)'
 const BORDER_EMBER = 'rgba(232,82,10,0.3)'
 
-const AUDIENCE_WORDS = ['Driving.', 'Working out.', 'Walking.', 'Working.', 'Relaxing.', 'Drifting off for a nap.']
-
+const AUDIENCE_WORDS = ['Driving', 'Working out', 'Walking', 'Working', 'Relaxing', 'Drifting off for a nap']
 const LABELS = ['Driving', 'Working out', 'Walking', 'Working', 'Relaxing', 'Drifting off for a nap']
 
 const QUALITY = [
@@ -38,6 +36,14 @@ const QUESTIONS = [
   { q: 'How long are the stories?', a: 'Stories run 5, 15, 30, 45, or 60 minutes, built to fit a commute or a workout.' },
 ]
 
+// PRICING-FIX-001 (Marc 2026-11-15): must match live Stripe.
+// Verified against Stripe API: price_1UGgcfG3QDdai0Zh7o47Wr2u = $9.99/month,
+// price_1UGgf2G3QDdai0ZhKQnsaD1j = $79.99/year (both livemode, active).
+const MONTHLY = '$9.99'
+const ANNUAL = '$79.99'
+const ANNUAL_PER_MONTH = '$6.67'
+const ANNUAL_SAVE = 'Save 33%'
+
 function PlayIcon({ size = 12 }: { size?: number }) {
   return (
     <svg width={size} height={size} fill="currentColor" viewBox="0 0 24 24">
@@ -51,6 +57,15 @@ function PauseIcon({ size = 12 }: { size?: number }) {
     <svg width={size} height={size} fill="currentColor" viewBox="0 0 24 24">
       <path d="M6 4h4v16H6zm8 0h4v16h-4z" />
     </svg>
+  )
+}
+
+function SectionLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 13, letterSpacing: '0.16em', textTransform: 'uppercase', color: EMBER, fontWeight: 700, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 12 }}>
+      {children}
+      <span style={{ flex: 1, height: 1, background: BORDER_EMBER }} />
+    </div>
   )
 }
 
@@ -72,7 +87,7 @@ function SeriesCard({ s }: { s: SeriesCardData }) {
   }
 
   return (
-    <div style={{ background: INK2, border: `1px solid ${BORDER}`, borderRadius: 14, overflow: 'hidden', marginBottom: 24 }}>
+    <div className="et-card" style={{ background: INK2, border: `1px solid ${BORDER}`, borderRadius: 14, overflow: 'hidden' }}>
       {s.audioUrl ? (
         <audio
           ref={ref}
@@ -87,13 +102,16 @@ function SeriesCard({ s }: { s: SeriesCardData }) {
         />
       ) : null}
 
-      <div style={{ position: 'relative', aspectRatio: '1 / 1', overflow: 'hidden', background: INK3 }}>
+      <div style={{ position: 'relative', overflow: 'hidden', background: INK3 }}>
         {s.coverUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={s.coverUrl} alt={`${s.title} cover`} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
-        ) : null}
+          <img src={s.coverUrl} alt={`${s.title} cover`} style={{ width: '100%', height: 'auto', display: 'block' }} />
+        ) : (
+          <div style={{ aspectRatio: '3 / 2' }} />
+        )}
         <button
           onClick={toggle}
+          className="et-playbtn"
           style={{
             position: 'absolute', bottom: 10, right: 10,
             background: EMBER, color: 'white', border: 'none', borderRadius: 999,
@@ -110,7 +128,7 @@ function SeriesCard({ s }: { s: SeriesCardData }) {
         <div style={{ fontSize: 10, letterSpacing: '0.13em', textTransform: 'uppercase', color: EMBER, marginBottom: 5, fontFamily: "'DM Mono', monospace" }}>
           {s.genre}
         </div>
-        <div style={{ fontFamily: "'Playfair Display', serif", fontSize: 22, fontWeight: 700, color: '#fff', lineHeight: 1.2 }}>
+        <div className="et-card-title" style={{ fontFamily: "'Playfair Display', serif", fontSize: 22, fontWeight: 700, color: '#fff', lineHeight: 1.2 }}>
           {s.title}
         </div>
       </div>
@@ -124,10 +142,7 @@ function SeriesCard({ s }: { s: SeriesCardData }) {
         <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 11, color: 'rgba(255,255,255,0.7)', letterSpacing: '0.05em', marginTop: 7 }}>
           {s.episodeCount} {s.episodeCount === 1 ? 'episode' : 'episodes'}
         </div>
-        <Link
-          href={`/series/${s.id}`}
-          style={{ display: 'inline-block', marginTop: 10, color: EMBER, fontSize: 13, fontWeight: 600, textDecoration: 'none' }}
-        >
+        <Link href={`/series/${s.id}`} style={{ display: 'inline-block', marginTop: 10, color: EMBER, fontSize: 13, fontWeight: 600, textDecoration: 'none' }}>
           Open series →
         </Link>
       </div>
@@ -144,10 +159,39 @@ export default function LandingClient({ series, signupHref }: { series: SeriesCa
     return () => clearInterval(id)
   }, [])
 
+  const heroCard = series[0] ?? null
+  const otherCards = series.slice(1)
+
   return (
-    <div style={{ background: INK, color: '#fff', fontFamily: "'DM Sans', sans-serif", maxWidth: 480, margin: '0 auto', minHeight: '100dvh', overflowX: 'hidden' }}>
+    <div className="et-page" style={{ background: INK, color: '#fff', fontFamily: "'DM Sans', sans-serif", margin: '0 auto', minHeight: '100dvh', overflowX: 'hidden' }}>
+      <style>{`
+        /* LANDING-RESPONSIVE-001: <900px = single column phone layout,
+           >=900px = two-column-ish desktop layout per the reference.
+           Type sizes stay large on both — nothing shrinks on mobile. */
+        .et-page { max-width: 100%; }
+        .et-wrap { padding-left: 20px; padding-right: 20px; margin: 0 auto; }
+        .et-grid-cards { display: grid; grid-template-columns: 1fr; gap: 24px; }
+        .et-grid-pricing { display: grid; grid-template-columns: 1fr; gap: 16px; }
+        .et-hero-split { display: grid; grid-template-columns: 1fr; gap: 32px; align-items: start; }
+        .et-hero-sticky { position: static; }
+
+        @media (min-width: 900px) {
+          .et-page { max-width: 1180px; }
+          .et-wrap { padding-left: 40px; padding-right: 40px; }
+          .et-grid-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 28px; }
+          .et-grid-pricing { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; }
+          .et-hero-split { grid-template-columns: 1.05fr 0.95fr; gap: 56px; align-items: center; }
+          .et-hero-sticky { position: sticky; top: 96px; }
+          .et-card { margin-bottom: 0 !important; }
+          .et-section { padding-top: 72px !important; padding-bottom: 72px !important; }
+          .et-h1 { font-size: 60px !important; }
+          .et-h2 { font-size: 42px !important; }
+          .et-nav { padding-left: 40px !important; padding-right: 40px !important; }
+        }
+      `}</style>
+
       {/* ── NAV ── */}
-      <nav style={{ position: 'sticky', top: 0, zIndex: 200, padding: '16px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'rgba(9,9,14,0.92)', backdropFilter: 'blur(12px)', borderBottom: `1px solid ${BORDER}` }}>
+      <nav className="et-nav" style={{ position: 'sticky', top: 0, zIndex: 200, padding: '16px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'rgba(9,9,14,0.92)', backdropFilter: 'blur(12px)', borderBottom: `1px solid ${BORDER}` }}>
         <Link href="/" style={{ fontFamily: "'Playfair Display', serif", fontSize: 24, fontWeight: 700, color: '#fff', textDecoration: 'none' }}>
           Endless<span style={{ color: EMBER }}>Tales</span>
         </Link>
@@ -156,51 +200,63 @@ export default function LandingClient({ series, signupHref }: { series: SeriesCa
         </Link>
       </nav>
 
-      {/* ── HERO ── */}
-      <section style={{ padding: '56px 20px 20px', position: 'relative', overflow: 'hidden' }}>
-        <div style={{ position: 'absolute', top: '-10%', right: '-30%', width: '70vw', height: '70vw', maxWidth: 500, maxHeight: 500, background: 'radial-gradient(circle, rgba(232,82,10,0.18) 0%, transparent 70%)', pointerEvents: 'none' }} />
-        <h1 style={{ fontFamily: "'Playfair Display', serif", fontSize: 'clamp(34px, 9.5vw, 46px)', fontWeight: 900, lineHeight: 1.08, letterSpacing: '-0.02em', marginBottom: 16 }}>
-          Press play. Get lost in a story.
-        </h1>
+      {/* ── HERO (headline + player card; side by side >=900px) ── */}
+      <section className="et-wrap" style={{ paddingTop: 56, paddingBottom: 20, position: 'relative', overflow: 'hidden' }}>
+        <div style={{ position: 'absolute', top: '-10%', right: '-20%', width: 500, height: 500, background: 'radial-gradient(circle, rgba(232,82,10,0.18) 0%, transparent 70%)', pointerEvents: 'none' }} />
 
-        {/* audience label row */}
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 8 }}>
-          {LABELS.map((l, i) => (
-            <span
-              key={l}
-              style={{
-                fontSize: 12, fontWeight: 600, padding: '6px 11px', borderRadius: 20,
-                border: `1px solid ${BORDER_EMBER}`,
-                color: i === wordIndex ? EMBER : 'rgba(255,255,255,0.72)',
-              }}
-            >
-              {l}
-            </span>
-          ))}
-        </div>
-        <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.45)', marginBottom: 28 }}>
-          Made for <span style={{ color: EMBER }}>{AUDIENCE_WORDS[wordIndex].replace('.', '').toLowerCase()}</span>.
-        </div>
+        <div className="et-hero-split">
+          {/* Left / top: headline block */}
+          <div>
+            <h1 className="et-h1" style={{ fontFamily: "'Playfair Display', serif", fontSize: 'clamp(34px, 9.5vw, 46px)', fontWeight: 900, lineHeight: 1.08, letterSpacing: '-0.02em', marginBottom: 16 }}>
+              Press play. Get lost in a story.
+            </h1>
 
-        <p style={{ fontSize: 17, lineHeight: 1.6, color: 'rgba(255,255,255,0.92)', marginBottom: 24 }}>
-          <strong>Short stories. Big productions. Made for your me-time.</strong>
-          <br /><br />
-          Not a podcast. Not an audiobook. Endless Tales are original audio dramas — full casts, original scores, and sound design built to pull you in and not let go. New stories every week and zero ads standing between you and the story.
-        </p>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 8 }}>
+              {LABELS.map((l, i) => (
+                <span
+                  key={l}
+                  style={{
+                    fontSize: 12, fontWeight: 600, padding: '6px 11px', borderRadius: 20,
+                    border: `1px solid ${BORDER_EMBER}`,
+                    color: i === wordIndex ? EMBER : 'rgba(255,255,255,0.72)',
+                  }}
+                >
+                  {l}
+                </span>
+              ))}
+            </div>
+            <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.45)', marginBottom: 28 }}>
+              Made for <span style={{ color: EMBER }}>{AUDIENCE_WORDS[wordIndex].toLowerCase()}</span>.
+            </div>
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          <Link href={signupHref} style={{ background: EMBER, color: 'white', padding: '16px 28px', borderRadius: 8, fontSize: 16, fontWeight: 600, textDecoration: 'none', textAlign: 'center' }}>
-            Start your 14-day free trial
-          </Link>
-          <a href="#series" style={{ border: '1px solid rgba(255,255,255,0.15)', color: 'rgba(255,255,255,0.8)', padding: '15px 28px', borderRadius: 8, fontSize: 15, fontWeight: 500, textDecoration: 'none', textAlign: 'center' }}>
-            Hear a free preview
-          </a>
+            <p style={{ fontSize: 17, lineHeight: 1.6, color: 'rgba(255,255,255,0.92)', marginBottom: 24 }}>
+              <strong>Short stories. Big productions. Made for your me-time.</strong>
+              <br /><br />
+              Not a podcast. Not an audiobook. Endless Tales are original audio dramas — full casts, original scores, and sound design built to pull you in and not let go. New stories every week and zero ads standing between you and the story.
+            </p>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <Link href={signupHref} style={{ background: EMBER, color: 'white', padding: '16px 28px', borderRadius: 8, fontSize: 16, fontWeight: 600, textDecoration: 'none', textAlign: 'center' }}>
+                Start your 14-day free trial
+              </Link>
+              <a href="#series" style={{ border: '1px solid rgba(255,255,255,0.15)', color: 'rgba(255,255,255,0.8)', padding: '15px 28px', borderRadius: 8, fontSize: 15, fontWeight: 500, textDecoration: 'none', textAlign: 'center' }}>
+                Hear a free preview
+              </a>
+            </div>
+          </div>
+
+          {/* Right / below: the player card (Widow EP1) */}
+          {heroCard ? (
+            <div className="et-hero-sticky">
+              <SeriesCard s={heroCard} />
+            </div>
+          ) : null}
         </div>
       </section>
 
       {/* ── TICKER ── */}
-      <div style={{ overflow: 'hidden', borderTop: `1px solid ${BORDER}`, borderBottom: `1px solid ${BORDER}`, padding: '12px 0', background: INK2 }}>
-        <div style={{ display: 'flex', gap: 48, whiteSpace: 'nowrap', fontFamily: "'DM Mono', monospace", fontSize: 11, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.35)', overflow: 'hidden' }}>
+      <div style={{ overflow: 'hidden', borderTop: `1px solid ${BORDER}`, borderBottom: `1px solid ${BORDER}`, padding: '12px 0', background: INK2, marginTop: 40 }}>
+        <div style={{ display: 'flex', gap: 48, whiteSpace: 'nowrap', fontFamily: "'DM Mono', monospace", fontSize: 11, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.35)' }}>
           {['Full cast', 'Original score', 'Sound design', 'No ads', 'New weekly', 'Full cast', 'Original score', 'Sound design'].map((t, i) => (
             <span key={i} style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
               <span style={{ color: EMBER, fontSize: 8 }}>◆</span>{t}
@@ -209,34 +265,13 @@ export default function LandingClient({ series, signupHref }: { series: SeriesCa
         </div>
       </div>
 
-      {/* ── SERIES CARDS ── */}
-      <section id="series" style={{ padding: '40px 20px 20px' }}>
-        <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 13, letterSpacing: '0.16em', textTransform: 'uppercase', color: EMBER, fontWeight: 700, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 12 }}>
-          Sample Stories
-          <span style={{ flex: 1, height: 1, background: BORDER_EMBER }} />
-        </div>
-        <h2 style={{ fontFamily: "'Playfair Display', serif", fontSize: 'clamp(28px, 7vw, 36px)', fontWeight: 900, lineHeight: 1.1, marginBottom: 12 }}>
-          Press play. No signup.
-        </h2>
-        <p style={{ fontSize: 16, lineHeight: 1.6, color: 'rgba(255,255,255,0.85)', marginBottom: 28 }}>
-          Four complete series, yours right now. No signup. No credit card. Just press Play Now and enjoy.
-        </p>
-
-        {series.map(s => (
-          <SeriesCard key={s.id} s={s} />
-        ))}
-      </section>
-
       {/* ── MADE FOR YOUR EARS ── */}
-      <section style={{ background: INK2, borderTop: `1px solid ${BORDER}`, borderBottom: `1px solid ${BORDER}`, padding: '40px 20px' }}>
-        <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 13, letterSpacing: '0.16em', textTransform: 'uppercase', color: EMBER, fontWeight: 700, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 12 }}>
-          Made for your ears
-          <span style={{ flex: 1, height: 1, background: BORDER_EMBER }} />
-        </div>
-        <h2 style={{ fontFamily: "'Playfair Display', serif", fontSize: 'clamp(28px, 7vw, 36px)', fontWeight: 900, lineHeight: 1.1, marginBottom: 28 }}>
+      <section className="et-wrap et-section" style={{ background: INK2, borderBottom: `1px solid ${BORDER}`, paddingTop: 40, paddingBottom: 40 }}>
+        <SectionLabel>Made for your ears</SectionLabel>
+        <h2 className="et-h2" style={{ fontFamily: "'Playfair Display', serif", fontSize: 'clamp(28px, 7vw, 36px)', fontWeight: 900, lineHeight: 1.1, marginBottom: 28 }}>
           Production you can hear.
         </h2>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 24 }}>
           {QUALITY.map(q => (
             <div key={q.name} style={{ display: 'flex', gap: 16, alignItems: 'flex-start' }}>
               <div style={{ fontSize: 26, flexShrink: 0, marginTop: 2 }}>{q.icon}</div>
@@ -249,40 +284,74 @@ export default function LandingClient({ series, signupHref }: { series: SeriesCa
         </div>
       </section>
 
-      {/* ── PRICING ── */}
-      <section style={{ padding: '40px 20px' }}>
-        <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 13, letterSpacing: '0.16em', textTransform: 'uppercase', color: EMBER, fontWeight: 700, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 12 }}>
-          Pricing
-          <span style={{ flex: 1, height: 1, background: BORDER_EMBER }} />
+      {/* ── SERIES CARDS ── */}
+      <section id="series" className="et-wrap et-section" style={{ paddingTop: 40, paddingBottom: 40 }}>
+        <SectionLabel>Sample Stories</SectionLabel>
+        <h2 className="et-h2" style={{ fontFamily: "'Playfair Display', serif", fontSize: 'clamp(28px, 7vw, 36px)', fontWeight: 900, lineHeight: 1.1, marginBottom: 12 }}>
+          Press play. No signup.
+        </h2>
+        <p style={{ fontSize: 16, lineHeight: 1.6, color: 'rgba(255,255,255,0.85)', marginBottom: 28 }}>
+          Four complete series, yours right now. No signup. No credit card. Just press Play Now and enjoy.
+        </p>
+        <div className="et-grid-cards">
+          {otherCards.map(s => (
+            <SeriesCard key={s.id} s={s} />
+          ))}
         </div>
-        <h2 style={{ fontFamily: "'Playfair Display', serif", fontSize: 'clamp(28px, 7vw, 36px)', fontWeight: 900, lineHeight: 1.1, marginBottom: 24 }}>
+      </section>
+
+      {/* ── PRICING ── */}
+      <section className="et-wrap et-section" style={{ paddingTop: 40, paddingBottom: 40 }}>
+        <SectionLabel>Pricing</SectionLabel>
+        <h2 className="et-h2" style={{ fontFamily: "'Playfair Display', serif", fontSize: 'clamp(28px, 7vw, 36px)', fontWeight: 900, lineHeight: 1.1, marginBottom: 24 }}>
           One price. Everything.
         </h2>
-        <div style={{ background: INK2, border: `1px solid ${BORDER_EMBER}`, borderRadius: 14, padding: '24px 20px' }}>
-          <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 11, letterSpacing: '0.12em', textTransform: 'uppercase', color: EMBER, marginBottom: 8 }}>
-            14 days free, then
+
+        <div className="et-grid-pricing">
+          {/* Monthly */}
+          <div style={{ background: INK2, border: `1px solid ${BORDER_EMBER}`, borderRadius: 14, padding: '24px 20px', display: 'flex', flexDirection: 'column' }}>
+            <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 11, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.6)', marginBottom: 8 }}>
+              Monthly
+            </div>
+            <div style={{ fontFamily: "'Playfair Display', serif", fontSize: 44, fontWeight: 900, lineHeight: 1, marginBottom: 4 }}>
+              {MONTHLY}<span style={{ fontSize: 16, fontWeight: 400, color: 'rgba(255,255,255,0.6)' }}> / month</span>
+            </div>
+            <div style={{ fontSize: 14, color: 'rgba(255,255,255,0.75)', marginBottom: 20 }}>
+              14 days free, then {MONTHLY} a month. Cancel anytime.
+            </div>
+            <Link href={signupHref} style={{ marginTop: 'auto', display: 'block', border: `1px solid ${BORDER_EMBER}`, color: EMBER, padding: '14px 20px', borderRadius: 8, fontSize: 16, fontWeight: 700, textDecoration: 'none', textAlign: 'center' }}>
+              Start monthly
+            </Link>
           </div>
-          <div style={{ fontFamily: "'Playfair Display', serif", fontSize: 44, fontWeight: 900, lineHeight: 1, marginBottom: 4 }}>
-            $7.99<span style={{ fontSize: 16, fontWeight: 400, color: 'rgba(255,255,255,0.6)' }}> / month</span>
+
+          {/* Annual — featured */}
+          <div style={{ background: INK3, border: `1px solid ${EMBER}`, borderRadius: 14, padding: '24px 20px', display: 'flex', flexDirection: 'column', position: 'relative' }}>
+            <div style={{ position: 'absolute', top: -11, right: 18, background: EMBER, color: '#fff', fontSize: 10, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', padding: '4px 10px', borderRadius: 999 }}>
+              Best value
+            </div>
+            <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 11, letterSpacing: '0.12em', textTransform: 'uppercase', color: EMBER, marginBottom: 8 }}>
+              Annual · {ANNUAL_SAVE}
+            </div>
+            <div style={{ fontFamily: "'Playfair Display', serif", fontSize: 44, fontWeight: 900, lineHeight: 1, marginBottom: 4 }}>
+              {ANNUAL}<span style={{ fontSize: 16, fontWeight: 400, color: 'rgba(255,255,255,0.6)' }}> / year</span>
+            </div>
+            <div style={{ fontSize: 14, color: 'rgba(255,255,255,0.75)', marginBottom: 20 }}>
+              About {ANNUAL_PER_MONTH} a month. {ANNUAL_SAVE} vs. monthly.
+            </div>
+            <Link href={signupHref} style={{ marginTop: 'auto', display: 'block', background: EMBER, color: 'white', padding: '15px 20px', borderRadius: 8, fontSize: 16, fontWeight: 700, textDecoration: 'none', textAlign: 'center' }}>
+              Start annual
+            </Link>
           </div>
-          <div style={{ fontSize: 14, color: 'rgba(255,255,255,0.75)', marginBottom: 20 }}>
-            Unlimited listening. Every story. New releases weekly. Cancel anytime.
-          </div>
-          <Link href={signupHref} style={{ display: 'block', background: EMBER, color: 'white', padding: '15px 20px', borderRadius: 8, fontSize: 16, fontWeight: 700, textDecoration: 'none', textAlign: 'center', marginBottom: 10 }}>
-            Start free trial
-          </Link>
-          <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)', textAlign: 'center' }}>
-            Card required. Charged after trial ends.
-          </div>
+        </div>
+
+        <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)', textAlign: 'center', marginTop: 16 }}>
+          14 days free on both. Card required. Charged after trial ends.
         </div>
       </section>
 
       {/* ── QUESTIONS ── */}
-      <section style={{ padding: '0 20px 40px' }}>
-        <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 13, letterSpacing: '0.16em', textTransform: 'uppercase', color: EMBER, fontWeight: 700, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 12 }}>
-          Questions
-          <span style={{ flex: 1, height: 1, background: BORDER_EMBER }} />
-        </div>
+      <section className="et-wrap et-section" style={{ paddingTop: 0, paddingBottom: 40 }}>
+        <SectionLabel>Questions</SectionLabel>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
           {QUESTIONS.map((item, i) => (
             <div key={item.q} style={{ borderBottom: `1px solid ${BORDER}` }}>
@@ -302,8 +371,8 @@ export default function LandingClient({ series, signupHref }: { series: SeriesCa
       </section>
 
       {/* ── FINAL CTA ── */}
-      <section style={{ background: INK2, borderTop: `1px solid ${BORDER}`, padding: '56px 20px', textAlign: 'center' }}>
-        <h2 style={{ fontFamily: "'Playfair Display', serif", fontSize: 'clamp(30px, 8vw, 40px)', fontWeight: 900, lineHeight: 1.1, marginBottom: 12 }}>
+      <section className="et-wrap et-section" style={{ background: INK2, borderTop: `1px solid ${BORDER}`, paddingTop: 56, paddingBottom: 56, textAlign: 'center' }}>
+        <h2 className="et-h2" style={{ fontFamily: "'Playfair Display', serif", fontSize: 'clamp(30px, 8vw, 40px)', fontWeight: 900, lineHeight: 1.1, marginBottom: 12 }}>
           Ready to get lost?
         </h2>
         <p style={{ fontSize: 16, color: 'rgba(255,255,255,0.82)', lineHeight: 1.6, marginBottom: 28 }}>
@@ -318,7 +387,7 @@ export default function LandingClient({ series, signupHref }: { series: SeriesCa
       </section>
 
       {/* ── FOOTER ── */}
-      <footer style={{ padding: '32px 20px', borderTop: `1px solid ${BORDER}`, display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <footer className="et-wrap" style={{ paddingTop: 32, paddingBottom: 32, borderTop: `1px solid ${BORDER}`, display: 'flex', flexDirection: 'column', gap: 12 }}>
         <div style={{ fontFamily: "'Playfair Display', serif", fontSize: 32, fontWeight: 700 }}>
           Endless<span style={{ color: EMBER }}>Tales</span>
         </div>
