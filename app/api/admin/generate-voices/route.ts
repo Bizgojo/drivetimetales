@@ -2533,6 +2533,23 @@ async function generateVoiceLine(rawText: string, voiceId: string, storyId: stri
 // (series_generate_belle_assets) hits this same code via generateBelleOnly:true.
 const MIN_BEFORE_TEXT_CHARS = 5
 
+/**
+ * PERS-LEAD-TOKEN-001 (Orion, 2026-11-17): a [LISTENER_NAME] that LEADS the Belle
+ * intro used to take the standalone branch in generateBelleIntroWithName(), which
+ * wrote announcement_url = null and left the audio only in intro_audio_url. That
+ * satisfied the split personalization path but hard-failed
+ * personalizationPublishBlockers(), so such a story could never be published
+ * (CANON-04 rule 44 / CANON-08 rule 27). The two rules are only compatible if a
+ * name-free announcement is ALSO rendered. See callers below.
+ */
+function stripListenerToken(text: string): string {
+  return String(text || '')
+    .replace(/\[LISTENER_NAME\]/g, '')
+    .replace(/\s{2,}/g, ' ')
+    .replace(/^\s*[,;:.!?\u2014\u2013-]+\s*/, '')
+    .trim()
+}
+
 async function generateBelleIntroWithName(introText: string, storyId: string, lineIndex: number): Promise<{
   primaryUrl: string
   beforeUrl: string | null
@@ -2836,8 +2853,22 @@ export async function POST(req: NextRequest) {
           if (announcementText.includes('[LISTENER_NAME]')) {
             const intro = await generateBelleIntroWithName(announcementText, storyId, introLine.index)
             result.introUrl = intro.primaryUrl
+            // PERS-LEAD-TOKEN-001: also render a name-free announcement so
+            // announcement_url is set and the publish guard can pass. The split
+            // intro_* assets stay for the personalized-playback branch.
+            const nameFreeText = stripListenerToken(announcementText)
+            let leadAnnouncementUrl: string | null = null
+            if (nameFreeText) {
+              try {
+                leadAnnouncementUrl = await generateVoiceLine(nameFreeText, CANONICAL_BELLE_B_VOICE_ID, storyId, introLine.index, 'announcement')
+              } catch (e) {
+                leadAnnouncementUrl = null
+                result.errors.push(`Name-free announcement failed: ${String(e)}`)
+                console.error('  ❌ Name-free announcement failed (split intro kept):', e)
+              }
+            }
             await supabase.from('stories').update({
-              announcement_url: null,
+              announcement_url: leadAnnouncementUrl,
               announcement_text: announcementText,
               intro_audio_url: intro.primaryUrl,
               intro_before_url: intro.beforeUrl,
@@ -3776,14 +3807,26 @@ export async function POST(req: NextRequest) {
         if (announcementText.includes('[LISTENER_NAME]')) {
           const intro = await generateBelleIntroWithName(announcementText, storyId, introLine.index)
           results.intro = intro.primaryUrl
+          // PERS-LEAD-TOKEN-001: also render a name-free announcement so
+          // announcement_url is set and the publish guard can pass.
+          const nameFreeText = stripListenerToken(announcementText)
+          let leadAnnouncementUrl: string | null = null
+          if (nameFreeText) {
+            try {
+              leadAnnouncementUrl = await generateVoiceLine(nameFreeText, CANONICAL_BELLE_B_VOICE_ID, storyId, introLine.index, 'announcement')
+            } catch (e) {
+              leadAnnouncementUrl = null
+              console.error('  ❌ Name-free announcement failed (split intro kept):', e)
+            }
+          }
           await supabase.from('stories').update({
-            announcement_url: null,
+            announcement_url: leadAnnouncementUrl,
             announcement_text: announcementText,
             intro_audio_url: intro.primaryUrl,
             intro_before_url: intro.beforeUrl,
             intro_after_url: intro.afterUrl,
           }).eq('id', storyId)
-          console.log('  ✅ Belle B intro split')
+          console.log('  ✅ Belle B intro split' + (leadAnnouncementUrl ? ' (+ name-free announcement)' : ''))
         } else {
           results.intro = await generateVoiceLine(announcementText, CANONICAL_BELLE_B_VOICE_ID, storyId, introLine.index, 'announcement')
           await supabase.from('stories').update({
