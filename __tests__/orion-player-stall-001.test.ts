@@ -12,6 +12,14 @@ const src = fs.readFileSync(
   'utf8'
 )
 
+// STALL-TEST-DRIFT-001: the buffering button label no longer lives in
+// CanonicalPlayer — it moved to PlayerTransport when the transport was split out.
+// The behaviour the test protects is unchanged, so the source just moved with it.
+const transportSrc = fs.readFileSync(
+  path.join(process.cwd(), 'components/player/PlayerTransport.tsx'),
+  'utf8'
+)
+
 describe('ORION-PLAYER-STALL-001: stall watchdog', () => {
   test('watchdog samples currentTime while playing (2s interval)', () => {
     expect(src).toMatch(/stallSampleRef/)
@@ -21,8 +29,13 @@ describe('ORION-PLAYER-STALL-001: stall watchdog', () => {
   test('buffering state wired to waiting/stalled/playing events AND button label', () => {
     expect(src).toMatch(/onWaiting=\{\(\) => setIsBuffering\(true\)\}/)
     expect(src).toMatch(/onStalled=\{\(\) => setIsBuffering\(true\)\}/)
-    expect(src).toMatch(/onPlaying=\{\(\) => setIsBuffering\(false\)\}/)
-    expect(src).toMatch(/isBuffering \? '⏳ Buffering…' : '⏸ Pause'/)
+    // onPlaying clears buffering, but now only once its guards pass (the audio
+    // element for THIS story has actually loaded) — the guard came later than
+    // the original assertion, and is the safer behaviour.
+    expect(src).toMatch(/onPlaying=\{\(\) => \{/)
+    expect(src).toMatch(/setIsBuffering\(false\)/)
+    // Label moved to the transport component; assert it where it now lives.
+    expect(transportSrc).toMatch(/isBuffering && isPlaying \? 'Buffering…' : '⏸ Pause'/)
   })
 
   test('recovery reloads the SAME src cache-busted at the SAME position (max 2 attempts)', () => {
