@@ -20,6 +20,18 @@ type PlaybackQueueItem = {
   label: string
 }
 
+// PLAYER-STING-001 (CANON-11 rules 2 and 28): every story and every episode opens
+// with the Endless Tales sting, right at the start of Belle's intro — first play,
+// Start Over and autoplay alike. The queue used to begin at announcement_url,
+// which is Belle's intro with no sting, so any path that served the raw queue
+// (rather than a pre-rendered final_mix) started dry. Same asset the mixer uses
+// (app/api/asc3/render-final-mix/core.ts, gain 1.75 per MUSIC-002).
+const STING_URL = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/audio/sting/ET_Signature_Sting_v7.mp3.mp3`
+
+function stingQueueItem(): PlaybackQueueItem {
+  return { url: STING_URL, type: 'intro', label: 'Signature sting' }
+}
+
 type NameOpenerClip = {
   opener_id: string
   intro_audio_url: string | null
@@ -212,6 +224,7 @@ async function buildPersonalizedQueue({
   // Normal library subscribers always receive the full personalized queue.
   if (suppressNameOpener) {
     const queue: PlaybackQueueItem[] = [
+      stingQueueItem(),
       { url: String(story.announcement_url).trim(), type: 'intro', label: 'Story intro' },
     ]
     if (storyBodyWithOutroUrl) {
@@ -231,6 +244,7 @@ async function buildPersonalizedQueue({
 
   const opener = await pickNameOpenerClip(userId, pronunciationKey, toneCluster)
   const queue: PlaybackQueueItem[] = [
+    stingQueueItem(),
     { url: opener.intro_audio_url!, type: 'intro', label: 'Welcome' },
     { url: String(story.announcement_url).trim(), type: 'intro', label: 'Story intro' },
   ]
@@ -308,6 +322,7 @@ async function buildLiveGreetingQueue({
   if (!greetingStory?.series_id) return null
 
   const queue: PlaybackQueueItem[] = [
+    stingQueueItem(),
     { url: announcementUrl, type: 'intro', label: 'Story intro' },
   ]
   if (introKind) {
