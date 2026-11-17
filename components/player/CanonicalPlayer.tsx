@@ -1209,7 +1209,20 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
           endAnalyticsSession('tab_hidden', true)
         }
       }
-      if (document.visibilityState === 'visible' && !user) sessionStartRef.current = Date.now()
+      if (document.visibilityState === 'visible') {
+        if (!user) sessionStartRef.current = Date.now()
+        // PLAYER-CLOCK-001: after a suspension the UI clock may have stopped
+        // following the audio. Re-read the element's true position so the bar
+        // and the saved spot match what the listener actually heard.
+        const audio = audioRef.current
+        if (audio && !audio.paused) {
+          try {
+            const real = audio.currentTime
+            if (Number.isFinite(real)) setCurrentTime(real)
+          } catch {}
+          stallSampleRef.current = null
+        }
+      }
     }
     document.addEventListener('visibilitychange', handleVisibility)
     window.addEventListener('beforeunload', saveGuestMinutes)
@@ -2006,6 +2019,21 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
     const id = window.setInterval(() => {
       const audio = audioRef.current
       if (!audio || audio.paused || stallRecoveringRef.current) return
+      // PLAYER-CLOCK-001 (Marc, Nov 17 2026 — Second Rise EP2 stuck at 203s):
+      // on iOS the page is suspended when the phone locks or the app is
+      // backgrounded. Audio keeps playing (lock-screen/background audio), but
+      // JavaScript timers are throttled and currentTime reads can lag or stop
+      // advancing. The watchdog then saw a "frozen" clock and called it a stall,
+      // seeked BACKWARD and eventually paused — so audio ran ~15 minutes while
+      // the position sat at 203s and the episode never reached its end.
+      // A suspended page cannot observe whether audio is healthy, so it must not
+      // judge. Only police stalls while the page is actually visible.
+      if (typeof document !== 'undefined' && document.visibilityState !== 'visible') {
+        // Reset the freeze window so returning to the foreground never counts
+        // the time spent suspended as a stall.
+        stallSampleRef.current = null
+        return
+      }
       const now = Date.now()
       const t = audio.currentTime
       const sample = stallSampleRef.current
@@ -2017,6 +2045,16 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
         return
       }
       const frozenMs = now - sample.at
+      // PLAYER-CLOCK-001: a genuinely stalled stream is not ready enough to play.
+      // If the element reports it is fine (readyState >= HAVE_FUTURE_DATA(3)) and
+      // is not seeking, a "frozen" clock is far more likely a throttled/blocked
+      // read than a real stall — do not seek backward and destroy the position.
+      const looksHealthy = !audio.seeking && audio.readyState >= 3 && !audio.ended
+      if (looksHealthy) {
+        stallSampleRef.current = { t, at: now }
+        setIsBuffering(false)
+        return
+      }
       if (frozenMs >= 4000) setIsBuffering(true)
       if (frozenMs >= 8000) {
         if (stallRecoveryCountRef.current < 2) {
