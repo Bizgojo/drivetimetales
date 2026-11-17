@@ -1877,8 +1877,14 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
     }
   }, [loading, isASC3, queue, audioSrc, storyId, totalDur])
 
-  // AUTOADVANCE-2S-001: look up the next series episode during the last 45 seconds, so the
-  // natural end does not wait on the database.
+  // AUTOADVANCE-2S-GAP-001 (Marc, Nov 17 2026): the 2s timer measured from the OLD
+  // page's natural end, but the next episode first had to reset the router, re-mount
+  // the player, round-trip /api/asc3/story-playlist and load audio. Measured gaps were
+  // 5, 24 and 41s. Canon rule 25 says 2-3s, measured from the audio.
+  //
+  // So during the last 45 seconds we now (a) resolve the next episode AND (b) actually
+  // fetch its audio bytes into the HTTP cache, so the new <audio> element hits a warm
+  // cache instead of the network. The gap then measures audio-end to audio-start.
   useEffect(() => {
     if (loading || !(story as any)?.series_id || mode === 'playlist') return
     const total = totalDur || duration
@@ -1888,7 +1894,36 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
     prefetchingNextRef.current = true
     const forStoryId = storyId
     void fetchDirectSeriesAutoAdvanceCandidate()
-      .then((candidate) => { if (mountedRef.current) prefetchedNextRef.current = { forStoryId, candidate } })
+      .then((candidate) => {
+        if (!mountedRef.current) return
+        prefetchedNextRef.current = { forStoryId, candidate }
+        // Warm the audio itself, not just the row. Best-effort: a failure here
+        // must never affect playback, it just means we fall back to a cold load.
+        const nextUrl = String((candidate?.story as any)?.story_audio_url || (candidate?.story as any)?.audio_url || '').trim()
+        // Also warm the playlist response for the next episode. load() calls this
+        // sequentially (DB story-row, then this, then audio); prefetching it puts
+        // it in the HTTP cache so the new episode's load() resolves instantly
+        // instead of paying that round-trip inside the 2s gap.
+        const nextId = String((candidate?.story as any)?.id || '').trim()
+        if (nextId) {
+          try {
+            const pp = new URLSearchParams({ storyId: nextId })
+            const fn = String((user as any)?.first_name || '').trim()
+            if (fn) pp.set('firstName', fn)
+            fetch(`/api/asc3/story-playlist?${pp.toString()}`).catch(() => {})
+          } catch {}
+        }
+        if (nextUrl && typeof document !== 'undefined') {
+          try {
+            const link = document.createElement('link')
+            link.rel = 'prefetch'
+            link.as = 'audio'
+            link.href = nextUrl
+            link.crossOrigin = 'anonymous'
+            document.head.appendChild(link)
+          } catch {}
+        }
+      })
       .catch(() => {})
       .finally(() => { prefetchingNextRef.current = false })
     // eslint-disable-next-line react-hooks/exhaustive-deps
