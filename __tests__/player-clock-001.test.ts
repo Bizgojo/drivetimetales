@@ -27,11 +27,13 @@ describe('PLAYER-CLOCK-001: watchdog must not fight a suspended page', () => {
   })
 
   test('a healthy, non-seeking element is never treated as stalled', () => {
-    const idx = src.indexOf('a genuinely stalled stream is not ready enough')
+    const idx = src.indexOf('const looksHealthy')
     expect(idx).toBeGreaterThan(-1)
-    const block = src.slice(idx, idx + 700)
+    const block = src.slice(idx, idx + 900)
     expect(block).toMatch(/!audio\.seeking/)
     expect(block).toMatch(/audio\.readyState >= 3/)
+    // Re-basing must not silently drop Buffering UI for a long freeze.
+    expect(block).toMatch(/frozenMs >= 4000\) setIsBuffering\(true\)/)
     expect(block).toMatch(/return/)
   })
 

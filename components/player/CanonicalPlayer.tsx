@@ -2045,14 +2045,22 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
         return
       }
       const frozenMs = now - sample.at
-      // PLAYER-CLOCK-001: a genuinely stalled stream is not ready enough to play.
-      // If the element reports it is fine (readyState >= HAVE_FUTURE_DATA(3)) and
-      // is not seeking, a "frozen" clock is far more likely a throttled/blocked
-      // read than a real stall — do not seek backward and destroy the position.
+      // PLAYER-CLOCK-001: a stream that is genuinely data-starved reports
+      // readyState < HAVE_FUTURE_DATA (3) — that is the whole point of that
+      // constant. So readyState >= 3 while the clock is frozen means the media
+      // pipeline is NOT starved; the reads are lagging (throttled timers, a
+      // long-running main-thread task, a suspended page we could not see).
+      // Seeking backward there destroys a good position for no reason.
+      //
+      // This only suppresses the BACKWARD SEEK, never stall detection itself:
+      // if the element is unhealthy, the original path below runs unchanged.
       const looksHealthy = !audio.seeking && audio.readyState >= 3 && !audio.ended
       if (looksHealthy) {
+        // Re-base the window (keep the same position) so frozenMs keeps growing
+        // from a fresh timestamp instead of resetting — the UI can still show
+        // Buffering… and a real freeze still escalates once health drops.
+        if (frozenMs >= 4000) setIsBuffering(true)
         stallSampleRef.current = { t, at: now }
-        setIsBuffering(false)
         return
       }
       if (frozenMs >= 4000) setIsBuffering(true)
