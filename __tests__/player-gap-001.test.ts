@@ -42,6 +42,11 @@ describe('PLAYER-GAP-001: next episode audio is warmed during the last 45s', () 
     expect(block).toMatch(/fetch\(`\/api\/asc3\/story-playlist/)
   })
 
+  test('prefetch tags are replaced, not accumulated in <head>', () => {
+    expect(src).toMatch(/prefetchLinkRef = useRef<HTMLLinkElement \| null>/)
+    expect(src).toMatch(/prefetchLinkRef\.current\.remove\(\)/)
+  })
+
   test('prefetch failure never affects playback', () => {
     const idx = src.indexOf('AUTOADVANCE-2S-GAP-001')
     const block = src.slice(idx, idx + 2600)

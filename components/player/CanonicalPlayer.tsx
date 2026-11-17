@@ -183,6 +183,9 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
   // the previous one ends, always from 0:00 so the sting plays.
   const prefetchedNextRef = useRef<{ forStoryId: string; candidate: AutoAdvanceCandidate | null } | null>(null)
   const prefetchingNextRef = useRef(false)
+  // PLAYER-GAP-001: holds the <link rel="prefetch"> for the next episode's audio
+  // so re-entry replaces it instead of piling tags into <head>.
+  const prefetchLinkRef = useRef<HTMLLinkElement | null>(null)
   const naturalEndAtRef = useRef<number | null>(null)
   const stillListeningTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const unrequestedAutoStartsRef = useRef(0)
@@ -1915,12 +1918,15 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
         }
         if (nextUrl && typeof document !== 'undefined') {
           try {
+            // One tag per episode, replaced on re-entry — never accumulate.
+            if (prefetchLinkRef.current) prefetchLinkRef.current.remove()
             const link = document.createElement('link')
             link.rel = 'prefetch'
             link.as = 'audio'
             link.href = nextUrl
             link.crossOrigin = 'anonymous'
             document.head.appendChild(link)
+            prefetchLinkRef.current = link
           } catch {}
         }
       })
