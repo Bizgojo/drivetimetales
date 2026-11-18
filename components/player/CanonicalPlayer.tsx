@@ -1009,6 +1009,49 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
     }
   }
 
+  // FINALE-GAP-001 — CANON-11 rules 80-81.
+  // A "gap" that still plays sound is not a gap, so this waits on a bare timer
+  // with the audio element already stopped. Nothing is rendered during it: no
+  // Up next box, no countdown. Rule 81 requires the silence, rule 80 requires
+  // the absence of the box.
+  // Playlist items carry only { id, episode_number } — no series_id — so the
+  // next item's series has to be read from the DB. Doing that on every advance
+  // would add a query to the in-series path that never needs it, so this is
+  // only called once the finished story is known to belong to a series.
+  const isSeriesToSeriesSeam = async (finished: any, nextItem: any): Promise<boolean> => {
+    const fromSeries = finished?.series_id || null
+    // A standalone has no finale-to-next-series seam to speak of; rule 80 is
+    // about a SERIES finale. No series at the outgoing end means no gap.
+    if (!fromSeries || !nextItem?.id) return false
+    try {
+      const { data, error } = await supabase
+        .from('stories')
+        .select('series_id')
+        .eq('id', nextItem.id)
+        .maybeSingle()
+      if (error) {
+        // A lookup failure must never cost the listener their playback. No gap
+        // is the safe default: the advance still happens.
+        console.error('[player] finale gap series lookup failed:', { nextId: nextItem.id, error })
+        return false
+      }
+      const toSeries = (data as any)?.series_id || null
+      if (!toSeries) return false
+      return fromSeries !== toSeries
+    } catch (e: any) {
+      console.error('[player] finale gap series lookup threw:', e?.message)
+      return false
+    }
+  }
+
+  const FINALE_SERIES_GAP_MS = 2000
+
+  const waitSilentGap = (ms: number) => new Promise<void>((resolve) => {
+    const t = setTimeout(resolve, ms)
+    // Track it so unmount clears the wait instead of resuming into a dead player.
+    autoAdvanceTimerRef.current = t
+  })
+
   const maybeAutoAdvanceFromNaturalEnd = async (source: 'natural_ended') => {
     if (source !== 'natural_ended') return
     if (!mountedRef.current) return
@@ -1041,6 +1084,24 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
       try { removeEpisodeFromActivePlaylist(storyId, user?.id || null) } catch {}
 
       if (next?.id) {
+        // CANON-11 rules 80-81 (FINALE-GAP-001, PR pending): when this was the
+        // FINALE of its series and the playlist moves on to a DIFFERENT series,
+        // hold a silent 2-second gap first, with nothing on screen. The new
+        // series then opens with its own sting and Belle intro (rule 28).
+        //
+        // Scoped deliberately to the series->series seam. Advancing within one
+        // series (episode to episode) is decision 134's "go straight on, no
+        // countdown box", and a gap there would just feel like a stall. The
+        // listener hears one clean break between two stories and nothing
+        // inside a story.
+        if (await isSeriesToSeriesSeam(story, next)) {
+          await waitSilentGap(FINALE_SERIES_GAP_MS)
+          if (!mountedRef.current || !autoAdvanceEnabledRef.current) {
+            isAdvancingRef.current = false
+            return
+          }
+        }
+
         // Keep playing straight through the queue — don't stop and wait for
         // a tap.
         isAdvancingRef.current = false

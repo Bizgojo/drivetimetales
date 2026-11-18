@@ -10,6 +10,8 @@ Audio Dramas/
 *.m4a
 Audio Dramas/
 .env.local.backup*
+.env.local.bak-*
+.env.local.bak*
 .env.local
 .DS_Store
 .env.local.save
