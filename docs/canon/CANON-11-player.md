@@ -62,6 +62,14 @@ Listening never stops between episodes. Each episode flows into the next until t
 35. Pressing pause during the gap (lock screen, car or headphones) just pauses. Pressing Play then starts the next item from the beginning, with the sting and Belle's intro. — **Agreed** (docs/PLAYER-RULES.md; memory player-rules.md)
 36. The finished episode is marked complete, and the next one is recorded as if the listener pressed Play. Advanced and cancelled events are logged. — **Agreed** (docs/PLAYER-RULES.md)
 
+#### D2. Series finale to the next series — Proposed (CANON-99 item 157, Marc Nov 18, 2026)
+
+15a. When the **last episode of a series** ends, the player waits **2 seconds in silence** and then starts the first episode of the next series in the match list. During those 2 seconds the screen shows **nothing**: no "Up next" box, no countdown, no title, no artwork, no Cancel button. The gap is silent — no sting, no Belle, no sound effect. — **Proposed** (Marc, Nov 18, 2026; CANON-99 item 157)
+15b. The next series comes from the match list, in order: Rerouted → Don't Go Home → The Widow Who Watched → Second Rise → Weekend Wife in Miami. The last series in a chain has no next series and goes to the Library per rule 27. A series not in a chain has no automatic next series. If the matched series is unpublished or its first episode is missing, rule 31 applies (go to the Library, log a warning) — the player does not sit on a blank 2-second screen. — **Proposed** (Marc, Nov 18, 2026; CANON-99 item 157)
+15c. **Scope:** 15a and 15b change the series finale only. The episode-to-episode gap (rule 25) and the playlist gap (rule 26) keep the 2-to-3-second gap and the "Up next" screen with Cancel, per decision 48. — **Proposed** (CANON-99 item 157)
+
+> **Conflict note (open until Marc answers CANON-99 item 157).** Decision 48 says the between-episode gap shows an "Up next" screen with a Cancel button. Decision 134 says there is no "Up next" countdown box. Code C1/C2 (both marked RESOLVED by decision 48) say the code advances with no Up next screen at all. Rules 15a–15c add a deliberate **empty** 2 seconds for finales. These four statements cannot all be true. Item 157 narrows 48 to non-finale gaps and reads 134 as the finale case. **Until Marc answers, 15a–15c are Proposed and not enforceable.**
+
 ### E. What listeners can see — Agreed (docs/PLAYER-RULES.md)
 37. **[MARC DECIDES]** All episodes publish together. A series stays hidden until every episode is finished and approved, then they all go live at the same time. — **Agreed** (docs/PLAYER-RULES.md; Marc, Nov 8)
 38. Episodes are numbered from 1 and count up with no gaps. — **Agreed** (docs/PLAYER-RULES.md)
@@ -162,6 +170,7 @@ Marc answered CANON-99 on Nov 9, 2026. These decisions are **Agreed** and overri
 ## Enforcement status
 - Rules 1–6, 11–24, 63–66: enforced in code (CanonicalPlayer.tsx, EpisodeNavigation.tsx, PlayerTransport.tsx, lib/mediaSession.ts, app/api/user/save-progress). Real iPhone and Android tests still not done (PLAYER-RULES open items).
 - Rule 7, 25, 26, 33–35: NOT enforced. No 2-to-3-second gap and no Up next screen for series or playlists (see C1). Nov 8: episodes did not continue for Marc; cause not yet found.
+- Rules 15a–15c (finale → next series, silent 2-second gap, match list): NOT built. Proposed under CANON-99 item 157; not enforceable until Marc answers.
 - Rule 9: not enforced in audio yet (Nov 8 gap before personalization, After the Last Train EP3; pipeline outro rules not updated).
 - Rule 10: not enforced (Nov 8: bar stopped at 59%, After the Last Train EP1, iPhone Safari).
 - Rule 27 (red Rate on series): NOT enforced. components/LibraryStoryCard.tsx shows Rate only when "completed"; app/library/page.tsx getCardState never sets completed or reviewed for a series.
