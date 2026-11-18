@@ -12,6 +12,7 @@ import {
   limitedParallel,
   logTmpSpace,
 } from '@/lib/tmpSpace'
+import { speakableText } from '@/lib/speakableText'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -177,7 +178,7 @@ async function renderOpenerAudio(text: string, output: string) {
   const res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${CANONICAL_BELLE_B_VOICE_ID}`, {
     method: 'POST',
     headers: { 'xi-api-key': elKey, 'Content-Type': 'application/json', Accept: 'audio/mpeg' },
-    body: JSON.stringify({ text, model_id: 'eleven_multilingual_v2', voice_settings: BELLE_SETTINGS }),
+    body: JSON.stringify({ text: speakableText(text), model_id: 'eleven_multilingual_v2', voice_settings: BELLE_SETTINGS }),
   })
   if (!res.ok) throw new Error(`Belle opener generation failed: ${res.status} ${await res.text()}`)
   const rawPath = output.replace(/\.mp3$/, '.raw.mp3')

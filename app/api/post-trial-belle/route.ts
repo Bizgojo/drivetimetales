@@ -7,6 +7,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { createServerClient } from '@supabase/ssr'
 import { CANONICAL_BELLE_B_VOICE_ID } from '@/lib/voiceConstants'
+import { speakableText } from '@/lib/speakableText'
 
 export const runtime = 'nodejs'
 export const maxDuration = 30
@@ -46,7 +47,7 @@ const SERIES_TEMPLATE =
 
 async function generateAudio(text: string): Promise<Buffer> {
   const body = JSON.stringify({
-    text,
+    text: speakableText(text),
     model_id: 'eleven_multilingual_v2',
     voice_settings: EL_SETTINGS,
   })

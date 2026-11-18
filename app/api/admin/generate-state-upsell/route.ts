@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { speakableText } from '@/lib/speakableText'
 
 // Force runtime rendering: this route calls ElevenLabs at request time.
 // Without this, Next evaluates it during `next build` and the upstream
@@ -25,7 +26,7 @@ async function generateAudioClip(text: string, voiceId: string): Promise<Buffer>
       'xi-api-key': process.env.ELEVENLABS_API_KEY!
     },
     body: JSON.stringify({
-      text: text,
+      text: speakableText(text),
       model_id: 'eleven_monolingual_v1',
       voice_settings: {
         stability: 0.5,

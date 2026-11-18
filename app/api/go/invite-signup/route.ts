@@ -39,6 +39,7 @@ import { TRIAL_DAYS } from '@/lib/pricing'
 import { resolveRequestOrigin } from '@/lib/requestOrigin'
 import { adTagFields } from '@/lib/adReport'
 import { requestMatchKeys } from '@/lib/tracking/matchKeys'
+import { speakableText } from '@/lib/speakableText'
 
 // The arm determines which promo audio plays on the gate page — it does NOT
 // determine what gets seeded post-signup. All three arms land on EP2.
@@ -153,7 +154,7 @@ async function renderAndStoreBelleWelcomeSeg1(
           method: 'POST',
           headers: { 'xi-api-key': elKey, 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            text: seg1Text,
+            text: speakableText(seg1Text),
             model_id: 'eleven_multilingual_v2',
             voice_settings: BELLE_VOICE_SETTINGS,
           }),

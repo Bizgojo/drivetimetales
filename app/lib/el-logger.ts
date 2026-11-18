@@ -5,6 +5,7 @@
  */
 import { createClient } from '@supabase/supabase-js'
 import { recordLedgerSpend } from './spend-ledger'
+import { speakableText } from '@/lib/speakableText'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -67,7 +68,7 @@ export async function elevenLabsTTS(opts: {
   const EL_KEY = process.env.ELEVENLABS_API_KEY!
   const model = opts.modelId || 'eleven_multilingual_v2'
   const body = JSON.stringify({
-    text: opts.text,
+    text: speakableText(opts.text),
     model_id: model,
     voice_settings: { stability: 0.5, similarity_boost: 0.75 },
   })

@@ -14,6 +14,7 @@ import {
   castReviewHeader,
   DEFAULT_CAST_REVIEW_CHAT_ID,
 } from '@/lib/castReview'
+import { speakableText } from '@/lib/speakableText'
 
 const MARC_DM_CHAT_ID = process.env.MARC_TELEGRAM_CHAT_ID || '8737860822'
 
@@ -39,7 +40,7 @@ export async function auditionClip(voiceId: string, line: string, apiKey: string
       method: 'POST',
       headers: { 'xi-api-key': apiKey, 'Content-Type': 'application/json', Accept: 'audio/mpeg' },
       body: JSON.stringify({
-        text: line,
+        text: speakableText(line),
         model_id: 'eleven_multilingual_v2',
         voice_settings: { stability: 0.5, similarity_boost: 0.75, style: 0, use_speaker_boost: true },
       }),

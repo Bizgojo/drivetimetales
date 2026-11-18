@@ -28,6 +28,7 @@ import * as fs from 'fs'
 import * as os from 'os'
 import * as path from 'path'
 import { CANONICAL_BELLE_B_VOICE_ID } from '@/lib/voiceConstants'
+import { speakableText } from '@/lib/speakableText'
 
 export const runtime = 'nodejs'
 
@@ -110,7 +111,7 @@ export async function GET(request: NextRequest) {
     method: 'POST',
     headers: { 'xi-api-key': elKey, 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      text: seg1Text,
+      text: speakableText(seg1Text),
       model_id: 'eleven_multilingual_v2',
       voice_settings: BELLE_VOICE_SETTINGS,
     }),
