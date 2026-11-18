@@ -33,6 +33,7 @@ const NAV_GROUPS = [
     { href: '/admin/story-production-v2', label: 'Story Production V2' },
     { href: '/admin/asc', label: 'ASC' },
     { href: '/admin/production/approval', label: 'Content Approval' },
+    { href: '/admin/voice-approval', label: 'Voice Approval' },
     { href: '/admin/authors-narrators-v2', label: 'Authors & Narrators' },
     { href: '/admin/story-ideas', label: 'Story Ideas' },
     { href: '/admin/genres', label: 'Genres' },
