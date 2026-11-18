@@ -17,8 +17,8 @@
  * respell the word for the voice only. The script, the player, the covers and the page
  * copy keep the real spelling — this text never leaves the TTS call.
  *
- * The exact respelling below is PENDING Marc's pick from three test clips. Do not treat
- * it as settled; change `spoken` when he chooses.
+ * The respelling below is Marc's chosen form, "Re-rout-ed" (2026-11-18), picked by ear
+ * from three rendered test clips. Change `spoken` only with a new pick from Marc.
  */
 
 export type PronunciationOverride = {
@@ -33,9 +33,9 @@ export type PronunciationOverride = {
 export const PRONUNCIATION_OVERRIDES: PronunciationOverride[] = [
   {
     word: 'Rerouted',
-    // TODO(PRONUNCIATION-001): swap to Marc's chosen respelling. Target vowel is /aʊ/
-    // as in "out" / "shout". Awaiting his pick from the three test clips.
-    spoken: 'Rerowted',
+    // Marc's pick (2026-11-18) from three rendered test clips: "Re-rout-ed".
+    // Target vowel is /aʊ/ as in "out" / "shout".
+    spoken: 'Re-rout-ed',
     reason:
       'Marc 2026-11-18: must be re-ROUT-ed (rhymes with "out"/"shout", /aʊ/), never re-ROOT-ed (/u/) and never "boat" (/oʊ/), in stories, Belle intros/outros and ads.',
   },
