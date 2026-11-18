@@ -127,6 +127,10 @@ Play logging and listen time
 78. Logging never blocks or slows playback. — **In force (code)** (lib/analytics.ts header)
 79. Listening by test accounts is never counted in listener numbers. — **Proposed** (is_test_account exists for sales; same rule for listening)
 
+Finale to next series
+80. When a series finale ends and the listener is in a playlist, the next series starts exactly as any other playlist item: after a silent 2-second gap, with no "Up next" box and nothing on screen during the pause. The next series then opens with its own sting and Belle's intro (rule 28). — **Proposed** (sets the finale case explicitly; decision 134 says "no countdown box" at the end of a story but does not name the finale-to-next-series transition, and rules 26 and 33 would otherwise put an Up next box here)
+81. The 2-second gap is silent. No sting, no music, no voice plays in it, so the listener hears one clean break between two stories. — **Proposed** (follows from rule 80; without this a "gap" could be filled with the outgoing episode's tail or the incoming sting and stop being a gap)
+
 ## Marc's decisions (Nov 9, 2026)
 
 Marc answered CANON-99 on Nov 9, 2026. These decisions are **Agreed** and override any rule above that says otherwise. Each conflict or question below that they settle is marked RESOLVED.
@@ -162,6 +166,7 @@ Marc answered CANON-99 on Nov 9, 2026. These decisions are **Agreed** and overri
 ## Enforcement status
 - Rules 1–6, 11–24, 63–66: enforced in code (CanonicalPlayer.tsx, EpisodeNavigation.tsx, PlayerTransport.tsx, lib/mediaSession.ts, app/api/user/save-progress). Real iPhone and Android tests still not done (PLAYER-RULES open items).
 - Rule 7, 25, 26, 33–35: NOT enforced. No 2-to-3-second gap and no Up next screen for series or playlists (see C1). Nov 8: episodes did not continue for Marc; cause not yet found.
+- Rules 80–81: NOT enforced. No finale-to-next-series gap exists yet (built separately, after this rule is approved).
 - Rule 9: not enforced in audio yet (Nov 8 gap before personalization, After the Last Train EP3; pipeline outro rules not updated).
 - Rule 10: not enforced (Nov 8: bar stopped at 59%, After the Last Train EP1, iPhone Safari).
 - Rule 27 (red Rate on series): NOT enforced. components/LibraryStoryCard.tsx shows Rate only when "completed"; app/library/page.tsx getCardState never sets completed or reviewed for a series.
