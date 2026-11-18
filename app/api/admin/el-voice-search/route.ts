@@ -1,3 +1,8 @@
+// Force runtime rendering: this route calls ElevenLabs at request time.
+// Without this, Next evaluates it during `next build` and the upstream
+// call times out, aborting the build (2026-11-18).
+export const dynamic = 'force-dynamic';
+
 import { NextResponse } from 'next/server'
 
 // This route is no longer used for character voice assignment.

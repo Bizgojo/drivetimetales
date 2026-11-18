@@ -5,6 +5,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 
+// Force runtime rendering: this route calls ElevenLabs at request time.
+// Without this, Next evaluates it during `next build` and the upstream
+// call times out, aborting the build (2026-11-18).
+export const dynamic = 'force-dynamic';
+
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
