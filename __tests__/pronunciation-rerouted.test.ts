@@ -1,6 +1,6 @@
 /**
  * PRONUNCIATION-001 regression: "Rerouted" must reach the voice as "Re-rout-ed"
- * (re-ROWT-ed), and the trailing-dash fix must keep working.
+ * (re-ROUT-ed, vowel /aʊ/ as in "out"), and the trailing-dash fix must keep working.
  */
 import { speakableText } from '../lib/speakableText'
 import { applyPronunciationOverrides } from '../lib/pronunciationOverrides'
