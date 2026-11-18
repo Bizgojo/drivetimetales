@@ -6,6 +6,11 @@
 
 import { NextResponse } from 'next/server';
 
+// Force runtime rendering. Without this Next tries to statically evaluate the
+// route during `next build`, where the upstream ElevenLabs call times out and
+// aborts the build (2026-11-18).
+export const dynamic = 'force-dynamic';
+
 const ELEVENLABS_API_KEY = process.env.ELEVENLABS_API_KEY!;
 
 export async function GET() {
