@@ -1,18 +1,24 @@
 /**
  * PRONUNCIATION-001 (Marc 2026-11-18): a word that every voice must say the same way.
  *
- * Rerouted must be said "re-ROWT-ed" (rhymes with "boat"), never "re-ROOT-ed"
- * (rhymes with "boot"). The live episodes, Belle's intros and outros, and the ads
- * all say "re-ROOT-ed" today because ElevenLabs reads the bare spelling as /u/.
+ * "Rerouted" is said re-ROUT-ed — the stressed vowel rhymes with "out" and "shout"
+ * (/aʊ/), NOT with "boat" (/oʊ/) and NOT with "boot" (/u/).
+ *
+ * This is the one thing to get right before touching this file. An earlier revision of
+ * this comment said "boat", which sent the first test batch down the wrong vowel. The
+ * target is the same vowel as "route" in "the route home" and "shout".
+ *
+ * The live audio is currently split: Belle's intros and outros say /u/ ("re-ROOT-ed",
+ * wrong) while the EP4 script line reads correctly. That split is about spelling, not
+ * generation — ElevenLabs reads the bare "ou" as /u/ in some contexts.
  *
  * We do not rely on an ElevenLabs pronunciation dictionary: dictionary IDs are
- * per-account state that the code would have to fetch and can silently drift. Instead
- * we respell the word for the voice only. The script, the player, the covers and the
- * page copy keep the real spelling — this text never leaves the TTS call.
+ * per-account state the code would have to fetch and can silently drift. Instead we
+ * respell the word for the voice only. The script, the player, the covers and the page
+ * copy keep the real spelling — this text never leaves the TTS call.
  *
- * The respelling "Rerowted" is deliberate: the "ow" digraph makes the stressed vowel
- * /oʊ/ ("row"), and keeping the capital R and the remaining letters preserves
- * ElevenLabs' handling of the word's rhythm. Verified by ear before merge.
+ * The exact respelling below is PENDING Marc's pick from three test clips. Do not treat
+ * it as settled; change `spoken` when he chooses.
  */
 
 export type PronunciationOverride = {
@@ -27,9 +33,11 @@ export type PronunciationOverride = {
 export const PRONUNCIATION_OVERRIDES: PronunciationOverride[] = [
   {
     word: 'Rerouted',
+    // TODO(PRONUNCIATION-001): swap to Marc's chosen respelling. Target vowel is /aʊ/
+    // as in "out" / "shout". Awaiting his pick from the three test clips.
     spoken: 'Rerowted',
     reason:
-      'Marc 2026-11-18: must be re-ROWT-ed, never re-ROOT-ed, in stories, Belle intros/outros and ads.',
+      'Marc 2026-11-18: must be re-ROUT-ed (rhymes with "out"/"shout", /aʊ/), never re-ROOT-ed (/u/) and never "boat" (/oʊ/), in stories, Belle intros/outros and ads.',
   },
 ]
 
