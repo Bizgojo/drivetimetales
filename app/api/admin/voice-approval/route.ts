@@ -10,11 +10,26 @@
 import { NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
+import { createHash } from 'crypto'
 
 export const dynamic = 'force-dynamic'
 
 const EL_KEY = process.env.ELEVENLABS_API_KEY
 const CHARS_PER_CREDIT = 1 // ElevenLabs bills 1 credit per character on standard TTS
+
+// VOICE-APPROVAL-002: cached samples.
+// Marc, Nov 18 2026: "cached samples". The old route billed ElevenLabs on every
+// play, so re-listening to the same voice cost credits each time — exactly wrong
+// for a page whose job is comparison by ear. Samples are now content-addressed by
+// (voice_id + exact text) and stored in the existing `audio` bucket, so the same
+// pairing is billed once, ever. A different line for the same voice is a new key
+// and is billed once; that is intended, not a cache miss.
+const SAMPLE_PREFIX = 'voice-samples'
+
+function sampleKey(voiceId: string, text: string) {
+  const h = createHash('sha256').update(voiceId + '\u0000' + text).digest('hex').slice(0, 32)
+  return `${SAMPLE_PREFIX}/${voiceId}/${h}.mp3`
+}
 
 function sb() {
   const cookieStore = cookies()
@@ -143,14 +158,48 @@ export async function POST(req: Request) {
         (!gender || String(v.labels?.gender || '').toLowerCase() === gender) &&
         ageGroupMatch(v.labels?.age, age)
     )
+    // VOICE-APPROVAL-003: flag similar voices, WITHIN THIS STORY ONLY.
+    // Marc, Nov 18 2026: "flag similar voices only within the SAME story."
+    // The point is to stop two characters in one series sounding alike. A voice
+    // already used by a DIFFERENT series is not a problem — reusing a good voice
+    // across unrelated series is fine — so it must not be flagged. Scoping here
+    // (rather than globally) is what makes the flag trustworthy: if every match
+    // turned red, the admin would learn to ignore the colour.
+    const seriesId = body.series_id ? String(body.series_id) : null
+    let usedInThisStory: Array<{ voice_id: string; canonical_name: string }> = []
+    if (seriesId) {
+      const { data: rosterRows } = await supabase
+        .from('series_character_roster')
+        .select('voice_id, canonical_name')
+        .eq('series_id', seriesId)
+        .not('voice_id', 'is', null)
+      usedInThisStory = (rosterRows || []).filter(
+        (r: any) => r.voice_id && r.voice_id !== String(body.exclude_character || '')
+      )
+    }
+    // Accept only a real match: same voice_id, or the same voice_name compared
+    // case-insensitively (ElevenLabs ids differ across accounts for the same
+    // voice name, so name comparison catches that case).
+    const sameVoice = (v: any) =>
+      usedInThisStory.find(
+        (r: any) =>
+          r.voice_id === v.voice_id ||
+          String(r.canonical_name || '').toLowerCase() === String(v.name || '').toLowerCase()
+      )
+
     return NextResponse.json({
-      voices: filtered.slice(0, 40).map((v: any) => ({
-        voice_id: v.voice_id,
-        name: v.name,
-        gender: v.labels?.gender,
-        age: v.labels?.age,
-        accent: v.labels?.accent,
-      })),
+      voices: filtered.slice(0, 40).map((v: any) => {
+        const clash = sameVoice(v)
+        return {
+          voice_id: v.voice_id,
+          name: v.name,
+          gender: v.labels?.gender,
+          age: v.labels?.age,
+          accent: v.labels?.accent,
+          // null = no clash in this story. Non-null names the character already using it.
+          used_by_in_story: clash ? clash.canonical_name : null,
+        }
+      }),
     })
   }
 
@@ -158,6 +207,21 @@ export async function POST(req: Request) {
     const { voice_id, text } = body
     if (!voice_id || !text) return NextResponse.json({ error: 'voice_id and text required' }, { status: 400 })
     if (String(text).length > 300) return NextResponse.json({ error: 'line too long (max 300 chars)' }, { status: 400 })
+
+    // VOICE-APPROVAL-002: serve from cache before spending a credit.
+    const key = sampleKey(voice_id, String(text))
+    const cached = await supabase.storage.from('audio').download(key)
+    if (!cached.error && cached.data) {
+      const buf = Buffer.from(await cached.data.arrayBuffer())
+      return new NextResponse(buf, {
+        headers: {
+          'Content-Type': 'audio/mpeg',
+          'Cache-Control': 'private, max-age=86400',
+          'X-Credits-Used': '0',
+          'X-Sample-Cache': 'hit',
+        },
+      })
+    }
 
     const res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voice_id}`, {
       method: 'POST',
@@ -172,11 +236,24 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: `EL ${res.status}: ${await res.text()}` }, { status: 502 })
     }
     const buf = Buffer.from(await res.arrayBuffer())
+
+    // Store for next time. A failed upload must NOT fail the request — the
+    // listener still gets their audio, we just pay again next time.
+    try {
+      const { error: upErr } = await supabase.storage
+        .from('audio')
+        .upload(key, buf, { contentType: 'audio/mpeg', upsert: true })
+      if (upErr) console.warn('[voice-approval] sample cache upload failed:', upErr.message)
+    } catch (e: any) {
+      console.warn('[voice-approval] sample cache upload threw:', e?.message)
+    }
+
     return new NextResponse(buf, {
       headers: {
         'Content-Type': 'audio/mpeg',
-        'Cache-Control': 'no-store',
+        'Cache-Control': 'private, max-age=86400',
         'X-Credits-Used': String(String(text).length),
+        'X-Sample-Cache': 'miss',
       },
     })
   }

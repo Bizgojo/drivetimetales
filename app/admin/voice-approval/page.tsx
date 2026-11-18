@@ -102,7 +102,14 @@ function CharCard({ c, seriesId }: { c: Char; seriesId: string | null }) {
       const r = await fetch('/api/admin/voice-approval', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'read-voices', gender: c.gender, age: c.age }),
+        // VOICE-APPROVAL-003: series_id lets the API scope similarity to THIS story.
+        body: JSON.stringify({
+          action: 'read-voices',
+          gender: c.gender,
+          age: c.age,
+          series_id: seriesId,
+          exclude_character: c.name,
+        }),
       })
       const j = await r.json()
       setOptions((j.voices || []).slice(0, 3))
@@ -206,6 +213,13 @@ function CharCard({ c, seriesId }: { c: Char; seriesId: string | null }) {
             disabled={busy === v.voice_id}
             onClick={() => play(v.voice_id)}
           />
+          {/* VOICE-APPROVAL-003: only a clash INSIDE this story is flagged. A voice
+              used by another series is fine and stays unmarked. */}
+          {v.used_by_in_story && (
+            <div style={{ marginTop: 6, fontSize: 15, color: '#b3261e', fontWeight: 600 }}>
+              ⚠ Already used in this story by {v.used_by_in_story}
+            </div>
+          )}
           <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
             <button
               onClick={() => {
