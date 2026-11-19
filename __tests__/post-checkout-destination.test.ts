@@ -248,3 +248,51 @@ describe('POST-CHECKOUT-DESTINATION-004 — a sampled listener resumes, never la
     expect(destinationHref(d)).toContain('resume=62&')
   })
 })
+
+describe('POST-CHECKOUT-DESTINATION-005 — the ReferenceError-class fence', () => {
+  // The 2026-11-19 regression was NOT a logic error in the resolver: the
+  // resolver was never reached. `storyParam` was declared inside a useEffect
+  // and read inside onDismiss, so every dismissal threw before router.push.
+  // Pure-function tests cannot catch that, and this repo has no React test
+  // harness (jest testEnvironment: 'node'). So the fence is structural: the
+  // handler must read its inputs from state/URL, never from an effect-local.
+  const fs = require('fs')
+  const path = require('path')
+  const SRC = fs.readFileSync(
+    path.join(__dirname, '..', 'app', 'home', 'page.tsx'),
+    'utf8'
+  )
+
+  it('storyParam is declared at component scope, not inside an effect', () => {
+    const decl = SRC.match(/^\s*const storyParam = searchParams\.get\('story'\)/m)
+    expect(decl).not.toBeNull()
+    // component-scope declarations in this file use exactly two spaces
+    const line = SRC.split('\n').find((l) => l.includes("const storyParam = searchParams.get('story')"))!
+    expect(line.startsWith('  const storyParam')).toBe(true)
+  })
+
+  it('onDismiss reads only identifiers that exist outside the effect', () => {
+    const start = SRC.indexOf('onDismiss={() => {')
+    expect(start).toBeGreaterThan(-1)
+    const end = SRC.indexOf('}', SRC.indexOf('welcome_dismissed', start))
+    const body = SRC.slice(start, end)
+    // every name the handler destructures off its own scope must be declared
+    // at component scope above the JSX
+    // Locals must be component-scope consts or state destructures.
+    // `supabase` is a module import (line 9) — checked separately below.
+    for (const name of ['storyParam', 'dbCampaign', 'router']) {
+      expect(body).toContain(name)
+      const declared = new RegExp(
+        `^  const (?:${name}\\b|\\[[^\\]]*\\b${name}\\b[^\\]]*\\])`,
+        'm'
+      )
+      expect(SRC).toMatch(declared)
+    }
+    expect(SRC).toMatch(/^import \{ supabase \} from '@\/lib\/supabase'$/m)
+  })
+
+  it('the welcome card waits for both the campaign answer and the clip', () => {
+    expect(SRC).toMatch(/if \(!campaignLoaded \|\| !seg1Url\) return/)
+    expect(SRC).toMatch(/if \(startedRef\.current\) return/)
+  })
+})

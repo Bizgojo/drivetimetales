@@ -327,6 +327,9 @@ interface WelcomeAudioCardProps {
 
 function WelcomeAudioCard({ seg1Url, firstName, onDismiss, resumingStory, campaignLoaded }: WelcomeAudioCardProps) {
   const audioRef = useRef<HTMLAudioElement | null>(null)
+  // POST-CHECKOUT-DESTINATION-005: guard so the auto-start effect cannot run
+  // twice (double Belle) when campaignLoaded/seg1Url transition.
+  const startedRef = useRef(false)
   const [isPlaying, setIsPlaying] = useState(false)
   const [autoplayBlocked, setAutoplayBlocked] = useState(false)
   const [activeSeg, setActiveSeg] = useState<1 | 2>(1)
@@ -368,11 +371,17 @@ function WelcomeAudioCard({ seg1Url, firstName, onDismiss, resumingStory, campai
     }
   }, [seg1Url, playSeg2])
 
-  // Auto-attempt once the campaign read has answered. Running this earlier
-  // meant Belle could start (and finish) on the legacy line while the
-  // destination was still unknown.
+  // Auto-attempt once the campaign read has answered AND the welcome clip has
+  // arrived. Both matter:
+  //   - campaignLoaded: starting earlier made Belle use the legacy line and
+  //     lose the campaign destination (harness run B, 2026-11-19).
+  //   - seg1Url: `if (seg1Url)` below is null on first paint, so starting
+  //     before the fetch landed skipped Belle entirely via onDismiss().
+  // The ref makes this start exactly once, even if either value flips again.
   useEffect(() => {
-    if (!campaignLoaded) return
+    if (!campaignLoaded || !seg1Url) return
+    if (startedRef.current) return
+    startedRef.current = true
     const el = new Audio()
     audioRef.current = el
     // CAR-MEDIA-001: Belle's welcome owns the lock-screen controls while it
@@ -404,7 +413,7 @@ function WelcomeAudioCard({ seg1Url, firstName, onDismiss, resumingStory, campai
     }
 
     return () => { detachMedia(); detachAudio() }
-  }, [campaignLoaded]) // waits for the campaign answer, once
+  }, [campaignLoaded, seg1Url]) // starts once, after both inputs are ready
 
   const label = autoplayBlocked
     ? 'Tap to hear your welcome'
@@ -850,14 +859,16 @@ function HomeContent() {
                     const ep1 = await resolveSeriesEpisodeOne(dest.seriesId, supabase as any)
                     router.push(ep1 ? episodeOneHref(ep1) : '/home')
                   })()
-                } else if (dest.source === 'sample' || dest.source === 'param') {
+                } else if (dest.kind === 'player') {
                   // POST-CHECKOUT-DESTINATION-004 (Marc, 2026-11-19): a listener
                   // we know a story for must ALWAYS open that player. Phone test
                   // #3 stayed on Home because nothing pressed play after Belle.
-                  router.push(destinationHref(dest) ?? episodeOneHref(dest.storyId))
+                  // destinationHref is non-null for every player destination.
+                  router.push(destinationHref(dest) ?? `/player/${dest.storyId}?autoplay=1&playNow=1`)
                 } else {
-                  // Only a listener with no story signal at all lands on Home,
-                  // and they get the continue card rather than a dead end.
+                  // No story signal at all (no ?story=, no sample, no campaign).
+                  // They stay on Home; nothing here is a dead end, they simply
+                  // get the normal home feed.
                   router.push('/home')
                 }
                 // Persist dismissal so reload/revisit doesn't re-show the banner
