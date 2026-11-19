@@ -18,6 +18,13 @@ interface InstallAppBannerProps {
    */
   reofferOnly?: boolean
   /**
+   * MARC 2026-11-19: suppress the "Add Endless Tales to your home screen" prompt
+   * while a new listener is on the welcome screen or in their first session.
+   * Asking someone to install the app before they have heard a full episode is
+   * the wrong moment — and on the welcome screen it competes with Belle.
+   */
+  suppress?: boolean
+  /**
    * ORION-HOME-WALK-001 fix 3 (Marc walk, 2026-07-12): when true, the banner
    * docks ABOVE the fixed bottom nav (BottomStickyButtons) instead of bottom:0,
    * so it never obscures the Library/navigation buttons.
@@ -25,7 +32,7 @@ interface InstallAppBannerProps {
   aboveBottomNav?: boolean
 }
 
-export default function InstallAppBanner({ reofferOnly = false, aboveBottomNav = false }: InstallAppBannerProps) {
+export default function InstallAppBanner({ reofferOnly = false, aboveBottomNav = false, suppress = false }: InstallAppBannerProps) {
   const [installPrompt, setInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null)
   const [isInstalled, setIsInstalled] = useState(false)
   const [visible, setVisible] = useState(false)
@@ -56,7 +63,7 @@ export default function InstallAppBanner({ reofferOnly = false, aboveBottomNav =
     const promptHandler = (e: Event) => {
       e.preventDefault()
       setInstallPrompt(e as BeforeInstallPromptEvent)
-      if (!reofferOnly && !previouslyDismissed) {
+      if (!reofferOnly && !suppress && !previouslyDismissed) {
         showTimer = setTimeout(() => setVisible(true), 2000)
       }
     }
@@ -66,7 +73,7 @@ export default function InstallAppBanner({ reofferOnly = false, aboveBottomNav =
     window.addEventListener('appinstalled', installedHandler)
 
     // Initial auto-show (iOS has no beforeinstallprompt)
-    if (ios && !reofferOnly && !previouslyDismissed) {
+    if (ios && !reofferOnly && !suppress && !previouslyDismissed) {
       showTimer = setTimeout(() => setVisible(true), 3000)
     }
 
@@ -117,7 +124,7 @@ export default function InstallAppBanner({ reofferOnly = false, aboveBottomNav =
     localStorage.setItem('et_install_dismissed', '1')
   }
 
-  if (isInstalled || !visible) return null
+  if (isInstalled || !visible || suppress) return null
 
   const steps = isIOS
     ? [

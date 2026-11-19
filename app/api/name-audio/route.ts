@@ -85,8 +85,17 @@ export async function GET(request: NextRequest) {
   // v3 rows use the new self-contained line ("Hi [Name]... Episode 2 of The Bell...").
   // POST-SIGNUP-RETURN-001 (Marc, 2026-11-06): variant=story is the line for a
   // listener who signed up mid-sample — Belle sends them back to THEIR story.
-  const storyVariant = searchParams.get('variant') === 'story'
-  const cacheKey = storyVariant ? `${name}-story-v1` : `${name}-v3`
+  // POST-CHECKOUT-DESTINATION-003 (Marc, 2026-11-19): three variants, because
+  // the listener can arrive in three genuinely different situations.
+  //   resume  — they sampled a story and are being returned to it
+  //   episode — they are starting a specific story's EP1 (an ad campaign)
+  //   (none)  — legacy default
+  // 'resume' must not claim an EP1 start, and 'episode' must not say "back to
+  // your story" when the listener has never heard one.
+  const variant = searchParams.get('variant')
+  const storyVariant = variant === 'story'
+  const episodeVariant = variant === 'episode'
+  const cacheKey = storyVariant ? `${name}-resume-v2` : episodeVariant ? `${name}-episode-v1` : `${name}-v3`
 
   const { data: cached } = await supabase
     .from('name_audio')
@@ -104,7 +113,9 @@ export async function GET(request: NextRequest) {
   // Replaces old Seg1+Seg2 chain — single clip, no catch-up segment.
   const seg1Text = storyVariant
     ? `Hi ${name}. Glad you decided to join us. I'm Belle, your personal assistant — now let's get back to your story.`
-    : `Hi ${name}. Glad you decided to join us. I'm Belle, your personal assistant — now let's continue with Episode 2 of The Bell Beneath Falls Park.`
+    : episodeVariant
+      ? `Hi ${name}. Glad you decided to join us. I'm Belle, your personal assistant — let's start your story.`
+      : `Hi ${name}. Glad you decided to join us. I'm Belle, your personal assistant — now let's continue with Episode 2 of The Bell Beneath Falls Park.`
 
   const elRes = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
     method: 'POST',
@@ -124,7 +135,9 @@ export async function GET(request: NextRequest) {
   // File name includes -v3 to match cache key convention (BELL-ONBOARD-001)
   const fileName = storyVariant
     ? `welcome-story-${name.toLowerCase()}-${voiceId.slice(0, 8)}-v1.mp3`
-    : `welcome-seg1-${name.toLowerCase()}-${voiceId.slice(0, 8)}-v3.mp3`
+    : episodeVariant
+      ? `welcome-seg1-${name.toLowerCase()}-${voiceId.slice(0, 8)}-ep1-v1.mp3`
+      : `welcome-seg1-${name.toLowerCase()}-${voiceId.slice(0, 8)}-v3.mp3`
 
   const { error: uploadError } = await supabase.storage
     .from('names')
