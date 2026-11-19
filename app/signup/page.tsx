@@ -42,6 +42,12 @@ function LoadingFallback() {
   )
 }
 
+// POST-CHECKOUT-DESTINATION-001: only a real uuid may ride through the funnel
+// and end up in a navigation target.
+function isUuid(value: string | null): value is string {
+  return !!value && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value)
+}
+
 function safeInternalPath(path: string | null) {
   if (!path || !path.startsWith('/') || path.startsWith('//') || path.includes('://')) return ''
   return path
@@ -71,6 +77,12 @@ function SignUpContent() {
   // the heard-about question for them (fewer fields → higher conversion).
   // Determined client-side only (localStorage + URL) to stay SSR-safe.
   const returnTo = safeInternalPath(searchParams.get('returnTo'))
+
+  // POST-CHECKOUT-DESTINATION-001 (Marc, 2026-11-19): the landing page's story
+  // rides along as ?story=. It is attached to the checkout success URL so the
+  // welcome card can start the story the listener actually came for. An
+  // explicit returnTo always wins — that is a deliberate destination.
+  const storyParam = searchParams.get('story')
 
   // ATL-POST-SUB-LOOP-001: authenticated users must never see the signup form.
   // Plain /signup → always bounce to /home. /signup?canceled=true (Stripe
@@ -226,7 +238,7 @@ function SignUpContent() {
           offerId: offer?.id || undefined,
           ...(urlSource === 'go' ? { source: 'go' } : { trialDays: finalTrialDays }),
           billingCycle,
-          returnTo: returnTo || undefined,
+          returnTo: returnTo || (isUuid(storyParam) ? `/home?welcome=true&story=${encodeURIComponent(storyParam)}` : undefined),
           attribution,
           heardAbout: selectedHeardAbout,
         })
