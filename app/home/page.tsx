@@ -709,6 +709,27 @@ function HomeContent() {
 
   // HOOKS RULE: searchInputRef must be before the early return so hook order
   // is identical on every render (loading=true and loading=false both call it)
+  // POST-CHECKOUT-DESTINATION-001b (Marc, 2026-11-19): utm_campaign is NOT on
+  // the auth user object. It lives in public.users, written at signup by the
+  // attribution update. Reading user_metadata.utm_campaign — as the first cut
+  // of POST-CHECKOUT-DESTINATION-001 did — always yielded null, so an ad
+  // visitor with no ?story= param still fell through to /home instead of the
+  // story their campaign advertises. Read the row explicitly.
+  const [dbCampaign, setDbCampaign] = useState<string | null>(null)
+  useEffect(() => {
+    if (!user?.id) { setDbCampaign(null); return }
+    let cancelled = false
+    supabase
+      .from('users')
+      .select('utm_campaign')
+      .eq('id', user.id)
+      .maybeSingle()
+      .then(({ data }: any) => {
+        if (!cancelled) setDbCampaign((data?.utm_campaign as string | null) ?? null)
+      }, () => {})
+    return () => { cancelled = true }
+  }, [user?.id])
+
   const searchInputRef = useRef<HTMLInputElement>(null)
 
   if (loading) return <HomeSkeleton />
@@ -745,9 +766,7 @@ function HomeContent() {
                 const dest = resolvePostCheckoutDestination({
                   storyParam,
                   resumeStoryId: sample?.catalogStoryId ?? null,
-                  utmCampaign: (user as any)?.user_metadata?.utm_campaign
-                    ?? (user as any)?.utm_campaign
-                    ?? null,
+                  utmCampaign: dbCampaign,
                 })
                 router.push(destinationHref(dest))
                 // Persist dismissal so reload/revisit doesn't re-show the banner
