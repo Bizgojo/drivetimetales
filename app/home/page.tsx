@@ -4,6 +4,7 @@ import { Suspense, useState, useEffect, useRef, useCallback } from 'react'
 import { attachMediaSession, MEDIA_ALBUM } from '@/lib/mediaSession'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
+import { resolvePostCheckoutDestination, destinationHref } from '@/lib/postCheckoutDestination'
 import { supabase } from '@/lib/supabase'
 import ContinueListening from '@/components/ContinueListening'
 import NewReleases from '@/components/NewReleases'
@@ -563,6 +564,10 @@ function HomeContent() {
     // localStorage guard remains as a refresh/revisit belt-and-braces.
     const cs = searchParams.get('cs')
     const welcome = searchParams.get('welcome') === 'true'
+    // POST-CHECKOUT-DESTINATION-001: the ad landing page puts the story the
+    // visitor came for on the success URL as ?story=. Captured here so the
+    // welcome card's onDismiss can honour it instead of guessing.
+    const storyParam = searchParams.get('story')
     if ((cs || welcome) && user?.id) {
       const eventKey = `et_meta_start_trial_${user.id}`
       if (!localStorage.getItem(eventKey)) {
@@ -576,8 +581,16 @@ function HomeContent() {
     }
     if (welcome && !user?.user_metadata?.welcome_dismissed) {
       setShowWelcome(true)
-      // Strip ?welcome=true from URL immediately on mount so back-nav can't re-trigger the banner
-      window.history.replaceState({}, '', window.location.pathname)
+      // POST-CHECKOUT-DESTINATION-001: keep ?story= in the URL. Stripping it
+      // here (as the old bare replaceState did) meant that by the time the
+      // listener tapped through the welcome card the ad's story was already
+      // gone, and the card fell back to a hard-coded episode. Only strip when
+      // there is no story param, otherwise preserve the search string.
+      const keep = new URLSearchParams(window.location.search)
+      keep.delete('welcome')
+      keep.delete('cs')
+      const qs = keep.toString()
+      window.history.replaceState({}, '', window.location.pathname + (qs ? `?${qs}` : ''))
     }
   }, [searchParams, user?.id])
 
@@ -713,14 +726,30 @@ function HomeContent() {
               firstName={firstName}
               onDismiss={() => {
                 setShowWelcome(false)
-                // BELL-ONBOARD-001 (2026-08-23): Route new bell-invitation users directly
-                // to EP2 player after the welcome plays. Without this, users land back on
-                // /home and must find EP2 in Continue Listening on their own — cold ad
-                // traffic on mobile does not do this (0/5 post-fix signups activated).
-                // Bell EP2: "The Seventh Token" (759dc525-185c-450f-b249-17e4a525ba60).
-                // POST-SIGNUP-RETURN-001 (Marc, 2026-11-06): a listener who was
-                // sampling a story goes back to THAT story at the spot they left.
-                router.push(sampleResumeHref(loadFreshestResumableSample()) ?? '/player/759dc525-185c-450f-b249-17e4a525ba60')
+                // POST-CHECKOUT-DESTINATION-001 (Marc, 2026-11-19) — replaces
+                // BELL-ONBOARD-001's hard-coded push.
+                //
+                // BELL-ONBOARD-001 sent every new listener to The Bell Beneath
+                // Falls Park EP2 (759dc525-…). A listener who clicked a Weekend
+                // Wife ad and paid was therefore dropped into a different series,
+                // at episode 2, with no welcome for the story they bought. Marc
+                // hit exactly this after a live checkout.
+                //
+                // Now the destination is resolved, not assumed:
+                //   explicit ?story=  → that story, episode 1
+                //   resumable sample  → that story, episode 1
+                //   utm_campaign      → the series that campaign advertises
+                //   nothing at all    → /home, never a random episode
+                // Episode 1 always: a paying listener starts at the beginning.
+                const sample = loadFreshestResumableSample()
+                const dest = resolvePostCheckoutDestination({
+                  storyParam,
+                  resumeStoryId: sample?.catalogStoryId ?? null,
+                  utmCampaign: (user as any)?.user_metadata?.utm_campaign
+                    ?? (user as any)?.utm_campaign
+                    ?? null,
+                })
+                router.push(destinationHref(dest))
                 // Persist dismissal so reload/revisit doesn't re-show the banner
                 void supabase.auth.updateUser({ data: { welcome_dismissed: true } })
               }}

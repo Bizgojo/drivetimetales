@@ -81,6 +81,12 @@ export function buildCampaignSignupHref(searchParams: ParamsLike | null | undefi
     const value = searchParams?.get(key)
     if (value) parts.push(`${key}=${encodeURIComponent(value)}`)
   }
+  // POST-CHECKOUT-DESTINATION-001 (Marc, 2026-11-19): the story the visitor is
+  // listening to on the landing page has to survive signup and checkout, or the
+  // welcome card cannot know which story to start. Without this the ad funnel
+  // lost the story entirely and fell back to a hard-coded episode.
+  const story = searchParams?.get('story')
+  if (story) parts.push(`story=${encodeURIComponent(story)}`)
   return parts.length ? `/signup?${parts.join('&')}` : '/signup'
 }
 
