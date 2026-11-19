@@ -57,3 +57,6 @@ scripts/render-worker/*.log
 supabase/.temp/
 tmp/
 tsconfig.tsbuildinfo
+
+# Orion 2026-11-19: timestamped .env backups must never be committed
+.env.local.bak-*
