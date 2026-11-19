@@ -322,9 +322,10 @@ interface WelcomeAudioCardProps {
   seg1Url: string | null
   firstName: string
   onDismiss: () => void
+  campaignLoaded: boolean
 }
 
-function WelcomeAudioCard({ seg1Url, firstName, onDismiss, resumingStory }: WelcomeAudioCardProps) {
+function WelcomeAudioCard({ seg1Url, firstName, onDismiss, resumingStory, campaignLoaded }: WelcomeAudioCardProps) {
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const [isPlaying, setIsPlaying] = useState(false)
   const [autoplayBlocked, setAutoplayBlocked] = useState(false)
@@ -367,8 +368,11 @@ function WelcomeAudioCard({ seg1Url, firstName, onDismiss, resumingStory }: Welc
     }
   }, [seg1Url, playSeg2])
 
-  // Auto-attempt on mount
+  // Auto-attempt once the campaign read has answered. Running this earlier
+  // meant Belle could start (and finish) on the legacy line while the
+  // destination was still unknown.
   useEffect(() => {
+    if (!campaignLoaded) return
     const el = new Audio()
     audioRef.current = el
     // CAR-MEDIA-001: Belle's welcome owns the lock-screen controls while it
@@ -400,7 +404,7 @@ function WelcomeAudioCard({ seg1Url, firstName, onDismiss, resumingStory }: Welc
     }
 
     return () => { detachMedia(); detachAudio() }
-  }, []) // intentionally run once on mount only
+  }, [campaignLoaded]) // waits for the campaign answer, once
 
   const label = autoplayBlocked
     ? 'Tap to hear your welcome'
@@ -536,6 +540,12 @@ function HomeContent() {
   const { loading, user } = useAuth()
   const searchParams = useSearchParams()
   const router = useRouter()
+  // POST-CHECKOUT-DESTINATION-005 (Marc, 2026-11-19): this MUST live at
+  // component scope. It was declared inside the StartTrial effect below, so
+  // onDismiss's `storyParam` reference threw a ReferenceError the moment it
+  // ran — before any router.push. That is why Belle finished her line and the
+  // listener was left on Home with New Arrivals, on every path.
+  const storyParam = searchParams.get('story')
   const [continueIds, setContinueIds] = useState<string[]>([])
   // WALK-BUG-0713 #5: catalog story id the ContinueSampleHero is showing —
   // the Continue Listening list excludes it (no same-story double-stack).
@@ -565,10 +575,6 @@ function HomeContent() {
     // localStorage guard remains as a refresh/revisit belt-and-braces.
     const cs = searchParams.get('cs')
     const welcome = searchParams.get('welcome') === 'true'
-    // POST-CHECKOUT-DESTINATION-001: the ad landing page puts the story the
-    // visitor came for on the success URL as ?story=. Captured here so the
-    // welcome card's onDismiss can honour it instead of guessing.
-    const storyParam = searchParams.get('story')
     if ((cs || welcome) && user?.id) {
       const eventKey = `et_meta_start_trial_${user.id}`
       if (!localStorage.getItem(eventKey)) {
@@ -771,7 +777,13 @@ function HomeContent() {
   // of POST-CHECKOUT-DESTINATION-001 did — always yielded null, so an ad
   // visitor with no ?story= param still fell through to /home instead of the
   // story their campaign advertises. Read the row explicitly.
-  const [dbCampaign, setDbCampaign] = useState<string | null>(null)
+  // POST-CHECKOUT-DESTINATION-005: `undefined` means "not answered yet".
+  // The welcome card must not resolve a destination while this is unknown —
+  // doing so silently degraded every campaign listener to the legacy line
+  // (run B of the 2026-11-19 harness started Belle with the old welcome-seg1
+  // clip and no campaign destination, purely because this read had not
+  // returned yet).
+  const [dbCampaign, setDbCampaign] = useState<string | null | undefined>(undefined)
   useEffect(() => {
     if (!user?.id) { setDbCampaign(null); return }
     let cancelled = false
@@ -800,6 +812,7 @@ function HomeContent() {
           <div style={{ padding: '1rem 1rem 0' }}>
             <WelcomeAudioCard
               resumingStory={Boolean(loadFreshestResumableSample())}
+              campaignLoaded={dbCampaign !== undefined}
               seg1Url={seg1Url}
               firstName={firstName}
               onDismiss={() => {
