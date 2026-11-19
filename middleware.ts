@@ -104,14 +104,6 @@ export async function middleware(request: NextRequest) {
     } catch { return deny(503) }
   }
 
-  // ⚠️ TEMPORARY — REMOVE BEFORE MERGE. E2E harness only.
-  // Lets a headless browser verify post-checkout routing without a mintable
-  // Supabase session. Gated on an env var that exists only on the harness
-  // slot, so a production build without it is unaffected.
-  if (process.env.E2E_NO_AUTH_GATE === '1' && request.headers.get('x-et-e2e') === '1') {
-    return NextResponse.next()
-  }
-
   if (PUBLIC_PREFIXES.some(p => pathname.startsWith(p))) return NextResponse.next()
   if (ADDITIONAL_PUBLIC_PREFIXES.some(p => pathname.startsWith(p))) return NextResponse.next()
   // Refresh cookies must reach both the current server render and every
