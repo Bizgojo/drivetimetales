@@ -1009,6 +1009,188 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
     }
   }
 
+  // ─── FINALE-GAP-002 — CANON-11 rules 26a, 15a–15f (CANON-99 item 157) ───────
+  //
+  // When a SERIES FINALE ends, the player does not simply follow the playlist.
+  // It reads the canon match list for the series that just finished, picks the
+  // first series the listener has NOT started, waits 2 seconds in silence with
+  // nothing on screen, then starts that series' episode 1 (which opens with its
+  // own sting and Belle's intro, rule 28).
+  //
+  // Rules encoded here:
+  //   26a — playlist order does not decide the next series after a finale.
+  //   15a — silent 2 seconds, nothing rendered, no sting across the gap.
+  //   15b — first unstarted series wins (started = any saved progress > 0).
+  //   15c — all started → review screen, then Library.
+  //   15d — only complete, live series eligible; else rule 31 → Library + warn.
+  //   15e — the match list is canon (table below, not a setting).
+  //   15f — every handoff logs from / to / started / stopped.
+  //
+  // NOTE ON SCOPE: this block is only reached when the finished story is a
+  // series finale. Episode-to-episode advance inside a series is untouched —
+  // rule 33 says straight on, no box, and that is already the behaviour.
+
+  // CANON-11 rule 15e. Left side = the series that finished; the array is the
+  // ordered preference list, first match wins (rule 15b). Names are the canon
+  // series titles exactly as they appear in the series table. Altar appears
+  // only as a trailing option — isFinaleSeriesEligible() additionally gates it
+  // on 30/30 episodes live plus Marc's voice approval (VISION gate below).
+  const FINALE_MATCH_LIST: Record<string, string[]> = {
+    'Rerouted': ["Don't Go Home", 'The Widow Who Watched'],
+    "Don't Go Home": ['Rerouted', 'The Widow Who Watched'],
+    'Second Rise': ['Weekend Wife in Miami', 'The Widow Who Watched', 'The Man I Left at the Altar'],
+    'The Widow Who Watched': ['Weekend Wife in Miami', 'Second Rise', 'The Man I Left at the Altar'],
+    'Weekend Wife in Miami': ['Second Rise', 'The Widow Who Watched', 'The Man I Left at the Altar'],
+    // Altar is terminal: nothing follows it in canon today. When Marc adds a
+    // line for it, add it here.
+    'The Man I Left at the Altar': [],
+  }
+
+  // CANON-11 rule 15d + 15e: Altar joins a match list only when all 30 of its
+  // episodes are live AND Marc has approved its voices. Voices approval is a
+  // human act, so it is a constant rather than a DB read — flip this to true
+  // only on Marc's explicit word, and only after the 30/30 check passes.
+  const ALTAR_VOICES_APPROVED = false
+  const ALTAR_REQUIRED_EPISODES = 30
+
+  const FINALE_SERIES_GAP_MS = 2000
+
+  const waitSilentGap = (ms: number) => new Promise<void>((resolve) => {
+    const t = setTimeout(resolve, ms)
+    // Track it so unmount clears the wait instead of resuming into a dead player.
+    autoAdvanceTimerRef.current = t
+  })
+
+  // Rule 15f. Fire-and-forget: a logging failure must never break playback.
+  const logFinaleHandoff = (
+    fromSeries: string,
+    toSeries: string | null,
+    started: boolean,
+    stopped: boolean,
+    reason: string
+  ) => {
+    try {
+      void supabase.from('play_events').insert({
+        user_id: user?.id ?? null,
+        story_id: storyId,
+        event_type: 'finale_handoff',
+        payload: { from: fromSeries, to: toSeries, started, stopped, reason },
+      })
+    } catch (e: any) {
+      console.warn('[player] finale handoff log failed:', e?.message)
+    }
+  }
+
+  // Rule 15b: "started" means the listener has saved progress above zero in any
+  // episode of the series. A series they have never opened is eligible even if
+  // its episodes have been published for months.
+  const hasStartedSeries = async (seriesId: string): Promise<boolean> => {
+    if (!user?.id) return false
+    try {
+      const { data, error } = await supabase
+        .from('user_library')
+        .select('episode_number, progress_seconds, completed')
+        .eq('user_id', user.id)
+        .eq('series_id', seriesId)
+      if (error) throw error
+      return (data || []).some((row: any) =>
+        Boolean(row?.completed) || Number(row?.progress_seconds || 0) > 0
+      )
+    } catch (e: any) {
+      // Unstarted is the safe read: worst case the listener hears a series they
+      // had already begun, which rule 15c exists to avoid but which is far
+      // better than stalling playback.
+      console.warn('[player] finale gap started-check failed:', e?.message)
+      return false
+    }
+  }
+
+  // Rule 15d: published series, and every episode live. Returns the series row
+  // (for its id) or null when the series is not eligible.
+  const getEligibleSeries = async (title: string): Promise<{ id: string; title: string } | null> => {
+    try {
+      const { data: seriesRow, error: seriesErr } = await supabase
+        .from('series')
+        .select('id, title, total_episodes')
+        .eq('title', title)
+        .maybeSingle()
+      if (seriesErr || !seriesRow) return null
+
+      const { data: eps, error: epsErr } = await supabase
+        .from('stories')
+        .select('id, episode_number, status')
+        .eq('series_id', seriesRow.id)
+      if (epsErr) return null
+      const all = eps || []
+      if (all.length === 0) return null
+
+      // Every episode must be live. Rule 37: a series publishes all at once, so
+      // a partially-published series is a bug, not a candidate.
+      const liveCount = all.filter((e: any) => e.status === 'published').length
+      if (liveCount !== all.length) return null
+
+      // Rule 15d/e: the Altar gate is stricter than "live" — 30 episodes AND
+      // Marc's voice approval.
+      if (title === 'The Man I Left at the Altar') {
+        if (!ALTAR_VOICES_APPROVED) return null
+        if (all.length < ALTAR_REQUIRED_EPISODES) return null
+      }
+      return { id: seriesRow.id, title: seriesRow.title }
+    } catch (e: any) {
+      console.warn('[player] finale gap eligibility check failed:', { title, message: e?.message })
+      return null
+    }
+  }
+
+  // Resolve the whole decision: which series to play next, or null with a reason.
+  const resolveFinaleNext = async (
+    fromTitle: string
+  ): Promise<{ series: { id: string; title: string } | null; reason: string }> => {
+    const candidates = FINALE_MATCH_LIST[fromTitle]
+    if (!candidates || candidates.length === 0) {
+      return { series: null, reason: 'no_match_list' }
+    }
+    let anyEligible = false
+    for (const title of candidates) {
+      const eligible = await getEligibleSeries(title)
+      if (!eligible) continue
+      anyEligible = true
+      // Rule 15b: first UNSTARTED series wins.
+      if (!(await hasStartedSeries(eligible.id))) {
+        return { series: eligible, reason: 'first_unstarted' }
+      }
+    }
+    // Rule 15c vs 15d: distinguish "all started" from "none eligible" — they are
+    // different bugs and rule 15f records which one happened.
+    return { series: null, reason: anyEligible ? 'all_started' : 'none_eligible' }
+  }
+
+  // Episode 1 of a series, verified live. Null means rule 31: Library + warning.
+  //
+  // EPISODE-ORDERING-001 (Marc, 2026-11-19): this queried `series_number`, which
+  // is NULL on every episode of all six live series — the production check
+  // returned zero rows, so episode 1 was never found and every finale fell
+  // through to the Library. The real in-series ordering lives in
+  // `episode_number` (verified: 1..7 populated for Second Rise, Widow and
+  // Weekend Wife; `series_episode_number` mirrors it). Do not use
+  // `series_number` for ordering anywhere.
+  const getSeriesEpisodeOne = async (seriesId: string): Promise<string | null> => {
+    try {
+      const { data, error } = await supabase
+        .from('stories')
+        .select('id, episode_number, status')
+        .eq('series_id', seriesId)
+        .eq('episode_number', 1)
+        .limit(1)
+        .maybeSingle()
+      if (error || !data) return null
+      if ((data as any).status !== 'published') return null
+      return (data as any).id as string
+    } catch {
+      return null
+    }
+  }
+
   const maybeAutoAdvanceFromNaturalEnd = async (source: 'natural_ended') => {
     if (source !== 'natural_ended') return
     if (!mountedRef.current) return
@@ -1085,13 +1267,72 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
       : await fetchDirectSeriesAutoAdvanceCandidate()
     if (!mountedRef.current || !autoAdvanceEnabledRef.current) return
     if (directSeriesCandidate) {
+      // Rule 33: episode to episode, straight on with the sting, no box.
       startAutoAdvanceTo(directSeriesCandidate)
       return
     }
 
-    // STORY-END-LIBRARY-001: series finished — review screen if due, then the Library.
+    // ─── FINALE-GAP-002 (CANON-11 rules 26a, 15a–15f) ────────────────────────
+    // No next episode exists, so this was the series FINALE. The playlist does
+    // not get to choose what comes next (rule 26a) — the canon match list does.
+    const fromTitle = (story as any)?.series?.title || (story as any)?.series_title || null
+    if (!fromTitle) {
+      // Without a series title the match list cannot be read. Rule 31 applies.
+      console.warn('[player] finale gap: no series title on the finished story')
+      isAdvancingRef.current = false
+      await finishStoryAndLeave()
+      return
+    }
+
+    const decision = await resolveFinaleNext(fromTitle)
+    if (!mountedRef.current || !autoAdvanceEnabledRef.current) return
+
+    if (!decision.series) {
+      // Rule 15c (all started) and rule 15d (none eligible) both end the same
+      // way: review screen, then the Library — never a blank 2-second hold.
+      logFinaleHandoff(fromTitle, null, false, false, decision.reason)
+      isAdvancingRef.current = false
+      await finishStoryAndLeave()
+      return
+    }
+
+    const episodeOneId = await getSeriesEpisodeOne(decision.series.id)
+    if (!mountedRef.current || !autoAdvanceEnabledRef.current) return
+    if (!episodeOneId) {
+      // Rule 15d / 31: matched series had no live EP1. Never sit on a blank screen.
+      console.warn('[player] finale gap: matched series has no live episode 1', {
+        from: fromTitle,
+        to: decision.series.title,
+      })
+      logFinaleHandoff(fromTitle, decision.series.title, false, false, 'no_live_ep1')
+      isAdvancingRef.current = false
+      await finishStoryAndLeave()
+      return
+    }
+
+    // Rule 15a: 2 seconds of silence, nothing on screen. The audio element is
+    // already stopped at this point, so the wait is genuinely silent.
+    await waitSilentGap(FINALE_SERIES_GAP_MS)
+    if (!mountedRef.current || !autoAdvanceEnabledRef.current) {
+      // Rule 15f: the listener stopped the handoff during the gap.
+      logFinaleHandoff(fromTitle, decision.series.title, false, true, 'stopped_in_gap')
+      isAdvancingRef.current = false
+      return
+    }
+
+    logFinaleHandoff(fromTitle, decision.series.title, false, false, decision.reason)
+
+    // Rule 28: the new series' episode 1 opens with its own sting and Belle's
+    // intro. The autoplay flags make the in-place player resume into that intro
+    // rather than the bare audio.
     isAdvancingRef.current = false
-    await finishStoryAndLeave()
+    if (onAdvanceInPlace) {
+      playlistAutoplayPendingRef.current = true
+      onAdvanceInPlace(episodeOneId)
+    } else {
+      router.push(`/player/${episodeOneId}?autoplay=1&playlist=1&playNow=1`)
+    }
+    return
   }
 
   useEffect(() => {
