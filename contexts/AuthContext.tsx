@@ -237,36 +237,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     window.location.href = '/signin'
   }
 
-  // E2E-AUTH-STUB-001 (Marc, 2026-11-19): a browser harness must be able to
-  // verify post-checkout routing without a real Supabase session. Agents cannot
-  // mint sessions and must not hold test credentials, so expose a stub that is
-  // ONLY honoured when __ET_TEST_AUTH__ was injected before app boot (an
-  // addInitScript in a headless browser). It is inert in every normal load:
-  // a real visitor has no such global, and the stub never overrides a session
-  // that actually exists.
-  const e2e = typeof window !== 'undefined' ? (window as any).__ET_TEST_AUTH__ : null
-  const e2eActive = Boolean(e2e?.stubAuth) && !session
-  const effectiveUser = e2eActive ? (e2e.user as unknown as User) : user
-  const effectiveSession = e2eActive ? (null as unknown as Session) : session
-  const effectiveLoading = e2eActive ? false : loading
-
-  if (e2eActive && typeof window !== 'undefined') {
-    // eslint-disable-next-line no-console
-    console.warn('[AuthContext] E2E auth stub active — test harness only')
-  }
-
   return (
-    <AuthContext.Provider
-      value={{
-        user: effectiveUser,
-        session: effectiveSession,
-        loading: effectiveLoading,
-        signIn,
-        signUp,
-        signOut,
-        refreshUser,
-      }}
-    >
+    <AuthContext.Provider value={{ user, session, loading, signIn, signUp, signOut, refreshUser }}>
       {children}
     </AuthContext.Provider>
   )

@@ -783,11 +783,7 @@ function HomeContent() {
       .then(({ data }: any) => {
         if (!cancelled) setDbCampaign((data?.utm_campaign as string | null) ?? null)
       }, () => {})
-    // E2E-AUTH-STUB-001: a stubbed test session has no users row to read, so
-    // the harness supplies the campaign it is exercising. Inert for real
-    // sessions — the DB read above always wins.
-    const stubCampaign = (window as any).__ET_TEST_AUTH__?.utmCampaign
-    if (stubCampaign) setDbCampaign(String(stubCampaign))
+
     return () => { cancelled = true }
   }, [user?.id])
 
