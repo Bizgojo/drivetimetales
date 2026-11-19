@@ -89,6 +89,18 @@ export async function POST(request: NextRequest) {
         console.log(`[webhook] checkout completed — user ${userId}, plan: ${planName}`)
 
         const billingCycle = getBillingCycle(subscription)
+        // TRIAL-STARTED-AT-001 (2026-11-19): a Stripe checkout that starts on a
+        // trial must stamp trial_started_at. Until this change the ONLY writer of
+        // users.trial_started_at in the whole codebase was
+        // app/api/go/invite-signup/route.ts, so every Stripe-checkout signup after
+        // PRICING-TRIAL-001 (Sept 19 2026) landed NULL — which silently disables
+        // the day+1/+3/+6 reach-reminder cron and the trial→paid analytics.
+        // Source of truth is Stripe's own trial_start (unix seconds), not `now()`,
+        // so a webhook delivered late still records when the trial truly began.
+        // Non-trial checkouts leave the column untouched.
+        const trialStartedAt = subscription.trial_start
+          ? new Date(subscription.trial_start * 1000).toISOString()
+          : null
         const { error } = await supabase.from('users').update({
           ...planFields(isFoundingMember),
           subscription_type: 'active',
@@ -97,6 +109,7 @@ export async function POST(request: NextRequest) {
           subscription_start: new Date().toISOString(),
           subscription_ends_at: periodEnd,
           billing_cycle: billingCycle,
+          ...(trialStartedAt ? { trial_started_at: trialStartedAt } : {}),
           // Fresh, verified-live activation supersedes any earlier cancellation stamp.
           cancelled_at: null,
         }).eq('id', userId)
