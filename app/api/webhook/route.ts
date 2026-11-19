@@ -54,6 +54,25 @@ export async function POST(request: NextRequest) {
 
   console.log('Webhook event received:', event.type)
 
+  // WEBHOOK-LIVEMODE-GUARD-001 (2026-11-19, Marc GO): a test-mode checkout must
+  // never write to the production database. On 2026-11-06 five test-mode
+  // subscriptions (sub_1UYp…, later 404 against the live key) wrote
+  // subscription_type='active' onto production users rows, handing out free
+  // access and inflating the active count.
+  //
+  // The endpoint is configured with a live key, so a genuine production event
+  // always has event.livemode === true. A test-mode event arriving here means
+  // something (a preview deploy, a Stripe CLI forward, a test-mode dashboard
+  // action) is pointed at the production endpoint. Refuse to mutate, log loudly,
+  // and 200 so Stripe stops retrying — a retry cannot succeed either.
+  if (event.livemode !== true) {
+    console.error(
+      '[webhook] REFUSED test-mode event against production — no DB write.',
+      { type: event.type, id: event.id, livemode: event.livemode }
+    )
+    return NextResponse.json({ received: true, ignored: 'test_mode_event' })
+  }
+
   switch (event.type) {
 
     // ─── Checkout completed ───────────────────────────────────────────────────
