@@ -618,6 +618,7 @@ function HomeContent() {
     const welcomeDest = resolvePostCheckoutDestination({
       storyParam: new URLSearchParams(window.location.search).get('story'),
       resumeStoryId: resumeSample?.catalogStoryId ?? null,
+      resumeSeconds: resumeSample?.seconds ?? null,
       utmCampaign: dbCampaign,
     })
     const welcomeVariant: 'story' | 'episode' | null =
@@ -782,6 +783,11 @@ function HomeContent() {
       .then(({ data }: any) => {
         if (!cancelled) setDbCampaign((data?.utm_campaign as string | null) ?? null)
       }, () => {})
+    // E2E-AUTH-STUB-001: a stubbed test session has no users row to read, so
+    // the harness supplies the campaign it is exercising. Inert for real
+    // sessions — the DB read above always wins.
+    const stubCampaign = (window as any).__ET_TEST_AUTH__?.utmCampaign
+    if (stubCampaign) setDbCampaign(String(stubCampaign))
     return () => { cancelled = true }
   }, [user?.id])
 
@@ -821,6 +827,7 @@ function HomeContent() {
                 const dest = resolvePostCheckoutDestination({
                   storyParam,
                   resumeStoryId: sample?.catalogStoryId ?? null,
+                  resumeSeconds: sample?.seconds ?? null,
                   utmCampaign: dbCampaign,
                 })
                 if (dest.kind === 'series') {
@@ -834,8 +841,15 @@ function HomeContent() {
                     const ep1 = await resolveSeriesEpisodeOne(dest.seriesId, supabase as any)
                     router.push(ep1 ? episodeOneHref(ep1) : '/home')
                   })()
+                } else if (dest.source === 'sample' || dest.source === 'param') {
+                  // POST-CHECKOUT-DESTINATION-004 (Marc, 2026-11-19): a listener
+                  // we know a story for must ALWAYS open that player. Phone test
+                  // #3 stayed on Home because nothing pressed play after Belle.
+                  router.push(destinationHref(dest) ?? episodeOneHref(dest.storyId))
                 } else {
-                  router.push(destinationHref(dest) ?? '/home')
+                  // Only a listener with no story signal at all lands on Home,
+                  // and they get the continue card rather than a dead end.
+                  router.push('/home')
                 }
                 // Persist dismissal so reload/revisit doesn't re-show the banner
                 void supabase.auth.updateUser({ data: { welcome_dismissed: true } })
