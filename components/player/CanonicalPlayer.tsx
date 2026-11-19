@@ -1118,7 +1118,7 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
 
       const { data: eps, error: epsErr } = await supabase
         .from('stories')
-        .select('id, series_number, status')
+        .select('id, episode_number, status')
         .eq('series_id', seriesRow.id)
       if (epsErr) return null
       const all = eps || []
@@ -1166,13 +1166,22 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
   }
 
   // Episode 1 of a series, verified live. Null means rule 31: Library + warning.
+  //
+  // EPISODE-ORDERING-001 (Marc, 2026-11-19): this queried `series_number`, which
+  // is NULL on every episode of all six live series — the production check
+  // returned zero rows, so episode 1 was never found and every finale fell
+  // through to the Library. The real in-series ordering lives in
+  // `episode_number` (verified: 1..7 populated for Second Rise, Widow and
+  // Weekend Wife; `series_episode_number` mirrors it). Do not use
+  // `series_number` for ordering anywhere.
   const getSeriesEpisodeOne = async (seriesId: string): Promise<string | null> => {
     try {
       const { data, error } = await supabase
         .from('stories')
-        .select('id, series_number, status')
+        .select('id, episode_number, status')
         .eq('series_id', seriesId)
-        .eq('series_number', 1)
+        .eq('episode_number', 1)
+        .limit(1)
         .maybeSingle()
       if (error || !data) return null
       if ((data as any).status !== 'published') return null
