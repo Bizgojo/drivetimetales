@@ -153,3 +153,40 @@ describe('POST-CHECKOUT-DESTINATION-002 — series → episode 1 resolution', ()
     expect(storyId).toBe(WEEKEND_EP1)
   })
 })
+
+describe('POST-CHECKOUT-DESTINATION-003 — Belle must not say "back to your story" on an EP1 start', () => {
+  // The line is chosen from the resolver's `source`, never from a separate guess,
+  // so the words cannot disagree with the audio that follows.
+  function welcomeVariantFor(opts: { storyParam?: string | null; sample?: string | null; campaign?: string | null }) {
+    const d = resolvePostCheckoutDestination({
+      storyParam: opts.storyParam ?? null,
+      resumeStoryId: opts.sample ?? null,
+      utmCampaign: opts.campaign ?? null,
+    })
+    if (d.source === 'sample') return 'story'
+    if (d.source === 'param' || d.source === 'campaign') return 'episode'
+    return null
+  }
+
+  it('an ad campaign start gets the episode line, not the resume line', () => {
+    expect(welcomeVariantFor({ campaign: 'weekend-wife-miami' })).toBe('episode')
+  })
+
+  it('an explicit ?story= start gets the episode line', () => {
+    expect(welcomeVariantFor({ storyParam: WEEKEND_EP1 })).toBe('episode')
+  })
+
+  it('a genuine sample resume keeps the resume line', () => {
+    expect(welcomeVariantFor({ sample: WEEKEND_EP1 })).toBe('story')
+  })
+
+  it('no story info gets the legacy line', () => {
+    expect(welcomeVariantFor({})).toBeNull()
+  })
+
+  it('an EP1 start is never classified as a resume, even in the same tab as a sample', () => {
+    // Marc's phone test: a sample was played, then an ad campaign signup. With no
+    // resumable position written, this is an EP1 start — the resume line is wrong.
+    expect(welcomeVariantFor({ sample: null, campaign: 'weekend-wife-miami' })).toBe('episode')
+  })
+})

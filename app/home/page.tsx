@@ -607,12 +607,24 @@ function HomeContent() {
     if (!showWelcome || !user) return
     const firstName = (user as any)?.user_metadata?.first_name || ''
 
-    // Fast path: pre-rendered URL already present in session JWT
-    // POST-SIGNUP-RETURN-001: a listener who was sampling a story gets Belle's
-    // "now let's get back to your story" line (rendered on demand, cached per
-    // name). The Bell EP2 clips below would promise the wrong story.
+    // POST-CHECKOUT-DESTINATION-003 (Marc, 2026-11-19): Belle's line must match
+    // what is actually about to play.
+    //   resume  -> sampling a story, send them back to it
+    //   episode -> starting an EP1 (ad campaign); must NOT say "back to your story"
+    //   none    -> legacy
+    // Decided from the same resolver as the destination, not from a second
+    // guess, so the words and the audio cannot disagree.
     const resumeSample = loadFreshestResumableSample()
-    if (resumeSample) {
+    const welcomeDest = resolvePostCheckoutDestination({
+      storyParam: new URLSearchParams(window.location.search).get('story'),
+      resumeStoryId: resumeSample?.catalogStoryId ?? null,
+      utmCampaign: dbCampaign,
+    })
+    const welcomeVariant: 'story' | 'episode' | null =
+      welcomeDest.source === 'sample' ? 'story'
+      : welcomeDest.source === 'param' || welcomeDest.source === 'campaign' ? 'episode'
+      : null
+    if (welcomeVariant === 'story') {
       if (!firstName) { setSeg1Url(null); return }
       let cancelledStory = false
       ;(async () => {
@@ -628,6 +640,27 @@ function HomeContent() {
         }
       })()
       return () => { cancelledStory = true }
+    }
+
+    // An EP1 start: render the episode line and SKIP the pre-rendered clip.
+    // The pre-rendered/pooled clips are the legacy Bell EP2 line — using one
+    // here would promise a story this listener is not about to hear.
+    if (welcomeVariant === 'episode') {
+      if (!firstName) { setSeg1Url(null); return }
+      let cancelledEp = false
+      ;(async () => {
+        try {
+          const ctrl = new AbortController()
+          const t = setTimeout(() => ctrl.abort(), 6000)
+          const r = await fetch(`/api/name-audio?variant=episode&name=${encodeURIComponent(firstName)}`, { signal: ctrl.signal })
+          clearTimeout(t)
+          const json = await r.json()
+          if (!cancelledEp) setSeg1Url(json?.audio_url || null)
+        } catch {
+          if (!cancelledEp) setSeg1Url(null)
+        }
+      })()
+      return () => { cancelledEp = true }
     }
 
     const preRendered: string | undefined = (user as any)?.user_metadata?.welcome_seg1_url
