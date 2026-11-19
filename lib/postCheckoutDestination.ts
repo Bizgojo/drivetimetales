@@ -21,7 +21,13 @@
  * the exact complaint this change exists to fix.
  */
 
-/** utm_campaign value → series id. Canon utm names come from Marc's ad rules. */
+/**
+ * utm_campaign value → series id. Canon utm names come from Marc's ad rules.
+ *
+ * NOTE: these are SERIES ids, not episode ids. `resolvePostCheckoutDestination`
+ * therefore returns `seriesId` for the campaign source and the caller must
+ * resolve the series' episode 1. See destinationHref below.
+ */
 export const UTM_CAMPAIGN_TO_SERIES: Record<string, string> = {
   'weekend-wife-miami': 'd6af80a4-1ac9-48ae-8e7a-1fb71357e4ad',
   'second-rise': 'd1f90c2a-44c2-4b3c-b489-fb10882490bd',
@@ -29,7 +35,8 @@ export const UTM_CAMPAIGN_TO_SERIES: Record<string, string> = {
 }
 
 export type PostCheckoutDestination =
-  | { kind: 'player'; storyId: string; source: 'param' | 'sample' | 'campaign' }
+  | { kind: 'player'; storyId: string; source: 'param' | 'sample' }
+  | { kind: 'series'; seriesId: string; source: 'campaign' }
   | { kind: 'home'; storyId: null; source: 'none' }
 
 /**
@@ -56,14 +63,32 @@ export function resolvePostCheckoutDestination(opts: {
     return { kind: 'player', storyId: opts.resumeStoryId, source: 'sample' }
   }
   const campaign = opts.utmCampaign?.trim().toLowerCase()
-  if (campaign && UTM_CAMPAIGN_TO_SERIES[campaign]) {
-    return { kind: 'player', storyId: UTM_CAMPAIGN_TO_SERIES[campaign], source: 'campaign' }
+  const seriesId = campaign ? UTM_CAMPAIGN_TO_SERIES[campaign] : undefined
+  if (seriesId) {
+    // DELIBERATE: a series id is NOT a story id. `/player/<series-id>` renders
+    // an empty player and plays nothing — which is exactly what happened on
+    // Marc's 2026-11-19 phone test. The caller resolves the series' episode 1
+    // before navigating; `destinationHref` returns null until it does.
+    return { kind: 'series', seriesId, source: 'campaign' }
   }
   // Nothing to go on. Home, not a random episode.
   return { kind: 'home', storyId: null, source: 'none' }
 }
 
-/** URL a destination resolves to. Kept separate so it is trivial to test. */
-export function destinationHref(dest: PostCheckoutDestination): string {
-  return dest.kind === 'player' ? `/player/${dest.storyId}?autoplay=1` : '/home'
+/**
+ * URL a destination resolves to. Kept separate so it is trivial to test.
+ *
+ * Returns `null` for a `series` destination: the caller must first resolve the
+ * series' episode 1 (`episodeOneHref`). Returning `/player/<series-id>` here is
+ * what shipped silently on 2026-11-19 and played nothing.
+ */
+export function destinationHref(dest: PostCheckoutDestination): string | null {
+  if (dest.kind === 'player') return `/player/${dest.storyId}?autoplay=1`
+  if (dest.kind === 'series') return null
+  return '/home'
+}
+
+/** Player href for an episode id. One place, so autoplay semantics cannot drift. */
+export function episodeOneHref(storyId: string): string {
+  return `/player/${storyId}?autoplay=1`
 }

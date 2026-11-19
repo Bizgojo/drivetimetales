@@ -4,7 +4,8 @@ import { Suspense, useState, useEffect, useRef, useCallback } from 'react'
 import { attachMediaSession, MEDIA_ALBUM } from '@/lib/mediaSession'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
-import { resolvePostCheckoutDestination, destinationHref } from '@/lib/postCheckoutDestination'
+import { resolvePostCheckoutDestination, destinationHref, episodeOneHref } from '@/lib/postCheckoutDestination'
+import { resolveSeriesEpisodeOne } from '@/lib/seriesEpisodeOne'
 import { supabase } from '@/lib/supabase'
 import ContinueListening from '@/components/ContinueListening'
 import NewReleases from '@/components/NewReleases'
@@ -709,6 +710,27 @@ function HomeContent() {
 
   // HOOKS RULE: searchInputRef must be before the early return so hook order
   // is identical on every render (loading=true and loading=false both call it)
+  // MARC 2026-11-19: the welcome screen and a new listener's first session must
+  // not be interrupted by the "Add Endless Tales to your home screen" prompt.
+  // Before the listener has heard a full episode the ask is premature, and on
+  // the welcome screen it competes with Belle. Suppressed while the welcome
+  // card is showing, and for the first session of a brand-new account.
+  const [isFirstSession, setIsFirstSession] = useState(false)
+  useEffect(() => {
+    if (!user) { setIsFirstSession(false); return }
+    // A brand-new listener has not dismissed the welcome yet, or has an account
+    // created within the last 24h. Both mean "first session".
+    const dismissed = Boolean((user as any)?.user_metadata?.welcome_dismissed)
+    const createdRaw = (user as any)?.created_at
+    const createdAt = createdRaw ? Date.parse(createdRaw) : NaN
+    const isNew = Number.isFinite(createdAt) && Date.now() - createdAt < 24 * 60 * 60 * 1000
+    setIsFirstSession(!dismissed || isNew)
+  }, [user])
+
+  useEffect(() => {
+    if (showWelcome) setIsFirstSession(true)
+  }, [showWelcome])
+
   // POST-CHECKOUT-DESTINATION-001b (Marc, 2026-11-19): utm_campaign is NOT on
   // the auth user object. It lives in public.users, written at signup by the
   // attribution update. Reading user_metadata.utm_campaign — as the first cut
@@ -768,7 +790,20 @@ function HomeContent() {
                   resumeStoryId: sample?.catalogStoryId ?? null,
                   utmCampaign: dbCampaign,
                 })
-                router.push(destinationHref(dest))
+                if (dest.kind === 'series') {
+                  // POST-CHECKOUT-DESTINATION-002 (Marc, 2026-11-19): the
+                  // campaign map yields a SERIES id. Pushing `/player/<series-id>`
+                  // gave a player with nothing in it — Marc heard Belle say
+                  // "back to your story" and then silence. Resolve the series'
+                  // episode 1, and if that fails go to /home rather than a
+                  // broken player.
+                  void (async () => {
+                    const ep1 = await resolveSeriesEpisodeOne(dest.seriesId, supabase as any)
+                    router.push(ep1 ? episodeOneHref(ep1) : '/home')
+                  })()
+                } else {
+                  router.push(destinationHref(dest) ?? '/home')
+                }
                 // Persist dismissal so reload/revisit doesn't re-show the banner
                 void supabase.auth.updateUser({ data: { welcome_dismissed: true } })
               }}
@@ -817,7 +852,7 @@ function HomeContent() {
         {homeSearch.trim() && <HomeSearchResults query={homeSearch} />}
       </main>
       {/* ORION-HOME-WALK-001 fix 3: banner must never obscure the bottom nav (Marc walk, 2026-07-12). */}
-      <InstallAppBanner aboveBottomNav />
+      <InstallAppBanner aboveBottomNav suppress={isFirstSession} />
       <BottomStickyButtons />
     </div>
   )

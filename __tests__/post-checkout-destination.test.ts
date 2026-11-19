@@ -14,8 +14,10 @@
 import {
   resolvePostCheckoutDestination,
   destinationHref,
+  episodeOneHref,
   UTM_CAMPAIGN_TO_SERIES,
 } from '@/lib/postCheckoutDestination'
+import { pickEpisodeOne } from '@/lib/seriesEpisodeOne'
 
 const WEEKEND_EP1 = '9d8f6c00-fbe1-4919-85bd-86a085f45e71'
 const SECOND_EP1 = '92587140-6371-4bed-875c-548fdbb9abc7'
@@ -48,17 +50,29 @@ describe('POST-CHECKOUT-DESTINATION-001 — utm_campaign fallback', () => {
     ['weekend-wife-miami', WEEKEND_EP1],
     ['second-rise', SECOND_EP1],
     ['widow-who-watched', WIDOW_EP1],
-  ])('maps %s to its series episode 1', (campaign, expected) => {
-    // The map holds SERIES ids; assert the mapping exists and resolves to a player.
+  ])('maps %s to its SERIES, never directly to a story', (campaign) => {
+    // POST-CHECKOUT-DESTINATION-002 (Marc, 2026-11-19): the map holds SERIES
+    // ids. Returning them as a story id produced /player/<series-id>, which
+    // played nothing — Belle said "back to your story" and then silence.
     const d = resolvePostCheckoutDestination({ utmCampaign: campaign })
-    expect(d.kind).toBe('player')
-    expect(d.storyId).toBe(UTM_CAMPAIGN_TO_SERIES[campaign])
+    expect(d.kind).toBe('series')
+    expect(d.kind === 'series' && d.seriesId).toBe(UTM_CAMPAIGN_TO_SERIES[campaign])
+  })
+
+  it('never returns a series id as a story id, and never builds a player href from one', () => {
+    for (const campaign of Object.keys(UTM_CAMPAIGN_TO_SERIES)) {
+      const d = resolvePostCheckoutDestination({ utmCampaign: campaign })
+      expect(d.kind).not.toBe('player')
+      // destinationHref must refuse to build a URL the caller has to guess at.
+      expect(destinationHref(d)).toBeNull()
+    }
   })
 
   it('is case and whitespace insensitive', () => {
     const a = resolvePostCheckoutDestination({ utmCampaign: '  SECOND-RISE ' })
     const b = resolvePostCheckoutDestination({ utmCampaign: 'second-rise' })
-    expect(a.storyId).toBe(b.storyId)
+    expect(a.kind).toBe('series')
+    expect(a.kind === 'series' && a.seriesId).toBe(b.kind === 'series' && b.seriesId)
   })
 
   it('does not invent a destination for an unknown campaign', () => {
@@ -94,5 +108,48 @@ describe('POST-CHECKOUT-DESTINATION-001 — canonical campaign names', () => {
     for (const v of Object.values(UTM_CAMPAIGN_TO_SERIES)) {
       expect(v).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)
     }
+  })
+})
+
+describe('POST-CHECKOUT-DESTINATION-002 — series → episode 1 resolution', () => {
+  it('picks the row with episode_number 1', () => {
+    const id = pickEpisodeOne([
+      { id: 'ep-3', episode_number: 3 },
+      { id: 'ep-1', episode_number: 1 },
+      { id: 'ep-2', episode_number: 2 },
+    ])
+    expect(id).toBe('ep-1')
+  })
+
+  it('falls back to the lowest episode_number when nothing is numbered 1', () => {
+    expect(pickEpisodeOne([
+      { id: 'ep-5', episode_number: 5 },
+      { id: 'ep-2', episode_number: 2 },
+    ])).toBe('ep-2')
+  })
+
+  it('returns a lone row when the series has exactly one episode', () => {
+    expect(pickEpisodeOne([{ id: 'only', episode_number: null }])).toBe('only')
+  })
+
+  it('returns null when the series has nothing playable — caller goes to /home, not a broken player', () => {
+    expect(pickEpisodeOne([])).toBeNull()
+    expect(pickEpisodeOne(null)).toBeNull()
+    // Two rows with no usable numbering: ambiguous, so refuse to guess.
+    expect(pickEpisodeOne([{ id: 'a' }, { id: 'b' }])).toBeNull()
+  })
+
+  it('episodeOneHref targets the episode, never the series', () => {
+    expect(episodeOneHref(WEEKEND_EP1)).toBe(`/player/${WEEKEND_EP1}?autoplay=1`)
+  })
+
+  it('end-to-end: a miami campaign resolves to a series, then to Weekend Wife EP1', () => {
+    const dest = resolvePostCheckoutDestination({ utmCampaign: 'weekend-wife-miami' })
+    expect(dest.kind).toBe('series')
+    // Marc's phone test: the player must be given a STORY id, not a series id.
+    const seriesId = dest.kind === 'series' ? dest.seriesId : ''
+    expect(seriesId).toBe(UTM_CAMPAIGN_TO_SERIES['weekend-wife-miami'])
+    const storyId = pickEpisodeOne([{ id: WEEKEND_EP1, episode_number: 1 }])
+    expect(storyId).toBe(WEEKEND_EP1)
   })
 })
