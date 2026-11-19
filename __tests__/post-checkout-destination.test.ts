@@ -27,7 +27,10 @@ describe('POST-CHECKOUT-DESTINATION-001 — explicit ?story= wins', () => {
   it('sends the listener to the story they came for, episode 1', () => {
     const d = resolvePostCheckoutDestination({ storyParam: WEEKEND_EP1 })
     expect(d).toEqual({ kind: 'player', storyId: WEEKEND_EP1, source: 'param' })
-    expect(destinationHref(d)).toBe(`/player/${WEEKEND_EP1}?autoplay=1`)
+    // POST-CHECKOUT-DESTINATION-004: autoplay alone was not enough — phone test
+    // #3 heard Belle and then silence because nothing pressed play. playNow=1
+    // is what makes the player actually start.
+    expect(destinationHref(d)).toBe(`/player/${WEEKEND_EP1}?autoplay=1&playNow=1`)
   })
 
   it('beats a remembered sample when both are present', () => {
@@ -188,5 +191,108 @@ describe('POST-CHECKOUT-DESTINATION-003 — Belle must not say "back to your sto
     // Marc's phone test: a sample was played, then an ad campaign signup. With no
     // resumable position written, this is an EP1 start — the resume line is wrong.
     expect(welcomeVariantFor({ sample: null, campaign: 'weekend-wife-miami' })).toBe('episode')
+  })
+})
+
+describe('POST-CHECKOUT-DESTINATION-004 — a sampled listener resumes, never lands on Home', () => {
+  const SAMPLE_ID = WEEKEND_EP1
+  const SECONDS = 63
+
+  it('sample → player on that story with the stop position', () => {
+    const d = resolvePostCheckoutDestination({ resumeStoryId: SAMPLE_ID, resumeSeconds: SECONDS })
+    expect(d.kind).toBe('player')
+    expect(d.source).toBe('sample')
+    expect(d.storyId).toBe(SAMPLE_ID)
+    expect(d.kind === 'player' && d.resumeSeconds).toBe(SECONDS)
+  })
+
+  it('builds a resume href carrying the position', () => {
+    const d = resolvePostCheckoutDestination({ resumeStoryId: SAMPLE_ID, resumeSeconds: SECONDS })
+    const href = destinationHref(d)
+    expect(href).toBe(`/player/${SAMPLE_ID}?resume=${SECONDS}&autoplay=1&playNow=1`)
+  })
+
+  it('sample with no readable position starts at 0:00 and still opens the player', () => {
+    for (const secs of [0, null, undefined, NaN]) {
+      const d = resolvePostCheckoutDestination({ resumeStoryId: SAMPLE_ID, resumeSeconds: secs as any })
+      expect(d.kind).toBe('player')
+      const href = destinationHref(d)
+      expect(href).toContain(`/player/${SAMPLE_ID}`)
+      expect(href).not.toContain('resume=')
+    }
+  })
+
+  it('a sample outranks the campaign tag — the listener resumes, not restarts the ad story', () => {
+    const d = resolvePostCheckoutDestination({
+      resumeStoryId: SAMPLE_ID,
+      resumeSeconds: SECONDS,
+      utmCampaign: 'weekend-wife-miami',
+    })
+    expect(d.source).toBe('sample')
+    expect(destinationHref(d)).toContain('resume=63')
+  })
+
+  it('the exact phone-test #3 shape never yields /home', () => {
+    // Sample played in the /go landing player, same tab, then signup.
+    const d = resolvePostCheckoutDestination({
+      resumeStoryId: SAMPLE_ID,
+      resumeSeconds: 60,
+      utmCampaign: 'weekend-wife-miami',
+    })
+    expect(destinationHref(d)).not.toBe('/home')
+    expect(destinationHref(d)).toContain('/player/')
+  })
+
+  it('floors fractional positions so the query stays integral', () => {
+    const d = resolvePostCheckoutDestination({ resumeStoryId: SAMPLE_ID, resumeSeconds: 62.87 })
+    expect(destinationHref(d)).toContain('resume=62&')
+  })
+})
+
+describe('POST-CHECKOUT-DESTINATION-005 — the ReferenceError-class fence', () => {
+  // The 2026-11-19 regression was NOT a logic error in the resolver: the
+  // resolver was never reached. `storyParam` was declared inside a useEffect
+  // and read inside onDismiss, so every dismissal threw before router.push.
+  // Pure-function tests cannot catch that, and this repo has no React test
+  // harness (jest testEnvironment: 'node'). So the fence is structural: the
+  // handler must read its inputs from state/URL, never from an effect-local.
+  const fs = require('fs')
+  const path = require('path')
+  const SRC = fs.readFileSync(
+    path.join(__dirname, '..', 'app', 'home', 'page.tsx'),
+    'utf8'
+  )
+
+  it('storyParam is declared at component scope, not inside an effect', () => {
+    const decl = SRC.match(/^\s*const storyParam = searchParams\.get\('story'\)/m)
+    expect(decl).not.toBeNull()
+    // component-scope declarations in this file use exactly two spaces
+    const line = SRC.split('\n').find((l) => l.includes("const storyParam = searchParams.get('story')"))!
+    expect(line.startsWith('  const storyParam')).toBe(true)
+  })
+
+  it('onDismiss reads only identifiers that exist outside the effect', () => {
+    const start = SRC.indexOf('onDismiss={() => {')
+    expect(start).toBeGreaterThan(-1)
+    const end = SRC.indexOf('}', SRC.indexOf('welcome_dismissed', start))
+    const body = SRC.slice(start, end)
+    // every name the handler destructures off its own scope must be declared
+    // at component scope above the JSX
+    // Locals must be component-scope consts or state destructures.
+    // `supabase` is a module import (line 9) — checked separately below.
+    for (const name of ['storyParam', 'dbCampaign', 'router']) {
+      expect(body).toContain(name)
+      const declared = new RegExp(
+        `^  const (?:${name}\\b|\\[[^\\]]*\\b${name}\\b[^\\]]*\\])`,
+        'm'
+      )
+      expect(SRC).toMatch(declared)
+    }
+    expect(SRC).toMatch(/^import \{ supabase \} from '@\/lib\/supabase'$/m)
+  })
+
+  it('the welcome card waits for both the campaign answer and the clip', () => {
+    expect(SRC).toMatch(/if \(!campaignLoaded \|\| !seg1Url\) return/)
+    expect(SRC).toMatch(/if \(startedRef\.current\) return/)
   })
 })

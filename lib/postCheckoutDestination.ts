@@ -19,6 +19,14 @@
  * Rule 1's "episode 1" is deliberate: a paying listener starts a story at the
  * beginning. Resuming a half-heard *sample* would drop them mid-story, which is
  * the exact complaint this change exists to fix.
+ *
+ * POST-CHECKOUT-DESTINATION-004 (Marc, 2026-11-19, after phone test #3): that
+ * last paragraph was wrong about the sample case. Marc ruled the opposite — a
+ * listener who played 60 s of the ad sample must be returned INTO that story at
+ * the spot they stopped, not restarted at 0:00, and must never be left on Home.
+ * The /go sample audio IS the catalog EP1 audio (`hookVariant` uses the EP1
+ * final_mix), so the sample position maps 1:1 onto the player — the same
+ * guarantee `sampleResumeHref` has always relied on.
  */
 
 /**
@@ -35,7 +43,7 @@ export const UTM_CAMPAIGN_TO_SERIES: Record<string, string> = {
 }
 
 export type PostCheckoutDestination =
-  | { kind: 'player'; storyId: string; source: 'param' | 'sample' }
+  | { kind: 'player'; storyId: string; source: 'param' | 'sample'; resumeSeconds?: number }
   | { kind: 'series'; seriesId: string; source: 'campaign' }
   | { kind: 'home'; storyId: null; source: 'none' }
 
@@ -47,11 +55,13 @@ export type PostCheckoutDestination =
  *
  * @param opts.storyParam     `?story=<uuid>` on /home (set by the ad landing page)
  * @param opts.resumeStoryId  freshest resumable sample, if any
+ * @param opts.resumeSeconds  where the sample stopped, when known
  * @param opts.utmCampaign    utm_campaign stored on the user row
  */
 export function resolvePostCheckoutDestination(opts: {
   storyParam?: string | null
   resumeStoryId?: string | null
+  resumeSeconds?: number | null
   utmCampaign?: string | null
 }): PostCheckoutDestination {
   const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -60,7 +70,12 @@ export function resolvePostCheckoutDestination(opts: {
     return { kind: 'player', storyId: opts.storyParam, source: 'param' }
   }
   if (opts.resumeStoryId && uuid.test(opts.resumeStoryId)) {
-    return { kind: 'player', storyId: opts.resumeStoryId, source: 'sample' }
+    // Carry the stop position. Losing it was phone test #3's failure: the
+    // listener was sent to EP1 at 0:00 instead of the spot they left.
+    const secs = Number.isFinite(opts.resumeSeconds)
+      ? Math.max(0, Math.floor(opts.resumeSeconds as number))
+      : 0
+    return { kind: 'player', storyId: opts.resumeStoryId, source: 'sample', resumeSeconds: secs }
   }
   const campaign = opts.utmCampaign?.trim().toLowerCase()
   const seriesId = campaign ? UTM_CAMPAIGN_TO_SERIES[campaign] : undefined
@@ -83,7 +98,14 @@ export function resolvePostCheckoutDestination(opts: {
  * what shipped silently on 2026-11-19 and played nothing.
  */
 export function destinationHref(dest: PostCheckoutDestination): string | null {
-  if (dest.kind === 'player') return `/player/${dest.storyId}?autoplay=1`
+  if (dest.kind === 'player') {
+    // A sampled listener resumes; everyone else starts at 0:00. Both open the
+    // player — neither is allowed to leave the listener on /home.
+    if (dest.source === 'sample' && Number(dest.resumeSeconds) > 0) {
+      return `/player/${dest.storyId}?resume=${Math.floor(dest.resumeSeconds as number)}&autoplay=1&playNow=1`
+    }
+    return `/player/${dest.storyId}?autoplay=1&playNow=1`
+  }
   if (dest.kind === 'series') return null
   return '/home'
 }
