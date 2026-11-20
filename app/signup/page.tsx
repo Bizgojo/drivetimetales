@@ -239,7 +239,14 @@ function SignUpContent() {
           ...(urlSource === 'go' ? { source: 'go' } : { trialDays: finalTrialDays }),
           billingCycle,
           returnTo: returnTo || (isUuid(storyParam) ? `/home?welcome=true&story=${encodeURIComponent(storyParam)}` : undefined),
-          attribution,
+          // CAPI-STARTTRIAL-MATCH-001 (Marc, 2026-11-20): tell the checkout
+          // which page this visitor is actually on, so the CAPI StartTrial
+          // event can name the real landing URL instead of a hard-coded
+          // /signup. Server drops it unless it is a same-site URL.
+          attribution: {
+            ...attribution,
+            landing_url: typeof window !== 'undefined' ? window.location.href : undefined,
+          },
           heardAbout: selectedHeardAbout,
         })
       })
