@@ -1,5 +1,14 @@
 import Script from 'next/script'
 
+// PIXEL-SUPPRESS-001 (Marc, 2026-11-20): when ?et_test= is in the URL or the
+// session is a known test session, NOTHING may reach Meta's pixel — not
+// PageView, not any trackClientEvent call. Ad links never carry et_test, so
+// there is no risk to real traffic.
+//
+// The suppression is three-layered and must stay consistent:
+//   1. this component's __etTestSession guard (kills PageView + fbevents.js),
+//   2. lib/tracking/client.ts isTestSessionClient() (kills every named event),
+//   3. no <noscript> PageView fallback (see note at the bottom).
 export default function MetaPixel() {
   const pixelId = process.env.NEXT_PUBLIC_META_PIXEL_ID
   if (!pixelId) return null
@@ -45,18 +54,16 @@ export default function MetaPixel() {
           }
         `}
       </Script>
-      {/* noscript fallback: test sessions always run with JS enabled, so the
-          __etTestSession guard above covers them; this img only fires for
-          real visitors with JS disabled. */}
-      <noscript>
-        <img
-          height="1"
-          width="1"
-          style={{ display: 'none' }}
-          src={`https://www.facebook.com/tr?id=${pixelId}&ev=PageView&noscript=1`}
-          alt=""
-        />
-      </noscript>
+      {/* PIXEL-SUPPRESS-001: no <noscript> fallback.
+          The old fallback fired a PageView for EVERY visit, not just
+          JS-disabled ones — browsers request <noscript> images regardless of
+          whether scripting is on. That leaked a PageView at Meta for test
+          sessions (?et_test=...) that the JS guard above had correctly
+          suppressed, so a test visit was still visible in Events Manager.
+          The JS guard is the only path to the pixel now: real visitors get
+          PageView from the init block above. A JS-disabled visitor is not a
+          listener we can bill or optimise against, so losing that PageView
+          costs nothing. Do not restore this block. */}
     </>
   )
 }
