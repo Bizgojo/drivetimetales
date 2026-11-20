@@ -24,6 +24,25 @@ const supabase = createClient(
 // Permanent fix — env secrets get trimmed at read.
 const webhookSecret = (process.env.STRIPE_WEBHOOK_SECRET || '').trim()
 
+/** CAPI-STARTTRIAL-MATCH-001 (Marc, 2026-11-20): the landing URL the checkout
+ *  recorded, or the /signup page when it carried none. Same-site only — the
+ *  value was validated at checkout, but the webhook re-checks so a manually
+ *  edited session can never send Meta an off-site source URL. */
+function landingUrlFromMetadata(metadata: Stripe.Metadata | null | undefined): string {
+  const FALLBACK = 'https://endless-tales.com/signup'
+  const raw = typeof metadata?.landing_url === 'string' ? metadata.landing_url.trim() : ''
+  if (!raw) return FALLBACK
+  try {
+    const u = new URL(raw)
+    if (u.protocol !== 'https:' && u.protocol !== 'http:') return FALLBACK
+    const host = u.hostname.toLowerCase()
+    if (host !== 'endless-tales.com' && !host.endsWith('.endless-tales.com')) return FALLBACK
+    return u.toString()
+  } catch {
+    return FALLBACK
+  }
+}
+
 function getBillingCycle(subscription: Stripe.Subscription): 'annual' | 'monthly' | null {
   try {
     const interval = subscription.items?.data?.[0]?.price?.recurring?.interval
@@ -192,7 +211,10 @@ export async function POST(request: NextRequest) {
             externalId: userId,
             value: 0,
             currency: 'USD',
-            sourceUrl: 'https://endless-tales.com/signup',
+            // CAPI-STARTTRIAL-MATCH-001 (Marc, 2026-11-20): name the page the
+            // visitor actually converted on. Falls back to /signup when the
+            // checkout carried no acceptable same-site landing URL.
+            sourceUrl: landingUrlFromMetadata(session.metadata),
             customData: {
               content_name: 'Endless Tales Trial',
               utm_source: session.metadata?.utm_source,

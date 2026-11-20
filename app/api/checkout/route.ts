@@ -39,6 +39,10 @@ type AttributionPayload = {
   utm_content?: string | null
   utm_captured_at?: string | null
   promo_code?: string | null
+  // CAPI-STARTTRIAL-MATCH-001 (Marc, 2026-11-20): the page the visitor was
+  // actually on when they converted. Carried to the webhook so the CAPI
+  // StartTrial event names a real landing URL instead of a hard-coded /signup.
+  landing_url?: string | null
 }
 
 function metadataValue(value: unknown) {
@@ -61,6 +65,24 @@ function attributionMetadata(attribution: AttributionPayload | undefined, heardA
     utm_captured_at: metadataValue(attribution?.utm_captured_at),
     promo_code: promoCode,
     heard_about_us: metadataValue(heardAbout),
+    landing_url: safeLandingUrl(attribution?.landing_url),
+  }
+}
+
+/** CAPI-STARTTRIAL-MATCH-001: accept only a same-site absolute landing URL
+ *  from OUR domains; anything else is dropped so Meta never receives a junk
+ *  or attacker-supplied source URL. Never throws. */
+function safeLandingUrl(value: unknown): string {
+  if (typeof value !== 'string' || !value.trim()) return ''
+  try {
+    const u = new URL(value.trim())
+    if (u.protocol !== 'https:' && u.protocol !== 'http:') return ''
+    const host = u.hostname.toLowerCase()
+    const ok = host === 'endless-tales.com' || host.endsWith('.endless-tales.com')
+    if (!ok) return ''
+    return u.toString().slice(0, 500)
+  } catch {
+    return ''
   }
 }
 

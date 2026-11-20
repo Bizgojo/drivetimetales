@@ -29,8 +29,24 @@
 // build) is exported separately so it is unit-testable without a DOM.
 
 import { GO_LIVE_VARIANTS, GO_STORY_VARIANTS } from './landing'
+import { trackClientEvent } from './tracking/client'
+import { guestPlayStartEventId, randomEventId } from './tracking/events'
 
-export type GoListenVariant = 'a' | 'b' | 'bare'
+// GO-LISTEN-VARIANT-001 (Marc, 2026-11-20): the hook variants below were
+// being recorded as 'bare'. resolveGoStory served the right story (its
+// allowlist includes them) but resolveGoVariant only knew 'a' and 'b', so a
+// Miami ad click wrote 'bare' to go_listen_events and the campaign's traffic
+// was indistinguishable from the default story. The type now names every
+// variant that can actually be served.
+export type GoListenVariant =
+  | 'a'
+  | 'b'
+  | 'bare'
+  | 'widow'
+  | 'rise'
+  | 'miami'
+  | 'rerouted'
+  | 'home'
 export type GoListenEventName =
   | 'play_start'
   | 'sec_30'
@@ -130,7 +146,10 @@ export function resolveGoVariant(
 ): GoListenVariant {
   try {
     const v = (new URLSearchParams(search ?? '').get('v') ?? '').trim().toLowerCase()
-    if ((v === 'a' || v === 'b') && liveVariants.includes(v) && GO_STORY_VARIANTS[v]) return v
+    // GO-LISTEN-VARIANT-001: accept ANY live variant that actually has a
+    // story, not just a/b. This mirrors resolveGoStory exactly, so the variant
+    // recorded in analytics is always the story that was served.
+    if (v && liveVariants.includes(v) && GO_STORY_VARIANTS[v]) return v as GoListenVariant
     return 'bare'
   } catch {
     return 'bare'
@@ -271,6 +290,10 @@ export interface GoListenTrackerInit {
   etTest?: string | null | undefined
   /** Injectable transport for tests; defaults to sendGoListenPayload. */
   send?: (payload: GoListenPayload) => void
+  /** PIXEL-PLAYSTART-001: injectable browser-pixel transport for tests;
+   *  defaults to lib/tracking/client trackClientEvent. Pixels are a SECONDARY
+   *  consumer of the same latches — first-party rows are always written. */
+  sendPixel?: (event: GoListenEventName, params: Record<string, string | number | undefined>, eventId: string) => void
 }
 
 /**
@@ -286,6 +309,41 @@ export function createGoListenTracker(init: GoListenTrackerInit): GoListenTracke
   // ET-TEST-ANON-TAG-20261031: sanitize once at init; every event in this
   // session carries the same marker (or null for genuine visits).
   const etTest = sanitizeEtTest(init.etTest)
+  const sendPixel = init.sendPixel ?? trackClientEvent
+
+  // PIXEL-PLAYSTART-001 (Marc, 2026-11-20): /go must report to the Meta pixel,
+  // not only to go_listen_events. Before this the sample player logged 4 plays
+  // lifetime on the pixel against 35 in our own table, so the ad platform could
+  // not see that anyone played at all.
+  //
+  // Pixels are a SECONDARY consumer: the first-party row is always written
+  // first, and this runs inside its own try/catch so a pixel failure (blocked,
+  // not loaded, test session suppressed) can never affect analytics or
+  // playback. Test sessions are suppressed inside trackClientEvent.
+  const pixelFired = new Set<string>()
+  const firePixelOnce = (
+    key: string,
+    event: GoListenEventName,
+    params: Record<string, string | number | undefined>,
+    eventId: string
+  ) => {
+    try {
+      if (pixelFired.has(key)) return
+      pixelFired.add(key)
+      sendPixel(event, params, eventId)
+    } catch { /* silent — ads tracking never degrades playback */ }
+  }
+
+  /** The /go sample player's pixel params. Anonymous by design: the sample is
+   *  played before signup, so there is no email or user id to send. */
+  const goPixelParams = (positionSeconds: number) => ({
+    content_name: 'Endless Tales Sample',
+    content_category: 'go_sample',
+    u_go_variant: init.variant,
+    u_utm_source: utmSource ?? undefined,
+    u_utm_campaign: utmCampaign ?? undefined,
+    position_seconds: clampPositionSeconds(positionSeconds),
+  })
 
   const fireOnce = (event: GoListenEventName, positionSeconds: number) => {
     try {
@@ -307,6 +365,14 @@ export function createGoListenTracker(init: GoListenTrackerInit): GoListenTracke
     sessionId,
     onPlayStart(positionSeconds: number) {
       fireOnce('play_start', positionSeconds)
+      // Meta custom event 'PlayStart' — the same name lib/analytics.ts already
+      // sends for catalog listens, so the platform sees ONE play metric.
+      firePixelOnce(
+        'pixel_play_start',
+        'PlayStart',
+        goPixelParams(positionSeconds),
+        guestPlayStartEventId(sessionId)
+      )
     },
     onTimeUpdate(positionSeconds: number, durationSeconds: number) {
       try {
@@ -315,6 +381,18 @@ export function createGoListenTracker(init: GoListenTrackerInit): GoListenTracke
         // — a sec_30 send can never affect the existing events.
         for (const event of depthEventsCrossed(positionSeconds, fired)) {
           fireOnce(event, positionSeconds)
+        }
+        // PIXEL-PLAYSTART-001: 'Listened30s' is the named fallback conversion
+        // for CANON-99 decision 157 — the event the campaign switches to if
+        // START_TRIAL does not reach 3 real trials by ~$400 spend. It mirrors
+        // the first-party sec_30 mark, so the two can never disagree.
+        if (positionSeconds >= 30) {
+          firePixelOnce(
+            'pixel_listened_30s',
+            'Listened30s',
+            goPixelParams(positionSeconds),
+            randomEventId('listened30s')
+          )
         }
         for (const event of milestonesCrossed(positionSeconds, durationSeconds, fired)) {
           fireOnce(event, positionSeconds)

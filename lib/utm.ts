@@ -106,12 +106,20 @@ export function captureFbclidCookie(fbclid: string | null): void {
 
 export function captureUtmFromUrl(): void {
   if (typeof window === 'undefined') return
+  // CAPI-STARTTRIAL-MATCH-001 (Marc, 2026-11-20): the _fbc cookie is captured
+  // OUTSIDE the try and BEFORE the UTM early-return below. Meta appends
+  // ?fbclid= to every ad click but does NOT always append utm_* params, so the
+  // old placement (after the early return) dropped every fbclid-only arrival —
+  // exactly the ad traffic this is for. captureFbclidCookie is already
+  // swallow-all, so it cannot break the page.
+  try {
+    const params = new URLSearchParams(window.location.search)
+    captureFbclidCookie(params.get('fbclid'))
+  } catch {
+    // Never let attribution break the page.
+  }
   try {
     const urlParams = new URLSearchParams(window.location.search)
-    // CAPI-MATCH-001: Meta adds ?fbclid= to every ad click. Keep it as the _fbc
-    // cookie (Meta's format) so server events can name the click. The Meta pixel
-    // does the same when it loads; this covers pages where it is blocked or late.
-    captureFbclidCookie(urlParams.get('fbclid'))
     const source = urlParams.get('utm_source')
     const medium = urlParams.get('utm_medium')
     const campaign = urlParams.get('utm_campaign')

@@ -12,6 +12,7 @@ import {
   normalizeUtm,
   resolveGoVariant,
 } from '@/lib/goListen'
+import { GO_STORY_VARIANTS, resolveGoStory } from '@/lib/landing'
 
 describe('resolveGoVariant', () => {
   it('maps live variants and everything else to bare', () => {
@@ -31,6 +32,36 @@ describe('resolveGoVariant', () => {
 
   it('never throws on junk', () => {
     expect(resolveGoVariant(null as unknown as string)).toBe('bare')
+  })
+
+  // GO-LISTEN-VARIANT-001 (Marc, 2026-11-20): the hook variants used to be
+  // recorded as 'bare', which made Miami ad traffic indistinguishable from
+  // default /go traffic.
+  it('records hook variants by their own name, not bare', () => {
+    expect(resolveGoVariant('?v=miami')).toBe('miami')
+    expect(resolveGoVariant('?v=rise')).toBe('rise')
+    expect(resolveGoVariant('?v=widow')).toBe('widow')
+    expect(resolveGoVariant('?v=rerouted')).toBe('rerouted')
+    expect(resolveGoVariant('?v=home')).toBe('home')
+    expect(resolveGoVariant('?v=MIAMI')).toBe('miami')
+  })
+
+  it('matches resolveGoStory exactly — the recorded variant is the story served', () => {
+    // The pair must agree on every live variant: if resolveGoStory serves the
+    // hook story, resolveGoVariant must record that hook's name, not 'bare'.
+    for (const v of ['a', 'b', 'widow', 'rise', 'miami', 'rerouted', 'home']) {
+      expect(resolveGoStory(`?v=${v}`).id).toBe(GO_STORY_VARIANTS[v].id)
+      expect(resolveGoVariant(`?v=${v}`)).toBe(v)
+    }
+    // And they must agree in the fallback direction too: an unknown ?v serves
+    // the default story and records 'bare'.
+    expect(resolveGoStory('?v=nope').id).toBe(resolveGoStory('').id)
+    expect(resolveGoVariant('?v=nope')).toBe('bare')
+  })
+
+  it('still serves bare for a gated or unknown variant', () => {
+    expect(resolveGoVariant('?v=miami', ['a'])).toBe('bare')
+    expect(resolveGoVariant('?v=nope')).toBe('bare')
   })
 })
 
@@ -135,5 +166,66 @@ describe('createGoListenTracker', () => {
     const a = createGoListenTracker({ variant: 'a', utmSource: null, utmCampaign: null, send: () => {} })
     const b = createGoListenTracker({ variant: 'a', utmSource: null, utmCampaign: null, send: () => {} })
     expect(a.sessionId).not.toBe(b.sessionId)
+  })
+})
+
+// PIXEL-PLAYSTART-001 (Marc, 2026-11-20): the /go sample player must fire the
+// Meta pixel, not just write go_listen_events. It logged 4 plays lifetime on
+// the pixel against 35 in our own table.
+describe('createGoListenTracker — pixel mirror', () => {
+  function makeTracker() {
+    const rows: GoListenPayload[] = []
+    const pixels: Array<{ event: string; params: Record<string, unknown>; eventId: string }> = []
+    const t = createGoListenTracker({
+      variant: 'miami',
+      utmSource: 'meta',
+      utmCampaign: 'ww-miami',
+      send: p => { rows.push(p) },
+      sendPixel: (event, params, eventId) => { pixels.push({ event, params, eventId }) },
+    })
+    return { t, rows, pixels }
+  }
+
+  it('fires pixel PlayStart once on play, alongside the first-party row', () => {
+    const { t, rows, pixels } = makeTracker()
+    t.onPlayStart(0)
+    t.onPlayStart(30) // pause→play again must not refire the pixel either
+    expect(rows.filter(r => r.event === 'play_start')).toHaveLength(1)
+    expect(pixels.filter(p => p.event === 'PlayStart')).toHaveLength(1)
+    expect(pixels[0].params.u_go_variant).toBe('miami')
+  })
+
+  it('fires pixel Listened30s once when playback crosses 30s', () => {
+    const { t, pixels } = makeTracker()
+    t.onPlayStart(0)
+    t.onTimeUpdate(10, 600)
+    expect(pixels.filter(p => p.event === 'Listened30s')).toHaveLength(0)
+    t.onTimeUpdate(30, 600)
+    t.onTimeUpdate(45, 600)
+    expect(pixels.filter(p => p.event === 'Listened30s')).toHaveLength(1)
+  })
+
+  it('never fires Listened30s for a listen that stopped before 30s', () => {
+    const { t, pixels } = makeTracker()
+    t.onPlayStart(0)
+    t.onTimeUpdate(29, 600)
+    t.onEnded(29)
+    expect(pixels.filter(p => p.event === 'Listened30s')).toHaveLength(0)
+  })
+
+  it('a pixel failure never stops the first-party row or throws', () => {
+    const rows: GoListenPayload[] = []
+    const t = createGoListenTracker({
+      variant: 'bare',
+      utmSource: null,
+      utmCampaign: null,
+      send: p => { rows.push(p) },
+      sendPixel: () => { throw new Error('fbq exploded') },
+    })
+    expect(() => {
+      t.onPlayStart(0)
+      t.onTimeUpdate(40, 600)
+    }).not.toThrow()
+    expect(rows.map(r => r.event)).toEqual(['play_start', 'sec_30'])
   })
 })
