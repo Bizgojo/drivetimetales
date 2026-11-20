@@ -94,6 +94,8 @@ Every rule in this document that needs Marc. **[MARC DECIDES]** = Marc approves,
 57. Dashboard numbers from Meta must use an exact date range and the exact ad set, never a "lifetime" preset. — **Proposed** (Aug 2026 fix in memory bell-meta-marketing.md is not in the current route; see enforcement)
 58. Susan's data feed is read-only (Meta ads_read, TikTok Reporting). It strips personal data and cannot create, change or pay for ads. — **In force (code)** (docs/SUSAN-MARKETING-API.md; app/api/marketing/meta-insights, tiktok-insights)
 
+58a. The optimization event for a paid test stays pixel START_TRIAL unless Marc changes it at a scheduled review; the review for Weekend Wife in Miami is Sunday Nov 22, 2026 at 9:00 AM ET on whatever has been spent by then, and if fewer than 3 real trials are attributed the options are (a) pause and build the no-card path, or (b) a new ad set on the "Listened 30s" custom conversion with a 07:00-23:00 schedule and ads A and C only. — **Approved** (CANON-99 item 157, Marc Nov 20, 2026 10:04 ET; amended 15:41 ET)
+
 ### F. Older campaign system (Airtable)
 59. Before a campaign is approved, a 90-day cash test must show cash stays above the floor: the larger of $5,000 or 90 days of spending. — **Agreed** (docs/CODEX_CAMPAIGN_SYSTEM_SPEC.md §3, May 7, 2026; shipped app/api/cron/stress-test)
 60. No more than 3 campaigns run at once (soft limit). — **Agreed** (same spec §3)
