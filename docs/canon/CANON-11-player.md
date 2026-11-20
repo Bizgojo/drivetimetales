@@ -51,16 +51,36 @@ A listener always comes back to the exact spot they left, on any device, after a
 Listening never stops between episodes. Each episode flows into the next until the story is finished. In a playlist, the next story starts after that. The gap is 2 to 3 seconds. (Marc, Nov 8)
 25. Next episode: when a series episode plays to its natural end, the next episode starts by itself after 2 to 3 seconds. This repeats until the last episode is finished. — **Agreed** (docs/PLAYER-RULES.md; also memory /projects/.../areas/endless-tales-platform.md, Nov 5: "must always auto-advance… hard-wired")
 26. Next story in a playlist: when a story is finished (its last episode, or a standalone), the next story in the playlist starts after 2 to 3 seconds. No review screen pops up in a playlist. Instead the finished story's card in the Library shows the red "Rate" button until the listener reviews it. — **Agreed** (docs/PLAYER-RULES.md; Marc, Nov 8)
+26a. **A series finale follows the match list, not the playlist order.** When the last episode of a series ends, the player picks the next series from the canon match list in CANON-99 decision 158 — not simply the next item in whatever playlist the listener is in. Playlist order still decides between standalone stories and ordinary episodes (rule 26); it does not decide which series follows a finale. — **Agreed** (Marc, Nov 19, 2026; CANON-99 item 158)
 27. Not in a playlist: when a story is finished, the review screen pops up by itself. If the listener closes it without reviewing, the center button on that story's card turns red ("Rate") until they review it. — **Agreed** (docs/PLAYER-RULES.md; Marc, Nov 8)
 28. Every new episode or story starts with its sting and Belle's intro. — **Agreed** (docs/PLAYER-RULES.md)
 29. Only a natural end counts. Pausing, scrubbing or leaving mid-story never triggers auto-continue. — **Agreed** (docs/PLAYER-RULES.md)
 30. No "Still listening?" prompt. The player never stops to ask whether the listener is still there. It keeps going until the story, or the playlist, is finished. — **Agreed** (docs/PLAYER-RULES.md)
 31. The next item must be live. If the next episode or story is missing or hidden, the player goes to the Library and logs a warning. — **Agreed** (docs/PLAYER-RULES.md)
 32. Phone locked or app in the background: auto-continue works the same way, and the lock screen updates to the new episode or story. — **Agreed** (docs/PLAYER-RULES.md)
-33. During the 2-to-3-second gap the screen shows "Up next" and the next title, in large white text on dark, with one large Cancel button. — **Agreed** (docs/PLAYER-RULES.md)
-34. Tapping Cancel stops the advance and goes to the Library. It applies that one time only. — **Agreed** (docs/PLAYER-RULES.md)
-35. Pressing pause during the gap (lock screen, car or headphones) just pauses. Pressing Play then starts the next item from the beginning, with the sting and Belle's intro. — **Agreed** (docs/PLAYER-RULES.md; memory player-rules.md)
+33. **[MARC DECIDES] Episode to episode: straight on, with the sting, and no "Up next" box.** When one episode of a series ends and the next episode of the same series begins, the player goes straight on. There is **no "Up next" screen, no countdown, no title card and no Cancel button.** The next episode opens with its own sting and Belle's intro, exactly as rule 28 says. Phone-tested by Marc, Nov 18, 2026. This supersedes the decision-48 wording ("Up next" screen with a Cancel button), which no longer applies to the in-series gap. — **Agreed** (Marc, Nov 18, 2026; CANON-99 item 158)
+34. **[MARC DECIDES] Finale to the next series: a silent 2 seconds, then EP1 of the matched series.** When the **last episode of a series** ends, the player waits **2 seconds in silence**. During those 2 seconds the screen shows nothing: no "Up next" box, no countdown, no title, no artwork, no Cancel button. No sting, no Belle, no sound effect plays across the gap. Then episode 1 of the next series in the match list (rule 15b / CANON-99 item 158) starts with **its own sting and Belle's intro**, per rule 28. — **Agreed** (Marc, Nov 18, 2026; CANON-99 item 158)
+35. Pressing pause during any gap (lock screen, car or headphones) just pauses. Pressing Play then starts the next item from the beginning, with the sting and Belle's intro. — **Agreed** (docs/PLAYER-RULES.md; memory player-rules.md)
 36. The finished episode is marked complete, and the next one is recorded as if the listener pressed Play. Advanced and cancelled events are logged. — **Agreed** (docs/PLAYER-RULES.md)
+
+#### D2. Series finale to the next series — Agreed (Marc, Nov 19, 2026; CANON-99 item 158)
+
+These rules apply **only** when a series finale ends. They do not change rule 25 (episode to episode) or rule 26 (next story in a playlist) except where 26a says playlist order does not pick the next series.
+
+15a. **Silent gap.** The player waits 2 seconds in silence. Nothing is on screen during the gap: no "Up next" box, no countdown, no title, no artwork, no Cancel button. No sting, no Belle, no sound effect plays across the gap. After the 2 seconds, episode 1 of the matched series starts with its own sting and Belle's intro. — **Agreed** (Marc, Nov 18, 2026; CANON-99 item 158)
+15b. **First unstarted series wins.** Walk the match list for the finished series in order and pick the **first series the listener has not started**. "Started" means the listener has any saved progress in any episode of that series (anything other than zero). A series the listener has already started is skipped. — **Agreed** (Marc, Nov 19, 2026; CANON-99 item 158)
+15c. **All started → review screen, then the Library.** If every series in the match list has been started, no series is chosen. The player shows the review screen (rule 27), then goes to the Library. It does not restart a series the listener has already heard. — **Agreed** (Marc, Nov 19, 2026; CANON-99 item 158)
+15d. **Only complete, live series are eligible.** A series in the match list can only be chosen if it is published and every one of its episodes is live. If the matched series is unpublished, incomplete, or its episode 1 is missing, it is skipped and the next series in the match list is tried. If none qualifies, rule 31 applies: go to the Library and log a warning. The player never sits on a blank 2-second screen. — **Agreed** (Marc, Nov 19, 2026; CANON-99 item 158)
+15e. **The match list is canon.** The list below is a canon rule, not a setting. Changing it needs a CANON-99 decision from Marc. Each arrow is an ordered preference, read left to right:
+- **Rerouted** → Don't Go Home → The Widow Who Watched
+- **Don't Go Home** → Rerouted → The Widow Who Watched
+- **Second Rise** → Weekend Wife in Miami → The Widow Who Watched → The Man I Left at the Altar
+- **The Widow Who Watched** → Weekend Wife in Miami → Second Rise → The Man I Left at the Altar
+- **Weekend Wife in Miami** → Second Rise → The Widow Who Watched → The Man I Left at the Altar
+- **The Man I Left at the Altar** joins a match list only when all 30 of its episodes are live **and** Marc has approved its voices. Until then it is never chosen and never appears in another series' list.
+- A series not named on the left of a line above has no automatic next series and falls through to rule 27.
+ — **Agreed** (Marc, Nov 19, 2026; CANON-99 item 158)
+15f. **Every handoff is logged.** For each finale→next-series handoff the player records four fields: **from** (the series that finished), **to** (the series chosen, or "none"), **started** (whether the listener had already started the chosen series — which, per 15b, is always false when a series is chosen), and **stopped** (whether the listener paused or cancelled during the 2-second gap). When no series is chosen, **to** is recorded as "none" with the reason (all started / none eligible). — **Agreed** (Marc, Nov 19, 2026; CANON-99 item 158)
 
 ### E. What listeners can see — Agreed (docs/PLAYER-RULES.md)
 37. **[MARC DECIDES]** All episodes publish together. A series stays hidden until every episode is finished and approved, then they all go live at the same time. — **Agreed** (docs/PLAYER-RULES.md; Marc, Nov 8)
@@ -71,8 +91,8 @@ Listening never stops between episodes. Each episode flows into the next until t
 
 ### F. Design and readability — Agreed (docs/PLAYER-RULES.md)
 42. White text on dark backgrounds. Never grey text on dark. — **Agreed** (docs/PLAYER-RULES.md)
-43. Orange for emphasis, such as the "Up next" label. — **Agreed** (docs/PLAYER-RULES.md)
-44. Buttons are at least 44 pixels tall. Cancel on the "Up next" screen is at least a quarter of the screen. — **Agreed** (docs/PLAYER-RULES.md)
+43. Orange for emphasis where a label is used. — **Agreed** (docs/PLAYER-RULES.md; the "Up next" screen itself is retired by rule 33, Marc Nov 18, 2026)
+44. Buttons are at least 44 pixels tall. — **Agreed** (docs/PLAYER-RULES.md; the "Up next" Cancel button is retired by rule 33, Marc Nov 18, 2026)
 45. Nothing spills sideways on phones, tablets or computers. — **Agreed** (docs/PLAYER-RULES.md)
 46. **[MARC DOES]** Marc checks it on a real phone before any player change is accepted. — **Agreed** (docs/PLAYER-RULES.md)
 
@@ -161,13 +181,13 @@ Marc answered CANON-99 on Nov 9, 2026. These decisions are **Agreed** and overri
 
 ## Enforcement status
 - Rules 1–6, 11–24, 63–66: enforced in code (CanonicalPlayer.tsx, EpisodeNavigation.tsx, PlayerTransport.tsx, lib/mediaSession.ts, app/api/user/save-progress). Real iPhone and Android tests still not done (PLAYER-RULES open items).
-- Rule 7, 25, 26, 33–35: NOT enforced. No 2-to-3-second gap and no Up next screen for series or playlists (see C1). Nov 8: episodes did not continue for Marc; cause not yet found.
+- Rule 7, 25, 26, 33–35: PARTLY enforced. Episode-to-episode advance within a series works (phone-tested by Marc, Nov 18, 2026, which is why rule 33 now says "straight on, no Up next box"). The playlist gap (rule 26) and the standalone/finale review-then-Library path (rule 27) remain unverified on a real phone.
+- Rules 26a, 15a–15f (finale → matched series, silent 2-second gap, first-unstarted-wins, handoff logging): NOT built. Code PR pending (FINALE-GAP-002).
 - Rule 9: not enforced in audio yet (Nov 8 gap before personalization, After the Last Train EP3; pipeline outro rules not updated).
 - Rule 10: not enforced (Nov 8: bar stopped at 59%, After the Last Train EP1, iPhone Safari).
 - Rule 27 (red Rate on series): NOT enforced. components/LibraryStoryCard.tsx shows Rate only when "completed"; app/library/page.tsx getCardState never sets completed or reviewed for a series.
 - Rule 30 ("Still listening?"): partly enforced. Nothing sets the prompt on any more, but its state, timer and screen are still in CanonicalPlayer.tsx (stillListeningPrompt, lines ~173, 188, 3134–3156). Remove the dead code.
 - Rule 31: partial. The player shows "Series complete"/"Catalog exhausted" with a Back to Library button and a console error; no logged warning, no automatic move.
-- Rule 34: not enforced (see C2).
 - Rule 36, 77: partial. play_events marks auto_advance starts; offered/advanced/cancelled events do not exist.
 - Rules 42–44: partly broken in the player: Up next card uses 11–13px grey text and ~38px buttons; time readout grey (#94a3b8, 12px); "Not for me" 45% white, 12px; Start Over 11px.
 - Rule 47: enforced since the Nov 6 fix (PlayerTransport.tsx); re-check on phone.
