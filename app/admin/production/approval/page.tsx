@@ -2874,6 +2874,9 @@ export default function AdminStoriesPage() {
   const [blockedSeriesItems, setBlockedSeriesItems] = useState<any[]>([])
   const [genres, setGenres] = useState<Genre[]>([])
   const [loading, setLoading] = useState(true)
+  // ORION-CONSOLE-FETCH-ERR-001: a failed readiness fetch used to silently
+  // render zeros ("Last updated: Never") with no explanation. Surface it.
+  const [loadError, setLoadError] = useState<string>('')
   const [search, setSearch] = useState('')
   const [genreFilter, setGenreFilter] = useState('All')
   const [viewMode, setViewMode] = useState<'all' | 'series' | 'standalone'>('all')
@@ -2946,14 +2949,18 @@ export default function AdminStoriesPage() {
   async function fetchStories() {
     setLoading(true)
     const bannerMetaPromise = fetchProductionQueueBannerMeta()
+    // ORION-CONSOLE-FETCH-ERR-001: send the admin session cookie explicitly
+    // (same-origin) and keep the HTTP status visible when it fails.
     const [readyRes, allRes] = await Promise.all([
-      fetch('/api/admin/content-approval?tab=ready_for_review&includeBlocked=false', { cache: 'no-store' }),
-      fetch('/api/admin/content-approval?tab=all&includeBlocked=true', { cache: 'no-store' }),
+      fetch('/api/admin/content-approval?tab=ready_for_review&includeBlocked=false', { cache: 'no-store', credentials: 'same-origin' }),
+      fetch('/api/admin/content-approval?tab=all&includeBlocked=true', { cache: 'no-store', credentials: 'same-origin' }),
     ])
-    const readyPayload = await readyRes.json()
-    const allPayload = await allRes.json()
+    const readyPayload = await readyRes.json().catch(() => ({}))
+    const allPayload = await allRes.json().catch(() => ({}))
     if (!readyRes.ok || !readyPayload.success) {
-      console.error('Error fetching Ready for Review readiness:', readyPayload.error || readyRes.status)
+      const detail = readyPayload.error || readyRes.statusText || 'request failed'
+      console.error('Error fetching Ready for Review readiness:', detail, readyRes.status)
+      setLoadError(`Could not load Ready for Review (HTTP ${readyRes.status}${detail ? `: ${detail}` : ''}). Nothing shown below is a real count.`)
       setStories([])
       setApprovalItems([])
       setReadyReviewKeys({})
@@ -2961,13 +2968,16 @@ export default function AdminStoriesPage() {
       return
     }
     if (!allRes.ok || !allPayload.success) {
-      console.error('Error fetching content approval readiness:', allPayload.error || allRes.status)
+      const detail = allPayload.error || allRes.statusText || 'request failed'
+      console.error('Error fetching content approval readiness:', detail, allRes.status)
+      setLoadError(`Could not load Content Approval (HTTP ${allRes.status}${detail ? `: ${detail}` : ''}). Nothing shown below is a real count.`)
       setStories([])
       setApprovalItems([])
       setReadyReviewKeys({})
       setLoading(false)
       return
     }
+    setLoadError('')
 
     setProductionQueueBannerMeta(await bannerMetaPromise)
 
@@ -4782,12 +4792,22 @@ export default function AdminStoriesPage() {
             </p>
           </div>
           <div className="approval-header-actions" style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#9CA3AF', fontSize: '11px' }}>
-            <span>Last updated: {lastUpdated || 'Never'}</span>
-            <button type="button" onClick={fetchStories} title="Refresh" style={{ width: '28px', height: '28px', borderRadius: '6px', border: '1px solid #E5E7EB', backgroundColor: '#ffffff', color: '#6B7280', cursor: 'pointer', fontSize: '14px', lineHeight: 1 }}>
+            <span>Last updated: {lastUpdated || 'Never'}</span>            <button type="button" onClick={fetchStories} title="Refresh" style={{ width: '28px', height: '28px', borderRadius: '6px', border: '1px solid #E5E7EB', backgroundColor: '#ffffff', color: '#6B7280', cursor: 'pointer', fontSize: '14px', lineHeight: 1 }}>
               ↻
             </button>
           </div>
         </div>
+
+        {loadError && (
+          <div role="alert" style={{ marginTop: '16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', padding: '10px 12px', borderRadius: '10px', border: '1px solid #FCA5A5', backgroundColor: '#FEF2F2', color: '#991B1B', fontSize: '12px', fontWeight: 700 }}>
+            <span>{loadError}</span>
+            <button
+              type="button"
+              onClick={fetchStories}
+              style={{ minHeight: '28px', padding: '0 10px', borderRadius: '7px', border: '1px solid #FCA5A5', backgroundColor: '#ffffff', color: '#991B1B', fontSize: '11px', fontWeight: 900, cursor: 'pointer' }}
+            >Retry</button>
+          </div>
+        )}
 
         {repairQueueItemCount > 0 && !repairQueueBannerDismissed && (
           <div style={{ marginTop: '16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', padding: '10px 12px', borderRadius: '10px', border: '1px solid #FED7AA', backgroundColor: '#FFF7ED', color: '#9A3412', fontSize: '12px', fontWeight: 900 }}>
