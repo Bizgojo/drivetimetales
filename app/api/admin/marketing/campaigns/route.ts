@@ -1,6 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
+import {
+  AirtableHttpError,
+  TtlCache,
+  fetchWithRetry,
+  statusForAirtableError,
+} from '@/lib/admin/airtable-retry'
 import { AIRTABLE_CAMPAIGN_BASE_URL, MARKETING_TOOL_COST_TABLE_ID, findAirtableToolRecord, normalizeMarketingToolCost } from '@/lib/admin-center/marketing-tool-cost'
 
 export const runtime = 'nodejs'
@@ -93,11 +99,20 @@ type AirtableRecord = {
   fields: Record<string, unknown>
 }
 
-function json(data: Record<string, unknown>, status = 200) {
+// Short-TTL cache for successful GET payloads, keyed by view.
+// Auth is still enforced per request; only the upstream Airtable
+// response is cached. TTL 60s keeps the admin dashboard fresh
+// while absorbing repeat loads and Airtable rate limits.
+const RESPONSE_CACHE_TTL_MS = 60_000
+const responseCache = new TtlCache<Record<string, unknown>>(RESPONSE_CACHE_TTL_MS)
+
+function json(data: Record<string, unknown>, status = 200, cacheable = false) {
   return NextResponse.json(data, {
     status,
     headers: {
-      'Cache-Control': 'no-store, no-cache, must-revalidate',
+      'Cache-Control': cacheable
+        ? 'private, max-age=60'
+        : 'no-store, no-cache, must-revalidate',
     },
   })
 }
@@ -148,15 +163,10 @@ async function airtableList(tableId: string, params: URLSearchParams) {
     const pageParams = new URLSearchParams(params)
     if (offset) pageParams.set('offset', offset)
 
-    const response = await fetch(`${airtableTableUrl(tableId)}?${pageParams.toString()}`, {
+    const response = await fetchWithRetry(`${airtableTableUrl(tableId)}?${pageParams.toString()}`, {
       headers: airtableHeaders(),
       cache: 'no-store',
-    })
-
-    if (!response.ok) {
-      const body = await response.text()
-      throw new Error(`Airtable list failure ${tableId} ${response.status}: ${body.slice(0, 500)}`)
-    }
+    }, `list ${tableId}`)
 
     const payload = await response.json() as { records?: AirtableRecord[]; offset?: string }
     records.push(...(payload.records || []))
@@ -167,15 +177,10 @@ async function airtableList(tableId: string, params: URLSearchParams) {
 }
 
 async function airtableGet(tableId: string, recordId: string) {
-  const response = await fetch(`${airtableTableUrl(tableId)}/${recordId}`, {
+  const response = await fetchWithRetry(`${airtableTableUrl(tableId)}/${recordId}`, {
     headers: airtableHeaders(),
     cache: 'no-store',
-  })
-
-  if (!response.ok) {
-    const body = await response.text()
-    throw new Error(`Airtable get failure ${tableId}/${recordId} ${response.status}: ${body.slice(0, 500)}`)
-  }
+  }, `get ${tableId}/${recordId}`)
 
   return await response.json() as AirtableRecord
 }
@@ -226,6 +231,12 @@ export async function GET(request: NextRequest) {
       ? requestedView
       : VIEW_OPTIONS[0]
 
+    const cacheKey = `campaigns:${view}`
+    const cached = responseCache.get(cacheKey)
+    if (cached) {
+      return json({ ...cached, cached: true }, 200, true)
+    }
+
     const params = new URLSearchParams({pageSize:'100'});if(view!=='All campaigns')params.set('view',view)
     CAMPAIGN_FIELDS.forEach((field) => params.append('fields[]', field))
 
@@ -244,7 +255,7 @@ export async function GET(request: NextRequest) {
       console.error('[admin-marketing-campaigns] Tool cost unavailable:', error instanceof Error ? error.message : String(error))
     }
 
-    return json({
+    const payload: Record<string, unknown> = {
       success: true,
       view,
       views: VIEW_OPTIONS,
@@ -255,10 +266,29 @@ export async function GET(request: NextRequest) {
         task: TASK_FIELDS,
       },
       campaigns: campaigns.map((campaign) => normalizeRecord(campaign, tasksById)),
-    })
+    }
+    responseCache.set(cacheKey, payload)
+    return json(payload, 200, true)
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error)
+    // 429 (rate-limited) surfaces distinctly so the dashboard can back off;
+    // 404 (unknown view/table/record) and 401 (route auth) keep their
+    // existing semantics. Upstream bodies are never logged (secret hygiene).
+    if (error instanceof AirtableHttpError && error.isRateLimited) {
+      console.error('[admin-marketing-campaigns] Rate limited by Airtable:', error.status)
+      const headers: Record<string, string> = {}
+      if (error.retryAfterMs !== null) {
+        headers['Retry-After'] = String(Math.ceil(error.retryAfterMs / 1000))
+      }
+      return NextResponse.json(
+        { success: false, error: 'Upstream rate limit exceeded, retry shortly', retryable: true },
+        { status: 429, headers },
+      )
+    }
+    const status = statusForAirtableError(error)
+    const message = error instanceof AirtableHttpError
+      ? error.message
+      : error instanceof Error ? error.message : String(error)
     console.error('[admin-marketing-campaigns] Failed:', message)
-    return json({ success: false, error: message }, 500)
+    return json({ success: false, error: message }, status)
   }
 }
