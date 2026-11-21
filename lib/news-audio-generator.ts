@@ -2,6 +2,7 @@
 // Generates audio from news script using ElevenLabs API
 
 import { NewsScript, scriptToPlainText } from './news-script-generator';
+import { speakableText } from '@/lib/speakableText'
 
 interface AudioGenerationResult {
   audioBuffer: Buffer;
@@ -77,7 +78,7 @@ export async function generateNewsAudio(
         'xi-api-key': elevenLabsApiKey
       },
       body: JSON.stringify({
-        text: scriptText,
+        text: speakableText(scriptText),
         model_id: 'eleven_monolingual_v1',
         voice_settings: {
           stability: 0.5,
@@ -139,7 +140,7 @@ export async function generateNewsAudioChunked(
           'xi-api-key': elevenLabsApiKey
         },
         body: JSON.stringify({
-          text: sectionText,
+          text: speakableText(sectionText),
           model_id: 'eleven_monolingual_v1',
           voice_settings: {
             stability: 0.5,

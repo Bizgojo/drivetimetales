@@ -4,6 +4,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { speakableText } from '@/lib/speakableText'
 
 export const dynamic = 'force-dynamic';
 
@@ -41,7 +42,7 @@ async function generateAudio(script: string, voiceId: string): Promise<Buffer> {
       'xi-api-key': process.env.ELEVENLABS_API_KEY!
     },
     body: JSON.stringify({
-      text: script,
+      text: speakableText(script),
       model_id: 'eleven_monolingual_v1',
       voice_settings: {
         stability: 0.5,

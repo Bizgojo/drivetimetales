@@ -7,6 +7,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { createServerClient } from '@supabase/ssr'
 import { CANONICAL_BELLE_B_VOICE_ID } from '@/lib/voiceConstants'
+import { speakableText } from '@/lib/speakableText'
 
 export const runtime = 'nodejs'
 export const maxDuration = 30
@@ -21,7 +22,7 @@ const EL_SETTINGS = { stability: 0.49, similarity_boost: 0.51, style: 0.0, use_s
 const BASE = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/audio`
 
 async function generateAudio(text: string): Promise<Buffer> {
-  const body = JSON.stringify({ text, model_id: 'eleven_multilingual_v2', voice_settings: EL_SETTINGS })
+  const body = JSON.stringify({ text: speakableText(text), model_id: 'eleven_multilingual_v2', voice_settings: EL_SETTINGS })
   const res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${BELLE_B}`, {
     method: 'POST',
     headers: { 'xi-api-key': EL_KEY, 'Content-Type': 'application/json', 'Accept': 'audio/mpeg' },

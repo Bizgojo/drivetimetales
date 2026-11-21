@@ -35,6 +35,7 @@ import {
 } from './constants'
 import { parseVoiceCode, VoiceCodeValidationError } from '../voice-code'
 import { getRegistry } from '../registry'
+import { speakableText } from '../../speakableText'
 
 // ---------------------------------------------------------------------------
 // Internal helpers
@@ -116,7 +117,7 @@ export class ElevenLabsProvider implements IVoiceProvider {
     const endpoint = EL_ENDPOINTS.TTS(voiceId)
 
     const body = JSON.stringify({
-      text,
+      text: speakableText(text),
       model_id: settings?.model_id ?? EL_DEFAULT_TTS_MODEL,
       voice_settings: {
         stability: settings?.stability ?? EL_DEFAULT_VOICE_SETTINGS.stability,

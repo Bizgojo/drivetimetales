@@ -11,6 +11,7 @@ export const dynamic = 'force-dynamic';
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { CANONICAL_BELLE_B_VOICE_ID } from '@/lib/voiceConstants'
+import { speakableText } from '@/lib/speakableText'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -25,7 +26,7 @@ async function generateAudio(text: string): Promise<Buffer> {
     method: 'POST',
     headers: { 'xi-api-key': ELEVENLABS_API_KEY, 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      text,
+      text: speakableText(text),
       model_id: 'eleven_monolingual_v1',
       voice_settings: { stability: 0.5, similarity_boost: 0.75 },
     }),
